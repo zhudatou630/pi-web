@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { MarkdownBody } from "./MarkdownBody";
+import { getDisplayableAssistantBlocks } from "@/lib/message-display";
 import type {
   AgentMessage,
   UserMessage,
@@ -293,7 +294,7 @@ function AssistantMessageView({
   prevTimestamp?: number;
 }) {
   const time = showTimestamp ? formatTime(message.timestamp) : null;
-  const blocks = message.content ?? [];
+  const blocks = getDisplayableAssistantBlocks(message, { isStreaming });
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const streamStartRef = useRef<number | null>(null);
@@ -343,7 +344,7 @@ function AssistantMessageView({
   useEffect(() => {
     if (!isStreaming) {
       // Finalise any un-finished thinking block durations on stream end
-      const now = Date.now();
+      const now = new Date().getTime();
       setStreamingDurations((prev: Map<number, number>) => {
         const next = new Map(prev);
         for (const [idx, start] of blockStartTimesRef.current) {
@@ -393,6 +394,8 @@ function AssistantMessageView({
     const id = setInterval(tick, 300);
     return () => clearInterval(id);
   }, [isStreaming]);
+
+  if (blocks.length === 0 && !isStreaming) return null;
 
   return (
     <div
