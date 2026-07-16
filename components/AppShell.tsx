@@ -142,6 +142,7 @@ export function AppShell() {
 
   const [initialSessionId] = useState<string | null>(() => searchParams.get("session"));
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
+  const [homeDir, setHomeDir] = useState<string>("");
   // True once the initial ?session= URL param has been resolved (or confirmed absent)
   const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !searchParams.get("session"));
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
@@ -176,6 +177,12 @@ export function AppShell() {
     setActiveTopPanel(null);
     router.replace("/", { scroll: false });
   }, [router, selectedSession]);
+
+  useEffect(() => {
+    fetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
+      if (d.home) setHomeDir(d.home);
+    }).catch(() => {});
+  }, []);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false) => {
     setNewSessionCwd(null);
@@ -971,6 +978,7 @@ export function AppShell() {
               onSessionStatsChange={handleSessionStatsChange}
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
+              homeDir={homeDir}
               onOpenFile={handleOpenLinkedFile}
             />
           ) : showPlaceholder ? (

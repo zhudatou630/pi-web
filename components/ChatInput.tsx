@@ -90,6 +90,14 @@ const THINKING_LEVEL_DESC: Record<typeof THINKING_LEVELS[number], string> = {
   max: "Max reasoning",
 };
 
+const CODEX_EFFORT_LABELS: Partial<Record<typeof THINKING_LEVELS[number], string>> = {
+  low: "Light",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+  max: "Max",
+};
+
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
@@ -816,6 +824,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? (modelOptions.find((o) => o.modelId === model.modelId && o.provider === model.provider)?.name ?? model.modelId)
     : null;
   const currentName = displayModelName;
+  const useCodexEffortLabels = model?.provider === "openai-codex" || model?.provider === "sub2api";
 
   const compactSavedTokens = compactResult
     ? Math.max(0, compactResult.tokensBefore - compactResult.estimatedTokensAfter)
@@ -828,6 +837,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     : null;
   const thinkingDisplayLabel = (() => {
     const lvl = thinkingLevel ?? "auto";
+    if (useCodexEffortLabels && CODEX_EFFORT_LABELS[lvl]) return CODEX_EFFORT_LABELS[lvl];
     if (lvl === "auto" || !thinkingLevelMap) return lvl;
     return thinkingLevelMap[lvl] ?? lvl;
   })();
@@ -1665,7 +1675,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       const isActive = (thinkingLevel ?? "auto") === lvl;
                       const desc = THINKING_LEVEL_DESC[lvl];
                       const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
-                      const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
+                      const displayLabel = useCodexEffortLabels
+                        ? (CODEX_EFFORT_LABELS[lvl] ?? lvl)
+                        : ((mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl);
                       const showOriginal = mappedVal != null && mappedVal !== lvl;
                       return (
                         <button

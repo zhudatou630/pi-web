@@ -13,6 +13,24 @@ function normalizeFilePathSlashes(filePath: string): string {
   return filePath;
 }
 
+function inferHomeDirFromCwd(cwd?: string): string | null {
+  if (!cwd) return null;
+  const normalized = normalizeFilePathSlashes(cwd);
+  const posixMatch = normalized.match(/^(\/home\/[^/]+|\/Users\/[^/]+)(?:\/|$)/);
+  if (posixMatch) return posixMatch[1];
+  const windowsMatch = normalized.match(/^([a-zA-Z]:\/Users\/[^/]+)(?:\/|$)/);
+  if (windowsMatch) return windowsMatch[1];
+  return null;
+}
+
+function expandHomePath(filePath: string, cwd?: string, homeDir?: string): string | null {
+  if (filePath !== "~" && !filePath.startsWith("~/")) return filePath;
+  const home = homeDir || inferHomeDirFromCwd(cwd);
+  if (!home) return null;
+  if (filePath === "~") return home;
+  return `${normalizeFilePathSlashes(home).replace(/\/+$/, "")}/${filePath.slice(2)}`;
+}
+
 function stripLineSuffix(filePath: string): string {
   return filePath.replace(/:\d+(?::\d+)?$/, "");
 }
@@ -74,7 +92,156 @@ function fileUrlToPath(href: string): string | null {
   }
 }
 
-export function resolveLocalFileHref(href: string | undefined, cwd?: string): string | null {
+function isPathChar(ch: string): boolean {
+  return /[A-Za-z0-9._~+%@/\\:-]/.test(ch);
+}
+
+function isReferenceStartBoundary(text: string, index: number): boolean {
+  return index === 0 || !isPathChar(text[index - 1]);
+}
+
+function isReferenceEndBoundary(text: string, index: number): boolean {
+  if (index >= text.length) return true;
+  const ch = text[index];
+  if (ch === ":") return /\d/.test(text[index + 1] ?? "");
+  return !isPathChar(ch);
+}
+
+function isStopChar(ch: string): boolean {
+  return /\s/.test(ch) || /[<>{}\[\]()"'`，。；！？、]/.test(ch);
+}
+
+function trimReferenceEnd(value: string): string {
+  let end = value.length;
+  while (end > 0) {
+    const ch = value[end - 1];
+    if (/[.,;!?，。；！？、]/.test(ch)) {
+      end--;
+      continue;
+    }
+    if (ch === ":" && !/\d/.test(value[end] ?? "")) {
+      end--;
+      continue;
+    }
+    break;
+  }
+  return value.slice(0, end);
+}
+
+function relativePathMatchAt(text: string, index: number): RegExpMatchArray | null {
+  const match = text.slice(index).match(/^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~+%@-]+)+\.[A-Za-z0-9]{1,16}(?::\d+(?::\d+)?)?/);
+  if (!match) return null;
+  return match;
+}
+
+function referenceStartLength(text: string, index: number): number {
+  const rest = text.slice(index);
+  if (rest.startsWith("file://")) return "file://".length;
+  if (rest.startsWith("~/")) return 2;
+  if (rest.startsWith("\\\\")) return 2;
+  if (/^[a-zA-Z]:[\\/]/.test(rest)) return 3;
+  if (rest.startsWith("./") || rest.startsWith("../")) return 2;
+  if (rest.startsWith("/") && !rest.startsWith("//")) return 1;
+  const relativeMatch = relativePathMatchAt(text, index);
+  return relativeMatch ? relativeMatch[0].length : 0;
+}
+
+export type LocalFileReferencePart =
+  | { type: "text"; value: string }
+  | { type: "link"; value: string; href: string; filePath: string };
+
+export function splitLocalFileReferences(text: string, cwd?: string, homeDir?: string): LocalFileReferencePart[] {
+  const parts: LocalFileReferencePart[] = [];
+  let cursor = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    if (!isReferenceStartBoundary(text, index)) {
+      index++;
+      continue;
+    }
+
+    const startLength = referenceStartLength(text, index);
+    if (!startLength) {
+      index++;
+      continue;
+    }
+
+    let end = index + startLength;
+    if (relativePathMatchAt(text, index)?.[0].length === startLength) {
+      end = index + startLength;
+    } else {
+      while (end < text.length && !isStopChar(text[end])) end++;
+    }
+
+    const rawCandidate = trimReferenceEnd(text.slice(index, end));
+    const candidateEnd = index + rawCandidate.length;
+    const filePath = resolveLocalFileHref(rawCandidate, cwd, homeDir);
+    if (!rawCandidate || !filePath || !isReferenceEndBoundary(text, candidateEnd)) {
+      index = Math.max(index + 1, end);
+      continue;
+    }
+
+    if (cursor < index) parts.push({ type: "text", value: text.slice(cursor, index) });
+    parts.push({ type: "link", value: rawCandidate, href: rawCandidate, filePath });
+    cursor = candidateEnd;
+    index = candidateEnd;
+  }
+
+  if (cursor < text.length) parts.push({ type: "text", value: text.slice(cursor) });
+  return parts.length ? parts : [{ type: "text", value: text }];
+}
+
+export function createLocalFileLinkRemarkPlugin(cwd?: string, homeDir?: string) {
+  return function localFileLinkRemarkPlugin() {
+    function visit(node: { type?: string; value?: string; children?: unknown[] }, parent?: { type?: string }): void {
+      if (!node || typeof node !== "object") return;
+      if (node.type === "text" && typeof node.value === "string" && parent?.type !== "link" && parent?.type !== "image") {
+        const parts = splitLocalFileReferences(node.value, cwd, homeDir);
+        if (parts.length > 1 || parts[0]?.type === "link") {
+          const replacement = parts.map((part) => {
+            if (part.type === "text") return { type: "text", value: part.value };
+            return {
+              type: "link",
+              url: part.href,
+              title: null,
+              children: [{ type: "text", value: part.value }],
+            };
+          });
+          Object.assign(node, { type: "paragraph", children: replacement });
+          delete node.value;
+          return;
+        }
+      }
+
+      if (node.type === "link" || node.type === "image" || node.type === "definition" || node.type === "code" || node.type === "inlineCode") return;
+      if (!Array.isArray(node.children)) return;
+
+      for (let i = 0; i < node.children.length; i++) {
+        const child = node.children[i] as { type?: string; value?: string; children?: unknown[] };
+        if (child?.type === "text" && typeof child.value === "string") {
+          const parts = splitLocalFileReferences(child.value, cwd, homeDir);
+          if (parts.length > 1 || parts[0]?.type === "link") {
+            node.children.splice(
+              i,
+              1,
+              ...parts.map((part) => part.type === "text"
+                ? { type: "text", value: part.value }
+                : { type: "link", url: part.href, title: null, children: [{ type: "text", value: part.value }] }),
+            );
+            i += parts.length - 1;
+            continue;
+          }
+        }
+        visit(child, node);
+      }
+    }
+
+    return (tree: { type?: string; children?: unknown[] }) => visit(tree);
+  };
+}
+
+export function resolveLocalFileHref(href: string | undefined, cwd?: string, homeDir?: string): string | null {
   if (!href) return null;
 
   const cleanHref = href.split("#", 1)[0].split("?", 1)[0].trim();
@@ -99,6 +266,9 @@ export function resolveLocalFileHref(href: string | undefined, cwd?: string): st
   } else if (/^[a-zA-Z]:\//.test(normalizedHref)) {
     candidate = normalizedHref;
     candidateKind = "absolute";
+  } else if (normalizedHref === "~" || normalizedHref.startsWith("~/")) {
+    candidate = expandHomePath(normalizedHref, cwd, homeDir);
+    candidateKind = candidate ? "absolute" : null;
   } else if (normalizedHref.startsWith("/")) {
     candidate = normalizedHref;
     candidateKind = "absolute";

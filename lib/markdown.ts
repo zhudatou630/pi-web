@@ -11,6 +11,10 @@ const markdownSanitizeSchema = {
     ...defaultSchema.attributes,
     code: [["className", /^language-./, "math-inline", "math-display"]],
   },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: [...(defaultSchema.protocols?.href || []), "file"],
+  },
   strip: [...(defaultSchema.strip || []), "iframe", "object", "style", "form"],
 };
 

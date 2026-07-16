@@ -7,7 +7,7 @@ import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
 import { copyText } from "@/lib/clipboard";
-import { resolveLocalFileHref } from "@/lib/file-links";
+import { createLocalFileLinkRemarkPlugin, resolveLocalFileHref } from "@/lib/file-links";
 import { markdownRehypePlugins, markdownRemarkPlugins } from "@/lib/markdown";
 
 interface MarkdownBodyProps {
@@ -15,16 +15,21 @@ interface MarkdownBodyProps {
   className?: string;
   isStreaming?: boolean;
   cwd?: string;
+  homeDir?: string;
   onOpenFile?: (filePath: string) => void;
 }
 
-export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
+export function MarkdownBody({ children, className, isStreaming, cwd, homeDir, onOpenFile }: MarkdownBodyProps) {
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
+  const remarkPlugins = useMemo(() => {
+    if (!onOpenFile) return markdownRemarkPlugins;
+    return [...(markdownRemarkPlugins || []), createLocalFileLinkRemarkPlugin(cwd, homeDir)];
+  }, [cwd, homeDir, onOpenFile]);
 
   return (
     <div className={["markdown-body", className].filter(Boolean).join(" ")}>
       <ReactMarkdown
-        remarkPlugins={markdownRemarkPlugins}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={markdownRehypePlugins}
         components={{
           code({ className, children, ...props }) {
@@ -50,7 +55,7 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
             return <>{children}</>;
           },
           a({ href, children, ...props }) {
-            const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
+            const filePath = onOpenFile ? resolveLocalFileHref(href, cwd, homeDir) : null;
             const openFile = onOpenFile;
             if (!filePath || !openFile) {
               return (

@@ -18,6 +18,12 @@ function normalizeSlashes(value: string): string {
   return value.replace(/\\/g, "/");
 }
 
+function isPathInside(candidate: string, root: string): boolean {
+  const normalizedCandidate = normalizeSlashes(candidate).replace(/\/+$/, "");
+  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`);
+}
+
 function isPathChar(ch: string): boolean {
   return /[A-Za-z0-9._~+%@/\\:-]/.test(ch);
 }
@@ -29,9 +35,21 @@ function hasReferenceBoundaryAfter(text: string, index: number): boolean {
   return !isPathChar(ch);
 }
 
-function containsExactPathReference(text: string, filePath: string): boolean {
+function getReferenceTargets(filePath: string, homeDir?: string): string[] {
   const target = normalizeSlashes(filePath);
   const targets = target.startsWith("/") ? [target, `file://${target}`] : [target];
+
+  if (homeDir && isPathInside(target, homeDir)) {
+    const home = normalizeSlashes(homeDir).replace(/\/+$/, "");
+    const suffix = target.slice(home.length);
+    targets.push(`~${suffix}`);
+  }
+
+  return targets;
+}
+
+function containsExactPathReference(text: string, filePath: string, homeDir?: string): boolean {
+  const targets = getReferenceTargets(filePath, homeDir);
   const haystacks = new Set([normalizeSlashes(text), normalizeSlashes(safeDecode(text))]);
 
   for (const haystack of haystacks) {
@@ -64,11 +82,11 @@ function collectStrings(value: unknown, out: string[]): void {
   for (const item of Object.values(value)) collectStrings(item, out);
 }
 
-export function isFilePathReferencedByEntries(filePath: string, entries: SessionEntry[]): boolean {
+export function isFilePathReferencedByEntries(filePath: string, entries: SessionEntry[], homeDir?: string): boolean {
   for (const entry of entries) {
     const strings: string[] = [];
     collectStrings(entry, strings);
-    if (strings.some((text) => containsExactPathReference(text, filePath))) return true;
+    if (strings.some((text) => containsExactPathReference(text, filePath, homeDir))) return true;
   }
   return false;
 }
