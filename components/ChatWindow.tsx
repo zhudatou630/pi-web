@@ -8,9 +8,10 @@ import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
+import { getOutlineMountedRange, loadOutlineEntry } from "@/lib/chat-outline-jump";
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
-import { CHAT_MINIMAP_WIDTH, ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
@@ -466,11 +467,17 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [mountLimit, setMountLimit] = useState(MOUNTED_GROUP_LIMIT);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const newerSentinelRef = useRef<HTMLDivElement>(null);
-  const mountedRangeRef = useRef({ startIndex: 0, endIndex: 0 });
+  const mountedRangeRef = useRef({ startIndex: 0, endIndex: 0, totalCount: 0 });
   const pendingWindowAnchorRef = useRef<{ anchorEntryId: string; anchorOffset: number } | null>(null);
   const messageContentRef = useRef<HTMLDivElement | null>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
   const loadingOlderRef = useRef(false);
+  const outlineJumpControllerRef = useRef<AbortController | null>(null);
+  const [pendingOutlineJump, setPendingOutlineJump] = useState<{
+    entryId: string;
+    signal: AbortSignal;
+    resolve: () => void;
+  } | null>(null);
   const restoreStartedRef = useRef(false);
   const pendingScrollRestoreRef = useRef(pendingScrollRestore);
   pendingScrollRestoreRef.current = pendingScrollRestore;
@@ -645,6 +652,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const container = scrollContainerRef.current;
     if (!container) return;
     const onScroll = () => {
+      if (outlineJumpControllerRef.current || unmountedNewerCount > 0) return;
       if (isScrollAtTail(container.scrollTop, container.clientHeight, container.scrollHeight)) {
         setUnmountedNewerCount(0);
         setMountLimit(MOUNTED_GROUP_LIMIT);
@@ -652,7 +660,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     };
     container.addEventListener("scroll", onScroll, { passive: true });
     return () => container.removeEventListener("scroll", onScroll);
-  }, [scrollContainerRef]);
+  }, [scrollContainerRef, unmountedNewerCount]);
 
   // IntersectionObserver on the sentinel div at the top of the message list.
   // Slide the mounted window toward older in-memory groups first; only then
@@ -664,7 +672,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
-        if (loadingOlderRef.current) return;
+        if (loadingOlderRef.current || outlineJumpControllerRef.current) return;
         if (mountedRangeRef.current.startIndex > 0) {
           const content = messageContentRef.current;
           if (content) {
@@ -703,7 +711,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (!sentinel || !container) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (!entries[0]?.isIntersecting) return;
+        if (!entries[0]?.isIntersecting || outlineJumpControllerRef.current) return;
         setUnmountedNewerCount((current) => Math.max(0, current - MOUNT_WINDOW_SHIFT));
       },
       { root: container, threshold: 0 },
@@ -810,38 +818,60 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     return "";
   }, [entryIds, messages]);
-  const pendingJumpEntryIdRef = useRef<string | null>(null);
+  useEffect(() => () => {
+    outlineJumpControllerRef.current?.abort();
+  }, [session?.id, activeLeafId]);
+
   const jumpToOutlineEntry = useCallback(async (entryId: string) => {
     const sid = session?.id ?? sessionIdRef.current;
     if (!sid) return;
-    pendingJumpEntryIdRef.current = entryId;
-    setMountLimit(Number.MAX_SAFE_INTEGER);
-    if (searchHistoryRef.current.entryIds.includes(entryId)) return;
-    let before: string | null = searchHistoryRef.current.historyCursor;
-    let hasMore: boolean = searchHistoryRef.current.hasEarlierMessages;
-    if (!hasMore || !before) return;
-    loadingOlderRef.current = true;
+    outlineJumpControllerRef.current?.abort();
+    const controller = new AbortController();
+    outlineJumpControllerRef.current = controller;
+    setPendingOutlineJump(null);
+    let ownsHistoryLock = false;
     try {
-      while (hasMore && before) {
-        const context = await loadContext(sid, activeLeafId, before);
-        if (!context) break;
-        if (context.entryIds.includes(entryId)) return;
-        if (context.oldestEntryId === before) break;
-        before = context.oldestEntryId;
-        hasMore = context.hasMore;
-      }
+      // Let an existing scroll/search page commit before reading its cursor.
+      // Also lets an aborted previous jump release its lock. Never drop clicks.
+      do {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        controller.signal.throwIfAborted();
+      } while (loadingOlderRef.current);
+      loadingOlderRef.current = true;
+      ownsHistoryLock = true;
+      prevScrollDistanceRef.current = null;
+      pendingWindowAnchorRef.current = null;
+      const history = searchHistoryRef.current;
+      await loadOutlineEntry(entryId, {
+        entryIds: history.entryIds,
+        oldestEntryId: history.historyCursor,
+        hasMore: history.hasEarlierMessages,
+      }, (before) => loadContext(sid, activeLeafId, before, { signal: controller.signal }), controller.signal);
+      controller.signal.throwIfAborted();
+      // A state update is required even for repeated clicks on a loaded entry.
+      // Resolve only after React commits the target's bounded mount window.
+      await new Promise<void>((resolve, reject) => {
+        controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true });
+        setPendingOutlineJump({ entryId, signal: controller.signal, resolve });
+      });
     } finally {
-      loadingOlderRef.current = false;
+      if (ownsHistoryLock) loadingOlderRef.current = false;
+      if (outlineJumpControllerRef.current === controller) {
+        outlineJumpControllerRef.current = null;
+        setPendingOutlineJump(null);
+      }
     }
   }, [activeLeafId, loadContext, session?.id, sessionIdRef]);
   useLayoutEffect(() => {
-    const entryId = pendingJumpEntryIdRef.current;
-    if (!entryId) return;
-    const element = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(entryId)}"]`);
-    if (!(element instanceof HTMLElement)) return;
-    pendingJumpEntryIdRef.current = null;
+    if (!pendingOutlineJump || pendingOutlineJump.signal.aborted) return;
+    const element = messageContentRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(pendingOutlineJump.entryId)}"]`);
+    if (!element) return; // Retry on the next commit, not just a single rAF.
+    const range = mountedRangeRef.current;
+    setUnmountedNewerCount(range.totalCount - range.endIndex);
+    setMountLimit(MOUNTED_GROUP_LIMIT);
     scrollToMessage(element);
-  }, [entryIds, messages.length, mountLimit, scrollContainerRef, scrollToMessage]);
+    pendingOutlineJump.resolve();
+  }, [pendingOutlineJump, entryIds, messages.length, mountLimit, unmountedNewerCount, scrollToMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
@@ -1058,7 +1088,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           position: "absolute",
           top: 12,
           left: 0,
-          right: isMobile ? 0 : CHAT_MINIMAP_WIDTH,
+          right: 0,
           zIndex: 40,
           display: "flex",
           // Toasts live in the top-right corner
@@ -1168,12 +1198,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               };
 
               const rendered: ReactNode[] = [];
+              let outlineTargetIndex = -1;
               for (let idx = 0; idx < messages.length;) {
                 const hasAnchor = isMessageGroupAnchor(messages[idx]);
                 const userIdx = hasAnchor ? idx : -1;
                 let endIdx = hasAnchor ? idx + 1 : idx;
                 while (endIdx < messages.length && !isMessageGroupAnchor(messages[endIdx])) endIdx += 1;
                 const firstIdx = hasAnchor ? userIdx : idx;
+                if (hasAnchor && entryIds[userIdx] === pendingOutlineJump?.entryId) {
+                  outlineTargetIndex = rendered.length;
+                }
 
                 const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
 
@@ -1239,6 +1273,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   rendered.push(
                     <div
                       key={`process-group-${entryIds[firstIdx] ?? firstIdx}`}
+                      data-entry-id={entryIds[hasAnchor ? userIdx + 1 : firstIdx]}
                       ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
                     >
                       <ProcessDetailsGroup messageCount={processViews.length} toolCallCount={processToolCount} defaultExpanded={!finalAnswerMessage && endIdx === messages.length} reveal={revealProcess} t={t}>
@@ -1271,8 +1306,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
                 idx = endIdx;
               }
-              const { startIndex, endIndex } = getMountedRange(rendered.length, unmountedNewerCount, mountLimit);
-              mountedRangeRef.current = { startIndex, endIndex };
+              const { startIndex, endIndex } = outlineTargetIndex >= 0 && !pendingOutlineJump?.signal.aborted
+                ? getOutlineMountedRange(rendered.length, outlineTargetIndex)
+                : getMountedRange(rendered.length, unmountedNewerCount, mountLimit);
+              mountedRangeRef.current = { startIndex, endIndex, totalCount: rendered.length };
               const hasMore = startIndex > 0 || hasEarlierMessages;
               return (
                 <>
@@ -1327,6 +1364,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             leafId={activeLeafId}
             outlineRevision={outlineRevision}
             scrollContainer={scrollContainerRef}
+            contentContainer={messageContentRef}
+            loadedEntryIds={entryIds}
             onJumpToEntry={jumpToOutlineEntry}
           />
         )}
