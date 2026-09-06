@@ -209,40 +209,78 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
   useLayoutEffect(() => {
     if (reveal) setExpanded(true);
   }, [reveal]);
+  const isPanelOpen = expanded || reveal;
   const parts = [t("chat.processDetails"), `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`];
   if (toolCallCount > 0) parts.push(`${toolCallCount} ${t(toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
 
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div
+      style={{
+        marginBottom: 10,
+        borderRadius: 8,
+        border: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 70%, transparent)" : "1px solid transparent",
+        background: isPanelOpen ? "color-mix(in srgb, var(--bg-subtle) 45%, transparent)" : "transparent",
+        padding: isPanelOpen ? "6px 8px 8px" : 0,
+        transition: "background 0.15s ease, border-color 0.15s ease",
+      }}
+    >
       <button
         type="button"
-        aria-expanded={expanded || reveal}
+        aria-expanded={isPanelOpen}
         onClick={() => setExpanded((v) => !v)}
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 8,
+          gap: 6,
           width: "auto",
           minHeight: 24,
-          padding: "2px 0",
+          padding: "2px 4px",
+          borderRadius: 4,
           border: "none",
           background: "transparent",
           color: "var(--text-muted)",
           cursor: "pointer",
-          fontSize: 12,
+          fontSize: 11.5,
+          fontFamily: "var(--font-mono)",
           textAlign: "left",
         }}
-        title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
+        title={isPanelOpen ? t("chat.collapseProcess") : t("chat.expandProcess")}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            flexShrink: 0,
+            transform: isPanelOpen ? "rotate(90deg)" : "none",
+            transition: "transform 0.15s",
+          }}
+        >
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>
           {parts.join(" · ")}
         </span>
       </button>
-      {(expanded || reveal) && (
-        <div style={{ marginTop: 4 }}>
+      {isPanelOpen && (
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3, position: "relative", paddingLeft: 8 }}>
+          <div
+            style={{
+              position: "absolute",
+              left: 2,
+              top: 6,
+              bottom: 6,
+              width: 1.5,
+              background: "color-mix(in srgb, var(--border) 80%, transparent)",
+              borderRadius: 1,
+            }}
+            aria-hidden="true"
+          />
           {children}
         </div>
       )}

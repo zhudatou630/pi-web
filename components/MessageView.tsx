@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImagePreview } from "./ImagePreview";
 import { ThinkingIcon } from "./ThinkingIcon";
+import { ToolIcon } from "./ToolIcon";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
@@ -652,7 +653,7 @@ function AssistantMessageView({
     <div
       data-message-role="assistant"
       data-entry-id={entryId}
-      style={{ marginBottom: isTurnEnd ? 16 : 4 }}
+      style={{ marginBottom: isTurnEnd ? 16 : 8 }}
     >
       {isTurnEnd && !isStreaming && (modelName || message.model) && (
         <div data-answer-model style={{ marginBottom: 4, color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-ui)" }}>
@@ -717,7 +718,7 @@ function AssistantMessageView({
 
 function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
-    return <div data-message-text data-search-target={searchTarget || undefined} style={{ marginTop: blockIndex > 0 ? 4 : 0 }}><TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} /></div>;
+    return <div data-message-text data-search-target={searchTarget || undefined}><TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} /></div>;
   }
   if (block.type === "image") {
     const src = imageSource(block as ImageContent);
@@ -806,51 +807,76 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
   }, [expanded, block.deferred, content, sessionId, entryId, blockIndex]);
 
   return (
-    <div style={{
-      display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0,
-      border: "1px solid var(--border)",
-      borderRadius: 4,
-      padding: "6px 10px",
-      background: "var(--bg)",
-      fontFamily: "var(--font-mono)",
-      fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
-      lineHeight: 1.5,
-    }}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={`${t("i18n.thinking")}${preview ? `: ${preview}` : ""}`}
-        title={t("i18n.thinking")}
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          width: expanded ? 14 : "100%",
-          flexShrink: expanded ? 0 : 1,
-          minWidth: 0,
-          minHeight: "1.5em",
-          padding: 0,
-          background: "transparent",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          font: "inherit",
-          textAlign: "left",
-        }}
-      >
-        <ThinkingIcon active={expanded} />
-        {!expanded && (
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
+    <div
+      style={{
+        borderRadius: 6,
+        overflow: "hidden",
+        border: "1px solid var(--border)",
+        background: "var(--bg-subtle)",
+        transition: "border-color 0.15s ease",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={`${t("i18n.thinking")}${preview ? `: ${preview}` : ""}`}
+          title={t("i18n.thinking")}
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            flex: 1,
+            minWidth: 0,
+            padding: "5px 9px",
+            background: "none",
+            border: "none",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0 }}>
+            <ThinkingIcon active={expanded} size={13} />
+          </div>
+          <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: "calc(11px + var(--chat-font-size-offset, 0px))", flexShrink: 0 }}>
+            {t("i18n.thinking")}
           </span>
-        )}
-      </button>
+          {!expanded && (
+            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "calc(11px + var(--chat-font-size-offset, 0px))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+              {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
+            </span>
+          )}
+          {expanded && <div style={{ flex: 1 }} />}
+          {duration !== undefined && (
+            <span style={{ fontSize: "calc(10.5px + var(--chat-font-size-offset, 0px))", color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+          )}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="var(--text-dim)"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+            aria-hidden="true"
+          >
+            <polyline points="2 3.5 5 6.5 8 3.5" />
+          </svg>
+        </button>
+      </div>
       {expanded && (
         <div
           style={{
-            flex: 1,
-            minWidth: 0,
+            padding: "8px 10px",
+            background: "var(--bg)",
+            borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
+            fontFamily: "var(--font-mono)",
+            fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.55,
             color: error ? "#f87171" : "var(--text-muted)",
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
@@ -858,9 +884,6 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
         >
            {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
         </div>
-      )}
-      {duration !== undefined && (
-        <span style={{ flexShrink: 0, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
       )}
     </div>
   );
@@ -892,11 +915,12 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
   return (
     <div
       style={{
-        borderRadius: 4,
+        borderRadius: 6,
         overflow: "hidden",
-        fontSize: 12,
+        fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
         border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid var(--border)",
         background: isError ? "rgba(248,113,113,0.05)" : "var(--bg-subtle)",
+        transition: "border-color 0.15s ease",
       }}
     >
       {/* ── Tool call header ── */}
@@ -909,15 +933,18 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             gap: 7,
             flex: 1,
             minWidth: 0,
-            padding: "6px 10px",
+            padding: "5px 9px",
             background: "none",
             border: "none",
             color: "var(--text-muted)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: "inherit",
             textAlign: "left",
           }}
         >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0 }}>
+            <ToolIcon toolName={block.toolName} isError={isError} />
+          </div>
           <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
             {block.toolName}
           </span>
@@ -927,7 +954,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
           {duration !== undefined && (
             <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
           )}
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
@@ -937,9 +964,9 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             onClick={() => onOpenSession(subagent.sessionId)}
             title={t("subagent.open")}
             aria-label={t("subagent.open")}
-            style={{ width: 32, display: "grid", placeItems: "center", border: "none", borderLeft: "1px solid var(--border)", background: "none", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0 }}
+            style={{ width: 30, display: "grid", placeItems: "center", border: "none", borderLeft: "1px solid var(--border)", background: "none", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0 }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>
           </button>
         )}
       </div>
@@ -951,11 +978,11 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             margin: 0,
             padding: "8px 10px",
             color: "var(--text-muted)",
-            fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
+            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
-            background: "var(--bg-subtle)",
-            borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid var(--border)",
+            background: "var(--bg)",
+            borderTop: isError ? "1px solid rgba(239,68,68,0.25)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
