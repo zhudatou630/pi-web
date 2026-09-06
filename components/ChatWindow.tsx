@@ -817,10 +817,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     pendingJumpEntryIdRef.current = entryId;
     setMountLimit(Number.MAX_SAFE_INTEGER);
     if (searchHistoryRef.current.entryIds.includes(entryId)) return;
-    if (!searchHistoryRef.current.hasEarlierMessages || !searchHistoryRef.current.historyCursor) return;
+    let before: string | null = searchHistoryRef.current.historyCursor;
+    let hasMore: boolean = searchHistoryRef.current.hasEarlierMessages;
+    if (!hasMore || !before) return;
     loadingOlderRef.current = true;
-    let before = searchHistoryRef.current.historyCursor;
-    let hasMore = searchHistoryRef.current.hasEarlierMessages;
     try {
       while (hasMore && before) {
         const context = await loadContext(sid, activeLeafId, before);
