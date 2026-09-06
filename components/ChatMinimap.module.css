@@ -231,25 +231,60 @@
   outline-offset: 1px;
 }
 
-.list {
-  width: 240px;
+.rail {
+  position: relative;
+  width: 36px;
   flex-shrink: 0;
   height: 100%;
+  cursor: pointer;
+  background: transparent;
+}
+
+.track {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 50%;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+  transform: translateX(-50%);
+}
+
+.thumb {
+  position: absolute;
+  left: 50%;
+  width: 6px;
+  height: 28px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  transform: translate(-50%, -50%);
+}
+
+.list {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: 100%;
+  z-index: 120;
+  width: min(320px, calc(100vw - 48px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-left: 1px solid var(--border);
-  background: var(--bg-panel);
+  padding: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
 
 .item {
-  display: -webkit-box;
+  display: block;
   width: 100%;
-  padding: 8px 10px;
+  padding: 7px 12px;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
   background: transparent;
   color: var(--text);
   font-family: inherit;
@@ -259,15 +294,14 @@
   text-align: left;
   cursor: pointer;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .item[data-active="true"] {
-  background: color-mix(in srgb, var(--text) 8%, var(--bg-panel));
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--text-muted) 70%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, var(--bg));
 }
 
 .item:hover {
-  background: color-mix(in srgb, var(--text) 5%, var(--bg-panel));
+  background: color-mix(in srgb, var(--text) 5%, var(--bg));
 }

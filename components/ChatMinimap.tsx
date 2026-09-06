@@ -19,7 +19,8 @@ interface Props {
   onJumpToEntry: (entryId: string) => void;
 }
 
-export const CHAT_MINIMAP_WIDTH = 240;
+export const CHAT_MINIMAP_WIDTH = 36;
+const PREVIEW_HIDE_DELAY = 180;
 
 function PreviewHeading({
   level,
@@ -155,8 +156,28 @@ export function ChatMinimap({
   const { t } = useI18n();
   const [items, setItems] = useState<SessionOutlineItem[]>([]);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+  const [hovered, setHovered] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showPanel = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setHovered(true);
+  }, []);
+  const hidePanel = useCallback(() => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
+      hideTimerRef.current = null;
+      setHovered(false);
+    }, PREVIEW_HIDE_DELAY);
+  }, []);
+  useEffect(() => () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!sessionId) {
@@ -212,28 +233,44 @@ export function ChatMinimap({
 
   if (items.length === 0) return null;
 
+  const activeIndex = Math.max(0, items.findIndex((item) => item.entryId === activeEntryId));
+  const thumbTop = items.length <= 1 ? 8 : 8 + (activeIndex / (items.length - 1)) * (100 - 16);
+
   return (
     <div
-      ref={listRef}
-      className={styles.list}
-      aria-label={t("chatMinimap.userOutline")}
+      className={styles.rail}
+      onMouseEnter={showPanel}
+      onMouseLeave={hidePanel}
     >
-      {items.map((item) => (
-        <button
-          key={item.entryId}
-          type="button"
-          className={styles.item}
-          data-active={activeEntryId === item.entryId ? "true" : undefined}
-          title={item.preview}
-          ref={(element) => {
-            if (element) itemRefs.current.set(item.entryId, element);
-            else itemRefs.current.delete(item.entryId);
-          }}
-          onClick={() => onJumpToEntry(item.entryId)}
+      <div className={styles.track} aria-hidden="true">
+        <div className={styles.thumb} style={{ top: `${thumbTop}%` }} />
+      </div>
+      {hovered && (
+        <div
+          ref={listRef}
+          className={styles.list}
+          aria-label={t("chatMinimap.userOutline")}
+          onMouseEnter={showPanel}
+          onMouseLeave={hidePanel}
         >
-          {item.preview}
-        </button>
-      ))}
+          {items.map((item) => (
+            <button
+              key={item.entryId}
+              type="button"
+              className={styles.item}
+              data-active={activeEntryId === item.entryId ? "true" : undefined}
+              title={item.preview}
+              ref={(element) => {
+                if (element) itemRefs.current.set(item.entryId, element);
+                else itemRefs.current.delete(item.entryId);
+              }}
+              onClick={() => onJumpToEntry(item.entryId)}
+            >
+              {item.preview}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
