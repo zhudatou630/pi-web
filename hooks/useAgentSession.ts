@@ -27,6 +27,7 @@ import {
   CHAT_SCROLL_TAIL_TOLERANCE,
   getLiveFollowAttached,
 } from "@/lib/chat-lazy-load";
+import { mergeLoadedHistory } from "@/lib/chat-history-merge";
 import {
   INITIAL_STREAMING_STATE,
   streamReducer,
@@ -287,6 +288,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [entryIds, setEntryIds] = useState<string[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
+  const loadedHistoryRef = useRef({
+    messages,
+    entryIds,
+    oldestEntryId: historyCursor,
+    hasMore: hasEarlierMessages,
+  });
+  loadedHistoryRef.current = {
+    messages,
+    entryIds,
+    oldestEntryId: historyCursor,
+    hasMore: hasEarlierMessages,
+  };
   const [streamState, dispatch] = useReducer(streamReducer, INITIAL_STREAMING_STATE);
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
@@ -477,13 +490,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as SessionData;
       if (sessionIdRef.current !== sid) return null;
-      const persistedMessages = d.context.messages;
-      setData(d);
+      const incoming = {
+        messages: d.context.messages,
+        entryIds: d.context.entryIds ?? [],
+        oldestEntryId: d.context.oldestEntryId,
+        hasMore: d.context.hasMore,
+      };
+      const merged = showLoading ? incoming : mergeLoadedHistory(loadedHistoryRef.current, incoming);
+      setData({ ...d, context: { ...d.context, ...merged } });
       setActiveLeafId(d.leafId);
-      setMessages(persistedMessages);
-      setEntryIds(d.context.entryIds ?? []);
-      setHistoryCursor(d.context.oldestEntryId);
-      setHasEarlierMessages(d.context.hasMore);
+      setMessages(merged.messages);
+      setEntryIds(merged.entryIds);
+      setHistoryCursor(merged.oldestEntryId);
+      setHasEarlierMessages(merged.hasMore);
       setToolPresetState(d.toolNames !== undefined ? getPresetFromToolNames(d.toolNames) : "default");
       setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
       setError(null);
