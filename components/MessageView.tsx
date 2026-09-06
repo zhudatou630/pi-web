@@ -572,6 +572,33 @@ function AssistantMessageView({
       setTimeout(() => setCopied(false), 1500);
     });
   };
+  const groupedItems = useMemo(() => {
+    const result: Array<
+      | { type: "single"; block: AssistantContentBlock; originalIndex: number }
+      | { type: "toolGroup"; items: Array<{ block: ToolCallContent; originalIndex: number }> }
+    > = [];
+    let toolBuffer: Array<{ block: ToolCallContent; originalIndex: number }> = [];
+
+    const flushToolBuffer = () => {
+      if (toolBuffer.length === 1) {
+        result.push({ type: "single", block: toolBuffer[0].block, originalIndex: toolBuffer[0].originalIndex });
+      } else if (toolBuffer.length > 1) {
+        result.push({ type: "toolGroup", items: toolBuffer });
+      }
+      toolBuffer = [];
+    };
+
+    for (const item of blockItems) {
+      if (item.block.type === "toolCall") {
+        toolBuffer.push(item as { block: ToolCallContent; originalIndex: number });
+      } else {
+        flushToolBuffer();
+        result.push({ type: "single", block: item.block, originalIndex: item.originalIndex });
+      }
+    }
+    flushToolBuffer();
+    return result;
+  }, [blockItems]);
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
 
@@ -661,9 +688,43 @@ function AssistantMessageView({
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} searchTarget={block === searchBlock} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
-        ))}
+        {groupedItems.map((group, groupIdx) => {
+          if (group.type === "single") {
+            const { block, originalIndex } = group;
+            return (
+              <BlockView
+                key={`${entryId ?? "stream"}-${originalIndex}`}
+                block={block}
+                searchTarget={block === searchBlock}
+                toolResults={toolResults}
+                isStreaming={isStreaming}
+                streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)}
+                toolCallDurations={toolCallDurations}
+                cwd={cwd}
+                onOpenFile={onOpenFile}
+                onOpenSession={onOpenSession}
+                sessionId={sessionId}
+                entryId={entryId}
+                blockIndex={originalIndex}
+              />
+            );
+          }
+          return (
+            <ToolCallGroup
+              key={`${entryId ?? "stream"}-group-${groupIdx}`}
+              items={group.items}
+              searchBlock={searchBlock}
+              toolResults={toolResults}
+              isStreaming={isStreaming}
+              toolCallDurations={toolCallDurations}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+              onOpenSession={onOpenSession}
+              sessionId={sessionId}
+              entryId={entryId}
+            />
+          );
+        })}
       </div>
 
       {providerError && (
@@ -711,6 +772,182 @@ function AssistantMessageView({
         </div>
       )}
 
+    </div>
+  );
+}
+
+function ToolCallGroup({
+  items,
+  searchBlock,
+  toolResults,
+  isStreaming,
+  toolCallDurations,
+  cwd,
+  onOpenFile,
+  onOpenSession,
+  sessionId,
+  entryId,
+}: {
+  items: Array<{ block: ToolCallContent; originalIndex: number }>;
+  searchBlock?: AssistantContentBlock;
+  toolResults?: Map<string, ToolResultMessage>;
+  isStreaming?: boolean;
+  toolCallDurations?: Map<string, number>;
+  cwd?: string;
+  onOpenFile?: (filePath: string) => void;
+  onOpenSession?: (sessionId: string) => void;
+  sessionId?: string;
+  entryId?: string;
+}) {
+  const { t } = useI18n();
+  const hasTarget = useMemo(() => items.some(({ block }) => block === searchBlock), [items, searchBlock]);
+  const hasError = useMemo(() => items.some(({ block }) => toolResults?.get(block.toolCallId)?.isError), [items, toolResults]);
+  const [expanded, setExpanded] = useState(() => hasTarget || hasError);
+
+  useEffect(() => {
+    if (hasTarget || hasError) setExpanded(true);
+  }, [hasTarget, hasError]);
+
+  const toolCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const { block } of items) {
+      counts.set(block.toolName, (counts.get(block.toolName) ?? 0) + 1);
+    }
+    return counts;
+  }, [items]);
+
+  const totalDuration = useMemo(() => {
+    if (!toolCallDurations) return undefined;
+    let total = 0;
+    let hasAny = false;
+    for (const { block } of items) {
+      const d = toolCallDurations.get(block.toolCallId);
+      if (d !== undefined) {
+        total += d;
+        hasAny = true;
+      }
+    }
+    return hasAny ? total : undefined;
+  }, [items, toolCallDurations]);
+
+  return (
+    <div
+      style={{
+        borderRadius: 6,
+        overflow: "hidden",
+        fontSize: 12,
+        border: hasError ? "1px solid rgba(248,113,113,0.45)" : "1px solid var(--border)",
+        background: hasError ? "rgba(248,113,113,0.04)" : "var(--bg-subtle)",
+        transition: "border-color 0.15s, background 0.15s",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          padding: "7px 10px",
+          background: "none",
+          border: "none",
+          color: "var(--text)",
+          cursor: "pointer",
+          textAlign: "left",
+          fontSize: 12,
+        }}
+      >
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={hasError ? "#f87171" : "var(--accent)"}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ flexShrink: 0 }}
+          aria-hidden="true"
+        >
+          <polyline points="9 11 12 14 22 4" />
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        </svg>
+
+        <span style={{ fontWeight: 600, fontSize: 11, color: hasError ? "#f87171" : "var(--text)" }}>
+          {t("chat.toolSteps", { count: items.length })}
+        </span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0, overflow: "hidden" }}>
+          {Array.from(toolCounts.entries()).map(([name, count]) => (
+            <span
+              key={name}
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                color: "var(--text-muted)",
+                background: "var(--bg-panel)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "1px 5px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {name}{count > 1 ? ` ×${count}` : ""}
+            </span>
+          ))}
+        </div>
+
+        {totalDuration !== undefined && (
+          <span style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+            {totalDuration}s
+          </span>
+        )}
+
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          stroke="var(--text-dim)"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ flexShrink: 0, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+          aria-hidden="true"
+        >
+          <polyline points="2 3.5 5 6.5 8 3.5" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div
+          style={{
+            padding: "4px 8px 8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            borderTop: "1px solid var(--border)",
+          }}
+        >
+          {items.map(({ block, originalIndex }) => (
+            <BlockView
+              key={`${entryId ?? "stream"}-${originalIndex}`}
+              block={block}
+              searchTarget={block === searchBlock}
+              toolResults={toolResults}
+              isStreaming={isStreaming}
+              toolCallDurations={toolCallDurations}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+              onOpenSession={onOpenSession}
+              sessionId={sessionId}
+              entryId={entryId}
+              blockIndex={originalIndex}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

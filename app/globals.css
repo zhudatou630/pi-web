@@ -1529,6 +1529,11 @@ span.token.table {
   box-shadow: 0 0 0 1px var(--accent), 0 2px 8px rgba(37,99,235,0.08) !important;
 }
 
+.chat-input:not(.is-compact) .chat-input-composer.is-bash-mode:focus-within {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent), 0 2px 10px rgba(37,99,235,0.12) !important;
+}
+
 /* Mobile sidebar: slide in/out as overlay */
 @media (max-width: 640px) {
   /* Hide auxiliary extension widgets/statuses, not interactive dialogs. */

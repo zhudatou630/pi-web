@@ -1979,23 +1979,49 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             );
           })()}
           <div
-            className="chat-input-composer"
+            className={`chat-input-composer${bashMode ? " is-bash-mode" : ""}`}
             style={{
               minWidth: 0,
               display: "flex",
               flexDirection: compact ? "column" : "row",
               gap: 8,
               alignItems: compact ? "stretch" : "center",
-              background: "var(--bg)",
-              border: compact ? "none" : `1px solid ${bashMode ? "var(--tool-bg)" : isStreaming && (onSteer || onFollowUp)
+              background: bashMode ? "color-mix(in srgb, var(--bg-panel) 75%, var(--bg))" : "var(--bg)",
+              border: compact ? "none" : `1px solid ${bashMode
+                ? (bashExcluded ? "rgba(100,116,139,0.45)" : "color-mix(in srgb, var(--accent) 45%, var(--border))")
+                : isStreaming && (onSteer || onFollowUp)
                 ? "rgba(234,179,8,0.4)"
                 : "color-mix(in srgb, var(--border) 70%, transparent)"}`,
               borderRadius: compact ? 0 : 6,
               padding: compact ? 0 : "4px 6px 4px 10px",
-              boxShadow: compact ? "none" : "0 1px 2px rgba(15,23,42,0.04)",
+              boxShadow: compact ? "none" : bashMode ? "0 0 0 1px rgba(37,99,235,0.12)" : "0 1px 2px rgba(15,23,42,0.04)",
               transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s",
             } as React.CSSProperties}
           >
+          {bashMode && (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "2px 6px",
+                borderRadius: 4,
+                background: bashExcluded ? "rgba(100,116,139,0.12)" : "rgba(37,99,235,0.12)",
+                color: bashExcluded ? "var(--text-muted)" : "var(--accent)",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                fontWeight: 600,
+                flexShrink: 0,
+                userSelect: "none",
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              <span>{bashExcluded ? "Local" : "Shell"}</span>
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             className="chat-input-textarea"
@@ -2036,7 +2062,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               fontSize: "var(--chat-content-font-size, 14px)",
               lineHeight: 1.5,
               padding: 0,
-              fontFamily: "var(--font-chat)",
+              fontFamily: bashMode ? "var(--font-mono)" : "var(--font-chat)",
               minHeight: compact ? 96 : 24,
               maxHeight: 200,
               overflow: "auto",
@@ -2157,7 +2183,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               aria-label={t("chat.attachImage")}
               style={{
                 flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, padding: 0,
+                width: isMobile ? 44 : 28, height: isMobile ? 44 : 28, padding: 0,
                 background: "none", border: "none",
                 borderRadius: 4,
                 color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
@@ -2283,9 +2309,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                    aria-label={t("chat.changeReasoningLabel")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
+                    padding: isMobile ? "0 6px" : "0 8px",
                     width: isMobile ? "auto" : undefined,
-                    height: 32,
+                    height: isMobile ? 44 : 28,
                     background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
                     border: "none",
                     borderRadius: 4,
@@ -2371,9 +2397,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   aria-label={t("chat.changeToolPreset")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
+                    padding: isMobile ? "0 6px" : "0 8px",
                     width: isMobile ? "auto" : undefined,
-                    height: 32,
+                    height: isMobile ? 44 : 28,
                     background: toolDropdownOpen ? "var(--bg-hover)" : "none",
                     border: "none",
                     borderRadius: 4,
@@ -2453,9 +2479,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   disabled={isStreaming && !isCompacting}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                    padding: isMobile ? "0 6px" : "8px 12px",
+                    padding: isMobile ? "0 6px" : "0 8px",
                     width: isMobile ? "auto" : undefined,
-                    height: 32,
+                    height: isMobile ? 44 : 28,
                     background: isCompacting ? "rgba(239,68,68,0.08)" : "none",
                     border: "none",
                     borderRadius: 4,
@@ -2494,8 +2520,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                  title={t("chat.stopAgent")}
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 14px",
-                  height: 32,
+                  padding: "0 10px",
+                  height: isMobile ? 44 : 28,
                   background: "rgba(239,68,68,0.08)",
                   border: "1px solid rgba(239,68,68,0.3)",
                   borderRadius: 4,
@@ -2522,8 +2548,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                  aria-label={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                  width: isMobile ? 32 : 32,
-                  height: 32,
+                  width: isMobile ? 44 : 28,
+                  height: isMobile ? 44 : 28,
                   padding: 0,
                   background: "none",
                   border: "none",

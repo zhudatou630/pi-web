@@ -109,7 +109,7 @@ export function ModelSelector({
         gap: 6,
         width: isMobile ? "100%" : undefined,
         maxWidth: isMobile ? "100%" : 220,
-        height: isMobile ? 44 : 32,
+        height: isMobile ? 44 : 28,
         padding: "0 8px",
         overflow: "hidden",
         border: "none",

@@ -278,6 +278,7 @@ export const enLocale: LocalePlugin = {
     "files.checking": "Checking files",
     "files.uploading": "Uploading, {progress}%",
     "chat.loadingSession": "Loading session...",
+    "chat.toolSteps": "{count} tool steps",
     "chat.runningTool": "Running tool...",
     "chat.generatingToolInput": "Generating parameters...",
     "chat.runningNamedTool": "Running {name}...",
