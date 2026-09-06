@@ -17,7 +17,7 @@ interface Props {
   streamingMessage: Partial<AgentMessage> | null;
   scrollContainer: RefObject<HTMLDivElement | null>;
   messageRefs: RefObject<(HTMLDivElement | null)[]>;
-  onRevealHistory: () => void;
+  onRevealHistory: (ratio?: number) => void;
 }
 
 const MINIMAP_WIDTH = 36;
@@ -443,7 +443,8 @@ export function ChatMinimap({
     lockActiveNode(node.index);
     if (node.targetTurn.scrollTop === null) {
       pendingNavigationRef.current = { nodeIndex: node.index, target: "user" };
-      onRevealHistory();
+      const last = Math.max(1, allNodesRef.current.length - 1);
+      onRevealHistory(node.index / last);
       return;
     }
     const targetTop = Math.max(
@@ -463,7 +464,8 @@ export function ChatMinimap({
         target: "assistant",
         assistantIndex,
       };
-      onRevealHistory();
+      const last = Math.max(1, allNodesRef.current.length - 1);
+      onRevealHistory(node.index / last);
       return;
     }
     const containerRect = scrollEl.getBoundingClientRect();
@@ -512,7 +514,8 @@ export function ChatMinimap({
         assistantIndex,
         headingIndex,
       };
-      onRevealHistory();
+      const last = Math.max(1, allNodesRef.current.length - 1);
+      onRevealHistory(node.index / last);
       return;
     }
     const heading = answerElement.querySelectorAll<HTMLElement>("h1, h2, h3").item(headingIndex);

@@ -805,10 +805,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return history.reverse();
   }, [messages]);
   const messageRefs = useMessageRefs(visibleMessages.length);
-  const revealHistoryForMinimap = useCallback(() => {
-    setUnmountedNewerCount((current) => current + MOUNT_WINDOW_SHIFT);
+  const revealHistoryForMinimap = useCallback((ratio?: number) => {
     setMountLimit(MOUNTED_GROUP_LIMIT);
-  }, []);
+    if (typeof ratio === "number" && Number.isFinite(ratio)) {
+      const clamped = Math.min(1, Math.max(0, ratio));
+      const maxUnmounted = Math.max(0, messages.length - MOUNTED_GROUP_LIMIT);
+      setUnmountedNewerCount(Math.round((1 - clamped) * maxUnmounted));
+      return;
+    }
+    setUnmountedNewerCount((current) => current + MOUNT_WINDOW_SHIFT);
+  }, [messages.length]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
