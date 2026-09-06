@@ -230,8 +230,8 @@ function ProcessDetailsGroup({
   }, [reveal]);
 
   const isPanelOpen = expanded || reveal;
-  const parts = [t("chat.processDetails"), `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`];
-  if (toolCallCount > 0) parts.push(`${toolCallCount} ${t(toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
+  const totalSteps = toolCallCount > 0 ? toolCallCount : messageCount;
+  const stepsLabel = `${totalSteps} ${t(totalSteps === 1 ? "chat.step" : "chat.steps")}`;
 
   // Automatically keep scrolled to the latest step on mount/update unless user scrolled up
   useLayoutEffect(() => {
@@ -256,9 +256,9 @@ function ProcessDetailsGroup({
       style={{
         marginBottom: 10,
         borderRadius: 8,
-        border: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 70%, transparent)" : "1px solid transparent",
-        background: isPanelOpen ? "color-mix(in srgb, var(--bg-subtle) 45%, transparent)" : "transparent",
-        padding: isPanelOpen ? "6px 8px 8px" : 0,
+        border: "1px solid var(--border)",
+        background: "var(--bg-subtle)",
+        overflow: "hidden",
         transition: "background 0.15s ease, border-color 0.15s ease",
       }}
     >
@@ -270,23 +270,24 @@ function ProcessDetailsGroup({
           display: "flex",
           alignItems: "center",
           gap: 6,
-          width: "auto",
-          minHeight: 24,
-          padding: "2px 4px",
-          borderRadius: 4,
+          width: "100%",
+          minHeight: 28,
+          padding: "5px 10px",
           border: "none",
-          background: "transparent",
+          borderBottom: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 60%, transparent)" : "none",
+          background: "none",
           color: "var(--text-muted)",
           cursor: "pointer",
           fontSize: 11.5,
           fontFamily: "var(--font-mono)",
           textAlign: "left",
+          transition: "background 0.12s ease",
         }}
         title={isPanelOpen ? t("chat.collapseProcess") : t("chat.expandProcess")}
       >
         <svg
-          width="11"
-          height="11"
+          width="10"
+          height="10"
           viewBox="0 0 12 12"
           fill="none"
           stroke="currentColor"
@@ -296,27 +297,25 @@ function ProcessDetailsGroup({
           style={{
             flexShrink: 0,
             transform: isPanelOpen ? "rotate(90deg)" : "none",
-            transition: "transform 0.15s",
+            transition: "transform 0.15s ease",
           }}
         >
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>
-          {parts.join(" · ")}
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "var(--text)" }}>
+          {stepsLabel}
         </span>
       </button>
       {isPanelOpen && (
         <div
           ref={scrollBoxRef}
           onScroll={handleBoxScroll}
+          className="process-details-list"
           style={{
-            marginTop: 6,
             display: "flex",
             flexDirection: "column",
-            gap: 3,
-            position: "relative",
-            paddingLeft: 8,
-            paddingRight: 3,
+            gap: 1,
+            padding: "4px 6px",
             maxHeight: isMobile ? 220 : 280,
             overflowY: "auto",
             overflowX: "hidden",
@@ -324,18 +323,6 @@ function ProcessDetailsGroup({
             scrollbarWidth: "thin",
           }}
         >
-          <div
-            style={{
-              position: "absolute",
-              left: 2,
-              top: 6,
-              bottom: 6,
-              width: 1.5,
-              background: "color-mix(in srgb, var(--border) 80%, transparent)",
-              borderRadius: 1,
-            }}
-            aria-hidden="true"
-          />
           {children}
         </div>
       )}
@@ -1435,12 +1422,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) {
                   liveTailItemCount = endIdx - firstIdx;
-                  for (let renderIdx = firstIdx; renderIdx < endIdx; renderIdx++) {
-                    markOutlineTarget([entryIds[renderIdx]]);
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                  continue;
                 }
 
                 if (hasAnchor) {

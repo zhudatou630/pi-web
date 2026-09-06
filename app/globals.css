@@ -650,6 +650,20 @@ pre, code {
 .markdown-body .katex {
   font-size: 1.05em;
 }
+
+/* Process details step box: clean row-based layout without nested card borders */
+.process-details-list [data-step-card] {
+  border: none !important;
+  background: transparent !important;
+  border-radius: 5px;
+  transition: background 0.12s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .process-details-list [data-step-card]:hover {
+    background: var(--bg-hover) !important;
+  }
+}
 @media (hover: hover) and (pointer: fine) {
   .answer-copy-button {
     opacity: 0;

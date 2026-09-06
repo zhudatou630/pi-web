@@ -808,6 +808,7 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
 
   return (
     <div
+      data-step-card=""
       style={{
         borderRadius: 6,
         overflow: "hidden",
@@ -914,6 +915,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
 
   return (
     <div
+      data-step-card=""
       style={{
         borderRadius: 6,
         overflow: "hidden",
