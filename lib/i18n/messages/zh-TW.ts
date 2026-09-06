@@ -278,7 +278,6 @@ export const zhTWLocale: LocalePlugin = {
     "files.checking": "正在檢查檔案",
     "files.uploading": "正在上傳，{progress}%",
     "chat.loadingSession": "正在載入工作階段...",
-    "chat.toolSteps": "{count} 步工具操作",
     "chat.runningTool": "正在執行工具...",
     "chat.generatingToolInput": "正在產生參數...",
     "chat.runningNamedTool": "正在執行 {name}...",

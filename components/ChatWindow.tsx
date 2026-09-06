@@ -203,39 +203,16 @@ function withAssistantBlocks(
   return next;
 }
 
-function ProcessDetailsGroup({
-  messageCount,
-  toolCallCount,
-  toolCounts,
-  defaultExpanded = false,
-  reveal = false,
-  children,
-  t,
-}: {
-  messageCount: number;
-  toolCallCount: number;
-  toolCounts?: Map<string, number>;
-  defaultExpanded?: boolean;
-  reveal?: boolean;
-  children: ReactNode;
-  t: (key: string, params?: Record<string, string | number>) => string;
-}) {
+function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = false, reveal = false, children, t }: { messageCount: number; toolCallCount: number; defaultExpanded?: boolean; reveal?: boolean; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   useLayoutEffect(() => {
     if (reveal) setExpanded(true);
   }, [reveal]);
+  const parts = [t("chat.processDetails"), `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`];
+  if (toolCallCount > 0) parts.push(`${toolCallCount} ${t(toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
 
   return (
-    <div
-      style={{
-        margin: "8px 0 14px",
-        borderRadius: 6,
-        overflow: "hidden",
-        border: "1px solid var(--border)",
-        background: "var(--bg-subtle)",
-        transition: "border-color 0.15s, background 0.15s",
-      }}
-    >
+    <div style={{ marginBottom: 14 }}>
       <button
         type="button"
         aria-expanded={expanded || reveal}
@@ -244,95 +221,27 @@ function ProcessDetailsGroup({
           display: "flex",
           alignItems: "center",
           gap: 8,
-          width: "100%",
-          padding: "7px 10px",
+          width: "auto",
+          minHeight: 24,
+          padding: "2px 0",
           border: "none",
-          background: "none",
-          color: "var(--text)",
+          background: "transparent",
+          color: "var(--text-muted)",
           cursor: "pointer",
           fontSize: 12,
           textAlign: "left",
         }}
         title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
       >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--accent)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ flexShrink: 0 }}
-          aria-hidden="true"
-        >
-          <polyline points="9 11 12 14 22 4" />
-          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: expanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+          <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-
-        <span style={{ fontWeight: 600, fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>
-          {toolCallCount > 0
-            ? t("chat.toolSteps", { count: toolCallCount })
-            : t("chat.processDetails")}
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {parts.join(" · ")}
         </span>
-
-        {toolCounts && toolCounts.size > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0, overflow: "hidden" }}>
-            {Array.from(toolCounts.entries()).map(([name, count]) => (
-              <span
-                key={name}
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  color: "var(--text-muted)",
-                  background: "var(--bg-panel)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 3,
-                  padding: "1px 5px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {name}{count > 1 ? ` ×${count}` : ""}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: "auto", flexShrink: 0 }}>
-          {messageCount} {t(messageCount === 1 ? "chat.message" : "chat.messages")}
-        </span>
-
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          fill="none"
-          stroke="var(--text-dim)"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{
-            flexShrink: 0,
-            transform: expanded || reveal ? "rotate(180deg)" : "none",
-            transition: "transform 0.15s",
-          }}
-          aria-hidden="true"
-        >
-          <polyline points="2 3.5 5 6.5 8 3.5" />
-        </svg>
       </button>
-
       {(expanded || reveal) && (
-        <div
-          style={{
-            padding: "8px 10px 10px",
-            borderTop: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
+        <div style={{ marginTop: 8 }}>
           {children}
         </div>
       )}
@@ -1393,7 +1302,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
                 const processViews: ReactNode[] = [];
                 const processEntryIds: string[] = [];
-                const processToolCounts = new Map<string, number>();
                 let processToolCount = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
@@ -1413,11 +1321,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   const blocks = getDisplayableAssistantBlocks(message);
                   if (blocks.length === 0) continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
-                  for (const b of blocks) {
-                    if (b.type === "toolCall") {
-                      processToolCounts.set(b.toolName, (processToolCounts.get(b.toolName) ?? 0) + 1);
-                    }
-                  }
                   processToolCount += countToolCallBlocks(blocks);
                   revealProcess ||= Boolean(
                     locateEntryId
@@ -1441,7 +1344,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       data-entry-id={entryIds[hasAnchor ? userIdx + 1 : firstIdx]}
                       ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
                     >
-                      <ProcessDetailsGroup messageCount={processViews.length} toolCallCount={processToolCount} toolCounts={processToolCounts} defaultExpanded={!finalAnswerMessage && endIdx === messages.length} reveal={revealProcess} t={t}>
+                      <ProcessDetailsGroup messageCount={processViews.length} toolCallCount={processToolCount} defaultExpanded={!finalAnswerMessage && endIdx === messages.length} reveal={revealProcess} t={t}>
                         {processViews}
                       </ProcessDetailsGroup>
                     </div>,

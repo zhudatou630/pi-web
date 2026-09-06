@@ -248,29 +248,6 @@ test("keeps pending and successful tools neutral while retaining error emphasis"
   }
 });
 
-test("aggregates multiple consecutive tool calls into a step pipeline group", () => {
-  const message = {
-    role: "assistant",
-    provider: "openai",
-    model: "test-model",
-    content: [
-      { type: "toolCall", toolCallId: "call-1", toolName: "read", input: { path: "a.ts" } },
-      { type: "toolCall", toolCallId: "call-2", toolName: "read", input: { path: "b.ts" } },
-      { type: "toolCall", toolCallId: "call-3", toolName: "edit", input: { path: "a.ts" } },
-    ],
-  };
-  const html = renderMessage(message, {
-    toolResults: new Map([
-      ["call-1", { role: "toolResult", toolCallId: "call-1", content: [{ type: "text", text: "ok" }] }],
-      ["call-2", { role: "toolResult", toolCallId: "call-2", content: [{ type: "text", text: "ok" }] }],
-      ["call-3", { role: "toolResult", toolCallId: "call-3", content: [{ type: "text", text: "ok" }] }],
-    ]),
-  });
-  assert.match(html, /3 tool steps/);
-  assert.match(html, /read ×2/);
-  assert.match(html, /edit/);
-});
-
 const COMPLETE_SKILL_EXPANSION = `<skill name="review" location="/skills/review/SKILL.md">
 References are relative to /skills/review.
 
