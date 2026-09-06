@@ -4,6 +4,7 @@ import test from "node:test";
 
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const mobileHookSource = await readFile(new URL("../hooks/useIsMobile.ts", import.meta.url), "utf8");
+const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("keeps action icons inline in medium mobile sidebars", () => {
   assert.match(mobileHookSource, /NARROW_MOBILE_QUERY = "\(max-width: 480px\)"/);
@@ -135,6 +136,24 @@ test("keeps the collapsed session title desktop-only without mobile overlay logi
   assert.match(title, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
   assert.match(title, /overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"/);
   assert.doesNotMatch(title, /covered|mobileToolbarMoreOpen|aria-hidden|tabIndex/);
+});
+
+test("toolbar actions use spacing rather than per-button dividers, preserving region boundaries", async () => {
+  const actions = [
+    functionSource("renderThemeButton", "const renderLanguageButton"),
+    functionSource("renderLanguageButton", "const renderProjectTrustWarning"),
+    functionSource("renderChatToolbarActions", "const collapsedSessionTitle"),
+  ].join("\n");
+  assert.doesNotMatch(actions, /borderRight:/);
+  assert.doesNotMatch(actions, /borderTop:/);
+  assert.match(actions, /aria-pressed=\{activeTopPanel === "agents"\}/);
+  assert.match(cssSource, /\.workspace-header-action\[aria-pressed="true"\][\s\S]*?box-shadow: inset 0 2px 0 var\(--accent\)/);
+  const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(branchNavigator, /borderRight:/);
+  assert.match(source, /className="workspace-header" style=\{\{ position: "relative" \}\}/);
+  assert.match(cssSource, /\.workspace-header \{[^}]*border-bottom: 1px solid var\(--border\)/);
+  const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
+  assert.match(fileToggle, /borderLeft: "1px solid var\(--border\)"/);
 });
 
 test("places trust warnings below the mobile toolbar and the file toggle in toolbar flow", () => {

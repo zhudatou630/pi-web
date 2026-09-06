@@ -699,9 +699,9 @@ function AssistantMessageView({
               className="answer-copy-button"
               onClick={copyContent}
               title={t("i18n.copyMessage")}
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 28, padding: "3px 6px", border: "none", borderRadius: 4, background: "none", color: copied ? "var(--accent)" : "var(--text-dim)", fontSize: 11, cursor: "pointer" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 28, padding: "3px 6px", border: "none", borderRadius: 4, background: "none", color: copied ? "var(--accent)" : "var(--text-muted)", fontSize: 11, cursor: "pointer" }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 {copied ? <polyline points="20 6 9 17 4 12" /> : <><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>}
               </svg>
               {copied ? t("i18n.copied") : t("i18n.copy")}
@@ -895,8 +895,8 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
         borderRadius: 4,
         overflow: "hidden",
         fontSize: 12,
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
-        background: isError ? "rgba(248,113,113,0.05)" : "rgba(34,197,94,0.04)",
+        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid var(--border)",
+        background: isError ? "rgba(248,113,113,0.05)" : "var(--bg-subtle)",
       }}
     >
       {/* ── Tool call header ── */}
@@ -918,10 +918,10 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             textAlign: "left",
           }}
         >
-          <span style={{ color: isError ? "#f87171" : "#16a34a", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
+          <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 600, fontSize: 11, flexShrink: 0 }}>
             {block.toolName}
           </span>
-          <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
             {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}
           </span>
           {duration !== undefined && (
@@ -955,7 +955,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             lineHeight: 1.5,
             overflow: "auto",
             background: "var(--bg-subtle)",
-            borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid rgba(34,197,94,0.2)",
+            borderTop: isError ? "1px solid rgba(248,113,113,0.25)" : "1px solid var(--border)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}

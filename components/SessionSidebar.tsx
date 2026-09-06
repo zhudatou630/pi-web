@@ -356,10 +356,11 @@ function PiWebTitle() {
 
   return (
     <button
+      className="workspace-header-action"
       onClick={handleClick}
       style={{
         background: "none", border: "none", padding: 0, cursor: "default",
-        fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em",
+        fontWeight: 700, fontSize: 13, letterSpacing: "-0.01em",
         color: showVersion ? "var(--accent)" : "var(--text)",
         fontFamily: "var(--font-mono)",
         minWidth: "6ch",
@@ -1027,73 +1028,87 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           onSelect={(path) => void commitCustomPath(path)}
         />
       )}
-      {/* Header */}
+      {/* Top bar: aligns with workspace header (36px) */}
       <div
         style={{
-          padding: "12px 10px 10px",
+          height: "var(--workspace-header-height, 36px)",
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 8px 0 12px",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <PiWebTitle />
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={handleNewSession}
-              disabled={!selectedCwd}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                background: "var(--bg-hover)",
-                border: "1px solid var(--border)",
-                color: selectedCwd ? "var(--text-muted)" : "var(--text-dim)",
-                cursor: selectedCwd ? "pointer" : "not-allowed",
-                height: 32,
-                paddingLeft: 10,
-                paddingRight: 12,
-                borderRadius: 4,
-                fontSize: 12,
-                fontWeight: 500,
-                letterSpacing: "-0.01em",
-                flexShrink: 0,
-                transition: "background 0.12s, color 0.12s, border-color 0.12s",
-              }}
-             title={selectedCwd ? t("sidebar.newSessionTitle", { path: selectedCwd }) : t("sidebar.selectProject")}
-              onMouseEnter={(e) => {
-                if (!selectedCwd) return;
-                e.currentTarget.style.background = "var(--bg-selected)";
-                e.currentTarget.style.color = "var(--accent)";
-                e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = selectedCwd ? "var(--text-muted)" : "var(--text-dim)";
-                e.currentTarget.style.borderColor = "var(--border)";
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                <line x1="6" y1="1" x2="6" y2="11" />
-                <line x1="1" y1="6" x2="11" y2="6" />
-              </svg>
-              {t("sidebar.new")}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSessionSearchOpen((open) => !open);
-                setWtDropdownOpen(false);
-              }}
-              title={t("sidebar.toggleSessionSearch")}
-              aria-label={t("sidebar.toggleSessionSearch")}
-              aria-expanded={sessionSearchOpen}
-              aria-controls="session-search-input"
-              className={`flex h-[32px] w-[32px] shrink-0 cursor-pointer items-center justify-center rounded-[4px] border border-border hover:bg-bg-selected focus-visible:outline-2 focus-visible:outline-accent ${sessionSearchOpen ? "bg-bg-selected text-accent" : "bg-bg-hover text-text-muted"}`}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
-              </svg>
-            </button>
-          </div>
+        <PiWebTitle />
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <button
+            className="workspace-header-action"
+            onClick={handleNewSession}
+            disabled={!selectedCwd}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+              background: "var(--bg-hover)",
+              border: "1px solid var(--border)",
+              color: selectedCwd ? "var(--text-muted)" : "var(--text-dim)",
+              cursor: selectedCwd ? "pointer" : "not-allowed",
+              height: 26,
+              paddingLeft: 8,
+              paddingRight: 9,
+              borderRadius: 4,
+              fontSize: 11,
+              fontWeight: 500,
+              letterSpacing: "-0.01em",
+              flexShrink: 0,
+              transition: "background 0.12s, color 0.12s, border-color 0.12s",
+            }}
+            title={selectedCwd ? t("sidebar.newSessionTitle", { path: selectedCwd }) : t("sidebar.selectProject")}
+            onMouseEnter={(e) => {
+              if (!selectedCwd) return;
+              e.currentTarget.style.background = "var(--bg-selected)";
+              e.currentTarget.style.color = "var(--accent)";
+              e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--bg-hover)";
+              e.currentTarget.style.color = selectedCwd ? "var(--text-muted)" : "var(--text-dim)";
+              e.currentTarget.style.borderColor = "var(--border)";
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <line x1="6" y1="1" x2="6" y2="11" />
+              <line x1="1" y1="6" x2="11" y2="6" />
+            </svg>
+            {t("sidebar.new")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSessionSearchOpen((open) => !open);
+              setWtDropdownOpen(false);
+            }}
+            title={t("sidebar.toggleSessionSearch")}
+            aria-label={t("sidebar.toggleSessionSearch")}
+            aria-expanded={sessionSearchOpen}
+            aria-controls="session-search-input"
+            className={`workspace-header-action flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[4px] border border-border hover:bg-bg-selected focus-visible:outline-2 focus-visible:outline-accent ${sessionSearchOpen ? "bg-bg-selected text-accent" : "bg-bg-hover text-text-muted"}`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+            </svg>
+          </button>
         </div>
+      </div>
+
+      {/* Project & workspace selection */}
+      <div
+        style={{
+          padding: "8px 10px",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
+        }}
+      >
 
         {/* CWD picker */}
         <div ref={dropdownRef} style={{ position: "relative" }}>

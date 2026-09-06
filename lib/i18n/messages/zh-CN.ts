@@ -351,6 +351,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.filterModels": "筛选模型…",
     "chat.noMatchingModels": "没有匹配的模型",
     "chat.moreControls": "更多控件",
+    "chat.inputOptions": "选项",
     "chat.collapseControls": "收起控件",
     "chat.shell": "Shell",
     "terminal.title": "终端",

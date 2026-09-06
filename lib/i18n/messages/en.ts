@@ -351,6 +351,7 @@ export const enLocale: LocalePlugin = {
     "chat.filterModels": "Filter models…",
     "chat.noMatchingModels": "No matching models",
     "chat.moreControls": "More controls",
+    "chat.inputOptions": "Options",
     "chat.collapseControls": "Collapse controls",
     "chat.shell": "Shell",
     "terminal.title": "Terminal",

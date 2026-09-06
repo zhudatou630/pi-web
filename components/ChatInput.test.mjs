@@ -94,6 +94,48 @@ test("keeps the main composer compact in idle and streaming states", () => {
   }
 });
 
+test("keeps empty Send quiet and highlights text or image submissions", () => {
+  const draftKey = "test:composer-send-appearance";
+  try {
+    for (const draft of [
+      { value: "", images: [] },
+      { value: "Hello", images: [] },
+      { value: "", images: [{ data: "aW1hZ2U=", mimeType: "image/png" }] },
+    ]) {
+      clearDraft(draftKey);
+      setDraft(draftKey, draft);
+      const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+        React.createElement(ChatInput, { onSend() {}, onAbort() {}, isStreaming: false, draftKey }),
+      ));
+      const send = html.match(/<button[^>]*aria-label="Send"[\s\S]*?<\/button>/)?.[0];
+      assert.ok(send);
+      const empty = !draft.value && draft.images.length === 0;
+      assert.equal(send.includes('disabled=""'), empty);
+      assert.ok(send.includes(empty ? "background:none" : "background:var(--accent)"));
+      assert.doesNotMatch(send, /box-shadow|background:var\(--bg-panel\)/);
+      assert.match(send, /<svg width="16" height="16" viewBox="0 0 24 24"[^>]*stroke-width="1\.8"/);
+      assert.match(html, /class="chat-input-toolbar"[^>]*margin-top:4px/);
+      const attach = html.match(/<button[^>]*aria-label="Attach image"[\s\S]*?<\/button>/)?.[0];
+      assert.match(attach ?? "", /<svg width="16" height="16"[^>]*stroke-width="1\.8"/);
+    }
+  } finally {
+    clearDraft(draftKey);
+  }
+});
+
+test("uses a short mobile Options label while preserving the descriptive accessible name", () => {
+  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  const start = source.indexOf('title={controlsMenuOpen ? undefined : t("chat.moreControls")}');
+  assert.ok(start >= 0);
+  const options = source.slice(start, source.indexOf("</button>", start));
+  assert.match(options, /aria-label=\{t\("chat.moreControls"\)\}/);
+  assert.match(options, /<span>\{t\("chat.inputOptions"\)\}<\/span>/);
+  assert.match(options, /<svg width="16" height="16"[^>]*strokeWidth="1\.8"/);
+  assert.match(options, /height: 44/);
+  assert.match(options, /aria-hidden=\{controlsMenuOpen \|\| undefined\}/);
+  assert.match(options, /tabIndex=\{controlsMenuOpen \? -1 : undefined\}/);
+});
+
 test("keeps the message input free of hints but accessible", () => {
   for (const compact of [false, true]) {
     for (const isStreaming of [false, true]) {

@@ -198,7 +198,7 @@ test("renders subagents as standard tool calls with only an extra session button
     onOpenSession() {},
   });
 
-  assert.match(html, /border:1px solid rgba\(34,197,94,0\.25\)/);
+  assert.match(html, /border:1px solid var\(--border\)/);
   assert.match(html, />Agent</);
   assert.match(html, />Explore</);
   assert.match(html, /aria-label="Open sub-agent session"/);
@@ -215,6 +215,37 @@ test("renders subagents as standard tool calls with only an extra session button
     onOpenSession() {},
   });
   assert.doesNotMatch(ordinaryHtml, /Open sub-agent session/);
+});
+
+test("keeps pending and successful tools neutral while retaining error emphasis", () => {
+  const block = {
+    type: "toolCall", toolCallId: "read-style", toolName: "read",
+    input: { path: "src/example.ts" },
+  };
+  for (const state of ["pending", "generating", "success", "error"]) {
+    const result = state === "success" || state === "error" ? {
+      role: "toolResult", toolCallId: block.toolCallId,
+      isError: state === "error", content: [{ type: "text", text: "tool-result-payload" }],
+    } : undefined;
+    const html = renderMessage({
+      role: "assistant",
+      content: [{ ...block, ...(state === "generating" ? { rawInput: '{"path":' } : {}) }],
+    }, {
+      isStreaming: state === "generating",
+      toolResults: new Map(result ? [[block.toolCallId, result]] : []),
+    });
+    if (state === "error") {
+      assert.match(html, /border:1px solid rgba\(248,113,113,0\.45\)/);
+      assert.match(html, /color:#f87171/);
+    } else {
+      assert.match(html, /border:1px solid var\(--border\);background:var\(--bg-subtle\)/);
+      assert.doesNotMatch(html, /34,197,94|#16a34a|#f87171/);
+    }
+    const preview = state === "generating" ? "Generating parameters" : "src/example.ts";
+    assert.ok(html.includes(preview));
+    assert.match(html, /color:var\(--text-muted\);font-family:var\(--font-mono\);font-size:11px;overflow:hidden/);
+    assert.doesNotMatch(html, /tool-result-payload/); // Still collapsed by default.
+  }
 });
 
 const COMPLETE_SKILL_EXPANSION = `<skill name="review" location="/skills/review/SKILL.md">

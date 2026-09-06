@@ -1201,6 +1201,7 @@ export function AppShell() {
 
   const renderThemeButton = (mobile: boolean) => (
     <button
+      className="workspace-header-action"
       type="button"
       onClick={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
@@ -1211,8 +1212,8 @@ export function AppShell() {
       aria-label={translate(themeLabelKey)}
       style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
-        background: "none", border: "none", borderRight: "1px solid var(--border)",
+        width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+        background: "none", border: "none",
         color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
       }}
       onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
@@ -1243,6 +1244,7 @@ export function AppShell() {
 
   const renderLanguageButton = (mobile: boolean) => (
     <button
+      className="workspace-header-action"
       ref={languageBtnRef}
       type="button"
       onClick={() => toggleTopPanel("language", mobile)}
@@ -1253,9 +1255,9 @@ export function AppShell() {
       aria-pressed={activeTopPanel === "language"}
       style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+        width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
         background: activeTopPanel === "language" ? "var(--bg-selected)" : "none",
-        border: "none", borderRight: "1px solid var(--border)",
+        border: "none",
         color: activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)",
         cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
       }}
@@ -1314,9 +1316,10 @@ export function AppShell() {
           cursor: "pointer",
           flexShrink: 0,
           fontSize: 11,
-          lineHeight: 1.35,
+          lineHeight: mobileBanner ? 1.35 : undefined,
           textAlign: "left",
         }}
+        className={mobileBanner ? undefined : "workspace-header-action"}
         data-mobile-trust-banner={mobileBanner ? "true" : undefined}
       >
         <svg
@@ -1363,8 +1366,6 @@ export function AppShell() {
             padding: mobile ? 0 : "0 12px",
             background: "none",
             border: "none",
-            borderTop: "2px solid transparent",
-            borderRight: "1px solid var(--border)",
             color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
             cursor: selectedSession ? "pointer" : "not-allowed",
             opacity: selectedSession ? 1 : 0.45,
@@ -1382,6 +1383,7 @@ export function AppShell() {
             event.currentTarget.style.color = selectedSession ? "var(--text-muted)" : "var(--text-dim)";
             event.currentTarget.style.background = "none";
           }}
+          className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "history" : undefined}
         >
           <svg
@@ -1444,8 +1446,6 @@ export function AppShell() {
                 width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
                 height: "100%", padding: mobile ? 0 : "0 12px",
                 background: "none", border: "none",
-                borderTop: "2px solid transparent",
-                borderRight: "1px solid var(--border)",
                 color: isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)",
                 cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
@@ -1461,6 +1461,7 @@ export function AppShell() {
                 event.currentTarget.style.color = isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)";
                 event.currentTarget.style.background = "none";
               }}
+              className="workspace-header-action"
               data-mobile-toolbar-action={mobile ? "name" : undefined}
             >
               {autoNameStatus.kind === "naming" ? (
@@ -1497,12 +1498,11 @@ export function AppShell() {
               height: "100%", padding: mobile ? 0 : "0 12px",
               background: activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
               border: "none",
-              borderTop: activeTopPanel === "agents" ? "2px solid var(--accent)" : "2px solid transparent",
-              borderRight: "1px solid var(--border)",
               color: activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
               cursor: "pointer", flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
               transition: "color 0.1s, background 0.1s",
             }}
+            className="workspace-header-action"
             data-mobile-toolbar-action={mobile ? "agents" : undefined}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1534,11 +1534,10 @@ export function AppShell() {
               width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
               background: activeTopPanel === "branches" ? "var(--bg-selected)" : "none",
               border: "none",
-              borderTop: activeTopPanel === "branches" ? "2px solid var(--accent)" : "2px solid transparent",
-              borderRight: "1px solid var(--border)",
               color: activeTopPanel === "branches" ? "var(--text)" : "var(--text-muted)",
               cursor: "pointer", flexShrink: 0,
             }}
+            className="workspace-header-action"
             data-mobile-toolbar-action="branches"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: branchTree.length > 0 ? "var(--accent)" : "var(--text-dim)" }} aria-hidden="true">
@@ -1574,8 +1573,6 @@ export function AppShell() {
             height: "100%", padding: mobile ? 0 : "0 12px",
             background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
             border: "none",
-            borderTop: activeTopPanel === "system" ? "2px solid var(--accent)" : "2px solid transparent",
-            borderRight: "1px solid var(--border)",
             cursor: mobile && !showChat ? "not-allowed" : "pointer",
             color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
             opacity: mobile && !showChat ? 0.45 : 1,
@@ -1588,6 +1585,7 @@ export function AppShell() {
           onMouseLeave={(event) => {
             event.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)";
           }}
+          className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "system" : undefined}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
@@ -1611,8 +1609,6 @@ export function AppShell() {
             height: "100%", padding: mobile ? 0 : "0 12px",
             background: activeTopPanel === "tools" ? "var(--bg-selected)" : "none",
             border: "none",
-            borderTop: activeTopPanel === "tools" ? "2px solid var(--accent)" : "2px solid transparent",
-            borderRight: "1px solid var(--border)",
             cursor: mobile && !showChat ? "not-allowed" : "pointer",
             color: activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)",
             opacity: mobile && !showChat ? 0.45 : 1,
@@ -1625,6 +1621,7 @@ export function AppShell() {
           onMouseLeave={(event) => {
             event.currentTarget.style.color = activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)";
           }}
+          className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "tools" : undefined}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemTools?.some((tool) => tool.active) ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
@@ -1651,6 +1648,7 @@ export function AppShell() {
         title={collapsedSessionTitle}
         aria-label={collapsedSessionTitle}
         aria-pressed={activeTopPanel === "session"}
+        className="workspace-header-action"
         data-collapsed-session-title="true"
         style={{
           display: "flex",
@@ -1731,7 +1729,7 @@ export function AppShell() {
         aria-label={translate("session.title")}
         aria-pressed={activeTopPanel === "session"}
         aria-hidden={covered ? true : undefined}
-        className={mobile ? "mobile-session-stats" : undefined}
+        className={`workspace-header-action${mobile ? " mobile-session-stats" : ""}`}
         data-mobile-toolbar-stats={mobile ? "true" : undefined}
         style={{
           marginLeft: mobile ? 0 : "auto",
@@ -1747,7 +1745,6 @@ export function AppShell() {
           pointerEvents: covered ? "none" : "auto",
           background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
           border: "none",
-          borderTop: activeTopPanel === "session" ? "2px solid var(--accent)" : "2px solid transparent",
           fontSize: 11, color: "var(--text-muted)",
           whiteSpace: "nowrap", cursor: showChat ? "pointer" : "default",
           fontVariantNumeric: "tabular-nums",
@@ -1852,11 +1849,12 @@ export function AppShell() {
         aria-hidden={covered ? true : undefined}
         title={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
+        className="workspace-header-action"
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
           marginLeft: !mobile && !sessionStats && !contextUsage ? "auto" : 0,
           display: "flex", alignItems: "center", justifyContent: "center",
-          width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+          width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
           visibility: covered ? "hidden" : "visible",
           pointerEvents: covered ? "none" : "auto",
           background: rightPanelOpen ? "var(--bg-selected)" : "none",
@@ -1867,7 +1865,7 @@ export function AppShell() {
         onMouseEnter={(event) => { if (!covered) event.currentTarget.style.color = "var(--text)"; }}
         onMouseLeave={(event) => { event.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
         </svg>
       </button>
@@ -2017,14 +2015,15 @@ export function AppShell() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
-        <div style={{ display: "flex", alignItems: "center", position: "relative", borderBottom: "1px solid var(--border)", height: "calc(36px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}>
+        <div className="workspace-header" style={{ position: "relative" }}>
           <button
+            className="workspace-header-action"
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
              aria-label={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
               background: "none", border: "none", borderRight: "1px solid var(--border)",
               color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
             }}
@@ -2032,11 +2031,11 @@ export function AppShell() {
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {sidebarOpen ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
               </svg>
             ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                 <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             )}
@@ -2062,24 +2061,25 @@ export function AppShell() {
                   aria-label={mobileToolbarMoreOpen ? translate("chat.close") : translate("chat.moreControls")}
                   aria-controls="mobile-toolbar-actions"
                   aria-expanded={mobileToolbarMoreOpen}
+                  className="workspace-header-action"
                   data-mobile-toolbar-more="true"
                   style={{
                     position: "relative",
                     zIndex: mobileToolbarMoreOpen ? 21 : undefined,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+                    width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
                     background: mobileToolbarMoreOpen ? "var(--bg-selected)" : "none",
-                    border: "none", borderRight: "1px solid var(--border)",
+                    border: "none",
                     color: mobileToolbarMoreOpen ? "var(--text)" : "var(--text-muted)",
                     cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
                   }}
                 >
                   {mobileToolbarMoreOpen ? (
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                       <line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" />
                     </svg>
                   ) : (
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                       <circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
                     </svg>
                   )}
@@ -2538,16 +2538,8 @@ export function AppShell() {
         } as React.CSSProperties}
       >
         {/* Right panel tab bar */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          flexShrink: 0,
-          height: "calc(36px + env(safe-area-inset-top))",
-          paddingTop: "env(safe-area-inset-top)",
-          background: "var(--bg-panel)",
-          borderBottom: "1px solid var(--border)",
-        }}>
-          <div style={{ flex: 1, overflow: "hidden" }}>
+        <div className="workspace-header" style={{ background: "var(--bg-panel)" }}>
+          <div style={{ flex: 1, height: "100%", overflow: "hidden" }}>
             <TabBar
               tabs={panelTabs}
               activeTabId={activeFileTabId ?? ""}
@@ -2558,13 +2550,14 @@ export function AppShell() {
           <button
             type="button"
             onClick={() => setRightPanelOpen(false)}
+            className="workspace-header-action"
             aria-controls="file-panel"
             aria-expanded={rightPanelOpen}
             title={translate("files.hidePanel")}
             aria-label={translate("files.hidePanel")}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: TOP_BAR_ICON_BUTTON_SIZE, padding: 0,
+              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
               background: "var(--bg-selected)", border: "none", borderLeft: "1px solid var(--border)",
               color: "var(--text)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
             }}

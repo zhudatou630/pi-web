@@ -351,6 +351,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.filterModels": "篩選模型…",
     "chat.noMatchingModels": "找不到相符的模型",
     "chat.moreControls": "更多控制項",
+    "chat.inputOptions": "選項",
     "chat.collapseControls": "收起控制項",
     "chat.shell": "Shell",
     "terminal.title": "終端機",

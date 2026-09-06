@@ -38,11 +38,11 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
       role="tablist"
       style={{
         display: "flex",
-        alignItems: "flex-end",
+        alignItems: "stretch",
         background: "var(--bg-panel)",
         overflowX: "auto",
         flexShrink: 0,
-        height: 36,
+        height: "100%",
       }}
     >
       {tabs.map((tab) => {
@@ -83,7 +83,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               display: "flex",
               alignItems: "center",
               gap: 6,
-              height: 36,
+              height: "100%",
               paddingLeft: 12,
               paddingRight: 6,
               borderRight: "1px solid var(--border)",
