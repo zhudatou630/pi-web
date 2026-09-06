@@ -804,23 +804,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return history.reverse();
   }, [messages]);
   const messageRefs = useMessageRefs(visibleMessages.length);
-  const userTurnCount = useMemo(() => messages.reduce((count, message) => count + (message.role === "user" ? 1 : 0), 0), [messages]);
+  const outlineRevision = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "user") return entryIds[i] ?? "";
+    }
+    return "";
+  }, [entryIds, messages]);
+  const pendingJumpEntryIdRef = useRef<string | null>(null);
   const jumpToOutlineEntry = useCallback(async (entryId: string) => {
     const sid = session?.id ?? sessionIdRef.current;
     if (!sid) return;
+    pendingJumpEntryIdRef.current = entryId;
     setMountLimit(Number.MAX_SAFE_INTEGER);
-    setUnmountedNewerCount(0);
-    const scrollTo = () => {
-      const element = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(entryId)}"]`);
-      if (!element) return false;
-      scrollToMessage(element);
-      return true;
-    };
-    if (searchHistoryRef.current.entryIds.includes(entryId)) {
-      requestAnimationFrame(() => { scrollTo(); });
-      return;
-    }
-    if (sessionBusy || !searchHistoryRef.current.hasEarlierMessages || !searchHistoryRef.current.historyCursor) return;
+    if (searchHistoryRef.current.entryIds.includes(entryId)) return;
+    if (!searchHistoryRef.current.hasEarlierMessages || !searchHistoryRef.current.historyCursor) return;
     loadingOlderRef.current = true;
     let before = searchHistoryRef.current.historyCursor;
     let hasMore = searchHistoryRef.current.hasEarlierMessages;
@@ -828,10 +825,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       while (hasMore && before) {
         const context = await loadContext(sid, activeLeafId, before);
         if (!context) break;
-        if (context.entryIds.includes(entryId)) {
-          requestAnimationFrame(() => { scrollTo(); });
-          return;
-        }
+        if (context.entryIds.includes(entryId)) return;
         if (context.oldestEntryId === before) break;
         before = context.oldestEntryId;
         hasMore = context.hasMore;
@@ -839,7 +833,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     } finally {
       loadingOlderRef.current = false;
     }
-  }, [activeLeafId, loadContext, scrollContainerRef, scrollToMessage, session?.id, sessionBusy, sessionIdRef]);
+  }, [activeLeafId, loadContext, session?.id, sessionIdRef]);
+  useLayoutEffect(() => {
+    const entryId = pendingJumpEntryIdRef.current;
+    if (!entryId) return;
+    const element = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(entryId)}"]`);
+    if (!(element instanceof HTMLElement)) return;
+    pendingJumpEntryIdRef.current = null;
+    scrollToMessage(element);
+    const idx = entryIds.indexOf(entryId);
+    const maxUnmounted = Math.max(0, messages.length - MOUNTED_GROUP_LIMIT);
+    const ratio = idx < 0 || messages.length <= 1 ? 1 : idx / (messages.length - 1);
+    setUnmountedNewerCount(Math.round((1 - ratio) * maxUnmounted));
+    setMountLimit(MOUNTED_GROUP_LIMIT);
+  }, [entryIds, messages.length, mountLimit, scrollContainerRef, scrollToMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
@@ -1323,7 +1330,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           <ChatMinimap
             sessionId={session?.id ?? sessionIdRef.current}
             leafId={activeLeafId}
-            userTurnCount={userTurnCount}
+            outlineRevision={outlineRevision}
             scrollContainer={scrollContainerRef}
             onJumpToEntry={jumpToOutlineEntry}
           />

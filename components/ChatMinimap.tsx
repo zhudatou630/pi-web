@@ -14,7 +14,7 @@ import styles from "./ChatMinimap.module.css";
 interface Props {
   sessionId: string | null;
   leafId: string | null;
-  userTurnCount: number;
+  outlineRevision: string;
   scrollContainer: RefObject<HTMLDivElement | null>;
   onJumpToEntry: (entryId: string) => void;
 }
@@ -148,7 +148,7 @@ export const AssistantOutline = memo(function AssistantOutline({
 export function ChatMinimap({
   sessionId,
   leafId,
-  userTurnCount,
+  outlineRevision,
   scrollContainer,
   onJumpToEntry,
 }: Props) {
@@ -181,7 +181,7 @@ export function ChatMinimap({
         if (!controller.signal.aborted) setItems([]);
       });
     return () => controller.abort();
-  }, [sessionId, leafId, userTurnCount]);
+  }, [sessionId, leafId, outlineRevision]);
 
   useEffect(() => {
     const scrollEl = scrollContainer.current;
@@ -195,11 +195,8 @@ export function ChatMinimap({
         const id = node.dataset.entryId;
         if (!id || !outlineIds.has(id)) continue;
         const rect = node.getBoundingClientRect();
-        if (rect.bottom > viewportTop + 8) {
-          next = id;
-          break;
-        }
-        next = id;
+        if (rect.top <= viewportTop + 48) next = id;
+        else break;
       }
       setActiveEntryId(next);
     };

@@ -512,8 +512,7 @@ export function buildSessionOutline(
   const items: SessionOutlineItem[] = [];
   while (current) {
     if (current.type === "message" && current.message.role === "user") {
-      const preview = userMessagePreview(current.message.content);
-      if (preview) items.push({ entryId: current.id, preview });
+      items.push({ entryId: current.id, preview: userMessagePreview(current.message.content) || "…" });
     }
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
