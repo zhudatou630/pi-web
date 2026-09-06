@@ -256,10 +256,11 @@ function ProcessDetailsGroup({
       style={{
         marginBottom: 10,
         borderRadius: 8,
-        border: "1px solid color-mix(in srgb, var(--border) 65%, transparent)",
-        background: "color-mix(in srgb, var(--bg-subtle) 50%, var(--bg))",
+        border: "1px solid color-mix(in srgb, var(--border) 45%, transparent)",
+        background: "color-mix(in srgb, var(--bg) 92%, var(--bg-subtle))",
+        boxShadow: "0 1px 2px rgba(0, 0, 0, 0.03), 0 0 0 1px color-mix(in srgb, var(--border) 25%, transparent)",
         overflow: "hidden",
-        transition: "background 0.15s ease, border-color 0.15s ease",
+        transition: "background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
       }}
     >
       <button
@@ -274,7 +275,7 @@ function ProcessDetailsGroup({
           minHeight: 28,
           padding: "4px 8px",
           border: "none",
-          borderBottom: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 40%, transparent)" : "none",
+          borderBottom: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 35%, transparent)" : "none",
           background: "none",
           color: "var(--text-muted)",
           cursor: "pointer",

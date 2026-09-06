@@ -651,7 +651,23 @@ pre, code {
   font-size: 1.05em;
 }
 
-/* Process details step box: clean high-density row-based layout */
+/* Process details step box: clean high-density row-based layout with fade mask */
+.process-details-list {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 10px,
+    black calc(100% - 10px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black 10px,
+    black calc(100% - 10px),
+    transparent 100%
+  );
+}
 .process-details-list [data-message-role="assistant"] {
   margin-bottom: 0 !important;
 }
