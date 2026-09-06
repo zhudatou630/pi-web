@@ -131,7 +131,7 @@ test("uses a short mobile Options label while preserving the descriptive accessi
   assert.match(options, /aria-label=\{t\("chat.moreControls"\)\}/);
   assert.match(options, /<span>\{t\("chat.inputOptions"\)\}<\/span>/);
   assert.match(options, /<svg width="16" height="16"[^>]*strokeWidth="1\.8"/);
-  assert.match(options, /height: 44/);
+  assert.match(options, /height:\s*isMobile \? 32 : 28/);
   assert.match(options, /aria-hidden=\{controlsMenuOpen \|\| undefined\}/);
   assert.match(options, /tabIndex=\{controlsMenuOpen \? -1 : undefined\}/);
 });

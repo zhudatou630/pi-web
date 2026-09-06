@@ -69,9 +69,9 @@ test("mobile composer keeps full-sized touch targets without enlarging the icons
   assert.ok(mobile);
   const action = mobile.nodes.find((node) => node.type === "rule" && node.selector === ".chat-input-action");
   const values = Object.fromEntries(action.nodes.filter((node) => node.type === "decl").map((node) => [node.prop, node.value]));
-  assert.equal(values.width, "44px");
-  assert.equal(values["min-width"], "44px");
-  assert.equal(values.height, undefined, "do not override the component's mobile 44px height");
+  assert.equal(values.width, "32px");
+  assert.equal(values["min-width"], "32px");
+  assert.equal(values.height, "32px");
   assert.doesNotMatch(mobile.toString(), /\.chat-input-action svg/);
 });
 
