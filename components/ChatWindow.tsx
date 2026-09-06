@@ -10,7 +10,7 @@ import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-fi
 import { buildQuotedSelection } from "@/lib/quoted-selection";
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
-import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { CHAT_MINIMAP_WIDTH, ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
@@ -84,7 +84,6 @@ function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, 
   return null;
 }
 
-const CHAT_MINIMAP_WIDTH = 36;
 const CHAT_COLUMN_PADDING = 16;
 
 function NewSessionUpdateLink({
@@ -805,16 +804,42 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return history.reverse();
   }, [messages]);
   const messageRefs = useMessageRefs(visibleMessages.length);
-  const revealHistoryForMinimap = useCallback((ratio?: number) => {
-    setMountLimit(MOUNTED_GROUP_LIMIT);
-    if (typeof ratio === "number" && Number.isFinite(ratio)) {
-      const clamped = Math.min(1, Math.max(0, ratio));
-      const maxUnmounted = Math.max(0, messages.length - MOUNTED_GROUP_LIMIT);
-      setUnmountedNewerCount(Math.round((1 - clamped) * maxUnmounted));
+  const userTurnCount = useMemo(() => messages.reduce((count, message) => count + (message.role === "user" ? 1 : 0), 0), [messages]);
+  const jumpToOutlineEntry = useCallback(async (entryId: string) => {
+    const sid = session?.id ?? sessionIdRef.current;
+    if (!sid) return;
+    setMountLimit(Number.MAX_SAFE_INTEGER);
+    setUnmountedNewerCount(0);
+    const scrollTo = () => {
+      const element = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(entryId)}"]`);
+      if (!element) return false;
+      scrollToMessage(element);
+      return true;
+    };
+    if (searchHistoryRef.current.entryIds.includes(entryId)) {
+      requestAnimationFrame(() => { scrollTo(); });
       return;
     }
-    setUnmountedNewerCount((current) => current + MOUNT_WINDOW_SHIFT);
-  }, [messages.length]);
+    if (sessionBusy || !searchHistoryRef.current.hasEarlierMessages || !searchHistoryRef.current.historyCursor) return;
+    loadingOlderRef.current = true;
+    let before = searchHistoryRef.current.historyCursor;
+    let hasMore = searchHistoryRef.current.hasEarlierMessages;
+    try {
+      while (hasMore && before) {
+        const context = await loadContext(sid, activeLeafId, before);
+        if (!context) break;
+        if (context.entryIds.includes(entryId)) {
+          requestAnimationFrame(() => { scrollTo(); });
+          return;
+        }
+        if (context.oldestEntryId === before) break;
+        before = context.oldestEntryId;
+        hasMore = context.hasMore;
+      }
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }, [activeLeafId, loadContext, scrollContainerRef, scrollToMessage, session?.id, sessionBusy, sessionIdRef]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
@@ -1296,11 +1321,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         </div>
         {isMobile || pendingScrollRestore ? null : (
           <ChatMinimap
-            messages={messages}
-            streamingMessage={streamState.streamingMessage}
+            sessionId={session?.id ?? sessionIdRef.current}
+            leafId={activeLeafId}
+            userTurnCount={userTurnCount}
             scrollContainer={scrollContainerRef}
-            messageRefs={messageRefs}
-            onRevealHistory={revealHistoryForMinimap}
+            onJumpToEntry={jumpToOutlineEntry}
           />
         )}
         </>}

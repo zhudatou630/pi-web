@@ -5,7 +5,7 @@ import {
 import { closeSync, type Dirent, fstatSync, openSync, readSync } from "fs";
 import { readdir } from "fs/promises";
 import { isAbsolute, join, normalize as normalizePath, relative, resolve as resolvePath, sep } from "path";
-import type { AgentMessage, ImageContent, SessionEntry, SessionHeader, SessionInfo, SessionContext } from "./types";
+import type { AgentMessage, ImageContent, SessionEntry, SessionHeader, SessionInfo, SessionContext, SessionOutlineItem } from "./types";
 import { normalizeToolCalls } from "./normalize";
 import { getThinkingPreview } from "./message-display";
 import { projectIdentityKey } from "./project-identity";
@@ -482,6 +482,43 @@ export function buildSessionContext(
 function isSessionGroupAnchor(entry: SessionEntry): boolean {
   return entry.type === "compaction"
     || (entry.type === "message" && entry.message.role === "user");
+}
+
+const OUTLINE_PREVIEW_LIMIT = 120;
+
+export function userMessagePreview(content: unknown, limit = OUTLINE_PREVIEW_LIMIT): string {
+  let text = "";
+  if (typeof content === "string") text = content;
+  else if (Array.isArray(content)) {
+    text = content
+      .filter((block): block is { type: string; text?: string } => Boolean(block) && typeof block === "object" && (block as { type?: string }).type === "text")
+      .map((block) => block.text ?? "")
+      .join("\n");
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trimEnd()}…`;
+}
+
+/** Active-branch user prompts only: cheap minimap directory, no tool bodies. */
+export function buildSessionOutline(
+  entries: SessionEntry[],
+  leafId?: string | null,
+): SessionOutlineItem[] {
+  if (leafId === null) return [];
+  const byId = new Map<string, SessionEntry>();
+  for (const entry of entries) byId.set(entry.id, entry);
+  let current: SessionEntry | undefined = leafId ? byId.get(leafId) : entries[entries.length - 1];
+  const items: SessionOutlineItem[] = [];
+  while (current) {
+    if (current.type === "message" && current.message.role === "user") {
+      const preview = userMessagePreview(current.message.content);
+      if (preview) items.push({ entryId: current.id, preview });
+    }
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  items.reverse();
+  return items;
 }
 
 /** Hard cap when extending a tail page back to the nearest turn anchor. */

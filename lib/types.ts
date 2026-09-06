@@ -354,3 +354,8 @@ export interface SessionContext {
   thinkingLevel: string;
   model: { provider: string; modelId: string } | null;
 }
+
+export interface SessionOutlineItem {
+  entryId: string;
+  preview: string;
+}
