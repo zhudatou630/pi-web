@@ -233,25 +233,36 @@
 
 .rail {
   position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 6px;
+  top: 50%;
+  left: 8px;
   z-index: 15;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
   width: 22px;
+  max-height: calc(100% - 24px);
+  overflow-x: visible;
+  overflow-y: auto;
+  scrollbar-width: none;
   pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
 }
 
 .tick {
-  position: absolute;
-  left: 0;
-  width: 14px;
-  height: 2px;
-  padding: 8px 0;
+  position: relative;
+  flex-shrink: 0;
+  width: 18px;
+  height: 8px;
+  padding: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
   pointer-events: auto;
-  transform: translateY(-50%);
 }
 
 .tick::before {

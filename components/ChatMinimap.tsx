@@ -156,6 +156,7 @@ export function ChatMinimap({
   const [items, setItems] = useState<SessionOutlineItem[]>([]);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const railRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -204,17 +205,23 @@ export function ChatMinimap({
     return () => scrollEl.removeEventListener("scroll", syncActive);
   }, [items, scrollContainer]);
 
+  useEffect(() => {
+    if (!activeEntryId) return;
+    const tick = railRef.current?.querySelector(`[data-entry-id="${CSS.escape(activeEntryId)}"]`);
+    if (tick instanceof HTMLElement) tick.scrollIntoView({ block: "nearest" });
+  }, [activeEntryId]);
+
   if (items.length === 0) return null;
 
   return (
-    <div className={styles.rail} aria-label={t("chatMinimap.userOutline")}>
-      {items.map((item, index) => (
+    <div ref={railRef} className={styles.rail} aria-label={t("chatMinimap.userOutline")}>
+      {items.map((item) => (
         <button
           key={item.entryId}
           type="button"
           className={styles.tick}
+          data-entry-id={item.entryId}
           data-active={activeEntryId === item.entryId ? "true" : undefined}
-          style={{ top: items.length === 1 ? "50%" : `${(index / (items.length - 1)) * 100}%` }}
           onMouseEnter={() => setHoveredId(item.entryId)}
           onMouseLeave={() => setHoveredId((current) => current === item.entryId ? null : current)}
           onClick={() => onJumpToEntry(item.entryId)}
