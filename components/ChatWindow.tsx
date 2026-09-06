@@ -841,11 +841,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (!(element instanceof HTMLElement)) return;
     pendingJumpEntryIdRef.current = null;
     scrollToMessage(element);
-    const idx = entryIds.indexOf(entryId);
-    const maxUnmounted = Math.max(0, messages.length - MOUNTED_GROUP_LIMIT);
-    const ratio = idx < 0 || messages.length <= 1 ? 1 : idx / (messages.length - 1);
-    setUnmountedNewerCount(Math.round((1 - ratio) * maxUnmounted));
-    setMountLimit(MOUNTED_GROUP_LIMIT);
   }, [entryIds, messages.length, mountLimit, scrollContainerRef, scrollToMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;

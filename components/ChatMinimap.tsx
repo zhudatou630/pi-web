@@ -20,7 +20,6 @@ interface Props {
 }
 
 export const CHAT_MINIMAP_WIDTH = 0;
-const PREVIEW_HIDE_DELAY = 180;
 
 function PreviewHeading({
   level,
@@ -156,29 +155,7 @@ export function ChatMinimap({
   const { t } = useI18n();
   const [items, setItems] = useState<SessionOutlineItem[]>([]);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
-  const [hovered, setHovered] = useState(false);
-  const [thumb, setThumb] = useState({ top: 0, size: 0.18 });
-  const listRef = useRef<HTMLDivElement>(null);
-  const itemRefs = useRef(new Map<string, HTMLButtonElement>());
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showPanel = useCallback(() => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-    setHovered(true);
-  }, []);
-  const hidePanel = useCallback(() => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => {
-      hideTimerRef.current = null;
-      setHovered(false);
-    }, PREVIEW_HIDE_DELAY);
-  }, []);
-  useEffect(() => () => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-  }, []);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -210,10 +187,6 @@ export function ChatMinimap({
     if (!scrollEl) return;
     const outlineIds = new Set(items.map((item) => item.entryId));
     const syncActive = () => {
-      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
-      const size = maxScroll <= 0 ? 1 : Math.min(1, Math.max(0.12, scrollEl.clientHeight / scrollEl.scrollHeight));
-      const top = maxScroll <= 0 ? 0 : (scrollEl.scrollTop / maxScroll) * (1 - size);
-      setThumb({ top, size });
       const viewportTop = scrollEl.getBoundingClientRect().top;
       const nodes = scrollEl.querySelectorAll<HTMLElement>("[data-entry-id]");
       let next: string | null = null;
@@ -231,51 +204,26 @@ export function ChatMinimap({
     return () => scrollEl.removeEventListener("scroll", syncActive);
   }, [items, scrollContainer]);
 
-  useEffect(() => {
-    if (!activeEntryId) return;
-    itemRefs.current.get(activeEntryId)?.scrollIntoView({ block: "nearest" });
-  }, [activeEntryId]);
-
   if (items.length === 0) return null;
 
   return (
-    <div
-      className={styles.rail}
-      onMouseEnter={showPanel}
-      onMouseLeave={hidePanel}
-    >
-      <div className={styles.track} aria-hidden="true">
-        <div
-          className={styles.thumb}
-          style={{ top: `${thumb.top * 100}%`, height: `${thumb.size * 100}%` }}
-        />
-      </div>
-      {hovered && (
-        <div
-          ref={listRef}
-          className={styles.list}
-          aria-label={t("chatMinimap.userOutline")}
-          onMouseEnter={showPanel}
-          onMouseLeave={hidePanel}
+    <div className={styles.rail} aria-label={t("chatMinimap.userOutline")}>
+      {items.map((item, index) => (
+        <button
+          key={item.entryId}
+          type="button"
+          className={styles.tick}
+          data-active={activeEntryId === item.entryId ? "true" : undefined}
+          style={{ top: items.length === 1 ? "50%" : `${(index / (items.length - 1)) * 100}%` }}
+          onMouseEnter={() => setHoveredId(item.entryId)}
+          onMouseLeave={() => setHoveredId((current) => current === item.entryId ? null : current)}
+          onClick={() => onJumpToEntry(item.entryId)}
         >
-          {items.map((item) => (
-            <button
-              key={item.entryId}
-              type="button"
-              className={styles.item}
-              data-active={activeEntryId === item.entryId ? "true" : undefined}
-              title={item.preview}
-              ref={(element) => {
-                if (element) itemRefs.current.set(item.entryId, element);
-                else itemRefs.current.delete(item.entryId);
-              }}
-              onClick={() => onJumpToEntry(item.entryId)}
-            >
-              {item.preview}
-            </button>
-          ))}
-        </div>
-      )}
+          {hoveredId === item.entryId && (
+            <span className={styles.card}>{item.preview}</span>
+          )}
+        </button>
+      ))}
     </div>
   );
 }
