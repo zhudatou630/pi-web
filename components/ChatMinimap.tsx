@@ -712,31 +712,6 @@ export function ChatMinimap({
                       {getUserPreview(node.targetTurn.userMessage)}
                     </span>
                   </button>
-
-                  {node.targetTurn.assistantPreviews.map((assistant, assistantIndex) => (
-                    <div
-                      key={assistantIndex}
-                      className={styles.assistant}
-                    >
-                      <button
-                        type="button"
-                        className={styles.assistantJump}
-                        data-minimap-preview-assistant={`${node.index}-${assistantIndex}`}
-                        onClick={() => scrollToAssistant(node, assistantIndex)}
-                        aria-label={t("chatMinimap.locateAssistant")}
-                        title={t("chatMinimap.locateAssistant")}
-                      >
-                        A
-                      </button>
-                      <AssistantOutline
-                        markdown={assistant.markdown}
-                        onAnswerClick={() => scrollToAssistant(node, assistantIndex)}
-                        onHeadingClick={(headingIndex) => (
-                          scrollToHeading(node, assistantIndex, headingIndex)
-                        )}
-                      />
-                    </div>
-                  ))}
                 </div>
               </div>
             );
