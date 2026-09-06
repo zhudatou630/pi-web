@@ -16,6 +16,7 @@ import { getRpcSession } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
+import { computeSessionContextUsage } from "@/lib/session-context-usage";
 import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources, SUBAGENT_META_TYPE } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
@@ -54,6 +55,8 @@ export async function GET(
     // the same aggregation the SDK's getSessionStats() uses. Lets the client
     // keep monotonic token/cost counters across compaction and page reloads.
     const stats = computeSessionStats(entries as unknown as SessionEntry[]);
+    const contextUsage = liveRpc?.inner?.getContextUsage?.()
+      ?? await computeSessionContextUsage(sm, leafId);
     const sessionName = sm.getSessionName();
     const firstUserEntry = entries.find((entry) => entry.type === "message" && entry.message.role === "user");
     const firstUserMessage = firstUserEntry?.type === "message" ? firstUserEntry.message : undefined;
@@ -100,6 +103,7 @@ export async function GET(
       tree,
       context,
       stats,
+      ...(contextUsage ? { contextUsage } : {}),
       totalActiveMs,
       ...(toolNames !== undefined ? { toolNames } : {}),
     });

@@ -60,6 +60,8 @@ interface Props {
   isCompacting?: boolean;
   compactError?: string | null;
   compactResult?: CompactResultInfo | null;
+  contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
+  onOpenSessionStats?: () => void;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -470,6 +472,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
+  contextUsage, onOpenSessionStats,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -2248,7 +2251,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             position: "relative",
             marginLeft: isMobile ? 0 : "auto",
           }}>
-            {isMobile && (
+            {isMobile && (() => {
+              const isHighContext = Boolean(contextUsage?.percent && contextUsage.percent >= 85);
+              const isWarningContext = Boolean(contextUsage?.percent && contextUsage.percent >= 70 && contextUsage.percent < 85);
+              return (
               <button
                 type="button"
                  title={controlsMenuOpen ? undefined : t("chat.moreControls")}
@@ -2267,35 +2273,52 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   width: "100%",
                   height: isMobile ? 32 : 28,
                   padding: "0 10px",
-                  background: "none",
-                  border: "none",
+                  background: isHighContext ? "rgba(239,68,68,0.06)" : "none",
+                  border: isHighContext ? "1px solid rgba(239,68,68,0.25)" : "none",
                   borderRadius: 4,
-                  color: "var(--text-muted)",
+                  color: isHighContext ? "#ef4444" : isWarningContext ? "rgba(234,179,8,0.95)" : "var(--text-muted)",
                   cursor: controlsMenuOpen ? "default" : "pointer",
                   fontSize: 12,
                   fontWeight: 500,
                   visibility: controlsMenuOpen ? "hidden" : "visible",
                   pointerEvents: controlsMenuOpen ? "none" : "auto",
-                  transition: "background 0.12s, color 0.12s",
+                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
                 }}
                 onMouseEnter={(e) => {
                   if (isMobile || controlsMenuOpen) return;
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
+                  e.currentTarget.style.background = isHighContext ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
+                  e.currentTarget.style.color = isHighContext ? "#ef4444" : "var(--text)";
                 }}
                 onMouseLeave={(e) => {
                   if (isMobile || controlsMenuOpen) return;
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = "var(--text-muted)";
+                  e.currentTarget.style.background = isHighContext ? "rgba(239,68,68,0.06)" : "none";
+                  e.currentTarget.style.color = isHighContext ? "#ef4444" : isWarningContext ? "rgba(234,179,8,0.95)" : "var(--text-muted)";
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M10 6h11M3 6h1M20 18h1M3 18h11" />
-                  <circle cx="7" cy="6" r="3" /><circle cx="17" cy="18" r="3" />
-                </svg>
+                <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M10 6h11M3 6h1M20 18h1M3 18h11" />
+                    <circle cx="7" cy="6" r="3" /><circle cx="17" cy="18" r="3" />
+                  </svg>
+                  {isHighContext && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: -1,
+                        right: -1,
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: "#ef4444",
+                      }}
+                      aria-hidden="true"
+                    />
+                  )}
+                </span>
                 <span>{t("chat.inputOptions")}</span>
               </button>
-            )}
+              );
+            })()}
             <div style={{
               display: isMobile ? (controlsMenuOpen ? "flex" : "none") : "flex",
               alignItems: "center",
@@ -2497,7 +2520,105 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             )}
 
-            {!isStreaming && onCompact && (
+            {!isMobile && !isStreaming && contextUsage && contextUsage.contextWindow > 0 && (() => {
+              const windowTokens = contextUsage.contextWindow;
+              const tokens = contextUsage.tokens;
+              const percent = contextUsage.percent ?? (tokens !== null ? (tokens / windowTokens) * 100 : null);
+              const clampedPercent = percent !== null ? Math.min(100, Math.max(0, percent)) : 0;
+              const isHigh = percent !== null && percent >= 85;
+              const isWarning = percent !== null && percent >= 70 && percent < 85;
+
+              const meterColor = isHigh
+                ? "#ef4444"
+                : isWarning
+                  ? "rgba(234,179,8,0.95)"
+                  : "var(--text-muted)";
+              const meterFillColor = isHigh
+                ? "#ef4444"
+                : isWarning
+                  ? "#eab308"
+                  : "var(--text-dim)";
+
+              const formatCompactVal = (n: number) =>
+                n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
+
+              const label = tokens !== null
+                ? (isMobile && !controlsMenuOpen
+                    ? `${clampedPercent.toFixed(0)}%`
+                    : `${formatCompactVal(tokens)}/${formatCompactVal(windowTokens)}`)
+                : `?/${formatCompactVal(windowTokens)}`;
+
+              const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
+              const tooltip = [
+                `${t("chat.contextUsage")}: ${tokens !== null ? tokens.toLocaleString() : "?"} / ${windowTokens.toLocaleString()} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
+                remaining !== null ? `${t("chat.contextRemaining")}: ${remaining.toLocaleString()} tokens` : null,
+                isHigh ? `⚠️ ${t("chat.contextHighWarning")}` : null,
+              ].filter(Boolean).join("\n");
+
+              return (
+                <button
+                  type="button"
+                  onClick={onOpenSessionStats}
+                  title={tooltip}
+                  aria-label={tooltip}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: isMobile ? "0 6px" : "0 8px",
+                    height: isMobile ? 32 : 28,
+                    background: isHigh ? "rgba(239,68,68,0.06)" : "none",
+                    border: isHigh ? "1px solid rgba(239,68,68,0.25)" : "none",
+                    borderRadius: 4,
+                    color: meterColor,
+                    cursor: onOpenSessionStats ? "pointer" : "default",
+                    fontSize: 11,
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                    transition: "background 0.12s, border-color 0.12s, color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (onOpenSessionStats) {
+                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (onOpenSessionStats) {
+                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.06)" : "none";
+                    }
+                  }}
+                >
+                  <div
+                    style={{
+                      width: isMobile && !controlsMenuOpen ? 28 : 42,
+                      height: 4,
+                      borderRadius: 2,
+                      background: "var(--border)",
+                      overflow: "hidden",
+                      flexShrink: 0,
+                    }}
+                    aria-hidden="true"
+                  >
+                    <div
+                      style={{
+                        width: `${clampedPercent}%`,
+                        height: "100%",
+                        background: meterFillColor,
+                        borderRadius: 2,
+                        transition: "width 0.3s ease, background-color 0.2s ease",
+                      }}
+                    />
+                  </div>
+                  <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em" }}>
+                    {label}
+                  </span>
+                </button>
+              );
+            })()}
+
+            {!isStreaming && onCompact && (() => {
+              const isHighContext = Boolean(contextUsage?.percent && contextUsage.percent >= 85);
+              return (
               <div>
                 <button
                   onClick={() => {
@@ -2511,24 +2632,28 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     padding: isMobile ? "0 6px" : "0 8px",
                     width: isMobile ? "auto" : undefined,
                     height: isMobile ? 32 : 28,
-                    background: isCompacting ? "rgba(239,68,68,0.08)" : "none",
-                    border: "none",
+                    background: isCompacting
+                      ? "rgba(239,68,68,0.08)"
+                      : isHighContext
+                        ? "rgba(239,68,68,0.06)"
+                        : "none",
+                    border: isHighContext && !isCompacting ? "1px solid rgba(239,68,68,0.25)" : "none",
                     borderRadius: 4,
-                    color: isCompacting ? "#ef4444" : "var(--text-muted)",
+                    color: isCompacting || isHighContext ? "#ef4444" : "var(--text-muted)",
                     cursor: (isStreaming && !isCompacting) ? "not-allowed" : "pointer",
                     fontSize: 12, opacity: (isStreaming && !isCompacting) ? 0.5 : 1,
-                    transition: "background 0.12s, color 0.12s",
+                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
                   }}
                   onMouseEnter={(e) => {
                     if (isStreaming && !isCompacting) return;
-                    e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.16)" : "var(--bg-hover)";
-                    e.currentTarget.style.color = isCompacting ? "#ef4444" : "var(--text)";
+                    e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.16)" : isHighContext ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
+                    e.currentTarget.style.color = isCompacting || isHighContext ? "#ef4444" : "var(--text)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.08)" : "none";
-                    e.currentTarget.style.color = isCompacting ? "#ef4444" : "var(--text-muted)";
+                    e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.08)" : isHighContext ? "rgba(239,68,68,0.06)" : "none";
+                    e.currentTarget.style.color = isCompacting || isHighContext ? "#ef4444" : "var(--text-muted)";
                   }}
-                   title={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
+                   title={isCompacting ? t("chat.stopCompaction") : isHighContext ? `${t("chat.compactContext")} (${t("chat.contextHighWarning")})` : t("chat.compactContext")}
                    aria-label={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
                 >
                   {isCompacting ? (
@@ -2541,7 +2666,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   )}
                 </button>
               </div>
-            )}
+              );
+            })()}
 
             {isStreaming && (
               <button

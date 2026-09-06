@@ -41,6 +41,7 @@ import {
   MOUNTED_GROUP_LIMIT,
   restoreScrollTop,
 } from "@/lib/chat-lazy-load";
+import { estimateMessageTokens } from "@/lib/token-estimate";
 
 interface Props {
   session: SessionInfo | null;
@@ -241,7 +242,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
         </span>
       </button>
       {(expanded || reveal) && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 4 }}>
           {children}
         </div>
       )}
@@ -475,7 +476,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // that window toward older in-memory groups or fetches the next server page.
   const [unmountedNewerCount, setUnmountedNewerCount] = useState(0);
   const [mountLimit, setMountLimit] = useState(MOUNTED_GROUP_LIMIT);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLButtonElement>(null);
   const newerSentinelRef = useRef<HTMLDivElement>(null);
   const mountedRangeRef = useRef({ startIndex: 0, endIndex: 0, totalCount: 0 });
   const pendingWindowAnchorRef = useRef<{ anchorEntryId: string; anchorOffset: number } | null>(null);
@@ -694,8 +695,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [session?.id]);
 
   useEffect(() => {
-    if (sessionBusy || streamState.isStreaming) setUnmountedNewerCount(0);
-  }, [sessionBusy, streamState.isStreaming]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if ((sessionBusy || streamState.isStreaming) && isScrollAtTail(container.scrollTop, container.clientHeight, container.scrollHeight)) {
+      setUnmountedNewerCount(0);
+    }
+  }, [sessionBusy, streamState.isStreaming, scrollContainerRef]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -711,9 +716,42 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return () => container.removeEventListener("scroll", onScroll);
   }, [scrollContainerRef, unmountedNewerCount]);
 
+  // Sentinel trigger to slide the mounted window toward older in-memory
+  // groups first; only then fetch the previous server page.
+  const triggerLoadEarlier = useCallback(() => {
+    if (loadingOlderRef.current || outlineJumpControllerRef.current) return;
+    const container = scrollContainerRef.current;
+    if (mountedRangeRef.current.startIndex > 0) {
+      const content = messageContentRef.current;
+      if (content && container) {
+        const viewportTop = container.getBoundingClientRect().top;
+        const candidates = Array.from(content.children).flatMap((element, idx) => {
+          if (!(element instanceof HTMLElement)) return [];
+          const id = element.dataset.entryId || element.dataset.slotIndex || `slot-${idx}`;
+          const rect = element.getBoundingClientRect();
+          return [{ entryId: id, top: rect.top, bottom: rect.bottom }];
+        });
+        pendingWindowAnchorRef.current = findChatScrollAnchor(candidates, viewportTop);
+      }
+      setUnmountedNewerCount((current) => current + MOUNT_WINDOW_SHIFT);
+      setMountLimit(MOUNTED_GROUP_LIMIT);
+      return;
+    }
+    if (!hasEarlierMessages) return;
+    const oldestId = historyCursor;
+    if (!oldestId) return;
+    const sid = session?.id ?? sessionIdRef.current;
+    if (!sid) return;
+    loadingOlderRef.current = true;
+    if (container) {
+      prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
+    }
+    void loadContext(sid, activeLeafId, oldestId).finally(() => {
+      loadingOlderRef.current = false;
+    });
+  }, [historyCursor, hasEarlierMessages, session, activeLeafId, loadContext, sessionIdRef, scrollContainerRef]);
+
   // IntersectionObserver on the sentinel div at the top of the message list.
-  // Slide the mounted window toward older in-memory groups first; only then
-  // fetch the previous server page.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const container = scrollContainerRef.current;
@@ -721,38 +759,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
-        if (loadingOlderRef.current || outlineJumpControllerRef.current) return;
-        if (mountedRangeRef.current.startIndex > 0) {
-          const content = messageContentRef.current;
-          if (content) {
-            const viewportTop = container.getBoundingClientRect().top;
-            const candidates = Array.from(content.children).flatMap((element) => {
-              if (!(element instanceof HTMLElement) || !element.dataset.entryId) return [];
-              const rect = element.getBoundingClientRect();
-              return [{ entryId: element.dataset.entryId, top: rect.top, bottom: rect.bottom }];
-            });
-            pendingWindowAnchorRef.current = findChatScrollAnchor(candidates, viewportTop);
-          }
-          setUnmountedNewerCount((current) => current + MOUNT_WINDOW_SHIFT);
-          setMountLimit(MOUNTED_GROUP_LIMIT);
-          return;
-        }
-        if (!hasEarlierMessages) return;
-        const oldestId = historyCursor;
-        if (!oldestId) return;
-        const sid = session?.id ?? sessionIdRef.current;
-        if (!sid) return;
-        loadingOlderRef.current = true;
-        prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
-        void loadContext(sid, activeLeafId, oldestId).finally(() => {
-          loadingOlderRef.current = false;
-        });
+        triggerLoadEarlier();
       },
       { root: container, threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [historyCursor, hasEarlierMessages, session, activeLeafId, loadContext, sessionIdRef, scrollContainerRef]);
+  }, [triggerLoadEarlier, scrollContainerRef]);
 
   useEffect(() => {
     const sentinel = newerSentinelRef.current;
@@ -773,9 +786,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const anchor = pendingWindowAnchorRef.current;
     const content = messageContentRef.current;
     if (!anchor || !content) return;
-    const element = Array.from(content.children).find((candidate) => (
-      candidate instanceof HTMLElement && candidate.dataset.entryId === anchor.anchorEntryId
-    ));
+    const element = Array.from(content.children).find((candidate, idx) => {
+      if (!(candidate instanceof HTMLElement)) return false;
+      const id = candidate.dataset.entryId || candidate.dataset.slotIndex || `slot-${idx}`;
+      return id === anchor.anchorEntryId;
+    });
     if (element instanceof HTMLElement) {
       scrollToMessage(element, anchor.anchorOffset);
     }
@@ -927,6 +942,47 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
+
+  const streamStartRef = useRef<number | null>(null);
+  const [streamTps, setStreamTps] = useState<number | null>(null);
+  const [streamTokens, setStreamTokens] = useState<number>(0);
+
+  useEffect(() => {
+    if (!streamState.isStreaming) {
+      streamStartRef.current = null;
+      setStreamTps(null);
+      setStreamTokens(0);
+      return;
+    }
+    const tick = () => {
+      const tokens = estimateMessageTokens(streamState.streamingMessage);
+      setStreamTokens(tokens);
+      if (tokens === 0) return;
+      const now = Date.now();
+      if (streamStartRef.current === null) {
+        streamStartRef.current = now;
+      }
+      const elapsed = (now - streamStartRef.current) / 1000;
+      if (elapsed > 0.4) {
+        setStreamTps(tokens / elapsed);
+      }
+    };
+    const id = setInterval(tick, 200);
+    tick();
+    return () => clearInterval(id);
+  }, [streamState.isStreaming, streamState.streamingMessage]);
+
+  const streamingModel = streamState.streamingMessage?.role === "assistant"
+    ? (streamState.streamingMessage as AssistantMessage).model
+    : undefined;
+  const streamingProvider = streamState.streamingMessage?.role === "assistant"
+    ? (streamState.streamingMessage as AssistantMessage).provider
+    : undefined;
+  const streamingModelKey = streamingProvider && streamingModel
+    ? `${streamingProvider}:${streamingModel}`
+    : streamingModel;
+  const streamingModelName = (streamingModelKey && (modelNames[streamingModelKey] ?? streamingModel))
+    || (displayModelValue ? (modelNames[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? displayModelValue.modelId) : undefined);
   const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
   const promptAnchorSpacerHeightRef = useRef(0);
   const promptAnchorMeasureFrameRef = useRef<number | null>(null);
@@ -1055,6 +1111,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       isCompacting={isCompacting}
       compactError={compactError}
       compactResult={compactResult}
+      contextUsage={contextUsage}
+      onOpenSessionStats={onSessionStatsPanelOpen}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
       thinkingLevel={thinkingLevel}
@@ -1230,7 +1288,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 );
                 if (!isVisible) return view;
                 return (
-                  <div key={`${keyPrefix}-${messageKey}`} data-entry-id={entryIds[idx]} ref={options.attachRef === false || currentRefIdx === undefined ? undefined : attachVisibleRef(idx, currentRefIdx)}>
+                  <div
+                    key={`${keyPrefix}-${messageKey}`}
+                    data-entry-id={entryIds[idx]}
+                    data-slot-index={`msg-${idx}`}
+                    ref={options.attachRef === false || currentRefIdx === undefined ? undefined : attachVisibleRef(idx, currentRefIdx)}
+                  >
                     {view}
                   </div>
                 );
@@ -1257,6 +1320,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   locateEntryId,
                 );
               };
+              let liveTailItemCount = 0;
               for (let idx = 0; idx < messages.length;) {
                 const hasAnchor = isMessageGroupAnchor(messages[idx]);
                 const userIdx = hasAnchor ? idx : -1;
@@ -1277,6 +1341,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
                 const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) {
+                  liveTailItemCount = endIdx - firstIdx;
                   for (let renderIdx = firstIdx; renderIdx < endIdx; renderIdx++) {
                     markOutlineTarget([entryIds[renderIdx]]);
                     rendered.push(renderMessage(renderIdx));
@@ -1377,17 +1442,23 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
                 idx = endIdx;
               }
+              const effectiveMountLimit = Math.max(mountLimit, MOUNTED_GROUP_LIMIT + liveTailItemCount);
               const { startIndex, endIndex } = outlineTargetIndex >= 0
                 ? getOutlineMountedRange(rendered.length, outlineTargetIndex)
-                : getMountedRange(rendered.length, unmountedNewerCount, mountLimit);
+                : getMountedRange(rendered.length, unmountedNewerCount, effectiveMountLimit);
               mountedRangeRef.current = { startIndex, endIndex, totalCount: rendered.length };
               const hasMore = startIndex > 0 || hasEarlierMessages;
               return (
                 <>
                   {hasMore && (
-                     <div ref={sentinelRef} className="py-3 text-center text-xs text-text-muted">
-                       {t("chat.loadEarlier")}
-                    </div>
+                    <button
+                      type="button"
+                      ref={sentinelRef}
+                      onClick={triggerLoadEarlier}
+                      className="w-full py-3 text-center text-xs text-text-muted transition-colors hover:text-text cursor-pointer focus:outline-none"
+                    >
+                      {t("chat.loadEarlier")}
+                    </button>
                   )}
                   {rendered.slice(startIndex, endIndex)}
                   {endIndex < rendered.length && (
@@ -1397,7 +1468,36 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               );
             })()}
             {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
+              <>
+                <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
+                <div
+                  className="flex items-center gap-1.5 py-0.5 text-[11px] sm:text-xs text-text-muted font-mono select-none overflow-hidden whitespace-nowrap min-w-0"
+                  style={{ marginTop: 2 }}
+                >
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+                  {streamingModelName && (
+                    <span className="truncate min-w-0 max-w-[110px] sm:max-w-[260px]" title={streamingModelName}>
+                      {streamingModelName}
+                    </span>
+                  )}
+                  {streamingModelName && (streamTps !== null || streamTokens > 0) && (
+                    <span className="shrink-0 text-text-dim">·</span>
+                  )}
+                  {streamTps !== null && (
+                    <span className="shrink-0 text-text font-medium tabular-nums">
+                      {streamTps.toFixed(1)} tok/s
+                    </span>
+                  )}
+                  {streamTokens > 0 && (
+                    <>
+                      {streamTps !== null && <span className="shrink-0 text-text-dim">·</span>}
+                      <span className="shrink-0 tabular-nums">
+                        {Math.round(streamTokens)} {isMobile ? "tok" : "tokens"}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </>
             )}
 
             {agentRunning && !hasStreamingContent && agentPhase && (

@@ -1689,13 +1689,14 @@ export function AppShell() {
     let contextColor = "var(--text-muted)";
     let desktopContextText: string | null = null;
     let mobileContextText: string | null = null;
-    if (contextUsage?.contextWindow) {
-      const percent = contextUsage.percent;
-      if (percent !== null && percent > 90) contextColor = "#ef4444";
-      else if (percent !== null && percent > 70) contextColor = "rgba(234,179,8,0.95)";
+    const ctx = contextUsage ?? sessionStats?.contextUsage;
+    if (ctx?.contextWindow) {
+      const percent = ctx.percent;
+      if (percent !== null && percent >= 85) contextColor = "#ef4444";
+      else if (percent !== null && percent >= 70) contextColor = "rgba(234,179,8,0.95)";
       desktopContextText = percent !== null
-        ? `${percent.toFixed(0)}% / ${formatCompact(contextUsage.contextWindow)}`
-        : `? / ${formatCompact(contextUsage.contextWindow)}`;
+        ? `${percent.toFixed(0)}% / ${formatCompact(ctx.contextWindow)}`
+        : `? / ${formatCompact(ctx.contextWindow)}`;
       mobileContextText = percent !== null ? `${percent.toFixed(0)}%` : null;
     }
 
@@ -1707,9 +1708,9 @@ export function AppShell() {
       tooltipParts.push(`cache write: ${tokens.cacheWrite.toLocaleString(locale)}`);
       if (cost > 0) tooltipParts.push(`cost: $${cost.toFixed(4)}`);
     }
-    if (contextUsage?.contextWindow) {
-      const percent = contextUsage.percent;
-      tooltipParts.push(`context: ${percent !== null ? percent.toFixed(1) + "%" : "unknown"} of ${contextUsage.contextWindow.toLocaleString()} tokens`);
+    if (ctx?.contextWindow) {
+      const percent = ctx.percent;
+      tooltipParts.push(`context: ${percent !== null ? percent.toFixed(1) + "%" : "unknown"} of ${ctx.contextWindow.toLocaleString()} tokens`);
     }
     const tooltip = tooltipParts.join("  |  ");
     const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;
@@ -1781,7 +1782,8 @@ export function AppShell() {
               </span>
             )}
             {mobileContextText && (
-              <span style={{ color: contextColor, flexShrink: 0 }}>
+              <span style={{ color: contextColor, flexShrink: 0, display: "flex", alignItems: "center", gap: 3.5 }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: contextColor, flexShrink: 0 }} aria-hidden="true" />
                 {mobileContextText}
               </span>
             )}
@@ -2253,19 +2255,64 @@ export function AppShell() {
                        [translate("session.toolResults"), sessionStats.toolResults.toLocaleString(locale)],
                        [translate("session.total"), sessionStats.totalMessages.toLocaleString(locale)],
                     ];
-                    const tokenRows = [
+                    const ctx = contextUsage ?? sessionStats.contextUsage;
+                    const activeContextSection = ctx?.contextWindow ? (() => {
+                      const pct = ctx.percent ?? (ctx.tokens !== null ? (ctx.tokens / ctx.contextWindow) * 100 : null);
+                      const clampedPct = pct !== null ? Math.min(100, Math.max(0, pct)) : 0;
+                      const isHigh = pct !== null && pct >= 85;
+                      const isWarning = pct !== null && pct >= 70 && pct < 85;
+                      const barColor = isHigh ? "#ef4444" : isWarning ? "#eab308" : "var(--accent, #3b82f6)";
+                      const remaining = ctx.tokens !== null ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
+                      const contextRows = [
+                        ...(ctx.tokens !== null ? [[translate("session.contextUsed"), ctx.tokens.toLocaleString(locale)]] : []),
+                        [translate("session.contextWindow"), ctx.contextWindow.toLocaleString(locale)],
+                        ...(pct !== null ? [[translate("session.context"), `${pct.toFixed(1)}%`]] : []),
+                        ...(remaining !== null ? [[translate("session.contextRemaining"), remaining.toLocaleString(locale)]] : []),
+                      ];
+                      return (
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span>{translate("session.activeContext")}</span>
+                            {pct !== null && (
+                              <span style={{ fontSize: 11, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--text-muted)" }}>
+                                {pct.toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ width: "100%", height: 5, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginBottom: 8 }}>
+                            <div style={{ width: `${clampedPct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
+                          </div>
+                          <div style={{
+                            display: "grid",
+                            gridTemplateColumns: "max-content max-content",
+                            columnGap: 14,
+                            rowGap: 4,
+                            justifyContent: "start",
+                          }}>
+                            {contextRows.map(([label, value]) => (
+                              <div key={`ctx:${label}`} style={{ display: "contents" }}>
+                                <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{label}</div>
+                                <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{value}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {isHigh && (
+                            <div style={{ marginTop: 6, fontSize: 11, color: "#ef4444", display: "flex", alignItems: "center", gap: 4 }}>
+                              <span>⚠️</span>
+                              <span>{translate("chat.contextHighWarning")}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })() : null;
+
+                    const cumulativeTokenRows = [
                        [translate("session.input"), sessionStats.tokens.input.toLocaleString(locale)],
                        [translate("session.output"), sessionStats.tokens.output.toLocaleString(locale)],
                        ...(sessionStats.tokens.cacheRead > 0 ? [[translate("session.cacheRead"), sessionStats.tokens.cacheRead.toLocaleString(locale)]] : []),
                        ...(sessionStats.tokens.cacheWrite > 0 ? [[translate("session.cacheWrite"), sessionStats.tokens.cacheWrite.toLocaleString(locale)]] : []),
                        [translate("session.total"), sessionStats.tokens.total.toLocaleString(locale)],
-                    ];
-                    const ctx = contextUsage ?? sessionStats.contextUsage;
-                    const formatCompact = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
-                    const extraTokenRows = [
                        ...(sessionStats.cost > 0 ? [[translate("session.cost"), `$${sessionStats.cost.toFixed(4)}`]] : []),
-                       ...(ctx?.contextWindow ? [[translate("session.context"), `${ctx.percent !== null ? `${ctx.percent.toFixed(1)}%` : "?"} / ${formatCompact(ctx.contextWindow)}`]] : []),
-                       // Cache hit rate = cache reads / (input + cache writes + cache reads) — the denominator covers all input-class tokens.
                        ...(sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite > 0 && sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite + sessionStats.tokens.input > 0
                          ? [[translate("session.cacheHitRate"), `${(sessionStats.tokens.cacheRead / (sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite + sessionStats.tokens.input) * 100).toFixed(1)}%`]]
                          : []),
@@ -2410,8 +2457,11 @@ export function AppShell() {
                           {sessionInfoSection}
                           {projectInfoSection}
                         </div>
-                         {section(translate("session.messages"), messageRows)}
-                         {section(translate("session.tokens"), [...tokenRows, ...extraTokenRows], "right", true)}
+                        {section(translate("session.messages"), messageRows)}
+                        <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 18 }}>
+                          {activeContextSection}
+                          {section(translate("session.cumulativeTokens"), cumulativeTokenRows, "right", true)}
+                        </div>
                       </div>
                     );
                   })() : (

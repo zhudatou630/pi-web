@@ -53,6 +53,7 @@ export interface SessionData {
   };
   /** Cumulative usage over ALL session-file entries (incl. compacted history). */
   stats?: SessionFileStats;
+  contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
 }
 
 interface AgentEvent {
@@ -500,6 +501,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setEntryIds([]);
           setHistoryCursor(null);
           setHasEarlierMessages(false);
+          setContextUsage(null);
           setError(null);
         }
         return null;
@@ -525,6 +527,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
         setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
+      }
+      if (d.contextUsage !== undefined) {
+        setContextUsage(d.contextUsage ?? null);
       }
 
       messagesLoaded = true;
