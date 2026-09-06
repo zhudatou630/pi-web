@@ -1165,7 +1165,7 @@ export function AppShell() {
               style={{
                 flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                 height: 32, padding: 0, background: "none", border: "none",
-                borderRadius: 9, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
+                borderRadius: 4, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
                 fontSize: 12, opacity: disabled ? 0.35 : 1,
                 transition: "background 0.12s, color 0.12s",
               }}
@@ -1185,7 +1185,7 @@ export function AppShell() {
           style={{
             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             height: 32, padding: 0, background: "none", border: "none",
-            borderRadius: 9, color: "var(--text-muted)", cursor: "pointer",
+            borderRadius: 4, color: "var(--text-muted)", cursor: "pointer",
             fontSize: 12, transition: "background 0.12s, color 0.12s",
           }}
           onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }}
@@ -1512,7 +1512,7 @@ export function AppShell() {
               aria-hidden="true"
               style={{
                 minWidth: 15, height: 15, padding: "0 4px", display: "grid", placeItems: "center",
-                borderRadius: 7, background: "var(--bg-selected)", color: "var(--accent)",
+                borderRadius: 4, background: "var(--bg-selected)", color: "var(--accent)",
                 fontSize: 10, lineHeight: 1, fontVariantNumeric: "tabular-nums",
                 ...(mobile ? { position: "absolute", top: 2, right: 2, minWidth: 13, height: 13, padding: "0 3px", fontSize: 9 } : {}),
               }}

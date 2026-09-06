@@ -38,12 +38,24 @@ export function translateMessage(
 }
 
 /**
- * 按当前语言格式化相对时间。
+ * 会话列表用的简短时间，不重复添加“前”或“ago”。
  * @param date 要格式化的时间
  * @param locale 当前语言
  * @param now 用于测试或特殊场景的当前时间
  * @returns locale-aware 的相对时间文本
  */
+export function formatCompactRelativeTime(date: Date | string, locale: Locale, now = new Date()): string {
+  const target = date instanceof Date ? date : new Date(date);
+  const minutes = Math.max(0, Math.floor((now.getTime() - target.getTime()) / 60_000));
+  const chinese = locale.startsWith("zh");
+  if (minutes < 1) return chinese ? (locale === "zh-TW" ? "剛剛" : "刚刚") : "now";
+  if (minutes < 60) return chinese ? `${minutes}${locale === "zh-TW" ? "分鐘" : "分钟"}` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return chinese ? `${hours}${locale === "zh-TW" ? "小時" : "小时"}` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return chinese ? `${days}天` : `${days}d`;
+}
+
 export function formatRelativeTime(date: Date | string, locale: Locale, now = new Date()): string {
   const target = date instanceof Date ? date : new Date(date);
   const diffMs = target.getTime() - now.getTime();

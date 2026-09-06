@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 export interface ModelSelectorOption {
@@ -25,24 +24,12 @@ interface ModelSelectorProps {
   placement?: "up" | "auto";
 }
 
-const MODEL_FILTER_THRESHOLD = 8;
 const MODEL_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function compareModelOptions(a: ModelSelectorOption, b: ModelSelectorOption): number {
   return MODEL_OPTION_COLLATOR.compare(a.name || a.modelId, b.name || b.modelId)
     || MODEL_OPTION_COLLATOR.compare(a.provider, b.provider)
     || MODEL_OPTION_COLLATOR.compare(a.modelId, b.modelId);
-}
-
-export function filterModelOptions(options: ModelSelectorOption[], query: string): ModelSelectorOption[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (!normalizedQuery) return options;
-
-  return options.filter((option) => (
-    `${option.name} ${option.modelId}`
-      .toLocaleLowerCase()
-      .includes(normalizedQuery)
-  ));
 }
 
 export function ModelSelector({
@@ -59,20 +46,16 @@ export function ModelSelector({
   variant = "toolbar",
   placement = "up",
 }: ModelSelectorProps) {
-  const { t } = useI18n();
   const isMobile = useIsMobile();
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<{ top: number; right: number; bottom: number; left: number; width: number } | null>(null);
-  const [filter, setFilter] = useState("");
   const locked = disabled || busy;
   const sortedOptions = useMemo(() => [...options].sort(compareModelOptions), [options]);
-  const filteredOptions = filterModelOptions(sortedOptions, filter);
-  const showFilter = sortedOptions.length > MODEL_FILTER_THRESHOLD;
   const modelsByProvider: { provider: string; options: ModelSelectorOption[] }[] = [];
 
-  for (const option of filteredOptions) {
+  for (const option of sortedOptions) {
     const group = modelsByProvider.find((item) => item.provider === option.provider);
     if (group) group.options.push(option);
     else modelsByProvider.push({ provider: option.provider, options: [option] });
@@ -89,7 +72,6 @@ export function ModelSelector({
         && panelRef.current && !panelRef.current.contains(event.target as Node)
       ) {
         setOpen(false);
-        setFilter("");
       }
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -99,7 +81,6 @@ export function ModelSelector({
   useEffect(() => {
     if (!locked) return;
     setOpen(false);
-    setFilter("");
   }, [locked]);
 
   const buttonStyle: CSSProperties = variant === "field"
@@ -113,7 +94,7 @@ export function ModelSelector({
         padding: "0 9px",
         overflow: "hidden",
         border: "1px solid var(--border)",
-        borderRadius: 5,
+        borderRadius: 4,
         background: locked ? "var(--bg-panel)" : "var(--bg)",
         color: locked ? "var(--text-dim)" : "var(--text)",
         cursor: locked ? "default" : "pointer",
@@ -123,7 +104,8 @@ export function ModelSelector({
     : {
         display: "flex",
         alignItems: "center",
-        justifyContent: isMobile ? "flex-start" : undefined,
+        justifyContent: "flex-start",
+        textAlign: "left",
         gap: 6,
         width: isMobile ? "100%" : undefined,
         maxWidth: isMobile ? "100%" : 220,
@@ -131,7 +113,7 @@ export function ModelSelector({
         padding: isMobile ? "8px 10px" : "8px 12px",
         overflow: "hidden",
         border: "none",
-        borderRadius: 9,
+        borderRadius: 4,
         background: open ? "var(--bg-hover)" : "none",
         color: "var(--text-muted)",
         cursor: locked ? "not-allowed" : "pointer",
@@ -143,7 +125,6 @@ export function ModelSelector({
   const choose = (option: ModelSelectorOption) => {
     const active = option.modelId === value?.modelId && option.provider === value?.provider;
     setOpen(false);
-    setFilter("");
     if (!active || isAutoSelection) onChange(option.provider, option.modelId);
   };
 
@@ -156,7 +137,6 @@ export function ModelSelector({
         if (event.key !== "Escape" || !open) return;
         event.preventDefault();
         event.stopPropagation();
-        setFilter("");
         setOpen(false);
       }}
     >
@@ -172,10 +152,7 @@ export function ModelSelector({
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           setAnchorRect({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width });
-          setOpen((current) => {
-            if (current) setFilter("");
-            return !current;
-          });
+          setOpen((current) => !current);
         }}
         onMouseEnter={(event) => {
           if (locked) return;
@@ -243,48 +220,21 @@ export function ModelSelector({
               maxHeight,
               overflow: "hidden",
               border: "1px solid var(--border)",
-              borderRadius: 8,
+              borderRadius: 4,
               background: "var(--bg)",
               boxShadow: openAbove ? "0 -4px 16px rgba(0,0,0,0.10)" : "0 4px 16px rgba(0,0,0,0.10)",
             }}
           >
-            {showFilter && (
-              <div style={{ flexShrink: 0, padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
-                <input
-                  value={filter}
-                  onChange={(event) => setFilter(event.target.value)}
-                  placeholder={t("chat.filterModels")}
-                  aria-label={t("chat.filterModels")}
-                  autoFocus
-                  autoComplete="off"
-                  spellCheck={false}
-                  style={{
-                    boxSizing: "border-box",
-                    width: "100%",
-                    minWidth: isMobile ? 0 : 220,
-                    padding: "5px 8px",
-                    border: "1px solid var(--border)",
-                    borderRadius: 5,
-                    outline: "none",
-                    background: "var(--bg)",
-                    color: "var(--text)",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                  }}
-                />
-              </div>
-            )}
             <div style={{ minHeight: 0, overflowY: "auto" }}>
-              {onClear && !filter.trim() && (
+              {onClear && (
                 <ModelOptionButton active={!value} label={emptyLabel ?? "Default"} onClick={() => {
                   setOpen(false);
-                  setFilter("");
                   onClear();
                 }} />
               )}
               {modelsByProvider.length === 0 ? (
                 <div style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
-                  {filter.trim() ? t("chat.noMatchingModels") : "No available models"}
+                  No available models
                 </div>
               ) : modelsByProvider.map((group, index) => (
                 <div key={group.provider}>

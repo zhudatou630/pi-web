@@ -30,57 +30,6 @@ import type {
   ThinkingContent,
 } from "@/lib/types";
 
-// CJK chars ~1 token each (GLM/DeepSeek/GPT-o200k); other chars ~4 chars/token.
-const CJK_PATTERN = /[\u3000-\u30ff\u3400-\u9fff\uf900-\ufaff\u{20000}-\u{2fa1f}\uac00-\ud7af]/u;
-function estimateTokens(text: string): number {
-  let cjk = 0;
-  let rest = 0;
-  for (const ch of text) {
-    if (CJK_PATTERN.test(ch)) cjk++;
-    else rest++;
-  }
-  return cjk + rest / 4;
-}
-
-interface TokenEstimateCacheEntry {
-  text: string;
-  tokens: number;
-}
-
-export function getTokenEstimateText(block: AssistantContentBlock): string | null {
-  if (block.type === "text") return block.text;
-  if (block.type === "thinking") return block.thinking;
-  if (block.type === "toolCall") return block.rawInput ?? JSON.stringify(block.input ?? {}) ?? "";
-  return null;
-}
-
-function isHighSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xd800 && codeUnit <= 0xdbff;
-}
-
-function isLowSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
-}
-
-function estimateUpdatedTokens(previous: TokenEstimateCacheEntry | undefined, text: string): number {
-  if (!previous || !text.startsWith(previous.text)) return estimateTokens(text);
-
-  let baseTokens = previous.tokens;
-  let suffixStart = previous.text.length;
-  // A streamed delta can complete a surrogate pair that was counted as two
-  // non-CJK code points in the previous update.
-  if (
-    suffixStart > 0
-    && suffixStart < text.length
-    && isHighSurrogate(previous.text.charCodeAt(suffixStart - 1))
-    && isLowSurrogate(text.charCodeAt(suffixStart))
-  ) {
-    baseTokens -= 1 / 4;
-    suffixStart--;
-  }
-  return baseTokens + estimateTokens(text.slice(suffixStart));
-}
-
 const MAX_THINKING_CACHE_ENTRIES = 100;
 const thinkingContentCache = new Map<string, Promise<string>>();
 
@@ -181,9 +130,9 @@ function loadThinkingContent(sessionId: string, entryId: string, blockIndex: num
 
 interface Props {
   message: AgentMessage;
+  modelName?: string;
   isStreaming?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
-  modelNames?: Record<string, string>;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
   onOpenSession?: (sessionId: string) => void;
@@ -194,7 +143,7 @@ interface Props {
   onNavigate?: (entryId: string) => void;
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage) => void;
-  showTimestamp?: boolean;
+  isTurnEnd?: boolean;
   prevTimestamp?: number;
   sessionId?: string;
   /**
@@ -252,12 +201,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, prevTimestamp, sessionId, writtenFiles }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -277,7 +226,6 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
   return prev.message === next.message
     && prev.isStreaming === next.isStreaming
     && haveSameRelevantToolResults(prev.message, prev.toolResults, next.toolResults)
-    && prev.modelNames === next.modelNames
     && prev.cwd === next.cwd
     && prev.onOpenFile === next.onOpenFile
     && prev.onOpenSession === next.onOpenSession
@@ -288,7 +236,8 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.onNavigate === next.onNavigate
     && prev.prevAssistantEntryId === next.prevAssistantEntryId
     && prev.onEditContent === next.onEditContent
-    && prev.showTimestamp === next.showTimestamp
+    && prev.isTurnEnd === next.isTurnEnd
+    && prev.modelName === next.modelName
     && prev.prevTimestamp === next.prevTimestamp
     && prev.writtenFiles === next.writtenFiles
     && prev.sessionId === next.sessionId;
@@ -385,7 +334,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             minWidth: 0,
             background: "var(--user-bg)",
             border: "1px solid rgba(59,130,246,0.2)",
-            borderRadius: 12,
+            borderRadius: 6,
             padding: "8px 12px",
             fontSize: "calc(14px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.6,
@@ -577,13 +526,13 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
 function AssistantMessageView({
   message,
+  modelName,
   isStreaming,
   toolResults,
-  modelNames,
   cwd,
   onOpenFile,
   onOpenSession,
-  showTimestamp,
+  isTurnEnd,
   prevTimestamp,
   sessionId,
   entryId,
@@ -591,13 +540,13 @@ function AssistantMessageView({
   writtenFiles,
 }: {
   message: AssistantMessage;
+  modelName?: string;
   isStreaming?: boolean;
   toolResults?: Map<string, ToolResultMessage>;
-  modelNames?: Record<string, string>;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
   onOpenSession?: (sessionId: string) => void;
-  showTimestamp?: boolean;
+  isTurnEnd?: boolean;
   prevTimestamp?: number;
   sessionId?: string;
   entryId?: string;
@@ -605,38 +554,26 @@ function AssistantMessageView({
   writtenFiles?: WrittenFile[];
 }) {
   const { t } = useI18n();
-  const time = showTimestamp ? formatTime(message.timestamp) : null;
+  const [copied, setCopied] = useState(false);
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
-  const [hovered, setHovered] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const streamStartRef = useRef<number | null>(null);
-  const [tps, setTps] = useState<number | null>(null);
+  const textContent = blocks
+    .filter((block): block is TextContent => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+  const time = isTurnEnd && !isStreaming ? formatTime(message.timestamp) : null;
+  const showFooter = isTurnEnd && !isStreaming && Boolean(textContent || time);
+  const copyContent = () => {
+    copyText(textContent).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
-  const tokenEstimateCacheRef = useRef<Map<number, TokenEstimateCacheEntry>>(new Map());
-  const estimatedTokens = useMemo(() => {
-    if (!isStreaming) {
-      tokenEstimateCacheRef.current = new Map();
-      return 0;
-    }
-    const nextCache = new Map<number, TokenEstimateCacheEntry>();
-    let total = 0;
-    for (const { block, originalIndex } of blockItems) {
-      const text = getTokenEstimateText(block);
-      if (text === null) continue;
-      const tokens = estimateUpdatedTokens(tokenEstimateCacheRef.current.get(originalIndex), text);
-      nextCache.set(originalIndex, { text, tokens });
-      total += tokens;
-    }
-    tokenEstimateCacheRef.current = nextCache;
-    return total;
-  }, [blockItems, isStreaming]);
-  const estimatedTokensRef = useRef(estimatedTokens);
-  estimatedTokensRef.current = estimatedTokens;
 
   // Streaming-based timing for thinking blocks
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
@@ -665,18 +602,6 @@ function AssistantMessageView({
     return map;
   }, [toolResults, message.timestamp]);
 
-  const textContent = blocks
-    .filter((b): b is TextContent => b.type === "text")
-    .map((b) => b.text)
-    .join("\n");
-
-  const copyContent = () => {
-    copyText(textContent).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-
   useEffect(() => {
     if (!isStreaming) {
       // Finalise any un-finished thinking block durations on stream end
@@ -688,8 +613,6 @@ function AssistantMessageView({
         }
         return next;
       });
-      streamStartRef.current = null;
-      setTps(null);
       return;
     }
     const tick = () => {
@@ -718,11 +641,6 @@ function AssistantMessageView({
         return changed ? next : prev;
       });
 
-      const tokens = estimatedTokensRef.current;
-      if (tokens === 0) return;
-      if (streamStartRef.current === null) streamStartRef.current = now;
-      const elapsed = (now - streamStartRef.current) / 1000;
-      if (elapsed > 0.5) setTps(tokens / elapsed);
     };
     const id = setInterval(tick, 300);
     return () => clearInterval(id);
@@ -734,51 +652,13 @@ function AssistantMessageView({
     <div
       data-message-role="assistant"
       data-entry-id={entryId}
-      style={{ marginBottom: 16 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      style={{ marginBottom: isTurnEnd ? 16 : 8 }}
     >
-      {/* Model label */}
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--text-dim)",
-          marginBottom: 4,
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {message.provider && (
-          <span>{modelNames?.[`${message.provider}:${message.model}`] ?? modelNames?.[message.model] ?? message.model}</span>
-        )}
-        {isStreaming && (() => {
-          const est = Math.round(estimatedTokens);
-          return (
-            <>
-
-              {est > 0 && (
-                <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)" }} title={t("i18n.estimatedTokens")}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 400 }}>
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                    </svg>
-                    {est}
-                  </span>
-                  {tps !== null && (() => {
-                    const bg = tps >= 50 ? "#53b3cb" : tps >= 30 ? "#9bc53d" : tps >= 15 ? "#f9c22e" : "#e01a4f";
-                    return (
-                      <span style={{ marginLeft: 6, padding: "1px 6px", borderRadius: 4, background: bg, color: "#fff", fontSize: 11, fontWeight: 400 }}>
-                        {tps.toFixed(1)} t/s
-                      </span>
-                    );
-                  })()}
-                </span>
-              )}
-            </>
-          );
-        })()}
-      </div>
+      {isTurnEnd && !isStreaming && (modelName || message.model) && (
+        <div data-answer-model style={{ marginBottom: 4, color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-ui)" }}>
+          {modelName || message.model}
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {blockItems.map(({ block, originalIndex }) => (
@@ -811,51 +691,26 @@ function AssistantMessageView({
         <TurnWrittenFiles files={writtenFiles} onOpenFile={onOpenFile} />
       )}
 
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginTop: 4,
-      }}>
-        {message.usage && !isStreaming && (
-          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-            {formatUsage(message.usage)}
-          </div>
-        )}
-        {textContent && !isStreaming && (
-          <button
-            onClick={copyContent}
-             title={t("i18n.copyMessage")}
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              padding: "3px 8px", height: 22,
-              background: "none", border: "none",
-              borderRadius: 5,
-              color: copied ? "var(--accent)" : "var(--text-dim)",
-              cursor: "pointer",
-              fontSize: 11, fontWeight: 400,
-              whiteSpace: "nowrap",
-              opacity: hovered ? 1 : 0,
-              pointerEvents: hovered ? "auto" : "none",
-              transition: "opacity 0.12s, color 0.12s",
-            }}
-            onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
-            onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
-          >
-            {copied ? (
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
+      {showFooter && (
+        <div data-answer-footer style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 6, fontFamily: "var(--font-ui)" }}>
+          {textContent && (
+            <button
+              type="button"
+              className="answer-copy-button"
+              onClick={copyContent}
+              title={t("i18n.copyMessage")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 28, padding: "3px 6px", border: "none", borderRadius: 4, background: "none", color: copied ? "var(--accent)" : "var(--text-dim)", fontSize: 11, cursor: "pointer" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                {copied ? <polyline points="20 6 9 17 4 12" /> : <><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>}
               </svg>
-            ) : (
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            )}
-             {copied ? t("i18n.copied") : t("i18n.copy")}
-          </button>
-        )}
-        {time && !isStreaming && (
-          <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto" }}>{time}</span>
-        )}
-      </div>
+              {copied ? t("i18n.copied") : t("i18n.copy")}
+            </button>
+          )}
+          {time && <span style={{ color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
+        </div>
+      )}
+
     </div>
   );
 }
@@ -877,7 +732,7 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
 }
 
 function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
-  return <SafeMarkdownBody isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
+  return <SafeMarkdownBody className="markdown-assistant-message" isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
 }
 
 export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
@@ -938,7 +793,7 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
     <div style={{
       display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0,
       border: "1px solid var(--border)",
-      borderRadius: 7,
+      borderRadius: 4,
       padding: "6px 10px",
       background: "var(--bg)",
       fontFamily: "var(--font-mono)",
@@ -1021,7 +876,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
   return (
     <div
       style={{
-        borderRadius: 7,
+        borderRadius: 4,
         overflow: "hidden",
         fontSize: 12,
         border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(34,197,94,0.25)",
@@ -1725,22 +1580,6 @@ function getToolPreview(block: ToolCallContent): string {
 
   const first = input[keys[0]];
   return String(first).slice(0, 120);
-}
-
-function formatUsage(usage: {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  cost: { total: number };
-}): string {
-  const parts = [];
-  if (usage.input) parts.push(`${usage.input.toLocaleString()} in`);
-  if (usage.output) parts.push(`${usage.output.toLocaleString()} out`);
-  if (usage.cacheRead) parts.push(`${usage.cacheRead.toLocaleString()} cache R`);
-  if (usage.cacheWrite) parts.push(`${usage.cacheWrite.toLocaleString()} cache W`);
-  if (usage.cost?.total) parts.push(`$${usage.cost.total.toFixed(4)}`);
-  return parts.join(" · ");
 }
 
 function BashExecutionView({ message, sessionId }: { message: BashExecutionMessage; sessionId?: string }) {

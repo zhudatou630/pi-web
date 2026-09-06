@@ -4,32 +4,52 @@ import test from "node:test";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
-const { getSessionListIndices } = await jiti.import("./SessionSidebar.tsx");
+const { getSessionListIndices, SessionItem } = await jiti.import("./SessionSidebar.tsx");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 const sessionItemSource = source.slice(source.indexOf("function SessionItem("));
 
+test("session rows use one compact line without message counts", async () => {
+  const React = await jiti.import("react");
+  const { renderToStaticMarkup } = await jiti.import("react-dom/server");
+  const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+  const title = "A complete title " + "long enough to overflow ".repeat(5);
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SessionItem, {
+    session: { id: "example", name: title, firstMessage: "", modified: new Date(Date.now() - 120 * 60_000).toISOString(), messageCount: 987654 },
+    isSelected: true,
+    onClick() {},
+  })));
+  assert.match(html, /height:28px/);
+  assert.doesNotMatch(html, /min-width:60px/);
+  assert.match(html, /text-overflow:ellipsis;white-space:nowrap/);
+  assert.ok(html.includes(`title="${title}"`));
+  assert.match(html, />2h<\/span>/);
+  assert.doesNotMatch(html, /987654|msgs|messagesCount/);
+  assert.match(html, /class="session-row-meta"/);
+  assert.match(html, /class="session-row-actions"/);
+});
+
 test("scrolling keeps the focused session and the viewport mounted without expanding the whole window", () => {
   for (const [scrollTop, focusedIndex] of [[0, 1999], [10000, 0]]) {
     const indices = getSessionListIndices(2000, scrollTop, 335, focusedIndex);
-    const firstVisible = Math.floor(scrollTop / 54);
-    const lastVisible = Math.ceil((scrollTop + 335) / 54) - 1;
+    const firstVisible = Math.floor(scrollTop / 28);
+    const lastVisible = Math.ceil((scrollTop + 335) / 28) - 1;
     for (let index = firstVisible; index <= lastVisible; index++) assert.ok(indices.includes(index));
     assert.ok(indices.includes(focusedIndex));
-    assert.equal(indices.length, 24);
+    assert.equal(indices.length, 29);
     assert.equal(new Set(indices).size, indices.length);
     assert.deepEqual(indices, [...indices].sort((a, b) => a - b));
   }
-  assert.equal(getSessionListIndices(2000, 0, 335, 3).length, 23);
+  assert.equal(getSessionListIndices(2000, 0, 335, 3).length, 28);
   const blurred = getSessionListIndices(2000, 10000, 335);
-  assert.equal(blurred.length, 23);
+  assert.equal(blurred.length, 28);
   assert.ok(!blurred.includes(0));
 });
 
 test("session windows stay valid after a project shrinks and before the viewport is measured", () => {
   assert.deepEqual(getSessionListIndices(5, 80000, 335, 1999), [0, 1, 2, 3, 4]);
   assert.deepEqual(getSessionListIndices(0, 80000, 335, 1999), []);
-  assert.equal(getSessionListIndices(2000, 0, 0).length, 28);
+  assert.equal(getSessionListIndices(2000, 0, 0).length, 38);
 });
 
 test("only Shift+click bypasses session deletion confirmation", () => {
@@ -88,9 +108,9 @@ test("includes project activity counts in accessible labels", () => {
 });
 
 test("formats session timestamps with the active locale", () => {
-  assert.match(source, /import \{ formatRelativeTime \} from "@\/lib\/i18n\/format"/);
+  assert.match(source, /import \{ formatCompactRelativeTime \} from "@\/lib\/i18n\/format"/);
   assert.match(sessionItemSource, /const \{ locale, t \} = useI18n\(\)/);
-  assert.match(sessionItemSource, /formatRelativeTime\(session\.modified, locale\)/);
+  assert.match(sessionItemSource, /formatCompactRelativeTime\(session\.modified, locale\)/);
 });
 
 test("does not persist an unchanged fallback title ending in whitespace", () => {
@@ -119,7 +139,7 @@ test("lifecycle refreshes bypass the cache while cross-window polling reuses it"
 
 test("does not expose disk-backed actions for transient sessions", () => {
   assert.match(sessionItemSource, /if \(session\.transient\) return;/);
-  assert.match(sessionItemSource, /\{hovered && !session\.transient && \(/);
+  assert.match(sessionItemSource, /\{!session\.transient && \(\s*<div className="session-row-actions"/);
 });
 
 test("hides subagent rows and aggregates their state into the main session row", () => {

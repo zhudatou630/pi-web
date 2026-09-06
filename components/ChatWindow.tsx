@@ -133,7 +133,7 @@ function NewSessionUpdateLink({
         minWidth: 0,
         padding: "0 4px",
         background: "transparent",
-        borderRadius: 5,
+        borderRadius: 4,
         color: "var(--accent)",
         fontSize: 12,
         fontWeight: 600,
@@ -1143,7 +1143,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; writtenFiles?: WrittenFile[] } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[] } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -1153,26 +1153,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 const currentRefIdx = visibleRefIndexByMessage.get(idx);
                 const keyPrefix = options.keyPrefix ?? "message";
                 const messageKey = entryIds[idx] ?? idx;
-                let showTimestamp = false;
-                if (msg.role === "assistant") {
-                  showTimestamp = true;
-                  for (let j = idx + 1; j < messages.length; j++) {
-                    const r = messages[j].role;
-                    if (r === "user") break;
-                    if (r === "assistant") { showTimestamp = false; break; }
-                  }
-                  // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
-                  if (showTimestamp && streamState.isStreaming && idx === messages.length - 1) {
-                    showTimestamp = false;
-                  }
-                }
-                if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
                 const view = (
                   <MessageView
                     key={`${keyPrefix}-view-${messageKey}`}
                     message={msg}
+                    modelName={options.isTurnEnd && msg.role === "assistant"
+                      ? modelNames[`${msg.provider}:${msg.model}`] ?? modelNames[msg.model]
+                      : undefined}
                     toolResults={toolResultsMap}
-                    modelNames={modelNames}
                     cwd={messageCwd}
                     onOpenFile={onOpenFile}
                     onOpenSession={onOpenSession}
@@ -1183,7 +1171,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     onNavigate={sessionBusy ? undefined : handleNavigate}
                     prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
                     onEditContent={handleEditContent}
-                    showTimestamp={showTimestamp}
+                    isTurnEnd={options.isTurnEnd}
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
@@ -1265,7 +1253,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     attachRef: false,
                     keyPrefix: "process",
                     messageOverride: message,
-                    showTimestamp: false,
+                    isTurnEnd: false,
                   }));
                 }
 
@@ -1297,6 +1285,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   }
                   const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
                   rendered.push(renderMessage(finalAssistantIdx, {
+                    isTurnEnd: true,
                     messageOverride: finalAnswerMessage,
                     writtenFiles,
                   }));
@@ -1326,7 +1315,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               );
             })()}
             {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
-              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming modelNames={modelNames} cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
+              <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
             )}
 
             {agentRunning && !hasStreamingContent && agentPhase && (
@@ -1391,7 +1380,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             overflowY: "auto",
             padding: quoteInputOpen ? 12 : 3,
             border: "1px solid var(--border)",
-            borderRadius: 6,
+            borderRadius: 4,
             background: "var(--bg)",
             boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
           }}
@@ -1530,7 +1519,7 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
               pointerEvents: "auto",
               marginBottom: index === notices.length - 1 ? 0 : 6,
               overflow: "hidden",
-              borderRadius: 14,
+              borderRadius: 4,
               border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
               background: "var(--bg)",
               color: "var(--text-muted)",
@@ -1660,7 +1649,7 @@ function ExtensionDialog({
             width: "100%",
             padding: "10px 12px",
             border: "1px solid var(--border)",
-            borderRadius: 8,
+            borderRadius: 4,
             background: "var(--bg)",
             boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
             color: "var(--text)",
@@ -1695,7 +1684,7 @@ function ExtensionDialog({
           display: "flex",
           flexDirection: "column",
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: 4,
           background: "var(--bg)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
           overflow: "hidden",
@@ -1720,7 +1709,7 @@ function ExtensionDialog({
               placeItems: "center",
               width: 28,
               height: 28,
-              borderRadius: 6,
+              borderRadius: 4,
               border: "1px solid var(--border)",
               background: "var(--bg-panel)",
               color: "var(--text-muted)",
@@ -1767,7 +1756,7 @@ function ExtensionDialog({
                   style={{
                     width: "100%",
                     padding: "9px 10px",
-                    borderRadius: 7,
+                    borderRadius: 4,
                     border: "1px solid var(--border)",
                     background: "var(--bg-panel)",
                     color: "var(--text)",
@@ -1794,7 +1783,7 @@ function ExtensionDialog({
               style={{
                 width: "100%",
                 padding: "9px 10px",
-                borderRadius: 7,
+                borderRadius: 4,
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text)",
@@ -1815,7 +1804,7 @@ function ExtensionDialog({
                 width: "100%",
                 minHeight: 220,
                 padding: 10,
-                borderRadius: 7,
+                borderRadius: 4,
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text)",
@@ -1835,7 +1824,7 @@ function ExtensionDialog({
             onClick={() => onRespond(request, { cancelled: true })}
             style={{
               padding: "6px 10px",
-              borderRadius: 6,
+              borderRadius: 4,
               border: "1px solid var(--border)",
               background: "var(--bg)",
               color: "var(--text-muted)",
@@ -1849,7 +1838,7 @@ function ExtensionDialog({
               onClick={submitValue}
               style={{
                 padding: "6px 10px",
-                borderRadius: 6,
+                borderRadius: 4,
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
                 color: "#fff",
@@ -1863,7 +1852,7 @@ function ExtensionDialog({
               onClick={submitValue}
               style={{
                 padding: "6px 10px",
-                borderRadius: 6,
+                borderRadius: 4,
                 border: "1px solid var(--accent)",
                 background: "var(--accent)",
                 color: "#fff",
@@ -1927,7 +1916,7 @@ function ExtensionCustomPanel({
             width: "100%",
             padding: "10px 12px",
             border: "1px solid var(--border)",
-            borderRadius: 8,
+            borderRadius: 4,
             background: "var(--bg)",
             boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
             color: "var(--text)",
@@ -1964,7 +1953,7 @@ function ExtensionCustomPanel({
           display: "flex",
           flexDirection: "column",
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: 4,
           background: "var(--bg)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
           overflow: "hidden",
@@ -2033,7 +2022,7 @@ function ExtensionCustomPanel({
                 placeItems: "center",
                 width: 28,
                 height: 28,
-                borderRadius: 6,
+                borderRadius: 4,
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text-muted)",
@@ -2049,7 +2038,7 @@ function ExtensionCustomPanel({
               onClick={() => onInput(request, "\x03")}
               style={{
                 padding: "5px 9px",
-                borderRadius: 6,
+                borderRadius: 4,
                 border: "1px solid var(--border)",
                 background: "var(--bg-panel)",
                 color: "var(--text-muted)",

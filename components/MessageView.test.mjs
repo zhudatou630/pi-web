@@ -11,7 +11,6 @@ const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const {
   MessageView,
   ThinkingBlock,
-  getTokenEstimateText,
   getToolCallInputText,
   replaceUserMessageText,
 } = await jiti.import("./MessageView.tsx");
@@ -94,7 +93,7 @@ test("marks only the matched text block after splitting thinking and the final a
   }
 });
 
-test("keeps streamed tool input out of collapsed markup while counting it", () => {
+test("keeps streamed tool input out of collapsed markup", () => {
   const block = {
     type: "toolCall",
     toolCallId: "call-write-1",
@@ -113,7 +112,55 @@ test("keeps streamed tool input out of collapsed markup while counting it", () =
   assert.match(html, /Generating parameters/);
   assert.doesNotMatch(html, /secret-stream-fragment/);
   assert.equal(getToolCallInputText(block), block.rawInput);
-  assert.equal(getTokenEstimateText(block), block.rawInput);
+});
+
+test("omits model labels, usage and copy footers from assistant replies", () => {
+  for (const isStreaming of [false, true]) {
+    for (const content of [
+      [{ type: "text", text: "Visible reply" }],
+      [{ type: "toolCall", toolCallId: "read-usage", toolName: "read", input: { path: "/tmp/example" } }],
+    ]) {
+      const html = renderMessage({
+        role: "assistant",
+        provider: "openai",
+        model: "test-model",
+        content,
+        usage: { input: 246, output: 267, cacheRead: 61568, cacheWrite: 10, cost: { total: 0.0774 } },
+      }, { isStreaming });
+      assert.doesNotMatch(html, /test-model|title="Copy message"/);
+      assert.match(html, content[0].type === "text" ? /Visible reply/ : /read/);
+      assert.doesNotMatch(html, /246 in|267 out|cache R|cache W|\$0\.0774|Estimated token count| t\/s/);
+      assert.match(html, /data-message-role="assistant"[^>]*style="margin-bottom:8px"/);
+    }
+  }
+});
+
+test("restores copy and time only on a completed final answer", () => {
+  const timestamp = Date.now();
+  const message = {
+    role: "assistant",
+    provider: "openai",
+    model: "hidden-model",
+    content: [{ type: "text", text: "Final answer" }],
+    timestamp,
+    usage: { input: 246, output: 267, cacheRead: 0, cacheWrite: 0, cost: { total: 0.0774 } },
+  };
+  const html = renderMessage(message, { isTurnEnd: true, modelName: "GPT-6 Astra" });
+  assert.match(html, /data-answer-model[^>]*>GPT-6 Astra<\/div>/);
+  assert.equal((html.match(/GPT-6 Astra/g) ?? []).length, 1);
+  const fallbackHtml = renderMessage(message, { isTurnEnd: true });
+  assert.match(fallbackHtml, /data-answer-model[^>]*>hidden-model<\/div>/);
+  assert.match(html, /margin-bottom:16px/);
+  assert.match(html, /data-answer-footer[^>]*justify-content:flex-end/);
+  assert.doesNotMatch(html.slice(html.indexOf("data-answer-footer")), /margin-left:auto/);
+  assert.match(html, /title="Copy message"/);
+  assert.ok(html.includes(new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
+  assert.doesNotMatch(html, /opacity:0|hidden-model|246 in|267 out|\$0\.0774/);
+
+  for (const props of [{ isTurnEnd: false }, { isTurnEnd: true, isStreaming: true }]) {
+    const processHtml = renderMessage(message, { ...props, modelName: "GPT-6 Astra" });
+    assert.doesNotMatch(processHtml, /data-answer-model|GPT-6 Astra|hidden-model|data-answer-footer|title="Copy message"|font-size:10px/);
+  }
 });
 
 test("renders subagents as standard tool calls with only an extra session button", () => {

@@ -11,7 +11,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterModelOptions, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
+const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("@/lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
@@ -75,6 +75,40 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
       ...keys,
     });
     assert.equal(action, expected, name);
+  }
+});
+
+test("keeps the main composer compact in idle and streaming states", () => {
+  for (const isStreaming of [false, true]) {
+    const html = renderToStaticMarkup(React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ChatInput, {
+        onSend() {}, onAbort() {}, onSteer() {}, onFollowUp() {}, isStreaming,
+      }),
+    ));
+    assert.match(html, /padding:4px 6px 4px 10px/);
+    assert.match(html, /<textarea[^>]*rows="1"[^>]*min-height:24px;max-height:200px/);
+    const buttons = html.match(/<button[^>]*height:28px;padding:0 10px[^>]*>/g) ?? [];
+    assert.equal(buttons.length, isStreaming ? 2 : 1);
+  }
+});
+
+test("keeps the message input free of hints but accessible", () => {
+  for (const compact of [false, true]) {
+    for (const isStreaming of [false, true]) {
+      const html = renderToStaticMarkup(React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(ChatInput, {
+          onSend() {}, onAbort() {}, onSteer() {}, onFollowUp() {}, compact, isStreaming,
+        }),
+      ));
+      const textarea = html.match(/<textarea\b[^>]*>/)?.[0];
+      assert.ok(textarea);
+      assert.doesNotMatch(textarea, /placeholder=/);
+      assert.match(textarea, /aria-label="[^"]+"/);
+    }
   }
 });
 
@@ -209,7 +243,8 @@ test("renders the compact composer with the standard Send button and no session 
   );
 
   assert.match(html, /<textarea/);
-  assert.match(html, />Send<\/button>/);
+  assert.match(html, /aria-label="Send"/);
+  assert.match(html, /class="chat-input-action-label">Send<\/span>/);
   assert.equal((html.match(/<button\b/g) ?? []).length, 1);
   assert.doesNotMatch(html, /type="file"|Attach image|Change tool preset/);
 });
@@ -238,19 +273,12 @@ test("shows and locks the optimistic model while a switch is pending", () => {
   assert.match(html, /animation:spin 0\.8s linear infinite/);
 });
 
-test("filters model options by name and id", () => {
-  const options = [
-    { provider: "ollama", modelId: "qwen3:latest", name: "Qwen 3" },
-    { provider: "anthropic", modelId: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
-    { provider: "openai", modelId: "gpt-5.4", name: "GPT-5.4" },
-  ];
-
-  assert.deepEqual(filterModelOptions(options, "QWEN"), [options[0]]);
-  assert.deepEqual(filterModelOptions(options, "claude-sonnet"), [options[1]]);
-  assert.equal(filterModelOptions(options, "OpenAI").length, 0);
-  assert.equal(filterModelOptions(options, "anthropic/claude").length, 0);
-  assert.equal(filterModelOptions(options, "missing").length, 0);
-  assert.equal(filterModelOptions(options, "  "), options);
+test("keeps the model name left aligned beside its icon", () => {
+  const html = renderToStaticMarkup(React.createElement(ModelSelector, {
+    options: [{ provider: "openai", modelId: "gpt-test", name: "GPT Test" }],
+    value: { provider: "openai", modelId: "gpt-test" }, onChange() {},
+  }));
+  assert.match(html, /justify-content:flex-start;text-align:left;gap:6px/);
 });
 
 test("renders the shared field model selector as a disabled gray control", () => {

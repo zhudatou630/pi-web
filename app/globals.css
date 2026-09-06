@@ -36,6 +36,8 @@
   --bg-subtle: rgba(0,0,0,0.03);
   --chat-content-max-width: 820px;
   --chat-content-font-size: 14px;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-chat: Georgia, var(--font-noto-serif-sc), 'Songti SC', 'SimSun', serif;
 }
 
 html.dark {
@@ -119,7 +121,7 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-ui);
   font-size: 14px;
   overscroll-behavior: none;
 }
@@ -586,7 +588,7 @@ pre, code {
   overflow-x: auto;
   overflow-y: hidden;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 4px;
 }
 .markdown-body table {
   border-collapse: separate;
@@ -623,6 +625,23 @@ pre, code {
 }
 .markdown-body .katex {
   font-size: 1.05em;
+}
+@media (hover: hover) and (pointer: fine) {
+  .answer-copy-button {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  [data-message-role="assistant"]:hover .answer-copy-button,
+  [data-message-role="assistant"]:focus-within .answer-copy-button {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.markdown-assistant-message,
+.markdown-user-message {
+  font-family: var(--font-chat);
 }
 .markdown-user-message p {
   white-space: pre-wrap;
@@ -726,12 +745,13 @@ pre, code {
   max-width: 100%;
   margin: 6px 0;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 4px;
   overflow: hidden;
   background: var(--bg);
   box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 42%, transparent);
 }
 .markdown-code-header {
+  font-family: var(--font-ui);
   padding: 5px 10px;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
@@ -754,7 +774,7 @@ pre, code {
 }
 .markdown-code-action {
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 4px;
   padding: 2px 7px;
   background: var(--bg);
   color: var(--text-muted);
@@ -1367,6 +1387,22 @@ span.token.table {
   display: none;
 }
 
+.session-row-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.session-list-row:hover .session-row-actions,
+.session-list-row:focus-within .session-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.session-list-row:has(.session-row-actions):hover .session-row-meta,
+.session-list-row:has(.session-row-actions):focus-within .session-row-meta {
+  opacity: 0;
+}
+
 /* Desktop sidebar: animate width */
 @media (min-width: 641px) {
   .sidebar-overlay-backdrop {
@@ -1468,8 +1504,50 @@ span.token.table {
   }
 }
 
+.chat-input:not(.is-compact) .chat-input-composer:focus-within {
+  border-color: var(--accent) !important;
+}
+
 /* Mobile sidebar: slide in/out as overlay */
 @media (max-width: 640px) {
+  /* Hide auxiliary extension widgets/statuses, not interactive dialogs. */
+  .extension-status-shelf {
+    display: none;
+  }
+
+  :root {
+    --font-chat: var(--font-ui);
+  }
+
+  .chat-input:not(.is-compact) {
+    padding: 0 10px 6px !important;
+  }
+
+  .chat-input:not(.is-compact) .chat-input-composer {
+    padding: 2px 2px 2px 10px !important;
+    border-color: var(--border) !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+  }
+
+  .chat-input-action {
+    width: 36px;
+    min-width: 36px;
+    height: 36px !important;
+    padding: 0 !important;
+    justify-content: center;
+  }
+
+  .chat-input-action svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  .chat-input-action-label {
+    display: none;
+  }
+
   .chat-stats-center {
     display: none !important;
   }
@@ -1536,6 +1614,6 @@ span.token.table {
     font-size: 16px !important;
   }
   .chat-input-textarea {
-    font-size: max(16px, var(--chat-content-font-size, 14px)) !important;
+    font-size: var(--chat-content-font-size, 14px) !important;
   }
 }
