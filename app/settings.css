@@ -937,6 +937,27 @@
   line-height: 1.5;
 }
 
+.settings-font-link-row {
+  display: flex;
+  align-items: center;
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
+.settings-font-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  font-size: 11px;
+  text-decoration: none;
+  transition: color 0.12s;
+}
+
+.settings-font-link:hover {
+  text-decoration: underline;
+}
+
 .settings-theme-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
