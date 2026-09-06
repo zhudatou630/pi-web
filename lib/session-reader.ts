@@ -478,12 +478,25 @@ export function buildSessionContext(
   };
 }
 
+/** Same roles ChatWindow uses to fold a turn: user prompt or compaction summary. */
+function isSessionGroupAnchor(entry: SessionEntry): boolean {
+  return entry.type === "compaction"
+    || (entry.type === "message" && entry.message.role === "user");
+}
+
+/** Hard cap when extending a tail page back to the nearest turn anchor. */
+const SESSION_TAIL_ANCHOR_LIMIT = 1000;
+
 /**
  * Extract the ancestor chain from `leafId` back toward the root, capped at
  * `tail` entries (most-recent first after the final reverse). Iterative: a
  * linear session's chain length equals its entry count, so a recursive walk
  * would overflow the stack. The result is still a valid prefix of the active
  * branch — older history is loaded on demand via pagination.
+ *
+ * After the tail count, keep walking until the oldest entry is a group anchor
+ * (user / compaction) or `SESSION_TAIL_ANCHOR_LIMIT`, so a page does not start
+ * mid-turn and leave tool calls unfolded.
  */
 export function sliceActiveBranch(
   entries: SessionEntry[],
@@ -503,6 +516,16 @@ export function sliceActiveBranch(
   const chain: SessionEntry[] = [];
   let current: SessionEntry | undefined = leaf;
   while (current && chain.length < tail) {
+    chain.push(current);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  // chain is newest-first; last item is the oldest in the counted tail.
+  const limit = Math.max(tail, SESSION_TAIL_ANCHOR_LIMIT);
+  while (
+    current
+    && chain.length < limit
+    && !isSessionGroupAnchor(chain[chain.length - 1]!)
+  ) {
     chain.push(current);
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
