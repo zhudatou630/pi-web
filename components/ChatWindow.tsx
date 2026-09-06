@@ -204,14 +204,52 @@ function withAssistantBlocks(
   return next;
 }
 
-function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = false, reveal = false, children, t }: { messageCount: number; toolCallCount: number; defaultExpanded?: boolean; reveal?: boolean; children: ReactNode; t: (key: string, params?: Record<string, string | number>) => string }) {
+function ProcessDetailsGroup({
+  messageCount,
+  toolCallCount,
+  defaultExpanded = false,
+  reveal = false,
+  isMobile = false,
+  children,
+  t,
+}: {
+  messageCount: number;
+  toolCallCount: number;
+  defaultExpanded?: boolean;
+  reveal?: boolean;
+  isMobile?: boolean;
+  children: ReactNode;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const scrollBoxRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
+
   useLayoutEffect(() => {
     if (reveal) setExpanded(true);
   }, [reveal]);
+
   const isPanelOpen = expanded || reveal;
   const parts = [t("chat.processDetails"), `${messageCount} ${t(messageCount === 1 ? "chat.message" : "chat.messages")}`];
   if (toolCallCount > 0) parts.push(`${toolCallCount} ${t(toolCallCount === 1 ? "chat.toolCall" : "chat.toolCalls")}`);
+
+  // Automatically keep scrolled to the latest step on mount/update unless user scrolled up
+  useLayoutEffect(() => {
+    if (!isPanelOpen) {
+      userScrolledUpRef.current = false;
+      return;
+    }
+    const box = scrollBoxRef.current;
+    if (!box || userScrolledUpRef.current) return;
+    box.scrollTop = box.scrollHeight;
+  }, [isPanelOpen, messageCount, toolCallCount]);
+
+  const handleBoxScroll = () => {
+    const box = scrollBoxRef.current;
+    if (!box) return;
+    const isNearBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+    userScrolledUpRef.current = !isNearBottom;
+  };
 
   return (
     <div
@@ -268,7 +306,24 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
         </span>
       </button>
       {isPanelOpen && (
-        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3, position: "relative", paddingLeft: 8 }}>
+        <div
+          ref={scrollBoxRef}
+          onScroll={handleBoxScroll}
+          style={{
+            marginTop: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 3,
+            position: "relative",
+            paddingLeft: 8,
+            paddingRight: 3,
+            maxHeight: isMobile ? 220 : 280,
+            overflowY: "auto",
+            overflowX: "hidden",
+            overscrollBehavior: "contain",
+            scrollbarWidth: "thin",
+          }}
+        >
           <div
             style={{
               position: "absolute",
@@ -1447,7 +1502,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       data-entry-id={entryIds[hasAnchor ? userIdx + 1 : firstIdx]}
                       ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
                     >
-                      <ProcessDetailsGroup messageCount={processViews.length} toolCallCount={processToolCount} defaultExpanded={!finalAnswerMessage && endIdx === messages.length} reveal={revealProcess} t={t}>
+                      <ProcessDetailsGroup messageCount={processViews.length} toolCallCount={processToolCount} defaultExpanded={!finalAnswerMessage && endIdx === messages.length} reveal={revealProcess} isMobile={isMobile} t={t}>
                         {processViews}
                       </ProcessDetailsGroup>
                     </div>,
