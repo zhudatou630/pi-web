@@ -19,7 +19,7 @@ interface Props {
   onJumpToEntry: (entryId: string) => void;
 }
 
-export const CHAT_MINIMAP_WIDTH = 36;
+export const CHAT_MINIMAP_WIDTH = 0;
 const PREVIEW_HIDE_DELAY = 180;
 
 function PreviewHeading({
@@ -157,6 +157,7 @@ export function ChatMinimap({
   const [items, setItems] = useState<SessionOutlineItem[]>([]);
   const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
+  const [thumb, setThumb] = useState({ top: 0, size: 0.18 });
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -209,6 +210,10 @@ export function ChatMinimap({
     if (!scrollEl) return;
     const outlineIds = new Set(items.map((item) => item.entryId));
     const syncActive = () => {
+      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
+      const size = maxScroll <= 0 ? 1 : Math.min(1, Math.max(0.12, scrollEl.clientHeight / scrollEl.scrollHeight));
+      const top = maxScroll <= 0 ? 0 : (scrollEl.scrollTop / maxScroll) * (1 - size);
+      setThumb({ top, size });
       const viewportTop = scrollEl.getBoundingClientRect().top;
       const nodes = scrollEl.querySelectorAll<HTMLElement>("[data-entry-id]");
       let next: string | null = null;
@@ -233,9 +238,6 @@ export function ChatMinimap({
 
   if (items.length === 0) return null;
 
-  const activeIndex = Math.max(0, items.findIndex((item) => item.entryId === activeEntryId));
-  const thumbTop = items.length <= 1 ? 8 : 8 + (activeIndex / (items.length - 1)) * (100 - 16);
-
   return (
     <div
       className={styles.rail}
@@ -243,7 +245,10 @@ export function ChatMinimap({
       onMouseLeave={hidePanel}
     >
       <div className={styles.track} aria-hidden="true">
-        <div className={styles.thumb} style={{ top: `${thumbTop}%` }} />
+        <div
+          className={styles.thumb}
+          style={{ top: `${thumb.top * 100}%`, height: `${thumb.size * 100}%` }}
+        />
       </div>
       {hovered && (
         <div
