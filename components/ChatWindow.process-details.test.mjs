@@ -11,3 +11,13 @@ test("expands process details when a completed turn has no final answer", () => 
     /<ProcessDetailsGroup[\s\S]*?defaultExpanded=\{!finalAnswerMessage\}/,
   );
 });
+
+test("folds a leading process prefix that has no user anchor", () => {
+  assert.match(source, /const hasAnchor = isMessageGroupAnchor\(messages\[idx\]\)/);
+  assert.match(source, /const userIdx = hasAnchor \? idx : -1/);
+  assert.match(source, /if \(hasAnchor\) rendered\.push\(renderMessage\(userIdx\)\)/);
+  assert.doesNotMatch(
+    source,
+    /if \(!isMessageGroupAnchor\(msg\)\) \{\s*rendered\.push\(renderMessage\(idx\)\)/,
+  );
+});
