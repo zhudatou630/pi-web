@@ -23,11 +23,12 @@ import type { ToolEntry } from "@/lib/tool-presets";
 import { findChatScrollAnchor, type ChatScrollPosition } from "@/lib/chat-scroll-position";
 import {
   captureScrollDistance,
+  getMountedRange,
   getPromptAnchorSpacerHeight,
-  getVisibleRenderWindow,
   isScrollAtTail,
+  MOUNT_WINDOW_SHIFT,
+  MOUNTED_GROUP_LIMIT,
   restoreScrollTop,
-  VISIBLE_PAGE_SIZE,
 } from "@/lib/chat-lazy-load";
 
 interface Props {
@@ -460,10 +461,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [sessionBusy, handleAbort]);
 
   // --- Lazy-load historical messages ---
-  // Only render the last N messages initially. When the user scrolls to the
-  // top, load another page while keeping the scroll position stable.
-  const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE);
+  // Mount at most MOUNTED_GROUP_LIMIT grouped nodes. Scroll-up either slides
+  // that window toward older in-memory groups or fetches the next server page.
+  const [unmountedNewerCount, setUnmountedNewerCount] = useState(0);
+  const [mountLimit, setMountLimit] = useState(MOUNTED_GROUP_LIMIT);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const newerSentinelRef = useRef<HTMLDivElement>(null);
+  const mountedRangeRef = useRef({ startIndex: 0, endIndex: 0 });
+  const pendingWindowAnchorRef = useRef<{ anchorEntryId: string; anchorOffset: number } | null>(null);
   const messageContentRef = useRef<HTMLDivElement | null>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
   const loadingOlderRef = useRef(false);
@@ -521,7 +526,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const locate = async () => {
       const initialHistory = searchHistoryRef.current;
       if (initialHistory.entryIds.includes(position.anchorEntryId)) {
-        setVisibleCount((current) => Math.max(current, initialHistory.entryIds.length * 2));
+        setMountLimit(Number.MAX_SAFE_INTEGER);
+        setUnmountedNewerCount(0);
         setRestoreAnchorReady(true);
         return;
       }
@@ -538,7 +544,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             setPendingScrollRestore(null);
             return;
           }
-          setVisibleCount((current) => current + Math.max(VISIBLE_PAGE_SIZE, context.messages.length * 2));
+          setMountLimit(Number.MAX_SAFE_INTEGER);
+          setUnmountedNewerCount(0);
           if (context.entryIds.includes(position.anchorEntryId)) {
             setRestoreAnchorReady(true);
             return;
@@ -580,7 +587,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       scrollToBottom("instant");
       setPendingScrollRestore(null);
     }
-  }, [entryIds, pendingScrollRestore, restoreAnchorReady, scrollToBottom, scrollToMessage, searchTarget, visibleCount]);
+  }, [entryIds, pendingScrollRestore, restoreAnchorReady, scrollToBottom, scrollToMessage, searchTarget, mountLimit, unmountedNewerCount]);
 
   useEffect(() => {
     if (!searchTarget || loading) return;
@@ -600,7 +607,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       if (controller.signal.aborted) return;
       if (found) {
         prevScrollDistanceRef.current = null;
-        setVisibleCount((current) => Math.max(current, (searchHistoryRef.current.entryIds.length + 200) * 2));
+        setMountLimit(Number.MAX_SAFE_INTEGER);
+        setUnmountedNewerCount(0);
         setPendingSearchScroll(searchTarget);
       } else {
         onSearchTargetHandled?.(searchTarget);
@@ -625,8 +633,31 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     onSearchTargetHandled?.(pendingSearchScroll);
   }, [pendingSearchScroll, searchTarget, searchMessage, scrollContainerRef, scrollToMessage, onSearchTargetHandled]);
 
+  useEffect(() => {
+    setUnmountedNewerCount(0);
+    setMountLimit(MOUNTED_GROUP_LIMIT);
+  }, [session?.id]);
+
+  useEffect(() => {
+    if (sessionBusy || streamState.isStreaming) setUnmountedNewerCount(0);
+  }, [sessionBusy, streamState.isStreaming]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const onScroll = () => {
+      if (isScrollAtTail(container.scrollTop, container.clientHeight, container.scrollHeight)) {
+        setUnmountedNewerCount(0);
+        setMountLimit(MOUNTED_GROUP_LIMIT);
+      }
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [scrollContainerRef]);
+
   // IntersectionObserver on the sentinel div at the top of the message list.
-  // When it becomes visible, load the next page of older messages.
+  // Slide the mounted window toward older in-memory groups first; only then
+  // fetch the previous server page.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const container = scrollContainerRef.current;
@@ -634,10 +665,22 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[0]?.isIntersecting) return;
-        // No older history loaded yet: fetch the previous page from the server
-        // and prepend it (loadContext handles prepend + scroll anchoring).
-        // Skip while a page is already loading or nothing older exists.
         if (loadingOlderRef.current) return;
+        if (mountedRangeRef.current.startIndex > 0) {
+          const content = messageContentRef.current;
+          if (content) {
+            const viewportTop = container.getBoundingClientRect().top;
+            const candidates = Array.from(content.children).flatMap((element) => {
+              if (!(element instanceof HTMLElement) || !element.dataset.entryId) return [];
+              const rect = element.getBoundingClientRect();
+              return [{ entryId: element.dataset.entryId, top: rect.top, bottom: rect.bottom }];
+            });
+            pendingWindowAnchorRef.current = findChatScrollAnchor(candidates, viewportTop);
+          }
+          setUnmountedNewerCount((current) => current + MOUNT_WINDOW_SHIFT);
+          setMountLimit(MOUNTED_GROUP_LIMIT);
+          return;
+        }
         if (!hasEarlierMessages) return;
         const oldestId = historyCursor;
         if (!oldestId) return;
@@ -655,21 +698,41 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return () => observer.disconnect();
   }, [historyCursor, hasEarlierMessages, session, activeLeafId, loadContext, sessionIdRef, scrollContainerRef]);
 
-  // Keep the rendered window at least as large as what's loaded, so prepended
-  // (older) pages stay visible instead of being sliced off the top.
   useEffect(() => {
-    setVisibleCount((current) => Math.max(current, messages.length));
-  }, [messages.length]);
+    const sentinel = newerSentinelRef.current;
+    const container = scrollContainerRef.current;
+    if (!sentinel || !container) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        setUnmountedNewerCount((current) => Math.max(0, current - MOUNT_WINDOW_SHIFT));
+      },
+      { root: container, threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [unmountedNewerCount, scrollContainerRef]);
 
-  // After visibleCount increases (more messages prepended), restore the
-  // scroll position so the viewport doesn't jump.
+  useLayoutEffect(() => {
+    const anchor = pendingWindowAnchorRef.current;
+    const content = messageContentRef.current;
+    if (!anchor || !content) return;
+    const element = Array.from(content.children).find((candidate) => (
+      candidate instanceof HTMLElement && candidate.dataset.entryId === anchor.anchorEntryId
+    ));
+    if (element instanceof HTMLElement) {
+      scrollToMessage(element, anchor.anchorOffset);
+    }
+    pendingWindowAnchorRef.current = null;
+  }, [unmountedNewerCount, scrollToMessage]);
+
   useEffect(() => {
     if (prevScrollDistanceRef.current == null) return;
     const container = scrollContainerRef.current;
     if (!container) return;
     container.scrollTop = restoreScrollTop(container.scrollHeight, prevScrollDistanceRef.current);
     prevScrollDistanceRef.current = null;
-  }, [visibleCount, scrollContainerRef]);
+  }, [messages.length, scrollContainerRef]);
   // Push session stats up to AppShell for the top bar.
   // Compare scalar fields to avoid loops from new object identity each render.
   const statsKey = sessionStats
@@ -743,8 +806,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [messages]);
   const messageRefs = useMessageRefs(visibleMessages.length);
   const revealHistoryForMinimap = useCallback(() => {
-    setVisibleCount((current) => Math.max(current, messages.length * 2));
-  }, [messages.length]);
+    setUnmountedNewerCount((current) => current + MOUNT_WINDOW_SHIFT);
+    setMountLimit(MOUNTED_GROUP_LIMIT);
+  }, []);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
@@ -1174,7 +1238,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
                 idx = endIdx;
               }
-              const { startIndex } = getVisibleRenderWindow(rendered.length, visibleCount);
+              const { startIndex, endIndex } = getMountedRange(rendered.length, unmountedNewerCount, mountLimit);
+              mountedRangeRef.current = { startIndex, endIndex };
               const hasMore = startIndex > 0 || hasEarlierMessages;
               return (
                 <>
@@ -1183,7 +1248,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                        {t("chat.loadEarlier")}
                     </div>
                   )}
-                  {rendered.slice(startIndex)}
+                  {rendered.slice(startIndex, endIndex)}
+                  {endIndex < rendered.length && (
+                    <div ref={newerSentinelRef} className="py-3 text-center text-xs text-text-muted" />
+                  )}
                 </>
               );
             })()}
