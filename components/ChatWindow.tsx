@@ -1431,7 +1431,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
                 const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
                 const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalAnswerMessage = finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant)
+                const finalAnswerMessage = !isLiveTail && (finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant))
                   ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
                   : null;
 
@@ -1444,6 +1444,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 let processToolCount = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
+
+                const isStreamingProcess = Boolean(
+                  streamState.isStreaming
+                  && hasStreamingContent
+                  && streamState.streamingMessage
+                  && (
+                    streamState.streamingMessage.content?.some((b) => b.type === "toolCall" || b.type === "thinking")
+                    || !streamState.streamingMessage.content?.some((b) => b.type === "text" && b.text.trim().length > 0)
+                  )
+                );
 
                 for (let processIdx = userIdx + 1; processIdx <= finalAssistantIdx; processIdx++) {
                   const processMessage = messages[processIdx];
@@ -1473,6 +1483,19 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     messageOverride: message,
                     isTurnEnd: false,
                   }));
+                }
+
+                if (isLiveTail && isStreamingProcess && streamState.streamingMessage) {
+                  processViews.push(
+                    <MessageView
+                      key="streaming-process-view"
+                      message={streamState.streamingMessage as AgentMessage}
+                      isStreaming
+                      cwd={messageCwd}
+                      onOpenFile={onOpenFile}
+                      onOpenSession={onOpenSession}
+                    />
+                  );
                 }
 
                 if (processViews.length > 0) {
@@ -1543,7 +1566,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             })()}
             {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
               <>
-                <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
+                {(!streamState.streamingMessage.content?.some((b) => b.type === "toolCall" || b.type === "thinking")
+                  && streamState.streamingMessage.content?.some((b) => b.type === "text" && b.text.trim().length > 0)) && (
+                  <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
+                )}
                 <div
                   className="flex items-center gap-1.5 py-0.5 text-[11px] sm:text-xs text-text-muted font-mono select-none overflow-hidden whitespace-nowrap min-w-0"
                   style={{ marginTop: 2 }}
