@@ -8,7 +8,17 @@ import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
-import { getOutlineMountedRange, loadOutlineEntry } from "@/lib/chat-outline-jump";
+import {
+  classifyMissingChatEntry,
+  decideSearchScrollCommit,
+  getOutlineMountedRange,
+  isLocateAbortError,
+  loadOutlineEntry,
+  nextOutlineTargetIndex,
+  OutlineLocateError,
+  resolveActiveLocateEntryId,
+  shouldAbortLocateOnLeafChange,
+} from "@/lib/chat-outline-jump";
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -273,12 +283,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
 
   const {
-    loading, error, messages, entryIds, historyCursor, hasEarlierMessages, streamState,
+    data, loading, error, messages, entryIds, historyCursor, hasEarlierMessages, streamState,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, setNoticePaused,
+    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -479,6 +489,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     resolve: () => void;
   } | null>(null);
   const restoreStartedRef = useRef(false);
+  const previousLeafIdRef = useRef<string | null>(activeLeafId);
   const pendingScrollRestoreRef = useRef(pendingScrollRestore);
   pendingScrollRestoreRef.current = pendingScrollRestore;
   const [pendingSearchScroll, setPendingSearchScroll] = useState<Props["searchTarget"]>(null);
@@ -522,69 +533,83 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (searchTarget) setPendingScrollRestore(null);
   }, [searchTarget]);
 
+  const locateHistoryEntry = useCallback(async (entryId: string, sid: string, signal: AbortSignal) => {
+    do {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      signal.throwIfAborted();
+    } while (loadingOlderRef.current);
+    loadingOlderRef.current = true;
+    try {
+      const history = searchHistoryRef.current;
+      await loadOutlineEntry(entryId, {
+        entryIds: history.entryIds,
+        oldestEntryId: history.historyCursor,
+        hasMore: history.hasEarlierMessages,
+      }, (before) => loadContext(sid, activeLeafId, before, { signal }), signal);
+    } finally {
+      loadingOlderRef.current = false;
+    }
+  }, [activeLeafId, loadContext]);
+  const locateHistoryEntryRef = useRef(locateHistoryEntry);
+  locateHistoryEntryRef.current = locateHistoryEntry;
+
+  const keepBoundedWindow = useCallback(() => {
+    const range = mountedRangeRef.current;
+    setUnmountedNewerCount(range.totalCount - range.endIndex);
+    setMountLimit(MOUNTED_GROUP_LIMIT);
+  }, []);
+
   useEffect(() => {
     const position = pendingScrollRestore;
     const sessionId = session?.id;
     if (!position || !sessionId || loading || searchTarget || restoreStartedRef.current) return;
     restoreStartedRef.current = true;
+    outlineJumpControllerRef.current?.abort();
     const controller = new AbortController();
+    outlineJumpControllerRef.current = controller;
+    setPendingOutlineJump(null);
+    setPendingSearchScroll(null);
+
+    const revealAfterRestoreCancel = () => {
+      setRestoreAnchorReady(false);
+      setPendingScrollRestore(null);
+    };
 
     const locate = async () => {
-      const initialHistory = searchHistoryRef.current;
-      if (initialHistory.entryIds.includes(position.anchorEntryId)) {
-        setMountLimit(Number.MAX_SAFE_INTEGER);
-        setUnmountedNewerCount(0);
-        setRestoreAnchorReady(true);
-        return;
-      }
-
-      loadingOlderRef.current = true;
-      let before = initialHistory.historyCursor;
-      let hasMore = initialHistory.hasEarlierMessages;
       try {
-        while (hasMore && before && !controller.signal.aborted) {
-          const context = await loadContext(sessionId, activeLeafId, before, { signal: controller.signal });
-          if (controller.signal.aborted) return;
-          if (!context) {
-            scrollToBottom("instant");
-            setPendingScrollRestore(null);
-            return;
-          }
-          setMountLimit(Number.MAX_SAFE_INTEGER);
-          setUnmountedNewerCount(0);
-          if (context.entryIds.includes(position.anchorEntryId)) {
-            setRestoreAnchorReady(true);
-            return;
-          }
-          if (context.oldestEntryId === position.oldestEntryId) break;
-          before = context.oldestEntryId;
-          hasMore = context.hasMore;
+        await locateHistoryEntryRef.current(position.anchorEntryId, sessionId, controller.signal);
+        if (controller.signal.aborted) {
+          revealAfterRestoreCancel();
+          return;
         }
-        if (!controller.signal.aborted) {
-          scrollToBottom("instant");
-          setPendingScrollRestore(null);
+        setRestoreAnchorReady(true);
+      } catch (error) {
+        if (isLocateAbortError(error, controller.signal)) {
+          revealAfterRestoreCancel();
+          return;
         }
-      } finally {
-        loadingOlderRef.current = false;
+        scrollToBottom("instant");
+        setPendingScrollRestore(null);
       }
     };
 
     void locate();
     return () => {
       controller.abort();
-      // A branch change cancels restoration and must reveal the new context.
+      if (outlineJumpControllerRef.current === controller) outlineJumpControllerRef.current = null;
+      // A cancelled restore must not leave the chat hidden.
       setPendingScrollRestore(null);
+      setRestoreAnchorReady(false);
     };
-  }, [activeLeafId, loadContext, loading, pendingScrollRestore, scrollToBottom, searchTarget, session?.id]);
+  }, [loading, pendingScrollRestore, scrollToBottom, searchTarget, session?.id]);
 
   useLayoutEffect(() => {
     const position = pendingScrollRestore;
     const content = messageContentRef.current;
     if (!position || !content || searchTarget) return;
-    const element = Array.from(content.children).find((candidate) => (
-      candidate instanceof HTMLElement && candidate.dataset.entryId === position.anchorEntryId
-    ));
-    if (element instanceof HTMLElement) {
+    const element = content.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(position.anchorEntryId)}"]`);
+    if (element) {
+      keepBoundedWindow();
       scrollToMessage(element, position.anchorOffset);
       setPendingScrollRestore(null);
       return;
@@ -593,51 +618,75 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       scrollToBottom("instant");
       setPendingScrollRestore(null);
     }
-  }, [entryIds, pendingScrollRestore, restoreAnchorReady, scrollToBottom, scrollToMessage, searchTarget, mountLimit, unmountedNewerCount]);
+  }, [entryIds, keepBoundedWindow, pendingScrollRestore, restoreAnchorReady, scrollToBottom, scrollToMessage, searchTarget, mountLimit, unmountedNewerCount]);
 
   useEffect(() => {
     if (!searchTarget || loading) return;
+    outlineJumpControllerRef.current?.abort();
     const controller = new AbortController();
+    outlineJumpControllerRef.current = controller;
+    setPendingOutlineJump(null);
+    setPendingSearchScroll(null);
+    const sid = searchTarget.sessionId;
     const locate = async () => {
-      const history = searchHistoryRef.current;
-      let found = history.entryIds.includes(searchTarget.entryId);
-      if (!found && !sessionBusy && history.hasEarlierMessages && history.historyCursor && !loadingOlderRef.current) {
-        loadingOlderRef.current = true;
-        const container = scrollContainerRef.current;
-        if (container) prevScrollDistanceRef.current = captureScrollDistance(container.scrollHeight, container.scrollTop);
-        // ponytail: one extra page of 200 entries; deeper or other-branch hits just open the session.
-        const context = await loadContext(searchTarget.sessionId, activeLeafId, history.historyCursor, { tail: 200, signal: controller.signal });
-        loadingOlderRef.current = false;
-        found = Boolean(context?.entryIds.includes(searchTarget.entryId));
-      }
-      if (controller.signal.aborted) return;
-      if (found) {
+      try {
+        await locateHistoryEntryRef.current(searchTarget.entryId, sid, controller.signal);
+        if (controller.signal.aborted) return;
         prevScrollDistanceRef.current = null;
-        setMountLimit(Number.MAX_SAFE_INTEGER);
-        setUnmountedNewerCount(0);
         setPendingSearchScroll(searchTarget);
-      } else {
+      } catch (error) {
+        if (isLocateAbortError(error, controller.signal)) return;
+        const reason = error instanceof OutlineLocateError && error.reason === "exhausted"
+          ? classifyMissingChatEntry(searchTarget.entryId, data?.tree, activeLeafId)
+          : "not_found";
+        addNotice({
+          type: "warning",
+          message: reason === "other_branch"
+            ? t("chat.locateOtherBranch")
+            : error instanceof OutlineLocateError && error.reason === "stalled"
+              ? t("chat.locateHistoryStalled")
+              : error instanceof OutlineLocateError && error.reason === "load_failed"
+                ? t("chat.locateLoadFailed")
+                : t("chat.locateNotFound"),
+        });
         onSearchTargetHandled?.(searchTarget);
       }
     };
     void locate();
-    return () => controller.abort();
-  }, [searchTarget, loading, activeLeafId, sessionBusy, loadContext, onSearchTargetHandled, scrollContainerRef]);
+    return () => {
+      controller.abort();
+      if (outlineJumpControllerRef.current === controller) outlineJumpControllerRef.current = null;
+    };
+  }, [activeLeafId, addNotice, data?.tree, loading, onSearchTargetHandled, searchTarget, t]);
 
   useLayoutEffect(() => {
-    if (!pendingSearchScroll || pendingSearchScroll !== searchTarget) return;
-    const selector = `[data-entry-id="${CSS.escape(pendingSearchScroll.entryId)}"]`;
-    const element = scrollContainerRef.current?.querySelector<HTMLElement>(searchMessage?.role === "user" ? selector : `${selector} [data-search-target]`);
-    if (element) {
-      scrollToMessage(element);
-      element.animate([
-        { backgroundColor: "var(--bg-selected)" },
-        { backgroundColor: "transparent" },
-      ], { duration: 2500 });
+    const selector = pendingSearchScroll
+      ? `[data-entry-id="${CSS.escape(pendingSearchScroll.entryId)}"]`
+      : null;
+    const element = selector
+      ? scrollContainerRef.current?.querySelector<HTMLElement>(searchMessage?.role === "user" ? selector : `${selector} [data-search-target]`)
+        ?? scrollContainerRef.current?.querySelector<HTMLElement>(selector)
+      : null;
+    const decision = decideSearchScrollCommit({
+      pending: pendingSearchScroll ?? null,
+      searchTarget: searchTarget ?? null,
+      elementFound: Boolean(element),
+    });
+    if (decision === "ignore" || decision === "retry") return;
+    if (decision === "clear-stale") {
+      setPendingSearchScroll(null);
+      return;
     }
+    if (!element || !pendingSearchScroll) return;
+    keepBoundedWindow();
+    scrollToMessage(element);
+    element.animate([
+      { backgroundColor: "var(--bg-selected)" },
+      { backgroundColor: "transparent" },
+    ], { duration: 2500 });
     setPendingSearchScroll(null);
     onSearchTargetHandled?.(pendingSearchScroll);
-  }, [pendingSearchScroll, searchTarget, searchMessage, scrollContainerRef, scrollToMessage, onSearchTargetHandled]);
+  }, [entryIds, keepBoundedWindow, messages.length, mountLimit, pendingSearchScroll, searchTarget, searchMessage, scrollContainerRef, scrollToMessage, onSearchTargetHandled, unmountedNewerCount]);
 
   useEffect(() => {
     setUnmountedNewerCount(0);
@@ -818,9 +867,19 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     return "";
   }, [entryIds, messages]);
+  useEffect(() => {
+    const previousLeafId = previousLeafIdRef.current;
+    previousLeafIdRef.current = activeLeafId;
+    if (!shouldAbortLocateOnLeafChange(previousLeafId, activeLeafId)) return;
+    outlineJumpControllerRef.current?.abort();
+    if (pendingScrollRestoreRef.current) {
+      setPendingScrollRestore(null);
+      setRestoreAnchorReady(false);
+    }
+  }, [activeLeafId]);
   useEffect(() => () => {
     outlineJumpControllerRef.current?.abort();
-  }, [session?.id, activeLeafId]);
+  }, [session?.id]);
 
   const jumpToOutlineEntry = useCallback(async (entryId: string) => {
     const sid = session?.id ?? sessionIdRef.current;
@@ -829,49 +888,41 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const controller = new AbortController();
     outlineJumpControllerRef.current = controller;
     setPendingOutlineJump(null);
-    let ownsHistoryLock = false;
+    setPendingSearchScroll(null);
     try {
-      // Let an existing scroll/search page commit before reading its cursor.
-      // Also lets an aborted previous jump release its lock. Never drop clicks.
-      do {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        controller.signal.throwIfAborted();
-      } while (loadingOlderRef.current);
-      loadingOlderRef.current = true;
-      ownsHistoryLock = true;
       prevScrollDistanceRef.current = null;
       pendingWindowAnchorRef.current = null;
-      const history = searchHistoryRef.current;
-      await loadOutlineEntry(entryId, {
-        entryIds: history.entryIds,
-        oldestEntryId: history.historyCursor,
-        hasMore: history.hasEarlierMessages,
-      }, (before) => loadContext(sid, activeLeafId, before, { signal: controller.signal }), controller.signal);
+      await locateHistoryEntry(entryId, sid, controller.signal);
       controller.signal.throwIfAborted();
-      // A state update is required even for repeated clicks on a loaded entry.
-      // Resolve only after React commits the target's bounded mount window.
       await new Promise<void>((resolve, reject) => {
         controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true });
         setPendingOutlineJump({ entryId, signal: controller.signal, resolve });
       });
+    } catch (error) {
+      if (isLocateAbortError(error, controller.signal)) return;
+      addNotice({
+        type: "warning",
+        message: error instanceof OutlineLocateError && error.reason === "stalled"
+          ? t("chat.locateHistoryStalled")
+          : error instanceof OutlineLocateError && error.reason === "load_failed"
+            ? t("chat.locateLoadFailed")
+            : t("chat.locateNotFound"),
+      });
     } finally {
-      if (ownsHistoryLock) loadingOlderRef.current = false;
+      setPendingOutlineJump((current) => current?.signal === controller.signal ? null : current);
       if (outlineJumpControllerRef.current === controller) {
         outlineJumpControllerRef.current = null;
-        setPendingOutlineJump(null);
       }
     }
-  }, [activeLeafId, loadContext, session?.id, sessionIdRef]);
+  }, [addNotice, locateHistoryEntry, session?.id, sessionIdRef, t]);
   useLayoutEffect(() => {
     if (!pendingOutlineJump || pendingOutlineJump.signal.aborted) return;
     const element = messageContentRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(pendingOutlineJump.entryId)}"]`);
     if (!element) return; // Retry on the next commit, not just a single rAF.
-    const range = mountedRangeRef.current;
-    setUnmountedNewerCount(range.totalCount - range.endIndex);
-    setMountLimit(MOUNTED_GROUP_LIMIT);
+    keepBoundedWindow();
     scrollToMessage(element);
     pendingOutlineJump.resolve();
-  }, [pendingOutlineJump, entryIds, messages.length, mountLimit, unmountedNewerCount, scrollToMessage]);
+  }, [pendingOutlineJump, entryIds, keepBoundedWindow, messages.length, mountLimit, unmountedNewerCount, scrollToMessage]);
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
@@ -1177,30 +1228,47 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     writtenFiles={options.writtenFiles}
                   />
                 );
-                if (!isVisible || currentRefIdx === undefined) return view;
+                if (!isVisible) return view;
                 return (
-                  <div key={`${keyPrefix}-${messageKey}`} data-entry-id={entryIds[idx]} ref={options.attachRef === false ? undefined : attachVisibleRef(idx, currentRefIdx)}>
+                  <div key={`${keyPrefix}-${messageKey}`} data-entry-id={entryIds[idx]} ref={options.attachRef === false || currentRefIdx === undefined ? undefined : attachVisibleRef(idx, currentRefIdx)}>
                     {view}
                   </div>
                 );
               };
 
+              const locateEntryId = resolveActiveLocateEntryId({
+                outline: pendingOutlineJump
+                  ? { entryId: pendingOutlineJump.entryId, aborted: pendingOutlineJump.signal.aborted }
+                  : null,
+                search: pendingSearchScroll
+                  ? { entryId: pendingSearchScroll.entryId, matchesTarget: pendingSearchScroll === searchTarget }
+                  : null,
+                restore: pendingScrollRestore
+                  ? { entryId: pendingScrollRestore.anchorEntryId }
+                  : null,
+              });
               const rendered: ReactNode[] = [];
               let outlineTargetIndex = -1;
+              const markOutlineTarget = (slotEntryIds: Array<string | undefined>) => {
+                outlineTargetIndex = nextOutlineTargetIndex(
+                  outlineTargetIndex,
+                  rendered.length,
+                  slotEntryIds,
+                  locateEntryId,
+                );
+              };
               for (let idx = 0; idx < messages.length;) {
                 const hasAnchor = isMessageGroupAnchor(messages[idx]);
                 const userIdx = hasAnchor ? idx : -1;
                 let endIdx = hasAnchor ? idx + 1 : idx;
                 while (endIdx < messages.length && !isMessageGroupAnchor(messages[endIdx])) endIdx += 1;
                 const firstIdx = hasAnchor ? userIdx : idx;
-                if (hasAnchor && entryIds[userIdx] === pendingOutlineJump?.entryId) {
-                  outlineTargetIndex = rendered.length;
-                }
 
                 const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
 
                 if (finalAssistantIdx === -1) {
                   for (let renderIdx = firstIdx; renderIdx < endIdx; renderIdx++) {
+                    markOutlineTarget([entryIds[renderIdx]]);
                     rendered.push(renderMessage(renderIdx));
                   }
                   idx = endIdx;
@@ -1210,13 +1278,17 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) {
                   for (let renderIdx = firstIdx; renderIdx < endIdx; renderIdx++) {
+                    markOutlineTarget([entryIds[renderIdx]]);
                     rendered.push(renderMessage(renderIdx));
                   }
                   idx = endIdx;
                   continue;
                 }
 
-                if (hasAnchor) rendered.push(renderMessage(userIdx));
+                if (hasAnchor) {
+                  markOutlineTarget([entryIds[userIdx]]);
+                  rendered.push(renderMessage(userIdx));
+                }
 
                 const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
                 const finalSplit = splitFinalAssistantBlocks(finalAssistant);
@@ -1229,6 +1301,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 const finalProcessBlocks = finalAssistant.content.slice(0, finalProcessEnd < 0 ? undefined : finalProcessEnd);
 
                 const processViews: ReactNode[] = [];
+                const processEntryIds: string[] = [];
                 let processToolCount = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
@@ -1236,7 +1309,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 for (let processIdx = userIdx + 1; processIdx <= finalAssistantIdx; processIdx++) {
                   const processMessage = messages[processIdx];
                   if (processMessage.role === "custom") {
-                    revealProcess ||= Boolean(pendingSearchScroll && pendingSearchScroll.entryId === entryIds[processIdx]);
+                    revealProcess ||= Boolean(locateEntryId && locateEntryId === entryIds[processIdx]);
+                    if (entryIds[processIdx]) processEntryIds.push(entryIds[processIdx]);
                     processViews.push(renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }));
                     continue;
                   }
@@ -1248,7 +1322,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   if (blocks.length === 0) continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
                   processToolCount += countToolCallBlocks(blocks);
-                  revealProcess ||= Boolean(pendingSearchScroll && entryIds[processIdx] === pendingSearchScroll.entryId && (!searchBlock || blocks.includes(searchBlock)));
+                  revealProcess ||= Boolean(
+                    locateEntryId
+                    && entryIds[processIdx] === locateEntryId
+                    && (!searchBlock || pendingSearchScroll?.entryId !== locateEntryId || blocks.includes(searchBlock)),
+                  );
+                  if (entryIds[processIdx]) processEntryIds.push(entryIds[processIdx]);
                   processViews.push(renderMessage(processIdx, {
                     attachRef: false,
                     keyPrefix: "process",
@@ -1258,6 +1337,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
 
                 if (processViews.length > 0) {
+                  markOutlineTarget(processEntryIds);
                   rendered.push(
                     <div
                       key={`process-group-${entryIds[firstIdx] ?? firstIdx}`}
@@ -1284,6 +1364,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     }
                   }
                   const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
+                  markOutlineTarget([entryIds[finalAssistantIdx]]);
                   rendered.push(renderMessage(finalAssistantIdx, {
                     isTurnEnd: true,
                     messageOverride: finalAnswerMessage,
@@ -1291,11 +1372,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   }));
                 }
                 for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
+                  markOutlineTarget([entryIds[renderIdx]]);
                   rendered.push(renderMessage(renderIdx));
                 }
                 idx = endIdx;
               }
-              const { startIndex, endIndex } = outlineTargetIndex >= 0 && !pendingOutlineJump?.signal.aborted
+              const { startIndex, endIndex } = outlineTargetIndex >= 0
                 ? getOutlineMountedRange(rendered.length, outlineTargetIndex)
                 : getMountedRange(rendered.length, unmountedNewerCount, mountLimit);
               mountedRangeRef.current = { startIndex, endIndex, totalCount: rendered.length };

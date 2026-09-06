@@ -147,7 +147,7 @@ test("existing-session prompts rely on the persisted tool selection", () => {
     source.indexOf("  const handleSend = useCallback"),
     source.indexOf("  const executeBash = useCallback"),
   );
-  const existingSessionPrompt = sendSource.slice(sendSource.indexOf("} else if (session)"));
+  const existingSessionPrompt = sendSource.slice(sendSource.indexOf("if (session)"));
 
   assert.match(existingSessionPrompt, /type: "prompt",\s*message,/);
   assert.doesNotMatch(existingSessionPrompt, /toolNames:/);
@@ -439,11 +439,14 @@ test("restores an in-page session viewport without the default tail jump", () =>
   assert.match(chatWindowSource, /deferInitialScroll: Boolean\(pendingScrollRestore\)/);
   assert.match(chatWindowSource, /isScrollAtTail\(container\.scrollTop, container\.clientHeight, container\.scrollHeight\)/);
   assert.match(chatWindowSource, /findChatScrollAnchor\(/);
-  assert.match(chatWindowSource, /while \(hasMore && before && !controller\.signal\.aborted\)/);
-  assert.match(chatWindowSource, /context\.oldestEntryId === position\.oldestEntryId/);
-  assert.match(chatWindowSource, /if \(!context\) \{\s*scrollToBottom\("instant"\);\s*setPendingScrollRestore\(null\);/);
+  assert.match(chatWindowSource, /locateHistoryEntryRef\.current\(position\.anchorEntryId, sessionId, controller\.signal\)/);
+  assert.match(chatWindowSource, /loadOutlineEntry/);
+  assert.doesNotMatch(chatWindowSource, /Number\.MAX_SAFE_INTEGER/);
   assert.match(chatWindowSource, /scrollToMessage\(element, position\.anchorOffset\)/);
   assert.match(chatWindowSource, /visibility: pendingScrollRestore \? "hidden" : undefined/);
+  assert.match(chatWindowSource, /classifyMissingChatEntry/);
+  assert.match(chatWindowSource, /getOutlineMountedRange/);
+  assert.match(chatWindowSource, /t\("chat\.locateNotFound"\)/);
 });
 
 test("keeps a newly sent user message at the top while its response starts", () => {
@@ -525,4 +528,30 @@ test("keeps a detached viewport in place when streaming completes", () => {
   assert.match(scrollEffectSource, /!agentRunningRef\.current && isNearBottomRef\.current[\s\S]*?scrollToBottom\("auto"\)/);
   assert.doesNotMatch(scrollEffectSource, /\|\|/);
   assert.match(source, /addEventListener\("scroll", handleScrollPositionChange/);
+});
+
+test("stop lifecycle uses run-owned dispatch and can abort server-confirmed runs", () => {
+  const sendSource = source.slice(
+    source.indexOf("  const handleSend = useCallback"),
+    source.indexOf("  const executeBash = useCallback"),
+  );
+  const bashSource = source.slice(
+    source.indexOf("  const executeBash = useCallback"),
+    source.indexOf("  const handleAbort = useCallback"),
+  );
+  const abortSource = source.slice(
+    source.indexOf("  const handleAbort = useCallback"),
+    source.indexOf("  const handleFork = useCallback"),
+  );
+
+  assert.match(source, /dispatchPromptRun, resolveStopCommand/);
+  assert.match(sendSource, /dispatchPromptRun\(\{/);
+  assert.match(sendSource, /currentRunId: \(\) => promptRunIdRef\.current/);
+  assert.match(sendSource, /status === "cancelled_after_dispatch"/);
+  assert.match(sendSource, /waitForPromptSettlement\(result\.sessionId, promptRunId\)/);
+  assert.match(bashSource, /dispatchBashRun\(\{/);
+  assert.match(bashSource, /loadResults: async \(sid\) => \{/);
+  assert.match(abortSource, /localUnsent/);
+  assert.doesNotMatch(abortSource, /wasDispatched\(/);
+  assert.doesNotMatch(sendSource, /isCancelled\(promptRunId\)\) \{[\s\S]*?abandonUnsentPrompt\(\);/);
 });

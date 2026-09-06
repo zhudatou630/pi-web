@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getFileIcon } from "./FileIcons";
 import { useI18n } from "@/hooks/useI18n";
 import type { FileViewerDisplayMode, FileViewerState } from "@/lib/file-viewer-state";
+import { disambiguatePathLabels } from "@/lib/tab-labels";
 
 export interface Tab {
   id: string;
@@ -27,6 +28,10 @@ interface Props {
 export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
+  const displayLabels = useMemo(
+    () => disambiguatePathLabels(tabs.map((tab) => ({ id: tab.id, path: tab.filePath, label: tab.label }))),
+    [tabs],
+  );
 
   return (
     <div
@@ -42,11 +47,12 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
     >
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
+        const displayLabel = displayLabels.get(tab.id) ?? tab.label;
         return (
           <div
             key={tab.id}
             role="tab"
-            aria-label={tab.kind === "terminal" ? t("terminal.tabLabel", { name: tab.label }) : tab.label}
+            aria-label={tab.kind === "terminal" ? t("terminal.tabLabel", { name: displayLabel }) : displayLabel}
             aria-selected={isActive}
             tabIndex={isActive || (!activeTabId && tabs[0].id === tab.id) ? 0 : -1}
             onKeyDown={(event) => {
@@ -109,7 +115,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               }}
               title={tab.filePath}
             >
-              {tab.label}
+              {displayLabel}
             </span>
             <button
               disabled={tab.closing}
@@ -129,7 +135,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 transition: "background 0.1s, color 0.1s",
               }}
                title={t(tab.kind === "terminal" ? "terminal.close" : "i18n.close")}
-               aria-label={`${t(tab.kind === "terminal" ? "terminal.close" : "i18n.close")} ${tab.label}`}
+               aria-label={`${t(tab.kind === "terminal" ? "terminal.close" : "i18n.close")} ${displayLabel}`}
             >
               <svg width="11" height="11" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                 <line x1="2" y1="2" x2="8" y2="8" />

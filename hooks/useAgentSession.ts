@@ -33,6 +33,8 @@ import {
   streamReducer,
   type ClientAssistantMessageEvent,
 } from "@/lib/streaming-message";
+import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand } from "@/lib/prompt-run-control";
+import { recalledQueuedPrompts } from "@/lib/queued-messages";
 
 export interface SessionData {
   sessionId: string;
@@ -77,7 +79,7 @@ type AgentStateResponse = {
   isCompacting?: boolean;
   extensionStatuses?: ExtensionStatusItem[];
   extensionWidgets?: ExtensionWidgetItem[];
-  queuedMessages?: { steering?: string[]; followUp?: string[] } | null;
+  queuedMessages?: { steering?: Array<string | { text?: string }>; followUp?: Array<string | { text?: string }> } | null;
 };
 
 export interface QueuedMessages {
@@ -85,8 +87,15 @@ export interface QueuedMessages {
   followUp: string[];
 }
 
-function normalizeQueuedMessages(q?: { steering?: string[]; followUp?: string[] } | null): QueuedMessages {
-  return { steering: q?.steering ?? [], followUp: q?.followUp ?? [] };
+function queuedMessageText(item: string | { text?: string } | undefined): string {
+  return typeof item === "string" ? item : (item?.text ?? "");
+}
+
+function normalizeQueuedMessages(q?: { steering?: Array<string | { text?: string }>; followUp?: Array<string | { text?: string }> } | null): QueuedMessages {
+  return {
+    steering: (q?.steering ?? []).map(queuedMessageText),
+    followUp: (q?.followUp ?? []).map(queuedMessageText),
+  };
 }
 
 type ExtensionUiDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
@@ -363,6 +372,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(null);
   const thinkingLevelOverrideRef = useRef<Exclude<ThinkingLevelOption, "auto"> | null>(null);
   const promptRunIdRef = useRef(0);
+  const promptRunGateRef = useRef(new PromptRunGate());
+  const pendingPromptRef = useRef<{
+    runId: number;
+    message: string;
+    images?: AttachedImage[];
+    userMsg: AgentMessage;
+  } | null>(null);
+  const bashAbortRequestedRef = useRef(false);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
   const modelSwitchPendingRef = useRef(false);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
@@ -1346,49 +1363,101 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     dispatch({ type: "start" });
     pendingScrollToUserRef.current = true;
     setPromptAnchorActive(true);
+    pendingPromptRef.current = { runId: promptRunId, message, images, userMsg };
 
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
-    let sentSessionId: string | null = null;
-    let promptRequestStarted = false;
+    promptRunGateRef.current.begin(promptRunId);
 
-    try {
-      if (isNew && newSessionCwd) {
-        const selectedModel = newSessionModel;
-        const existingSid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
-        const sid = existingSid ?? await ensureNewSession();
+    const abandonUnsentPrompt = () => {
+      if (pendingPromptRef.current?.runId !== promptRunId) return;
+      pendingPromptRef.current = null;
+      rpcPromptPendingRef.current = false;
+      setMessages((prev) => {
+        const optimisticIndex = prev.lastIndexOf(userMsg);
+        return optimisticIndex === -1
+          ? prev
+          : [...prev.slice(0, optimisticIndex), ...prev.slice(optimisticIndex + 1)];
+      });
+      restoreSubmission(message, images, composerDraftKey);
+      optimisticUserMessageKeyRef.current = null;
+      if (promptRunIdRef.current === promptRunId) {
+        agentRunningRef.current = false;
+        setAgentRunning(false);
+        setAgentPhase(null);
+        dispatch({ type: "end" });
+      }
+    };
 
-        if (!sid) throw new Error("Unable to create a session for the prompt");
-        sentSessionId = sid;
-        if (selectedModel) {
-          setPendingModel(selectedModel);
-          if (existingSid) {
-            await sendAgentCommand(sid, { type: "set_model", provider: selectedModel.provider, modelId: selectedModel.modelId });
+    const abortDispatchedPrompt = async (sid: string) => {
+      try {
+        await sendAgentCommand(sid, { type: "abort" });
+      } catch (abortError) {
+        addNotice({
+          type: "error",
+          message: abortError instanceof Error ? abortError.message : String(abortError),
+        });
+      }
+    };
+
+    const result = await dispatchPromptRun({
+      gate: promptRunGateRef.current,
+      runId: promptRunId,
+      currentRunId: () => promptRunIdRef.current,
+      currentSessionId: () => sessionIdRef.current,
+      // prompt_done can arrive before a delayed POST reply, and another tab
+      // can then start a run without incrementing this tab's local run id.
+      promptPending: () => rpcPromptPendingRef.current,
+      abandonUnsent: abandonUnsentPrompt,
+      onDispatched: () => {
+        if (pendingPromptRef.current?.runId === promptRunId) pendingPromptRef.current = null;
+      },
+      abort: abortDispatchedPrompt,
+      prepare: async () => {
+        if (isNew && newSessionCwd) {
+          const selectedModel = newSessionModel;
+          const existingSid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
+          if (promptRunGateRef.current.isCancelled(promptRunId)) return null;
+          const sid = existingSid ?? await ensureNewSession();
+          if (promptRunGateRef.current.isCancelled(promptRunId)) return null;
+          if (!sid) throw new Error("Unable to create a session for the prompt");
+          if (selectedModel) {
+            setPendingModel(selectedModel);
+            if (existingSid) {
+              await sendAgentCommand(sid, { type: "set_model", provider: selectedModel.provider, modelId: selectedModel.modelId });
+              if (promptRunGateRef.current.isCancelled(promptRunId)) return null;
+            }
           }
+          await ensureEventsConnected(sid);
+          if (promptRunGateRef.current.isCancelled(promptRunId)) return null;
+          return sid;
         }
-        await ensureEventsConnected(sid);
-        promptRequestStarted = true;
+        if (session) {
+          await ensureEventsConnected(session.id);
+          if (promptRunGateRef.current.isCancelled(promptRunId)) return null;
+          return session.id;
+        }
+        throw new Error("No active session for the prompt");
+      },
+      send: async (sid) => {
         await sendAgentCommand(sid, {
           type: "prompt",
           message,
           ...(piImages?.length ? { images: piImages } : {}),
         });
-        promoteNewSession(1, message);
-      } else if (session) {
-        sentSessionId = session.id;
-        await ensureEventsConnected(session.id);
-        promptRequestStarted = true;
-        await sendAgentCommand(session.id, {
-          type: "prompt",
-          message,
-          ...(piImages?.length ? { images: piImages } : {}),
-        });
-      } else {
-        throw new Error("No active session for the prompt");
-      }
-      if (isSlashCommandPrompt && sentSessionId) {
-        void waitForPromptSettlement(sentSessionId, promptRunId);
-      }
-    } catch (e) {
+      },
+    });
+
+    if (result.status === "abandoned" || result.status === "aborted" || result.status === "stale") {
+      return;
+    }
+    if (result.status === "cancelled_after_dispatch") {
+      void waitForPromptSettlement(result.sessionId, promptRunId);
+      return;
+    }
+    if (result.status === "failed") {
+      const e = result.error;
+      const sentSessionId = result.sessionId;
+      const promptRequestStarted = result.requestStarted;
       console.error("Failed to send message:", e);
       const definitivelyRejected = !promptRequestStarted || isPromptRejectedError(e);
       // A transport/proxy failure after dispatch is ambiguous: the server may
@@ -1399,6 +1468,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return;
       }
       rpcPromptPendingRef.current = false;
+      if (pendingPromptRef.current?.runId === promptRunId) pendingPromptRef.current = null;
       setMessages((prev) => {
         const optimisticIndex = prev.lastIndexOf(userMsg);
         return optimisticIndex === -1
@@ -1420,25 +1490,40 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setAgentRunning(false);
       setAgentPhase(null);
       dispatch({ type: "end" });
+      return;
+    }
+    if (isNew && newSessionCwd) promoteNewSession(1, message);
+    if (isSlashCommandPrompt && result.sessionId) {
+      void waitForPromptSettlement(result.sessionId, promptRunId);
     }
   }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
     const inputText = `${excludeFromContext ? "!!" : "!"}${command}`;
+    bashAbortRequestedRef.current = false;
     bashRunningRef.current = true;
     setPendingBash({ command, excludeFromContext });
     setBashRunning(true);
     try {
-      const sid = sessionIdRef.current ?? session?.id ?? await ensureNewSession();
-      if (!sid) throw new Error("Unable to create a session for the shell command");
-      await sendAgentCommand(sid, {
-        type: "bash",
-        command,
-        excludeFromContext,
+      const result = await dispatchBashRun({
+        abortRequested: () => bashAbortRequestedRef.current,
+        prepare: async () => sessionIdRef.current ?? session?.id ?? await ensureNewSession(),
+        send: async (sid) => {
+          await sendAgentCommand(sid, {
+            type: "bash",
+            command,
+            excludeFromContext,
+          });
+        },
+        loadResults: async (sid) => {
+          if (sessionIdRef.current === sid) await loadSession(sid);
+        },
+        restoreUnsent: () => restoreSubmission(inputText, undefined, composerDraftKey),
       });
-      await loadSession(sid);
-      promoteNewSession(1, inputText);
+      if (result.status === "completed" || result.status === "cancelled_after_dispatch") {
+        promoteNewSession(1, inputText);
+      }
     } catch (e) {
       console.error("Failed to execute shell command:", e);
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
@@ -1452,22 +1537,62 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   executeBashRef.current = executeBash;
 
   const handleAbort = useCallback(async () => {
+    const runId = promptRunIdRef.current;
     const sid = sessionIdRef.current;
-    if (!sid) return;
     if (bashRunningRef.current) {
+      bashAbortRequestedRef.current = true;
+      if (!sid) return;
       try {
         await sendAgentCommand(sid, { type: "abort_bash" });
       } catch (e) {
         console.error("Failed to abort bash:", e);
+        addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
       }
       return;
     }
+
+    const pending = pendingPromptRef.current;
+    if (promptRunGateRef.current.isInFlight(runId) || pending?.runId === runId) {
+      promptRunGateRef.current.cancel(runId);
+    }
+
+    const localUnsent = Boolean(
+      pending
+      && pending.runId === runId
+      && promptRunGateRef.current.shouldAbandonUnsent(runId),
+    );
+    if (localUnsent && pending) {
+      pendingPromptRef.current = null;
+      rpcPromptPendingRef.current = false;
+      setMessages((prev) => {
+        const optimisticIndex = prev.lastIndexOf(pending.userMsg);
+        return optimisticIndex === -1
+          ? prev
+          : [...prev.slice(0, optimisticIndex), ...prev.slice(optimisticIndex + 1)];
+      });
+      restoreSubmission(pending.message, pending.images, composerDraftKey);
+      optimisticUserMessageKeyRef.current = null;
+      agentRunningRef.current = false;
+      setAgentRunning(false);
+      setAgentPhase(null);
+      dispatch({ type: "end" });
+      return;
+    }
+
+    const command = resolveStopCommand({
+      bashRunning: false,
+      hasSessionId: Boolean(sid),
+      localUnsent,
+      agentRunning: agentRunningRef.current || rpcPromptPendingRef.current,
+    });
+    if (command === "none" || !sid) return;
     try {
-      await sendAgentCommand(sid, { type: "abort" });
+      await sendAgentCommand(sid, { type: command === "abort_bash" ? "abort_bash" : "abort" });
     } catch (e) {
       console.error("Failed to abort:", e);
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, []);
+  }, [addNotice, composerDraftKey, restoreSubmission]);
 
   const handleFork = useCallback(async (entryId: string) => {
     if (bashRunningRef.current) return;
@@ -1788,19 +1913,31 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const sid = sessionIdRef.current;
     if (!sid) return;
     try {
-      const result = await sendAgentCommand<{ steering?: string[]; followUp?: string[] }>(sid, { type: "clear_queue" });
+      const result = await sendAgentCommand<{
+        steering?: Array<string | { text?: string; images?: Array<{ data: string; mimeType: string }> }>;
+        followUp?: Array<string | { text?: string; images?: Array<{ data: string; mimeType: string }> }>;
+      }>(sid, { type: "clear_queue" });
       // clearQueue also emits an empty queue_update, but that only reaches us
       // while SSE is connected — clear locally so idle recalls update the UI.
       setQueuedMessages({ steering: [], followUp: [] });
-      const texts = [...(result?.steering ?? []), ...(result?.followUp ?? [])];
-      if (texts.length > 0) {
-        opts.chatInputRef?.current?.prependText(texts.join("\n\n"));
-      }
+      const recalled = [
+        ...recalledQueuedPrompts(result?.steering),
+        ...recalledQueuedPrompts(result?.followUp),
+      ];
+      if (recalled.length === 0) return;
+      restoreSubmission(
+        recalled.map((item) => item.text).filter(Boolean).join("\n\n"),
+        recalled.flatMap((item) => item.images).map((image) => ({
+          ...image,
+          previewUrl: "",
+        })),
+        composerDraftKey,
+      );
     } catch (e) {
       console.error("Failed to recall queued messages:", e);
-      addNotice({ type: "error", message: "Failed to recall queued messages" });
+      addNotice({ type: "error", message: e instanceof Error ? e.message : "Failed to recall queued messages" });
     }
-  }, [opts.chatInputRef, addNotice]);
+  }, [addNotice, composerDraftKey, restoreSubmission]);
 
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
     setThinkingLevel(level);
@@ -2106,6 +2243,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
+    addNotice,
     setNoticePaused: setPausedNoticeId,
     handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext,
     scrollToBottom, scrollUserMsgToTop, scrollToMessage,

@@ -329,3 +329,25 @@ test("renders custom-message images as buttons that open a larger preview", () =
   assert.match(html, /<button[^>]+aria-label="Preview image"[^>]*>/);
   assert.match(html, /<img[^>]+src="data:image\/png;base64,YWJj"/);
 });
+
+test("renders assistant image answers instead of leaving a blank final answer", () => {
+  const image = { type: "image", source: { type: "base64", media_type: "image/png", data: "YWJj" } };
+  const mixed = renderMessage({
+    role: "assistant",
+    provider: "openai",
+    model: "vision",
+    content: [{ type: "text", text: "Here is the screenshot" }, image],
+  });
+  assert.match(mixed, /Here is the screenshot/);
+  assert.match(mixed, /<button[^>]+aria-label="Preview image"[^>]*>/);
+  assert.match(mixed, /<img[^>]+src="data:image\/png;base64,YWJj"/);
+
+  const onlyImage = renderMessage({
+    role: "assistant",
+    provider: "openai",
+    model: "vision",
+    content: [{ type: "image", data: "YWJj", mimeType: "image/png" }],
+  });
+  assert.match(onlyImage, /<img[^>]+src="data:image\/png;base64,YWJj"/);
+  assert.doesNotMatch(onlyImage, /data-message-text/);
+});

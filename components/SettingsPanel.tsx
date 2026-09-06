@@ -296,6 +296,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
+      event.stopPropagation();
       onClose();
     };
     document.addEventListener("keydown", handleKeyDown);

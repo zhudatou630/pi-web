@@ -719,6 +719,22 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
   if (block.type === "text") {
     return <div data-message-text data-search-target={searchTarget || undefined}><TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} /></div>;
   }
+  if (block.type === "image") {
+    const src = imageSource(block as ImageContent);
+    if (!src) return null;
+    return (
+      <div data-search-target={searchTarget || undefined} style={{ margin: "8px 0" }}>
+        <ImagePreview src={src}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt=""
+            style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
+          />
+        </ImagePreview>
+      </div>
+    );
+  }
   if (block.type === "thinking") {
     return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
   }

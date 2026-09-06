@@ -171,11 +171,13 @@ function MermaidZoomDialog({ svg, onClose }: { svg: string; onClose: () => void 
       aria-label={t("i18n.mermaidViewer")}
       onCancel={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         onClose();
       }}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.preventDefault();
+        event.stopPropagation();
         onClose();
       }}
     >

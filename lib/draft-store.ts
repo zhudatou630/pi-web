@@ -1,7 +1,4 @@
-import {
-  MAX_ATTACHED_IMAGES,
-  isBase64ImageWithinLimits,
-} from "./image-attachments";
+import { MAX_ATTACHED_IMAGES } from "./image-attachments";
 
 export interface ChatDraftImage {
   data: string;
@@ -49,20 +46,23 @@ export function mergeRestoredSubmissionText(submitted: string, current: string):
   return `${submitted}\n\n${current}`;
 }
 
+export function exceedsAttachedImageSendLimit(count: number): boolean {
+  return count > MAX_ATTACHED_IMAGES;
+}
+
+function toDraftImage(image: ChatDraftImage): ChatDraftImage {
+  return { data: image.data, mimeType: image.mimeType };
+}
+
 export function mergeRestoredSubmissionDraft(
   submittedText: string,
   submittedImages: ChatDraftImage[] | undefined,
   currentText: string,
   currentImages: ChatDraftImage[],
 ): ChatDraft {
-  const images = [...(submittedImages ?? []), ...currentImages]
-    .filter(isBase64ImageWithinLimits)
-    .slice(0, MAX_ATTACHED_IMAGES)
-    .map(({ data, mimeType }) => ({ data, mimeType }));
-
   return {
     value: mergeRestoredSubmissionText(submittedText, currentText),
-    images,
+    images: [...(submittedImages ?? []), ...currentImages].map(toDraftImage),
   };
 }
 

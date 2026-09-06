@@ -22,7 +22,7 @@ test("marks only the separated final answer as the end of a turn", () => {
 test("folds a leading process prefix that has no user anchor", () => {
   assert.match(source, /const hasAnchor = isMessageGroupAnchor\(messages\[idx\]\)/);
   assert.match(source, /const userIdx = hasAnchor \? idx : -1/);
-  assert.match(source, /if \(hasAnchor\) rendered\.push\(renderMessage\(userIdx\)\)/);
+  assert.match(source, /if \(hasAnchor\) \{\s*markOutlineTarget\(\[entryIds\[userIdx\]\]\);\s*rendered\.push\(renderMessage\(userIdx\)\);\s*\}/);
   assert.doesNotMatch(
     source,
     /if \(!isMessageGroupAnchor\(msg\)\) \{\s*rendered\.push\(renderMessage\(idx\)\)/,

@@ -6,6 +6,7 @@ import type { SkillsResponse } from "@/lib/api-types";
 import type { TextContent, UserMessage } from "@/lib/types";
 import {
   clearDraft,
+  exceedsAttachedImageSendLimit,
   getDraft,
   mergeRestoredSubmissionDraft,
   mergeRestoredSubmissionText,
@@ -298,10 +299,7 @@ function draftImageToAttachedImage(image: ChatDraftImage): AttachedImage {
 }
 
 function draftImagesToAttachedImages(images: ChatDraftImage[] | undefined): AttachedImage[] {
-  return (images ?? [])
-    .filter(isBase64ImageWithinLimits)
-    .slice(0, MAX_ATTACHED_IMAGES)
-    .map(draftImageToAttachedImage);
+  return (images ?? []).map(draftImageToAttachedImage);
 }
 
 export function canRestoreUserMessage(
@@ -650,15 +648,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       // not lost if this instance is the one being unmounted.
       if (destinationDraftKey) setDraft(destinationDraftKey, restoredDraft);
       if (!targetsCurrentComposer) return;
-      const restoredImages = images?.length
-        ? [
-            ...draftImagesToAttachedImages(images).slice(
-              0,
-              Math.max(0, MAX_ATTACHED_IMAGES - attachedImagesRef.current.length),
-            ),
-            ...attachedImagesRef.current,
-          ].slice(0, MAX_ATTACHED_IMAGES)
-        : attachedImagesRef.current;
+      const restoredImages = draftImagesToAttachedImages(restoredDraft.images);
       // Session promotion can rekey this composer before React flushes the
       // functional updates below, so update the imperative snapshot first.
       valueRef.current = restoredDraft.value;
@@ -670,16 +660,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       });
       setAtQuery(null);
       setHistoryMenuOpen(false);
-      if (images?.length) {
-        setAttachedImages((current) => {
-          const available = Math.max(0, MAX_ATTACHED_IMAGES - current.length);
-          const restored = draftImagesToAttachedImages(images)
-            .slice(0, available);
-          const next = restored.length > 0 ? [...restored, ...current] : current;
-          attachedImagesRef.current = next;
-          return next;
-        });
-      }
+      setAttachedImages((current) => {
+        current.forEach(revokeImagePreview);
+        attachedImagesRef.current = restoredImages;
+        return restoredImages;
+      });
       requestAnimationFrame(() => {
         const ta = textareaRef.current;
         if (!ta) return;
@@ -852,6 +837,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const handleSend = useCallback(async () => {
     const msg = value.trim();
+    if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
     if (!msg && !attachedImages.length) return;
     onAudioUnlock?.();
     const builtinAllowed = !isStreaming || canRunBuiltinSlashCommandWhileStreaming(msg);
@@ -894,7 +880,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? t(slashQuery ? "chat.match" : "chat.command")
     : t(slashQuery ? "chat.matches" : "chat.commands", { count: filteredSlashCommands.length });
   const hasInputText = Boolean(value.trim());
-  const canQueueStreamingMessage = hasInputText || attachedImages.length > 0;
+  const imageSendBlocked = exceedsAttachedImageSendLimit(attachedImages.length);
+  const canQueueStreamingMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0);
+  const canSendMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0);
   // Warn when images are attached but the selected model is known not to accept
   // image input (#584), including a resolved default. Unknown models stay silent.
   const showImageUnsupportedWarning = (
@@ -1090,6 +1078,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const sendQueued = useCallback((mode: "steer" | "followup") => {
     const msg = value.trim();
+    if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
     if (!msg && !attachedImages.length) return;
     onAudioUnlock?.();
     if (!attachedImages.length && onBuiltinCommand && canRunBuiltinSlashCommandWhileStreaming(msg)) {
@@ -1488,6 +1477,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
         <ModelScopeWarningBanner warnings={modelScopeWarnings} />
+        {imageSendBlocked && (
+          <ModelNoticeBanner
+            tone="error"
+            title={t("chat.tooManyImagesTitle")}
+            body={t("chat.tooManyImagesBody", { count: attachedImages.length, max: MAX_ATTACHED_IMAGES })}
+          />
+        )}
         {showImageUnsupportedWarning && (() => {
           const entry = modelList?.find((m) => m.provider === model?.provider && m.id === model?.modelId);
           return (
@@ -2108,24 +2104,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             <button
               className="chat-input-action"
               aria-label={t("chat.send")}
-              title={t("chat.send")}
+              title={imageSendBlocked ? t("chat.tooManyImagesTitle") : t("chat.send")}
               onClick={handleSend}
-              disabled={!value.trim() && !attachedImages.length}
+              disabled={!canSendMessage}
               style={{
                 flexShrink: 0,
                 alignSelf: "flex-end",
                 display: "flex", alignItems: "center", gap: 6,
                 height: isMobile ? 44 : 28,
                 padding: "0 10px",
-                background: (value.trim() || attachedImages.length) ? "var(--accent)" : "var(--bg-panel)",
+                background: canSendMessage ? "var(--accent)" : "var(--bg-panel)",
                 border: "none",
                 borderRadius: 4,
-                color: (value.trim() || attachedImages.length) ? "#fff" : "var(--text-dim)",
-                cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
+                color: canSendMessage ? "#fff" : "var(--text-dim)",
+                cursor: canSendMessage ? "pointer" : "not-allowed",
                 fontSize: 13,
                 fontWeight: 600,
                 letterSpacing: "-0.01em",
-                boxShadow: (value.trim() || attachedImages.length) ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
+                boxShadow: canSendMessage ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
                 transition: "background 0.15s, box-shadow 0.15s",
               }}
             >

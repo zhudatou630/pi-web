@@ -46,11 +46,34 @@ test("only renders branch toolbar controls for sessions with branches", () => {
   assert.match(source, /panel === "branches" \? null : panel/);
 });
 
+function functionSource(name, nextNeedle) {
+  const start = source.indexOf(`const ${name}`);
+  assert.notEqual(start, -1, `${name} not found`);
+  const end = source.indexOf(nextNeedle, start + name.length);
+  assert.notEqual(end, -1, `${nextNeedle} not found after ${name}`);
+  return source.slice(start, end);
+}
+
+function mobileToolbarSource() {
+  const start = source.indexOf('data-mobile-toolbar="true"');
+  const end = source.indexOf("{!isMobile && (", start);
+  assert.notEqual(start, -1, "mobile toolbar not found");
+  assert.notEqual(end, -1, "desktop toolbar not found after mobile toolbar");
+  return source.slice(start, end);
+}
+
 test("keeps covered statistics and file controls out of interaction and focus", () => {
-  assert.match(source, /const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;/);
-  assert.match(source, /disabled=\{!showChat \|\| covered\}[\s\S]*?tabIndex=\{covered \? -1 : undefined\}/);
-  assert.match(source, /data-mobile-toolbar-file=\{mobile \? "true" : undefined\}[\s\S]*?visibility: covered \? "hidden" : "visible"/);
-  assert.match(source, /aria-hidden=\{covered \? true : undefined\}/);
+  const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
+  const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
+  for (const block of [stats, fileToggle]) {
+    assert.match(block, /const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;/);
+    assert.match(block, /tabIndex=\{covered \? -1 : undefined\}/);
+    assert.match(block, /visibility: covered \? "hidden" : "visible"/);
+    assert.match(block, /pointerEvents: covered \? "none" : "auto"/);
+    assert.match(block, /aria-hidden=\{covered \? true : undefined\}/);
+  }
+  assert.match(stats, /disabled=\{!showChat \|\| covered\}/);
+  assert.match(fileToggle, /disabled=\{covered\}/);
 });
 
 test("closes the mobile action layer on outside click, Escape, layout changes, and session changes", () => {
@@ -84,6 +107,34 @@ test("prioritizes context and cost when the mobile statistics area narrows", () 
   assert.match(source, /@container \(max-width: 158px\)[\s\S]*?\.mobile-session-stat-io/);
   assert.match(source, /@container \(max-width: 88px\)[\s\S]*?\.mobile-session-stat-cost/);
   assert.match(source, /mobileContextText = percent !== null \? `\$\{percent\.toFixed\(0\)\}%` : null/);
+});
+
+test("keeps mobile toolbar free of session titles and preserves More placement", () => {
+  const toolbar = mobileToolbarSource();
+  const moreIdx = toolbar.indexOf('data-mobile-toolbar-more="true"');
+  const overlayIdx = toolbar.indexOf('data-mobile-toolbar-actions="true"');
+  const wideActionsIdx = toolbar.indexOf("{!isNarrowMobile && renderChatToolbarActions(true)}");
+  assert.ok(moreIdx >= 0, "More button stays in the mobile toolbar");
+  assert.ok(wideActionsIdx > moreIdx);
+  assert.ok(overlayIdx > moreIdx);
+  assert.doesNotMatch(toolbar, /renderCollapsedSessionTitle|data-collapsed-session-title/);
+  assert.match(toolbar, /left: TOP_BAR_ICON_BUTTON_SIZE/);
+  assert.doesNotMatch(toolbar, /flexDirection: "column"/);
+  assert.match(source, /\{mobile && renderThemeButton\(true\)\}/);
+  assert.match(source, /\{mobile && renderLanguageButton\(true\)\}/);
+});
+
+test("keeps the collapsed session title desktop-only without mobile overlay logic", () => {
+  assert.match(source, /selectedSession\s*\n\s*\? getSessionDisplayTitle\(selectedSession\)/);
+  assert.match(source, /translate\("i18n\.newSession"\)/);
+  const desktop = source.slice(source.indexOf("{!isMobile && ("));
+  assert.match(desktop, /renderCollapsedSessionTitle\(\)/);
+  assert.equal((source.match(/\{renderCollapsedSessionTitle\(\)\}/g) ?? []).length, 1);
+  const title = functionSource("renderCollapsedSessionTitle", "const renderSessionStatsButton");
+  assert.match(title, /if \(sidebarOpen \|\| !showChat\) return null;/);
+  assert.match(title, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
+  assert.match(title, /overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"/);
+  assert.doesNotMatch(title, /covered|mobileToolbarMoreOpen|aria-hidden|tabIndex/);
 });
 
 test("places trust warnings below the mobile toolbar and the file toggle in toolbar flow", () => {

@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { validateAgentImages } from "./image-attachments";
+import { parseQueuedDeliverySnapshot, snapshotAgentQueuedMessages } from "./queued-messages";
 import { invalidateModelsCache } from "./models-cache";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import {
@@ -862,7 +863,18 @@ export class AgentSessionWrapper {
       case "clear_queue": {
         // Full clear only: pi has no single-item dequeue, and clear+requeue
         // races against the agent loop pulling messages mid-flight.
-        return this.inner.clearQueue();
+        // Public AgentSession queues are strings; images remain on the Agent
+        // delivery queues until clearAllQueues() drops them.
+        // Snapshot and parse the authoritative delivery queues first. A missing
+        // runtime shape, unrecoverable image, or non-user message must fail
+        // before this destructive clear. Empty delivery queues mean already
+        // drained work and must not fall back to leftover public strings.
+        // Keep snapshot, parsing and clear synchronous in this same JS turn;
+        // an await here would allow delivery to drain the snapshot in between.
+        const snapshot = snapshotAgentQueuedMessages(this.inner.agent);
+        const recalled = parseQueuedDeliverySnapshot(snapshot);
+        this.inner.clearQueue();
+        return recalled;
       }
 
       case "steer": {

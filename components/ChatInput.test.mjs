@@ -467,6 +467,21 @@ test("preserves duplicate image attachments when restoring a submission", () => 
   assert.deepEqual(restored.images, [image, image, image]);
 });
 
+test("keeps restored images above the per-message send limit", () => {
+  const submitted = Array.from({ length: 8 }, (_, index) => ({
+    data: `AQID${index}`,
+    mimeType: "image/png",
+  }));
+  const current = Array.from({ length: 5 }, (_, index) => ({
+    data: `BAUG${index}`,
+    mimeType: "image/png",
+  }));
+  const restored = mergeRestoredSubmissionDraft("queued", submitted, "draft", current);
+  assert.equal(restored.images.length, 13);
+  assert.equal(restored.images[0].data, submitted[0].data);
+  assert.equal(restored.images[12].data, current[4].data);
+});
+
 test("moves a provisional new-session draft to the real session key", () => {
   const provisionalKey = "new:/tmp/rekey-test";
   const sessionKey = "session-rekey-test";
@@ -584,6 +599,38 @@ test("renders image warnings for known text-only defaults without an explicit mo
         assert.ok(html.indexOf('role="alert"') < html.indexOf("<textarea"));
       }
     }
+  } finally {
+    clearDraft(draftKey);
+  }
+});
+
+test("keeps over-limit restored images in the composer and blocks send", () => {
+  const draftKey = "new:/tmp/too-many-restored-images";
+  const images = Array.from({ length: 11 }, (_, index) => ({
+    data: Buffer.from(`img${index}`).toString("base64"),
+    mimeType: "image/png",
+  }));
+  setDraft(draftKey, { value: "recalled queue", images });
+
+  try {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        I18nProvider,
+        null,
+        React.createElement(ChatInput, {
+          onSend() {},
+          onAbort() {},
+          isStreaming: false,
+          draftKey,
+        }),
+      ),
+    );
+
+    assert.equal((html.match(/<img/g) ?? []).length, 11);
+    assert.match(html, /Too many images to send/);
+    assert.match(html, /This draft has 11 images/);
+    assert.match(html, /disabled=""/);
+    assert.ok(html.indexOf("Too many images to send") < html.indexOf("<textarea"));
   } finally {
     clearDraft(draftKey);
   }

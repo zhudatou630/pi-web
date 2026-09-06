@@ -16,6 +16,36 @@ export function registerAbortHandler(handler: (() => void) | null): void {
   globalAbortHandler = handler;
 }
 
+export function isComposerKeyboardTarget(target: EventTarget | null): boolean {
+  const tag = (target as HTMLElement | null)?.tagName;
+  return tag === "TEXTAREA" || tag === "INPUT";
+}
+
+export function handleGlobalShortcutKeyDown(
+  event: KeyboardEvent,
+  options: {
+    abortHandler?: (() => void) | null;
+    onNewSession?: (cwd: string) => void;
+    activeCwd?: string | null;
+  } = {},
+): void {
+  if (event.defaultPrevented) return;
+
+  if (event.key === "Escape") {
+    const abortHandler = options.abortHandler === undefined ? globalAbortHandler : options.abortHandler;
+    if (!abortHandler || isComposerKeyboardTarget(event.target)) return;
+    event.preventDefault();
+    abortHandler();
+    return;
+  }
+
+  if (event.key === "n" && event.ctrlKey && event.altKey) {
+    if (!options.activeCwd || !options.onNewSession) return;
+    event.preventDefault();
+    options.onNewSession(options.activeCwd);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Hook: global keyboard shortcuts
 // ---------------------------------------------------------------------------
@@ -46,25 +76,7 @@ export function useGlobalKeyboardShortcuts(
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      // ---- Esc: stop agent ----
-      if (e.key === "Escape") {
-        if (!globalAbortHandler) return;
-
-        const tag = (e.target as HTMLElement)?.tagName;
-        // Let textarea/input handle Esc internally (ChatInput menus / stop).
-        if (tag === "TEXTAREA" || tag === "INPUT") return;
-
-        e.preventDefault();
-        globalAbortHandler();
-        return;
-      }
-
-      // ---- Ctrl+Alt+N: new session ----
-      if (e.key === "n" && e.ctrlKey && e.altKey) {
-        if (!activeCwd || !onNewSession) return;
-        e.preventDefault();
-        onNewSession(activeCwd);
-      }
+      handleGlobalShortcutKeyDown(e, { onNewSession, activeCwd });
     };
 
     window.addEventListener("keydown", handler);

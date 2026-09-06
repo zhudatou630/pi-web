@@ -26,6 +26,7 @@ import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName } from "@/lib/file-paths";
+import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
@@ -1637,6 +1638,44 @@ export function AppShell() {
     );
   };
 
+  const collapsedSessionTitle = selectedSession
+    ? getSessionDisplayTitle(selectedSession)
+    : translate("i18n.newSession");
+
+  const renderCollapsedSessionTitle = () => {
+    if (sidebarOpen || !showChat) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleTopPanel("session")}
+        title={collapsedSessionTitle}
+        aria-label={collapsedSessionTitle}
+        aria-pressed={activeTopPanel === "session"}
+        data-collapsed-session-title="true"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          minWidth: 0,
+          flex: 1,
+          height: "100%",
+          padding: "0 12px",
+          border: "none",
+          borderRight: "1px solid var(--border)",
+          background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
+          color: "var(--text)",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 500,
+          textAlign: "left",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {collapsedSessionTitle}
+        </span>
+      </button>
+    );
+  };
+
   const renderSessionStatsButton = (mobile: boolean) => {
     if (!mobile && (!showChat || (!sessionStats && !contextUsage))) return null;
 
@@ -2076,6 +2115,7 @@ export function AppShell() {
           )}
           {!isMobile && (
             <>
+              {renderCollapsedSessionTitle()}
               {renderThemeButton(false)}
               {renderLanguageButton(false)}
               {renderProjectTrustWarning(false)}
