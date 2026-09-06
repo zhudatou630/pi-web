@@ -256,8 +256,8 @@ function ProcessDetailsGroup({
       style={{
         marginBottom: 10,
         borderRadius: 8,
-        border: "1px solid var(--border)",
-        background: "var(--bg-subtle)",
+        border: "1px solid color-mix(in srgb, var(--border) 65%, transparent)",
+        background: "color-mix(in srgb, var(--bg-subtle) 50%, var(--bg))",
         overflow: "hidden",
         transition: "background 0.15s ease, border-color 0.15s ease",
       }}
@@ -272,9 +272,9 @@ function ProcessDetailsGroup({
           gap: 6,
           width: "100%",
           minHeight: 28,
-          padding: "5px 10px",
+          padding: "4px 8px",
           border: "none",
-          borderBottom: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 60%, transparent)" : "none",
+          borderBottom: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 40%, transparent)" : "none",
           background: "none",
           color: "var(--text-muted)",
           cursor: "pointer",
@@ -302,7 +302,7 @@ function ProcessDetailsGroup({
         >
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "var(--text)" }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)" }}>
           {stepsLabel}
         </span>
       </button>
@@ -315,7 +315,7 @@ function ProcessDetailsGroup({
             display: "flex",
             flexDirection: "column",
             gap: 1,
-            padding: "4px 6px",
+            padding: "2px 4px 4px",
             maxHeight: isMobile ? 220 : 280,
             overflowY: "auto",
             overflowX: "hidden",
