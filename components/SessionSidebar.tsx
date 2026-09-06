@@ -1031,10 +1031,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           onSelect={(path) => void commitCustomPath(path)}
         />
       )}
-      {/* Top bar: aligns with workspace header (36px) */}
+      {/* Top bar: aligns with workspace header (30px) */}
       <div
         style={{
-          height: "var(--workspace-header-height, 36px)",
+          height: "var(--workspace-header-height, 30px)",
           boxSizing: "border-box",
           display: "flex",
           alignItems: "center",
@@ -1099,7 +1099,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 32,
+              width: 30,
               height: "100%",
               padding: 0,
               background: sessionSearchOpen ? "var(--bg-selected)" : "none",
