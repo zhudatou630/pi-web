@@ -1427,22 +1427,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   // Close dropdowns on outside click
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (toolDropdownRef.current && !toolDropdownRef.current.contains(e.target as Node)) {
+    const handler = (e: Event) => {
+      const target = e.target as Node;
+      if (toolDropdownRef.current && !toolDropdownRef.current.contains(target)) {
         setToolDropdownOpen(false);
       }
-      if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(e.target as Node)) {
+      if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(target)) {
         setThinkingDropdownOpen(false);
       }
-      if (controlsMenuRef.current && !controlsMenuRef.current.contains(e.target as Node)) {
+      if (controlsMenuRef.current && !controlsMenuRef.current.contains(target)) {
         setControlsMenuOpen(false);
       }
-      if (historyMenuRef.current && !historyMenuRef.current.contains(e.target as Node) && !textareaRef.current?.contains(e.target as Node)) {
+      if (historyMenuRef.current && !historyMenuRef.current.contains(target) && !textareaRef.current?.contains(target)) {
         setHistoryMenuOpen(false);
       }
     };
+    document.addEventListener("pointerdown", handler);
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    return () => {
+      document.removeEventListener("pointerdown", handler);
+      document.removeEventListener("mousedown", handler);
+    };
   }, []);
 
   useEffect(() => {
@@ -2192,10 +2197,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 transition: "background 0.12s, color 0.12s",
               }}
               onMouseEnter={(e) => {
+                if (isMobile) return;
                 e.currentTarget.style.background = "var(--bg-hover)";
                 e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
               }}
               onMouseLeave={(e) => {
+                if (isMobile) return;
                 e.currentTarget.style.background = "none";
                 e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
               }}
@@ -2223,6 +2230,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {!isMobile && <div style={{ flex: 1 }} />}
 
           {/* RIGHT: thinking + tools preset + compact + sound (idle) | Stop + sound (streaming) */}
+          {isMobile && controlsMenuOpen && (
+            <div
+              style={{ position: "fixed", inset: 0, zIndex: 55, background: "transparent" }}
+              onClick={() => {
+                setToolDropdownOpen(false);
+                setThinkingDropdownOpen(false);
+                setControlsMenuOpen(false);
+              }}
+            />
+          )}
           <div ref={controlsMenuRef} style={{
             flex: "0 0 auto",
             display: "flex",
@@ -2246,10 +2263,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 6,
+                  gap: 5,
                   width: "100%",
                   height: 44,
-                  padding: "0 14px",
+                  padding: "0 10px",
                   background: "none",
                   border: "none",
                   borderRadius: 4,
@@ -2262,12 +2279,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   transition: "background 0.12s, color 0.12s",
                 }}
                 onMouseEnter={(e) => {
-                  if (controlsMenuOpen) return;
+                  if (isMobile || controlsMenuOpen) return;
                   e.currentTarget.style.background = "var(--bg-hover)";
                   e.currentTarget.style.color = "var(--text)";
                 }}
                 onMouseLeave={(e) => {
-                  if (controlsMenuOpen) return;
+                  if (isMobile || controlsMenuOpen) return;
                   e.currentTarget.style.background = "none";
                   e.currentTarget.style.color = "var(--text-muted)";
                 }}
@@ -2359,7 +2376,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       return (
                         <button
                           key={lvl}
-                          onClick={() => { setThinkingDropdownOpen(false); if (!isActive) onThinkingLevelChange(lvl); }}
+                          onClick={() => {
+                            setThinkingDropdownOpen(false);
+                            if (isMobile) setControlsMenuOpen(false);
+                            if (!isActive) onThinkingLevelChange(lvl);
+                          }}
                           style={{
                             display: "flex", alignItems: "center", gap: 8,
                             width: "100%", padding: "7px 12px",
@@ -2445,7 +2466,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       return (
                         <button
                           key={lvl}
-                          onClick={() => { setToolDropdownOpen(false); if (!isActive) onToolPresetChange(preset); }}
+                          onClick={() => {
+                            setToolDropdownOpen(false);
+                            if (isMobile) setControlsMenuOpen(false);
+                            if (!isActive) onToolPresetChange(preset);
+                          }}
                           style={{
                             display: "flex", alignItems: "center", gap: 8,
                             width: "100%", padding: "7px 12px",
@@ -2475,7 +2500,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             {!isStreaming && onCompact && (
               <div>
                 <button
-                  onClick={isCompacting ? onAbortCompaction : onCompact}
+                  onClick={() => {
+                    if (isMobile) setControlsMenuOpen(false);
+                    if (isCompacting) onAbortCompaction?.();
+                    else onCompact?.();
+                  }}
                   disabled={isStreaming && !isCompacting}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
@@ -2543,7 +2572,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
             {onSoundToggle !== undefined && (
               <button
-                onClick={onSoundToggle}
+                onClick={() => {
+                  if (isMobile) setControlsMenuOpen(false);
+                  onSoundToggle?.();
+                }}
                  title={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
                  aria-label={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
                 style={{
@@ -2560,11 +2592,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   transition: "background 0.12s, color 0.12s, opacity 0.12s",
                 }}
                 onMouseEnter={(e) => {
+                  if (isMobile) return;
                   e.currentTarget.style.background = "var(--bg-hover)";
                   e.currentTarget.style.color = "var(--text)";
                   e.currentTarget.style.opacity = "1";
                 }}
                 onMouseLeave={(e) => {
+                  if (isMobile) return;
                   e.currentTarget.style.background = "none";
                   e.currentTarget.style.color = soundEnabled ? "var(--text-muted)" : "var(--text-dim)";
                   e.currentTarget.style.opacity = soundEnabled ? "1" : "0.55";
