@@ -18,6 +18,24 @@ Lint: `npm run lint`
 - Do not use `next dev --webpack` as a fallback. This repository's development graph can fail on `undici` imports such as `node:console`; development is expected to use Turbopack.
 - Next.js may append a generated `BEGIN:nextjs-agent-rules` block to `AGENTS.md` when `next dev` starts. Treat that as generated tooling output, verify it with `git status`, and do not include it in an unrelated feature commit.
 
+### Personal runtime on this machine (`personal` branch)
+
+`:30141` is the systemd unit `pi-web-agegr.service`: `next start` from this checkout. It is not `npm run dev`, and it is not the global `@agegr/pi-web` package. PyCharm edits and the live server share the same `.next/`.
+
+**Agents must not** `next build` / `npm run build` / `npm run start` / `npm run dev`, must not `systemctl --user restart|stop pi-web-agegr.service`, and must not run `scripts/pi-web-switch.sh`. Rebuilding or restarting while the unit is up rewrites `.next/` and kills the live process. After code changes, tell the user the command; they run it.
+
+User commands (repo root, or `scripts/pi-web-switch.sh`):
+
+```bash
+scripts/pi-web-switch.sh status          # git vs npm, port, unit
+scripts/pi-web-switch.sh git --rebuild   # stop → next build → start systemd
+scripts/pi-web-switch.sh git             # restart unit only if .next is already new
+scripts/pi-web-switch.sh npm             # temporary official package; reboot returns to git
+scripts/pi-web-switch.sh stop
+```
+
+Do not `npm run dev` on this checkout while the unit is using `:30141`. Global `@agegr/pi-web` stays installed for rollback only.
+
 ---
 
 ## Architecture
