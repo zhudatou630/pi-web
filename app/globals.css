@@ -16,7 +16,7 @@
   --color-assistant-bg: var(--assistant-bg);
   --color-tool-bg: var(--tool-bg);
   --color-bg-subtle: var(--bg-subtle);
-  --font-mono-font: var(--font-mono);
+  --font-mono: var(--font-mono);
 }
 
 :root {
@@ -143,6 +143,10 @@ html, body {
   font-family: var(--font-ui);
   font-size: 14px;
   overscroll-behavior: none;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
 }
 
 body {
