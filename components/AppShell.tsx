@@ -12,6 +12,7 @@ import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
+import { SessionHistoryControl } from "./SessionHistoryControl";
 import { SystemPromptPanel } from "./SystemPromptPanel";
 import { ToolDefinitionsPanel } from "./ToolDefinitionsPanel";
 import { AgentSessionPanel } from "./AgentSessionPanel";
@@ -72,6 +73,19 @@ type AutoNameStatus =
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
 const LANGUAGE_MENU_WIDTH = 176;
 const AGENT_PANEL_WIDTH = 420;
+
+function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      return encoded[1];
+    }
+  }
+  return /filename="([^"]+)"/i.exec(header)?.[1] ?? null;
+}
 
 function parkedNewSessionDraftKey(cwd: string): string {
   return `parked-new:${cwd}`;
@@ -249,6 +263,9 @@ export function AppShell() {
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
   const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
   const [branchActiveLeafId, setBranchActiveLeafId] = useState<string | null>(null);
+  const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
+  const [historyExporting, setHistoryExporting] = useState(false);
+  const [historyExportError, setHistoryExportError] = useState<string | null>(null);
   const branchLeafChangeFnRef = useRef<((leafId: string | null) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
 
@@ -365,7 +382,7 @@ export function AppShell() {
   const openSessionStatsPanel = useCallback(() => {
     if (isMobile) setSidebarOpen(false);
     setMobileToolbarMoreOpen(false);
-    setActiveTopPanel("session");
+    setActiveTopPanel((cur) => cur === "session" ? null : "session");
   }, [isMobile]);
 
   const handleSidebarToggle = useCallback(() => {
@@ -416,7 +433,13 @@ export function AppShell() {
 
   useEffect(() => {
     setMobileToolbarMoreOpen(false);
+    setHistoryMenuOpen(false);
+    setHistoryExportError(null);
   }, [isMobile, isNarrowMobile, selectedSession?.id, newSessionDraftId]);
+
+  useEffect(() => {
+    if (activeTopPanel) setHistoryMenuOpen(false);
+  }, [activeTopPanel]);
 
   useEffect(() => {
     if (!activeTopPanel || !topBarRef.current) return;
@@ -1053,6 +1076,44 @@ export function AppShell() {
     );
   }, [selectedSession]);
 
+  const handleHistoryMenuOpenChange = useCallback((open: boolean) => {
+    if (open) setActiveTopPanel(null);
+    setHistoryMenuOpen(open);
+    if (!open) setHistoryExportError(null);
+  }, []);
+
+  const handleExportMarkdown = useCallback(async () => {
+    if (!selectedSession) return;
+    setHistoryExportError(null);
+    setHistoryExporting(true);
+    try {
+      const params = new URLSearchParams({ format: "md" });
+      if (branchActiveLeafId) params.set("leafId", branchActiveLeafId);
+      const response = await fetch(`/api/sessions/${encodeURIComponent(selectedSession.id)}/export?${params}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => null) as { error?: string } | null;
+        setHistoryExportError(
+          data?.error === "empty" ? translate("history.exportEmpty") : translate("history.exportFailed"),
+        );
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filenameFromContentDisposition(response.headers.get("Content-Disposition")) ?? "session.md";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setHistoryMenuOpen(false);
+    } catch {
+      setHistoryExportError(translate("history.exportFailed"));
+    } finally {
+      setHistoryExporting(false);
+    }
+  }, [branchActiveLeafId, selectedSession, translate]);
+
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
   const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
   const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd
@@ -1347,66 +1408,32 @@ export function AppShell() {
     if (!mobile && !showChat) return null;
     return (
       <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
-        <button
-          type="button"
-          onClick={() => {
+        <SessionHistoryControl
+          mobile={mobile}
+          disabled={!selectedSession}
+          menuOpen={historyMenuOpen}
+          exporting={historyExporting}
+          error={historyExportError}
+          labels={{
+            full: translate("history.full"),
+            unsaved: translate("history.unsaved"),
+            menu: translate("history.menu"),
+            exportMarkdown: translate("history.exportMarkdown"),
+            exportMarkdownTitle: translate("history.exportMarkdownTitle"),
+          }}
+          onMenuOpenChange={(open) => {
+            handleHistoryMenuOpenChange(open);
+            if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
+          }}
+          onViewFullHistory={() => {
             handleViewFullHistory();
             if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
           }}
-          disabled={!selectedSession}
-          title={selectedSession ? translate("history.full") : translate("history.unsaved")}
-          aria-label={translate("history.full")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 5,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-            height: "100%",
-            padding: mobile ? 0 : "0 8px",
-            background: "none",
-            border: "none",
-            color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-            cursor: selectedSession ? "pointer" : "not-allowed",
-            opacity: selectedSession ? 1 : 0.45,
-            flexShrink: 0,
-            fontSize: 11,
-            whiteSpace: "nowrap",
-            transition: "color 0.1s, background 0.1s, opacity 0.1s",
+          onExportMarkdown={() => {
+            void handleExportMarkdown();
+            if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
           }}
-          onMouseEnter={(event) => {
-            if (!selectedSession) return;
-            event.currentTarget.style.color = "var(--text)";
-            event.currentTarget.style.background = "var(--bg-hover)";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.color = selectedSession ? "var(--text-muted)" : "var(--text-dim)";
-            event.currentTarget.style.background = "none";
-          }}
-          className="workspace-header-action"
-          data-mobile-toolbar-action={mobile ? "history" : undefined}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{
-              color: selectedSession ? "var(--text-muted)" : "var(--text-dim)",
-              flexShrink: 0,
-            }}
-            aria-hidden="true"
-          >
-            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-            <path d="M3 3v5h5" />
-            <path d="M12 7v5l3 2" />
-          </svg>
-          {!mobile && <span>{translate("history.label")}</span>}
-        </button>
+        />
         {(() => {
           // 上下文压缩后当前消息可能不再包含 user 消息，需同时参考会话文件的消息总数。
           const hasMessages = Boolean(
@@ -1880,59 +1907,20 @@ export function AppShell() {
       @keyframes session-info-pop {
         0% {
           opacity: 0;
-          transform: translateY(-24px);
-          filter: blur(6px);
-          box-shadow: 0 2px 8px rgba(0,0,0,0);
-        }
-        55% {
-          opacity: 1;
-          transform: translateY(0);
-          filter: blur(0);
-          background: color-mix(in srgb, var(--accent) 8%, var(--bg-panel));
-          box-shadow: 0 18px 44px rgba(37,99,235,0.16);
+          transform: translateY(-8px);
         }
         100% {
           opacity: 1;
           transform: translateY(0);
-          filter: blur(0);
-          background: var(--bg-panel);
-          box-shadow: 0 10px 28px rgba(0,0,0,0.10);
-        }
-      }
-      @keyframes session-info-light-wash {
-        0% {
-          opacity: 0;
-          transform: translateX(-110%) skewX(-16deg);
-        }
-        24% {
-          opacity: 0.42;
-        }
-        100% {
-          opacity: 0;
-          transform: translateX(115%) skewX(-16deg);
         }
       }
       .session-info-popover {
         position: relative;
         overflow: hidden;
-        transform-origin: top right;
-        animation: session-info-pop 360ms ease-out both;
-        will-change: transform, opacity, filter, background, box-shadow;
-      }
-      .session-info-popover::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        width: 44%;
-        pointer-events: none;
-        background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 24%, transparent), transparent);
-        animation: session-info-light-wash 620ms ease-out both;
+        animation: session-info-pop 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
       }
       @media (prefers-reduced-motion: reduce) {
-        .session-info-popover,
-        .session-info-popover::after {
+        .session-info-popover {
           animation: none;
         }
       }
@@ -2219,11 +2207,48 @@ export function AppShell() {
               )}
               {activeTopPanel === "session" && (
                 <div className="session-info-popover" style={{
+                  position: "relative",
                   background: "var(--bg-panel)",
                   borderBottom: "1px solid var(--border)",
-                  boxShadow: "0 10px 28px rgba(0,0,0,0.10)",
-                  padding: "12px 16px",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+                  padding: isMobile ? "12px 14px" : "14px 20px",
                 }}>
+                  {/* Top-right close button */}
+                  <div style={{ position: "absolute", top: 10, right: 12, zIndex: 2 }}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTopPanel(null)}
+                      title={translate("i18n.close")}
+                      aria-label={translate("i18n.close")}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 24,
+                        height: 24,
+                        background: "transparent",
+                        border: "none",
+                        borderRadius: 4,
+                        color: "var(--text-dim)",
+                        cursor: "pointer",
+                        transition: "color 0.12s, background 0.12s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "var(--text)";
+                        e.currentTarget.style.background = "var(--bg-hover)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = "var(--text-dim)";
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+
                   {sessionStats ? (() => {
                     const formatDuration = (ms: number) => {
                       if (ms <= 0) return "0s";
@@ -2236,117 +2261,7 @@ export function AppShell() {
                       return `${s}s`;
                     };
                     const totalActiveMs = sessionStats.totalActiveMs ?? 0;
-                    const ws = selectedSession;
-                    const sessionRows = [
-                       ...(sessionStats.sessionName ? [{ label: translate("session.name"), value: sessionStats.sessionName, copyField: null }] : []),
-                       { label: translate("session.file"), value: sessionStats.sessionFile ?? translate("session.inMemory"), copyField: "file" as const },
-                       { label: translate("session.id"), value: sessionStats.sessionId, copyField: "id" as const },
-                       ...(totalActiveMs > 0 ? [{ label: translate("session.totalActive"), value: formatDuration(totalActiveMs), copyField: null }] : []),
-                    ];
-                    const projectRows = [
-                      ...(ws ? [{ label: translate("session.projectDir"), value: ws.projectRoot ?? ws.cwd, copyField: "projectDir" as const }] : []),
-                      ...(ws?.branch ? [{ label: translate("session.gitBranch"), value: ws.branch, copyField: "gitBranch" as const }] : []),
-                      ...(ws?.isWorktree ? [{ label: translate("session.gitWorktree"), value: ws.cwd, copyField: "gitWorktree" as const }] : []),
-                    ];
-                    const messageRows = [
-                       [translate("session.user"), sessionStats.userMessages.toLocaleString(locale)],
-                       [translate("session.assistant"), sessionStats.assistantMessages.toLocaleString(locale)],
-                       [translate("session.toolCalls"), sessionStats.toolCalls.toLocaleString(locale)],
-                       [translate("session.toolResults"), sessionStats.toolResults.toLocaleString(locale)],
-                       [translate("session.total"), sessionStats.totalMessages.toLocaleString(locale)],
-                    ];
-                    const ctx = contextUsage ?? sessionStats.contextUsage;
-                    const activeContextSection = ctx?.contextWindow ? (() => {
-                      const pct = ctx.percent ?? (ctx.tokens !== null ? (ctx.tokens / ctx.contextWindow) * 100 : null);
-                      const clampedPct = pct !== null ? Math.min(100, Math.max(0, pct)) : 0;
-                      const isHigh = pct !== null && pct >= 85;
-                      const isWarning = pct !== null && pct >= 70 && pct < 85;
-                      const barColor = isHigh ? "#ef4444" : isWarning ? "#eab308" : "var(--accent, #3b82f6)";
-                      const remaining = ctx.tokens !== null ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
-                      const contextRows = [
-                        ...(ctx.tokens !== null ? [[translate("session.contextUsed"), ctx.tokens.toLocaleString(locale)]] : []),
-                        [translate("session.contextWindow"), ctx.contextWindow.toLocaleString(locale)],
-                        ...(pct !== null ? [[translate("session.context"), `${pct.toFixed(1)}%`]] : []),
-                        ...(remaining !== null ? [[translate("session.contextRemaining"), remaining.toLocaleString(locale)]] : []),
-                      ];
-                      return (
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <span>{translate("session.activeContext")}</span>
-                            {pct !== null && (
-                              <span style={{ fontSize: 11, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--text-muted)" }}>
-                                {pct.toFixed(1)}%
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ width: "100%", height: 5, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginBottom: 8 }}>
-                            <div style={{ width: `${clampedPct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
-                          </div>
-                          <div style={{
-                            display: "grid",
-                            gridTemplateColumns: "max-content max-content",
-                            columnGap: 14,
-                            rowGap: 4,
-                            justifyContent: "start",
-                          }}>
-                            {contextRows.map(([label, value]) => (
-                              <div key={`ctx:${label}`} style={{ display: "contents" }}>
-                                <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{label}</div>
-                                <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{value}</div>
-                              </div>
-                            ))}
-                          </div>
-                          {isHigh && (
-                            <div style={{ marginTop: 6, fontSize: 11, color: "#ef4444", display: "flex", alignItems: "center", gap: 4 }}>
-                              <span>⚠️</span>
-                              <span>{translate("chat.contextHighWarning")}</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })() : null;
 
-                    const cumulativeTokenRows = [
-                       [translate("session.input"), sessionStats.tokens.input.toLocaleString(locale)],
-                       [translate("session.output"), sessionStats.tokens.output.toLocaleString(locale)],
-                       ...(sessionStats.tokens.cacheRead > 0 ? [[translate("session.cacheRead"), sessionStats.tokens.cacheRead.toLocaleString(locale)]] : []),
-                       ...(sessionStats.tokens.cacheWrite > 0 ? [[translate("session.cacheWrite"), sessionStats.tokens.cacheWrite.toLocaleString(locale)]] : []),
-                       [translate("session.total"), sessionStats.tokens.total.toLocaleString(locale)],
-                       ...(sessionStats.cost > 0 ? [[translate("session.cost"), `$${sessionStats.cost.toFixed(4)}`]] : []),
-                       ...(sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite > 0 && sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite + sessionStats.tokens.input > 0
-                         ? [[translate("session.cacheHitRate"), `${(sessionStats.tokens.cacheRead / (sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite + sessionStats.tokens.input) * 100).toFixed(1)}%`]]
-                         : []),
-                    ];
-                    const section = (
-                      title: string,
-                      sectionRows: string[][],
-                      valueAlign: "left" | "right" = "left",
-                      compact = false,
-                    ) => (
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{title}</div>
-                          <div style={{
-                            display: "grid",
-                            gridTemplateColumns: compact ? "max-content max-content" : "auto minmax(0, 1fr)",
-                            columnGap: compact ? 14 : 12,
-                            rowGap: 4,
-                            justifyContent: compact ? "start" : undefined,
-                          }}>
-                            {sectionRows.map(([label, value]) => (
-                              <div key={`${title}:${label}`} style={{ display: "contents" }}>
-                                <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{label}</div>
-                                <div style={{
-                                  color: "var(--text-muted)",
-                                  minWidth: 0,
-                                  overflowWrap: compact ? "normal" : "anywhere",
-                                  textAlign: valueAlign,
-                                  whiteSpace: valueAlign === "right" ? "nowrap" : "normal",
-                                }}>{value}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
                     const copyTitleKey: Record<SessionCopyField, string> = {
                       file: "session.copyFile",
                       id: "session.copyId",
@@ -2362,13 +2277,11 @@ export function AppShell() {
                           title={copied ? translate("session.copied") : translate(copyTitleKey[field])}
                           onClick={() => handleCopySessionField(field, value)}
                           style={{
-                            alignSelf: "start",
                             display: "inline-flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            width: 22,
-                            height: 22,
-                            marginTop: -2,
+                            width: 20,
+                            height: 20,
                             color: copied ? "var(--accent)" : "var(--text-dim)",
                             background: "transparent",
                             border: "1px solid var(--border)",
@@ -2389,11 +2302,11 @@ export function AppShell() {
                           }}
                         >
                           {copied ? (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                               <polyline points="20 6 9 17 4 12" />
                             </svg>
                           ) : (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                             </svg>
@@ -2401,67 +2314,176 @@ export function AppShell() {
                         </button>
                       );
                     };
-                    const sessionInfoSection = (
-                      <div style={{ minWidth: 0 }}>
-                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{translate("session.infoSection")}</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", columnGap: 12, rowGap: 8, alignItems: "start" }}>
-                          {sessionRows.map((row) => (
-                            <div key={`session-info:${row.label}`} style={{ display: "contents" }}>
-                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{row.label}</div>
-                              <div style={{
-                                color: "var(--text-muted)",
-                                minWidth: 0,
-                                overflowWrap: "anywhere",
-                                wordBreak: "break-word",
-                                whiteSpace: "normal",
-                              }}>{row.value}</div>
-                              <div>{row.copyField ? copyButton(row.copyField, row.value) : null}</div>
-                            </div>
-                          ))}
+
+                    // 1. Active Context (Core Focus)
+                    const ctx = contextUsage ?? sessionStats.contextUsage;
+                    const pct = ctx?.percent ?? (ctx?.tokens !== null && ctx?.contextWindow ? (ctx.tokens / ctx.contextWindow) * 100 : null);
+                    const clampedPct = pct !== null ? Math.min(100, Math.max(0, pct)) : 0;
+                    const isHigh = pct !== null && pct >= 85;
+                    const isWarning = pct !== null && pct >= 70 && pct < 85;
+                    const barColor = isHigh ? "#ef4444" : isWarning ? "#eab308" : "var(--accent)";
+                    const remaining = ctx?.tokens !== null && ctx?.contextWindow ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
+
+                    const activeContextBlock = ctx?.contextWindow ? (
+                      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span>{translate("session.activeContext")}</span>
+                          {pct !== null && (
+                            <span style={{ fontSize: 11, fontWeight: 650, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--accent)" }}>
+                              {pct.toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ width: "100%", height: 5, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginBottom: 8 }}>
+                          <div style={{ width: `${clampedPct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
+                        </div>
+                        <div style={{
+                          display: "grid",
+                          gridTemplateColumns: "max-content max-content",
+                          columnGap: 14,
+                          rowGap: 4,
+                          justifyContent: "start",
+                          fontSize: 11.5,
+                        }}>
+                          {ctx.tokens !== null && (
+                            <>
+                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextUsed")}</div>
+                              <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{ctx.tokens.toLocaleString(locale)}</div>
+                            </>
+                          )}
+                          <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextWindow")}</div>
+                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{ctx.contextWindow.toLocaleString(locale)}</div>
+                          {remaining !== null && (
+                            <>
+                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextRemaining")}</div>
+                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{remaining.toLocaleString(locale)}</div>
+                            </>
+                          )}
+                        </div>
+                        {isHigh && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#ef4444", display: "flex", alignItems: "center", gap: 4 }}>
+                            <span>⚠️</span>
+                            <span>{translate("chat.contextHighWarning")}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : null;
+
+                    // 2. Cumulative Traffic & Cost
+                    const cacheTotal = sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite;
+                    const cacheHitRate = cacheTotal + sessionStats.tokens.input > 0
+                      ? `${(sessionStats.tokens.cacheRead / (cacheTotal + sessionStats.tokens.input) * 100).toFixed(1)}%`
+                      : null;
+
+                    const cumulativeBlock = (
+                      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span>{translate("session.cumulativeTokens")}</span>
+                          {sessionStats.cost > 0 && (
+                            <span style={{ fontSize: 11, fontWeight: 650, color: "var(--text)" }}>
+                              ${sessionStats.cost.toFixed(4)}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          display: "grid",
+                          gridTemplateColumns: "max-content max-content",
+                          columnGap: 14,
+                          rowGap: 4,
+                          justifyContent: "start",
+                          fontSize: 11.5,
+                        }}>
+                          <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.total")}</div>
+                          <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{sessionStats.tokens.total.toLocaleString(locale)}</div>
+
+                          <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.input")} / {translate("session.output")}</div>
+                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>
+                            {sessionStats.tokens.input.toLocaleString(locale)} / {sessionStats.tokens.output.toLocaleString(locale)}
+                          </div>
+
+                          {sessionStats.tokens.cacheRead > 0 && (
+                            <>
+                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.cacheRead")}</div>
+                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{sessionStats.tokens.cacheRead.toLocaleString(locale)}</div>
+                            </>
+                          )}
+                          {cacheHitRate && (
+                            <>
+                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.cacheHitRate")}</div>
+                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{cacheHitRate}</div>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
-                    const projectInfoSection = projectRows.length > 0 ? (
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>{translate("session.projectSection")}</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", columnGap: 12, rowGap: 8, alignItems: "start" }}>
-                          {projectRows.map((row) => (
-                            <div key={`project-info:${row.label}`} style={{ display: "contents" }}>
-                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{row.label}</div>
-                              <div style={{
-                                color: "var(--text-muted)",
-                                minWidth: 0,
-                                overflowWrap: "anywhere",
-                                wordBreak: "break-word",
-                                whiteSpace: "normal",
-                              }}>{row.value}</div>
-                              <div>{row.copyField ? copyButton(row.copyField, row.value) : null}</div>
+
+                    // 3. Session & Activity (Refined & De-duplicated)
+                    const sessionBlock = (
+                      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
+                          {translate("session.infoSection")}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 11.5 }}>
+                          {sessionStats.sessionName && (
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                              <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.name")}:</span>
+                              <span style={{ color: "var(--text)", fontWeight: 550, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {sessionStats.sessionName}
+                              </span>
                             </div>
-                          ))}
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.messages")}:</span>
+                            <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                              {sessionStats.userMessages} {translate("session.user").toLowerCase()} · {sessionStats.assistantMessages} {translate("session.assistant").toLowerCase()} · {sessionStats.toolCalls} {translate("session.toolCalls").toLowerCase()}
+                              {totalActiveMs > 0 ? ` (${formatDuration(totalActiveMs)})` : ""}
+                            </span>
+                          </div>
+                          {sessionStats.sessionFile && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                              <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.file")}:</span>
+                              <span
+                                title={sessionStats.sessionFile}
+                                style={{
+                                  color: "var(--text-muted)",
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  direction: "rtl",
+                                  textAlign: "left",
+                                }}
+                              >
+                                {sessionStats.sessionFile}
+                              </span>
+                              {copyButton("file", sessionStats.sessionFile)}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.id")}:</span>
+                            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                              {sessionStats.sessionId ? `${sessionStats.sessionId.slice(0, 8)}...${sessionStats.sessionId.slice(-6)}` : "?"}
+                            </span>
+                            {sessionStats.sessionId && copyButton("id", sessionStats.sessionId)}
+                          </div>
                         </div>
                       </div>
-                    ) : null;
+                    );
 
                     return (
                       <div style={{
                         display: "grid",
                         gridTemplateColumns: isMobile
                           ? "1fr"
-                          : "minmax(360px, 1.7fr) minmax(140px, 0.55fr) minmax(190px, 0.75fr)",
-                        gap: isMobile ? 16 : 24,
-                        fontSize: 12,
-                        lineHeight: 1.5,
+                          : "minmax(200px, 1fr) minmax(210px, 1.1fr) minmax(260px, 1.3fr)",
+                        gap: isMobile ? 16 : 28,
+                        paddingRight: isMobile ? 0 : 28,
                         fontFamily: "var(--font-mono)",
+                        lineHeight: 1.45,
                       }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 20 }}>
-                          {sessionInfoSection}
-                          {projectInfoSection}
-                        </div>
-                        {section(translate("session.messages"), messageRows)}
-                        <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 16 : 18 }}>
-                          {activeContextSection}
-                          {section(translate("session.cumulativeTokens"), cumulativeTokenRows, "right", true)}
-                        </div>
+                        {activeContextBlock}
+                        {cumulativeBlock}
+                        {sessionBlock}
                       </div>
                     );
                   })() : (

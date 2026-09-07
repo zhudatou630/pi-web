@@ -1,7 +1,7 @@
 export const MINIMAP_MARKER_HEIGHT = 8;
 export const MINIMAP_MAX_MARKERS = 15;
-export const OUTLINE_ROW_HEIGHT = 36;
-export const OUTLINE_MAX_HEIGHT = 400;
+export const OUTLINE_ROW_HEIGHT = 28;
+export const OUTLINE_MAX_HEIGHT = 360;
 
 /** The closed entry point is a compact hint, not a full-height scrollbar. */
 export function markerWindow(count: number, activeIndex: number) {

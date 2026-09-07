@@ -1047,6 +1047,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         <PiWebTitle />
         <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
           <button
+            type="button"
             className="workspace-header-action"
             onClick={handleNewSession}
             disabled={!selectedCwd}
@@ -1054,21 +1055,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 5,
+              width: 30,
               height: "100%",
-              padding: "0 8px",
+              padding: 0,
               background: "none",
               border: "none",
               color: selectedCwd ? "var(--text-muted)" : "var(--text-dim)",
               cursor: selectedCwd ? "pointer" : "not-allowed",
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: "-0.01em",
-              whiteSpace: "nowrap",
               flexShrink: 0,
               transition: "color 0.12s, background 0.12s",
             }}
             title={selectedCwd ? t("sidebar.newSessionTitle", { path: selectedCwd }) : t("sidebar.selectProject")}
+            aria-label={selectedCwd ? t("sidebar.newSessionTitle", { path: selectedCwd }) : t("sidebar.selectProject")}
             onMouseEnter={(e) => {
               if (!selectedCwd) return;
               e.currentTarget.style.color = "var(--text)";
@@ -1079,11 +1077,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               e.currentTarget.style.background = "none";
             }}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-              <line x1="6" y1="1" x2="6" y2="11" />
-              <line x1="1" y1="6" x2="11" y2="6" />
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span>{t("sidebar.new")}</span>
           </button>
           <button
             type="button"

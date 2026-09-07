@@ -116,7 +116,7 @@ test("keeps empty Send quiet and highlights text or image submissions", () => {
       assert.match(send, /<svg width="16" height="16" viewBox="0 0 24 24"[^>]*stroke-width="1\.8"/);
       assert.match(html, /class="chat-input-toolbar"[^>]*margin-top:4px/);
       const attach = html.match(/<button[^>]*aria-label="Attach image"[\s\S]*?<\/button>/)?.[0];
-      assert.match(attach ?? "", /<svg width="16" height="16"[^>]*stroke-width="1\.8"/);
+      assert.match(attach ?? "", /<svg width="14" height="14"[^>]*stroke-width="1\.8"/);
     }
   } finally {
     clearDraft(draftKey);

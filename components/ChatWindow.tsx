@@ -316,12 +316,11 @@ function ProcessDetailsGroup({
             display: "flex",
             flexDirection: "column",
             gap: 1,
-            padding: "2px 4px 4px",
+            padding: "4px 6px 4px 6px",
             maxHeight: isMobile ? 220 : 280,
             overflowY: "auto",
             overflowX: "hidden",
             overscrollBehavior: "contain",
-            scrollbarWidth: "thin",
           }}
         >
           {children}

@@ -6,7 +6,8 @@ import { basename, dirname, join } from "path";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
 import { NextResponse } from "next/server";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
+import { buildSessionMarkdown } from "@/lib/session-export-markdown";
 
 const execFileAsync = promisify(execFile);
 
@@ -243,12 +244,30 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const inline = new URL(req.url).searchParams.get("inline") === "1";
+  const searchParams = new URL(req.url).searchParams;
+  const inline = searchParams.get("inline") === "1";
+  const format = searchParams.get("format");
 
   try {
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    if (format === "md" || format === "markdown") {
+      const leafId = searchParams.get("leafId") || undefined;
+      const result = buildSessionMarkdown(getSessionEntries(filePath), { leafId });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 422 });
+      }
+      return new Response(result.markdown, {
+        headers: {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Content-Disposition": getContentDisposition(result.fileName, false),
+          "Cache-Control": "no-cache",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
     }
 
     const tempDir = join(tmpdir(), "pi-web-export");

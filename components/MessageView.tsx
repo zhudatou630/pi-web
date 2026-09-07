@@ -306,7 +306,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             <img
               src={src}
               alt=""
-              style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid rgba(59,130,246,0.15)" }}
+              style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
             />
           </ImagePreview>
         );
@@ -324,21 +324,21 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
   return (
     <div
-      style={{ marginBottom: 16, display: "flex", flexDirection: "column", alignItems: "flex-end" }}
+      style={{ marginBottom: 10, display: "flex", flexDirection: "column", alignItems: "flex-end" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "85%" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "min(85%, 680px)" }}>
         <div
           style={{
             flex: 1,
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid color-mix(in srgb, var(--accent) 22%, var(--border))",
-            borderRadius: 8,
-            padding: "8px 12px",
+            border: "1px solid var(--user-border, color-mix(in srgb, var(--accent) 10%, var(--border)))",
+            borderRadius: 7,
+            padding: "6px 11px",
             fontSize: "calc(14px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.6,
+            lineHeight: 1.52,
             color: "var(--text)",
             wordBreak: "break-word",
             maxHeight: USER_BUBBLE_MAX_HEIGHT,
@@ -418,7 +418,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
       {(time || canFork || canNavigate || true) && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "flex-end",
-          gap: 6, marginTop: 3,
+          gap: 6, marginTop: 2,
         }}>
           <div style={{
             display: "flex", gap: 3,
@@ -427,33 +427,24 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             transition: "opacity 0.12s",
           }}>
             <button
+              type="button"
+              className="message-action-button"
+              data-copied={copied ? "true" : undefined}
               onClick={copyContent}
-               title={t("i18n.copyMessage")}
-              style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "3px 8px", height: 22,
-                background: "none", border: "none",
-                borderRadius: 5,
-                color: copied ? "var(--accent)" : "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11, fontWeight: 400,
-                whiteSpace: "nowrap",
-                transition: "color 0.12s",
-              }}
-              onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "var(--accent)"; }}
-              onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "var(--text-dim)"; }}
+              title={t("i18n.copyMessage")}
+              aria-label={copied ? t("i18n.copied") : t("i18n.copy")}
             >
               {copied ? (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               ) : (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               )}
-               {copied ? t("i18n.copied") : t("i18n.copy")}
+              <span>{copied ? t("i18n.copied") : t("i18n.copy")}</span>
             </button>
           </div>
           {(canFork || canNavigate) && (
@@ -465,60 +456,40 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             }}>
               {canNavigate && (
                 <button
+                  type="button"
+                  className="message-action-button"
                   onClick={() => { onNavigate!(prevAssistantEntryId!); onEditContent?.(editTarget); }}
-                   title={t("i18n.editFromHereTitle")}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 4,
-                    padding: "3px 8px", height: 22,
-                    background: "none", border: "none",
-                    borderRadius: 5,
-                    color: "var(--text-dim)",
-                    cursor: "pointer",
-                    fontSize: 11, fontWeight: 400,
-                    whiteSpace: "nowrap",
-                    transition: "color 0.12s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+                  title={t("i18n.editFromHereTitle")}
+                  aria-label={t("i18n.editFromHere")}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="15 10 20 15 15 20" />
                     <path d="M4 4v7a4 4 0 0 0 4 4h12" />
                   </svg>
-                   {t("i18n.editFromHere")}
+                  <span>{t("i18n.editFromHere")}</span>
                 </button>
               )}
               {canFork && (
                 <button
+                  type="button"
+                  className="message-action-button"
                   onClick={() => { onFork!(entryId!); }}
                   disabled={forking}
-                   title={forking ? t("i18n.creatingSession") : t("i18n.newSessionTitle")}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 4,
-                    padding: "3px 8px", height: 22,
-                    background: "none", border: "none",
-                    borderRadius: 5,
-                    color: forking ? "var(--accent)" : "var(--text-dim)",
-                    cursor: forking ? "not-allowed" : "pointer",
-                    fontSize: 11, fontWeight: 400,
-                    whiteSpace: "nowrap",
-                    transition: "color 0.12s",
-                  }}
-                  onMouseEnter={(e) => { if (!forking) e.currentTarget.style.color = "var(--accent)"; }}
-                  onMouseLeave={(e) => { if (!forking) e.currentTarget.style.color = "var(--text-dim)"; }}
+                  title={forking ? t("i18n.creatingSession") : t("i18n.newSessionTitle")}
+                  aria-label={forking ? t("i18n.creating") : t("i18n.newSession")}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <line x1="6" y1="3" x2="6" y2="15" />
                     <circle cx="18" cy="6" r="3" />
                     <circle cx="6" cy="18" r="3" />
                     <path d="M18 9a9 9 0 0 1-9 9" />
                   </svg>
-                   {forking ? t("i18n.creating") : t("i18n.newSession")}
+                  <span>{forking ? t("i18n.creating") : t("i18n.newSession")}</span>
                 </button>
               )}
             </div>
           )}
-          {time && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{time}</span>}
+          {time && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
         </div>
       )}
     </div>
@@ -693,22 +664,30 @@ function AssistantMessageView({
       )}
 
       {showFooter && (
-        <div data-answer-footer style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 6, fontFamily: "var(--font-ui)" }}>
+        <div data-answer-footer style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 2 }}>
           {textContent && (
             <button
               type="button"
-              className="answer-copy-button"
+              className="answer-copy-button message-action-button"
+              data-copied={copied ? "true" : undefined}
               onClick={copyContent}
               title={t("i18n.copyMessage")}
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 28, padding: "3px 6px", border: "none", borderRadius: 4, background: "none", color: copied ? "var(--accent)" : "var(--text-muted)", fontSize: 11, cursor: "pointer" }}
+              aria-label={copied ? t("i18n.copied") : t("i18n.copy")}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                {copied ? <polyline points="20 6 9 17 4 12" /> : <><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>}
-              </svg>
-              {copied ? t("i18n.copied") : t("i18n.copy")}
+              {copied ? (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              )}
+              <span>{copied ? t("i18n.copied") : t("i18n.copy")}</span>
             </button>
           )}
-          {time && <span style={{ color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
+          {time && <span style={{ color: "var(--text-dim)", fontSize: 10, fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
         </div>
       )}
 
@@ -718,6 +697,8 @@ function AssistantMessageView({
 
 function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
+    const text = (block as TextContent).text;
+    if (!isStreaming && (!text || text.trim() === "")) return null;
     return <div data-message-text data-search-target={searchTarget || undefined}><TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} /></div>;
   }
   if (block.type === "image") {

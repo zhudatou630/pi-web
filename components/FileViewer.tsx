@@ -65,7 +65,7 @@ const DISPLAY_MODE_LABELS: Record<DisplayMode, string> = {
 
 const FILE_CODE_STYLE: CSSProperties = {
   fontFamily: "var(--font-mono)",
-  fontSize: 13,
+  fontSize: "calc(13px + var(--chat-font-size-offset, 0px))",
   lineHeight: 1.6,
 };
 
@@ -78,10 +78,10 @@ const FILE_LINE_NUMBER_STYLE: CSSProperties = {
   background: "var(--bg-panel)",
   borderRight: "1px solid var(--border)",
   fontFamily: "var(--font-mono)",
-  fontSize: 11,
+  fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
   fontStyle: "normal",
   fontVariantNumeric: "tabular-nums",
-  lineHeight: "20.8px",
+  lineHeight: 1.6,
   userSelect: "none",
   flexShrink: 0,
   verticalAlign: "top",
@@ -1694,9 +1694,16 @@ function TextFileViewer({
                     return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
                   }
                   return (
-                    <code className={className} {...props}>
+                    <code className={["markdown-inline-code", className].filter(Boolean).join(" ")} {...props}>
                       {children}
                     </code>
+                  );
+                },
+                table({ children }) {
+                  return (
+                    <div className="markdown-table-wrap">
+                      <table>{children}</table>
+                    </div>
                   );
                 },
                 pre({ children }) {

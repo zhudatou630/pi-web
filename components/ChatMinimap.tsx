@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useMemo, useId, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useMemo, useId, useCallback, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { SessionOutlineItem } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
@@ -24,7 +24,7 @@ type JumpState = { entryId: string; state: "loading" | "error"; message?: string
 
 /** Hermes-style entry point: hover the right-edge hint to browse the whole outline. */
 export function ChatMinimapRail({
-  items, activeEntryId, onJumpToEntry, label, left, top, maxHeight = OUTLINE_MAX_HEIGHT, width = 440,
+  items, activeEntryId, onJumpToEntry, label, left, top, maxHeight = OUTLINE_MAX_HEIGHT, width = 310,
 }: {
   items: SessionOutlineItem[];
   activeEntryId: string | null;
@@ -35,6 +35,7 @@ export function ChatMinimapRail({
   maxHeight?: number;
   width?: number;
 }) {
+  const { t } = useI18n();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -44,20 +45,67 @@ export function ChatMinimapRail({
   const request = useRef(0);
   const pendingFocus = useRef<number | null>(null);
   const wasOpen = useRef(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jumpCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelId = useId();
   const activeIndex = items.findIndex((item) => item.entryId === activeEntryId);
   const markers = markerWindow(items.length, activeIndex);
-  const listHeight = Math.min(items.length * OUTLINE_ROW_HEIGHT, maxHeight - 10 - (jump ? 32 : 0));
+  const listHeight = Math.min(items.length * OUTLINE_ROW_HEIGHT, maxHeight - (jump?.state === "error" ? 28 : 0));
   const { start, end } = outlineWindow(items.length, scrollTop, listHeight);
 
-  useEffect(() => () => { request.current++; }, []);
+  useEffect(() => () => {
+    request.current++;
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    if (jumpCloseTimerRef.current) clearTimeout(jumpCloseTimerRef.current);
+  }, []);
+
+  const close = useCallback(() => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    if (jumpCloseTimerRef.current) clearTimeout(jumpCloseTimerRef.current);
+    pendingFocus.current = null;
+    setOpen(false);
+  }, []);
+
+  const handleMouseEnter = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    if (!open) {
+      hoverTimerRef.current = setTimeout(() => {
+        setOpen(true);
+      }, 100);
+    }
+  }, [open]);
+
+  const handleMouseLeave = useCallback((event: React.MouseEvent) => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && event.currentTarget.contains(focused) && focused.matches(":focus-visible")) return;
+    closeTimerRef.current = setTimeout(() => {
+      close();
+    }, 150);
+  }, [close]);
 
   async function jumpTo(entryId: string) {
     const version = ++request.current;
     setJump({ entryId, state: "loading" });
     try {
       await onJumpToEntry(entryId);
-      if (request.current === version) setJump(null);
+      if (request.current === version) {
+        setJump(null);
+        // 跳转成功后平滑关闭大纲面板，让正文不被遮挡
+        if (jumpCloseTimerRef.current) clearTimeout(jumpCloseTimerRef.current);
+        jumpCloseTimerRef.current = setTimeout(() => {
+          close();
+        }, 160);
+      }
     } catch (error) {
       if (request.current !== version) return;
       if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
@@ -111,22 +159,13 @@ export function ChatMinimapRail({
     setOpen(true);
   }
 
-  function close() {
-    pendingFocus.current = null;
-    setOpen(false);
-  }
-
   if (!items.length) return null;
   return (
     <div
       className={styles.minimap}
       style={{ left, top }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={(event) => {
-        const focused = document.activeElement;
-        if (focused instanceof HTMLElement && event.currentTarget.contains(focused) && focused.matches(":focus-visible")) return;
-        close();
-      }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close();
       }}
@@ -143,14 +182,19 @@ export function ChatMinimapRail({
         ref={triggerRef}
         type="button"
         className={styles.trigger}
-        style={{ height: Math.min(maxHeight, Math.max(24, (markers.end - markers.start) * MINIMAP_MARKER_HEIGHT)) }}
+        style={{ height: Math.min(maxHeight, Math.max(20, (markers.end - markers.start) * MINIMAP_MARKER_HEIGHT + 6)) }}
         aria-label={label}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-busy={jump?.state === "loading" || undefined}
         onClick={(event) => {
-          if (event.detail === 0) focusEntry(Math.max(0, activeIndex));
-          else setOpen(true);
+          if (event.detail === 0) {
+            focusEntry(Math.max(0, activeIndex));
+          } else {
+            if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+            setOpen((v) => !v);
+          }
         }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -200,16 +244,16 @@ export function ChatMinimapRail({
                       }}
                       onClick={() => { void jumpTo(item.entryId); }}
                     >
-                      {item.preview}
+                      <span className={styles.rowText}>{item.preview}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
-            {jump && (
+            {jump?.state === "error" && (
               <div className={styles.status} role="status" aria-live="polite">
-                <span>{jump.state === "loading" ? "正在跳转…" : `跳转失败：${jump.message || "请重试"}`}</span>
-                {jump.state === "error" && <button type="button" onClick={() => { void jumpTo(jump.entryId); }}>重试</button>}
+                <span>{`${t("chatMinimap.jumpFailed") || "跳转失败："}${jump.message || "请重试"}`}</span>
+                <button type="button" onClick={() => { void jumpTo(jump.entryId); }}>{t("chatMinimap.retry") || "重试"}</button>
               </div>
             )}
           </nav>
@@ -244,13 +288,13 @@ function LocatedMinimap({ items, scrollContainer, contentContainer, loadedEntryI
         const visibleBottom = Math.min(window.innerHeight, viewport.bottom);
         const visibleRight = Math.min(window.innerWidth, viewport.right);
         const maxHeight = Math.max(0, Math.min(OUTLINE_MAX_HEIGHT, visibleBottom - visibleTop - 16));
-        const markerHeight = Math.min(maxHeight, Math.max(24, Math.min(MINIMAP_MAX_MARKERS, items.length) * MINIMAP_MARKER_HEIGHT));
+        const markerHeight = Math.min(maxHeight, Math.max(20, Math.min(MINIMAP_MAX_MARKERS, items.length) * MINIMAP_MARKER_HEIGHT + 6));
         const nextPosition = {
           // Anchor to the chat viewport's outer right edge, NEVER the prose column.
-          left: visibleRight - 28,
+          left: visibleRight - 26,
           top: (visibleTop + visibleBottom - markerHeight) / 2,
           maxHeight,
-          width: Math.max(0, Math.min(440, visibleRight - Math.max(0, viewport.left) - 36)),
+          width: Math.max(0, Math.min(310, visibleRight - Math.max(0, viewport.left) - 36)),
         };
         setPosition((previous) => previous && previous.left === nextPosition.left && previous.top === nextPosition.top && previous.maxHeight === maxHeight && previous.width === nextPosition.width ? previous : nextPosition);
         const nodes = Array.from(content!.children).filter((node): node is HTMLElement => node instanceof HTMLElement && node.hasAttribute("data-entry-id"));

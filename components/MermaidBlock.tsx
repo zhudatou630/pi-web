@@ -311,10 +311,11 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
         <pre
           style={{
             margin: 0,
-            padding: "8px 11px",
+            padding: "6px 10px",
             fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.55,
+            lineHeight: 1.48,
             overflowX: "auto",
+            scrollbarWidth: "thin",
             border: "none",
             borderRadius: 0,
             background: "transparent",
@@ -331,14 +332,16 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", opacity: 0.45, paddingRight: "0.8em", userSelect: "none" }}
           customStyle={{
             margin: 0,
-            padding: "8px 11px",
+            padding: "6px 10px",
             fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.55,
+            lineHeight: 1.48,
             borderRadius: 0,
             border: "none",
             boxShadow: "none",
             background: "transparent",
             backgroundColor: "transparent",
+            overflowX: "auto",
+            scrollbarWidth: "thin",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >
