@@ -287,10 +287,23 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
         <div className="markdown-code-actions">
           {headerAction}
           <button
+            type="button"
             onClick={copy}
             className="markdown-code-action"
+            title={copied ? t("i18n.copied") : t("i18n.copy")}
+            aria-label={copied ? t("i18n.copied") : t("i18n.copy")}
           >
-            {copied ? t("i18n.copied") : t("i18n.copy")}
+            {copied ? (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            )}
+            <span>{copied ? t("i18n.copied") : t("i18n.copy")}</span>
           </button>
         </div>
       </div>
@@ -302,7 +315,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             fontSize: "calc(12.5px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.62,
             overflowX: "auto",
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+            background: "color-mix(in srgb, var(--bg) 94%, var(--bg-subtle))",
           }}
         >
           <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
@@ -315,11 +328,11 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
           customStyle={{
             margin: 0,
-            padding: "11px 13px",
-            fontSize: "calc(12.5px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.62,
+            padding: "9px 12px",
+            fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.6,
             borderRadius: 0,
-            background: "color-mix(in srgb, var(--bg) 92%, var(--bg-panel))",
+            background: "color-mix(in srgb, var(--bg) 94%, var(--bg-subtle))",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >

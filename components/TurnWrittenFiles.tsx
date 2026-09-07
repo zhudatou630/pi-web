@@ -31,15 +31,25 @@ export function TurnWrittenFiles({ files, onOpenFile }: {
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 4,
-              padding: "2px 8px",
-              fontSize: 12,
+              gap: 4.5,
+              padding: "2px 7px",
+              minHeight: 22,
+              fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
               fontFamily: "var(--font-mono)",
-              color: "var(--text)",
-              background: "var(--bg-subtle)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
+              color: "var(--text-muted)",
+              background: "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))",
+              border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
+              borderRadius: 5,
               cursor: "pointer",
+              transition: "background 0.12s ease, color 0.12s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--bg-hover)";
+              e.currentTarget.style.color = "var(--text)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))";
+              e.currentTarget.style.color = "var(--text-muted)";
             }}
           >
             {getFileIcon(name, 12)}
