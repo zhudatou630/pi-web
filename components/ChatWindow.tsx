@@ -259,6 +259,7 @@ function ProcessDetailsGroup({
         border: "1px solid var(--border)",
         background: "color-mix(in srgb, var(--bg) 88%, var(--bg-subtle))",
         overflow: "hidden",
+        isolation: "isolate",
         transition: "background 0.15s ease, border-color 0.15s ease",
       }}
     >

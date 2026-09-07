@@ -558,6 +558,7 @@ pre, code {
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 0.88em;
+  box-shadow: none !important;
   word-break: break-word;
 }
 .markdown-body .contains-task-list {
@@ -805,17 +806,19 @@ pre, code {
   min-width: 0;
   max-width: 100%;
   margin: 10px 0;
-  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--bg-subtle) 50%, var(--bg));
+  box-shadow: none !important;
+  isolation: isolate;
+  background: color-mix(in srgb, var(--bg-subtle) 40%, var(--bg));
 }
 .markdown-code-header {
   font-family: var(--font-mono);
   padding: 4px 10px;
   min-height: 24px;
   background: transparent;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
   color: var(--text-dim);
   font-size: 10.5px;
   display: flex;
