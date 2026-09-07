@@ -311,11 +311,11 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
         <pre
           style={{
             margin: 0,
-            padding: "11px 13px",
-            fontSize: "calc(12.5px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.62,
+            padding: "8px 11px",
+            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.55,
             overflowX: "auto",
-            background: "color-mix(in srgb, var(--bg) 94%, var(--bg-subtle))",
+            background: "transparent",
           }}
         >
           <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
@@ -325,14 +325,14 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           language={lang || "text"}
           style={isDark ? vscDarkPlus : vs}
           showLineNumbers
-          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal" }}
+          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", opacity: 0.45, paddingRight: "0.8em", userSelect: "none" }}
           customStyle={{
             margin: 0,
-            padding: "9px 12px",
-            fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.6,
+            padding: "8px 11px",
+            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.55,
             borderRadius: 0,
-            background: "color-mix(in srgb, var(--bg) 94%, var(--bg-subtle))",
+            background: "transparent",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >
