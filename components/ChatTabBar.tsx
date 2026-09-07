@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
 
@@ -18,6 +18,7 @@ interface Props {
   canSplit?: boolean;
   isSecondaryPane?: boolean;
   unifiedHeader?: boolean;
+  isMobile?: boolean;
 }
 
 export function ChatTabBar({
@@ -34,11 +35,27 @@ export function ChatTabBar({
   canSplit = true,
   isSecondaryPane = false,
   unifiedHeader = false,
+  isMobile = false,
 }: Props) {
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
 
-  const isSplitActive = Boolean(splitTabId);
+  const activeTabRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll active tab into view whenever selection changes
+  useEffect(() => {
+    if (activeTabRef.current) {
+      activeTabRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "nearest",
+      });
+    }
+  }, [activeTabId]);
+
+  const effectiveCanSplit = canSplit && !isMobile;
+  const isSplitActive = Boolean(splitTabId && !isMobile);
 
   return (
     <div
@@ -51,13 +68,18 @@ export function ChatTabBar({
         borderBottom: unifiedHeader ? "none" : "1px solid var(--border)",
         height: "var(--workspace-header-height, 30px)",
         minHeight: "var(--workspace-header-height, 30px)",
+        maxHeight: "var(--workspace-header-height, 30px)",
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        flex: unifiedHeader ? "1 1 auto" : "0 0 auto",
         flexShrink: 0,
-        overflowX: "auto",
-        overflowY: "hidden",
+        overflow: "hidden",
         position: "relative",
       }}
     >
       <div
+        ref={scrollContainerRef}
         onWheel={(e) => {
           if (e.deltaY && !e.deltaX) {
             e.currentTarget.scrollLeft += e.deltaY;
@@ -71,6 +93,9 @@ export function ChatTabBar({
           overflowX: "auto",
           overflowY: "hidden",
           scrollbarWidth: "none",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-x",
+          overscrollBehaviorX: "contain",
         }}
       >
         {tabs.map((tab, index) => {
@@ -83,6 +108,7 @@ export function ChatTabBar({
           return (
             <div
               key={tab.id}
+              ref={isPrimary ? activeTabRef : undefined}
               role="tab"
               aria-selected={isVisible}
               tabIndex={isCurrentPane || (!activeTabId && index === 0) ? 0 : -1}
@@ -111,20 +137,22 @@ export function ChatTabBar({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
+                gap: isMobile ? 4 : 6,
                 height: "100%",
-                paddingLeft: 10,
-                paddingRight: 4,
+                paddingLeft: isMobile ? 8 : 10,
+                paddingRight: isMobile ? (isVisible ? 4 : 8) : 4,
                 borderRight: "1px solid var(--border)",
                 background: isVisible ? "var(--bg)" : "var(--bg-panel)",
                 cursor: "pointer",
                 fontSize: 12,
                 color: isVisible ? "var(--text)" : "var(--text-muted)",
                 whiteSpace: "nowrap",
-                maxWidth: 200,
-                minWidth: 84,
+                maxWidth: isMobile ? 130 : 200,
+                minWidth: isMobile ? 70 : 84,
                 flexShrink: 0,
                 userSelect: "none",
+                WebkitUserSelect: "none",
+                touchAction: "pan-x",
                 position: "relative",
                 transition: "background 0.12s, color 0.12s",
                 boxShadow: isCurrentPane ? "inset 0 -2px 0 var(--accent)" : undefined,
@@ -178,38 +206,40 @@ export function ChatTabBar({
                 {tab.title}
               </span>
 
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-                onMouseEnter={() => setHoveredClose(tab.id)}
-                onMouseLeave={() => setHoveredClose(null)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 20,
-                  height: 20,
-                  background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
-                  border: "none",
-                  borderRadius: 3,
-                  color: hoveredClose === tab.id ? "var(--text)" : "var(--text-dim)",
-                  cursor: "pointer",
-                  padding: 0,
-                  flexShrink: 0,
-                  transition: "background 0.1s, color 0.1s",
-                }}
-                title={t("chatTabs.closeTab", { defaultValue: "关闭标签" })}
-                aria-label={`${t("chatTabs.closeTab", { defaultValue: "关闭标签" })}: ${tab.title}`}
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-                  <line x1="2" y1="2" x2="8" y2="8" />
-                  <line x1="8" y1="2" x2="2" y2="8" />
-                </svg>
-              </button>
+              {/* Close Button: On mobile, only render close button for visible/active tab to prevent accidental closure while scrolling/switching */}
+              {(!isMobile || isVisible) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                  onMouseEnter={() => setHoveredClose(tab.id)}
+                  onMouseLeave={() => setHoveredClose(null)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: isMobile ? 22 : 20,
+                    height: isMobile ? 22 : 20,
+                    background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
+                    border: "none",
+                    borderRadius: 3,
+                    color: hoveredClose === tab.id ? "var(--text)" : "var(--text-dim)",
+                    cursor: "pointer",
+                    padding: 0,
+                    flexShrink: 0,
+                    transition: "background 0.1s, color 0.1s",
+                  }}
+                  title={t("chatTabs.closeTab", { defaultValue: "关闭标签" })}
+                  aria-label={`${t("chatTabs.closeTab", { defaultValue: "关闭标签" })}: ${tab.title}`}
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                    <line x1="2" y1="2" x2="8" y2="8" />
+                    <line x1="8" y1="2" x2="2" y2="8" />
+                  </svg>
+                </button>
+              )}
             </div>
           );
         })}
@@ -222,6 +252,9 @@ export function ChatTabBar({
           alignItems: "center",
           flexShrink: 0,
           background: "var(--bg-panel)",
+          boxShadow: isMobile ? "-4px 0 10px -2px rgba(0,0,0,0.18)" : undefined,
+          zIndex: 2,
+          position: "relative",
         }}
       >
         {/* New Chat Tab Button */}
@@ -236,7 +269,7 @@ export function ChatTabBar({
             height: "100%",
             background: "transparent",
             border: "none",
-            borderRight: canSplit ? "1px solid var(--border)" : "none",
+            borderRight: effectiveCanSplit ? "1px solid var(--border)" : "none",
             color: "var(--text-muted)",
             cursor: "pointer",
             padding: 0,
@@ -259,7 +292,7 @@ export function ChatTabBar({
         </button>
 
         {/* Split View Toggle Button (Primary Pane) */}
-        {!isSecondaryPane && canSplit && onToggleSplit && (
+        {!isSecondaryPane && effectiveCanSplit && onToggleSplit && (
           <button
             type="button"
             onClick={onToggleSplit}

@@ -21,9 +21,9 @@ test("sorts running subagents first and enables search only for larger families"
   assert.match(source, /maxHeight: "min\(58dvh, 480px\)"/);
 });
 
-test("renders as a compact left-positioned dropdown without a centered inner width", () => {
-  assert.match(source, /borderLeft: "1px solid var\(--border\)"/);
-  assert.match(source, /borderRadius: "0 0 6px 6px"/);
+test("renders as a floating popover card without a centered inner width", () => {
+  assert.match(source, /border: "1px solid var\(--border\)"/);
+  assert.match(source, /borderRadius: 8/);
   assert.doesNotMatch(source, /maxWidth: 680/);
 });
 

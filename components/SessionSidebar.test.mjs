@@ -148,3 +148,15 @@ test("hides subagent rows and aggregates their state into the main session row",
   assert.match(source, /familySessions\.some\(\(session\) => runningSessionIds\.has\(session\.id\)\)/);
   assert.doesNotMatch(source, /function SessionTreeItem/);
 });
+
+test("supports mobile long-press to reveal row action buttons without text selection", () => {
+  assert.match(sessionItemSource, /onTouchStart=\{handleTouchStart\}/);
+  assert.match(sessionItemSource, /onTouchMove=\{handleTouchMove\}/);
+  assert.match(sessionItemSource, /onTouchEnd=\{handleTouchEnd\}/);
+  assert.match(sessionItemSource, /onRevealActions\?\.()/);
+  assert.match(sessionItemSource, /is-actions-revealed/);
+  assert.match(sessionItemSource, /onOpenInNewTab/);
+  assert.match(source, /revealedSessionId/);
+  assert.match(source, /handleGlobalPointerDown/);
+});
+

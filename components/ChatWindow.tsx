@@ -2,7 +2,7 @@
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
+import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolCallContent, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, splitFinalAssistantBlocks } from "@/lib/message-display";
@@ -41,7 +41,6 @@ import {
   MOUNTED_GROUP_LIMIT,
   restoreScrollTop,
 } from "@/lib/chat-lazy-load";
-import { estimateMessageTokens } from "@/lib/token-estimate";
 
 interface Props {
   session: SessionInfo | null;
@@ -52,7 +51,7 @@ interface Props {
   sessionRunning?: boolean;
   newSessionCwd: string | null;
   newSessionDraftKey: string | null;
-  onAgentEnd?: () => void;
+  onAgentEnd?: (session?: SessionInfo | null) => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest) => void;
   onSessionCreated?: (session: SessionInfo, sourceDraftKey: string) => void;
   onSessionForked?: (newSessionId: string) => void;
@@ -204,12 +203,82 @@ function withAssistantBlocks(
   return next;
 }
 
+function partitionAssistantMessage(
+  message: AssistantMessage,
+  options: { isStreaming?: boolean } = {},
+): { processMessage: AssistantMessage | null; answerMessage: AssistantMessage | null } {
+  const split = splitFinalAssistantBlocks(message, options);
+  const processEnd = message.content.indexOf(split.answerBlocks[0]);
+  const processBlocks = message.content.slice(0, processEnd < 0 ? undefined : processEnd);
+  const answerMessage = (split.answerBlocks.length > 0 || getAssistantErrorMessage(message, options))
+    ? withAssistantBlocks(message, split.answerBlocks)
+    : null;
+  const processVisible = getDisplayableAssistantBlocks(
+    { ...message, content: processBlocks },
+    options,
+  );
+  const processMessage = processVisible.length > 0
+    ? withAssistantBlocks(message, processBlocks, { omitUsage: Boolean(answerMessage) && !options.isStreaming })
+    : null;
+  return { processMessage, answerMessage };
+}
+
+function formatToolCallSummary(toolName: string, input: unknown): string {
+  if (typeof input === "object" && input !== null) {
+    const rec = input as Record<string, unknown>;
+    const target = rec.command ?? rec.path ?? rec.filePath ?? rec.query ?? rec.url ?? rec.prompt;
+    if (typeof target === "string" && target.trim()) {
+      const singleLine = target.trim().replace(/\s+/g, " ");
+      const truncated = singleLine.length > 40 ? `${singleLine.slice(0, 40)}…` : singleLine;
+      return `${toolName}: ${truncated}`;
+    }
+  }
+  return toolName;
+}
+
+function lastStreamingBlock(message: AssistantMessage | null | undefined): AssistantContentBlock | undefined {
+  return message?.content.at(-1);
+}
+
+function isLiveProcessActivity(
+  isLiveTail: boolean,
+  isStreaming: boolean,
+  streamingMessage: AssistantMessage | null,
+  phase: AgentPhase,
+): boolean {
+  if (!isLiveTail) return false;
+  if (phase?.kind === "running_tools") return true;
+  if (!isStreaming) return false;
+  const lastBlock = lastStreamingBlock(streamingMessage);
+  return lastBlock?.type === "thinking" || lastBlock?.type === "toolCall";
+}
+
+function liveProcessSummary(
+  streamingMessage: AssistantMessage | null,
+  phase: AgentPhase,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string | null {
+  if (phase?.kind === "running_tools") {
+    const latest = phase.tools[phase.tools.length - 1];
+    return latest?.name ?? t("chat.runningTool");
+  }
+  const lastBlock = lastStreamingBlock(streamingMessage);
+  if (lastBlock?.type === "toolCall") {
+    return lastBlock.toolName
+      ? formatToolCallSummary(lastBlock.toolName, lastBlock.input)
+      : t("chat.generatingToolInput");
+  }
+  return null;
+}
+
 function ProcessDetailsGroup({
   messageCount,
   toolCallCount,
   defaultExpanded = false,
   reveal = false,
   isMobile = false,
+  activeStepSummary = null,
+  isStreaming = false,
   children,
   t,
 }: {
@@ -218,16 +287,20 @@ function ProcessDetailsGroup({
   defaultExpanded?: boolean;
   reveal?: boolean;
   isMobile?: boolean;
+  activeStepSummary?: string | null;
+  isStreaming?: boolean;
   children: ReactNode;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const scrollBoxRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
+  const userToggledRef = useRef(false);
 
   useLayoutEffect(() => {
-    if (reveal) setExpanded(true);
-  }, [reveal]);
+    if (userToggledRef.current) return;
+    setExpanded(defaultExpanded);
+  }, [defaultExpanded]);
 
   const isPanelOpen = expanded || reveal;
   const totalSteps = toolCallCount > 0 ? toolCallCount : messageCount;
@@ -266,7 +339,10 @@ function ProcessDetailsGroup({
       <button
         type="button"
         aria-expanded={isPanelOpen}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          userToggledRef.current = true;
+          setExpanded((v) => !v);
+        }}
         style={{
           display: "flex",
           alignItems: "center",
@@ -303,9 +379,42 @@ function ProcessDetailsGroup({
         >
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)" }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)", flexShrink: 0 }}>
           {stepsLabel}
         </span>
+        {isStreaming && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              minWidth: 0,
+              marginLeft: 4,
+              fontSize: 11,
+              color: "var(--accent)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              className="animate-pulse"
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: "var(--accent)",
+                flexShrink: 0,
+              }}
+              aria-hidden="true"
+            />
+            {activeStepSummary && (
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {activeStepSummary}
+              </span>
+            )}
+          </span>
+        )}
       </button>
       {isPanelOpen && (
         <div
@@ -343,12 +452,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   playDoneSoundRef.current = playDoneSound;
   const soundEnabledRef = useRef(soundEnabled);
   soundEnabledRef.current = soundEnabled;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const soundedExtensionDialogIdRef = useRef<string | null>(null);
   const wrappedOnAgentEnd = useCallback(() => {
     if (completionNotificationsEnabled && soundEnabledRef.current) {
       playDoneSoundRef.current();
     }
-    onAgentEnd?.();
+    onAgentEnd?.(sessionRef.current);
   }, [completionNotificationsEnabled, onAgentEnd]);
 
   // 稳定化 onEditContent 引用，配合 React.memo 防止历史消息重渲染
@@ -1024,47 +1135,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
-
-  const streamStartRef = useRef<number | null>(null);
-  const [streamTps, setStreamTps] = useState<number | null>(null);
-  const [streamTokens, setStreamTokens] = useState<number>(0);
-
-  useEffect(() => {
-    if (!streamState.isStreaming) {
-      streamStartRef.current = null;
-      setStreamTps(null);
-      setStreamTokens(0);
-      return;
-    }
-    const tick = () => {
-      const tokens = estimateMessageTokens(streamState.streamingMessage);
-      setStreamTokens(tokens);
-      if (tokens === 0) return;
-      const now = Date.now();
-      if (streamStartRef.current === null) {
-        streamStartRef.current = now;
-      }
-      const elapsed = (now - streamStartRef.current) / 1000;
-      if (elapsed > 0.4) {
-        setStreamTps(tokens / elapsed);
-      }
-    };
-    const id = setInterval(tick, 200);
-    tick();
-    return () => clearInterval(id);
-  }, [streamState.isStreaming, streamState.streamingMessage]);
-
-  const streamingModel = streamState.streamingMessage?.role === "assistant"
-    ? (streamState.streamingMessage as AssistantMessage).model
-    : undefined;
-  const streamingProvider = streamState.streamingMessage?.role === "assistant"
-    ? (streamState.streamingMessage as AssistantMessage).provider
-    : undefined;
-  const streamingModelKey = streamingProvider && streamingModel
-    ? `${streamingProvider}:${streamingModel}`
-    : streamingModel;
-  const streamingModelName = (streamingModelKey && (modelNames[streamingModelKey] ?? streamingModel))
-    || (displayModelValue ? (modelNames[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? displayModelValue.modelId) : undefined);
+  const streamingAssistant = streamState.streamingMessage?.role === "assistant"
+    ? streamState.streamingMessage as AssistantMessage
+    : null;
+  const streamingParts = streamingAssistant
+    ? partitionAssistantMessage(streamingAssistant, { isStreaming: true })
+    : { processMessage: null, answerMessage: null };
   const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
   const promptAnchorSpacerHeightRef = useRef(0);
   const promptAnchorMeasureFrameRef = useRef<number | null>(null);
@@ -1420,19 +1496,42 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 const firstIdx = hasAnchor ? userIdx : idx;
 
                 const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
+                const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
+                if (isLiveTail) {
+                  liveTailItemCount = endIdx - firstIdx;
+                }
 
                 if (finalAssistantIdx === -1) {
                   for (let renderIdx = firstIdx; renderIdx < endIdx; renderIdx++) {
                     markOutlineTarget([entryIds[renderIdx]]);
                     rendered.push(renderMessage(renderIdx));
                   }
+                  if (isLiveTail && streamingParts.processMessage) {
+                    markOutlineTarget([]);
+                    rendered.push(
+                      <ProcessDetailsGroup
+                        key="streaming-process-group"
+                        messageCount={1}
+                        toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
+                        defaultExpanded
+                        isMobile={isMobile}
+                        activeStepSummary={liveProcessSummary(streamingParts.processMessage, agentPhase, t)}
+                        isStreaming={isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase)}
+                        t={t}
+                      >
+                        <MessageView
+                          key="streaming-process-view"
+                          message={streamingParts.processMessage}
+                          isStreaming
+                          cwd={messageCwd}
+                          onOpenFile={onOpenFile}
+                          onOpenSession={onOpenSession}
+                        />
+                      </ProcessDetailsGroup>,
+                    );
+                  }
                   idx = endIdx;
                   continue;
-                }
-
-                const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
-                if (isLiveTail) {
-                  liveTailItemCount = endIdx - firstIdx;
                 }
 
                 if (hasAnchor) {
@@ -1442,7 +1541,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
                 const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
                 const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalAnswerMessage = !isLiveTail && (finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant))
+                const finalAnswerMessage = (finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant))
                   ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
                   : null;
 
@@ -1455,16 +1554,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 let processToolCount = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
-
-                const isStreamingProcess = Boolean(
-                  streamState.isStreaming
-                  && hasStreamingContent
-                  && streamState.streamingMessage
-                  && (
-                    streamState.streamingMessage.content?.some((b) => b.type === "toolCall" || b.type === "thinking")
-                    || !streamState.streamingMessage.content?.some((b) => b.type === "text" && b.text.trim().length > 0)
-                  )
-                );
 
                 for (let processIdx = userIdx + 1; processIdx <= finalAssistantIdx; processIdx++) {
                   const processMessage = messages[processIdx];
@@ -1496,11 +1585,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   }));
                 }
 
-                if (isLiveTail && isStreamingProcess && streamState.streamingMessage) {
+                if (isLiveTail && streamingParts.processMessage) {
                   processViews.push(
                     <MessageView
                       key="streaming-process-view"
-                      message={streamState.streamingMessage as AgentMessage}
+                      message={streamingParts.processMessage}
                       isStreaming
                       cwd={messageCwd}
                       onOpenFile={onOpenFile}
@@ -1508,6 +1597,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     />
                   );
                 }
+
+                const liveProcessActive = isLiveProcessActivity(
+                  isLiveTail,
+                  streamState.isStreaming,
+                  streamingAssistant,
+                  agentPhase,
+                );
+                const activeStepSummary = liveProcessSummary(streamingAssistant, agentPhase, t);
 
                 if (processViews.length > 0) {
                   markOutlineTarget(processEntryIds);
@@ -1517,7 +1614,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       data-entry-id={entryIds[hasAnchor ? userIdx + 1 : firstIdx]}
                       ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
                     >
-                      <ProcessDetailsGroup messageCount={processViews.length} toolCallCount={processToolCount} defaultExpanded={!finalAnswerMessage && endIdx === messages.length} reveal={revealProcess} isMobile={isMobile} t={t}>
+                      <ProcessDetailsGroup
+                        messageCount={processViews.length}
+                        toolCallCount={processToolCount}
+                        defaultExpanded={!finalAnswerMessage && endIdx === messages.length}
+                        reveal={revealProcess}
+                        isMobile={isMobile}
+                        activeStepSummary={activeStepSummary}
+                        isStreaming={liveProcessActive}
+                        t={t}
+                      >
                         {processViews}
                       </ProcessDetailsGroup>
                     </div>,
@@ -1575,38 +1681,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 </>
               );
             })()}
-            {streamState.isStreaming && hasStreamingContent && streamState.streamingMessage && (
+            {streamState.isStreaming && streamingParts.answerMessage && (
               <>
-                {(!streamState.streamingMessage.content?.some((b) => b.type === "toolCall" || b.type === "thinking")
-                  && streamState.streamingMessage.content?.some((b) => b.type === "text" && b.text.trim().length > 0)) && (
-                  <MessageView message={streamState.streamingMessage as AgentMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
-                )}
+                <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
                 <div
                   className="flex items-center gap-1.5 py-0.5 text-[11px] sm:text-xs text-text-muted font-mono select-none overflow-hidden whitespace-nowrap min-w-0"
                   style={{ marginTop: 2 }}
                 >
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-                  {streamingModelName && (
-                    <span className="truncate min-w-0 max-w-[110px] sm:max-w-[260px]" title={streamingModelName}>
-                      {streamingModelName}
-                    </span>
-                  )}
-                  {streamingModelName && (streamTps !== null || streamTokens > 0) && (
-                    <span className="shrink-0 text-text-dim">·</span>
-                  )}
-                  {streamTps !== null && (
-                    <span className="shrink-0 text-text font-medium tabular-nums">
-                      {streamTps.toFixed(1)} tok/s
-                    </span>
-                  )}
-                  {streamTokens > 0 && (
-                    <>
-                      {streamTps !== null && <span className="shrink-0 text-text-dim">·</span>}
-                      <span className="shrink-0 tabular-nums">
-                        {Math.round(streamTokens)} {isMobile ? "tok" : "tokens"}
-                      </span>
-                    </>
-                  )}
                 </div>
               </>
             )}

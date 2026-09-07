@@ -78,17 +78,13 @@ export function SessionHistoryControl({
         type="button"
         onClick={() => {
           if (disabled) return;
-          if (mobile) {
-            onMenuOpenChange(!menuOpen);
-            return;
-          }
-          onViewFullHistory();
+          onMenuOpenChange(!menuOpen);
         }}
         disabled={disabled}
-        title={disabled ? labels.unsaved : labels.full}
-        aria-label={labels.full}
-        aria-haspopup={mobile ? "menu" : undefined}
-        aria-expanded={mobile ? menuOpen : undefined}
+        title={disabled ? labels.unsaved : labels.menu}
+        aria-label={labels.menu}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
         style={{
           display: "flex",
           alignItems: "center",
@@ -96,9 +92,9 @@ export function SessionHistoryControl({
           width: ICON_BUTTON_SIZE,
           height: "100%",
           padding: 0,
-          background: mobile && menuOpen ? "var(--bg-selected)" : "none",
+          background: menuOpen ? "var(--bg-selected)" : "none",
           border: "none",
-          color,
+          color: menuOpen ? "var(--text)" : color,
           cursor: disabled ? "not-allowed" : "pointer",
           opacity: disabled ? 0.45 : 1,
           flexShrink: 0,
@@ -118,7 +114,7 @@ export function SessionHistoryControl({
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          style={{ color, flexShrink: 0 }}
+          style={{ color: menuOpen ? "var(--text)" : color, flexShrink: 0 }}
           aria-hidden="true"
         >
           <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
@@ -126,55 +122,24 @@ export function SessionHistoryControl({
           <path d="M12 7v5l3 2" />
         </svg>
       </button>
-      {!mobile && (
-        <button
-          type="button"
-          onClick={() => {
-            if (disabled) return;
-            onMenuOpenChange(!menuOpen);
-          }}
-          disabled={disabled}
-          title={labels.menu}
-          aria-label={labels.menu}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 18,
-            height: "100%",
-            padding: 0,
-            background: menuOpen ? "var(--bg-selected)" : "none",
-            border: "none",
-            color,
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.45 : 1,
-            flexShrink: 0,
-            transition: "color 0.1s, background 0.1s, opacity 0.1s",
-          }}
-          onMouseEnter={(event) => hover(event, true)}
-          onMouseLeave={(event) => hover(event, false)}
-          className="workspace-header-action"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-      )}
       {menuOpen && !disabled && menuPos && (
         <div
           role="menu"
           aria-label={labels.menu}
           style={{
             position: "fixed",
-            top: menuPos.top,
-            left: menuPos.left,
-            minWidth: 220,
+            top: menuPos.top + 2,
+            left: Math.max(8, Math.min(menuPos.left, (typeof window !== "undefined" ? window.innerWidth : 800) - 210)),
+            minWidth: 195,
             zIndex: 520,
             background: "var(--bg-panel)",
             border: "1px solid var(--border)",
+            borderRadius: 6,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
             padding: 4,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
           }}
         >
           <button
@@ -188,7 +153,14 @@ export function SessionHistoryControl({
             onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
             onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
           >
-            {labels.full}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-muted)", flexShrink: 0 }} aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {labels.full}
+            </span>
           </button>
           <button
             type="button"
@@ -202,10 +174,23 @@ export function SessionHistoryControl({
             onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
             onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
           >
-            {labels.exportMarkdown}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-muted)", flexShrink: 0 }} aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {labels.exportMarkdown}
+            </span>
+            {exporting && (
+              <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: 6, flexShrink: 0 }} aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
           </button>
           {error && (
-            <div style={{ padding: "6px 10px", fontSize: 11, color: "#dc2626", lineHeight: 1.35 }}>
+            <div style={{ padding: "6px 8px", fontSize: 11, color: "#dc2626", lineHeight: 1.35 }}>
               {error}
             </div>
           )}
@@ -218,9 +203,10 @@ export function SessionHistoryControl({
 const menuItemStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
+  gap: 8,
   width: "100%",
-  height: 32,
-  padding: "0 10px",
+  height: 28,
+  padding: "0 8px",
   border: "none",
   borderRadius: 4,
   background: "transparent",
@@ -228,4 +214,7 @@ const menuItemStyle: CSSProperties = {
   cursor: "pointer",
   textAlign: "left",
   fontSize: 12,
+  fontFamily: "var(--font-ui)",
+  transition: "background 0.12s ease",
+  boxSizing: "border-box",
 };

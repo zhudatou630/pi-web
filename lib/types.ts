@@ -69,6 +69,12 @@ export interface AgentUsage {
   };
 }
 
+/** Client-only settled decode reading. Not written to the session file. */
+export interface AssistantDecodeStats {
+  ttftMs: number;
+  tokensPerSecond?: number;
+}
+
 export interface AssistantMessage {
   role: "assistant";
   content: AssistantContentBlock[];
@@ -78,6 +84,7 @@ export interface AssistantMessage {
   errorMessage?: string;
   timestamp?: number;
   usage?: AgentUsage;
+  decode?: AssistantDecodeStats;
 }
 
 export interface ToolResultMessage {

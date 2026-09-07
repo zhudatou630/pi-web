@@ -17,6 +17,11 @@ import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import type { SubagentToolDetails } from "@/lib/subagent-extension";
+import {
+  formatDecodeDurationParts,
+  formatTokensPerSecond,
+  shouldDisplayTtft,
+} from "@/lib/decode-throughput";
 import type {
   AgentMessage,
   UserMessage,
@@ -496,6 +501,37 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   );
 }
 
+function DecodeStatsLine({ decode }: { decode: NonNullable<AssistantMessage["decode"]> }) {
+  const { t } = useI18n();
+  const parts: string[] = [];
+  if (shouldDisplayTtft(decode.ttftMs)) {
+    const durationParts = formatDecodeDurationParts(decode.ttftMs);
+    const duration = "minutes" in durationParts
+      ? t("chat.decodeMinutes", durationParts)
+      : t("chat.decodeSeconds", durationParts);
+    parts.push(t("chat.ttft", { duration }));
+  }
+  if (decode.tokensPerSecond !== undefined) {
+    parts.push(t("chat.tokensPerSecond", { throughput: formatTokensPerSecond(decode.tokensPerSecond) }));
+  }
+  if (parts.length === 0) return null;
+  return (
+    <div
+      data-decode-stats
+      style={{
+        marginTop: 4,
+        color: "var(--text-muted)",
+        fontSize: 11,
+        fontFamily: "var(--font-mono)",
+        fontVariantNumeric: "tabular-nums",
+        userSelect: "none",
+      }}
+    >
+      {parts.join(" · ")}
+    </div>
+  );
+}
+
 function AssistantMessageView({
   message,
   modelName,
@@ -549,7 +585,7 @@ function AssistantMessageView({
 
   // Streaming-based timing for thinking blocks
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
-  const [streamingDurations, setStreamingDurations] = useState<Map<number, number>>(new Map());
+  const [finalDurations, setFinalDurations] = useState<Map<number, number>>(new Map());
 
   // Thinking duration derived from file timestamps: time from prev message end to this message end
   // This is the total generation time (thinking + any text before first tool call)
@@ -575,10 +611,19 @@ function AssistantMessageView({
   }, [toolResults, message.timestamp]);
 
   useEffect(() => {
+    const now = Date.now();
+    const items = blockItemsRef.current;
+
+    // Record start time for each block the first time we see it
+    items.forEach(({ originalIndex }) => {
+      if (!blockStartTimesRef.current.has(originalIndex)) {
+        blockStartTimesRef.current.set(originalIndex, now);
+      }
+    });
+
     if (!isStreaming) {
       // Finalise any un-finished thinking block durations on stream end
-      const now = new Date().getTime();
-      setStreamingDurations((prev: Map<number, number>) => {
+      setFinalDurations((prev) => {
         const next = new Map(prev);
         for (const [idx, start] of blockStartTimesRef.current) {
           if (!next.has(idx)) next.set(idx, Math.round((now - start) / 1000));
@@ -587,36 +632,24 @@ function AssistantMessageView({
       });
       return;
     }
-    const tick = () => {
-      const items = blockItemsRef.current;
-      const now = Date.now();
 
-      // Record start time for each block the first time we see it
-      items.forEach(({ originalIndex }) => {
-        if (!blockStartTimesRef.current.has(originalIndex)) blockStartTimesRef.current.set(originalIndex, now);
-      });
-
-      // When a non-last block has a successor already started, finalise its duration
-      setStreamingDurations((prev: Map<number, number>) => {
-        let changed = false;
-        const next = new Map(prev);
-        for (let i = 0; i < items.length - 1; i++) {
-          const originalIndex = items[i].originalIndex;
-          const nextOriginalIndex = items[i + 1].originalIndex;
-          if (!next.has(originalIndex) && blockStartTimesRef.current.has(originalIndex)) {
-            const start = blockStartTimesRef.current.get(originalIndex)!;
-            const nextStart = blockStartTimesRef.current.get(nextOriginalIndex) ?? now;
-            next.set(originalIndex, Math.round((nextStart - start) / 1000));
-            changed = true;
-          }
+    // Finalise predecessor blocks that have completed (successor started)
+    setFinalDurations((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (let i = 0; i < items.length - 1; i++) {
+        const originalIndex = items[i].originalIndex;
+        const nextOriginalIndex = items[i + 1].originalIndex;
+        if (!next.has(originalIndex) && blockStartTimesRef.current.has(originalIndex)) {
+          const start = blockStartTimesRef.current.get(originalIndex)!;
+          const nextStart = blockStartTimesRef.current.get(nextOriginalIndex) ?? now;
+          next.set(originalIndex, Math.round((nextStart - start) / 1000));
+          changed = true;
         }
-        return changed ? next : prev;
-      });
-
-    };
-    const id = setInterval(tick, 300);
-    return () => clearInterval(id);
-  }, [isStreaming]);
+      }
+      return changed ? next : prev;
+    });
+  }, [isStreaming, blockItems.length]);
 
   if (blocks.length === 0 && !isStreaming && !providerError) return null;
 
@@ -634,9 +667,26 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} searchTarget={block === searchBlock} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
+          <BlockView
+            key={`${entryId ?? "stream"}-${originalIndex}`}
+            block={block}
+            searchTarget={block === searchBlock}
+            toolResults={toolResults}
+            isStreaming={isStreaming}
+            streamingDuration={finalDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)}
+            startTime={blockStartTimesRef.current.get(originalIndex)}
+            toolCallDurations={toolCallDurations}
+            cwd={cwd}
+            onOpenFile={onOpenFile}
+            onOpenSession={onOpenSession}
+            sessionId={sessionId}
+            entryId={entryId}
+            blockIndex={originalIndex}
+          />
         ))}
       </div>
+
+      {!isStreaming && isTurnEnd && message.decode && <DecodeStatsLine decode={message.decode} />}
 
       {providerError && (
         <div
@@ -695,7 +745,22 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function LiveDuration({ startTime }: { startTime: number }) {
+  const [elapsed, setElapsed] = useState(() => Math.max(0, Math.round((Date.now() - startTime) / 1000)));
+  useEffect(() => {
+    const id = setInterval(() => {
+      setElapsed(Math.max(0, Math.round((Date.now() - startTime) / 1000)));
+    }, 500);
+    return () => clearInterval(id);
+  }, [startTime]);
+  return (
+    <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+      {elapsed}s
+    </span>
+  );
+}
+
+function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, startTime, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     const text = (block as TextContent).text;
     if (!isStreaming && (!text || text.trim() === "")) return null;
@@ -718,7 +783,7 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
     );
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
+    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} startTime={startTime} isStreaming={isStreaming} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
@@ -733,9 +798,11 @@ function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent
   return <SafeMarkdownBody className="markdown-assistant-message" isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
 }
 
-export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
+export function ThinkingBlock({ block, duration, startTime, isStreaming, sessionId, entryId, blockIndex }: {
   block: ThinkingContent;
   duration?: number;
+  startTime?: number;
+  isStreaming?: boolean;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
@@ -832,9 +899,11 @@ export function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex 
             </span>
           )}
           {expanded && <div style={{ flex: 1 }} />}
-          {duration !== undefined && (
+          {duration !== undefined ? (
             <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
-          )}
+          ) : isStreaming && startTime ? (
+            <LiveDuration startTime={startTime} />
+          ) : null}
           <svg
             width="9"
             height="9"

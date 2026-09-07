@@ -11,15 +11,15 @@ export async function POST(
   const { id } = await params;
 
   try {
-    const filePath = await resolveSessionPath(id);
-    if (!filePath) {
+    const existing = getRpcSession(id);
+    const filePath = existing?.sessionFile || (await resolveSessionPath(id));
+    if (!existing?.isAlive() && !filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const existing = getRpcSession(id);
     const { session } = existing?.isAlive()
       ? { session: existing }
-      : await startRpcSession(id, filePath, undefined);
+      : await startRpcSession(id, filePath!, undefined);
 
     // globalThis keeps wrappers alive across dev hot reloads; older instances
     // may predate waitUntilReady(), but those have already completed startup.

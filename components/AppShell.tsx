@@ -290,7 +290,15 @@ export function AppShell() {
   const branchLeafChangeFnRef = useRef<((leafId: string | null) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
 
+  // Session-keyed metadata caches — enables instant flicker-free switching between split panes and tabs
+  const sessionStatsCacheRef = useRef<Map<string, SessionStatsInfo>>(new Map());
+  const contextUsageCacheRef = useRef<Map<string, { percent: number | null; contextWindow: number; tokens: number | null }>>(new Map());
+  const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null }>>(new Map());
+
   const handleBranchDataChange = useCallback((tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => {
+    if (activeSessionIdRef.current) {
+      branchDataCacheRef.current.set(activeSessionIdRef.current, { tree, activeLeafId });
+    }
     setBranchTree(tree);
     setBranchActiveLeafId(activeLeafId);
     branchLeafChangeFnRef.current = onLeafChange;
@@ -306,6 +314,9 @@ export function AppShell() {
   const systemInfoLoaderRef = useRef<(() => Promise<void>) | null>(null);
   const systemInfoLoadIdRef = useRef(0);
   const systemBtnRef = useRef<HTMLButtonElement>(null);
+  const agentsButtonRef = useRef<HTMLButtonElement>(null);
+  const agentsAnchorRef = useRef<HTMLElement | null>(null);
+  const agentsPanelRef = useRef<HTMLDivElement>(null);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -330,6 +341,9 @@ export function AppShell() {
   activeSessionIdRef.current = selectedSession?.id ?? null;
   const handleSessionStatsChange = useCallback((stats: SessionStatsInfo | null) => {
     if (stats === null) return;
+    if (stats.sessionId) {
+      sessionStatsCacheRef.current.set(stats.sessionId, stats);
+    }
     setSessionStats(stats);
   }, []);
   const [copiedSessionField, setCopiedSessionField] = useState<SessionCopyField | null>(null);
@@ -353,14 +367,32 @@ export function AppShell() {
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const handleContextUsageChange = useCallback((usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => {
     if (usage === null) return;
+    if (activeSessionIdRef.current) {
+      contextUsageCacheRef.current.set(activeSessionIdRef.current, usage);
+    }
     setContextUsage(usage);
   }, []);
 
+  const syncSessionMetadata = useCallback((sessionId: string) => {
+    const cachedStats = sessionStatsCacheRef.current.get(sessionId);
+    if (cachedStats) setSessionStats(cachedStats);
+    const cachedUsage = contextUsageCacheRef.current.get(sessionId);
+    if (cachedUsage) setContextUsage(cachedUsage);
+    const cachedBranches = branchDataCacheRef.current.get(sessionId);
+    if (cachedBranches) {
+      setBranchTree(cachedBranches.tree);
+      setBranchActiveLeafId(cachedBranches.activeLeafId);
+    }
+  }, []);
+
   useEffect(() => {
-    if (selectedSession) return;
-    setSessionStats(null);
-    setContextUsage(null);
-  }, [selectedSession]);
+    if (!selectedSession) {
+      setSessionStats(null);
+      setContextUsage(null);
+      return;
+    }
+    syncSessionMetadata(selectedSession.id);
+  }, [selectedSession, syncSessionMetadata]);
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | "language" | null>(null);
@@ -475,11 +507,20 @@ export function AppShell() {
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
       if (activeTopPanel === "agents") {
-        setTopPanelPos({
-          top: topBarRect.bottom,
-          left: topBarRect.left,
-          width: Math.min(AGENT_PANEL_WIDTH, topBarRect.width),
-        });
+        const anchor = agentsAnchorRef.current ?? agentsButtonRef.current;
+        const panelWidth = Math.min(AGENT_PANEL_WIDTH, (typeof window !== "undefined" ? window.innerWidth : 800) - 16);
+        if (anchor) {
+          const rect = anchor.getBoundingClientRect();
+          const idealLeft = rect.right - panelWidth;
+          const left = Math.max(8, Math.min(idealLeft, (typeof window !== "undefined" ? window.innerWidth : 800) - panelWidth - 8));
+          const top = rect.bottom + 4;
+          setTopPanelPos({ top, left, width: panelWidth });
+          return;
+        }
+        const idealLeft = topBarRect.right - panelWidth - 8;
+        const left = Math.max(8, Math.min(idealLeft, (typeof window !== "undefined" ? window.innerWidth : 800) - panelWidth - 8));
+        const top = topBarRect.bottom + 4;
+        setTopPanelPos({ top, left, width: panelWidth });
         return;
       }
       setTopPanelPos({ top: topBarRect.bottom, left: topBarRect.left, width: topBarRect.width });
@@ -487,8 +528,34 @@ export function AppShell() {
     update();
     const ro = new ResizeObserver(update);
     ro.observe(topBarRef.current);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
   }, [activeTopPanel, isMobile]);
+
+  useEffect(() => {
+    if (activeTopPanel !== "agents") return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (agentsPanelRef.current?.contains(target)) return;
+      if (agentsAnchorRef.current?.contains(target) || agentsButtonRef.current?.contains(target)) return;
+      setActiveTopPanel(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveTopPanel(null);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [activeTopPanel]);
 
   // Files unmount when inactive; workspace terminals stay mounted until closed.
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
@@ -775,6 +842,9 @@ export function AppShell() {
       }
     }
     setNewSessionCwd(null);
+    if (typeof syncSessionMetadata === "function") {
+      syncSessionMetadata(session.id);
+    }
     setSelectedSession(session);
     if (typeof viewSessionInCurrentTab === "function") {
       const isSplit = typeof isSplitActiveRef !== "undefined" && isSplitActiveRef.current;
@@ -972,21 +1042,50 @@ export function AppShell() {
     }
   }, [handleSelectSession, locale]);
 
-  const handleAgentEnd = useCallback(() => {
+  const handleSessionRenamed = useCallback((sessionId: string, title: string) => {
+    setRefreshKey((key) => key + 1);
+    setSelectedSession((current) => current?.id === sessionId ? { ...current, name: title } : current);
+    setChatTabs((prev) => prev.map((tab) => (tab.id === sessionId && tab.kind === "session" ? {
+      ...tab,
+      title,
+      session: tab.session ? { ...tab.session, name: title } : tab.session,
+    } : tab)));
+    setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
+  }, []);
+
+  const handleAutoNameRef = useRef<(options?: { silent?: boolean; sessionId?: string }) => Promise<void>>(undefined);
+  const namingSessionIdsRef = useRef<Set<string>>(new Set());
+
+  const handleAgentEnd = useCallback((paneSession?: SessionInfo | null) => {
     setRefreshKey((k) => k + 1);
     setExplorerRefreshKey((k) => k + 1);
     if (selectedSession) hydrateSelectedSession(selectedSession.id);
+    const targetSession = paneSession ?? selectedSession;
+
+    // Silent auto-name in the background on the first completed turn if untitled
+    if (
+      targetSession &&
+      targetSession.id &&
+      !targetSession.name &&
+      targetSession.relation?.kind !== "subagent" &&
+      autoNameStatus.kind === "idle" &&
+      !namingSessionIdsRef.current.has(targetSession.id)
+    ) {
+      const targetId = targetSession.id;
+      setTimeout(() => {
+        void handleAutoNameRef.current?.({ silent: true, sessionId: targetId });
+      }, 350);
+    }
 
     if (selectedSession?.relation?.kind === "subagent") return;
     if (!shouldShowBrowserNotification()) return;
-    const targetSession = selectedSession;
     deliverSessionNotification({
       targetSession,
       title: targetSession?.name ?? translate("i18n.sessionComplete"),
       body: translate("i18n.taskFinished"),
       tag: targetSession ? `pi-session-complete:${targetSession.id}` : "pi-session-complete",
     });
-  }, [deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
+  }, [autoNameStatus.kind, deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
 
   const handleAttentionNeeded = useCallback((request: BlockingExtensionUiRequest) => {
     if (selectedSession?.relation?.kind === "subagent") return;
@@ -1003,22 +1102,16 @@ export function AppShell() {
     });
   }, [deliverSessionNotification, selectedSession, translate]);
 
-  const handleSessionRenamed = useCallback((sessionId: string, title: string) => {
-    setRefreshKey((key) => key + 1);
-    setSelectedSession((current) => current?.id === sessionId ? { ...current, name: title } : current);
-    setChatTabs((prev) => prev.map((tab) => (tab.id === sessionId && tab.kind === "session" ? {
-      ...tab,
-      title,
-      session: tab.session ? { ...tab.session, name: title } : tab.session,
-    } : tab)));
-    setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
-  }, []);
+  const handleAutoName = useCallback(async (options?: { silent?: boolean; sessionId?: string }) => {
+    const sessionId = options?.sessionId ?? selectedSession?.id;
+    if (!sessionId) return;
+    if (namingSessionIdsRef.current.has(sessionId) || autoNameStatus.kind === "naming") return;
+    namingSessionIdsRef.current.add(sessionId);
 
-  const handleAutoName = useCallback(async () => {
-    const sessionId = selectedSession?.id;
-    if (!sessionId || autoNameStatus.kind === "naming") return;
     if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
-    setActiveTopPanel(null);
+    if (!options?.silent) {
+      setActiveTopPanel(null);
+    }
     setAutoNameStatus({ kind: "naming" });
 
     try {
@@ -1031,17 +1124,23 @@ export function AppShell() {
       }
 
       const title = body.title.trim();
-      if (activeSessionIdRef.current !== sessionId) return;
       handleSessionRenamed(sessionId, title);
       setAutoNameStatus({ kind: "success" });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 1800);
     } catch (error) {
-      if (activeSessionIdRef.current !== sessionId) return;
-      const message = error instanceof Error ? error.message : String(error);
-      setAutoNameStatus({ kind: "error", message });
-      autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
+      if (options?.silent) {
+        console.warn("[pi-web] silent auto-name failed:", error instanceof Error ? error.message : error);
+        setAutoNameStatus({ kind: "idle" });
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        setAutoNameStatus({ kind: "error", message });
+        autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
+      }
+    } finally {
+      namingSessionIdsRef.current.delete(sessionId);
     }
   }, [autoNameStatus.kind, handleSessionRenamed, selectedSession?.id]);
+  handleAutoNameRef.current = handleAutoName;
 
   useEffect(() => {
     if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
@@ -1181,6 +1280,7 @@ export function AppShell() {
     const targetTab = pane === "secondary" ? secondaryTab : primaryTab;
     if (!targetTab) return;
     if (targetTab.kind === "session" && targetTab.session) {
+      syncSessionMetadata(targetTab.session.id);
       setSelectedSession(targetTab.session);
       setNewSessionCwd(null);
       router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
@@ -1192,7 +1292,7 @@ export function AppShell() {
       }
       router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
     }
-  }, [primaryTab, router, secondaryTab]);
+  }, [primaryTab, router, secondaryTab, syncSessionMetadata]);
 
   const handleSelectPrimaryTab = useCallback((id: string) => {
     setActiveChatTabId(id);
@@ -1212,6 +1312,7 @@ export function AppShell() {
       if (tabId === activeChatTabId) {
         setActiveChatPane("primary");
         if (tab.kind === "session" && tab.session) {
+          syncSessionMetadata(tab.session.id);
           setSelectedSession(tab.session);
           setNewSessionCwd(null);
           router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
@@ -1225,6 +1326,7 @@ export function AppShell() {
       if (tabId === splitChatTabId) {
         setActiveChatPane("secondary");
         if (tab.kind === "session" && tab.session) {
+          syncSessionMetadata(tab.session.id);
           setSelectedSession(tab.session);
           setNewSessionCwd(null);
           router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
@@ -1245,6 +1347,7 @@ export function AppShell() {
     }
 
     if (tab.kind === "session" && tab.session) {
+      syncSessionMetadata(tab.session.id);
       setSelectedSession(tab.session);
       setNewSessionCwd(null);
       router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
@@ -1256,7 +1359,7 @@ export function AppShell() {
       }
       router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
     }
-  }, [activeChatPane, activeChatTabId, chatTabs, isSplitActive, router, splitChatTabId]);
+  }, [activeChatPane, activeChatTabId, chatTabs, isSplitActive, router, splitChatTabId, syncSessionMetadata]);
 
   const handleCloseChatTab = useCallback((tabId: string) => {
     setChatTabs((prevTabs) => {
@@ -1877,8 +1980,12 @@ export function AppShell() {
         })()}
         {hasSubagentSessions && (
           <button
+            ref={!mobile ? agentsButtonRef : undefined}
             type="button"
-            onClick={() => toggleTopPanel("agents", mobile)}
+            onClick={(event) => {
+              agentsAnchorRef.current = event.currentTarget;
+              toggleTopPanel("agents", mobile);
+            }}
             title={translate("agentSwitcher.title")}
             aria-label={translate("agentSwitcher.title")}
             aria-pressed={activeTopPanel === "agents"}
@@ -1912,7 +2019,7 @@ export function AppShell() {
             </span>
           </button>
         )}
-        {sessionTools && sessionHasBranches && (mobile ? (
+        {sessionTools && (mobile ? (sessionHasBranches && (
           <button
             type="button"
             onClick={() => toggleTopPanel("branches", true)}
@@ -1937,7 +2044,7 @@ export function AppShell() {
               <path d="M18 9a9 9 0 0 1-9 9" />
             </svg>
           </button>
-        ) : (
+        )) : (
           <BranchNavigator
             tree={branchTree}
             activeLeafId={branchActiveLeafId}
@@ -1947,6 +2054,7 @@ export function AppShell() {
             containerRef={topBarRef}
             open={activeTopPanel === "branches"}
             onToggle={() => toggleTopPanel("branches")}
+            disabled={!sessionHasBranches}
             hasSession
           />
         ))}
@@ -2185,37 +2293,13 @@ export function AppShell() {
           </>
         ) : (
           <>
-            {tokens && tokens.input > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
-                </svg>
-                {formatCompact(tokens.input)}
-              </span>
-            )}
-            {tokens && tokens.output > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                </svg>
-                {formatCompact(tokens.output)}
-              </span>
-            )}
-            {tokens && tokens.cacheRead > 0 && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M8.5 5a3.5 3.5 0 1 1-1-2.45" /><polyline points="6.5 1.5 8.5 2.5 7.5 4.5" />
-                </svg>
-                {formatCompact(tokens.cacheRead)}
-              </span>
-            )}
             {costText && (
-              <span style={{ display: "flex", alignItems: "center", color: "var(--text)", fontWeight: 500 }}>
+              <span style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400 }}>
                 {costText}
               </span>
             )}
             {desktopContextText && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4, color: contextColor }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 4, color: contextColor, fontWeight: 400 }}>
                 <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
                 </svg>
@@ -2497,8 +2581,8 @@ export function AppShell() {
                 }}
               >
                 {renderProjectTrustWarning(false)}
-                {renderChatToolbarActions(false, { sessionTools: sessionHeaderReady })}
                 {renderSessionStatsButton(false)}
+                {renderChatToolbarActions(false, { sessionTools: sessionHeaderReady })}
               </div>
             </>
           )}
@@ -2519,15 +2603,18 @@ export function AppShell() {
           )}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
-            <div style={{
-              position: "fixed",
-              top: topPanelPos.top,
-              left: topPanelPos.left,
-              width: topPanelPos.width,
-              maxHeight: `calc(100dvh - ${topPanelPos.top}px)`,
-              overflowY: "auto",
-              zIndex: 500,
-            }}>
+            <div
+              ref={activeTopPanel === "agents" ? agentsPanelRef : undefined}
+              style={{
+                position: "fixed",
+                top: topPanelPos.top,
+                left: topPanelPos.left,
+                width: topPanelPos.width,
+                maxHeight: `calc(100dvh - ${topPanelPos.top}px - 16px)`,
+                overflowY: activeTopPanel === "agents" ? "visible" : "auto",
+                zIndex: 520,
+              }}
+            >
               {activeTopPanel === "agents" && activeSessionFamily && selectedSession && (
                 <AgentSessionPanel
                   rootSession={activeSessionFamily.root}
@@ -2535,6 +2622,7 @@ export function AppShell() {
                   selectedSessionId={selectedSession.id}
                   runningSessionIds={runningSessionIds}
                   onSelectSession={handleSelectSession}
+                  onOpenInNewTab={handleOpenSessionInNewTab}
                 />
               )}
               {activeTopPanel === "system" && (
@@ -2843,6 +2931,35 @@ export function AppShell() {
           )}
 
         </div>
+        {isMobile && showChat && chatTabs.length > 1 && (
+          <div
+            data-mobile-chat-tabs="true"
+            style={{
+              borderBottom: "1px solid var(--border)",
+              background: "var(--bg-panel)",
+              height: "var(--workspace-header-height, 30px)",
+              minHeight: "var(--workspace-header-height, 30px)",
+              width: "100%",
+              maxWidth: "100%",
+              minWidth: 0,
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "stretch",
+            }}
+          >
+            <ChatTabBar
+              tabs={chatTabs}
+              activeTabId={activeChatTabId ?? ""}
+              activePane="primary"
+              runningSessionIds={runningSessionIds}
+              onSelectTab={handleSelectChatTab}
+              onCloseTab={handleCloseChatTab}
+              onNewTab={handleNewChatTab}
+              canSplit={false}
+              isMobile={true}
+            />
+          </div>
+        )}
         {isMobile && renderProjectTrustWarning(true)}
         </div>
 

@@ -10,6 +10,7 @@ interface Props {
   selectedSessionId: string;
   runningSessionIds: ReadonlySet<string>;
   onSelectSession: (session: SessionInfo) => void;
+  onOpenInNewTab?: (session: SessionInfo) => void;
 }
 
 function sessionTitle(session: SessionInfo): string {
@@ -73,12 +74,14 @@ function AgentRow({
   selected,
   running,
   onSelect,
+  onOpenInNewTab,
 }: {
   session: SessionInfo;
   main?: boolean;
   selected: boolean;
   running: boolean;
   onSelect: () => void;
+  onOpenInNewTab?: () => void;
 }) {
   const { locale, t } = useI18n();
   const relation = session.relation?.kind === "subagent" ? session.relation : null;
@@ -94,6 +97,12 @@ function AgentRow({
       role="option"
       aria-selected={selected}
       onClick={onSelect}
+      onAuxClick={(event) => {
+        if (event.button === 1 && onOpenInNewTab) {
+          event.preventDefault();
+          onOpenInNewTab();
+        }
+      }}
       style={{
         width: "100%",
         minHeight: 56,
@@ -150,7 +159,14 @@ function AgentRow({
   );
 }
 
-export function AgentSessionPanel({ rootSession, subagents, selectedSessionId, runningSessionIds, onSelectSession }: Props) {
+export function AgentSessionPanel({
+  rootSession,
+  subagents,
+  selectedSessionId,
+  runningSessionIds,
+  onSelectSession,
+  onOpenInNewTab,
+}: Props) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const sortedSubagents = useMemo(() => [...subagents].sort((a, b) => {
@@ -175,11 +191,9 @@ export function AgentSessionPanel({ rootSession, subagents, selectedSessionId, r
       aria-label={t("agentSwitcher.title")}
       style={{
         background: "var(--bg-panel)",
-        borderLeft: "1px solid var(--border)",
-        borderRight: "1px solid var(--border)",
-        borderBottom: "1px solid var(--border)",
-        borderRadius: "0 0 6px 6px",
-        boxShadow: "0 10px 28px rgba(0,0,0,0.10)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        boxShadow: "0 10px 30px rgba(0, 0, 0, 0.14)",
         overflow: "hidden",
       }}
     >
@@ -218,6 +232,7 @@ export function AgentSessionPanel({ rootSession, subagents, selectedSessionId, r
             selected={rootSession.id === selectedSessionId}
             running={runningSessionIds.has(rootSession.id)}
             onSelect={() => onSelectSession(rootSession)}
+            onOpenInNewTab={onOpenInNewTab ? () => onOpenInNewTab(rootSession) : undefined}
           />
           {visibleSubagents.map((session) => (
             <AgentRow
@@ -226,6 +241,7 @@ export function AgentSessionPanel({ rootSession, subagents, selectedSessionId, r
               selected={session.id === selectedSessionId}
               running={runningSessionIds.has(session.id)}
               onSelect={() => onSelectSession(session)}
+              onOpenInNewTab={onOpenInNewTab ? () => onOpenInNewTab(session) : undefined}
             />
           ))}
           {visibleSubagents.length === 0 && (

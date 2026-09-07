@@ -22,6 +22,8 @@ interface Props {
   compact?: boolean;
   /** Keep the inline dropdown mounted while another control supplies its trigger */
   hideInlineButton?: boolean;
+  /** Disable button when no branches exist instead of hiding it */
+  disabled?: boolean;
 }
 
 // Find the visible entry IDs on the path from root to activeLeafId.
@@ -253,7 +255,7 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
   );
 }
 
-export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, containerRef, open: openProp, onToggle, hasSession, compact, hideInlineButton }: Props) {
+export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, containerRef, open: openProp, onToggle, hasSession, compact, hideInlineButton, disabled = false }: Props) {
   const { t } = useI18n();
   const [openInternal, setOpenInternal] = useState(false);
   const open = openProp !== undefined ? openProp : openInternal;
@@ -291,9 +293,10 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
 
   const topLevel = selectTopLevelBranches(tree);
   const hasContent = !noBranchReason && topLevel.length > 0;
+  const isEffectiveDisabled = disabled || !hasContent;
 
   const branchIcon = (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: hasContent ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: isEffectiveDisabled ? "var(--text-dim)" : "var(--accent)", flexShrink: 0 }}>
       <line x1="6" y1="3" x2="6" y2="15" />
       <circle cx="18" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
@@ -314,7 +317,15 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
         <button
           className="workspace-header-action"
           ref={btnRef}
-          onClick={() => onToggle ? onToggle() : setOpenInternal((v) => !v)}
+          disabled={isEffectiveDisabled}
+          onClick={() => {
+            if (isEffectiveDisabled) return;
+            if (onToggle) {
+              onToggle();
+            } else {
+              setOpenInternal((v) => !v);
+            }
+          }}
           style={{
             display: hideInlineButton ? "none" : "flex",
             alignItems: "center",
@@ -325,20 +336,29 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
             padding: compact ? 0 : "0 12px",
             background: open ? "var(--bg-selected)" : "none",
             border: "none",
-            cursor: "pointer",
-            color: open ? "var(--text)" : "var(--text-muted)",
+            cursor: isEffectiveDisabled ? "not-allowed" : "pointer",
+            color: isEffectiveDisabled ? "var(--text-dim)" : open ? "var(--text)" : "var(--text-muted)",
+            opacity: isEffectiveDisabled ? 0.45 : 1,
             fontSize: 11,
             whiteSpace: "nowrap",
-            transition: "color 0.1s, background 0.1s",
+            transition: "color 0.1s, background 0.1s, opacity 0.1s",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = open ? "var(--text)" : "var(--text-muted)"; }}
-           title={t("i18n.branches")}
-           aria-label={t("i18n.branches")}
+          onMouseEnter={(e) => {
+            if (isEffectiveDisabled) return;
+            e.currentTarget.style.color = "var(--text)";
+            e.currentTarget.style.background = "var(--bg-hover)";
+          }}
+          onMouseLeave={(e) => {
+            if (isEffectiveDisabled) return;
+            e.currentTarget.style.color = open ? "var(--text)" : "var(--text-muted)";
+            e.currentTarget.style.background = open ? "var(--bg-selected)" : "none";
+          }}
+          title={isEffectiveDisabled ? t("i18n.noBranches", { defaultValue: "没有分支" }) : t("i18n.branches")}
+          aria-label={t("i18n.branches")}
           aria-pressed={open}
         >
           {branchIcon}
-           {!compact && <span>{t("i18n.branches")}</span>}
+          {!compact && <span>{t("i18n.branches")}</span>}
         </button>
         {open && dropdownPos && (
           <div style={{

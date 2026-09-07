@@ -431,8 +431,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [listViewportH, setListViewportH] = useState(0);
   const [listScrollTop, setListScrollTop] = useState(0);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
+  const [revealedSessionId, setRevealedSessionId] = useState<string | null>(null);
   const listScrollRafRef = useRef<number | null>(null);
   const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setRevealedSessionId(null);
     const top = e.currentTarget.scrollTop;
     if (listScrollRafRef.current != null) return;
     listScrollRafRef.current = requestAnimationFrame(() => {
@@ -440,6 +442,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       setListScrollTop(top);
     });
   }, []);
+
+  // Global click-outside listener to dismiss revealed session row actions
+  useEffect(() => {
+    if (!revealedSessionId) return;
+    const handleGlobalPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest(".session-row-actions")) return;
+      setRevealedSessionId(null);
+    };
+    window.addEventListener("pointerdown", handleGlobalPointerDown, true);
+    return () => window.removeEventListener("pointerdown", handleGlobalPointerDown, true);
+  }, [revealedSessionId]);
   useLayoutEffect(() => {
     const el = listScrollRef.current;
     if (!el) return;
@@ -1214,8 +1228,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             }}
           >
               {showProjectFilter && (
-                <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "5px 8px",
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--bg-subtle)",
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
                   <input
+                    className="sidebar-dropdown-filter-input"
                     value={projectFilter}
                     onChange={(e) => setProjectFilter(e.target.value)}
                     onKeyDown={(e) => {
@@ -1224,21 +1250,44 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         setDropdownOpen(false);
                       }
                     }}
-                     placeholder={t("sidebar.filterProjects")}
+                    placeholder={t("sidebar.filterProjects")}
                     autoFocus
                     style={{
-                      width: "100%",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      padding: "5px 8px",
-                      border: "1px solid var(--border)",
-                      borderRadius: 4,
+                      flex: 1,
+                      minWidth: 0,
+                      fontSize: 12,
+                      fontFamily: "inherit",
+                      padding: "2px 0",
+                      border: "none",
                       outline: "none",
-                      background: "var(--bg)",
+                      background: "transparent",
                       color: "var(--text)",
-                      boxSizing: "border-box",
                     }}
                   />
+                  {projectFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setProjectFilter("")}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 14,
+                        height: 14,
+                        padding: 0,
+                        background: "none",
+                        border: "none",
+                        color: "var(--text-dim)",
+                        cursor: "pointer",
+                      }}
+                      title={t("chat.clear")}
+                    >
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               )}
               <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto" }}>
@@ -1438,8 +1487,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 }}
               >
                   {showWtFilter && (
-                    <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "5px 8px",
+                      borderBottom: "1px solid var(--border)",
+                      background: "var(--bg-subtle)",
+                    }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
                       <input
+                        className="sidebar-dropdown-filter-input"
                         value={wtFilter}
                         onChange={(e) => setWtFilter(e.target.value)}
                         onKeyDown={(e) => {
@@ -1451,18 +1512,41 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         placeholder={t("sidebar.filterWorktrees")}
                         autoFocus
                         style={{
-                          width: "100%",
-                          fontSize: 11,
-                          fontFamily: "var(--font-mono)",
-                          padding: "5px 8px",
-                          border: "1px solid var(--border)",
-                          borderRadius: 4,
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: 12,
+                          fontFamily: "inherit",
+                          padding: "2px 0",
+                          border: "none",
                           outline: "none",
-                          background: "var(--bg)",
+                          background: "transparent",
                           color: "var(--text)",
-                          boxSizing: "border-box",
                         }}
                       />
+                      {wtFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setWtFilter("")}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 14,
+                            height: 14,
+                            padding: 0,
+                            background: "none",
+                            border: "none",
+                            color: "var(--text-dim)",
+                            cursor: "pointer",
+                          }}
+                          title={t("chat.clear")}
+                        >
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   )}
                   <div style={{ maxHeight: "min(40vh, 300px)", overflowY: "auto" }}>
@@ -1763,10 +1847,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     isSelected={familySessions.some((session) => session.id === selectedSessionId)}
                     isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
                     isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
-                    onClick={() => handleSelectSessionFromList(family.root)}
+                    isActionsRevealed={revealedSessionId === family.root.id}
+                    onRevealActions={() => setRevealedSessionId(family.root.id)}
+                    onDismissActions={() => setRevealedSessionId((curr) => curr === family.root.id ? null : curr)}
+                    onClick={() => {
+                      setRevealedSessionId(null);
+                      handleSelectSessionFromList(family.root);
+                    }}
                     onRenamed={loadSessions}
-                    onOpenInNewTab={onOpenSessionInNewTab ? () => onOpenSessionInNewTab(family.root) : undefined}
+                    onOpenInNewTab={onOpenSessionInNewTab ? () => {
+                      setRevealedSessionId(null);
+                      onOpenSessionInNewTab(family.root);
+                    } : undefined}
                     onDeleted={(id) => {
+                      setRevealedSessionId(null);
                       onSessionDeleted?.(id);
                       loadSessions();
                     }}
@@ -2040,6 +2134,9 @@ export function SessionItem({
   isSelected,
   isRunning,
   isUnread,
+  isActionsRevealed = false,
+  onRevealActions,
+  onDismissActions,
   onClick,
   onRenamed,
   onOpenInNewTab,
@@ -2053,6 +2150,9 @@ export function SessionItem({
   isSelected: boolean;
   isRunning?: boolean;
   isUnread?: boolean;
+  isActionsRevealed?: boolean;
+  onRevealActions?: () => void;
+  onDismissActions?: () => void;
   onClick: () => void;
   onRenamed?: () => void;
   onOpenInNewTab?: () => void;
@@ -2069,6 +2169,46 @@ export function SessionItem({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isLongPressRef = useRef(false);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (confirmDelete || renaming || session.transient) return;
+    const touch = e.touches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    isLongPressRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      if (typeof window !== "undefined") {
+        window.getSelection()?.removeAllRanges();
+      }
+      try {
+        navigator.vibrate?.(15);
+      } catch {
+        // ignore
+      }
+      onRevealActions?.();
+    }, 400);
+  }, [confirmDelete, onRevealActions, renaming, session.transient]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStartPosRef.current || !longPressTimerRef.current) return;
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+    if (dx > 10 || dy > 10) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
 
   // Select the whole name once the rename input is mounted (startRename's
   // immediate setTimeout can fire before the input exists).
@@ -2085,8 +2225,8 @@ export function SessionItem({
   const displayFirstMessage = skillExpansionToCommand(session.firstMessage) ?? session.firstMessage;
   const title = getSessionDisplayTitle(session);
 
-  const startRename = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const startRename = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (session.transient) return;
     setRenameValue(getSessionDisplayTitle(session));
     setRenaming(true);
@@ -2144,6 +2284,11 @@ export function SessionItem({
   }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isLongPressRef.current || isActionsRevealed) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const handled = dispatchSessionRowContextMenu({
       id: session.id,
       path: session.path,
@@ -2156,13 +2301,30 @@ export function SessionItem({
     if (!handled) return;
     e.preventDefault();
     e.stopPropagation();
-  }, [onRenamed, session.cwd, session.id, session.name, session.path]);
+  }, [isActionsRevealed, onRenamed, session.cwd, session.id, session.name, session.path]);
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
   return (
     <div
-      className="session-list-row"
-      onClick={confirmDelete || renaming ? undefined : onClick}
+      className={`session-list-row${isActionsRevealed ? " is-actions-revealed" : ""}`}
+      onClick={(e) => {
+        if (isLongPressRef.current) {
+          isLongPressRef.current = false;
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (isActionsRevealed) {
+          onDismissActions?.();
+          return;
+        }
+        if (confirmDelete || renaming) return;
+        onClick();
+      }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
       onMouseDown={(e) => {
         if (e.button === 1) e.preventDefault();
       }}
@@ -2194,6 +2356,9 @@ export function SessionItem({
         opacity: deleting ? 0.5 : 1,
         gap: 6,
         overflow: "hidden",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
       }}
     >
       {confirmDelete ? (
@@ -2249,16 +2414,22 @@ export function SessionItem({
             if (e.key === "Escape") setRenaming(false);
           }}
           autoFocus
+          className="session-rename-input"
           style={{
             flex: 1,
-            fontSize: 12,
-            padding: "5px 8px",
+            minWidth: 0,
+            fontSize: 13,
+            fontWeight: isSelected ? 500 : 400,
+            fontFamily: "inherit",
+            lineHeight: 1.4,
+            padding: "1px 6px",
             border: "1px solid var(--accent)",
             borderRadius: 4,
             outline: "none",
             background: "var(--bg)",
             color: "var(--text)",
             height: 24,
+            boxSizing: "border-box",
           }}
         />
       ) : (
@@ -2333,6 +2504,7 @@ export function SessionItem({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    onDismissActions?.();
                     onOpenInNewTab();
                   }}
                   title={t("chatTabs.openInNewTab", { defaultValue: "在新标签页打开" })}
@@ -2362,7 +2534,10 @@ export function SessionItem({
                 </button>
               )}
               <button
-                onClick={startRename}
+                onClick={(e) => {
+                  onDismissActions?.();
+                  startRename(e);
+                }}
                 title={t("sidebar.rename")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
@@ -2388,11 +2563,14 @@ export function SessionItem({
                 </svg>
               </button>
               <button
-                onClick={handleDeleteClick}
+                onClick={(e) => {
+                  onDismissActions?.();
+                  handleDeleteClick(e);
+                }}
                 title={t("sidebar.deleteWithShiftClick")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 28, height: 28, padding: 0,
+                  width: 30, height: 28, padding: 0,
                   background: "var(--bg-hover)", border: "none",
                   borderRadius: 4, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,

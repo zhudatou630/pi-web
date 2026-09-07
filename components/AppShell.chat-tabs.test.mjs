@@ -46,3 +46,11 @@ test("sidebar single-click views session in current tab while explicit new tab a
   assert.match(sidebarSource, /e\.button === 1 && onOpenInNewTab/);
   assert.match(sidebarSource, /title=\{t\("chatTabs\.openInNewTab"/);
 });
+
+test("supports mobile tab bar when multiple tabs are open", () => {
+  assert.match(source, /isMobile && showChat && chatTabs\.length > 1/);
+  assert.match(source, /data-mobile-chat-tabs="true"/);
+  assert.match(source, /isMobile=\{true\}/);
+  assert.match(source, /canSplit=\{false\}/);
+});
+

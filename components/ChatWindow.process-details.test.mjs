@@ -10,6 +10,7 @@ test("expands process details when a completed turn has no final answer", () => 
     source,
     /<ProcessDetailsGroup[\s\S]*?defaultExpanded=\{!finalAnswerMessage && endIdx === messages.length\}/,
   );
+  assert.match(source, /if \(userToggledRef\.current\) return;\s*setExpanded\(defaultExpanded\)/);
 });
 
 test("marks only the separated final answer as the end of a turn", () => {
@@ -27,4 +28,18 @@ test("folds a leading process prefix that has no user anchor", () => {
     source,
     /if \(!isMessageGroupAnchor\(msg\)\) \{\s*rendered\.push\(renderMessage\(idx\)\)/,
   );
+});
+
+test("passes activeStepSummary and renders telemetry indicator when streaming", () => {
+  assert.match(source, /activeStepSummary=\{activeStepSummary\}/);
+  assert.match(source, /isStreaming=\{liveProcessActive\}/);
+  assert.match(source, /animate-pulse/);
+  assert.doesNotMatch(source, /chat\.thinkingProgress/);
+});
+
+test("streams process blocks inside steps and answer blocks outside", () => {
+  assert.match(source, /partitionAssistantMessage\(/);
+  assert.match(source, /message=\{streamingParts\.processMessage\}/);
+  assert.match(source, /message=\{streamingParts\.answerMessage\}/);
+  assert.doesNotMatch(source, /isStreamingProcess && streamState\.streamingMessage/);
 });

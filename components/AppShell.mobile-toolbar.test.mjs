@@ -33,18 +33,18 @@ test("only renders the Agents switcher when the active session family has subage
   assert.match(source, /activeTopPanel === "agents" && activeSessionFamily && selectedSession/);
 });
 
-test("keeps the Agents panel open while switching sessions and positions it at the left", () => {
+test("positions the Agents panel relative to its trigger action and keeps it open while switching sessions", () => {
   assert.match(source, /const AGENT_PANEL_WIDTH = 420/);
   assert.match(
     source,
-    /if \(activeTopPanel === "agents"\)[\s\S]*?left: topBarRect\.left[\s\S]*?width: Math\.min\(AGENT_PANEL_WIDTH, topBarRect\.width\)/,
+    /if \(activeTopPanel === "agents"\)[\s\S]*?Math\.min\(AGENT_PANEL_WIDTH[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
   assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSelectSession\}/);
 });
 
-test("only renders branch toolbar controls for sessions with branches", () => {
+test("only renders branch toolbar controls for sessions with branches on mobile and disables desktop button without branches", () => {
   assert.match(source, /const sessionHasBranches = hasSessionBranches\(branchTree\)/);
-  assert.match(source, /\{sessionTools && sessionHasBranches && \(mobile \? \(/);
+  assert.match(source, /disabled=\{!sessionHasBranches\}/);
   assert.match(source, /\{isMobile && sessionHasBranches && \(/);
   assert.match(source, /panel === "branches" \? null : panel/);
 });
@@ -151,7 +151,7 @@ test("desktop header keeps tabs left and actions right without theme or language
   assert.match(desktop, /data-desktop-header-actions="true"/);
   assert.match(
     desktop,
-    /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady \}\)[\s\S]*?renderSessionStatsButton\(false\)/,
+    /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false\)[\s\S]*?renderSessionStatsButton\(false\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady \}\)/,
   );
   assert.doesNotMatch(desktop, /renderThemeButton\(false\)/);
   assert.doesNotMatch(desktop, /renderLanguageButton\(false\)/);
