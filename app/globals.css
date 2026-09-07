@@ -813,6 +813,14 @@ pre, code {
   isolation: isolate;
   background: color-mix(in srgb, var(--bg-subtle) 40%, var(--bg));
 }
+.markdown-code-block pre {
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+}
 .markdown-code-header {
   font-family: var(--font-mono);
   padding: 4px 10px;
