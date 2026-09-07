@@ -318,9 +318,11 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
           style={{
             display: hideInlineButton ? "none" : "flex",
             alignItems: "center",
-            gap: 6,
+            justifyContent: compact ? "center" : undefined,
+            gap: compact ? 0 : 6,
             height: "100%",
-            padding: "0 12px",
+            width: compact ? 30 : undefined,
+            padding: compact ? 0 : "0 12px",
             background: open ? "var(--bg-selected)" : "none",
             border: "none",
             cursor: "pointer",

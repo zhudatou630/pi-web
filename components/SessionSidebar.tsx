@@ -101,6 +101,7 @@ function ToolbarIconButton({
 interface Props {
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
+  onOpenSessionInNewTab?: (session: SessionInfo) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
   skipInitialProjectSelection?: boolean;
@@ -374,7 +375,7 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [sessionListVersion, setSessionListVersion] = useState<number | null>(null);
@@ -1764,6 +1765,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
                     onClick={() => handleSelectSessionFromList(family.root)}
                     onRenamed={loadSessions}
+                    onOpenInNewTab={onOpenSessionInNewTab ? () => onOpenSessionInNewTab(family.root) : undefined}
                     onDeleted={(id) => {
                       onSessionDeleted?.(id);
                       loadSessions();
@@ -2040,6 +2042,7 @@ export function SessionItem({
   isUnread,
   onClick,
   onRenamed,
+  onOpenInNewTab,
   onDeleted,
   depth = 0,
   hasChildren = false,
@@ -2052,6 +2055,7 @@ export function SessionItem({
   isUnread?: boolean;
   onClick: () => void;
   onRenamed?: () => void;
+  onOpenInNewTab?: () => void;
   onDeleted?: (id: string) => void;
   depth?: number;
   hasChildren?: boolean;
@@ -2159,6 +2163,16 @@ export function SessionItem({
     <div
       className="session-list-row"
       onClick={confirmDelete || renaming ? undefined : onClick}
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault();
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1 && onOpenInNewTab && !confirmDelete && !renaming) {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenInNewTab();
+        }
+      }}
       onContextMenu={confirmDelete || renaming ? undefined : handleContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
@@ -2314,6 +2328,39 @@ export function SessionItem({
           {/* Action buttons — shown on hover or keyboard focus */}
           {!session.transient && (
             <div className="session-row-actions" style={{ display: "flex", gap: 4, position: "absolute", right: 8, top: 0, background: isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "var(--bg-panel)" }}>
+              {onOpenInNewTab && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenInNewTab();
+                  }}
+                  title={t("chatTabs.openInNewTab", { defaultValue: "在新标签页打开" })}
+                  aria-label={t("chatTabs.openInNewTab", { defaultValue: "在新标签页打开" })}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 28, height: 28, padding: 0,
+                    background: "var(--bg-hover)", border: "none",
+                    borderRadius: 4, color: "var(--text-muted)",
+                    cursor: "pointer", flexShrink: 0,
+                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--bg-selected)";
+                    e.currentTarget.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.color = "var(--text-muted)";
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={startRename}
                 title={t("sidebar.rename")}

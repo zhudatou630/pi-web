@@ -5,6 +5,13 @@ import test from "node:test";
 const source = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
 const hookSource = await readFile(new URL("../hooks/useAgentSession.ts", import.meta.url), "utf8");
 
+test("loading keeps the composer and does not report stats until ready", () => {
+  const loading = source.slice(source.indexOf("if (loading)"), source.indexOf("if (error)"));
+  assert.match(loading, /chat\.loadingSession/);
+  assert.match(loading, /chatInputElement/);
+  assert.match(source, /if \(loading\) return;\s*onSessionStatsChange\?\.\(sessionStatsRef\.current\)/);
+});
+
 test("renders temporary notices once at the top right of the chat column", () => {
   const noticeShelfUsages = source.match(/<NoticeShelf notices=\{notices\}/g) ?? [];
 

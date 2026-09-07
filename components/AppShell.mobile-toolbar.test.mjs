@@ -22,7 +22,7 @@ test("uses a compact narrow-mobile toolbar with a floating action layer", () => 
   );
 
   assert.match(historySource, /data-mobile-toolbar-action=\{mobile \? "history"/);
-  for (const action of ["name", "agents", "branches", "system", "tools", "theme", "language"]) {
+  for (const action of ["name", "agents", "branches", "system", "tools"]) {
     assert.match(source, new RegExp(`data-mobile-toolbar-action=(?:\\{mobile \\? )?"${action}"`));
   }
 });
@@ -44,7 +44,7 @@ test("keeps the Agents panel open while switching sessions and positions it at t
 
 test("only renders branch toolbar controls for sessions with branches", () => {
   assert.match(source, /const sessionHasBranches = hasSessionBranches\(branchTree\)/);
-  assert.match(source, /\{sessionHasBranches && \(mobile \? \(/);
+  assert.match(source, /\{sessionTools && sessionHasBranches && \(mobile \? \(/);
   assert.match(source, /\{isMobile && sessionHasBranches && \(/);
   assert.match(source, /panel === "branches" \? null : panel/);
 });
@@ -88,13 +88,12 @@ test("closes the mobile action layer on outside click, Escape, layout changes, a
 
 test("keeps the mobile action layer open after using an expanded action", () => {
   const toggleTopPanel = source.match(/const toggleTopPanel = useCallback\([\s\S]*?\n  \}, \[isMobile, isNarrowMobile\]\);/)?.[0];
-  const themeHandler = source.match(/const renderThemeButton =[\s\S]*?onClick=\{\(event\) => \{[\s\S]*?toggleTheme\([\s\S]*?\n      \}\}/)?.[0];
   const historyHandler = source.match(/onViewFullHistory=\{\(\) => \{[\s\S]*?handleViewFullHistory\(\);[\s\S]*?\n          \}\}/)?.[0];
   const historyMenuHandler = source.match(/onMenuOpenChange=\{\(open\) => \{[\s\S]*?handleHistoryMenuOpenChange\(open\);[\s\S]*?\n          \}\}/)?.[0];
   const historyExportHandler = source.match(/onExportMarkdown=\{\(\) => \{[\s\S]*?handleExportMarkdown\(\);[\s\S]*?\n          \}\}/)?.[0];
   const autoNameHandler = source.match(/onClick=\{\(\) => \{[\s\S]*?void handleAutoName\(\);[\s\S]*?\n              \}\}/)?.[0];
 
-  for (const handler of [toggleTopPanel, themeHandler, historyHandler, historyMenuHandler, historyExportHandler, autoNameHandler]) {
+  for (const handler of [toggleTopPanel, historyHandler, historyMenuHandler, historyExportHandler, autoNameHandler]) {
     assert.ok(handler);
     assert.doesNotMatch(handler, /setMobileToolbarMoreOpen\(false\)/);
     assert.match(handler, /setMobileToolbarMoreOpen\(true\)/);
@@ -103,7 +102,6 @@ test("keeps the mobile action layer open after using an expanded action", () => 
   assert.match(source, /toggleTopPanel\("branches", true\)/);
   assert.match(source, /handleSystemInfoToggle\("system", mobile\)/);
   assert.match(source, /handleSystemInfoToggle\("tools", mobile\)/);
-  assert.match(source, /toggleTopPanel\("language", mobile\)/);
   assert.match(source, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
 });
 
@@ -125,8 +123,8 @@ test("keeps mobile toolbar free of session titles and preserves More placement",
   assert.doesNotMatch(toolbar, /renderCollapsedSessionTitle|data-collapsed-session-title/);
   assert.match(toolbar, /left: TOP_BAR_ICON_BUTTON_SIZE/);
   assert.doesNotMatch(toolbar, /flexDirection: "column"/);
-  assert.match(source, /\{mobile && renderThemeButton\(true\)\}/);
-  assert.match(source, /\{mobile && renderLanguageButton\(true\)\}/);
+  assert.doesNotMatch(source, /\{mobile && renderThemeButton\(true\)\}/);
+  assert.doesNotMatch(source, /\{mobile && renderLanguageButton\(true\)\}/);
 });
 
 test("keeps the collapsed session title desktop-only without mobile overlay logic", () => {
@@ -142,12 +140,33 @@ test("keeps the collapsed session title desktop-only without mobile overlay logi
   assert.doesNotMatch(title, /covered|mobileToolbarMoreOpen|aria-hidden|tabIndex/);
 });
 
+test("desktop titlebar shows session tools only after the session header is ready", () => {
+  assert.match(source, /const sessionHeaderReady = Boolean\(selectedSession && sessionStats\?\.sessionId === selectedSession\.id\)/);
+  assert.match(source, /renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady \}\)/);
+  assert.match(source, /if \(!mobile && \(!showChat \|\| !sessionHeaderReady\)\) return null/);
+});
+
+test("desktop header keeps tabs left and actions right without theme or language", () => {
+  const desktop = source.slice(source.indexOf("{!isMobile && ("));
+  assert.match(desktop, /data-desktop-header-actions="true"/);
+  assert.match(
+    desktop,
+    /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady \}\)[\s\S]*?renderSessionStatsButton\(false\)/,
+  );
+  assert.doesNotMatch(desktop, /renderThemeButton\(false\)/);
+  assert.doesNotMatch(desktop, /renderLanguageButton\(false\)/);
+  assert.match(desktop, /renderCollapsedSessionTitle\(\)[\s\S]*?data-desktop-header-actions="true"/);
+});
+
+test("desktop chat toolbar actions are icon-only", () => {
+  const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
+  assert.doesNotMatch(actions, /\{!mobile && <span>/);
+  assert.match(actions, /width: TOP_BAR_ICON_BUTTON_SIZE/);
+  assert.match(actions, /inline\s+compact\s+containerRef=\{topBarRef\}/);
+});
+
 test("toolbar actions use spacing rather than per-button dividers, preserving region boundaries", async () => {
-  const actions = [
-    functionSource("renderThemeButton", "const renderLanguageButton"),
-    functionSource("renderLanguageButton", "const renderProjectTrustWarning"),
-    functionSource("renderChatToolbarActions", "const collapsedSessionTitle"),
-  ].join("\n");
+  const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   assert.doesNotMatch(actions, /borderRight:/);
   assert.doesNotMatch(actions, /borderTop:/);
   assert.match(actions, /aria-pressed=\{activeTopPanel === "agents"\}/);

@@ -908,8 +908,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const sessionStatsRef = useRef(sessionStats);
   sessionStatsRef.current = sessionStats;
   useEffect(() => {
+    if (loading) return;
     onSessionStatsChange?.(sessionStatsRef.current);
-  }, [statsKey, onSessionStatsChange]);
+  }, [loading, statsKey, onSessionStatsChange]);
   useEffect(() => () => { onSessionStatsChange?.(null); }, [onSessionStatsChange]);
 
   // Push context usage up to AppShell as well.
@@ -919,8 +920,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const contextUsageRef = useRef(contextUsage);
   contextUsageRef.current = contextUsage;
   useEffect(() => {
+    if (loading) return;
     onContextUsageChange?.(contextUsageRef.current);
-  }, [ctxKey, onContextUsageChange]);
+  }, [ctxKey, loading, onContextUsageChange]);
   useEffect(() => () => { onContextUsageChange?.(null); }, [onContextUsageChange]);
 
   const onDrop = useCallback((files: File[]) => {
@@ -1217,8 +1219,17 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-text-muted">
-         {t("chat.loadingSession")}
+      <div
+        className="chat-content relative flex h-full min-w-0 flex-col overflow-hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center">
+          <div className="text-sm text-text-muted">{t("chat.loadingSession")}</div>
+        </div>
+        <div className="relative shrink-0">
+          {chatInputElement}
+          <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
+        </div>
       </div>
     );
   }

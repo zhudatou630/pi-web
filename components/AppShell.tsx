@@ -5,6 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
+import { ChatTabBar } from "./ChatTabBar";
+import {
+  openSessionInTabs,
+  openSessionInNewTab,
+  viewSessionInCurrentTab,
+  openDraftInTabs,
+  closeChatTab,
+  promoteDraftToSession,
+  type ChatTabItem,
+} from "@/lib/chat-tab-state";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
@@ -18,7 +28,6 @@ import { ToolDefinitionsPanel } from "./ToolDefinitionsPanel";
 import { AgentSessionPanel } from "./AgentSessionPanel";
 import { TerminalPanel } from "./TerminalPanel";
 import { newTerminalTab, restoreTerminalTabs, TERMINAL_TABS_KEY, type TerminalTab } from "./terminal-tab-state";
-import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile, useIsNarrowMobile } from "@/hooks/useIsMobile";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
@@ -71,7 +80,6 @@ type AutoNameStatus =
   | { kind: "error"; message: string };
 
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
-const LANGUAGE_MENU_WIDTH = 176;
 const AGENT_PANEL_WIDTH = 420;
 
 function filenameFromContentDisposition(header: string | null): string | null {
@@ -95,10 +103,7 @@ export function AppShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
-  const { preference, toggleTheme } = useTheme();
-  const themeLabelKey =
-    preference === "light" ? "theme.light" : preference === "dark" ? "theme.dark" : "theme.auto";
-  const { locale, setLocale, t: translate, supportedLocales } = useI18n();
+  const { locale, t: translate } = useI18n();
   const isMobile = useIsMobile();
   const isNarrowMobile = useIsNarrowMobile();
   useViewportHeight();
@@ -173,6 +178,24 @@ export function AppShell() {
   const handleSessionScrollPositionChange = useCallback((sessionId: string, position: ChatScrollPosition) => {
     sessionScrollPositionsRef.current.set(sessionId, position);
   }, []);
+
+  // Chat Tabs & Split View State
+  const [chatTabs, setChatTabs] = useState<ChatTabItem[]>([]);
+  const chatTabsRef = useRef<ChatTabItem[]>([]);
+  chatTabsRef.current = chatTabs;
+  const [activeChatTabId, setActiveChatTabId] = useState<string | null>(null);
+  const activeChatTabIdRef = useRef<string | null>(null);
+  activeChatTabIdRef.current = activeChatTabId;
+  const [splitChatTabId, setSplitChatTabId] = useState<string | null>(null);
+  const splitChatTabIdRef = useRef<string | null>(null);
+  splitChatTabIdRef.current = splitChatTabId;
+  const [activeChatPane, setActiveChatPane] = useState<"primary" | "secondary">("primary");
+  const activeChatPaneRef = useRef<"primary" | "secondary">("primary");
+  activeChatPaneRef.current = activeChatPane;
+  const isSplitActiveRef = useRef(false);
+  const [chatSplitRatio, setChatSplitRatio] = useState<number>(0.5);
+  const chatPanesContainerRef = useRef<HTMLDivElement>(null);
+  const isResizingSplitRef = useRef(false);
   const [searchTarget, setSearchTarget] = useState<{ sessionId: string; entryId: string; blockIndex?: number } | null>(null);
   const handleSearchTargetHandled = useCallback((target: { sessionId: string; entryId: string }) => {
     setSearchTarget((current) => current === target ? null : current);
@@ -258,8 +281,6 @@ export function AppShell() {
   const [pendingQuotePrompt, setPendingQuotePrompt] = useState<{ sessionId: string; text: string } | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
   const mobileToolbarRef = useRef<HTMLDivElement>(null);
-  const languageBtnRef = useRef<HTMLButtonElement>(null);
-
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
   const [branchTree, setBranchTree] = useState<SessionTreeNode[]>([]);
   const [branchActiveLeafId, setBranchActiveLeafId] = useState<string | null>(null);
@@ -308,6 +329,7 @@ export function AppShell() {
   const activeSessionIdRef = useRef<string | null>(selectedSession?.id ?? null);
   activeSessionIdRef.current = selectedSession?.id ?? null;
   const handleSessionStatsChange = useCallback((stats: SessionStatsInfo | null) => {
+    if (stats === null) return;
     setSessionStats(stats);
   }, []);
   const [copiedSessionField, setCopiedSessionField] = useState<SessionCopyField | null>(null);
@@ -330,8 +352,15 @@ export function AppShell() {
   // Context usage — populated by ChatWindow, displayed in top bar
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const handleContextUsageChange = useCallback((usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => {
+    if (usage === null) return;
     setContextUsage(usage);
   }, []);
+
+  useEffect(() => {
+    if (selectedSession) return;
+    setSessionStats(null);
+    setContextUsage(null);
+  }, [selectedSession]);
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | "language" | null>(null);
@@ -445,16 +474,6 @@ export function AppShell() {
     if (!activeTopPanel || !topBarRef.current) return;
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
-      if (activeTopPanel === "language" && !isMobile && languageBtnRef.current) {
-        const buttonRect = languageBtnRef.current.getBoundingClientRect();
-        const width = Math.min(LANGUAGE_MENU_WIDTH, topBarRect.width);
-        const left = Math.min(
-          buttonRect.left - 1,
-          Math.max(topBarRect.left, topBarRect.right - width),
-        );
-        setTopPanelPos({ top: topBarRect.bottom, left, width });
-        return;
-      }
       if (activeTopPanel === "agents") {
         setTopPanelPos({
           top: topBarRect.bottom,
@@ -468,7 +487,6 @@ export function AppShell() {
     update();
     const ro = new ResizeObserver(update);
     ro.observe(topBarRef.current);
-    if (languageBtnRef.current) ro.observe(languageBtnRef.current);
     return () => ro.disconnect();
   }, [activeTopPanel, isMobile]);
 
@@ -635,6 +653,8 @@ export function AppShell() {
         // the null-session welcome mount from the switch would never load
         // the restored session's messages.
         setSelectedSession(s);
+        setChatTabs((prev) => viewSessionInCurrentTab(prev, s, activeChatTabIdRef.current).tabs);
+        setActiveChatTabId(s.id);
         setSessionKey((k) => k + 1);
         if (new URLSearchParams(window.location.search).get("session") !== s.id) {
           router.replace(`?session=${encodeURIComponent(s.id)}`, { scroll: false });
@@ -669,6 +689,10 @@ export function AppShell() {
     // The server may hydrate a normalized key after a custom cwd is already
     // active. Updating identity for the exact same cwd is not a user switch.
     if (currentFreshCwd === cwd && currentProject !== newProject) return;
+    // In multi-tab mode, changing directory in the sidebar only navigates the
+    // sidebar's browsing context (activeCwd) without hijacking or replacing
+    // the user's active conversation tabs.
+    if (typeof chatTabsRef !== "undefined" && chatTabsRef.current?.length > 0) return;
     // Existing sessions stay open when the worktree selector moves within the
     // same project. A fresh composer must remount when its effective cwd moves,
     // otherwise its already-created runtime would keep sending to the old cwd.
@@ -752,6 +776,28 @@ export function AppShell() {
     }
     setNewSessionCwd(null);
     setSelectedSession(session);
+    if (typeof viewSessionInCurrentTab === "function") {
+      const isSplit = typeof isSplitActiveRef !== "undefined" && isSplitActiveRef.current;
+      const isSecondary = isSplit && typeof activeChatPaneRef !== "undefined" && activeChatPaneRef.current === "secondary";
+      const targetCurrentTabId = isSecondary
+        ? (typeof splitChatTabIdRef !== "undefined" ? splitChatTabIdRef.current : null)
+        : (typeof activeChatTabIdRef !== "undefined" ? activeChatTabIdRef.current : null);
+
+      setChatTabs((prev) => {
+        const { tabs: nextTabs, tabId } = viewSessionInCurrentTab(prev, session, targetCurrentTabId);
+        if (isSecondary) {
+          return nextTabs.map((t) => (t.id === tabId ? { ...t, pane: "secondary" as const } : t));
+        }
+        return nextTabs;
+      });
+
+      if (isSecondary) {
+        setSplitChatTabId(session.id);
+      } else {
+        setActiveChatTabId(session.id);
+        setSplitChatTabId((curr) => curr === session.id ? null : curr);
+      }
+    }
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -782,6 +828,23 @@ export function AppShell() {
     setNewSessionDraftId(sessionId);
     setSelectedSession(null);
     setNewSessionCwd(cwd);
+    if (typeof openDraftInTabs === "function") {
+      const isSplit = typeof isSplitActiveRef !== "undefined" && isSplitActiveRef.current;
+      const isSecondary = isSplit && typeof activeChatPaneRef !== "undefined" && activeChatPaneRef.current === "secondary";
+      const draftId = `draft:${draftKey}`;
+      setChatTabs((prev) => {
+        const { tabs: nextTabs } = openDraftInTabs(prev, cwd, draftKey);
+        if (isSecondary) {
+          return nextTabs.map((t) => (t.id === draftId ? { ...t, pane: "secondary" as const } : t));
+        }
+        return nextTabs;
+      });
+      if (isSecondary) {
+        setSplitChatTabId(draftId);
+      } else {
+        setActiveChatTabId(draftId);
+      }
+    }
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -814,6 +877,11 @@ export function AppShell() {
             ? { ...prev, ...full, transient: full.transient ?? false }
             : prev
         ));
+        setChatTabs((prev) => prev.map((t) => (t.id === sessionId && t.kind === "session" ? {
+          ...t,
+          title: getSessionDisplayTitle(full),
+          session: { ...t.session, ...full },
+        } : t)));
       })
       .catch(() => {});
   }, []);
@@ -829,9 +897,32 @@ export function AppShell() {
     }
   }, [handleSelectSession]);
 
+  const handleOpenSessionInNewTab = useCallback((session: SessionInfo) => {
+    const isSecondary = isSplitActiveRef.current && activeChatPaneRef.current === "secondary";
+    if (isSecondary) {
+      setChatTabs((prev) => {
+        const { tabs: nextTabs, tabId } = openSessionInNewTab(prev, session);
+        return nextTabs.map((t) => (t.id === tabId ? { ...t, pane: "secondary" as const } : t));
+      });
+      setSplitChatTabId(session.id);
+    } else {
+      setChatTabs((prev) => openSessionInNewTab(prev, session).tabs);
+      setActiveChatTabId(session.id);
+    }
+    setSelectedSession(session);
+    setNewSessionCwd(null);
+    router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
+  }, [router]);
+
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo, sourceDraftKey: string) => {
     setRefreshKey((k) => k + 1);
+    setChatTabs((prev) => {
+      const { tabs: nextTabs, newTabId } = promoteDraftToSession(prev, `draft:${sourceDraftKey}`, session);
+      setActiveChatTabId((curr) => (curr === `draft:${sourceDraftKey}` ? newTabId : curr));
+      setSplitChatTabId((curr) => (curr === `draft:${sourceDraftKey}` ? newTabId : curr));
+      return nextTabs;
+    });
     if (activeNewSessionDraftKeyRef.current !== sourceDraftKey) return;
     invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
@@ -912,6 +1003,17 @@ export function AppShell() {
     });
   }, [deliverSessionNotification, selectedSession, translate]);
 
+  const handleSessionRenamed = useCallback((sessionId: string, title: string) => {
+    setRefreshKey((key) => key + 1);
+    setSelectedSession((current) => current?.id === sessionId ? { ...current, name: title } : current);
+    setChatTabs((prev) => prev.map((tab) => (tab.id === sessionId && tab.kind === "session" ? {
+      ...tab,
+      title,
+      session: tab.session ? { ...tab.session, name: title } : tab.session,
+    } : tab)));
+    setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
+  }, []);
+
   const handleAutoName = useCallback(async () => {
     const sessionId = selectedSession?.id;
     if (!sessionId || autoNameStatus.kind === "naming") return;
@@ -929,10 +1031,8 @@ export function AppShell() {
       }
 
       const title = body.title.trim();
-      setRefreshKey((key) => key + 1);
       if (activeSessionIdRef.current !== sessionId) return;
-      setSelectedSession((current) => current?.id === sessionId ? { ...current, name: title } : current);
-      setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
+      handleSessionRenamed(sessionId, title);
       setAutoNameStatus({ kind: "success" });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 1800);
     } catch (error) {
@@ -941,7 +1041,7 @@ export function AppShell() {
       setAutoNameStatus({ kind: "error", message });
       autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
     }
-  }, [autoNameStatus.kind, selectedSession?.id]);
+  }, [autoNameStatus.kind, handleSessionRenamed, selectedSession?.id]);
 
   useEffect(() => {
     if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
@@ -958,14 +1058,17 @@ export function AppShell() {
     setRefreshKey((k) => k + 1);
     setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
-    setSelectedSession((prev) => ({
-      ...(prev ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
+    const forkedSession: SessionInfo = {
+      ...(selectedSession ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
       transient: false,
-    }));
+    };
+    setSelectedSession(forkedSession);
+    setChatTabs((prev) => openSessionInTabs(prev, forkedSession).tabs);
+    setActiveChatTabId(newSessionId);
     hydrateSelectedSession(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
+  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession, selectedSession]);
 
   const handleAskInNewChat = useCallback(async (
     prompt: string,
@@ -988,25 +1091,305 @@ export function AppShell() {
   const handleSessionDeleted = useCallback((sessionId: string) => {
     invalidateWorkspaceRestore();
     setRefreshKey((k) => k + 1);
+
+    // Any open tab pointing to the deleted session is closed immediately
+    setChatTabs((prev) => {
+      const exists = prev.some((t) => t.id === sessionId);
+      if (!exists) return prev;
+      const { tabs: nextTabs, nextActiveTabId, nextSplitTabId } = closeChatTab(
+        prev,
+        sessionId,
+        activeChatTabIdRef.current ?? "",
+        splitChatTabId,
+      );
+
+      if (nextTabs.length === 0) {
+        const draftId = typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        const effectiveCwd = activeCwd;
+        const fallbackDraftKey = effectiveCwd ? `new:${draftId}:${effectiveCwd}` : `draft:${draftId}`;
+        const draftRes = openDraftInTabs([], effectiveCwd ?? null, fallbackDraftKey, translate("i18n.newSession"));
+        setActiveChatTabId(draftRes.tabId);
+        setSplitChatTabId(null);
+        setActiveChatPane("primary");
+        setSelectedSession(null);
+        setNewSessionCwd(effectiveCwd ?? null);
+        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+        return draftRes.tabs;
+      }
+
+      setActiveChatTabId(nextActiveTabId);
+      setSplitChatTabId(nextSplitTabId);
+
+      const targetTab = nextTabs.find((t) => t.id === nextActiveTabId);
+      if (targetTab?.kind === "session" && targetTab.session) {
+        setSelectedSession(targetTab.session);
+        setNewSessionCwd(null);
+        router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
+      } else if (targetTab?.kind === "draft") {
+        setSelectedSession(null);
+        setNewSessionCwd(targetTab.newSessionCwd);
+        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+      }
+
+      return nextTabs;
+    });
+
     if (selectedSession?.id === sessionId) {
-      const cwd = selectedSession.cwd;
-      const draftId = typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-      setNewSessionDraftId(draftId);
-      activeNewSessionDraftKeyRef.current = cwd ? `new:${draftId}:${cwd}` : null;
-      setSelectedSession(null);
-      setNewSessionCwd(cwd ?? null);
-      setSessionKey((k) => k + 1);
       setBranchTree([]);
       setBranchActiveLeafId(null);
       setSystemPrompt(null);
       setSystemTools(null);
       setSystemInfoLoading(false);
       setActiveTopPanel(null);
+    }
+  }, [activeCwd, invalidateWorkspaceRestore, router, selectedSession?.id, splitChatTabId, translate]);
+
+  const handleSplitResizeStart = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    isResizingSplitRef.current = true;
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      if (!isResizingSplitRef.current || !chatPanesContainerRef.current) return;
+      const rect = chatPanesContainerRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const ratio = (moveEvent.clientX - rect.left) / rect.width;
+      setChatSplitRatio(Math.max(0.2, Math.min(0.8, ratio)));
+    };
+    const handlePointerUp = () => {
+      isResizingSplitRef.current = false;
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  }, []);
+
+  const primaryTab = useMemo(() => {
+    return chatTabs.find((t) => t.id === activeChatTabId) ?? chatTabs[0] ?? null;
+  }, [chatTabs, activeChatTabId]);
+
+  const secondaryTab = useMemo(() => {
+    return splitChatTabId ? chatTabs.find((t) => t.id === splitChatTabId) ?? null : null;
+  }, [chatTabs, splitChatTabId]);
+
+  const isSplitActive = Boolean(!isMobile && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
+  isSplitActiveRef.current = isSplitActive;
+
+  const handleFocusPane = useCallback((pane: "primary" | "secondary") => {
+    setActiveChatPane(pane);
+    const targetTab = pane === "secondary" ? secondaryTab : primaryTab;
+    if (!targetTab) return;
+    if (targetTab.kind === "session" && targetTab.session) {
+      setSelectedSession(targetTab.session);
+      setNewSessionCwd(null);
+      router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
+    } else if (targetTab.kind === "draft") {
+      setSelectedSession(null);
+      setNewSessionCwd(targetTab.newSessionCwd);
+      if (targetTab.newSessionDraftKey) {
+        activeNewSessionDraftKeyRef.current = targetTab.newSessionDraftKey;
+      }
       router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
     }
-  }, [invalidateWorkspaceRestore, selectedSession, router]);
+  }, [primaryTab, router, secondaryTab]);
+
+  const handleSelectPrimaryTab = useCallback((id: string) => {
+    setActiveChatTabId(id);
+    handleFocusPane("primary");
+  }, [handleFocusPane]);
+
+  const handleSelectSecondaryTab = useCallback((id: string) => {
+    setSplitChatTabId(id);
+    handleFocusPane("secondary");
+  }, [handleFocusPane]);
+
+  const handleSelectChatTab = useCallback((tabId: string) => {
+    const tab = chatTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    if (isSplitActive) {
+      if (tabId === activeChatTabId) {
+        setActiveChatPane("primary");
+        if (tab.kind === "session" && tab.session) {
+          setSelectedSession(tab.session);
+          setNewSessionCwd(null);
+          router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
+        } else if (tab.kind === "draft") {
+          setSelectedSession(null);
+          setNewSessionCwd(tab.newSessionCwd);
+          router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+        }
+        return;
+      }
+      if (tabId === splitChatTabId) {
+        setActiveChatPane("secondary");
+        if (tab.kind === "session" && tab.session) {
+          setSelectedSession(tab.session);
+          setNewSessionCwd(null);
+          router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
+        } else if (tab.kind === "draft") {
+          setSelectedSession(null);
+          setNewSessionCwd(tab.newSessionCwd);
+          router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+        }
+        return;
+      }
+      if (activeChatPane === "secondary") {
+        setSplitChatTabId(tabId);
+      } else {
+        setActiveChatTabId(tabId);
+      }
+    } else {
+      setActiveChatTabId(tabId);
+    }
+
+    if (tab.kind === "session" && tab.session) {
+      setSelectedSession(tab.session);
+      setNewSessionCwd(null);
+      router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
+    } else if (tab.kind === "draft") {
+      setSelectedSession(null);
+      setNewSessionCwd(tab.newSessionCwd);
+      if (tab.newSessionDraftKey) {
+        activeNewSessionDraftKeyRef.current = tab.newSessionDraftKey;
+      }
+      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+    }
+  }, [activeChatPane, activeChatTabId, chatTabs, isSplitActive, router, splitChatTabId]);
+
+  const handleCloseChatTab = useCallback((tabId: string) => {
+    setChatTabs((prevTabs) => {
+      const { tabs: nextTabs, nextActiveTabId, nextSplitTabId } = closeChatTab(
+        prevTabs,
+        tabId,
+        activeChatTabId ?? "",
+        splitChatTabId,
+      );
+
+      if (nextTabs.length === 0) {
+        const draftId = typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        const effectiveCwd = activeCwd;
+        const defaultDraftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
+        rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), defaultDraftKey);
+        activeNewSessionDraftKeyRef.current = defaultDraftKey;
+        setNewSessionDraftId(draftId);
+
+        const draftRes = openDraftInTabs([], effectiveCwd, defaultDraftKey, translate("i18n.newSession"));
+        setActiveChatTabId(draftRes.tabId);
+        setSplitChatTabId(null);
+        setActiveChatPane("primary");
+        setSelectedSession(null);
+        setNewSessionCwd(effectiveCwd);
+        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+        return draftRes.tabs;
+      }
+
+      setActiveChatTabId(nextActiveTabId);
+      setSplitChatTabId(nextSplitTabId);
+
+      if (!nextSplitTabId && activeChatPane === "secondary") {
+        setActiveChatPane("primary");
+      }
+
+      const targetId = (activeChatPane === "secondary" && nextSplitTabId) ? nextSplitTabId : nextActiveTabId;
+      const targetTab = nextTabs.find((t) => t.id === targetId) ?? nextTabs.find((t) => t.id === nextActiveTabId);
+      if (targetTab?.kind === "session" && targetTab.session) {
+        setSelectedSession(targetTab.session);
+        setNewSessionCwd(null);
+        router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
+      } else if (targetTab?.kind === "draft") {
+        setSelectedSession(null);
+        setNewSessionCwd(targetTab.newSessionCwd);
+        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+      }
+
+      return nextTabs;
+    });
+  }, [activeChatPane, activeChatTabId, activeCwd, router, splitChatTabId, translate]);
+
+  const handleNewChatTab = useCallback(() => {
+    const draftId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const effectiveCwd = activeCwd;
+    const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
+    rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
+    activeNewSessionDraftKeyRef.current = draftKey;
+    setNewSessionDraftId(draftId);
+
+    const { tabs: nextTabs, tabId } = openDraftInTabs(
+      chatTabs,
+      effectiveCwd,
+      draftKey,
+      translate("i18n.newSession"),
+    );
+    setChatTabs(nextTabs);
+    if (isSplitActive && activeChatPane === "secondary") {
+      setSplitChatTabId(tabId);
+    } else {
+      setActiveChatTabId(tabId);
+    }
+    setSelectedSession(null);
+    setNewSessionCwd(effectiveCwd);
+    router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+  }, [activeChatPane, activeCwd, chatTabs, isSplitActive, router, translate]);
+
+  const handleToggleSplit = useCallback(() => {
+    if (splitChatTabId) {
+      setSplitChatTabId(null);
+      setActiveChatPane("primary");
+      const mainTab = chatTabs.find((t) => t.id === activeChatTabId);
+      if (mainTab?.kind === "session" && mainTab.session) {
+        setSelectedSession(mainTab.session);
+        setNewSessionCwd(null);
+        router.replace(`?session=${encodeURIComponent(mainTab.session.id)}`, { scroll: false });
+      } else if (mainTab?.kind === "draft") {
+        setSelectedSession(null);
+        setNewSessionCwd(mainTab.newSessionCwd);
+        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+      }
+    } else {
+      const otherTab = chatTabs.find((t) => t.id !== activeChatTabId);
+      if (otherTab) {
+        setSplitChatTabId(otherTab.id);
+        setActiveChatPane("secondary");
+        if (otherTab.kind === "session" && otherTab.session) {
+          setSelectedSession(otherTab.session);
+          setNewSessionCwd(null);
+          router.replace(`?session=${encodeURIComponent(otherTab.session.id)}`, { scroll: false });
+        } else if (otherTab.kind === "draft") {
+          setSelectedSession(null);
+          setNewSessionCwd(otherTab.newSessionCwd);
+          router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+        }
+      } else {
+        const draftId = typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        const effectiveCwd = activeCwd;
+        const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
+        rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
+        activeNewSessionDraftKeyRef.current = draftKey;
+        setNewSessionDraftId(draftId);
+
+        const { tabs: nextTabs, tabId } = openDraftInTabs(
+          chatTabs,
+          effectiveCwd,
+          draftKey,
+          translate("i18n.newSession"),
+        );
+        setChatTabs(nextTabs);
+        setSplitChatTabId(tabId);
+        setActiveChatPane("secondary");
+        setSelectedSession(null);
+        setNewSessionCwd(effectiveCwd);
+        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+      }
+    }
+  }, [activeChatTabId, activeCwd, chatTabs, router, splitChatTabId, translate]);
 
   const handleOpenFile = useCallback((
     filePath: string,
@@ -1076,6 +1459,73 @@ export function AppShell() {
     );
   }, [selectedSession]);
 
+  useEffect(() => {
+    if (selectedSession) {
+      setChatTabs((prev) => {
+        if (prev.some((t) => t.id === selectedSession.id)) return prev;
+        return viewSessionInCurrentTab(prev, selectedSession, activeChatTabId).tabs;
+      });
+      setActiveChatTabId((curr) => curr ?? selectedSession.id);
+    } else if (newSessionCwd) {
+      const draftKey = activeNewSessionDraftKeyRef.current ?? newSessionDraftId;
+      setChatTabs((prev) => {
+        const draftId = `draft:${draftKey}`;
+        if (prev.some((t) => t.id === draftId)) return prev;
+        return openDraftInTabs(prev, newSessionCwd, draftKey, translate("i18n.newSession")).tabs;
+      });
+      setActiveChatTabId((curr) => curr ?? `draft:${activeNewSessionDraftKeyRef.current ?? newSessionDraftId}`);
+    }
+  }, [activeChatTabId, newSessionCwd, newSessionDraftId, selectedSession, translate]);
+
+  const renderChatWindow = (
+    tabSession: SessionInfo | null,
+    effectiveCwd: string | null,
+    effectiveDraftKey: string | null,
+    isFocusedPane: boolean,
+    tabKey?: string,
+  ) => {
+    const isTabRunning = tabSession
+      ? runningSessionIds.has(tabSession.id)
+      : Boolean(selectedSession && runningSessionIds.has(selectedSession.id));
+
+    return (
+      <ChatWindow
+        key={tabKey ?? sessionKey}
+        session={tabSession}
+        searchTarget={isFocusedPane && searchTarget?.sessionId === tabSession?.id ? searchTarget : null}
+        onSearchTargetHandled={handleSearchTargetHandled}
+        initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
+        onScrollPositionChange={handleSessionScrollPositionChange}
+        sessionRunning={isTabRunning}
+        newSessionCwd={effectiveCwd}
+        newSessionDraftKey={effectiveDraftKey}
+        onAgentEnd={handleAgentEnd}
+        onAttentionNeeded={handleAttentionNeeded}
+        onSessionCreated={handleSessionCreated}
+        onSessionForked={handleSessionForked}
+        modelsRefreshKey={modelsRefreshKey}
+        chatInputRef={isFocusedPane ? chatInputRef : undefined}
+        onBranchDataChange={isFocusedPane ? handleBranchDataChange : undefined}
+        onSystemPromptChange={isFocusedPane ? handleSystemPromptChange : undefined}
+        onSystemToolsChange={isFocusedPane ? handleSystemToolsChange : undefined}
+        onSystemInfoLoaderChange={isFocusedPane ? handleSystemInfoLoaderChange : undefined}
+        onSessionStatsChange={isFocusedPane ? handleSessionStatsChange : undefined}
+        onSessionStatsPanelOpen={openSessionStatsPanel}
+        onContextUsageChange={isFocusedPane ? handleContextUsageChange : undefined}
+        onOpenFile={handleOpenLinkedFile}
+        onOpenSession={handleOpenSession}
+        onAskInNewChat={handleAskInNewChat}
+        quoteSelectionEnabled={quoteSelectionEnabled}
+        initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
+        onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
+        soundEnabled={soundEnabled}
+        onSoundToggle={onSoundToggle}
+        playDoneSound={playDoneSound}
+        unlockAudio={unlockAudio}
+      />
+    );
+  };
+
   const handleHistoryMenuOpenChange = useCallback((open: boolean) => {
     if (open) setActiveTopPanel(null);
     setHistoryMenuOpen(open);
@@ -1123,6 +1573,7 @@ export function AppShell() {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
+  const sessionHeaderReady = Boolean(selectedSession && sessionStats?.sessionId === selectedSession.id);
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
   // While restoring initial session from URL, don't show the placeholder
   const showPlaceholder = initialSessionRestored && !showChat;
@@ -1192,13 +1643,14 @@ export function AppShell() {
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
         onSelectSession={handleSelectSession}
+        onOpenSessionInNewTab={handleOpenSessionInNewTab}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
         onInitialRestoreDone={handleInitialRestoreDone}
         refreshKey={refreshKey}
         onSessionDeleted={handleSessionDeleted}
-        selectedCwd={selectedSession?.cwd ?? newSessionCwd ?? null}
+        selectedCwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
         onCwdChange={handleCwdChange}
         onOpenFile={handleOpenFile}
         onOpenTerminal={handleOpenTerminal}
@@ -1260,95 +1712,6 @@ export function AppShell() {
     </>
   );
 
-  const renderThemeButton = (mobile: boolean) => (
-    <button
-      className="workspace-header-action"
-      type="button"
-      onClick={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        toggleTheme({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-        if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
-      }}
-      title={translate(themeLabelKey)}
-      aria-label={translate(themeLabelKey)}
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-        background: "none", border: "none",
-        color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-      }}
-      onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-      onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
-      data-mobile-toolbar-action={mobile ? "theme" : undefined}
-    >
-      {preference === "light" ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="5" />
-          <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-          <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-        </svg>
-      ) : preference === "dark" ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </svg>
-      ) : (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <line x1="8" y1="21" x2="16" y2="21" />
-          <line x1="12" y1="17" x2="12" y2="21" />
-        </svg>
-      )}
-    </button>
-  );
-
-  const renderLanguageButton = (mobile: boolean) => (
-    <button
-      className="workspace-header-action"
-      ref={languageBtnRef}
-      type="button"
-      onClick={() => toggleTopPanel("language", mobile)}
-      title={translate("common.language")}
-      aria-label={translate("common.language")}
-      aria-haspopup="menu"
-      aria-expanded={activeTopPanel === "language"}
-      aria-pressed={activeTopPanel === "language"}
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-        background: activeTopPanel === "language" ? "var(--bg-selected)" : "none",
-        border: "none",
-        color: activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)",
-        cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-      }}
-      onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.color = activeTopPanel === "language" ? "var(--text)" : "var(--text-muted)";
-      }}
-      data-mobile-toolbar-action={mobile ? "language" : undefined}
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="m5 8 6 6" />
-        <path d="m4 14 6-6 2-3" />
-        <path d="M2 5h12" />
-        <path d="M7 2h1" />
-        <path d="m22 22-5-10-5 10" />
-        <path d="M14 18h6" />
-      </svg>
-    </button>
-  );
-
   const renderProjectTrustWarning = (mobileBanner: boolean) => {
     if (!showChat || !projectTrust?.requiresTrust || projectTrust.trusted) return null;
     return (
@@ -1404,11 +1767,13 @@ export function AppShell() {
     );
   };
 
-  const renderChatToolbarActions = (mobile: boolean) => {
+  const renderChatToolbarActions = (mobile: boolean, options?: { sessionTools?: boolean }) => {
+    const sessionTools = options?.sessionTools ?? true;
     if (!mobile && !showChat) return null;
+    if (!mobile && !sessionTools && !hasSubagentSessions) return null;
     return (
       <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
-        <SessionHistoryControl
+        {sessionTools && <SessionHistoryControl
           mobile={mobile}
           disabled={!selectedSession}
           menuOpen={historyMenuOpen}
@@ -1433,8 +1798,8 @@ export function AppShell() {
             void handleExportMarkdown();
             if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
           }}
-        />
-        {(() => {
+        />}
+        {sessionTools && (() => {
           // 上下文压缩后当前消息可能不再包含 user 消息，需同时参考会话文件的消息总数。
           const hasMessages = Boolean(
             selectedSession
@@ -1469,14 +1834,14 @@ export function AppShell() {
               title={title}
               aria-label={label}
               style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-                height: "100%", padding: mobile ? 0 : "0 8px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: TOP_BAR_ICON_BUTTON_SIZE,
+                height: "100%", padding: 0,
                 background: "none", border: "none",
                 color: isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)",
                 cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
-                flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
+                flexShrink: 0,
                 transition: "color 0.1s, background 0.1s, opacity 0.1s",
               }}
               onMouseEnter={(event) => {
@@ -1507,7 +1872,6 @@ export function AppShell() {
                   <path d="M6 4V2M5 3H3M19 19v3M17.5 20.5h3" />
                 </svg>
               )}
-              {!mobile && <span>{label}</span>}
             </button>
           );
         })()}
@@ -1520,13 +1884,13 @@ export function AppShell() {
             aria-pressed={activeTopPanel === "agents"}
             style={{
               position: "relative",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-              width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-              height: "100%", padding: mobile ? 0 : "0 8px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: TOP_BAR_ICON_BUTTON_SIZE,
+              height: "100%", padding: 0,
               background: activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
               border: "none",
               color: activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0, fontSize: 11, whiteSpace: "nowrap",
+              cursor: "pointer", flexShrink: 0,
               transition: "color 0.1s, background 0.1s",
             }}
             className="workspace-header-action"
@@ -1535,21 +1899,20 @@ export function AppShell() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="5" y="7" width="14" height="11" rx="2" /><path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
             </svg>
-            {!mobile && <span>{translate("agentSwitcher.title")}</span>}
             <span
               aria-hidden="true"
               style={{
-                minWidth: 15, height: 15, padding: "0 4px", display: "grid", placeItems: "center",
+                position: "absolute", top: 2, right: 2,
+                minWidth: 13, height: 13, padding: "0 3px", display: "grid", placeItems: "center",
                 borderRadius: 4, background: "var(--bg-selected)", color: "var(--accent)",
-                fontSize: 10, lineHeight: 1, fontVariantNumeric: "tabular-nums",
-                ...(mobile ? { position: "absolute", top: 2, right: 2, minWidth: 13, height: 13, padding: "0 3px", fontSize: 9 } : {}),
+                fontSize: 9, lineHeight: 1, fontVariantNumeric: "tabular-nums",
               }}
             >
               {activeSessionFamily!.subagents.length}
             </span>
           </button>
         )}
-        {sessionHasBranches && (mobile ? (
+        {sessionTools && sessionHasBranches && (mobile ? (
           <button
             type="button"
             onClick={() => toggleTopPanel("branches", true)}
@@ -1580,12 +1943,14 @@ export function AppShell() {
             activeLeafId={branchActiveLeafId}
             onLeafChange={handleBranchLeafChange}
             inline
+            compact
             containerRef={topBarRef}
             open={activeTopPanel === "branches"}
             onToggle={() => toggleTopPanel("branches")}
             hasSession
           />
         ))}
+        {sessionTools && <>
         <button
           ref={systemBtnRef}
           type="button"
@@ -1595,15 +1960,15 @@ export function AppShell() {
           aria-label={translate("system.prompt")}
           aria-pressed={activeTopPanel === "system"}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-            height: "100%", padding: mobile ? 0 : "0 8px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: TOP_BAR_ICON_BUTTON_SIZE,
+            height: "100%", padding: 0,
             background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
             border: "none",
             cursor: mobile && !showChat ? "not-allowed" : "pointer",
             color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
             opacity: mobile && !showChat ? 0.45 : 1,
-            fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+            transition: "color 0.1s, background 0.1s",
           }}
           onMouseEnter={(event) => {
             if (mobile && !showChat) return;
@@ -1621,7 +1986,6 @@ export function AppShell() {
             <line x1="8" y1="13" x2="16" y2="13" />
             <line x1="8" y1="17" x2="13" y2="17" />
           </svg>
-          {!mobile && <span>{translate("system.label")}</span>}
         </button>
         <button
           type="button"
@@ -1631,15 +1995,15 @@ export function AppShell() {
           aria-label={translate("tools.title")}
           aria-pressed={activeTopPanel === "tools"}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-            width: mobile ? TOP_BAR_ICON_BUTTON_SIZE : undefined,
-            height: "100%", padding: mobile ? 0 : "0 8px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: TOP_BAR_ICON_BUTTON_SIZE,
+            height: "100%", padding: 0,
             background: activeTopPanel === "tools" ? "var(--bg-selected)" : "none",
             border: "none",
             cursor: mobile && !showChat ? "not-allowed" : "pointer",
             color: activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)",
             opacity: mobile && !showChat ? 0.45 : 1,
-            fontSize: 11, whiteSpace: "nowrap", transition: "color 0.1s, background 0.1s",
+            transition: "color 0.1s, background 0.1s",
           }}
           onMouseEnter={(event) => {
             if (mobile && !showChat) return;
@@ -1654,10 +2018,8 @@ export function AppShell() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemTools?.some((tool) => tool.active) ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
           </svg>
-          {!mobile && <span>{translate("tools.label")}</span>}
         </button>
-        {mobile && renderThemeButton(true)}
-        {mobile && renderLanguageButton(true)}
+        </>}
       </div>
     );
   };
@@ -1668,6 +2030,7 @@ export function AppShell() {
 
   const renderCollapsedSessionTitle = () => {
     if (sidebarOpen || !showChat) return null;
+    if (chatTabs.length > 0) return null;
     return (
       <button
         type="button"
@@ -1702,7 +2065,7 @@ export function AppShell() {
   };
 
   const renderSessionStatsButton = (mobile: boolean) => {
-    if (!mobile && (!showChat || (!sessionStats && !contextUsage))) return null;
+    if (!mobile && (!showChat || !sessionHeaderReady)) return null;
 
     const tokens = sessionStats?.tokens;
     const cost = sessionStats?.cost ?? 0;
@@ -2105,12 +2468,38 @@ export function AppShell() {
           )}
           {!isMobile && (
             <>
+              {/* Single-Row Unified Tabs (when NOT split) */}
+              {!isSplitActive && showChat && chatTabs.length > 0 && (
+                <div style={{ flex: "0 1 auto", minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}>
+                  <ChatTabBar
+                    tabs={chatTabs}
+                    activeTabId={activeChatTabId ?? ""}
+                    activePane="primary"
+                    runningSessionIds={runningSessionIds}
+                    onSelectTab={handleSelectChatTab}
+                    onCloseTab={handleCloseChatTab}
+                    onNewTab={handleNewChatTab}
+                    onToggleSplit={handleToggleSplit}
+                    canSplit={!isMobile}
+                    unifiedHeader={true}
+                  />
+                </div>
+              )}
               {renderCollapsedSessionTitle()}
-              {renderThemeButton(false)}
-              {renderLanguageButton(false)}
-              {renderProjectTrustWarning(false)}
-              {renderChatToolbarActions(false)}
-              {renderSessionStatsButton(false)}
+              <div
+                data-desktop-header-actions="true"
+                style={{
+                  marginLeft: "auto",
+                  display: "flex",
+                  alignItems: "stretch",
+                  height: "100%",
+                  flexShrink: 0,
+                }}
+              >
+                {renderProjectTrustWarning(false)}
+                {renderChatToolbarActions(false, { sessionTools: sessionHeaderReady })}
+                {renderSessionStatsButton(false)}
+              </div>
             </>
           )}
           {!isMobile && renderMainFileToggle(false)}
@@ -2139,49 +2528,6 @@ export function AppShell() {
               overflowY: "auto",
               zIndex: 500,
             }}>
-              {activeTopPanel === "language" && (
-                <div
-                  role="menu"
-                  aria-label={translate("common.language")}
-                  style={{
-                    background: "var(--bg-panel)",
-                    borderLeft: "1px solid var(--border)",
-                    borderRight: "1px solid var(--border)",
-                    borderBottom: "1px solid var(--border)",
-                    overflow: "hidden",
-                    padding: 4,
-                  }}
-                >
-                  {supportedLocales.map((plugin) => (
-                    <button
-                      key={plugin.id}
-                      type="button"
-                      onClick={() => {
-                        setLocale(plugin.id as typeof locale);
-                        setActiveTopPanel(null);
-                      }}
-                      role="menuitemradio"
-                      aria-checked={locale === plugin.id}
-                      style={{
-                        display: "flex", alignItems: "center",
-                        width: "100%", height: 34, padding: "0 10px",
-                        border: "none", borderRadius: 4,
-                        background: locale === plugin.id ? "var(--bg-selected)" : "transparent",
-                        color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12,
-                        transition: "background 0.1s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (locale !== plugin.id) e.currentTarget.style.background = "var(--bg-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (locale !== plugin.id) e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <span>{plugin.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
               {activeTopPanel === "agents" && activeSessionFamily && selectedSession && (
                 <AgentSessionPanel
                   rootSession={activeSessionFamily.root}
@@ -2501,43 +2847,163 @@ export function AppShell() {
         </div>
 
         {/* Chat content */}
-        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-          {showChat ? (
-            <ChatWindow
-              key={sessionKey}
-              session={selectedSession}
-              searchTarget={searchTarget?.sessionId === selectedSession?.id ? searchTarget : null}
-              onSearchTargetHandled={handleSearchTargetHandled}
-              initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
-              onScrollPositionChange={handleSessionScrollPositionChange}
-              sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
-              newSessionCwd={effectiveNewSessionCwd}
-              newSessionDraftKey={newSessionDraftKey}
-              onAgentEnd={handleAgentEnd}
-              onAttentionNeeded={handleAttentionNeeded}
-              onSessionCreated={handleSessionCreated}
-              onSessionForked={handleSessionForked}
-              modelsRefreshKey={modelsRefreshKey}
-              chatInputRef={chatInputRef}
-              onBranchDataChange={handleBranchDataChange}
-              onSystemPromptChange={handleSystemPromptChange}
-              onSystemToolsChange={handleSystemToolsChange}
-              onSystemInfoLoaderChange={handleSystemInfoLoaderChange}
-              onSessionStatsChange={handleSessionStatsChange}
-              onSessionStatsPanelOpen={openSessionStatsPanel}
-              onContextUsageChange={handleContextUsageChange}
-              onOpenFile={handleOpenLinkedFile}
-              onOpenSession={handleOpenSession}
-              onAskInNewChat={handleAskInNewChat}
-              quoteSelectionEnabled={quoteSelectionEnabled}
-              initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
-              onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
-              soundEnabled={soundEnabled}
-              onSoundToggle={onSoundToggle}
-              playDoneSound={playDoneSound}
-              unlockAudio={unlockAudio}
-            />
-          ) : initialCwdStatus === "validating" ? (
+        <div style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", flexDirection: "column" }}>
+          {/* Panes area */}
+          <div
+            ref={chatPanesContainerRef}
+            style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", minHeight: 0 }}
+          >
+            {showChat ? (
+              <>
+                {/* Primary Pane */}
+                <div
+                  style={{
+                    flex: isSplitActive ? `0 0 ${chatSplitRatio * 100}%` : 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    minWidth: isSplitActive ? 280 : 0,
+                    overflow: "hidden",
+                    position: "relative",
+                    height: "100%",
+                  }}
+                  onPointerDownCapture={() => {
+                    if (isSplitActive) handleFocusPane("primary");
+                  }}
+                >
+                  {/* Left Pane TabBar (when split is active) */}
+                  {isSplitActive && (
+                    <ChatTabBar
+                      tabs={chatTabs.filter((t) => t.id !== splitChatTabId)}
+                      activeTabId={activeChatTabId ?? ""}
+                      activePane={activeChatPane === "primary" ? "primary" : "secondary"}
+                      runningSessionIds={runningSessionIds}
+                      onSelectTab={handleSelectPrimaryTab}
+                      onCloseTab={handleCloseChatTab}
+                      onNewTab={handleNewChatTab}
+                      onToggleSplit={handleToggleSplit}
+                      canSplit={false}
+                    />
+                  )}
+
+                  {/* Left Content Area */}
+                  <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+                    {chatTabs.length > 0 ? (
+                      chatTabs
+                        .filter((t) => (isSplitActive ? t.id !== splitChatTabId : true))
+                        .map((tab) => {
+                          const isCurrent = tab.id === activeChatTabId;
+                          return (
+                            <div
+                              key={tab.id}
+                              style={{
+                                display: isCurrent ? "flex" : "none",
+                                flexDirection: "column",
+                                width: "100%",
+                                height: "100%",
+                                position: "absolute",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                              }}
+                            >
+                              {renderChatWindow(
+                                tab.kind === "session" ? tab.session : null,
+                                tab.kind === "draft" ? tab.newSessionCwd : null,
+                                tab.kind === "draft" ? tab.newSessionDraftKey : null,
+                                isCurrent && activeChatPane === "primary",
+                                tab.id,
+                              )}
+                            </div>
+                          );
+                        })
+                    ) : (
+                      <div style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column" }}>
+                        {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, activeChatPane === "primary")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Split Resizer */}
+                {isSplitActive && (
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    title={translate("chatTabs.splitView", { defaultValue: "调整分屏大小" })}
+                    onPointerDown={handleSplitResizeStart}
+                    onDoubleClick={() => setChatSplitRatio(0.5)}
+                    style={{
+                      width: 4,
+                      cursor: "col-resize",
+                      background: "var(--border)",
+                      flexShrink: 0,
+                      zIndex: 10,
+                      position: "relative",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "var(--border)"; }}
+                  />
+                )}
+
+                {/* Secondary Pane */}
+                {isSplitActive && secondaryTab && (
+                  <div
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      minWidth: 280,
+                      overflow: "hidden",
+                      position: "relative",
+                      height: "100%",
+                      borderLeft: "1px solid var(--border)",
+                    }}
+                    onPointerDownCapture={() => handleFocusPane("secondary")}
+                  >
+                    {/* Right Pane TabBar — 100% symmetric to Left Pane TabBar with close pane [×] */}
+                    <ChatTabBar
+                      tabs={chatTabs.filter((t) => t.id === splitChatTabId)}
+                      activeTabId={splitChatTabId ?? ""}
+                      activePane={activeChatPane === "secondary" ? "primary" : "secondary"}
+                      runningSessionIds={runningSessionIds}
+                      onSelectTab={handleSelectSecondaryTab}
+                      onCloseTab={() => handleToggleSplit()}
+                      onNewTab={handleNewChatTab}
+                      onClosePane={handleToggleSplit}
+                      isSecondaryPane={true}
+                    />
+
+                    {/* Secondary Pane Content Container */}
+                    <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+                      <div
+                        key={secondaryTab.id}
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          width: "100%",
+                          height: "100%",
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                        }}
+                      >
+                        {renderChatWindow(
+                          secondaryTab.kind === "session" ? secondaryTab.session : null,
+                          secondaryTab.kind === "draft" ? secondaryTab.newSessionCwd : null,
+                          secondaryTab.kind === "draft" ? secondaryTab.newSessionDraftKey : null,
+                          activeChatPane === "secondary",
+                          secondaryTab.id,
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : initialCwdStatus === "validating" ? (
             <div
               role="status"
               style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
@@ -2578,6 +3044,7 @@ export function AppShell() {
               </div>
             )
           ) : null}
+          </div>
         </div>
       </div>
 

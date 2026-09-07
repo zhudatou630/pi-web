@@ -12,6 +12,13 @@ test("desktop primary click still opens full history; mobile opens the menu", ()
   assert.match(source, /labels\.exportMarkdown/);
 });
 
+test("desktop history control is icon-only and keeps the export chevron", () => {
+  assert.doesNotMatch(source, /\{!mobile && <span>\{labels\.full\}<\/span>\}/);
+  assert.match(source, /width: ICON_BUTTON_SIZE,/);
+  assert.match(source, /!mobile && \(/);
+  assert.match(source, /labels\.full/);
+});
+
 test("markdown export downloads the current leaf without writing a server path", () => {
   assert.match(appShell, /params\.set\("format", "md"\)|format: "md"/);
   assert.match(appShell, /if \(branchActiveLeafId\) params\.set\("leafId", branchActiveLeafId\)/);

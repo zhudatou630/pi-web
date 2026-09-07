@@ -93,18 +93,15 @@ export function SessionHistoryControl({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          gap: 5,
-          width: mobile ? ICON_BUTTON_SIZE : undefined,
+          width: ICON_BUTTON_SIZE,
           height: "100%",
-          padding: mobile ? 0 : "0 8px",
+          padding: 0,
           background: mobile && menuOpen ? "var(--bg-selected)" : "none",
           border: "none",
           color,
           cursor: disabled ? "not-allowed" : "pointer",
           opacity: disabled ? 0.45 : 1,
           flexShrink: 0,
-          fontSize: 11,
-          whiteSpace: "nowrap",
           transition: "color 0.1s, background 0.1s, opacity 0.1s",
         }}
         onMouseEnter={(event) => hover(event, true)}
@@ -128,7 +125,6 @@ export function SessionHistoryControl({
           <path d="M3 3v5h5" />
           <path d="M12 7v5l3 2" />
         </svg>
-        {!mobile && <span>{labels.full}</span>}
       </button>
       {!mobile && (
         <button
