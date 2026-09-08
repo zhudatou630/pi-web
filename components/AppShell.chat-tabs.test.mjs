@@ -25,13 +25,23 @@ test("renders ChatTabBar when chat is active and tabs exist", () => {
 });
 
 test("supports split view with resizer and secondary pane", () => {
-  assert.match(source, /const isSplitActive = Boolean\(!isMobile && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId\);/);
+  assert.match(source, /const canSplitChat = !isMobile && chatPanesWidth >= CHAT_SPLIT_MIN_WIDTH;/);
+  assert.match(source, /const isSplitActive = Boolean\(canSplitChat && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId\);/);
   assert.match(source, /\{isSplitActive && \(/);
   assert.match(source, /role="separator"/);
-  assert.match(source, /cursor: "col-resize"/);
+  assert.match(source, /className="split-chat-resize-handle"/);
   assert.match(source, /onPointerDown=\{handleSplitResizeStart\}/);
+  assert.match(source, /onPointerCancel=\{handleSplitResizeEnd\}/);
+  assert.match(source, /onKeyDown=\{handleSplitResizeKeyDown\}/);
   assert.match(source, /onDoubleClick=\{\(\) => setChatSplitRatio\(0\.5\)\}/);
   assert.match(source, /\{isSplitActive && secondaryTab && \(/);
+});
+
+test("collapses split view to the focused tab when the chat container becomes narrow", () => {
+  assert.match(source, /width < CHAT_SPLIT_MIN_WIDTH/);
+  assert.match(source, /if \(!splitChatTabId \|\| canSplitChat\) return;/);
+  assert.match(source, /const retainedTab = activeChatPane === "secondary" \? secondaryTab : primaryTab;/);
+  assert.match(source, /setActiveChatTabId\(retainedTab\.id\);\s*focusChatTab\(retainedTab, "primary"\);/);
 });
 
 test("keeps inactive primary-pane tabs mounted while hidden", () => {

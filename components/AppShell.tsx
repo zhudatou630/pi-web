@@ -54,8 +54,11 @@ import {
 } from "@/lib/workspace-memory";
 import {
   getDefaultRightPanelWidth,
+  getChatSplitRatioBounds,
   getRightPanelMaxWidth,
   getSidebarMaxWidth,
+  CHAT_SPLIT_MIN_WIDTH,
+  CHAT_SPLIT_PANE_MIN_WIDTH,
   RIGHT_PANEL_FALLBACK_WIDTH,
   RIGHT_PANEL_MAX_WIDTH,
   RIGHT_PANEL_MIN_WIDTH,
@@ -196,6 +199,7 @@ export function AppShell() {
   const [chatSplitRatio, setChatSplitRatio] = useState<number>(0.5);
   const chatPanesContainerRef = useRef<HTMLDivElement>(null);
   const isResizingSplitRef = useRef(false);
+  const [chatPanesWidth, setChatPanesWidth] = useState(CHAT_SPLIT_MIN_WIDTH);
   const [searchTarget, setSearchTarget] = useState<{ sessionId: string; entryId: string; blockIndex?: number } | null>(null);
   const handleSearchTargetHandled = useCallback((target: { sessionId: string; entryId: string }) => {
     setSearchTarget((current) => current === target ? null : current);
@@ -1260,24 +1264,41 @@ export function AppShell() {
     }
   }, [activeCwd, invalidateWorkspaceRestore, router, translate]);
 
-  const handleSplitResizeStart = useCallback((e: React.PointerEvent) => {
+  const updateChatSplitRatio = useCallback((clientX: number) => {
+    const container = chatPanesContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const bounds = getChatSplitRatioBounds(rect.width);
+    setChatSplitRatio(Math.max(bounds.min, Math.min(bounds.max, (clientX - rect.left) / rect.width)));
+  }, []);
+
+  const handleSplitResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     isResizingSplitRef.current = true;
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      if (!isResizingSplitRef.current || !chatPanesContainerRef.current) return;
-      const rect = chatPanesContainerRef.current.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const ratio = (moveEvent.clientX - rect.left) / rect.width;
-      setChatSplitRatio(Math.max(0.2, Math.min(0.8, ratio)));
-    };
-    const handlePointerUp = () => {
-      isResizingSplitRef.current = false;
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    updateChatSplitRatio(e.clientX);
+  }, [updateChatSplitRatio]);
+
+  const handleSplitResizeMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (isResizingSplitRef.current) updateChatSplitRatio(e.clientX);
+  }, [updateChatSplitRatio]);
+
+  const handleSplitResizeEnd = useCallback(() => {
+    isResizingSplitRef.current = false;
   }, []);
+
+  const handleSplitResizeKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const bounds = getChatSplitRatioBounds(chatPanesWidth);
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const direction = e.key === "ArrowLeft" ? -1 : 1;
+      setChatSplitRatio((ratio) => Math.max(bounds.min, Math.min(bounds.max, ratio + direction * 0.05)));
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      setChatSplitRatio(e.key === "Home" ? bounds.min : bounds.max);
+    }
+  }, [chatPanesWidth]);
 
   const primaryTab = useMemo(() => {
     return chatTabs.find((t) => t.id === activeChatTabId) ?? chatTabs[0] ?? null;
@@ -1287,7 +1308,8 @@ export function AppShell() {
     return splitChatTabId ? chatTabs.find((t) => t.id === splitChatTabId) ?? null : null;
   }, [chatTabs, splitChatTabId]);
 
-  const isSplitActive = Boolean(!isMobile && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
+  const canSplitChat = !isMobile && chatPanesWidth >= CHAT_SPLIT_MIN_WIDTH;
+  const isSplitActive = Boolean(canSplitChat && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
   isSplitActiveRef.current = isSplitActive;
 
   const focusChatTab = useCallback((tab: ChatTabItem, pane: "primary" | "secondary") => {
@@ -1327,6 +1349,33 @@ export function AppShell() {
     const targetTab = pane === "secondary" ? secondaryTab : primaryTab;
     if (targetTab) focusChatTab(targetTab, pane);
   }, [focusChatTab, primaryTab, secondaryTab]);
+
+  useLayoutEffect(() => {
+    const container = chatPanesContainerRef.current;
+    if (!container) return;
+    const update = (width: number) => {
+      setChatPanesWidth(width);
+      if (width < CHAT_SPLIT_MIN_WIDTH) return;
+      const bounds = getChatSplitRatioBounds(width);
+      setChatSplitRatio((ratio) => Math.max(bounds.min, Math.min(bounds.max, ratio)));
+    };
+    update(container.getBoundingClientRect().width);
+    const observer = new ResizeObserver(([entry]) => update(entry.contentRect.width));
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!splitChatTabId || canSplitChat) return;
+    const retainedTab = activeChatPane === "secondary" ? secondaryTab : primaryTab;
+    setSplitChatTabId(null);
+    if (!retainedTab) {
+      setActiveChatPane("primary");
+      return;
+    }
+    setActiveChatTabId(retainedTab.id);
+    focusChatTab(retainedTab, "primary");
+  }, [activeChatPane, canSplitChat, focusChatTab, primaryTab, secondaryTab, splitChatTabId]);
 
   const handleSelectPrimaryTab = useCallback((id: string) => {
     const tab = chatTabs.find((candidate) => candidate.id === id);
@@ -1457,7 +1506,7 @@ export function AppShell() {
         setNewSessionCwd(mainTab.newSessionCwd);
         router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
       }
-    } else {
+    } else if (canSplitChat) {
       const otherTab = chatTabs.find((t) => t.id !== activeChatTabId);
       if (otherTab) {
         setSplitChatTabId(otherTab.id);
@@ -1495,7 +1544,7 @@ export function AppShell() {
         router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
       }
     }
-  }, [activeChatTabId, activeCwd, chatTabs, router, splitChatTabId, translate]);
+  }, [activeChatTabId, activeCwd, canSplitChat, chatTabs, router, splitChatTabId, translate]);
 
   const handleOpenFile = useCallback((
     filePath: string,
@@ -2547,7 +2596,7 @@ export function AppShell() {
                     onCloseTab={handleCloseChatTab}
                     onNewTab={handleNewChatTab}
                     onToggleSplit={handleToggleSplit}
-                    canSplit={!isMobile}
+                    canSplit={canSplitChat}
                     unifiedHeader={true}
                   />
                 </div>
@@ -2888,13 +2937,7 @@ export function AppShell() {
                     );
 
                     return (
-                      <div style={{
-                        display: "grid",
-                        gridTemplateColumns: isMobile
-                          ? "1fr"
-                          : "minmax(200px, 1fr) minmax(210px, 1.1fr) minmax(260px, 1.3fr)",
-                        gap: isMobile ? 16 : 28,
-                        paddingRight: isMobile ? 0 : 28,
+                      <div className="session-stats-grid" style={{
                         fontFamily: "var(--font-mono)",
                         lineHeight: 1.45,
                       }}>
@@ -2961,7 +3004,7 @@ export function AppShell() {
                     flex: isSplitActive ? `0 0 ${chatSplitRatio * 100}%` : 1,
                     display: "flex",
                     flexDirection: "column",
-                    minWidth: isSplitActive ? 280 : 0,
+                    minWidth: isSplitActive ? CHAT_SPLIT_PANE_MIN_WIDTH : 0,
                     overflow: "hidden",
                     position: "relative",
                     height: "100%",
@@ -3028,22 +3071,20 @@ export function AppShell() {
                 {/* Split Resizer */}
                 {isSplitActive && (
                   <div
+                    className="split-chat-resize-handle"
                     role="separator"
                     aria-orientation="vertical"
+                    aria-valuemin={Math.round(getChatSplitRatioBounds(chatPanesWidth).min * 100)}
+                    aria-valuemax={Math.round(getChatSplitRatioBounds(chatPanesWidth).max * 100)}
+                    aria-valuenow={Math.round(chatSplitRatio * 100)}
+                    tabIndex={0}
                     title={translate("chatTabs.splitView", { defaultValue: "调整分屏大小" })}
                     onPointerDown={handleSplitResizeStart}
+                    onPointerMove={handleSplitResizeMove}
+                    onPointerUp={handleSplitResizeEnd}
+                    onPointerCancel={handleSplitResizeEnd}
+                    onKeyDown={handleSplitResizeKeyDown}
                     onDoubleClick={() => setChatSplitRatio(0.5)}
-                    style={{
-                      width: 4,
-                      cursor: "col-resize",
-                      background: "var(--border)",
-                      flexShrink: 0,
-                      zIndex: 10,
-                      position: "relative",
-                      transition: "background 0.15s",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "var(--border)"; }}
                   />
                 )}
 
@@ -3054,7 +3095,7 @@ export function AppShell() {
                       flex: 1,
                       display: "flex",
                       flexDirection: "column",
-                      minWidth: 280,
+                      minWidth: CHAT_SPLIT_PANE_MIN_WIDTH,
                       overflow: "hidden",
                       position: "relative",
                       height: "100%",

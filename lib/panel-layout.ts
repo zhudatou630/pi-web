@@ -9,6 +9,10 @@ export const RIGHT_PANEL_FALLBACK_WIDTH = 560;
 export const RIGHT_PANEL_MIN_WIDTH = 300;
 export const RIGHT_PANEL_MAX_WIDTH = 1200;
 
+export const CHAT_SPLIT_MIN_WIDTH = 600;
+export const CHAT_SPLIT_PANE_MIN_WIDTH = 280;
+export const CHAT_SPLIT_HANDLE_WIDTH = 12;
+
 const COMPACT_CHAT_MIN_WIDTH = 320;
 const DESKTOP_CHAT_MIN_WIDTH = 420;
 
@@ -20,6 +24,13 @@ export function clampPanelWidth(width: number, minWidth: number, maxWidth: numbe
 
 export function getDefaultRightPanelWidth(viewportWidth: number): number {
   return clampPanelWidth(viewportWidth * 0.42, 360, 640);
+}
+
+export function getChatSplitRatioBounds(containerWidth: number): { min: number; max: number } {
+  return {
+    min: Math.max(0.2, CHAT_SPLIT_PANE_MIN_WIDTH / containerWidth),
+    max: Math.min(0.8, (containerWidth - CHAT_SPLIT_HANDLE_WIDTH - CHAT_SPLIT_PANE_MIN_WIDTH) / containerWidth),
+  };
 }
 
 export function getSidebarMaxWidth(options: {

@@ -80,6 +80,56 @@ html.dark {
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
+.split-chat-resize-handle {
+  position: relative;
+  z-index: 10;
+  width: 12px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.split-chat-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border);
+}
+
+.split-chat-resize-handle:hover::after,
+.split-chat-resize-handle:focus-visible::after {
+  width: 2px;
+  background: var(--accent);
+}
+
+.session-info-popover {
+  container-type: inline-size;
+}
+
+.session-stats-grid {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(210px, 1.1fr) minmax(260px, 1.3fr);
+  gap: 28px;
+  padding-right: 28px;
+}
+
+@container (max-width: 780px) {
+  .session-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 24px;
+  }
+}
+
+@container (max-width: 520px) {
+  .session-stats-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding-right: 0;
+  }
+}
+
 /* WebKit reports dvh/innerHeight without the status-bar strip for installed
    home-screen apps even though the layout still starts at the screen's top.
    In standalone mode there is no browser toolbar to make vh unstable, and vh
