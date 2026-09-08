@@ -17,15 +17,20 @@ function visit(node) {
 }
 visit(source);
 const loader = nodes.find((node) => ts.isVariableDeclaration(node) && node.name.getText(source) === "loadModels");
+const defaultModelResolver = nodes.find((node) => ts.isFunctionDeclaration(node) && node.name?.getText(source) === "getDefaultDisplayModel");
 const schedule = nodes.find((node) => ts.isVariableDeclaration(node) && node.name.getText(source) === "MODELS_RETRY_DELAYS_MS");
 const effect = nodes.find((node) => ts.isCallExpression(node)
   && node.expression.getText(source) === "useEffect"
   && node.arguments[1]?.getText(source) === "[loadModels, modelsRefreshKey]");
-const retry = effect.arguments[0].body.statements.find(ts.isExpressionStatement).expression;
+const retry = effect.arguments[0].body.statements
+  .filter(ts.isExpressionStatement)
+  .map((statement) => statement.expression)
+  .find(ts.isCallExpression);
 function script(text) {
   return new Script(ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText);
 }
 const loadScript = script(`(${loader.initializer.arguments[0].getText(source)})`);
+const defaultModelResolverScript = script(defaultModelResolver.getText(source));
 const retryScript = script(retry.getText(source));
 
 function setup(fetchImpl) {
@@ -35,11 +40,17 @@ function setup(fetchImpl) {
     Error, DOMException,
     controller: new AbortController(),
     newSessionCwd: "/project", session: null, isNew: true,
+    modelsUrl: "/api/models?cwd=%2Fproject",
+    modelsRefreshKey: 0,
+    modelsRefreshKeyRef: { current: 0 },
+    force: false,
     sessionIdRef: { current: null }, thinkingLevelOverrideRef: { current: null },
     fetch: fetchImpl,
+    loadModelsWithClientCache: async (_key, load) => load(),
     MODELS_RETRY_DELAYS_MS: script(schedule.initializer.getText(source)).runInNewContext(),
     delay: async (ms) => { delays.push(ms); },
   };
+  defaultModelResolverScript.runInNewContext(context);
   for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelList", "NewSessionDefaultModel", "ThinkingLevel"]) {
     context[`set${name}`] = (value) => writes.push([name, value]);
   }
@@ -82,26 +93,28 @@ test("model-load failures stay visible through bounded retries and clear on reco
 test("cancelling model loads prevents state writes and further retries", async () => {
   for (const status of [200, 403]) {
     const reading = Promise.withResolvers();
-    const state = setup(async (_url, { signal }) => ({
+    const finishReading = Promise.withResolvers();
+    const state = setup(async () => ({
       ok: status === 200, status,
-      json: () => new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      json: async () => {
         reading.resolve();
-      }),
+        await finishReading.promise;
+        return status === 200 ? { models: {}, modelList: [] } : { error: "Access denied" };
+      },
     }));
     const completed = state.run();
     await reading.promise;
     state.context.controller.abort();
+    finishReading.resolve();
     await completed;
     assert.deepEqual(state.writes, []);
     assert.deepEqual(state.delays, []);
   }
 
-  const late = setup(async (_url, { signal }) => ({
+  const late = setup(async () => ({
     ok: true,
     json: async () => {
       late.context.controller.abort();
-      assert.equal(signal.aborted, true);
       return { models: {}, modelList: [] };
     },
   }));

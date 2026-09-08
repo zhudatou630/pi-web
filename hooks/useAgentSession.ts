@@ -45,6 +45,12 @@ import {
 } from "@/lib/decode-throughput";
 import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand } from "@/lib/prompt-run-control";
 import { recalledQueuedPrompts } from "@/lib/queued-messages";
+import {
+  loadModelsWithClientCache,
+  peekModelsClientCache,
+  type ModelEntry,
+  type ModelsResponse,
+} from "@/lib/models-client-cache";
 
 export interface SessionData {
   sessionId: string;
@@ -276,17 +282,14 @@ export interface AttachedImage {
 }
 
 type SelectedModel = { provider: string; modelId: string };
-type ModelEntry = { id: string; name: string; provider: string };
-type ModelsResponse = {
-  models: Record<string, string>;
-  modelList?: ModelEntry[];
-  defaultModel?: SelectedModel | null;
-  thinkingLevels?: Record<string, string[]>;
-  thinkingLevelMaps?: Record<string, Record<string, string | null>>;
-  thinkingLevelPins?: Record<string, string>;
-  modelError?: string;
-  modelScopeWarnings?: string[];
-};
+
+function getDefaultDisplayModel(data: ModelsResponse | undefined): SelectedModel | null {
+  if (!data?.defaultModel) return null;
+  const match = data.modelList?.find(
+    (model) => model.id === data.defaultModel?.modelId && model.provider === data.defaultModel?.provider,
+  );
+  return match ? { provider: match.provider, modelId: match.id } : null;
+}
 
 type SlashCommandsResponse = {
   commands?: SlashCommandInfo[];
@@ -299,6 +302,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   } = opts;
 
   const isNew = session === null && newSessionCwd !== null;
+  const modelCwd = newSessionCwd ?? session?.cwd ?? "";
+  const modelsUrl = modelCwd ? `/api/models?cwd=${encodeURIComponent(modelCwd)}` : "/api/models";
+  const initialModels = peekModelsClientCache(modelsUrl);
+  const initialDefaultModel = isNew ? getDefaultDisplayModel(initialModels) : null;
+  const initialThinkingLevel = initialDefaultModel
+    ? initialModels?.thinkingLevelPins?.[`${initialDefaultModel.provider}/${initialDefaultModel.modelId}`] as ThinkingLevelOption | undefined
+    : undefined;
 
   const [data, setData] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(!isNew);
@@ -324,16 +334,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
   const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean } | null>(null);
-  const [modelNames, setModelNames] = useState<Record<string, string>>({});
-  const [modelList, setModelList] = useState<ModelEntry[]>([]);
-  const [modelError, setModelError] = useState<string | null>(null);
-  const [modelScopeWarnings, setModelScopeWarnings] = useState<string[]>([]);
-  const [modelThinkingLevels, setModelThinkingLevels] = useState<Record<string, string[]>>({});
-  const [modelThinkingLevelMaps, setModelThinkingLevelMaps] = useState<Record<string, Record<string, string | null>>>({});
+  const [modelNames, setModelNames] = useState<Record<string, string>>(() => initialModels?.models ?? {});
+  const [modelList, setModelList] = useState<ModelEntry[]>(() => initialModels?.modelList ?? []);
+  const [modelError, setModelError] = useState<string | null>(() => initialModels?.modelError ?? null);
+  const [modelScopeWarnings, setModelScopeWarnings] = useState<string[]>(() => initialModels?.modelScopeWarnings ?? []);
+  const [modelThinkingLevels, setModelThinkingLevels] = useState<Record<string, string[]>>(() => initialModels?.thinkingLevels ?? {});
+  const [modelThinkingLevelMaps, setModelThinkingLevelMaps] = useState<Record<string, Record<string, string | null>>>(() => initialModels?.thinkingLevelMaps ?? {});
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
-  const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(null);
+  const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(initialDefaultModel);
   const [toolPreset, setToolPreset] = useState<ToolPreset>("default");
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>("auto");
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>(initialThinkingLevel ?? "auto");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -395,6 +405,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const bashAbortRequestedRef = useRef(false);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
   const modelSwitchPendingRef = useRef(false);
+  const modelsRefreshKeyRef = useRef(modelsRefreshKey);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
   const observeDecodeFromStartRef = useRef(false);
@@ -1777,26 +1788,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [isCompacting, loadSession]);
 
-  const loadModels = useCallback(async (signal?: AbortSignal) => {
-    const modelCwd = newSessionCwd ?? session?.cwd ?? "";
-    const modelsUrl = modelCwd ? `/api/models?cwd=${encodeURIComponent(modelCwd)}` : "/api/models";
+  const loadModels = useCallback(async (signal?: AbortSignal, force = false, refreshToken?: number) => {
     let d: ModelsResponse;
     try {
-      const res = await fetch(modelsUrl, signal ? { signal } : undefined);
-      if (!res.ok) {
-        let detail = "";
-        try {
-          const body: unknown = await res.json();
-          if (body && typeof body === "object" && "error" in body && typeof body.error === "string") {
-            detail = body.error;
+      d = await loadModelsWithClientCache(modelsUrl, async () => {
+        const res = await fetch(modelsUrl);
+        if (!res.ok) {
+          let detail = "";
+          try {
+            const body: unknown = await res.json();
+            if (body && typeof body === "object" && "error" in body && typeof body.error === "string") {
+              detail = body.error;
+            }
+          } catch {
+            // Non-JSON error responses fall back to the HTTP status.
           }
-        } catch (e) {
-          if (e instanceof DOMException && e.name === "AbortError") throw e;
-          // Non-JSON error responses fall back to the HTTP status.
+          throw new Error(detail || `Failed to load models (HTTP ${res.status})`);
         }
-        throw new Error(detail || `Failed to load models (HTTP ${res.status})`);
-      }
-      d = await res.json() as ModelsResponse;
+        return res.json() as Promise<ModelsResponse>;
+      }, { force, refreshToken });
       signal?.throwIfAborted();
     } catch (e) {
       if (!signal?.aborted && !(e instanceof DOMException && e.name === "AbortError")) {
@@ -1813,18 +1823,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setModelList(nextModelList);
     if (isNew && !sessionIdRef.current) {
       // The first listed model is not necessarily the runtime's automatic choice.
-      const displayModel = d.defaultModel
-        ? nextModelList.find((m) => m.id === d.defaultModel?.modelId && m.provider === d.defaultModel?.provider)
-        : undefined;
-      setNewSessionDefaultModel(displayModel ? { provider: displayModel.provider, modelId: displayModel.id } : null);
+      const displayModel = getDefaultDisplayModel(d);
+      setNewSessionDefaultModel(displayModel);
       // An `enabledModels` pattern may pin a thinking level (`anthropic/*:high`).
       // Like pi, apply it to the model a new session starts with.
-      const pinned = displayModel && d.thinkingLevelPins?.[`${displayModel.provider}/${displayModel.id}`];
+      const pinned = displayModel && d.thinkingLevelPins?.[`${displayModel.provider}/${displayModel.modelId}`];
       if (thinkingLevelOverrideRef.current === null) {
         setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "auto");
       }
     }
-  }, [isNew, newSessionCwd, session?.cwd]);
+  }, [isNew, modelsUrl]);
 
   const handleBuiltinSlashCommand = useCallback(async (text: string): Promise<BuiltinSlashCommandResult> => {
     if (!text.startsWith("/")) return { handled: false };
@@ -1867,7 +1875,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             loadSession(sid, false, true),
             loadTools(sid),
             loadSlashCommands(),
-            loadModels(),
+            loadModels(undefined, true),
           ]);
           return complete({ handled: true, message: "Reloaded session resources" });
         }
@@ -2237,10 +2245,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // Load the model list with bounded retries; loadModels exposes each failure.
   useEffect(() => {
     const controller = new AbortController();
+    const force = modelsRefreshKeyRef.current !== modelsRefreshKey;
+    modelsRefreshKeyRef.current = modelsRefreshKey;
     (async () => {
       for (let attempt = 0; ; attempt++) {
         try {
-          await loadModels(controller.signal);
+          await loadModels(controller.signal, force, modelsRefreshKey);
           return;
         } catch (e) {
           if (controller.signal.aborted) return;
