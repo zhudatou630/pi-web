@@ -518,6 +518,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     deferInitialScroll: Boolean(pendingScrollRestore),
   });
   const sessionBusy = agentRunning || bashRunning;
+  const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [quotedSelection, setQuotedSelection] = useState<{
     text: string;
     top: number;
@@ -919,17 +921,32 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      setShowScrollBottom(false);
+      return;
+    }
+    const updateScrollBottom = () => {
+      const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+      setShowScrollBottom(unmountedNewerCount > 0 || distance > 160);
+    };
     const onScroll = () => {
+      updateScrollBottom();
       if (outlineJumpControllerRef.current || unmountedNewerCount > 0) return;
       if (isScrollAtTail(container.scrollTop, container.clientHeight, container.scrollHeight)) {
         setUnmountedNewerCount(0);
         setMountLimit(MOUNTED_GROUP_LIMIT);
       }
     };
+    updateScrollBottom();
+    const observer = new ResizeObserver(updateScrollBottom);
+    observer.observe(container);
+    if (messageContentRef.current) observer.observe(messageContentRef.current);
     container.addEventListener("scroll", onScroll, { passive: true });
-    return () => container.removeEventListener("scroll", onScroll);
-  }, [scrollContainerRef, unmountedNewerCount]);
+    return () => {
+      observer.disconnect();
+      container.removeEventListener("scroll", onScroll);
+    };
+  }, [isEmptyNew, loading, scrollContainerRef, session?.id, unmountedNewerCount]);
 
   // Sentinel trigger to slide the mounted window toward older in-memory
   // groups first; only then fetch the previous server page.
@@ -1185,7 +1202,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     pendingOutlineJump.resolve();
   }, [pendingOutlineJump, entryIds, keepBoundedWindow, messages.length, mountLimit, unmountedNewerCount, scrollToMessage]);
 
-  const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
   const streamingAssistant = streamState.streamingMessage?.role === "assistant"
     ? streamState.streamingMessage as AssistantMessage
@@ -1758,6 +1774,27 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </div>
           </div>
         </div>
+        {showScrollBottom && !pendingScrollRestore && (
+          <button
+            type="button"
+            onClick={() => {
+              outlineJumpControllerRef.current?.abort();
+              setPendingOutlineJump(null);
+              setPendingSearchScroll(null);
+              setUnmountedNewerCount(0);
+              setMountLimit(MOUNTED_GROUP_LIMIT);
+              requestAnimationFrame(() => scrollToBottom("smooth"));
+            }}
+            className="absolute bottom-4 right-5 z-30 inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg)] px-2.5 text-[var(--text-muted)] shadow-[0_4px_16px_rgba(15,23,42,0.12)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            title={t("chat.scrollToBottom")}
+            aria-label={t("chat.scrollToBottom")}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m7 10 5 5 5-5" />
+            </svg>
+            {streamState.isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" aria-hidden="true" />}
+          </button>
+        )}
         {!isFocusedPane || isMobile || pendingScrollRestore ? null : (
           <ChatMinimap
             sessionId={session?.id ?? sessionIdRef.current}
@@ -1853,21 +1890,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
       <div className="relative shrink-0">
         {isEmptyNew && (
-          <div className="mx-auto mb-3 w-full" style={{ maxWidth: "var(--chat-content-max-width, 820px)", paddingLeft: 32, paddingRight: isMobile ? 32 : 68 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontFamily: "var(--font-mono)" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: isMobile ? 7 : 10, minWidth: 0, flex: 1, lineHeight: 1.4, overflow: "hidden" }}>
-                <span style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-                <span style={{ fontSize: 22, color: "var(--text)", fontWeight: 700, flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
-                <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  web <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
-                </span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  pi <span style={{ color: "var(--text)" }}>v{process.env.NEXT_PUBLIC_PI_VERSION ?? "0.0.0"}</span>
-                </span>
-              </div>
+          <div className="mx-auto mb-6 flex select-none flex-col items-center justify-center text-center" style={{ maxWidth: "var(--chat-content-max-width, 820px)", padding: "0 16px" }}>
+            <div style={{ display: "inline-flex", alignItems: "baseline", gap: isMobile ? 7 : 10, fontFamily: "var(--font-mono)", lineHeight: 1.4 }}>
+              <span style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
+              <span style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
+              <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
             </div>
           </div>
         )}

@@ -1,12 +1,12 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 
 interface MermaidBlockProps {
   code: string;
@@ -312,8 +312,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           style={{
             margin: 0,
             padding: "6px 10px",
-            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.48,
+            fontSize: "calc(13px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.54,
             overflowX: "auto",
             scrollbarWidth: "thin",
             border: "none",
@@ -333,8 +333,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           customStyle={{
             margin: 0,
             padding: "6px 10px",
-            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
-            lineHeight: 1.48,
+            fontSize: "calc(13px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.54,
             borderRadius: 0,
             border: "none",
             boxShadow: "none",
