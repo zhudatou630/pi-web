@@ -22,7 +22,7 @@ test("defines a refined beacon with an expanding wave ring and glowing core", ()
 test("unifies running status indicator across sidebar, chat tabs, process steps, and subagent switcher", async () => {
   const panelSource = await readFile(new URL("./AgentSessionPanel.tsx", import.meta.url), "utf8");
   assert.match(sidebarSource, /function RunningSessionIndicator\(\)[\s\S]*?<LivePulseBeacon/);
-  assert.match(sidebarSource, /activity\.running > 0[\s\S]*?<LivePulseBeacon size=\{10\}/);
+  assert.match(sidebarSource, /activity\.running > 0[\s\S]*?<LivePulseBeacon size=\{12\}/);
   assert.match(tabSource, /\{isRunning \? \(\s*<LivePulseBeacon/);
   assert.match(chatWindowSource, /\{isStreaming && \([\s\S]*?<LivePulseBeacon/);
   assert.match(panelSource, /if \(status === "running" \|\| status === "starting"\) \{\s*return <LivePulseBeacon/);
