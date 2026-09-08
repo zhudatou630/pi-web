@@ -1,6 +1,6 @@
 # Pi Web
 
-这是基于 [pi](https://github.com/earendil-works/pi) 和 [pi-web (agegr)](https://github.com/agegr/pi-web) 修改的分支，主要做了些日常使用上的调整（多标签分屏、中文与代码排版、工具执行流折叠及部分交互修复）。
+这是基于 [pi](https://github.com/earendil-works/pi) 和原版 [agegr/pi-web](https://github.com/agegr/pi-web) 修改的分支，主要做了些日常使用上的调整（多标签分屏、中文与代码排版、工具执行流折叠及部分交互修复）。
 
 ## 安装与运行
 
@@ -34,4 +34,4 @@ git pull && npm install && npm run build && npm start
 
 ## License
 
-[MIT](./LICENSE)
+本项目基于 [pi](https://github.com/earendil-works/pi) 与 [agegr/pi-web](https://github.com/agegr/pi-web) 开源生态，遵循 [MIT License](./LICENSE)。
