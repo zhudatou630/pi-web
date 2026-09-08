@@ -329,7 +329,9 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
   assert.match(connectedSource, /agentRunningRef\.current = true/);
   assert.match(streamSource, /msg\?\.role === "assistant"[\s\S]*dispatch\(\{ type: "snapshot", message: msg \}\)/);
   assert.match(streamSource, /event\.assistantMessageEvent as ClientAssistantMessageEvent/);
-  assert.match(streamSource, /dispatch\(\{ type: "delta", event: delta \}\)/);
+  assert.match(streamSource, /queueStreamDelta\(delta\)/);
+  assert.match(source, /dispatch\(\{ type: "deltas", events \}\)/);
+  assert.match(source, /if \(event\.type !== "message_update"\) flushStreamDeltas\(\)/);
   assert.match(streamSource, /delta\.type !== "toolcall_start" && delta\.type !== "toolcall_delta"/);
   assert.doesNotMatch(streamSource, /case "message_delta"/);
   assert.match(messageEndSource, /const completed = event\.message as AgentMessage/);
@@ -411,6 +413,10 @@ test("keeps live following cancellable when the user scrolls away from the tail"
     source.indexOf('case "message_start"'),
     source.indexOf('case "message_end"'),
   );
+  const liveFollowSource = source.slice(
+    source.indexOf("const scheduleLiveFollow"),
+    source.indexOf("const flushStreamDeltas"),
+  );
   const scrollHandlerSource = source.slice(
     source.indexOf("const handleScrollPositionChange"),
     source.indexOf("// Load session on mount"),
@@ -428,8 +434,9 @@ test("keeps live following cancellable when the user scrolls away from the tail"
   assert.match(scrollToBottomSource, /const container = scrollContainerRef\.current;\s*if \(!container\) return;/);
   assert.match(scrollToBottomSource, /container\.scrollTo\(\{ top: container\.scrollHeight, behavior \}\);\s*previousScrollTopRef\.current = container\.scrollTop;/);
   assert.doesNotMatch(scrollToBottomSource, /scrollIntoView/);
-  assert.match(streamUpdateSource, /liveFollowFrameRef\.current === null/);
-  assert.match(streamUpdateSource, /requestAnimationFrame\(\(\) => \{[\s\S]*?liveFollowFrameRef\.current = null;[\s\S]*?if \(isNearBottomRef\.current\) scrollToBottom\("auto"\)/);
+  assert.match(streamUpdateSource, /scheduleLiveFollow\(\)/);
+  assert.match(liveFollowSource, /liveFollowFrameRef\.current !== null/);
+  assert.match(liveFollowSource, /requestAnimationFrame\(\(\) => \{[\s\S]*?liveFollowFrameRef\.current = null;[\s\S]*?if \(isNearBottomRef\.current\) scrollToBottom\("auto"\)/);
   assert.match(scrollHandlerSource, /!wasAttached && isAttached && isAgentRunning[\s\S]*?scrollToBottom\("auto"\)/);
   assert.match(scrollHandlerSource, /cancelAnimationFrame\(liveFollowFrameRef\.current\)/);
   assert.match(source, /previousScrollTopRef\.current = container\.scrollTop;\s*container\.addEventListener\("scroll", handleScrollPositionChange/);
@@ -462,12 +469,17 @@ test("keeps a newly sent user message at the top while its response starts", () 
     source.indexOf("const scrollUserMsgToTop"),
     source.indexOf("const handleScrollPositionChange"),
   );
+  const liveFollowSource = source.slice(
+    source.indexOf("const scheduleLiveFollow"),
+    source.indexOf("const flushStreamDeltas"),
+  );
   const scrollEffectSource = source.slice(
     source.indexOf("useLayoutEffect(() => {\n    if (messages.length > 0)"),
     source.indexOf("// Load model list"),
   );
 
-  assert.match(streamUpdateSource, /!pendingScrollToUserRef\.current && isNearBottomRef\.current/);
+  assert.match(streamUpdateSource, /scheduleLiveFollow\(\)/);
+  assert.match(liveFollowSource, /pendingScrollToUserRef\.current \|\| !isNearBottomRef\.current/);
   assert.match(source, /const \[promptAnchorActive, setPromptAnchorActive\] = useState\(false\)/);
   assert.match(source, /pendingScrollToUserRef\.current = true;\s*setPromptAnchorActive\(true\)/);
   assert.match(userScrollSource, /const targetTop = Math\.min\(Math\.max\(0, elAbsTop - 16\), maxScrollTop\)/);

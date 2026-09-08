@@ -1064,7 +1064,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
-  const visibleMessages = messages.filter((m) => isMessageGroupAnchor(m) || m.role === "assistant");
+  const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => isMessageGroupAnchor(message) || message.role === "assistant"),
+    [messages],
+  );
   // Stable Map identity: `messages` doesn't change during streaming updates
   // (the streaming message lives in streamState), so memoized MessageViews
   // skip re-rendering on every message_update event. An inline `new Map()`
@@ -1078,6 +1082,31 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     return map;
   }, [messages]);
+  const completedAssistantParts = useMemo(() => messages.map((message) => (
+    message.role === "assistant" ? partitionAssistantMessage(message) : null
+  )), [messages]);
+  const writtenFilesByAssistantIndex = useMemo(() => {
+    const filesByIndex = new Map<number, WrittenFile[]>();
+    for (let idx = 0; idx < messages.length;) {
+      const userIdx = isMessageGroupAnchor(messages[idx]) ? idx : -1;
+      let endIdx = userIdx >= 0 ? idx + 1 : idx;
+      while (endIdx < messages.length && !isMessageGroupAnchor(messages[endIdx])) endIdx += 1;
+      const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
+      if (finalAssistantIdx >= 0 && completedAssistantParts[finalAssistantIdx]?.answerMessage) {
+        const turnContent: AssistantContentBlock[] = [];
+        for (let messageIdx = userIdx + 1; messageIdx <= finalAssistantIdx; messageIdx += 1) {
+          const message = messages[messageIdx];
+          if (message?.role === "assistant") turnContent.push(...message.content);
+        }
+        filesByIndex.set(
+          finalAssistantIdx,
+          extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd),
+        );
+      }
+      idx = endIdx;
+    }
+    return filesByIndex;
+  }, [completedAssistantParts, messageCwd, messages, toolResultsMap]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
     const history: string[] = [];
@@ -1156,7 +1185,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
-  const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const streamingAssistant = streamState.streamingMessage?.role === "assistant"
     ? streamState.streamingMessage as AssistantMessage
     : null;
@@ -1561,15 +1589,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   rendered.push(renderMessage(userIdx));
                 }
 
-                const finalAssistant = messages[finalAssistantIdx] as AssistantMessage;
-                const finalSplit = splitFinalAssistantBlocks(finalAssistant);
-                const finalAnswerMessage = (finalSplit.answerBlocks.length > 0 || getAssistantErrorMessage(finalAssistant))
-                  ? withAssistantBlocks(finalAssistant, finalSplit.answerBlocks)
-                  : null;
-
-                const finalProcessEnd = finalAssistant.content.indexOf(finalSplit.answerBlocks[0]);
-                // Keep the original prefix so deferred thinking retains its stored block indices.
-                const finalProcessBlocks = finalAssistant.content.slice(0, finalProcessEnd < 0 ? undefined : finalProcessEnd);
+                const finalParts = completedAssistantParts[finalAssistantIdx];
+                const finalAnswerMessage = finalParts?.answerMessage ?? null;
 
                 const processViews: ReactNode[] = [];
                 const processEntryIds: string[] = [];
@@ -1587,8 +1608,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   }
                   if (processMessage.role !== "assistant") continue;
                   const message = processIdx === finalAssistantIdx
-                    ? withAssistantBlocks(processMessage, finalProcessBlocks, { omitUsage: Boolean(finalAnswerMessage) })
+                    ? finalParts?.processMessage
                     : processMessage;
+                  if (!message) continue;
                   const blocks = getDisplayableAssistantBlocks(message);
                   if (blocks.length === 0) continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
@@ -1653,23 +1675,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
 
                 if (finalAnswerMessage) {
-                  // Each tool call is stored as its own assistant entry, so the
-                  // final answer alone carries no record of what the turn wrote.
-                  // Gather the turn's assistant blocks and derive the file list
-                  // from the write/edit calls among them.
-                  const turnContent: AssistantContentBlock[] = [];
-                  for (let i = userIdx + 1; i <= finalAssistantIdx; i++) {
-                    const m = messages[i];
-                    if (m?.role === "assistant") {
-                      for (const b of (m as AssistantMessage).content ?? []) turnContent.push(b);
-                    }
-                  }
-                  const writtenFiles = extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd);
                   markOutlineTarget([entryIds[finalAssistantIdx]]);
                   rendered.push(renderMessage(finalAssistantIdx, {
                     isTurnEnd: true,
                     messageOverride: finalAnswerMessage,
-                    writtenFiles,
+                    writtenFiles: writtenFilesByAssistantIndex.get(finalAssistantIdx),
                   }));
                 }
                 for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
@@ -1691,7 +1701,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       type="button"
                       ref={sentinelRef}
                       onClick={triggerLoadEarlier}
-                      className="w-full py-3 text-center text-xs text-text-muted transition-colors hover:text-text cursor-pointer focus:outline-none"
+                      className="w-full cursor-pointer py-3 text-center text-xs text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-accent"
                     >
                       {t("chat.loadEarlier")}
                     </button>

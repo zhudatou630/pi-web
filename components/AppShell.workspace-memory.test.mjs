@@ -90,6 +90,8 @@ test("New restores the draft after session navigation and workspace auto-restore
         suppressCwdBumpRef: { current: false },
         branchLeafChangeFnRef: { current: null },
         liveFollowFrameRef: { current: null },
+        streamDeltaFrameRef: { current: null },
+        pendingStreamDeltasRef: { current: [] },
         bashRecoveryIdRef: { current: 0 },
         cancelEventStreamGrace() {},
         closeEvents() {},

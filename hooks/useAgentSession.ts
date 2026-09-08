@@ -377,6 +377,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const isNearBottomRef = useRef(true);
   const previousScrollTopRef = useRef(0);
   const liveFollowFrameRef = useRef<number | null>(null);
+  const streamDeltaFrameRef = useRef<number | null>(null);
+  const pendingStreamDeltasRef = useRef<ClientAssistantMessageEvent[]>([]);
   const executeBashRef = useRef<(command: string, excludeFromContext: boolean) => Promise<void> | undefined>(undefined);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
@@ -901,7 +903,37 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [addNotice, onAttentionNeeded, opts.chatInputRef]);
 
+  const scheduleLiveFollow = useCallback(() => {
+    if (pendingScrollToUserRef.current || !isNearBottomRef.current || liveFollowFrameRef.current !== null) return;
+    liveFollowFrameRef.current = requestAnimationFrame(() => {
+      liveFollowFrameRef.current = null;
+      if (isNearBottomRef.current) scrollToBottom("auto");
+    });
+  }, [scrollToBottom]);
+
+  const flushStreamDeltas = useCallback(() => {
+    if (streamDeltaFrameRef.current !== null) {
+      cancelAnimationFrame(streamDeltaFrameRef.current);
+      streamDeltaFrameRef.current = null;
+    }
+    const events = pendingStreamDeltasRef.current;
+    if (events.length === 0) return;
+    pendingStreamDeltasRef.current = [];
+    dispatch({ type: "deltas", events });
+    scheduleLiveFollow();
+  }, [scheduleLiveFollow]);
+
+  const queueStreamDelta = useCallback((event: ClientAssistantMessageEvent) => {
+    pendingStreamDeltasRef.current.push(event);
+    if (streamDeltaFrameRef.current !== null) return;
+    streamDeltaFrameRef.current = requestAnimationFrame(() => {
+      streamDeltaFrameRef.current = null;
+      flushStreamDeltas();
+    });
+  }, [flushStreamDeltas]);
+
   const settleUiStage = useCallback(() => {
+    flushStreamDeltas();
     const wasRunning = agentRunningRef.current;
     agentRunningRef.current = false;
     setAgentRunning(false);
@@ -909,7 +941,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setRetryInfo(null);
     dispatch({ type: "end" });
     return wasRunning;
-  }, []);
+  }, [flushStreamDeltas]);
 
   const notifyPromptStage = useCallback((runId: number) => {
     if (notifiedPromptRunIdRef.current === runId) return false;
@@ -1121,6 +1153,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [agentRunning]);
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
+    if (event.type !== "message_update") flushStreamDeltas();
     switch (event.type) {
       case "connected": {
         dispatch({ type: "end" });
@@ -1235,7 +1268,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else {
           const delta = event.assistantMessageEvent as ClientAssistantMessageEvent | undefined;
           if (delta) {
-            dispatch({ type: "delta", event: delta });
+            queueStreamDelta(delta);
             if (delta.type !== "toolcall_start" && delta.type !== "toolcall_delta") {
               setAgentPhase(null);
             }
@@ -1244,16 +1277,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             }
           }
         }
-        // Live-follow the streaming output only when the user is already near
-        // the bottom of the message list. If they scrolled up, leave them there.
-        if (!pendingScrollToUserRef.current && isNearBottomRef.current && liveFollowFrameRef.current === null) {
-          // Defer the scroll so React has time to update the DOM with the new
-          // streaming content; otherwise scrollIntoView may target stale layout.
-          liveFollowFrameRef.current = requestAnimationFrame(() => {
-            liveFollowFrameRef.current = null;
-            if (isNearBottomRef.current) scrollToBottom("auto");
-          });
-        }
+        if (event.type === "message_start") scheduleLiveFollow();
         break;
       }
       case "message_end": {
@@ -1376,7 +1400,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setExtensionDialog((current) => current?.id === event.id ? null : current);
         break;
     }
-  }, [addNotice, cancelEventStreamGrace, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, scrollToBottom, settleUiStage]);
+  }, [addNotice, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, queueStreamDelta, scheduleEventStreamClose, scheduleLiveFollow, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -2153,6 +2177,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         cancelAnimationFrame(liveFollowFrameRef.current);
         liveFollowFrameRef.current = null;
       }
+      if (streamDeltaFrameRef.current !== null) cancelAnimationFrame(streamDeltaFrameRef.current);
+      streamDeltaFrameRef.current = null;
+      pendingStreamDeltasRef.current = [];
       bashRecoveryIdRef.current += 1;
       cancelEventStreamGrace();
       closeEvents();

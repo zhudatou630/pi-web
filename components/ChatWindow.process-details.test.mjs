@@ -43,3 +43,10 @@ test("streams process blocks inside steps and answer blocks outside", () => {
   assert.match(source, /message=\{streamingParts\.answerMessage\}/);
   assert.doesNotMatch(source, /isStreamingProcess && streamState\.streamingMessage/);
 });
+
+test("keeps completed turn projections stable while only the streaming tail changes", () => {
+  assert.match(source, /const completedAssistantParts = useMemo\(\(\) => messages\.map/);
+  assert.match(source, /const writtenFilesByAssistantIndex = useMemo/);
+  assert.match(source, /const finalParts = completedAssistantParts\[finalAssistantIdx\]/);
+  assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);
+});
