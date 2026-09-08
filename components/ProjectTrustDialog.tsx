@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
 
 export function ProjectTrustDialog({
@@ -16,6 +17,21 @@ export function ProjectTrustDialog({
   onConfirm: () => void;
 }) {
   const { t } = useI18n();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    cancelRef.current?.focus();
+    return () => {
+      if (previousFocus?.isConnected) previousFocus.focus();
+      else document.querySelector<HTMLElement>('[data-dialog-focus-fallback="true"]')?.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (busy) dialogRef.current?.focus();
+  }, [busy]);
 
   return (
     <div
@@ -35,9 +51,34 @@ export function ProjectTrustDialog({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="project-trust-title"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !busy) {
+            event.preventDefault();
+            onCancel();
+            return;
+          }
+          if (event.key !== "Tab") return;
+          const buttons = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+          if (buttons.length === 0) {
+            event.preventDefault();
+            dialogRef.current?.focus();
+            return;
+          }
+          const first = buttons[0];
+          const last = buttons[buttons.length - 1];
+          if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
         style={{
           width: 440,
           maxWidth: "100%",
@@ -104,6 +145,7 @@ export function ProjectTrustDialog({
           }}
         >
           <button
+            ref={cancelRef}
             type="button"
             onClick={onCancel}
             disabled={busy}

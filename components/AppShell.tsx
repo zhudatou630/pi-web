@@ -321,9 +321,10 @@ export function AppShell() {
   const systemInfoLoaderRef = useRef<(() => Promise<void>) | null>(null);
   const systemInfoLoadIdRef = useRef(0);
   const systemBtnRef = useRef<HTMLButtonElement>(null);
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null);
   const agentsButtonRef = useRef<HTMLButtonElement>(null);
   const agentsAnchorRef = useRef<HTMLElement | null>(null);
-  const agentsPanelRef = useRef<HTMLDivElement>(null);
+  const topPanelRef = useRef<HTMLDivElement>(null);
 
   const handleSystemPromptChange = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -401,6 +402,18 @@ export function AppShell() {
   const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | "language" | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  const closeTopPanel = useCallback((restoreFocus = false) => {
+    const panel = activeTopPanel;
+    setActiveTopPanel(null);
+    if (!restoreFocus || !panel) return;
+    requestAnimationFrame(() => {
+      const trigger = document.querySelector<HTMLElement>(`[data-top-panel-trigger="${panel}"]`)
+        ?? document.querySelector<HTMLElement>('[data-mobile-toolbar-more="true"]')
+        ?? sidebarToggleRef.current;
+      trigger?.focus();
+    });
+  }, [activeTopPanel]);
+
   useEffect(() => {
     if (!sessionHasBranches) {
       setActiveTopPanel((panel) => panel === "branches" ? null : panel);
@@ -457,6 +470,29 @@ export function AppShell() {
     setSidebarOpen((open) => !open);
   }, [isMobile]);
 
+  const dismissMobileSidebar = useCallback(() => {
+    setSidebarOpen(false);
+    requestAnimationFrame(() => sidebarToggleRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile || !sidebarOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const panel = sidebarResizer.panelRef.current;
+      panel?.querySelector<HTMLElement>('[aria-current="page"], button:not(:disabled)')?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      dismissMobileSidebar();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dismissMobileSidebar, isMobile, sidebarOpen, sidebarResizer.panelRef]);
+
   const handleMobileToolbarMoreToggle = useCallback(() => {
     setSidebarOpen(false);
     setActiveTopPanel(null);
@@ -476,12 +512,13 @@ export function AppShell() {
     if (!mobileToolbarMoreOpen) return;
 
     const handlePointerDown = (event: PointerEvent) => {
+      if (activeTopPanel) return;
       const toolbar = mobileToolbarRef.current;
       if (toolbar && event.composedPath().includes(toolbar)) return;
       setMobileToolbarMoreOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || activeTopPanel) return;
       event.preventDefault();
       event.stopPropagation();
       setMobileToolbarMoreOpen(false);
@@ -493,7 +530,7 @@ export function AppShell() {
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [mobileToolbarMoreOpen]);
+  }, [activeTopPanel, mobileToolbarMoreOpen]);
 
   useEffect(() => {
     setMobileToolbarMoreOpen(false);
@@ -539,17 +576,19 @@ export function AppShell() {
   }, [activeTopPanel, isMobile]);
 
   useEffect(() => {
-    if (activeTopPanel !== "agents") return;
+    if (!activeTopPanel || activeTopPanel === "branches" || activeTopPanel === "language") return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
-      if (agentsPanelRef.current?.contains(target)) return;
-      if (agentsAnchorRef.current?.contains(target) || agentsButtonRef.current?.contains(target)) return;
-      setActiveTopPanel(null);
+      if (topPanelRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest(`[data-top-panel-trigger="${activeTopPanel}"]`)) return;
+      closeTopPanel();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setActiveTopPanel(null);
+        event.preventDefault();
+        event.stopPropagation();
+        closeTopPanel(true);
       }
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
@@ -558,7 +597,7 @@ export function AppShell() {
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [activeTopPanel]);
+  }, [activeTopPanel, closeTopPanel]);
 
   // Files unmount when inactive; workspace terminals stay mounted until closed.
   const [fileTabs, setFileTabs] = useState<Tab[]>([]);
@@ -2046,6 +2085,9 @@ export function AppShell() {
             title={translate("agentSwitcher.title")}
             aria-label={translate("agentSwitcher.title")}
             aria-pressed={activeTopPanel === "agents"}
+            aria-expanded={activeTopPanel === "agents"}
+            aria-controls="workspace-top-panel"
+            data-top-panel-trigger="agents"
             style={{
               position: "relative",
               display: "flex", alignItems: "center", justifyContent: "center",
@@ -2124,6 +2166,9 @@ export function AppShell() {
           title={translate("system.prompt")}
           aria-label={translate("system.prompt")}
           aria-pressed={activeTopPanel === "system"}
+          aria-expanded={activeTopPanel === "system"}
+          aria-controls="workspace-top-panel"
+          data-top-panel-trigger="system"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: TOP_BAR_ICON_BUTTON_SIZE,
@@ -2159,6 +2204,9 @@ export function AppShell() {
           title={translate("tools.title")}
           aria-label={translate("tools.title")}
           aria-pressed={activeTopPanel === "tools"}
+          aria-expanded={activeTopPanel === "tools"}
+          aria-controls="workspace-top-panel"
+          data-top-panel-trigger="tools"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: TOP_BAR_ICON_BUTTON_SIZE,
@@ -2203,6 +2251,9 @@ export function AppShell() {
         title={collapsedSessionTitle}
         aria-label={collapsedSessionTitle}
         aria-pressed={activeTopPanel === "session"}
+        aria-expanded={activeTopPanel === "session"}
+        aria-controls="workspace-top-panel"
+        data-top-panel-trigger="session"
         className="workspace-header-action"
         data-collapsed-session-title="true"
         style={{
@@ -2280,6 +2331,9 @@ export function AppShell() {
         title={tooltip || translate("session.title")}
         aria-label={translate("session.title")}
         aria-pressed={activeTopPanel === "session"}
+        aria-expanded={activeTopPanel === "session"}
+        aria-controls="workspace-top-panel"
+        data-top-panel-trigger="session"
         aria-hidden={covered ? true : undefined}
         className={`workspace-header-action${mobile ? " mobile-session-stats" : ""}`}
         data-mobile-toolbar-stats={mobile ? "true" : undefined}
@@ -2440,7 +2494,7 @@ export function AppShell() {
       <div
         className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
         aria-hidden="true"
-        onClick={() => setSidebarOpen(false)}
+        onClick={dismissMobileSidebar}
         style={{
           position: "fixed",
           inset: 0,
@@ -2456,6 +2510,8 @@ export function AppShell() {
       <div
         ref={sidebarResizer.panelRef}
         id="session-sidebar"
+        role="navigation"
+        aria-label="Pi Web"
         aria-hidden={isMobile && !sidebarOpen ? true : undefined}
         inert={isMobile && !sidebarOpen ? true : undefined}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
@@ -2489,6 +2545,8 @@ export function AppShell() {
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
         <div className="workspace-header" style={{ position: "relative" }}>
           <button
+            ref={sidebarToggleRef}
+            data-dialog-focus-fallback="true"
             className="workspace-header-action"
             onClick={handleSidebarToggle}
              title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
@@ -2639,7 +2697,16 @@ export function AppShell() {
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
             <div
-              ref={activeTopPanel === "agents" ? agentsPanelRef : undefined}
+              ref={topPanelRef}
+              id="workspace-top-panel"
+              role="region"
+              aria-label={activeTopPanel === "agents"
+                ? translate("agentSwitcher.title")
+                : activeTopPanel === "system"
+                  ? translate("system.prompt")
+                  : activeTopPanel === "tools"
+                    ? translate("tools.title")
+                    : translate("session.title")}
               style={{
                 position: "fixed",
                 top: topPanelPos.top,
@@ -2686,7 +2753,7 @@ export function AppShell() {
                   <div style={{ position: "absolute", top: 10, right: 12, zIndex: 2 }}>
                     <button
                       type="button"
-                      onClick={() => setActiveTopPanel(null)}
+                      onClick={() => closeTopPanel(true)}
                       title={translate("i18n.close")}
                       aria-label={translate("i18n.close")}
                       style={{

@@ -17,6 +17,21 @@ test("keeps action icons inline in medium mobile sidebars", () => {
 test("removes the closed mobile sidebar from the accessibility tree", () => {
   assert.match(source, /aria-hidden=\{isMobile && !sidebarOpen \? true : undefined\}/);
   assert.match(source, /inert=\{isMobile && !sidebarOpen \? true : undefined\}/);
+  assert.match(source, /panel\?\.querySelector<HTMLElement>\('\[aria-current="page"\], button:not\(:disabled\)'\)\?\.focus\(\)/);
+  assert.match(source, /event\.key !== "Escape"[\s\S]*?dismissMobileSidebar\(\)/);
+  assert.match(source, /requestAnimationFrame\(\(\) => sidebarToggleRef\.current\?\.focus\(\)\)/);
+});
+
+test("closes shared top panels consistently and restores their trigger on Escape", () => {
+  assert.match(source, /if \(!activeTopPanel \|\| activeTopPanel === "branches" \|\| activeTopPanel === "language"\) return/);
+  assert.match(source, /topPanelRef\.current\?\.contains\(target\)/);
+  assert.match(source, /event\.stopPropagation\(\);\s*closeTopPanel\(true\)/);
+  assert.match(source, /data-top-panel-trigger="system"/);
+  assert.match(source, /data-top-panel-trigger="tools"/);
+  assert.match(source, /data-top-panel-trigger="session"/);
+  assert.match(source, /id="workspace-top-panel"/);
+  assert.match(source, /event\.key !== "Escape" \|\| activeTopPanel/);
+  assert.match(source, /querySelector<HTMLElement>\('\[data-mobile-toolbar-more="true"\]'\)/);
 });
 
 test("uses a compact narrow-mobile toolbar with a floating action layer", () => {
