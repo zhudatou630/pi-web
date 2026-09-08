@@ -2601,8 +2601,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
               const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
               const tooltip = [
-                `${t("chat.contextUsage")}: ${tokens !== null ? `${formatTokensK(tokens)} (${tokens.toLocaleString()})` : "?"} / ${formatTokensK(windowTokens)} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
-                remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)} (${remaining.toLocaleString()})` : null,
+                `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
+                remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)}` : null,
                 isHigh ? `⚠️ ${t("chat.contextHighWarning")}` : null,
               ].filter(Boolean).join("\n");
 

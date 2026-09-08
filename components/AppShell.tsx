@@ -2974,15 +2974,15 @@ export function AppShell() {
                           {ctx.tokens !== null && (
                             <>
                               <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextUsed")}</div>
-                              <div title={ctx.tokens.toLocaleString(locale)} style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.tokens, locale)}</div>
+                              <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.tokens, locale)}</div>
                             </>
                           )}
                           <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextWindow")}</div>
-                          <div title={ctx.contextWindow.toLocaleString(locale)} style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.contextWindow, locale)}</div>
+                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.contextWindow, locale)}</div>
                           {remaining !== null && (
                             <>
                               <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextRemaining")}</div>
-                              <div title={remaining.toLocaleString(locale)} style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(remaining, locale)}</div>
+                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(remaining, locale)}</div>
                             </>
                           )}
                         </div>
@@ -3020,20 +3020,17 @@ export function AppShell() {
                           fontSize: 11.5,
                         }}>
                           <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.total")}</div>
-                          <div title={sessionStats.tokens.total.toLocaleString(locale)} style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.total, locale)}</div>
+                          <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.total, locale)}</div>
 
                           <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.input")} / {translate("session.output")}</div>
-                          <div
-                            title={`${sessionStats.tokens.input.toLocaleString(locale)} / ${sessionStats.tokens.output.toLocaleString(locale)}`}
-                            style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}
-                          >
+                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>
                             {formatTokensK(sessionStats.tokens.input, locale)} / {formatTokensK(sessionStats.tokens.output, locale)}
                           </div>
 
                           {sessionStats.tokens.cacheRead > 0 && (
                             <>
                               <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.cacheRead")}</div>
-                              <div title={sessionStats.tokens.cacheRead.toLocaleString(locale)} style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.cacheRead, locale)}</div>
+                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.cacheRead, locale)}</div>
                             </>
                           )}
                           {cacheHitRate && (
