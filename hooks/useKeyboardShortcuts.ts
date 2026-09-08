@@ -6,14 +6,17 @@ import { useEffect } from "react";
 // Module-level registry — ChatWindow registers the abort handler here so that
 // the global Esc listener in AppShell can call it without prop-drilling.
 // ---------------------------------------------------------------------------
-let globalAbortHandler: (() => void) | null = null;
+let globalAbortRegistration: { owner: symbol; handler: () => void } | null = null;
 
-/**
- * Register (or clear) the abort handler for the global Esc shortcut.
- * Call this from ChatWindow whenever agentRunning or handleAbort changes.
- */
-export function registerAbortHandler(handler: (() => void) | null): void {
-  globalAbortHandler = handler;
+/** Register the focused ChatWindow's Esc handler and return an owner-safe cleanup. */
+export function registerAbortHandler(handler: () => void): () => void {
+  const registration = { owner: Symbol("abort-handler"), handler };
+  globalAbortRegistration = registration;
+  return () => {
+    if (globalAbortRegistration?.owner === registration.owner) {
+      globalAbortRegistration = null;
+    }
+  };
 }
 
 export function isComposerKeyboardTarget(target: EventTarget | null): boolean {
@@ -32,7 +35,9 @@ export function handleGlobalShortcutKeyDown(
   if (event.defaultPrevented) return;
 
   if (event.key === "Escape") {
-    const abortHandler = options.abortHandler === undefined ? globalAbortHandler : options.abortHandler;
+    const abortHandler = options.abortHandler === undefined
+      ? globalAbortRegistration?.handler
+      : options.abortHandler;
     if (!abortHandler || isComposerKeyboardTarget(event.target)) return;
     event.preventDefault();
     abortHandler();

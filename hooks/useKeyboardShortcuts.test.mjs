@@ -5,6 +5,7 @@ import { createJiti } from "jiti";
 const {
   handleGlobalShortcutKeyDown,
   isComposerKeyboardTarget,
+  registerAbortHandler,
 } = await createJiti(import.meta.url).import("./useKeyboardShortcuts.ts");
 
 function keyEvent(key, extra = {}) {
@@ -41,6 +42,20 @@ test("Escape on a non-input target aborts, but consumed events and composer inpu
   handleGlobalShortcutKeyDown(openLayer, { abortHandler: abort });
   assert.equal(aborted, 1);
   assert.equal(openLayer.defaultPrevented, true);
+});
+
+test("an old abort registration cannot clear the focused pane handler", () => {
+  const calls = [];
+  const clearOld = registerAbortHandler(() => calls.push("old"));
+  const clearFocused = registerAbortHandler(() => calls.push("focused"));
+
+  clearOld();
+  handleGlobalShortcutKeyDown(keyEvent("Escape"));
+  assert.deepEqual(calls, ["focused"]);
+
+  clearFocused();
+  handleGlobalShortcutKeyDown(keyEvent("Escape"));
+  assert.deepEqual(calls, ["focused"]);
 });
 
 test("a settings-style Escape closer stops abort on the same event", () => {

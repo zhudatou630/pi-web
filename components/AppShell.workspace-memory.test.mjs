@@ -42,7 +42,7 @@ test("all active-session transitions share one persistence effect", () => {
 test("keeps chat scroll positions in page memory by session id", () => {
   assert.match(source, /useRef\(new Map<string, ChatScrollPosition>\(\)\)/);
   assert.match(source, /sessionScrollPositionsRef\.current\.set\(sessionId, position\)/);
-  assert.match(source, /initialScrollPosition=\{selectedSession \? sessionScrollPositionsRef\.current\.get\(selectedSession\.id\) \?\? null : null\}/);
+  assert.match(source, /initialScrollPosition=\{tabSession \? sessionScrollPositionsRef\.current\.get\(tabSession\.id\) \?\? null : null\}/);
   assert.match(source, /onScrollPositionChange=\{handleSessionScrollPositionChange\}/);
   assert.doesNotMatch(source, /localStorage[^\n]*sessionScroll/i);
 });
@@ -93,6 +93,7 @@ test("New restores the draft after session navigation and workspace auto-restore
         bashRecoveryIdRef: { current: 0 },
         cancelEventStreamGrace() {},
         closeEvents() {},
+        syncSessionMetadata() {},
         isMobile: false,
         activeCwd: cwd,
         activeFileTabId: null,

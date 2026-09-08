@@ -528,7 +528,7 @@ pre, code {
   list-style-position: outside;
 }
 .markdown-body ol {
-  padding-left: 25px;
+  padding-left: 2.2em;
   margin: 3px 0 6px;
   list-style-position: outside;
 }
@@ -543,7 +543,7 @@ pre, code {
 }
 .markdown-body ul ol, .markdown-body ol ol {
   margin: 2px 0 2px;
-  padding-left: 22px;
+  padding-left: 2em;
 }
 .markdown-body li::marker {
   color: var(--text-muted);

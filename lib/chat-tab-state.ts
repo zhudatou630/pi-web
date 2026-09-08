@@ -89,20 +89,6 @@ export function openSessionInNewTab(
     return { tabs: nextTabs, tabId: session.id };
   }
 
-  // 如果当前只有一个尚未输入的空草稿 Tab，替换掉它
-  if (tabs.length === 1 && tabs[0].kind === "draft") {
-    const newTab: ChatTabItem = {
-      id: session.id,
-      kind: "session",
-      title,
-      session,
-      newSessionCwd: null,
-      newSessionDraftKey: null,
-      projectKey: session.projectKey ?? session.cwd,
-    };
-    return { tabs: [newTab], tabId: session.id };
-  }
-
   const newTab: ChatTabItem = {
     id: session.id,
     kind: "session",

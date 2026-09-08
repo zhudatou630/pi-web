@@ -4,6 +4,7 @@ import test from "node:test";
 
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const sidebarSource = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
+const chatWindowSource = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
 
 test("declares chat tabs and split view state in AppShell", () => {
   assert.match(source, /const \[chatTabs, setChatTabs\] = useState<ChatTabItem\[\]>\(\[\]\);/);
@@ -33,8 +34,8 @@ test("supports split view with resizer and secondary pane", () => {
   assert.match(source, /\{isSplitActive && secondaryTab && \(/);
 });
 
-test("preserves single ChatWindow implementation with keep-alive DOM preservation", () => {
-  assert.equal((source.match(/<ChatWindow\b/g) ?? []).length, 1);
+test("keeps inactive primary-pane tabs mounted while hidden", () => {
+  assert.match(source, /chatTabs[\s\S]*?\.filter\(\(t\) => \(isSplitActive \? t\.id !== splitChatTabId : true\)\)[\s\S]*?\.map\(\(tab\) =>/);
   assert.match(source, /display: isCurrent \? "flex" : "none"/);
 });
 
@@ -45,6 +46,25 @@ test("sidebar single-click views session in current tab while explicit new tab a
   assert.match(sidebarSource, /onOpenInNewTab/);
   assert.match(sidebarSource, /e\.button === 1 && onOpenInNewTab/);
   assert.match(sidebarSource, /title=\{t\("chatTabs\.openInNewTab"/);
+});
+
+test("binds per-tab actions to the target session instead of global selection", () => {
+  assert.match(source, /pendingQuotePrompt\?\.sessionId === tabSession\?\.id/);
+  assert.doesNotMatch(source, /pendingQuotePrompt\?\.sessionId === selectedSession\?\.id/);
+  assert.match(source, /initialScrollPosition=\{tabSession \?/);
+  assert.match(source, /const focusedDraftKey = focusedTab\?\.kind === "draft"/);
+  assert.match(source, /const tab = chatTabs\.find\(\(candidate\) => candidate\.id === id\);[\s\S]*?focusChatTab\(tab, "primary"\)/);
+  assert.match(source, /isFocusedPane=\{isFocusedPane\}/);
+  assert.match(chatWindowSource, /onAttentionNeeded\?\.\(request, sessionRef\.current\)/);
+  assert.match(chatWindowSource, /onOpenFile\?\.\(filePath, sessionRef\.current\?\.id \?\? null\)/);
+  assert.match(chatWindowSource, /chatInputRef: ownChatInputRef/);
+  assert.match(chatWindowSource, /ref=\{setChatInputElement\}/);
+});
+
+test("late fork completion does not steal focus from another tab", () => {
+  assert.match(source, /const shouldFocus = !sourceSessionId \|\| activeSessionIdRef\.current === sourceSessionId/);
+  assert.match(source, /setChatTabs\(\(prev\) => openSessionInTabs\(prev, forkedSession\)\.tabs\);[\s\S]*?if \(!shouldFocus\) return/);
+  assert.match(chatWindowSource, /onSessionForked\?\.\(newSessionId, sessionRef\.current\?\.id \?\? null\)/);
 });
 
 test("supports mobile tab bar when multiple tabs are open", () => {

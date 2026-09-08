@@ -17,11 +17,17 @@ export function isEmptyThinkingBlock(block: AssistantContentBlock, options: Disp
   return block.type === "thinking" && !block.deferred && !options.isStreaming && block.thinking.trim() === "";
 }
 
+export function isEmptyTextBlock(block: AssistantContentBlock, options: DisplayOptions = {}): boolean {
+  return block.type === "text" && !options.isStreaming && block.text.trim() === "";
+}
+
 export function getDisplayableAssistantBlocks(
   message: AssistantMessage,
   options: DisplayOptions = {},
 ): AssistantContentBlock[] {
-  return (message.content ?? []).filter((block) => !isEmptyThinkingBlock(block, options));
+  return (message.content ?? []).filter((block) => (
+    !isEmptyThinkingBlock(block, options) && !isEmptyTextBlock(block, options)
+  ));
 }
 
 export function getAssistantErrorMessage(
@@ -32,8 +38,8 @@ export function getAssistantErrorMessage(
   return message.errorMessage?.trim() || "Unknown provider error";
 }
 
-function isFinalAnswerBlock(block: AssistantContentBlock): boolean {
-  return block.type === "text" || block.type === "image";
+function isFinalAnswerBlock(block: AssistantContentBlock, options: DisplayOptions = {}): boolean {
+  return block.type === "image" || (block.type === "text" && (options.isStreaming ? block.text.length > 0 : block.text.trim().length > 0));
 }
 
 export function splitFinalAssistantBlocks(
@@ -41,7 +47,7 @@ export function splitFinalAssistantBlocks(
   options: DisplayOptions = {},
 ): { answerBlocks: AssistantContentBlock[]; processBlocks: AssistantContentBlock[] } {
   const blocks = getDisplayableAssistantBlocks(message, options);
-  const lastProcessIndex = blocks.findLastIndex((block) => !isFinalAnswerBlock(block));
+  const lastProcessIndex = blocks.findLastIndex((block) => !isFinalAnswerBlock(block, options));
   if (lastProcessIndex === -1) {
     return { answerBlocks: blocks, processBlocks: [] };
   }

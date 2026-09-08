@@ -217,6 +217,7 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
 
 export class AgentSessionWrapper {
   private listeners: EventListener[] = [];
+  private closeListeners = new Set<() => void>();
   private pendingUiResponses = new Map<string, PendingUiResponse>();
   private pendingUiRequests = new Map<string, AgentEvent>();
   private activeCustomUis = new Map<string, ActiveCustomUi>();
@@ -245,6 +246,7 @@ export class AgentSessionWrapper {
   private sessionShutdownEmitted = false;
   private forceShutdownOnIdle = false;
   private _alive = true;
+  private _closing = false;
 
   constructor(
     public readonly inner: AgentSessionLike,
@@ -282,8 +284,19 @@ export class AgentSessionWrapper {
     return this._alive;
   }
 
+  isClosing(): boolean {
+    return this._closing;
+  }
+
   isRunning(): boolean {
     return this._alive && (this.pendingPromptCount > 0 || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
+  }
+
+  isBusyForFileMutation(): boolean {
+    return this._closing
+      || this.activeMutatingCommands > 0
+      || this.sessionReplacement !== null
+      || this.isRunning();
   }
 
   isChatOnly(): boolean {
@@ -458,7 +471,7 @@ export class AgentSessionWrapper {
 
   private resetIdleTimer(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    if (!this._alive) return;
+    if (!this._alive || this._closing) return;
     // A resolved timeout of 0 disables idle shutdown entirely.
     if (SESSION_IDLE_TIMEOUT_MS === 0) return;
     if (!this.isRunning()) this.forceShutdownOnIdle = false;
@@ -505,6 +518,15 @@ export class AgentSessionWrapper {
     };
   }
 
+  onClose(listener: () => void): () => void {
+    if (!this._alive) {
+      listener();
+      return () => {};
+    }
+    this.closeListeners.add(listener);
+    return () => this.closeListeners.delete(listener);
+  }
+
   onDestroy(cb: () => void): void {
     this.onDestroyCallback = cb;
   }
@@ -545,6 +567,9 @@ export class AgentSessionWrapper {
     const allowedDuringReplacement = COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT.has(type);
     if (this.sessionReplacement && !allowedDuringReplacement) {
       throw new Error("Session is being copied to a new session");
+    }
+    if (!this._alive || this._closing) {
+      throw new Error("Session is closing");
     }
     if (SESSION_REPLACEMENT_COMMAND_TYPES.has(type) && this.activeMutatingCommands > 0) {
       throw new Error(`Cannot ${type} while another session command is running`);
@@ -1012,7 +1037,12 @@ export class AgentSessionWrapper {
 
   destroy(): void {
     if (!this._alive) return;
+    this._closing = true;
     this._alive = false;
+    for (const listener of this.closeListeners) {
+      try { listener(); } catch { /* one consumer must not block shutdown */ }
+    }
+    this.closeListeners.clear();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
@@ -1062,6 +1092,9 @@ export class AgentSessionWrapper {
     if (this.shutdownPromise) return this.shutdownPromise;
     if (!this._alive) return;
 
+    // Close admission synchronously before the first await so a concurrent API
+    // request cannot start work that dispose() would immediately abort.
+    this._closing = true;
     this.shutdownPromise = (async () => {
       try {
         try {
@@ -1653,6 +1686,7 @@ declare global {
   var __piSessions: Map<string, AgentSessionWrapper> | undefined;
   var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
   var __piStartingSessionCwds: Map<string, number> | undefined;
+  var __piSessionFileMutations: Set<string> | undefined;
 }
 
 function getRegistry(): Map<string, AgentSessionWrapper> {
@@ -1676,7 +1710,9 @@ function registerRpcWrapper(wrapper: AgentSessionWrapper): void {
   const registry = getRegistry();
   const sessionId = wrapper.sessionId;
   if (wrapper.sessionFile) cacheSessionPath(sessionId, wrapper.sessionFile);
-  wrapper.onDestroy(() => registry.delete(sessionId));
+  wrapper.onDestroy(() => {
+    if (registry.get(sessionId) === wrapper) registry.delete(sessionId);
+  });
   registry.set(sessionId, wrapper);
   wrapper.start();
   if (!wrapper.isChatOnly()) wrapper.beginExtensionBinding();
@@ -1694,8 +1730,6 @@ const SUBAGENT_CONTROLLER = createSubagentController({
     });
     registerRpcWrapper(wrapper);
   },
-  reopenSession: async (sessionId, sessionFile) =>
-    (await startRpcSession(sessionId, sessionFile, undefined)).session,
   resolveSessionPath,
   invalidateSessionList: invalidateSessionListCache,
   isBuiltInSubagentsEnabled,
@@ -1745,6 +1779,41 @@ function trackStartingSession(cwd: string): () => void {
 
 export function getRpcSession(sessionId: string): AgentSessionWrapper | undefined {
   return getRegistry().get(sessionId);
+}
+
+function getSessionFileMutations(): Set<string> {
+  if (!globalThis.__piSessionFileMutations) globalThis.__piSessionFileMutations = new Set();
+  return globalThis.__piSessionFileMutations;
+}
+
+/**
+ * Reserve session files for a destructive mutation and close idle wrappers.
+ * Returns null when any session is starting, running, mutating, or already reserved.
+ */
+export async function reserveRpcSessionFileMutation(
+  sessionIds: readonly string[],
+): Promise<(() => void) | null> {
+  const ids = [...new Set(sessionIds.filter(Boolean))];
+  const reservations = getSessionFileMutations();
+  const locks = getLocks();
+  if (ids.some((id) => reservations.has(id) || locks.has(id))) return null;
+
+  const wrappers = ids
+    .map((id) => getRegistry().get(id))
+    .filter((wrapper): wrapper is AgentSessionWrapper => Boolean(wrapper));
+  if (wrappers.some((wrapper) => wrapper.isBusyForFileMutation())) return null;
+
+  for (const id of ids) reservations.add(id);
+  const release = () => {
+    for (const id of ids) reservations.delete(id);
+  };
+  try {
+    await Promise.all(wrappers.map((wrapper) => wrapper.shutdown()));
+    return release;
+  } catch (error) {
+    release();
+    throw error;
+  }
 }
 
 export interface SetRpcSessionToolsResult {
@@ -1941,6 +2010,9 @@ export async function startRpcSession(
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const { initialModel, allowInitialModelFallback, thinkingLevel } = options;
+  if (getSessionFileMutations().has(sessionId)) {
+    throw new Error("Session file is being modified");
+  }
   const requestedToolNames = options.toolNames === undefined
     ? undefined
     : validateSessionToolSelection(options.toolNames);

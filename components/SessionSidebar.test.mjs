@@ -137,6 +137,12 @@ test("lifecycle refreshes bypass the cache while cross-window polling reuses it"
   assert.match(source, /loadSessions\(false, true\);[\s\S]*?onBackgroundTaskDone/);
 });
 
+test("keeps a session visible when the delete request fails", () => {
+  assert.match(sessionItemSource, /const response = await fetch\(`\/api\/sessions\/\$\{encodeURIComponent\(session\.id\)\}`/);
+  assert.match(sessionItemSource, /if \(!response\.ok\) throw new Error\(`HTTP \$\{response\.status\}`\)/);
+  assert.match(sessionItemSource, /onDeleted\?\.\(session\.id\)/);
+});
+
 test("does not expose disk-backed actions for transient sessions", () => {
   assert.match(sessionItemSource, /if \(session\.transient\) return;/);
   assert.match(sessionItemSource, /\{!session\.transient && \(\s*<div className="session-row-actions"/);

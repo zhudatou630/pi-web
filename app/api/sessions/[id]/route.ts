@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "fs";
-import { dirname, join } from "path";
+import { randomUUID } from "crypto";
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync } from "fs";
+import { basename, dirname, join } from "path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   attachSessionProjectInfo,
@@ -12,7 +13,7 @@ import {
   readSessionHeader,
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
-import { getRpcSession } from "@/lib/rpc-manager";
+import { getRpcSession, reserveRpcSessionFileMutation } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
@@ -20,6 +21,103 @@ import { computeSessionContextUsage } from "@/lib/session-context-usage";
 import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources, SUBAGENT_META_TYPE } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
+import { writePrivateFileAtomicSync } from "@/lib/atomic-file";
+
+interface SessionFileRecord {
+  path: string;
+  pathKey: string;
+  id: string;
+  parentPath?: string;
+  lines: string[];
+  entries: SessionEntry[];
+  original: string;
+  isSubagent: boolean;
+}
+
+function readSessionFileRecord(filePath: string): SessionFileRecord | null {
+  const original = readFileSync(filePath, "utf8");
+  const lines = original.split("\n");
+  const parsed = lines.map((line): unknown => {
+    if (!line.trim()) return null;
+    try {
+      return JSON.parse(line) as unknown;
+    } catch {
+      return null;
+    }
+  });
+  const header = parsed[0] as { type?: string; id?: string; parentSession?: string } | null;
+  if (header?.type !== "session" || typeof header.id !== "string") return null;
+  const entries = parsed.slice(1).filter((entry): entry is SessionEntry => entry !== null) as SessionEntry[];
+  return {
+    path: filePath,
+    pathKey: sessionPathKey(filePath),
+    id: header.id,
+    parentPath: typeof header.parentSession === "string" ? header.parentSession : undefined,
+    lines,
+    entries,
+    original,
+    isSubagent: Boolean(readSubagentRun(entries as never, header.id, filePath)),
+  };
+}
+
+function reparentSessionRecord(
+  record: SessionFileRecord,
+  parentSessionPath: string | undefined,
+  parentSessionId: string | undefined,
+): string {
+  const lines = [...record.lines];
+  const header = JSON.parse(lines[0]) as { parentSession?: string };
+  if (parentSessionPath) header.parentSession = parentSessionPath;
+  else delete header.parentSession;
+  lines[0] = JSON.stringify(header);
+
+  if (record.isSubagent) {
+    if (!parentSessionPath || !parentSessionId) {
+      throw new Error("Cannot reparent a subagent without a valid parent session");
+    }
+    for (let index = 1; index < lines.length; index += 1) {
+      let entry: { type?: string; customType?: string; data?: unknown };
+      try {
+        entry = JSON.parse(lines[index]);
+      } catch {
+        continue;
+      }
+      if (
+        entry.type !== "custom"
+        || entry.customType !== SUBAGENT_META_TYPE
+        || typeof entry.data !== "object"
+        || entry.data === null
+        || Array.isArray(entry.data)
+      ) continue;
+      entry.data = { ...entry.data, parentSessionId, parentSessionPath };
+      lines[index] = JSON.stringify(entry);
+      break;
+    }
+  }
+  return lines.join("\n");
+}
+
+function commitSessionDeletes(filePaths: readonly string[]): void {
+  const staged: Array<{ original: string; staged: string }> = [];
+  try {
+    for (const original of filePaths) {
+      const stagedPath = join(dirname(original), `.${basename(original)}-${randomUUID()}.deleting`);
+      renameSync(original, stagedPath);
+      staged.push({ original, staged: stagedPath });
+    }
+  } catch (error) {
+    for (const item of staged.reverse()) {
+      try { renameSync(item.staged, item.original); } catch { /* preserve original error */ }
+    }
+    throw error;
+  }
+
+  // Once every file has moved out of the session namespace the deletion is
+  // committed. Cleanup is best-effort; stale .deleting files are not scanned.
+  for (const item of staged) {
+    try { unlinkSync(item.staged); } catch { /* logically deleted */ }
+  }
+}
 
 export async function GET(
   req: Request,
@@ -148,75 +246,93 @@ export async function DELETE(
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    // Read only the bounded header before deleting.
+    // Build and validate the complete mutation plan before touching any file.
     const parentSessionPath = readSessionHeader(filePath)?.parentSession;
     let parentSessionId: string | undefined;
     if (parentSessionPath) {
       try {
-        // The parent may have been deleted or moved already; treat it as absent.
         parentSessionId = readSessionHeader(parentSessionPath)?.id;
       } catch {
         parentSessionId = undefined;
       }
     }
 
-    // Re-attach all direct children to this session's parent (cascade re-parent)
-    // Scan sibling files in the same directory
     const targetPathKey = sessionPathKey(filePath);
     const dir = dirname(filePath);
-    try {
-      const files = readdirSync(dir).filter(
-        (file) => file.endsWith(".jsonl") && sessionPathKey(join(dir, file)) !== targetPathKey,
-      );
-      for (const file of files) {
-        const childPath = join(dir, file);
-        try {
-          const content = readFileSync(childPath, "utf8");
-          const lines = content.split("\n");
-          const header = JSON.parse(lines[0]) as { type?: string; parentSession?: string };
-          if (
-            header.type === "session" &&
-            header.parentSession &&
-            sessionPathKey(header.parentSession) === targetPathKey
-          ) {
-            // Rewrite header with new parentSession
-            header.parentSession = parentSessionPath;
-            lines[0] = JSON.stringify(header);
-            if (parentSessionPath && parentSessionId) {
-              for (let index = 1; index < lines.length; index += 1) {
-                let entry: { type?: string; customType?: string; data?: unknown };
-                try {
-                  entry = JSON.parse(lines[index]);
-                } catch {
-                  continue;
-                }
-                if (
-                  entry.type !== "custom"
-                  || entry.customType !== SUBAGENT_META_TYPE
-                  || typeof entry.data !== "object"
-                  || entry.data === null
-                  || Array.isArray(entry.data)
-                ) continue;
-                entry.data = {
-                  ...entry.data,
-                  parentSessionId,
-                  parentSessionPath,
-                };
-                lines[index] = JSON.stringify(entry);
-                break;
-              }
-            }
-            writeFileSync(childPath, lines.join("\n"));
-          }
-        } catch { /* skip malformed */ }
-      }
-    } catch { /* skip if dir unreadable */ }
+    const records = readdirSync(dir)
+      .filter((file) => file.endsWith(".jsonl"))
+      .map((file) => readSessionFileRecord(join(dir, file)))
+      .filter((record): record is SessionFileRecord => record !== null);
+    const targetRecord = records.find((record) => record.pathKey === targetPathKey);
+    if (!targetRecord || targetRecord.id !== id) {
+      return NextResponse.json({ error: "Session changed while preparing deletion" }, { status: 409 });
+    }
 
-    await getRpcSession(id)?.shutdown();
-    unlinkSync(filePath);
-    invalidateSessionPathCache(id);
-    invalidateSessionListCache();
-    return NextResponse.json({ ok: true });
+    const childrenByParent = new Map<string, SessionFileRecord[]>();
+    for (const record of records) {
+      if (!record.parentPath) continue;
+      const key = sessionPathKey(record.parentPath);
+      childrenByParent.set(key, [...(childrenByParent.get(key) ?? []), record]);
+    }
+    const directChildren = childrenByParent.get(targetPathKey) ?? [];
+    const cascadeDeleteKeys = new Set<string>();
+    // A root session owns its direct subagent families. Intermediate sessions
+    // retain the existing reparenting behavior so nested subagents stay useful.
+    if (!parentSessionPath) {
+      const queue = directChildren.filter((record) => record.isSubagent);
+      while (queue.length > 0) {
+        const record = queue.shift()!;
+        if (cascadeDeleteKeys.has(record.pathKey)) continue;
+        cascadeDeleteKeys.add(record.pathKey);
+        queue.push(...(childrenByParent.get(record.pathKey) ?? []));
+      }
+    }
+
+    const cascadeDeletes = records.filter((record) => cascadeDeleteKeys.has(record.pathKey));
+    const reparents = directChildren.filter((record) => !cascadeDeleteKeys.has(record.pathKey));
+    if (reparents.some((record) => record.isSubagent) && (!parentSessionPath || !parentSessionId)) {
+      return NextResponse.json({ error: "Cannot reparent subagent session" }, { status: 409 });
+    }
+
+    const affected = [targetRecord, ...cascadeDeletes, ...reparents];
+    const release = await reserveRpcSessionFileMutation(affected.map((record) => record.id));
+    if (!release) {
+      return NextResponse.json({ error: "Session is busy" }, { status: 409 });
+    }
+
+    try {
+      if (affected.some((record) => {
+        try { return readFileSync(record.path, "utf8") !== record.original; }
+        catch { return true; }
+      })) {
+        return NextResponse.json({ error: "Session changed while preparing deletion" }, { status: 409 });
+      }
+
+      const rewrites = reparents.map((record) => ({
+        record,
+        updated: reparentSessionRecord(record, parentSessionPath, parentSessionId),
+      }));
+      const applied: SessionFileRecord[] = [];
+      try {
+        for (const { record, updated } of rewrites) {
+          writePrivateFileAtomicSync(record.path, updated);
+          applied.push(record);
+        }
+        commitSessionDeletes([filePath, ...cascadeDeletes.map((record) => record.path)]);
+      } catch (error) {
+        for (const record of applied.reverse()) {
+          try { writePrivateFileAtomicSync(record.path, record.original); } catch { /* preserve original error */ }
+        }
+        throw error;
+      }
+
+      invalidateSessionPathCache(id);
+      for (const record of cascadeDeletes) invalidateSessionPathCache(record.id);
+      invalidateSessionListCache();
+      return NextResponse.json({ ok: true });
+    } finally {
+      release();
+    }
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

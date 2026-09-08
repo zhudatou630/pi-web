@@ -107,7 +107,7 @@ test("keeps the mobile action layer open after using an expanded action", () => 
 
 test("prioritizes context and cost when the mobile statistics area narrows", () => {
   assert.match(source, /\.mobile-session-stats \{[\s\S]*?container-type: inline-size/);
-  assert.match(source, /@container \(max-width: 158px\)[\s\S]*?\.mobile-session-stat-io/);
+  assert.doesNotMatch(source, /\.mobile-session-stat-io/);
   assert.match(source, /@container \(max-width: 88px\)[\s\S]*?\.mobile-session-stat-cost/);
   assert.match(source, /mobileContextText = percent !== null \? `\$\{percent\.toFixed\(0\)\}%` : null/);
 });

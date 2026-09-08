@@ -195,7 +195,7 @@ test("stale fresh-session completion cannot replace the active composer", () => 
   assert.match(cwdChangeSource, /if \(currentProject !== newProject\) \{[\s\S]*?setFileTabs\(\[\]\)/);
   assert.match(
     appShellSource,
-    /useLayoutEffect\(\(\) => \{\s*activeNewSessionDraftKeyRef\.current = newSessionDraftKey;/,
+    /useLayoutEffect\(\(\) => \{\s*activeNewSessionDraftKeyRef\.current = focusedDraftKey;/,
   );
   assert.ok(
     createdSource.indexOf("activeNewSessionDraftKeyRef.current !== sourceDraftKey")
@@ -203,7 +203,7 @@ test("stale fresh-session completion cannot replace the active composer", () => 
   );
 });
 
-test("abandoned fresh-session drafts are cleared and cannot be recreated by late rejection", () => {
+test("closed drafts are discarded by the tab owner while remounts preserve them", () => {
   const restoreSource = source.slice(
     source.indexOf("  const restoreSubmission = useCallback"),
     source.indexOf("  const sessionStats = useMemo"),
@@ -212,10 +212,14 @@ test("abandoned fresh-session drafts are cleared and cannot be recreated by late
     source.indexOf("  // Load session on mount"),
     source.indexOf("  useEffect(() => {\n    onSystemPromptChange"),
   );
+  const closeTabSource = appShellSource.slice(
+    appShellSource.indexOf("  const handleCloseChatTab = useCallback"),
+    appShellSource.indexOf("  const handleNewChatTab = useCallback"),
+  );
 
   assert.match(restoreSource, /!sessionHookMountedRef\.current[\s\S]*?!newSessionPromotedRef\.current/);
-  assert.match(mountSource, /const abandonedDraftKey = isNew \? newSessionDraftKey : null/);
-  assert.match(mountSource, /clearDraft\(abandonedDraftKey\)/);
+  assert.doesNotMatch(mountSource, /clearDraft/);
+  assert.match(closeTabSource, /closingTab\?\.kind === "draft"[\s\S]*?clearDraft\(closingTab\.newSessionDraftKey\)/);
 });
 
 test("streaming submissions cannot be stranded in an idle direct queue", () => {
@@ -264,7 +268,7 @@ test("delegates event stream readiness and hides an empty agent phase", () => {
   assert.match(ensureSource, /eventConnectionRef\.current!\.ensureConnected\(sid\)/);
   assert.match(ensureSource, /eventConnectionRef\.current!\.maintain\(sid\)/);
   assert.match(chatWindowSource, /const hasStreamingContent = Boolean\(streamState\.streamingMessage\?\.content\.length\)/);
-  assert.match(chatWindowSource, /streamState\.isStreaming && hasStreamingContent && streamState\.streamingMessage/);
+  assert.match(chatWindowSource, /streamState\.isStreaming && streamingParts\.answerMessage/);
   assert.match(chatWindowSource, /agentRunning && !hasStreamingContent && agentPhase/);
   assert.match(chatWindowSource, /return null;/);
 });
@@ -369,8 +373,8 @@ test("suppresses sounds and browser attention for the active subagent session", 
   assert.match(chatWindowSource, /completionNotificationsEnabled = session\?\.relation\?\.kind !== "subagent"/);
   assert.match(chatWindowSource, /completionNotificationsEnabled && soundEnabledRef\.current/);
   assert.match(chatWindowSource, /!completionNotificationsEnabled[\s\S]*?!extensionDialog/);
-  assert.match(completionSource, /selectedSession\?\.relation\?\.kind === "subagent"\) return/);
-  assert.match(attentionSource, /selectedSession\?\.relation\?\.kind === "subagent"\) return/);
+  assert.match(completionSource, /targetSession\?\.relation\?\.kind === "subagent"\) return/);
+  assert.match(attentionSource, /sourceSession\?\.relation\?\.kind === "subagent"\) return/);
 });
 
 test("routes blocking extension requests through deduplicated browser attention notifications", () => {

@@ -67,6 +67,7 @@ export interface SubagentResultMetadata {
   version: 1;
   status: Exclude<SubagentStatus, "starting" | "running" | "interrupted">;
   completedAt: string;
+  wrappedAtTurnLimit?: boolean;
   result?: string;
   error?: string;
 }
@@ -83,6 +84,7 @@ export interface SubagentRunInfo {
   status: SubagentStatus;
   createdAt: string;
   completedAt?: string;
+  wrappedAtTurnLimit?: boolean;
   result?: string;
   error?: string;
 }
@@ -411,6 +413,7 @@ export function readSubagentRun(entries: readonly SessionEntry[], sessionId: str
     status: persistedStatus,
     createdAt: typeof data.createdAt === "string" ? data.createdAt : "",
     ...(result && typeof result.completedAt === "string" ? { completedAt: result.completedAt } : {}),
+    ...(result?.wrappedAtTurnLimit === true ? { wrappedAtTurnLimit: true } : {}),
     ...(result && typeof result.result === "string" ? { result: result.result } : {}),
     ...(result && typeof result.error === "string" ? { error: result.error } : {}),
   };

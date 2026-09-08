@@ -2,7 +2,7 @@
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolCallContent, ToolResultMessage, UserMessage } from "@/lib/types";
+import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, splitFinalAssistantBlocks } from "@/lib/message-display";
@@ -52,11 +52,12 @@ interface Props {
   newSessionCwd: string | null;
   newSessionDraftKey: string | null;
   onAgentEnd?: (session?: SessionInfo | null) => void;
-  onAttentionNeeded?: (request: BlockingExtensionUiRequest) => void;
+  onAttentionNeeded?: (request: BlockingExtensionUiRequest, session: SessionInfo | null) => void;
   onSessionCreated?: (session: SessionInfo, sourceDraftKey: string) => void;
-  onSessionForked?: (newSessionId: string) => void;
+  onSessionForked?: (newSessionId: string, sourceSessionId: string | null) => void;
   modelsRefreshKey?: number;
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
+  isFocusedPane?: boolean;
   onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
@@ -64,12 +65,12 @@ interface Props {
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, sourceSessionId: string | null) => void;
   onOpenSession?: (sessionId: string) => void;
   onAskInNewChat?: (prompt: string, sourceSessionId: string, sourceEntryId: string) => Promise<void>;
   quoteSelectionEnabled?: boolean;
   initialPrompt?: string;
-  onInitialPromptConsumed?: () => void;
+  onInitialPromptConsumed?: (sessionId: string) => void;
   /** Completion sound state + controls, owned by AppShell so tasks finishing in
    *  a non-active workspace can still ring. */
   soundEnabled?: boolean;
@@ -439,7 +440,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -454,6 +455,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   soundEnabledRef.current = soundEnabled;
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const ownChatInputRef = useRef<ChatInputHandle | null>(null);
+  const setChatInputElement = useCallback((element: ChatInputHandle | null) => {
+    const previous = ownChatInputRef.current;
+    ownChatInputRef.current = element;
+    if (!chatInputRef) return;
+    if (element) chatInputRef.current = element;
+    else if (chatInputRef.current === previous) chatInputRef.current = null;
+  }, [chatInputRef]);
   const soundedExtensionDialogIdRef = useRef<string | null>(null);
   const wrappedOnAgentEnd = useCallback(() => {
     if (completionNotificationsEnabled && soundEnabledRef.current) {
@@ -461,11 +470,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     onAgentEnd?.(sessionRef.current);
   }, [completionNotificationsEnabled, onAgentEnd]);
+  const wrappedOnAttentionNeeded = useCallback((request: BlockingExtensionUiRequest) => {
+    onAttentionNeeded?.(request, sessionRef.current);
+  }, [onAttentionNeeded]);
+  const wrappedOnSessionForked = useCallback((newSessionId: string) => {
+    onSessionForked?.(newSessionId, sessionRef.current?.id ?? null);
+  }, [onSessionForked]);
+  const openFileFromSession = useCallback((filePath: string) => {
+    onOpenFile?.(filePath, sessionRef.current?.id ?? null);
+  }, [onOpenFile]);
 
   // 稳定化 onEditContent 引用，配合 React.memo 防止历史消息重渲染
   const handleEditContent = useCallback((message: UserMessage) => {
-    chatInputRef?.current?.replaceMessage(message);
-  }, [chatInputRef]);
+    ownChatInputRef.current?.replaceMessage(message);
+  }, []);
 
   const initialScrollPositionRef = useRef(searchTarget ? null : initialScrollPosition ?? null);
   const [pendingScrollRestore, setPendingScrollRestore] = useState<Extract<ChatScrollPosition, { atBottom: false }> | null>(() => {
@@ -493,8 +511,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollUserMsgToTop,
     loadContext, activeLeafId, scrollToBottom, scrollToMessage,
   } = useAgentSession({
-    session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
-    modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
+    session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded: wrappedOnAttentionNeeded, onSessionCreated, onSessionForked: wrappedOnSessionForked,
+    modelsRefreshKey, chatInputRef: ownChatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
     deferInitialScroll: Boolean(pendingScrollRestore),
   });
   const sessionBusy = agentRunning || bashRunning;
@@ -609,14 +627,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const askSelectionHere = useCallback(() => {
     if (!quotedSelection) return;
-    chatInputRef?.current?.insertText(buildQuotedSelection(
+    ownChatInputRef.current?.insertText(buildQuotedSelection(
       quotedSelection.text,
       t("chat.quoteIntro"),
       t("chat.quoteQuestion"),
     ));
     window.getSelection()?.removeAllRanges();
     closeQuotedSelection();
-  }, [chatInputRef, quotedSelection, closeQuotedSelection, t]);
+  }, [quotedSelection, closeQuotedSelection, t]);
 
   const askSelectionInNewChat = useCallback(async (prompt: string) => {
     const sourceSessionId = sessionIdRef.current ?? session?.id;
@@ -642,10 +660,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const initialPromptSentRef = useRef(false);
   useEffect(() => {
     if (loading || error || !initialPrompt || initialPromptSentRef.current) return;
+    const targetSessionId = sessionIdRef.current ?? session?.id;
+    if (!targetSessionId) return;
     initialPromptSentRef.current = true;
-    onInitialPromptConsumed?.();
+    onInitialPromptConsumed?.(targetSessionId);
     void handleSend(initialPrompt);
-  }, [initialPrompt, loading, error, handleSend, onInitialPromptConsumed]);
+  }, [initialPrompt, loading, error, handleSend, onInitialPromptConsumed, session?.id, sessionIdRef]);
 
   useEffect(() => {
     if (
@@ -657,10 +677,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     playDoneSoundRef.current();
   }, [completionNotificationsEnabled, extensionDialog]);
 
-  // Register the abort handler for the global Esc shortcut
+  // Only the focused pane owns the global Esc shortcut. The registration's
+  // cleanup is owner-safe, so an old pane cannot clear a newer handler.
   useEffect(() => {
-    registerAbortHandler(sessionBusy ? handleAbort : null);
-  }, [sessionBusy, handleAbort]);
+    if (!isFocusedPane || !sessionBusy) return;
+    return registerAbortHandler(handleAbort);
+  }, [isFocusedPane, sessionBusy, handleAbort]);
 
   // --- Lazy-load historical messages ---
   // Mount at most MOUNTED_GROUP_LIMIT grouped nodes. Scroll-up either slides
@@ -1037,8 +1059,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   useEffect(() => () => { onContextUsageChange?.(null); }, [onContextUsageChange]);
 
   const onDrop = useCallback((files: File[]) => {
-    chatInputRef?.current?.addImages(files);
-  }, [chatInputRef]);
+    ownChatInputRef.current?.addImages(files);
+  }, []);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
@@ -1249,7 +1271,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const chatInputElement = (
     <ChatInput
-      ref={chatInputRef}
+      ref={setChatInputElement}
       onSend={handleSend}
       onAbort={handleAbort}
       onSteer={agentRunning ? handleSteer : undefined}
@@ -1438,7 +1460,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       : undefined}
                     toolResults={toolResultsMap}
                     cwd={messageCwd}
-                    onOpenFile={onOpenFile}
+                    onOpenFile={openFileFromSession}
                     onOpenSession={onOpenSession}
                     entryId={entryIds[idx]}
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
@@ -1524,7 +1546,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                           message={streamingParts.processMessage}
                           isStreaming
                           cwd={messageCwd}
-                          onOpenFile={onOpenFile}
+                          onOpenFile={openFileFromSession}
                           onOpenSession={onOpenSession}
                         />
                       </ProcessDetailsGroup>,
@@ -1592,7 +1614,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       message={streamingParts.processMessage}
                       isStreaming
                       cwd={messageCwd}
-                      onOpenFile={onOpenFile}
+                      onOpenFile={openFileFromSession}
                       onOpenSession={onOpenSession}
                     />
                   );
@@ -1683,7 +1705,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             })()}
             {streamState.isStreaming && streamingParts.answerMessage && (
               <>
-                <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />
+                <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
                 <div
                   className="flex items-center gap-1.5 py-0.5 text-[11px] sm:text-xs text-text-muted font-mono select-none overflow-hidden whitespace-nowrap min-w-0"
                   style={{ marginTop: 2 }}

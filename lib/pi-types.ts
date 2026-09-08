@@ -10,6 +10,7 @@ import type {
   AgentLoopTurnUpdate,
   AgentMessage as PiAgentMessage,
   PrepareNextTurnContext,
+  ShouldStopAfterTurnContext,
 } from "@earendil-works/pi-agent-core";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 
@@ -146,7 +147,13 @@ export interface AgentSessionLike {
       systemPrompt?: string;
       thinkingLevel?: string;
       streamingMessage?: PiAgentMessage;
+      messages?: PiAgentMessage[];
     };
+    steer?: (message: PiAgentMessage) => void;
+    shouldStopAfterTurn?: (
+      context: ShouldStopAfterTurnContext,
+      signal?: AbortSignal,
+    ) => boolean | Promise<boolean>;
     prepareNextTurnWithContext?: (
       context: PrepareNextTurnContext,
       signal?: AbortSignal,

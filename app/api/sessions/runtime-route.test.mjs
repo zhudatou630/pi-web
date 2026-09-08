@@ -159,6 +159,91 @@ test("deleting an intermediate subagent reparents both relation representations"
   });
 });
 
+test("deleting a root session cascades its persisted subagent family", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-web-delete-subagents-"));
+  const rootPath = join(dir, "root.jsonl");
+  const childPath = join(dir, "child.jsonl");
+  const nestedPath = join(dir, "nested.jsonl");
+  const forkPath = join(dir, "fork.jsonl");
+  const forkSubagentPath = join(dir, "fork-subagent.jsonl");
+  const rootId = "delete-subagent-root";
+  const header = (id, parentSession) => JSON.stringify({
+    type: "session",
+    version: 3,
+    id,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    cwd: dir,
+    ...(parentSession ? { parentSession } : {}),
+  });
+  const metadata = (parentSessionId, parentSessionPath) => JSON.stringify({
+    type: "custom",
+    customType: "pi-web:subagent",
+    id: `meta-${parentSessionId}`,
+    parentId: null,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    data: {
+      version: 1,
+      parentSessionId,
+      parentSessionPath,
+      profile: "Explore",
+      description: "Inspect parser",
+    },
+  });
+  await writeFile(rootPath, `${header(rootId)}\n`);
+  await writeFile(childPath, `${header("delete-subagent-child", rootPath)}\n${metadata(rootId, rootPath)}\n`);
+  await writeFile(nestedPath, `${header("delete-subagent-nested", childPath)}\n${metadata("delete-subagent-child", childPath)}\n`);
+  await writeFile(forkPath, `${header("delete-root-fork", rootPath)}\n`);
+  await writeFile(forkSubagentPath, `${header("delete-root-fork-subagent", forkPath)}\n${metadata("delete-root-fork", forkPath)}\n`);
+  cacheSessionPath(rootId, rootPath);
+  t.after(async () => {
+    invalidateSessionPathCache(rootId);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const response = await deleteSession(
+    new Request(`http://localhost/api/sessions/${rootId}`, { method: "DELETE" }),
+    { params: Promise.resolve({ id: rootId }) },
+  );
+
+  assert.equal(response.status, 200);
+  await Promise.all([
+    assert.rejects(readFile(rootPath), { code: "ENOENT" }),
+    assert.rejects(readFile(childPath), { code: "ENOENT" }),
+    assert.rejects(readFile(nestedPath), { code: "ENOENT" }),
+  ]);
+  assert.equal(JSON.parse((await readFile(forkPath, "utf8")).trim()).parentSession, undefined);
+  assert.equal(JSON.parse((await readFile(forkSubagentPath, "utf8")).split("\n")[0]).parentSession, forkPath);
+});
+
+test("deleting a busy session returns conflict without touching its file", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-web-delete-busy-"));
+  const filePath = join(dir, "busy.jsonl");
+  const id = "delete-busy-session";
+  await writeFile(filePath, `${JSON.stringify({
+    type: "session",
+    version: 3,
+    id,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    cwd: dir,
+  })}\n`);
+  cacheSessionPath(id, filePath);
+  const previousRegistry = globalThis.__piSessions;
+  globalThis.__piSessions = new Map([[id, { isBusyForFileMutation: () => true }]]);
+  t.after(async () => {
+    globalThis.__piSessions = previousRegistry;
+    invalidateSessionPathCache(id);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const response = await deleteSession(
+    new Request(`http://localhost/api/sessions/${id}`, { method: "DELETE" }),
+    { params: Promise.resolve({ id }) },
+  );
+
+  assert.equal(response.status, 409);
+  assert.match(await readFile(filePath, "utf8"), new RegExp(id));
+});
+
 test("live detail and state routes work without a persisted JSONL file", async (t) => {
   const previousRegistry = globalThis.__piSessions;
   const id = "live-route-test";

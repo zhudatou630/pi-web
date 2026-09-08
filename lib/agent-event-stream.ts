@@ -8,6 +8,7 @@ export interface AgentEventStreamSession {
   readonly isStreaming: boolean;
   readonly streamingMessage: unknown;
   onEvent(listener: (event: AgentEventLike) => void): () => void;
+  onClose?(listener: () => void): () => void;
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -33,6 +34,7 @@ export function createAgentEventStream(
       let closed = false;
       let heartbeat: ReturnType<typeof setInterval> | null = null;
       let unsubscribe: (() => void) | null = null;
+      let unsubscribeClose: (() => void) | null = null;
       let abortHandler: (() => void) | null = null;
 
       const cleanup = (closeController: boolean) => {
@@ -41,6 +43,8 @@ export function createAgentEventStream(
         if (heartbeat !== null) clearInterval(heartbeat);
         unsubscribe?.();
         unsubscribe = null;
+        unsubscribeClose?.();
+        unsubscribeClose = null;
         if (abortHandler) req.signal.removeEventListener("abort", abortHandler);
         if (closeController) {
           try { controller.close(); } catch { /* stream already closed */ }
@@ -86,6 +90,12 @@ export function createAgentEventStream(
             return;
           }
           unsubscribe = stopListening;
+          const stopClose = session.onClose?.(() => cleanup(true));
+          if (closed) {
+            stopClose?.();
+            return;
+          }
+          unsubscribeClose = stopClose ?? null;
 
           const snapshot = session.streamingMessage;
           encode({

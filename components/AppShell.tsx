@@ -45,7 +45,7 @@ import {
 } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
 import { getInitialNavigation } from "@/lib/initial-navigation";
-import { rekeyDraft } from "@/lib/draft-store";
+import { clearDraft, rekeyDraft } from "@/lib/draft-store";
 import {
   clearLastOpen,
   getLastOpenSession,
@@ -279,6 +279,9 @@ export function AppShell() {
   }, [reclampRightPanelWidth, reclampSidebarWidth, rightPanelOpen]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const [pendingQuotePrompt, setPendingQuotePrompt] = useState<{ sessionId: string; text: string } | null>(null);
+  const handlePendingQuotePromptConsumed = useCallback((sessionId: string) => {
+    setPendingQuotePrompt((current) => current?.sessionId === sessionId ? null : current);
+  }, []);
   const topBarRef = useRef<HTMLDivElement>(null);
   const mobileToolbarRef = useRef<HTMLDivElement>(null);
   // Branch navigator state — populated by ChatWindow via onBranchDataChange
@@ -374,15 +377,11 @@ export function AppShell() {
   }, []);
 
   const syncSessionMetadata = useCallback((sessionId: string) => {
-    const cachedStats = sessionStatsCacheRef.current.get(sessionId);
-    if (cachedStats) setSessionStats(cachedStats);
-    const cachedUsage = contextUsageCacheRef.current.get(sessionId);
-    if (cachedUsage) setContextUsage(cachedUsage);
+    setSessionStats(sessionStatsCacheRef.current.get(sessionId) ?? null);
+    setContextUsage(contextUsageCacheRef.current.get(sessionId) ?? null);
     const cachedBranches = branchDataCacheRef.current.get(sessionId);
-    if (cachedBranches) {
-      setBranchTree(cachedBranches.tree);
-      setBranchActiveLeafId(cachedBranches.activeLeafId);
-    }
+    setBranchTree(cachedBranches?.tree ?? []);
+    setBranchActiveLeafId(cachedBranches?.activeLeafId ?? null);
   }, []);
 
   useEffect(() => {
@@ -888,7 +887,7 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [activeCwd, activeFileTabId, invalidateWorkspaceRestore, router, isMobile, newSessionCwd, selectedSession]);
+  }, [activeCwd, activeFileTabId, invalidateWorkspaceRestore, router, isMobile, newSessionCwd, selectedSession, syncSessionMetadata]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
     invalidateWorkspaceRestore();
@@ -1077,7 +1076,7 @@ export function AppShell() {
       }, 350);
     }
 
-    if (selectedSession?.relation?.kind === "subagent") return;
+    if (targetSession?.relation?.kind === "subagent") return;
     if (!shouldShowBrowserNotification()) return;
     deliverSessionNotification({
       targetSession,
@@ -1087,20 +1086,23 @@ export function AppShell() {
     });
   }, [autoNameStatus.kind, deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
 
-  const handleAttentionNeeded = useCallback((request: BlockingExtensionUiRequest) => {
-    if (selectedSession?.relation?.kind === "subagent") return;
+  const handleAttentionNeeded = useCallback((
+    request: BlockingExtensionUiRequest,
+    sourceSession: SessionInfo | null,
+  ) => {
+    if (sourceSession?.relation?.kind === "subagent") return;
     if (!shouldShowBrowserNotification()) return;
     if (!claimExtensionAttentionNotification(request, notifiedAttentionRequestIdsRef.current)) return;
 
     deliverSessionNotification({
-      targetSession: selectedSession,
+      targetSession: sourceSession,
       title: translate("i18n.attentionNeeded"),
       body: request.method === "custom"
         ? translate("i18n.extensionInputNeeded")
         : request.title,
       tag: `pi-extension-ui:${request.id}`,
     });
-  }, [deliverSessionNotification, selectedSession, translate]);
+  }, [deliverSessionNotification, translate]);
 
   const handleAutoName = useCallback(async (options?: { silent?: boolean; sessionId?: string }) => {
     const sessionId = options?.sessionId ?? selectedSession?.id;
@@ -1151,23 +1153,30 @@ export function AppShell() {
     setExplorerRefreshKey((k) => k + 1);
   }, []);
 
-  const handleSessionForked = useCallback((newSessionId: string) => {
-    invalidateWorkspaceRestore();
-    activeNewSessionDraftKeyRef.current = null;
-    setRefreshKey((k) => k + 1);
-    setSessionKey((k) => k + 1);
-    setNewSessionCwd(null);
+  const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null) => {
+    const sourceSession = sourceSessionId
+      ? chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session
+      : selectedSession;
     const forkedSession: SessionInfo = {
-      ...(selectedSession ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
+      ...(sourceSession ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
       transient: false,
     };
-    setSelectedSession(forkedSession);
+    const shouldFocus = !sourceSessionId || activeSessionIdRef.current === sourceSessionId;
+
+    setRefreshKey((k) => k + 1);
     setChatTabs((prev) => openSessionInTabs(prev, forkedSession).tabs);
-    setActiveChatTabId(newSessionId);
     hydrateSelectedSession(newSessionId);
+    if (!shouldFocus) return;
+
+    invalidateWorkspaceRestore();
+    activeNewSessionDraftKeyRef.current = null;
+    setSessionKey((k) => k + 1);
+    setNewSessionCwd(null);
+    setSelectedSession(forkedSession);
+    setActiveChatTabId(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession, selectedSession]);
+  }, [hydrateSelectedSession, invalidateWorkspaceRestore, router, selectedSession]);
 
   const handleAskInNewChat = useCallback(async (
     prompt: string,
@@ -1180,7 +1189,7 @@ export function AppShell() {
     });
     if (!result?.newSessionId) throw new Error(translate("chat.quoteForkFailed"));
     setPendingQuotePrompt({ sessionId: result.newSessionId, text: prompt });
-    handleSessionForked(result.newSessionId);
+    handleSessionForked(result.newSessionId, sourceSessionId);
   }, [handleSessionForked, translate]);
 
   const handleInitialRestoreDone = useCallback(() => {
@@ -1199,7 +1208,7 @@ export function AppShell() {
         prev,
         sessionId,
         activeChatTabIdRef.current ?? "",
-        splitChatTabId,
+        splitChatTabIdRef.current,
       );
 
       if (nextTabs.length === 0) {
@@ -1220,8 +1229,14 @@ export function AppShell() {
 
       setActiveChatTabId(nextActiveTabId);
       setSplitChatTabId(nextSplitTabId);
+      if (!nextSplitTabId && activeChatPaneRef.current === "secondary") {
+        setActiveChatPane("primary");
+      }
 
-      const targetTab = nextTabs.find((t) => t.id === nextActiveTabId);
+      const targetId = activeChatPaneRef.current === "secondary" && nextSplitTabId
+        ? nextSplitTabId
+        : nextActiveTabId;
+      const targetTab = nextTabs.find((t) => t.id === targetId);
       if (targetTab?.kind === "session" && targetTab.session) {
         setSelectedSession(targetTab.session);
         setNewSessionCwd(null);
@@ -1235,7 +1250,7 @@ export function AppShell() {
       return nextTabs;
     });
 
-    if (selectedSession?.id === sessionId) {
+    if (activeSessionIdRef.current === sessionId) {
       setBranchTree([]);
       setBranchActiveLeafId(null);
       setSystemPrompt(null);
@@ -1243,7 +1258,7 @@ export function AppShell() {
       setSystemInfoLoading(false);
       setActiveTopPanel(null);
     }
-  }, [activeCwd, invalidateWorkspaceRestore, router, selectedSession?.id, splitChatTabId, translate]);
+  }, [activeCwd, invalidateWorkspaceRestore, router, translate]);
 
   const handleSplitResizeStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -1275,69 +1290,66 @@ export function AppShell() {
   const isSplitActive = Boolean(!isMobile && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
   isSplitActiveRef.current = isSplitActive;
 
-  const handleFocusPane = useCallback((pane: "primary" | "secondary") => {
+  const focusChatTab = useCallback((tab: ChatTabItem, pane: "primary" | "secondary") => {
     setActiveChatPane(pane);
-    const targetTab = pane === "secondary" ? secondaryTab : primaryTab;
-    if (!targetTab) return;
-    if (targetTab.kind === "session" && targetTab.session) {
-      syncSessionMetadata(targetTab.session.id);
-      setSelectedSession(targetTab.session);
-      setNewSessionCwd(null);
-      router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
-    } else if (targetTab.kind === "draft") {
-      setSelectedSession(null);
-      setNewSessionCwd(targetTab.newSessionCwd);
-      if (targetTab.newSessionDraftKey) {
-        activeNewSessionDraftKeyRef.current = targetTab.newSessionDraftKey;
+    if (tab.kind === "session" && tab.session) {
+      activeNewSessionDraftKeyRef.current = null;
+      if (activeSessionIdRef.current !== tab.session.id) {
+        branchLeafChangeFnRef.current = null;
+        syncSessionMetadata(tab.session.id);
+        setSystemPrompt(null);
+        setSystemTools(null);
+        setSystemInfoLoading(false);
+        setActiveTopPanel(null);
       }
-      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+      setSelectedSession(tab.session);
+      setNewSessionCwd(null);
+      router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
+      return;
     }
-  }, [primaryTab, router, secondaryTab, syncSessionMetadata]);
+
+    activeNewSessionDraftKeyRef.current = tab.newSessionDraftKey;
+    setSelectedSession(null);
+    setNewSessionCwd(tab.newSessionCwd);
+    setSessionStats(null);
+    setContextUsage(null);
+    setBranchTree([]);
+    setBranchActiveLeafId(null);
+    branchLeafChangeFnRef.current = null;
+    setSystemPrompt(null);
+    setSystemTools(null);
+    setSystemInfoLoading(false);
+    setActiveTopPanel(null);
+    router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+  }, [router, syncSessionMetadata]);
+
+  const handleFocusPane = useCallback((pane: "primary" | "secondary") => {
+    const targetTab = pane === "secondary" ? secondaryTab : primaryTab;
+    if (targetTab) focusChatTab(targetTab, pane);
+  }, [focusChatTab, primaryTab, secondaryTab]);
 
   const handleSelectPrimaryTab = useCallback((id: string) => {
+    const tab = chatTabs.find((candidate) => candidate.id === id);
+    if (!tab) return;
     setActiveChatTabId(id);
-    handleFocusPane("primary");
-  }, [handleFocusPane]);
+    focusChatTab(tab, "primary");
+  }, [chatTabs, focusChatTab]);
 
   const handleSelectSecondaryTab = useCallback((id: string) => {
+    const tab = chatTabs.find((candidate) => candidate.id === id);
+    if (!tab) return;
     setSplitChatTabId(id);
-    handleFocusPane("secondary");
-  }, [handleFocusPane]);
+    focusChatTab(tab, "secondary");
+  }, [chatTabs, focusChatTab]);
 
   const handleSelectChatTab = useCallback((tabId: string) => {
-    const tab = chatTabs.find((t) => t.id === tabId);
+    const tab = chatTabs.find((candidate) => candidate.id === tabId);
     if (!tab) return;
 
+    let pane: "primary" | "secondary" = "primary";
     if (isSplitActive) {
-      if (tabId === activeChatTabId) {
-        setActiveChatPane("primary");
-        if (tab.kind === "session" && tab.session) {
-          syncSessionMetadata(tab.session.id);
-          setSelectedSession(tab.session);
-          setNewSessionCwd(null);
-          router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
-        } else if (tab.kind === "draft") {
-          setSelectedSession(null);
-          setNewSessionCwd(tab.newSessionCwd);
-          router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-        }
-        return;
-      }
-      if (tabId === splitChatTabId) {
-        setActiveChatPane("secondary");
-        if (tab.kind === "session" && tab.session) {
-          syncSessionMetadata(tab.session.id);
-          setSelectedSession(tab.session);
-          setNewSessionCwd(null);
-          router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
-        } else if (tab.kind === "draft") {
-          setSelectedSession(null);
-          setNewSessionCwd(tab.newSessionCwd);
-          router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-        }
-        return;
-      }
-      if (activeChatPane === "secondary") {
+      if (tabId === splitChatTabId || (tabId !== activeChatTabId && activeChatPane === "secondary")) {
+        pane = "secondary";
         setSplitChatTabId(tabId);
       } else {
         setActiveChatTabId(tabId);
@@ -1345,23 +1357,14 @@ export function AppShell() {
     } else {
       setActiveChatTabId(tabId);
     }
-
-    if (tab.kind === "session" && tab.session) {
-      syncSessionMetadata(tab.session.id);
-      setSelectedSession(tab.session);
-      setNewSessionCwd(null);
-      router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
-    } else if (tab.kind === "draft") {
-      setSelectedSession(null);
-      setNewSessionCwd(tab.newSessionCwd);
-      if (tab.newSessionDraftKey) {
-        activeNewSessionDraftKeyRef.current = tab.newSessionDraftKey;
-      }
-      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-    }
-  }, [activeChatPane, activeChatTabId, chatTabs, isSplitActive, router, splitChatTabId, syncSessionMetadata]);
+    focusChatTab(tab, pane);
+  }, [activeChatPane, activeChatTabId, chatTabs, focusChatTab, isSplitActive, splitChatTabId]);
 
   const handleCloseChatTab = useCallback((tabId: string) => {
+    const closingTab = chatTabsRef.current.find((tab) => tab.id === tabId);
+    if (closingTab?.kind === "draft" && closingTab.newSessionDraftKey) {
+      clearDraft(closingTab.newSessionDraftKey);
+    }
     setChatTabs((prevTabs) => {
       const { tabs: nextTabs, nextActiveTabId, nextSplitTabId } = closeChatTab(
         prevTabs,
@@ -1515,9 +1518,9 @@ export function AppShell() {
     if (isMobile) setSidebarOpen(false);
   }, [isMobile]);
 
-  const handleOpenLinkedFile = useCallback((filePath: string) => {
-    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
-  }, [handleOpenFile, selectedSession?.id]);
+  const handleOpenLinkedFile = useCallback((filePath: string, sourceSessionId: string | null) => {
+    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId });
+  }, [handleOpenFile]);
 
   const handleOpenTerminal = useCallback((cwd: string) => {
     const existing = terminalTabs.find((tab) => tab.cwd === cwd);
@@ -1597,7 +1600,7 @@ export function AppShell() {
         session={tabSession}
         searchTarget={isFocusedPane && searchTarget?.sessionId === tabSession?.id ? searchTarget : null}
         onSearchTargetHandled={handleSearchTargetHandled}
-        initialScrollPosition={selectedSession ? sessionScrollPositionsRef.current.get(selectedSession.id) ?? null : null}
+        initialScrollPosition={tabSession ? sessionScrollPositionsRef.current.get(tabSession.id) ?? null : null}
         onScrollPositionChange={handleSessionScrollPositionChange}
         sessionRunning={isTabRunning}
         newSessionCwd={effectiveCwd}
@@ -1608,6 +1611,7 @@ export function AppShell() {
         onSessionForked={handleSessionForked}
         modelsRefreshKey={modelsRefreshKey}
         chatInputRef={isFocusedPane ? chatInputRef : undefined}
+        isFocusedPane={isFocusedPane}
         onBranchDataChange={isFocusedPane ? handleBranchDataChange : undefined}
         onSystemPromptChange={isFocusedPane ? handleSystemPromptChange : undefined}
         onSystemToolsChange={isFocusedPane ? handleSystemToolsChange : undefined}
@@ -1619,8 +1623,8 @@ export function AppShell() {
         onOpenSession={handleOpenSession}
         onAskInNewChat={handleAskInNewChat}
         quoteSelectionEnabled={quoteSelectionEnabled}
-        initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
-        onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
+        initialPrompt={pendingQuotePrompt?.sessionId === tabSession?.id ? pendingQuotePrompt?.text : undefined}
+        onInitialPromptConsumed={handlePendingQuotePromptConsumed}
         soundEnabled={soundEnabled}
         onSoundToggle={onSoundToggle}
         playDoneSound={playDoneSound}
@@ -1672,9 +1676,13 @@ export function AppShell() {
   const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd
     ? `new:${newSessionDraftId}:${effectiveNewSessionCwd}`
     : null;
+  const focusedTab = isSplitActive && activeChatPane === "secondary" ? secondaryTab : primaryTab;
+  const focusedDraftKey = focusedTab?.kind === "draft"
+    ? focusedTab.newSessionDraftKey
+    : (chatTabs.length === 0 ? newSessionDraftKey : null);
   useLayoutEffect(() => {
-    activeNewSessionDraftKeyRef.current = newSessionDraftKey;
-  }, [newSessionDraftKey]);
+    activeNewSessionDraftKeyRef.current = focusedDraftKey;
+  }, [focusedDraftKey]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const sessionHeaderReady = Boolean(selectedSession && sessionStats?.sessionId === selectedSession.id);
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
@@ -2212,11 +2220,7 @@ export function AppShell() {
     }
     const tooltip = tooltipParts.join("  |  ");
     const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;
-    const hasMobileValues = Boolean(
-      (tokens && (tokens.input > 0 || tokens.output > 0))
-      || costText
-      || mobileContextText,
-    );
+    const hasMobileValues = Boolean(costText || mobileContextText);
 
     return (
       <button
@@ -2258,24 +2262,8 @@ export function AppShell() {
       >
         {mobile ? (
           <>
-            {tokens && tokens.input > 0 && (
-              <span className="mobile-session-stat-io" style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="8.5" x2="5" y2="1.5" /><polyline points="2 4 5 1.5 8 4" />
-                </svg>
-                {formatCompact(tokens.input)}
-              </span>
-            )}
-            {tokens && tokens.output > 0 && (
-              <span className="mobile-session-stat-io" style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="5" y1="1.5" x2="5" y2="8.5" /><polyline points="2 6 5 8.5 8 6" />
-                </svg>
-                {formatCompact(tokens.output)}
-              </span>
-            )}
             {costText && (
-              <span className="mobile-session-stat-cost" style={{ color: "var(--text)", fontWeight: 500, flexShrink: 0 }}>
+              <span className="mobile-session-stat-cost" style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400, flexShrink: 0 }}>
                 {costText}
               </span>
             )}
@@ -2373,11 +2361,6 @@ export function AppShell() {
       }
       .mobile-session-stats {
         container-type: inline-size;
-      }
-      @container (max-width: 158px) {
-        .mobile-session-stat-io {
-          display: none !important;
-        }
       }
       @container (max-width: 88px) {
         .mobile-session-stat-cost {

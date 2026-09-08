@@ -7,6 +7,7 @@ export interface SubagentPromptPlan {
 
 export function buildSubagentPromptPlan(options: {
   profileSystemPrompt: string;
+  projectInstructions?: string;
   tools: readonly string[];
   loadSkills?: boolean;
   loadExtensions?: boolean;
@@ -14,7 +15,8 @@ export function buildSubagentPromptPlan(options: {
   inheritedParentContext?: string;
 }): SubagentPromptPlan {
   const chatOnly = options.tools.length === 0 && !options.loadSkills && !options.loadExtensions;
-  const appendSystemPrompt = [options.profileSystemPrompt];
+  const appendSystemPrompt = [options.profileSystemPrompt, options.projectInstructions]
+    .filter((part): part is string => Boolean(part?.trim()));
   if (options.inheritedParentContext && !chatOnly) {
     appendSystemPrompt.push(options.inheritedParentContext);
   }
@@ -24,6 +26,6 @@ export function buildSubagentPromptPlan(options: {
     delegatedTask: options.inheritedParentContext && chatOnly
       ? `${options.task}\n\n${options.inheritedParentContext}`
       : options.task,
-    ...(chatOnly ? { exactSystemPrompt: options.profileSystemPrompt } : {}),
+    ...(chatOnly ? { exactSystemPrompt: appendSystemPrompt.join("\n\n") } : {}),
   };
 }
