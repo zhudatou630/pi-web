@@ -60,9 +60,24 @@ test("keeps ChatWindow mounted when a draft is promoted to a session", () => {
   assert.match(source, /import \{[\s\S]*?chatTabMountKey,[\s\S]*?\} from "@\/lib\/chat-tab-state"/);
   assert.match(source, /const mountKey = chatTabMountKey\(tab\);/);
   assert.match(source, /key=\{mountKey\}/);
-  assert.match(source, /isCurrent && activeChatPane === "primary",\s*mountKey,/);
+  assert.match(source, /const primaryPaneHasFocus = !isSplitActive \|\| activeChatPane === "primary";/);
+  assert.match(source, /isCurrent && primaryPaneHasFocus,\s*mountKey,/);
   assert.match(source, /key=\{chatTabMountKey\(secondaryTab\)\}/);
   assert.match(source, /activeChatPane === "secondary",\s*chatTabMountKey\(secondaryTab\),/);
+});
+
+test("unsplit current chat keeps stats callbacks even if the leftover pane is secondary", () => {
+  assert.match(source, /const primaryPaneHasFocus = !isSplitActive \|\| activeChatPane === "primary";/);
+  assert.match(
+    source,
+    /renderChatWindow\(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus\)/,
+  );
+  assert.match(source, /onContextUsageChange=\{isFocusedPane \? handleContextUsageChange : undefined\}/);
+  assert.match(source, /onSessionStatsChange=\{isFocusedPane \? handleSessionStatsChange : undefined\}/);
+  assert.doesNotMatch(
+    source,
+    /isCurrent && activeChatPane === "primary",\s*mountKey,/,
+  );
 });
 
 test("sidebar single-click views session in current tab while explicit new tab action appends", () => {

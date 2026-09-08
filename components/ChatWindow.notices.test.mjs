@@ -10,6 +10,9 @@ test("loading keeps the composer and does not report stats until ready", () => {
   assert.match(loading, /chat\.loadingSession/);
   assert.match(loading, /chatInputElement/);
   assert.match(source, /if \(loading\) return;\s*onSessionStatsChange\?\.\(sessionStatsRef\.current\)/);
+  assert.match(source, /sessionStats\.contextUsage\?\.percent \?\? "null"/);
+  assert.match(source, /sessionStats\.contextUsage\?\.contextWindow \?\? ""/);
+  assert.match(source, /sessionStats\.contextUsage\?\.tokens \?\? "null"/);
 });
 
 test("renders temporary notices once at the top right of the chat column", () => {

@@ -1360,6 +1360,7 @@ export function AppShell() {
   const canSplitChat = !isMobile && chatPanesWidth >= CHAT_SPLIT_MIN_WIDTH;
   const isSplitActive = Boolean(canSplitChat && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
   isSplitActiveRef.current = isSplitActive;
+  const primaryPaneHasFocus = !isSplitActive || activeChatPane === "primary";
 
   const focusChatTab = useCallback((tab: ChatTabItem, pane: "primary" | "secondary") => {
     setActiveChatPane(pane);
@@ -3137,7 +3138,7 @@ export function AppShell() {
                                 tab.kind === "session" ? tab.session : null,
                                 tab.kind === "draft" ? tab.newSessionCwd : null,
                                 tab.kind === "draft" ? tab.newSessionDraftKey : null,
-                                isCurrent && activeChatPane === "primary",
+                                isCurrent && primaryPaneHasFocus,
                                 mountKey,
                               )}
                             </div>
@@ -3145,7 +3146,7 @@ export function AppShell() {
                         })
                     ) : (
                       <div style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column" }}>
-                        {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, activeChatPane === "primary")}
+                        {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus)}
                       </div>
                     )}
                   </div>

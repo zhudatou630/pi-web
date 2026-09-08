@@ -1052,6 +1052,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       sessionStats.tokens.total,
       sessionStats.cost ?? 0,
       sessionStats.totalActiveMs ?? 0,
+      sessionStats.contextUsage?.percent ?? "null",
+      sessionStats.contextUsage?.contextWindow ?? "",
+      sessionStats.contextUsage?.tokens ?? "null",
     ].join("|")
     : null;
   const sessionStatsRef = useRef(sessionStats);
