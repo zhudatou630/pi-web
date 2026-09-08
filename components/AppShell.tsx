@@ -1518,7 +1518,7 @@ export function AppShell() {
     return true;
   }, [activeChatPane, activeChatTabId, activeCwd, router, splitChatTabId, translate]);
 
-  const handleNewChatTab = useCallback(() => {
+  const handleNewChatTab = useCallback((pane?: "primary" | "secondary") => {
     const draftId = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -1535,10 +1535,15 @@ export function AppShell() {
       translate("i18n.newSession"),
     );
     setChatTabs(nextTabs);
-    if (isSplitActive && activeChatPane === "secondary") {
+    const openInSecondary = isSplitActive && (
+      pane === "secondary" || (pane !== "primary" && activeChatPane === "secondary")
+    );
+    if (openInSecondary) {
       setSplitChatTabId(tabId);
+      setActiveChatPane("secondary");
     } else {
       setActiveChatTabId(tabId);
+      setActiveChatPane("primary");
     }
     setSelectedSession(null);
     setNewSessionCwd(effectiveCwd);
@@ -3099,7 +3104,7 @@ export function AppShell() {
                       runningSessionIds={runningSessionIds}
                       onSelectTab={handleSelectPrimaryTab}
                       onCloseTab={handleCloseChatTab}
-                      onNewTab={handleNewChatTab}
+                      onNewTab={() => handleNewChatTab("primary")}
                       onToggleSplit={handleToggleSplit}
                       canSplit={false}
                     />
@@ -3189,7 +3194,7 @@ export function AppShell() {
                       runningSessionIds={runningSessionIds}
                       onSelectTab={handleSelectSecondaryTab}
                       onCloseTab={() => handleToggleSplit()}
-                      onNewTab={handleNewChatTab}
+                      onNewTab={() => handleNewChatTab("secondary")}
                       onClosePane={handleToggleSplit}
                       isSecondaryPane={true}
                     />

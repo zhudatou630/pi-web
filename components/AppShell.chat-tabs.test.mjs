@@ -37,6 +37,13 @@ test("supports split view with resizer and secondary pane", () => {
   assert.match(source, /\{isSplitActive && secondaryTab && \(/);
 });
 
+test("split pane plus buttons create a tab in that pane", () => {
+  assert.match(source, /const handleNewChatTab = useCallback\(\(pane\?: "primary" \| "secondary"\) => \{/);
+  assert.match(source, /onNewTab=\{\(\) => handleNewChatTab\("primary"\)\}/);
+  assert.match(source, /onNewTab=\{\(\) => handleNewChatTab\("secondary"\)\}/);
+  assert.match(source, /const openInSecondary = isSplitActive && \(/);
+});
+
 test("collapses split view to the focused tab when the chat container becomes narrow", () => {
   assert.match(source, /width < CHAT_SPLIT_MIN_WIDTH/);
   assert.match(source, /if \(!splitChatTabId \|\| canSplitChat\) return;/);

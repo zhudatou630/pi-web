@@ -92,6 +92,16 @@ test("keeps close controls out of the tab order and supports Delete on the tab",
   assert.match(source, /<button\s*type="button"\s*tabIndex=\{-1\}/);
 });
 
+test("keeps new-tab actions beside the last tab instead of the pane edge", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /width: unifiedHeader \? "auto" : "100%"/);
+  assert.match(source, /flex: unifiedHeader \? "0 1 auto" : "0 0 auto"/);
+  assert.doesNotMatch(source, /flex: unifiedHeader \? "1 1 auto"/);
+  const scroll = source.slice(source.indexOf("ref={scrollContainerRef}"), source.indexOf("{tabs.map((tab, index)"));
+  assert.match(scroll, /flex: "0 1 auto"/);
+  assert.doesNotMatch(scroll, /flex: 1,/);
+});
+
 test("offers a searchable tab menu only when the strip overflows", async () => {
   const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
   assert.match(source, /container\.scrollWidth > container\.clientWidth \+ 1/);
