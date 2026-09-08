@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
 
@@ -11,7 +12,7 @@ interface Props {
   activePane?: "primary" | "secondary";
   runningSessionIds?: ReadonlySet<string>;
   onSelectTab: (tabId: string) => void;
-  onCloseTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => boolean | void;
   onNewTab: () => void;
   onToggleSplit?: () => void;
   onClosePane?: () => void;
@@ -39,9 +40,16 @@ export function ChatTabBar({
 }: Props) {
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
+  const [tabsOverflow, setTabsOverflow] = useState(false);
+  const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
+  const [tabsMenuQuery, setTabsMenuQuery] = useState("");
+  const [tabsMenuPosition, setTabsMenuPosition] = useState({ top: 0, left: 0, width: 320 });
 
   const activeTabRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const tabsMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const tabsMenuRef = useRef<HTMLDivElement>(null);
+  const tabsMenuInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll active tab into view whenever selection changes
   useEffect(() => {
@@ -54,8 +62,77 @@ export function ChatTabBar({
     }
   }, [activeTabId]);
 
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const update = () => setTabsOverflow(container.scrollWidth > container.clientWidth + 1);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [tabs]);
+
+  useEffect(() => {
+    if (!tabsMenuOpen) return;
+    tabsMenuInputRef.current?.focus();
+    const handlePointerDown = (event: PointerEvent) => {
+      const path = event.composedPath();
+      if (tabsMenuRef.current && path.includes(tabsMenuRef.current)) return;
+      if (tabsMenuButtonRef.current && path.includes(tabsMenuButtonRef.current)) return;
+      setTabsMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setTabsMenuOpen(false);
+      tabsMenuButtonRef.current?.focus();
+    };
+    const handleResize = () => setTabsMenuOpen(false);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [tabsMenuOpen]);
+
+  useEffect(() => {
+    if (!tabsOverflow) setTabsMenuOpen(false);
+  }, [tabsOverflow]);
+
   const effectiveCanSplit = canSplit && !isMobile;
   const isSplitActive = Boolean(splitTabId && !isMobile);
+  const filteredTabs = tabs.filter((tab) => tab.title.toLocaleLowerCase().includes(tabsMenuQuery.trim().toLocaleLowerCase()));
+
+  const focusChatSurface = (tabId?: string) => {
+    const exactTab = tabId
+      ? Array.from(document.querySelectorAll<HTMLElement>("[data-chat-tab-id]"))
+          .find((element) => element.dataset.chatTabId === tabId)
+      : null;
+    const activeTab = document.querySelector<HTMLElement>('[data-chat-tab="true"][tabindex="0"]');
+    const composer = Array.from(document.querySelectorAll<HTMLTextAreaElement>(".chat-input-textarea"))
+      .find((element) => element.getClientRects().length > 0);
+    (exactTab ?? activeTab ?? composer)?.focus();
+  };
+
+  const toggleTabsMenu = () => {
+    if (tabsMenuOpen) {
+      setTabsMenuOpen(false);
+      return;
+    }
+    const rect = tabsMenuButtonRef.current!.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 16);
+    setTabsMenuPosition({
+      top: rect.bottom + 4,
+      left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+      width,
+    });
+    setTabsMenuQuery("");
+    setTabsMenuOpen(true);
+  };
 
   return (
     <div
@@ -109,8 +186,10 @@ export function ChatTabBar({
             <div
               key={tab.id}
               data-chat-tab="true"
+              data-chat-tab-id={tab.id}
               ref={isPrimary ? activeTabRef : undefined}
               role="tab"
+              aria-label={tab.dirty ? `${tab.title}, ${t("chatTabs.unsentDraft")}` : tab.title}
               aria-selected={isVisible}
               tabIndex={isCurrentPane || (!activeTabId && index === 0) ? 0 : -1}
               onClick={() => onSelectTab(tab.id)}
@@ -135,12 +214,9 @@ export function ChatTabBar({
                   (e.currentTarget.parentElement?.children[nextIndex] as HTMLElement)?.focus();
                 } else if (e.key === "Delete") {
                   e.preventDefault();
-                  onCloseTab(tab.id);
+                  if (onCloseTab(tab.id) === false) return;
                   requestAnimationFrame(() => {
-                    const nextTab = document.querySelector<HTMLElement>('[data-chat-tab="true"][tabindex="0"]');
-                    const composer = Array.from(document.querySelectorAll<HTMLTextAreaElement>(".chat-input-textarea"))
-                      .find((element) => element.getClientRects().length > 0);
-                    (nextTab ?? composer)?.focus();
+                    focusChatSurface();
                   });
                 }
               }}
@@ -216,6 +292,14 @@ export function ChatTabBar({
                 {tab.title}
               </span>
 
+              {tab.kind === "draft" && tab.dirty && (
+                <span
+                  title={t("chatTabs.unsentDraft")}
+                  aria-hidden="true"
+                  style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }}
+                />
+              )}
+
               {/* Close Button: On mobile, only render close button for visible/active tab to prevent accidental closure while scrolling/switching */}
               {(!isMobile || isVisible) && (
                 <button
@@ -268,6 +352,34 @@ export function ChatTabBar({
           position: "relative",
         }}
       >
+        {tabsOverflow && (
+          <button
+            ref={tabsMenuButtonRef}
+            type="button"
+            onClick={toggleTabsMenu}
+            aria-expanded={tabsMenuOpen}
+            title={t("chatTabs.allTabs")}
+            aria-label={t("chatTabs.allTabs")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: "100%",
+              padding: 0,
+              border: "none",
+              borderRight: "1px solid var(--border)",
+              background: tabsMenuOpen ? "var(--bg-selected)" : "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M8 6h13M8 12h13M8 18h13" />
+              <path d="M3 6h.01M3 12h.01M3 18h.01" />
+            </svg>
+          </button>
+        )}
         {/* New Chat Tab Button */}
         <button
           type="button"
@@ -387,6 +499,113 @@ export function ChatTabBar({
           </button>
         )}
       </div>
+      {tabsMenuOpen && createPortal(
+        <div
+          ref={tabsMenuRef}
+          role="dialog"
+          aria-label={t("chatTabs.allTabs")}
+          style={{
+            position: "fixed",
+            top: tabsMenuPosition.top,
+            left: tabsMenuPosition.left,
+            width: tabsMenuPosition.width,
+            zIndex: 700,
+            padding: 6,
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            background: "var(--bg-panel)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+          }}
+        >
+          <input
+            ref={tabsMenuInputRef}
+            value={tabsMenuQuery}
+            onChange={(event) => setTabsMenuQuery(event.target.value)}
+            placeholder={t("chatTabs.filterTabs")}
+            aria-label={t("chatTabs.filterTabs")}
+            style={{
+              width: "100%",
+              height: 30,
+              padding: "0 8px",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              outline: "none",
+              background: "var(--bg)",
+              color: "var(--text)",
+              fontSize: 12,
+            }}
+          />
+          <div style={{ maxHeight: "min(50vh, 360px)", overflowY: "auto", marginTop: 6 }}>
+            {filteredTabs.length === 0 ? (
+              <div style={{ padding: "8px", color: "var(--text-dim)", fontSize: 12 }}>
+                {t("chatTabs.noMatchingTabs")}
+              </div>
+            ) : filteredTabs.map((tab) => {
+              const selected = tab.id === activeTabId || tab.id === splitTabId;
+              const running = tab.kind === "session" && Boolean(tab.session && runningSessionIds?.has(tab.session.id));
+              return (
+                <div
+                  key={tab.id}
+                  style={{ display: "flex", alignItems: "center", minWidth: 0, background: selected ? "var(--bg-selected)" : "transparent", borderRadius: 4 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTabsMenuOpen(false);
+                      onSelectTab(tab.id);
+                      requestAnimationFrame(() => focusChatSurface(tab.id));
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      flex: 1,
+                      minWidth: 0,
+                      height: 30,
+                      padding: "0 8px",
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--text)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      fontSize: 12,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: running || tab.dirty ? "var(--accent)" : "transparent" }}
+                    />
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tab.title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onCloseTab(tab.id) === false) return;
+                      requestAnimationFrame(() => {
+                        const container = scrollContainerRef.current;
+                        if (tabsMenuInputRef.current?.isConnected && container && container.scrollWidth > container.clientWidth + 1) {
+                          tabsMenuInputRef.current.focus();
+                        } else {
+                          setTabsMenuOpen(false);
+                          focusChatSurface();
+                        }
+                      });
+                    }}
+                    title={`${t("chatTabs.closeTab")}: ${tab.title}`}
+                    aria-label={`${t("chatTabs.closeTab")}: ${tab.title}`}
+                    style={{ width: 28, height: 28, padding: 0, border: "none", background: "transparent", color: "var(--text-dim)", cursor: "pointer", flexShrink: 0 }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                      <path d="M2 2l6 6M8 2 2 8" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

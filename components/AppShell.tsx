@@ -12,6 +12,7 @@ import {
   viewSessionInCurrentTab,
   openDraftInTabs,
   closeChatTab,
+  getDraftTabTitle,
   promoteDraftToSession,
   type ChatTabItem,
 } from "@/lib/chat-tab-state";
@@ -45,7 +46,7 @@ import {
 } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
 import { getInitialNavigation } from "@/lib/initial-navigation";
-import { clearDraft, rekeyDraft } from "@/lib/draft-store";
+import { clearDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import {
   clearLastOpen,
   getLastOpenSession,
@@ -84,6 +85,7 @@ type AutoNameStatus =
 
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
 const AGENT_PANEL_WIDTH = 420;
+const DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs";
 
 function filenameFromContentDisposition(header: string | null): string | null {
   if (!header) return null;
@@ -184,6 +186,8 @@ export function AppShell() {
 
   // Chat Tabs & Split View State
   const [chatTabs, setChatTabs] = useState<ChatTabItem[]>([]);
+  const [draftTabsRestored, setDraftTabsRestored] = useState(false);
+  const [draftTabsPersistenceFailed, setDraftTabsPersistenceFailed] = useState(false);
   const chatTabsRef = useRef<ChatTabItem[]>([]);
   chatTabsRef.current = chatTabs;
   const [activeChatTabId, setActiveChatTabId] = useState<string | null>(null);
@@ -200,6 +204,74 @@ export function AppShell() {
   const chatPanesContainerRef = useRef<HTMLDivElement>(null);
   const isResizingSplitRef = useRef(false);
   const [chatPanesWidth, setChatPanesWidth] = useState(CHAT_SPLIT_MIN_WIDTH);
+  const handleDraftChange = useCallback((draftKey: string, value: string, imageCount: number) => {
+    const dirty = Boolean(value.trim() || imageCount > 0);
+    const title = getDraftTabTitle(value, translate("i18n.newSession"));
+    setChatTabs((tabs) => {
+      let changed = false;
+      const next = tabs.map((tab) => {
+        if (tab.kind !== "draft" || tab.newSessionDraftKey !== draftKey || (tab.dirty === dirty && tab.title === title)) return tab;
+        changed = true;
+        return { ...tab, dirty, title };
+      });
+      return changed ? next : tabs;
+    });
+  }, [translate]);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(DRAFT_TABS_STORAGE_KEY);
+      const stored = raw ? JSON.parse(raw) as Array<{ draftKey: string; cwd: string | null; title: string }> : [];
+      const restored = stored.flatMap((item): ChatTabItem[] => {
+        if (typeof item?.draftKey !== "string" || typeof item?.title !== "string") return [];
+        const draft = getDraft(item.draftKey);
+        if (!draft) return [];
+        return [{
+          id: `draft:${item.draftKey}`,
+          kind: "draft",
+          title: getDraftTabTitle(draft.value, item.title),
+          session: null,
+          newSessionCwd: typeof item.cwd === "string" ? item.cwd : null,
+          newSessionDraftKey: item.draftKey,
+          projectKey: typeof item.cwd === "string" ? item.cwd : null,
+          dirty: true,
+        }];
+      });
+      if (restored.length > 0) {
+        setChatTabs((tabs) => [...tabs, ...restored.filter((item) => !tabs.some((tab) => tab.id === item.id))]);
+        if (!initialNavigation.sessionId && !initialNavigation.requestedCwd) {
+          const first = restored[0];
+          setActiveChatTabId((current) => current ?? first.id);
+          setSelectedSession(null);
+          setNewSessionCwd(first.newSessionCwd);
+          activeNewSessionDraftKeyRef.current = first.newSessionDraftKey;
+        }
+      }
+    } catch {
+      // Session storage is best-effort.
+    }
+    setDraftTabsRestored(true);
+  }, [initialNavigation.requestedCwd, initialNavigation.sessionId]);
+
+  useEffect(() => {
+    if (!draftTabsRestored) return;
+    const stored = chatTabs.flatMap((tab) => (
+      tab.kind === "draft" && tab.dirty && tab.newSessionDraftKey
+        ? [{ draftKey: tab.newSessionDraftKey, cwd: tab.newSessionCwd, title: tab.title }]
+        : []
+    ));
+    if (stored.length === 0) {
+      try { window.sessionStorage.removeItem(DRAFT_TABS_STORAGE_KEY); } catch { /* no drafts to recover */ }
+      setDraftTabsPersistenceFailed(false);
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(DRAFT_TABS_STORAGE_KEY, JSON.stringify(stored));
+      setDraftTabsPersistenceFailed(false);
+    } catch {
+      setDraftTabsPersistenceFailed(true);
+    }
+  }, [chatTabs, draftTabsRestored]);
   const [searchTarget, setSearchTarget] = useState<{ sessionId: string; entryId: string; blockIndex?: number } | null>(null);
   const handleSearchTargetHandled = useCallback((target: { sessionId: string; entryId: string }) => {
     setSearchTarget((current) => current === target ? null : current);
@@ -856,7 +928,16 @@ export function AppShell() {
     invalidateWorkspaceRestore();
     const activeDraftKey = activeNewSessionDraftKeyRef.current;
     const activeDraftCwd = newSessionCwd ?? (selectedSession === null ? activeCwd : null);
-    if (activeDraftKey && activeDraftCwd) {
+    const activeTabId = isSplitActiveRef.current && activeChatPaneRef.current === "secondary"
+      ? splitChatTabIdRef.current
+      : activeChatTabIdRef.current;
+    const activeDraftTab = chatTabsRef.current.find((tab) => tab.id === activeTabId && tab.kind === "draft");
+    const activeDraft = activeDraftTab?.newSessionDraftKey ? getDraft(activeDraftTab.newSessionDraftKey) : null;
+    const preserveActiveDraft = Boolean(
+      activeDraftTab
+      && (activeDraftTab.dirty || (activeDraft && (activeDraft.value.trim() || activeDraft.images.length > 0))),
+    );
+    if (!preserveActiveDraft && activeDraftKey && activeDraftCwd) {
       rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
     }
     activeNewSessionDraftKeyRef.current = null;
@@ -896,7 +977,9 @@ export function AppShell() {
         : (typeof activeChatTabIdRef !== "undefined" ? activeChatTabIdRef.current : null);
 
       setChatTabs((prev) => {
-        const { tabs: nextTabs, tabId } = viewSessionInCurrentTab(prev, session, targetCurrentTabId);
+        const { tabs: nextTabs, tabId } = preserveActiveDraft || (isRestore && prev.some((tab) => tab.kind === "draft" && tab.dirty))
+          ? openSessionInNewTab(prev, session)
+          : viewSessionInCurrentTab(prev, session, targetCurrentTabId);
         if (isSecondary) {
           return nextTabs.map((t) => (t.id === tabId ? { ...t, pane: "secondary" as const } : t));
         }
@@ -1448,9 +1531,12 @@ export function AppShell() {
     focusChatTab(tab, pane);
   }, [activeChatPane, activeChatTabId, chatTabs, focusChatTab, isSplitActive, splitChatTabId]);
 
-  const handleCloseChatTab = useCallback((tabId: string) => {
+  const handleCloseChatTab = useCallback((tabId: string): boolean => {
     const closingTab = chatTabsRef.current.find((tab) => tab.id === tabId);
     if (closingTab?.kind === "draft" && closingTab.newSessionDraftKey) {
+      const draft = getDraft(closingTab.newSessionDraftKey);
+      const hasContent = closingTab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
+      if (hasContent && !window.confirm(translate("chatTabs.discardDraft"))) return false;
       clearDraft(closingTab.newSessionDraftKey);
     }
     setChatTabs((prevTabs) => {
@@ -1502,6 +1588,7 @@ export function AppShell() {
 
       return nextTabs;
     });
+    return true;
   }, [activeChatPane, activeChatTabId, activeCwd, router, splitChatTabId, translate]);
 
   const handleNewChatTab = useCallback(() => {
@@ -1693,6 +1780,8 @@ export function AppShell() {
         sessionRunning={isTabRunning}
         newSessionCwd={effectiveCwd}
         newSessionDraftKey={effectiveDraftKey}
+        onDraftChange={handleDraftChange}
+        draftPersistenceWarning={draftTabsPersistenceFailed}
         onAgentEnd={handleAgentEnd}
         onAttentionNeeded={handleAttentionNeeded}
         onSessionCreated={handleSessionCreated}

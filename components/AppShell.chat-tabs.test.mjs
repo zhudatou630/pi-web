@@ -71,6 +71,22 @@ test("binds per-tab actions to the target session instead of global selection", 
   assert.match(chatWindowSource, /ref=\{setChatInputElement\}/);
 });
 
+test("updates draft tab titles and confirms before discarding unsent content", () => {
+  assert.match(source, /const handleDraftChange = useCallback/);
+  assert.match(source, /getDraftTabTitle\(value, translate\("i18n\.newSession"\)\)/);
+  assert.match(source, /tab\.kind !== "draft" \|\| tab\.newSessionDraftKey !== draftKey/);
+  assert.match(source, /const draft = getDraft\(closingTab\.newSessionDraftKey\)/);
+  assert.match(source, /window\.confirm\(translate\("chatTabs\.discardDraft"\)\)/);
+  assert.match(source, /DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs"/);
+  assert.match(source, /window\.sessionStorage\.getItem\(DRAFT_TABS_STORAGE_KEY\)/);
+  assert.match(source, /window\.sessionStorage\.setItem\(DRAFT_TABS_STORAGE_KEY/);
+  assert.match(source, /setDraftTabsPersistenceFailed\(true\)/);
+  assert.match(source, /draftPersistenceWarning=\{draftTabsPersistenceFailed\}/);
+  assert.match(source, /const preserveActiveDraft = Boolean/);
+  assert.match(source, /preserveActiveDraft \|\| \(isRestore && prev\.some/);
+  assert.match(source, /setActiveChatTabId\(\(current\) => current \?\? first\.id\)/);
+});
+
 test("late fork completion does not steal focus from another tab", () => {
   assert.match(source, /const shouldFocus = !sourceSessionId \|\| activeSessionIdRef\.current === sourceSessionId/);
   assert.match(source, /setChatTabs\(\(prev\) => openSessionInTabs\(prev, forkedSession\)\.tabs\);[\s\S]*?if \(!shouldFocus\) return/);

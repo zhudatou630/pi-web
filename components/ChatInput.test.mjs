@@ -27,6 +27,14 @@ test("connects the composer to its active suggestion list", () => {
   assert.equal((source.match(/aria-selected=\{active\}/g) ?? []).length, 3);
 });
 
+test("warns when the current draft cannot be persisted", () => {
+  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /const persisted = setDraft\(draftKey/);
+  assert.match(source, /setDraftPersistenceFailed\(!persisted\)/);
+  assert.match(source, /draftPersistenceFailed \|\| draftPersistenceWarning/);
+  assert.match(source, /t\("chat\.draftPageOnly"\)/);
+});
+
 test("follow-up shortcuts preserve newline, IME, mobile and completion behavior", () => {
   const source = ts.createSourceFile("ChatInput.tsx", readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   function findHandler(node) {

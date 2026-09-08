@@ -80,6 +80,8 @@ interface Props {
   onSoundToggle?: () => void;
   onAudioUnlock?: () => void;
   draftKey?: string;
+  onDraftChange?: (draftKey: string, value: string, imageCount: number) => void;
+  draftPersistenceWarning?: boolean;
   /** Session working directory — enables the @ file autocomplete menu */
   cwd?: string | null;
 }
@@ -480,6 +482,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   soundEnabled, onSoundToggle, onAudioUnlock,
   onPromptWithStreamingBehavior,
   draftKey,
+  onDraftChange,
+  draftPersistenceWarning = false,
   cwd,
   compact = false,
 }: Props, ref) {
@@ -506,6 +510,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [imageWarningDismissed, setImageWarningDismissed] = useState(false);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyActiveIndex, setHistoryActiveIndex] = useState(0);
+  const [draftPersistenceFailed, setDraftPersistenceFailed] = useState(false);
   const [fileIndex, setFileIndex] = useState<{ cwd: string; entries: FileIndexEntry[]; truncated: boolean } | null>(null);
   const [fileIndexLoading, setFileIndexLoading] = useState(false);
   const [atServerResult, setAtServerResult] = useState<{ cwd: string; query: string; matches: FileIndexEntry[] } | null>(null);
@@ -770,11 +775,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   useEffect(() => {
     if (!draftKey || draftKeyRef.current !== draftKey) return;
-    setDraft(draftKey, {
+    const persisted = setDraft(draftKey, {
       value,
       images: attachedImages.map(imageToDraftImage),
     });
-  }, [attachedImages, draftKey, value]);
+    setDraftPersistenceFailed(!persisted);
+    onDraftChange?.(draftKey, value, attachedImages.length);
+  }, [attachedImages, draftKey, onDraftChange, value]);
 
   useEffect(() => {
     const previousDraftKey = draftKeyRef.current;
@@ -800,7 +807,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       prev.forEach(revokeImagePreview);
       return nextImages;
     });
-  }, [draftKey]);
+    if (draftKey) onDraftChange?.(draftKey, nextValue, nextImages.length);
+  }, [draftKey, onDraftChange]);
 
   const resizeTextarea = useCallback(() => {
     const ta = textareaRef.current;
@@ -1634,6 +1642,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             }}
           >
             {compactError}
+          </div>
+        )}
+        {(draftPersistenceFailed || draftPersistenceWarning) && (
+          <div role="status" style={{ marginBottom: 8, color: "#d97706", fontSize: 11.5 }}>
+            {t("chat.draftPageOnly")}
           </div>
         )}
         {/* Image previews */}

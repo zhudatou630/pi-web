@@ -70,12 +70,39 @@ test("renders new tab and split toggle buttons", () => {
   assert.match(html, /aria-label="Split right"/);
 });
 
+test("marks drafts with unsent content", () => {
+  const html = render([{
+    id: "draft:d1",
+    kind: "draft",
+    title: "Investigate cache",
+    dirty: true,
+    session: null,
+    newSessionCwd: "/test",
+    newSessionDraftKey: "d1",
+  }]);
+  assert.match(html, /aria-label="Investigate cache, Unsent draft"/);
+  assert.match(html, /title="Unsent draft"/);
+});
+
 test("keeps close controls out of the tab order and supports Delete on the tab", async () => {
   const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
   assert.match(source, /else if \(e\.key === "Delete"\)[\s\S]*?onCloseTab\(tab\.id\)[\s\S]*?requestAnimationFrame/);
   assert.match(source, /data-chat-tab="true"/);
-  assert.match(source, /nextTab \?\? composer/);
+  assert.match(source, /exactTab \?\? activeTab \?\? composer/);
   assert.match(source, /<button\s*type="button"\s*tabIndex=\{-1\}/);
+});
+
+test("offers a searchable tab menu only when the strip overflows", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /container\.scrollWidth > container\.clientWidth \+ 1/);
+  assert.match(source, /\{tabsOverflow && \(/);
+  assert.match(source, /placeholder=\{t\("chatTabs\.filterTabs"\)\}/);
+  assert.match(source, /filteredTabs\.map\(\(tab\)/);
+  assert.match(source, /onSelectTab\(tab\.id\)/);
+  assert.match(source, /onCloseTab\(tab\.id\)/);
+  assert.match(source, /requestAnimationFrame\(\(\) => focusChatSurface\(tab\.id\)\)/);
+  assert.match(source, /if \(onCloseTab\(tab\.id\) === false\) return/);
+  assert.match(source, /createPortal\(/);
 });
 
 test("mobile mode hides split toggle and only shows close button on active tab", () => {

@@ -11,6 +11,32 @@ export interface ChatDraft {
 }
 
 const drafts = new Map<string, ChatDraft>();
+const STORAGE_PREFIX = "pi-chat-draft:";
+
+function storageKey(key: string): string {
+  return `${STORAGE_PREFIX}${encodeURIComponent(key)}`;
+}
+
+function getStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredDraft(key: string): ChatDraft | null {
+  try {
+    const raw = getStorage()?.getItem(storageKey(key));
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as ChatDraft;
+    if (typeof draft.value !== "string" || !Array.isArray(draft.images)) return null;
+    if (!draft.images.every((image) => typeof image?.data === "string" && typeof image?.mimeType === "string")) return null;
+    return cloneDraft(draft);
+  } catch {
+    return null;
+  }
+}
 
 function cloneDraft(draft: ChatDraft): ChatDraft {
   return {
@@ -24,20 +50,36 @@ function isEmptyDraft(draft: ChatDraft): boolean {
 }
 
 export function getDraft(key: string): ChatDraft | null {
-  const draft = drafts.get(key);
+  const draft = drafts.get(key) ?? readStoredDraft(key);
+  if (draft && !drafts.has(key)) drafts.set(key, draft);
   return draft ? cloneDraft(draft) : null;
 }
 
-export function setDraft(key: string, draft: ChatDraft): void {
+export function setDraft(key: string, draft: ChatDraft): boolean {
   if (isEmptyDraft(draft)) {
-    drafts.delete(key);
-    return;
+    clearDraft(key);
+    return true;
   }
-  drafts.set(key, cloneDraft(draft));
+  const stored = cloneDraft(draft);
+  drafts.set(key, stored);
+  const storage = getStorage();
+  if (!storage) return false;
+  try {
+    storage.setItem(storageKey(key), JSON.stringify(stored));
+    return true;
+  } catch {
+    storage.removeItem(storageKey(key));
+    return false;
+  }
 }
 
 export function clearDraft(key: string): void {
   drafts.delete(key);
+  try {
+    getStorage()?.removeItem(storageKey(key));
+  } catch {
+    // Browser storage is optional.
+  }
 }
 
 export function mergeRestoredSubmissionText(submitted: string, current: string): string {

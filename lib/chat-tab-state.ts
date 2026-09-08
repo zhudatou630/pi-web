@@ -10,6 +10,14 @@ export interface ChatTabItem {
   newSessionCwd: string | null;
   newSessionDraftKey: string | null;
   projectKey?: string | null;
+  dirty?: boolean;
+}
+
+export function getDraftTabTitle(value: string, defaultTitle: string): string {
+  const firstLine = value.split(/\r?\n/).find((line) => line.trim())?.trim();
+  if (!firstLine) return defaultTitle;
+  const characters = Array.from(firstLine);
+  return characters.length <= 48 ? firstLine : `${characters.slice(0, 47).join("")}…`;
 }
 
 /**
@@ -124,6 +132,7 @@ export function openDraftInTabs(
     newSessionCwd: cwd,
     newSessionDraftKey: draftKey,
     projectKey: cwd,
+    dirty: false,
   };
   return { tabs: [...tabs, newTab], tabId: draftId };
 }
