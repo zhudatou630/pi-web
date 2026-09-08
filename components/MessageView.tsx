@@ -601,14 +601,16 @@ function AssistantMessageView({
   const toolCallDurations = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>();
     if (!toolResults || !message.timestamp) return map;
-    for (const [callId, result] of toolResults) {
-      if (result.timestamp && message.timestamp) {
+    for (const block of message.content) {
+      if (block.type !== "toolCall") continue;
+      const result = toolResults.get(block.toolCallId);
+      if (result?.timestamp) {
         const secs = Math.round((result.timestamp - message.timestamp) / 1000);
-        if (secs > 0) map.set(callId, secs);
+        if (secs > 0) map.set(block.toolCallId, secs);
       }
     }
     return map;
-  }, [toolResults, message.timestamp]);
+  }, [message.content, message.timestamp, toolResults]);
 
   useEffect(() => {
     const now = Date.now();

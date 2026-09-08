@@ -1754,7 +1754,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </div>
           </div>
         </div>
-        {isMobile || pendingScrollRestore ? null : (
+        {!isFocusedPane || isMobile || pendingScrollRestore ? null : (
           <ChatMinimap
             sessionId={session?.id ?? sessionIdRef.current}
             leafId={activeLeafId}

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
 
@@ -16,6 +17,13 @@ const {
 } = await jiti.import("./MessageView.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 const { splitFinalAssistantBlocks } = await jiti.import("@/lib/message-display");
+const source = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
+
+test("looks up tool durations only for calls in the current assistant message", () => {
+  assert.match(source, /for \(const block of message\.content\)/);
+  assert.match(source, /const result = toolResults\.get\(block\.toolCallId\)/);
+  assert.doesNotMatch(source, /for \(const \[callId, result\] of toolResults\)/);
+});
 
 function renderMessage(message, props = {}) {
   return renderToStaticMarkup(

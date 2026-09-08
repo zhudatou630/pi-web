@@ -50,3 +50,7 @@ test("keeps completed turn projections stable while only the streaming tail chan
   assert.match(source, /const finalParts = completedAssistantParts\[finalAssistantIdx\]/);
   assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);
 });
+
+test("mounts the minimap only for the focused chat pane", () => {
+  assert.match(source, /!isFocusedPane \|\| isMobile \|\| pendingScrollRestore \? null/);
+});
