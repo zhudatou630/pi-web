@@ -75,6 +75,7 @@ import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
+import { formatTokensK } from "@/lib/token-display";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 type AutoNameStatus =
@@ -2390,8 +2391,8 @@ export function AppShell() {
       if (percent !== null && percent >= 85) contextColor = "#ef4444";
       else if (percent !== null && percent >= 70) contextColor = "rgba(234,179,8,0.95)";
       desktopContextText = percent !== null
-        ? `${percent.toFixed(0)}% / ${formatCompact(ctx.contextWindow)}`
-        : `? / ${formatCompact(ctx.contextWindow)}`;
+        ? `${percent.toFixed(0)}% / ${formatTokensK(ctx.contextWindow, locale)}`
+        : `? / ${formatTokensK(ctx.contextWindow, locale)}`;
       mobileContextText = percent !== null ? `${percent.toFixed(0)}%` : null;
     }
 
@@ -2973,15 +2974,15 @@ export function AppShell() {
                           {ctx.tokens !== null && (
                             <>
                               <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextUsed")}</div>
-                              <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{ctx.tokens.toLocaleString(locale)}</div>
+                              <div title={ctx.tokens.toLocaleString(locale)} style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.tokens, locale)}</div>
                             </>
                           )}
                           <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextWindow")}</div>
-                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{ctx.contextWindow.toLocaleString(locale)}</div>
+                          <div title={ctx.contextWindow.toLocaleString(locale)} style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.contextWindow, locale)}</div>
                           {remaining !== null && (
                             <>
                               <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextRemaining")}</div>
-                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{remaining.toLocaleString(locale)}</div>
+                              <div title={remaining.toLocaleString(locale)} style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(remaining, locale)}</div>
                             </>
                           )}
                         </div>
@@ -3019,17 +3020,20 @@ export function AppShell() {
                           fontSize: 11.5,
                         }}>
                           <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.total")}</div>
-                          <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{sessionStats.tokens.total.toLocaleString(locale)}</div>
+                          <div title={sessionStats.tokens.total.toLocaleString(locale)} style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.total, locale)}</div>
 
                           <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.input")} / {translate("session.output")}</div>
-                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>
-                            {sessionStats.tokens.input.toLocaleString(locale)} / {sessionStats.tokens.output.toLocaleString(locale)}
+                          <div
+                            title={`${sessionStats.tokens.input.toLocaleString(locale)} / ${sessionStats.tokens.output.toLocaleString(locale)}`}
+                            style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}
+                          >
+                            {formatTokensK(sessionStats.tokens.input, locale)} / {formatTokensK(sessionStats.tokens.output, locale)}
                           </div>
 
                           {sessionStats.tokens.cacheRead > 0 && (
                             <>
                               <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.cacheRead")}</div>
-                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{sessionStats.tokens.cacheRead.toLocaleString(locale)}</div>
+                              <div title={sessionStats.tokens.cacheRead.toLocaleString(locale)} style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.cacheRead, locale)}</div>
                             </>
                           )}
                           {cacheHitRate && (

@@ -28,6 +28,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
 import type { ToolPreset } from "@/lib/tool-presets";
+import { formatTokensK } from "@/lib/token-display";
 import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
 
 
@@ -132,9 +133,7 @@ const THINKING_LEVEL_DESC_KEYS: Record<typeof THINKING_LEVELS[number], string> =
 };
 
 function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
-  return tokens.toLocaleString();
+  return formatTokensK(tokens);
 }
 
 type BuiltinSlashCommand = {
@@ -2594,19 +2593,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   ? "#eab308"
                   : "var(--text-dim)";
 
-              const formatCompactVal = (n: number) =>
-                n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n);
-
               const label = tokens !== null
                 ? (isMobile && !controlsMenuOpen
                     ? `${clampedPercent.toFixed(0)}%`
-                    : `${formatCompactVal(tokens)}/${formatCompactVal(windowTokens)}`)
-                : `?/${formatCompactVal(windowTokens)}`;
+                    : `${formatTokensK(tokens)}/${formatTokensK(windowTokens)}`)
+                : `?/${formatTokensK(windowTokens)}`;
 
               const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
               const tooltip = [
-                `${t("chat.contextUsage")}: ${tokens !== null ? tokens.toLocaleString() : "?"} / ${windowTokens.toLocaleString()} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
-                remaining !== null ? `${t("chat.contextRemaining")}: ${remaining.toLocaleString()} tokens` : null,
+                `${t("chat.contextUsage")}: ${tokens !== null ? `${formatTokensK(tokens)} (${tokens.toLocaleString()})` : "?"} / ${formatTokensK(windowTokens)} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
+                remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)} (${remaining.toLocaleString()})` : null,
                 isHigh ? `⚠️ ${t("chat.contextHighWarning")}` : null,
               ].filter(Boolean).join("\n");
 
