@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import React, { useRef, useState, useCallback, useEffect, useId, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SkillsResponse } from "@/lib/api-types";
 import type { TextContent, UserMessage } from "@/lib/types";
@@ -486,6 +486,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const { t } = useI18n();
   const { fontSize } = useChatAppearance();
   const isMobile = useIsMobile();
+  const menuId = useId();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
@@ -1457,7 +1458,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!isMobile) setControlsMenuOpen(false);
   }, [isMobile]);
 
-
+  const historyListboxId = `${menuId}-history`;
+  const slashListboxId = `${menuId}-slash`;
+  const fileListboxId = `${menuId}-files`;
+  const activeListboxId = historyMenuOpen && inputHistory.length > 0
+    ? historyListboxId
+    : slashMenuOpen && slashQuery !== null
+      ? slashListboxId
+      : atMenuOpen && atQuery !== null
+        ? fileListboxId
+        : undefined;
+  const activeOptionId = activeListboxId === historyListboxId && inputHistory[historyActiveIndex] !== undefined
+    ? `${historyListboxId}-${historyActiveIndex}`
+    : activeListboxId === slashListboxId && displayedSlashCommands[slashActiveIndex]
+      ? `${slashListboxId}-${slashActiveIndex}`
+      : activeListboxId === fileListboxId && atMatches[atActiveIndex]
+        ? `${fileListboxId}-${atActiveIndex}`
+        : undefined;
 
   return (
     <div
@@ -1702,7 +1719,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   <path d="M12 7v5l3 2" />
                 </svg>
               </div>
-              <div style={{ maxHeight: "calc(min(44vh, 360px) - 31px)", overflowY: "auto", padding: 4 }}>
+              <div id={historyListboxId} role="listbox" style={{ maxHeight: "calc(min(44vh, 360px) - 31px)", overflowY: "auto", padding: 4 }}>
                 {inputHistory.map((item, index) => {
                   const active = index === historyActiveIndex;
                   return (
@@ -1712,6 +1729,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         historyItemRefs.current[index] = node;
                       }}
                       type="button"
+                      id={`${historyListboxId}-${index}`}
+                      role="option"
+                      aria-selected={active}
+                      tabIndex={-1}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         applyHistoryInput(item);
@@ -1783,7 +1804,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                  <span>{slashCommandsLoading ? t("chat.loadingCommands") : t("chat.slashCommands", { label: slashCommandCountLabel })}</span>
                  <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
               </div>
-              <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 10 }}>
+              <div id={slashListboxId} role="listbox" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 10 }}>
                 {!slashCommandsLoading && filteredSlashCommands.length === 0 ? (
                   <div style={{ padding: "2px 2px 4px", fontSize: 12, color: "var(--text-dim)" }}>
                      {t("chat.noCommands")}
@@ -1828,6 +1849,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                 slashItemRefs.current[index] = node;
                               }}
                               type="button"
+                              id={`${slashListboxId}-${index}`}
+                              role="option"
+                              aria-selected={active}
+                              tabIndex={-1}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 applySlashCommand(command);
@@ -1939,7 +1964,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   </span>
                    <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
                 </div>
-                <div style={{ maxHeight: "calc(min(48vh, 400px) - 34px)", overflowY: "auto", padding: 4 }}>
+                <div id={fileListboxId} role="listbox" style={{ maxHeight: "calc(min(48vh, 400px) - 34px)", overflowY: "auto", padding: 4 }}>
                   {!indexLoading && atMatches.length === 0 ? (
                     <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>
                        {needsServerSearch && !serverResultInUse ? t("chat.searching") : t("chat.noMatchingFiles")}
@@ -1956,6 +1981,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             atItemRefs.current[index] = node;
                           }}
                           type="button"
+                          id={`${fileListboxId}-${index}`}
+                          role="option"
+                          aria-selected={active}
+                          tabIndex={-1}
                           onMouseDown={(e) => {
                             e.preventDefault();
                             applyAtCompletion(entry);
@@ -2040,6 +2069,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <textarea
             ref={textareaRef}
             className="chat-input-textarea"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-haspopup="listbox"
+            aria-expanded={Boolean(activeListboxId)}
+            aria-controls={activeListboxId}
+            aria-activedescendant={activeOptionId}
             aria-label={compact ? t("chat.quoteQuestion") : t("chat.message")}
             value={value}
             onChange={(e) => {

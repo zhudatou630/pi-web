@@ -16,6 +16,17 @@ const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("@/lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
+test("connects the composer to its active suggestion list", () => {
+  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /const menuId = useId\(\)/);
+  assert.match(source, /role="combobox"/);
+  assert.match(source, /aria-controls=\{activeListboxId\}/);
+  assert.match(source, /aria-activedescendant=\{activeOptionId\}/);
+  assert.equal((source.match(/role="listbox"/g) ?? []).length, 3);
+  assert.equal((source.match(/role="option"/g) ?? []).length, 3);
+  assert.equal((source.match(/aria-selected=\{active\}/g) ?? []).length, 3);
+});
+
 test("follow-up shortcuts preserve newline, IME, mobile and completion behavior", () => {
   const source = ts.createSourceFile("ChatInput.tsx", readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   function findHandler(node) {
