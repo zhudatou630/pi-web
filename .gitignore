@@ -42,3 +42,19 @@ yarn-error.log*
 next-env.d.ts
 .factory
 e2e_*.mjs
+
+# logs
+*.log
+
+# local agent & tools
+/.pi/
+/.thinkrail/
+
+# local host scripts
+/scripts/pi-web-switch.sh
+
+# editors
+.idea/
+.vscode/
+*.swp
+
