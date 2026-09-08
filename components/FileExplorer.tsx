@@ -314,12 +314,13 @@ function TreeNode({
           </svg>
         )}
         {!node.isDir && <span style={{ width: 10, flexShrink: 0 }} />}
-        <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", transform: "translateY(0.5px)" }}>
           {node.isDir ? <FolderIcon size={14} open={open} /> : getFileIcon(node.name, 14)}
         </span>
         <span
           style={{
             fontSize: 12,
+            lineHeight: 1,
             color: "var(--text)",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -499,12 +500,13 @@ function ChangeRow({
       }}
     >
       <GitStatusBadge status={status} t={t} />
-      <span style={{ flexShrink: 0, display: "flex", alignItems: "center", opacity: 0.85 }}>
+      <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", opacity: 0.85, transform: "translateY(0.5px)" }}>
         {getFileIcon(name, 13)}
       </span>
       <span
         style={{
           fontSize: 12,
+          lineHeight: 1,
           color: "var(--text)",
           overflow: "hidden",
           textOverflow: "ellipsis",

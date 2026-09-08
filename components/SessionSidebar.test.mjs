@@ -89,7 +89,7 @@ test("subagent completion stays silent and never becomes unread", () => {
     /completedWithNotifications = completedInBackground\.filter\([\s\S]*?!previousSuppressedCompletionSessionIdsRef\.current\.has\(id\)[\s\S]*?!knownSubagentIds\.has\(id\)/,
   );
   assert.match(source, /completedWithNotifications\.forEach\(\(id\) => next\.add\(id\)\)/);
-  assert.match(source, /if \(completedWithNotifications\.length > 0\) \{\s*onBackgroundTaskDone\?\.\(\)/);
+  assert.match(source, /if \(completedWithNotifications\.length > 0\) \{\s*onBackgroundTaskDone\?\.\(completedWithNotifications\)/);
   assert.match(
     source,
     /filter\(\(session\) => session\.relation\?\.kind !== "subagent"\)[\s\S]*?unreadEligibleIds\.has\(id\)/,
@@ -164,5 +164,13 @@ test("supports mobile long-press to reveal row action buttons without text selec
   assert.match(sessionItemSource, /onOpenInNewTab/);
   assert.match(source, /revealedSessionId/);
   assert.match(source, /handleGlobalPointerDown/);
+});
+
+test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible)), or mobile long-press, avoiding mouse click focus retention", async () => {
+  const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(globalCss, /\.session-list-row:has\(:focus-visible\) \.session-row-actions/);
+  assert.doesNotMatch(globalCss, /\.session-list-row:focus-within \.session-row-actions/);
+  assert.match(globalCss, /\.session-list-row:has\(\.session-row-actions\):has\(:focus-visible\) \.session-row-meta/);
+  assert.doesNotMatch(globalCss, /\.session-list-row:has\(\.session-row-actions\):focus-within \.session-row-meta/);
 });
 

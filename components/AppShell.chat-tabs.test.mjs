@@ -49,6 +49,15 @@ test("keeps inactive primary-pane tabs mounted while hidden", () => {
   assert.match(source, /display: isCurrent \? "flex" : "none"/);
 });
 
+test("keeps ChatWindow mounted when a draft is promoted to a session", () => {
+  assert.match(source, /import \{[\s\S]*?chatTabMountKey,[\s\S]*?\} from "@\/lib\/chat-tab-state"/);
+  assert.match(source, /const mountKey = chatTabMountKey\(tab\);/);
+  assert.match(source, /key=\{mountKey\}/);
+  assert.match(source, /isCurrent && activeChatPane === "primary",\s*mountKey,/);
+  assert.match(source, /key=\{chatTabMountKey\(secondaryTab\)\}/);
+  assert.match(source, /activeChatPane === "secondary",\s*chatTabMountKey\(secondaryTab\),/);
+});
+
 test("sidebar single-click views session in current tab while explicit new tab action appends", () => {
   assert.match(source, /viewSessionInCurrentTab/);
   assert.match(source, /openSessionInNewTab/);
@@ -98,5 +107,11 @@ test("supports mobile tab bar when multiple tabs are open", () => {
   assert.match(source, /data-mobile-chat-tabs="true"/);
   assert.match(source, /isMobile=\{true\}/);
   assert.match(source, /canSplit=\{false\}/);
+});
+
+test("seamlessly joins split chat panes with a zero-gap resize handle matching sidebar theme", async () => {
+  const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(globalCss, /\.split-chat-resize-handle\s*\{[^}]*margin:\s*0\s+-6px/);
+  assert.match(globalCss, /\.split-chat-resize-handle:hover::after[\s\S]*?background:\s*color-mix\(in srgb, var\(--text-muted\) 70%, var\(--border\)\)/);
 });
 

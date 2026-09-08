@@ -8,12 +8,15 @@ import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
-import { workspaceKeyOf } from "@/lib/workspace-memory";
+import { workspaceKeyOf } from "@/lib/workspace-key";
+import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { SessionSearch } from "./SessionSearch";
+import { LivePulseBeacon } from "./LivePulseBeacon";
+import { SubagentIcon } from "./SubagentIcon";
 
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
@@ -105,7 +108,6 @@ interface Props {
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
   skipInitialProjectSelection?: boolean;
-  onInitialRestoreDone?: () => void;
   refreshKey?: number;
   onSessionDeleted?: (sessionId: string) => void;
   selectedCwd?: string | null;
@@ -122,7 +124,7 @@ interface Props {
   onAtMentions?: (relativePaths: string[]) => void;
   /** Fired when a session that is not currently selected finishes running.
    *  Lets the app play a cross-workspace completion tone. */
-  onBackgroundTaskDone?: () => void;
+  onBackgroundTaskDone?: (completedSessionIds: string[]) => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   onSessionsChange?: (sessions: SessionInfo[]) => void;
 }
@@ -357,10 +359,12 @@ function PiWebTitle() {
 
   return (
     <button
+      type="button"
+      data-sidebar-brand="true"
       className="workspace-header-action"
       onClick={handleClick}
       style={{
-        background: "none", border: "none", padding: 0, cursor: "default",
+        background: "none", border: "none", outline: "none", padding: 0, cursor: "default",
         fontWeight: 700, fontSize: 13, letterSpacing: "-0.01em",
         color: showVersion ? "var(--accent)" : "var(--text)",
         fontFamily: "var(--font-mono)",
@@ -375,7 +379,7 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [sessionListVersion, setSessionListVersion] = useState<number | null>(null);
@@ -637,7 +641,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       loadSessions(false, true);
     }
     if (completedWithNotifications.length > 0) {
-      onBackgroundTaskDone?.();
+      onBackgroundTaskDone?.(completedWithNotifications);
     }
 
     previousRunningSessionIdsRef.current = runningSessionIds;
@@ -779,13 +783,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           onSelectSession(target, true);
           return;
         }
-        // Session not found — notify parent so it can show the placeholder
-        onInitialRestoreDone?.();
       }
       const projects = getRecentProjects(allSessions);
       if (projects.length > 0) setSelectedCwd(projects[0].root);
     }
-  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone]);
+  }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession]);
 
   // Prefer an exact UI selection while a refetch is in flight. Once the
   // response catches up, the server-resolved path handles Windows case and
@@ -945,15 +947,22 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Clicking a session moves the effective cwd to that session's worktree.
-  // Done on the click path (not via the selectedCwd prop sync) so it also
-  // works when the prop value won't change — e.g. re-clicking the already
-  // open session after manually switching worktrees.
+  // Clicking a session only moves Explorer when that session lives in a
+  // different live worktree. Same checkout keeps the current folder so git
+  // status does not jump; a dead worktree path is ignored. Re-clicking a
+  // session after a manual worktree switch still returns Explorer to that
+  // session's checkout because the live paths differ.
   const handleSelectSessionFromList = useCallback((s: SessionInfo, entryId?: string, blockIndex?: number) => {
     setAllSessions((current) => current.some((session) => session.id === s.id) ? current : [s, ...current]);
-    if (s.cwd) setSelectedCwd(s.cwd);
+    if (shouldAdoptSessionCwd({
+      sessionCwd: s.cwd,
+      selectedCwd,
+      worktrees: worktreeState?.worktrees,
+    })) {
+      setSelectedCwd(s.cwd);
+    }
     onSelectSession(s, false, entryId, blockIndex);
-  }, [onSelectSession]);
+  }, [onSelectSession, selectedCwd, worktreeState]);
 
   const handleNewSession = useCallback(() => {
     if (!selectedCwd) return;
@@ -982,14 +991,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   );
 
   // Any activity in a project other than the one currently selected — shown as
-  // a dot on the (collapsed) selector button so it is visible without opening
+  // a unified pulse beacon on the (collapsed) selector button so it is visible without opening
   // the dropdown.
-  const hasOtherWorkspaceActivity = useMemo(
-    () => [...projectActivity.entries()].some(
-      ([key, { running, unread }]) => key !== selectedProject?.key && (running > 0 || unread > 0),
-    ),
-    [projectActivity, selectedProject],
-  );
+  const otherWorkspaceActivity = useMemo(() => {
+    let running = 0;
+    let unread = 0;
+    for (const [key, act] of projectActivity.entries()) {
+      if (key !== selectedProject?.key) {
+        running += act.running;
+        unread += act.unread;
+      }
+    }
+    return { running, unread };
+  }, [projectActivity, selectedProject]);
 
   const filteredSessions = selectedProject
     ? sessionsForProject(allSessions, selectedProject.key)
@@ -1196,20 +1210,34 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                  {initialSessionId && !restoredRef.current ? "" : t("sidebar.selectProject")}
               </span>
             )}
-            {hasOtherWorkspaceActivity && (
+            {otherWorkspaceActivity.running > 0 ? (
+              <span style={{ marginLeft: 6, display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+                <LivePulseBeacon
+                  size={12}
+                  title={`${t("sidebar.agentRunning")} (${otherWorkspaceActivity.running})`}
+                  ariaLabel={`${t("sidebar.agentRunning")} (${otherWorkspaceActivity.running})`}
+                />
+              </span>
+            ) : otherWorkspaceActivity.unread > 0 ? (
               <span
-                title={t("sidebar.newActivity")}
-                aria-label={t("sidebar.newActivity")}
+                title={`${t("sidebar.newSessionActivity")} (${otherWorkspaceActivity.unread})`}
+                aria-label={`${t("sidebar.newSessionActivity")} (${otherWorkspaceActivity.unread})`}
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  flexShrink: 0,
                   marginLeft: 6,
-                  background: "var(--accent)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 12,
+                  height: 12,
+                  flexShrink: 0,
                 }}
-              />
-            )}
+              >
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ display: "block" }}>
+                  <circle cx="6" cy="6" r="5" fill="#10b981" />
+                  <path d="M3.6 6.2l1.6 1.6 3.2-3.4" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+            ) : null}
           </button>
 
           <AnimatedDropdown
@@ -2025,38 +2053,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
 function RunningSessionIndicator() {
   const { t } = useI18n();
   return (
-    <span
+    <LivePulseBeacon
+      size={14}
       title={t("sidebar.agentRunning")}
-      aria-label={t("sidebar.agentRunning")}
-      style={{
-        width: 14,
-        height: 14,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        color: "var(--accent)",
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
-        <g>
-          <path
-            d="M21 12a9 9 0 1 1-3.8-7.4"
-            stroke="currentColor"
-            strokeWidth="2.8"
-            strokeLinecap="round"
-          />
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            from="0 12 12"
-            to="360 12 12"
-            dur="0.9s"
-            repeatCount="indefinite"
-          />
-        </g>
-      </svg>
-    </span>
+      ariaLabel={t("sidebar.agentRunning")}
+    />
   );
 }
 
@@ -2064,7 +2065,7 @@ function UnreadSessionIndicator() {
   const { t } = useI18n();
   return (
     <span
-      title={t("sidebar.newActivity")}
+      title={t("sidebar.newSessionActivity")}
       aria-label={t("sidebar.newSessionActivity")}
       style={{
         width: 14,
@@ -2073,15 +2074,11 @@ function UnreadSessionIndicator() {
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
-        color: "#0891b2",
       }}
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ display: "block" }}>
-        <circle cx="7" cy="7" r="2.5" fill="currentColor" />
-        <circle cx="7" cy="7" r="3" stroke="currentColor" strokeWidth="1.4" opacity="0.32">
-          <animate attributeName="r" values="3;6;3" dur="1.6s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0.32;0;0.32" dur="1.6s" repeatCount="indefinite" />
-        </circle>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ display: "block" }}>
+        <circle cx="6" cy="6" r="5" fill="#10b981" />
+        <path d="M3.6 6.2l1.6 1.6 3.2-3.4" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
   );
@@ -2104,25 +2101,23 @@ function showProjectActivity(
         <span
           title={t("sidebar.agentRunning")}
           aria-label={`${t("sidebar.agentRunning")} (${activity.running})`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "var(--accent)", fontSize: 10, fontFamily: "var(--font-mono)" }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 3.5, color: "var(--accent)", fontSize: 10, fontFamily: "var(--font-mono)", lineHeight: 1 }}
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block" }}>
-            <g>
-              <path d="M21 12a9 9 0 1 1-3.8-7.4" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
-              <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite" />
-            </g>
-          </svg>
-          {activity.running}
+          <LivePulseBeacon size={12} />
+          <span style={{ lineHeight: 1 }}>{activity.running}</span>
         </span>
       )}
       {activity.unread > 0 && (
         <span
           title={t("sidebar.newSessionActivity")}
           aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#0891b2", fontSize: 10, fontFamily: "var(--font-mono)" }}
+          style={{ display: "inline-flex", alignItems: "center", gap: 3.5, color: "#10b981", fontSize: 10, fontFamily: "var(--font-mono)", lineHeight: 1 }}
         >
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor", display: "inline-block" }} />
-          {activity.unread}
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+            <circle cx="6" cy="6" r="5" fill="#10b981" />
+            <path d="M3.6 6.2l1.6 1.6 3.2-3.4" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span style={{ lineHeight: 1 }}>{activity.unread}</span>
         </span>
       )}
     </span>
@@ -2438,10 +2433,7 @@ export function SessionItem({
         <>
           {/* Subagent indicator for child sessions */}
           {depth > 0 && (
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <rect x="5" y="7" width="14" height="11" rx="2" />
-              <path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
-            </svg>
+            <SubagentIcon size={11} strokeWidth={2} style={{ color: "var(--accent)" }} />
           )}
           <button
             type="button"

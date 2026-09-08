@@ -24,7 +24,7 @@ worktree 切换器决定 Pi Web 接下来使用哪个 checkout。
 - 左侧 Explorer 浏览的文件。
 - 从 Explorer 插入到输入框里的文件路径。
 
-已有会话仍然按同一个 project root 分组。点击一个已有会话时，侧边栏会回到这个会话原本所在的 checkout。
+已有会话仍然按同一个 project root 分组。点开另一个还活着的 worktree 里的会话时，Explorer 会切到那个 checkout；同一 checkout 里的历史会话不会改 Explorer。
 
 ## 新建 Worktree
 
@@ -84,4 +84,4 @@ Git 不允许同一个 branch 同时被多个 worktree checkout。你可以切�
 Git 有时会保留 prunable worktree 记录。Pi Web 会过滤这些记录，不在切换器里显示。
 
 **Explorer 和当前聊天看起来不在同一个分支？**
-Explorer 跟随当前选择的 worktree；聊天跟随打开的会话。重新点击会话，可以把侧边栏切回这个会话所在的 checkout。
+Explorer 跟随当前选择的 worktree；聊天跟随打开的会话。如果点开的会话在另一个还活着的 worktree 里，侧边栏会切到那个 checkout。同一 checkout 里点历史会话不会改 Explorer，已删除 worktree 的会话也不会把 Explorer 拽走。

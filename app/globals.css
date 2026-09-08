@@ -82,26 +82,31 @@ html.dark {
 
 .split-chat-resize-handle {
   position: relative;
-  z-index: 10;
+  z-index: 20;
   width: 12px;
-  flex-shrink: 0;
+  margin: 0 -6px;
+  flex: 0 0 0px;
   cursor: col-resize;
   touch-action: none;
+  outline: none;
 }
 
 .split-chat-resize-handle::after {
   content: "";
   position: absolute;
-  inset: 0 auto 0 50%;
-  width: 1px;
-  transform: translateX(-50%);
-  background: var(--border);
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 2px;
+  pointer-events: none;
+  background: transparent;
+  transition: background 0.12s ease;
 }
 
 .split-chat-resize-handle:hover::after,
-.split-chat-resize-handle:focus-visible::after {
-  width: 2px;
-  background: var(--accent);
+.split-chat-resize-handle:focus-visible::after,
+.split-chat-resize-handle.is-resizing::after {
+  background: color-mix(in srgb, var(--text-muted) 70%, var(--border));
 }
 
 .session-info-popover {
@@ -1053,22 +1058,47 @@ pre, code {
   opacity: 1;
 }
 
+.message-action-group {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  transition: opacity 0.12s ease;
+}
+.message-action-group:focus-within {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+@media (hover: none) {
+  .message-action-group {
+    opacity: 0.7 !important;
+    pointer-events: auto !important;
+  }
+}
+
 .message-action-button {
   display: inline-flex;
   align-items: center;
-  gap: 3.5px;
+  justify-content: center;
+  width: 22px;
   height: 22px;
-  padding: 0 5px;
+  padding: 0;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
   line-height: 1;
-  white-space: nowrap;
   transition: color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease;
+}
+.message-action-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+@media (pointer: coarse) {
+  .message-action-button {
+    width: 32px;
+    height: 32px;
+  }
 }
 .message-action-button:hover:not(:disabled) {
   color: var(--text);
@@ -1697,16 +1727,90 @@ span.token.table {
 }
 
 .session-list-row:hover .session-row-actions,
-.session-list-row:focus-within .session-row-actions,
+.session-list-row:has(:focus-visible) .session-row-actions,
 .session-list-row.is-actions-revealed .session-row-actions {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
 
 .session-list-row:has(.session-row-actions):hover .session-row-meta,
-.session-list-row:has(.session-row-actions):focus-within .session-row-meta,
+.session-list-row:has(.session-row-actions):has(:focus-visible) .session-row-meta,
 .session-list-row.is-actions-revealed .session-row-meta {
   opacity: 0 !important;
+}
+
+/* Compact running-state beacon: refined 5px core with a smooth expanding wave ring */
+.live-pulse-beacon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.live-pulse-beacon-halo {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 1.2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  opacity: 0;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  animation: live-pulse-wave 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.live-pulse-beacon-core {
+  position: relative;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--accent) 50%, transparent);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+  animation: live-pulse-core 1.6s ease-in-out infinite;
+}
+
+@keyframes live-pulse-wave {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+  65% {
+    transform: scale(2.2);
+    opacity: 0.15;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes live-pulse-core {
+  0%, 100% {
+    transform: scale(0.88);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-pulse-beacon-halo {
+    display: none;
+  }
+  .live-pulse-beacon-core {
+    animation: none;
+  }
 }
 
 /* Desktop sidebar: animate width */

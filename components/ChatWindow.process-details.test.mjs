@@ -33,8 +33,16 @@ test("folds a leading process prefix that has no user anchor", () => {
 test("passes activeStepSummary and renders telemetry indicator when streaming", () => {
   assert.match(source, /activeStepSummary=\{activeStepSummary\}/);
   assert.match(source, /isStreaming=\{liveProcessActive\}/);
-  assert.match(source, /animate-pulse/);
+  assert.match(source, /<LivePulseBeacon/);
   assert.doesNotMatch(source, /chat\.thinkingProgress/);
+});
+
+test("uses a visual placeholder instead of textual agent phase rows", () => {
+  assert.match(source, /function ActivityPulse/);
+  assert.match(source, /agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput/);
+  assert.doesNotMatch(source, /function phaseLabel/);
+  assert.doesNotMatch(source, /chat\.waitingModel/);
+  assert.doesNotMatch(source, /chat\.runningCommand/);
 });
 
 test("streams process blocks inside steps and answer blocks outside", () => {
@@ -53,4 +61,28 @@ test("keeps completed turn projections stable while only the streaming tail chan
 
 test("mounts the minimap only for the focused chat pane", () => {
   assert.match(source, /!isFocusedPane \|\| isMobile \|\| pendingScrollRestore \? null/);
+});
+
+test("keeps process indicator active before answer and drops trailing pulse under streaming answer", () => {
+  assert.match(
+    source,
+    /function isLiveProcessActivity\([\s\S]*?hasAnswer = false[\s\S]*?return !hasAnswer;/,
+  );
+  assert.match(
+    source,
+    /\{streamState\.isStreaming && streamingParts\.answerMessage && \(\s*<MessageView message=\{streamingParts\.answerMessage\}[^>]*\/>\s*\)\}/,
+  );
+});
+
+test("resets unmounted window and jumps to latest turn when sending a prompt", () => {
+  assert.match(
+    source,
+    /const handleChatSend = useCallback\(async[\s\S]*?setUnmountedNewerCount\(0\);[\s\S]*?setMountLimit\(MOUNTED_GROUP_LIMIT\);[\s\S]*?await handleSend\(message, images\);[\s\S]*?scrollUserMsgToTop\(\)/,
+  );
+  assert.match(source, /<ChatInput[\s\S]*?onSend=\{handleChatSend\}/);
+});
+
+test("removes the bottom extension status shelf from the chat window", () => {
+  assert.doesNotMatch(source, /<ExtensionStatusBar/);
+  assert.doesNotMatch(source, /import\s*\{\s*ExtensionStatusBar\s*\}\s*from/);
 });

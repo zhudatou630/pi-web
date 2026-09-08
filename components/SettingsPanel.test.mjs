@@ -114,11 +114,12 @@ test("labels agent profiles as sub-agents", () => {
   assert.match(zhSource, /"agents\.new": "新建子代理"/);
 });
 
-test("uses the child-session robot glyph for the sub-agents tab", () => {
-  const robotGlyph = /<rect x="5" y="7" width="14" height="11" rx="2" \/>\s*<path d="M9 11h\.01M15 11h\.01M9 15h6M12 7V4M10 4h4" \/>/;
-  assert.match(panelSource, robotGlyph);
-  assert.match(sidebarSource, robotGlyph);
-  assert.match(panelSource, /section === "agents"[\s\S]*?className="settings-section-icon is-agent"/);
+test("uses the unified SubagentIcon for sub-agents across settings and sidebar", async () => {
+  const subagentIconSource = await readFile(new URL("./SubagentIcon.tsx", import.meta.url), "utf8");
+  const subagentGlyph = /<rect x="3" y="7" width="13" height="13" rx="2" \/>\s*<path d="M8 3h10a2 2 0 0 1 2 2v10" \/>/;
+  assert.match(subagentIconSource, subagentGlyph);
+  assert.match(panelSource, /<SubagentIcon[^>]*className="settings-section-icon is-agent"/);
+  assert.match(sidebarSource, /<SubagentIcon/);
   assert.match(cssSource, /\.settings-section-icon\.is-agent \{[\s\S]*?transform: scale\(1\.25\)/);
 });
 

@@ -110,7 +110,7 @@ export function ModelSelector({
         width: isMobile ? "100%" : undefined,
         maxWidth: isMobile ? "100%" : 220,
         height: isMobile ? 32 : 28,
-        padding: "0 8px",
+        padding: isMobile ? "0 4px" : "0 8px",
         overflow: "hidden",
         border: "none",
         borderRadius: 4,
@@ -118,6 +118,7 @@ export function ModelSelector({
         color: "var(--text-muted)",
         cursor: locked ? "not-allowed" : "pointer",
         fontSize: 12,
+        lineHeight: 1,
         opacity: locked ? 0.5 : 1,
         transition: "background 0.12s, color 0.12s",
       };
@@ -155,7 +156,7 @@ export function ModelSelector({
           setOpen((current) => !current);
         }}
         onMouseEnter={(event) => {
-          if (locked) return;
+          if (locked || (isMobile && variant === "toolbar")) return;
           event.currentTarget.style.background = "var(--bg-hover)";
           event.currentTarget.style.color = "var(--text)";
         }}
@@ -165,16 +166,17 @@ export function ModelSelector({
             event.currentTarget.style.color = variant === "field" ? "var(--text-dim)" : "var(--text-muted)";
             return;
           }
+          if (isMobile && variant === "toolbar") return;
           event.currentTarget.style.background = open ? "var(--bg-hover)" : variant === "field" ? "var(--bg)" : "none";
           event.currentTarget.style.color = variant === "field" ? "var(--text)" : "var(--text-muted)";
         }}
       >
         {busy ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", flexShrink: 0 }} aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", display: "block", flexShrink: 0 }} aria-hidden="true">
             <path d="M21 12a9 9 0 1 1-2.64-6.36" />
           </svg>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+        ) : variant === "field" ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
             <rect x="4" y="4" width="16" height="16" rx="2" />
             <rect x="9" y="9" width="6" height="6" />
             <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
@@ -182,7 +184,7 @@ export function ModelSelector({
             <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
             <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
           </svg>
-        )}
+        ) : null}
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentName}</span>
         {variant === "field" && (
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, color: "var(--text-dim)" }}>

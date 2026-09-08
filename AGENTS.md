@@ -10,6 +10,13 @@ Typecheck: `node_modules/.bin/tsc --noEmit`
 Lint: `npm run lint`  
 **Never run `next build` during dev** — pollutes `.next/` and breaks `npm run dev`.
 
+### Testing policy
+
+- For small, local changes, run only directly relevant tests and `git diff --check`.
+- Do not run the full `npm test` suite after every incremental change.
+- Run the full suite once after a batch of changes, before release, or when the user explicitly requests it.
+- Broader tests are appropriate for cross-cutting or high-risk changes; state why they are needed.
+
 ### Dev server troubleshooting
 
 - Before starting a server, run `lsof -nP -iTCP:30141 -sTCP:LISTEN` and reuse the existing Pi Web process when it is healthy. A second `next dev` for the same checkout cannot use a different port as a workaround because both processes contend for `.next/dev/lock`.

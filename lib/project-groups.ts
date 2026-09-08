@@ -1,5 +1,5 @@
 import type { SessionInfo } from "./types";
-import { workspaceKeyOf } from "./workspace-memory";
+import { workspaceKeyOf } from "./workspace-key";
 
 export interface RecentProject {
   /** Stable server-provided identity used for comparison and Map keys. */

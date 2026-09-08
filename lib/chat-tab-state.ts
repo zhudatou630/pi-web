@@ -11,6 +11,12 @@ export interface ChatTabItem {
   newSessionDraftKey: string | null;
   projectKey?: string | null;
   dirty?: boolean;
+  /** Stable ChatWindow identity. Frozen when a draft is promoted so the in-flight session is not remounted. */
+  mountKey?: string;
+}
+
+export function chatTabMountKey(tab: Pick<ChatTabItem, "id" | "mountKey">): string {
+  return tab.mountKey ?? tab.id;
 }
 
 export function getDraftTabTitle(value: string, defaultTitle: string): string {
@@ -199,6 +205,7 @@ export function promoteDraftToSession(
   const nextTabs = tabs.map((tab) => {
     if (tab.id === draftTabId) {
       return {
+        ...tab,
         id: session.id,
         kind: "session" as const,
         title,
@@ -206,6 +213,7 @@ export function promoteDraftToSession(
         newSessionCwd: null,
         newSessionDraftKey: null,
         projectKey: session.projectKey ?? session.cwd,
+        mountKey: tab.mountKey ?? tab.id,
       };
     }
     return tab;

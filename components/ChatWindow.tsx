@@ -20,10 +20,10 @@ import {
   shouldAbortLocateOnLeafChange,
 } from "@/lib/chat-outline-jump";
 import { MessageView } from "./MessageView";
-import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { ChatInput, type ChatInputHandle, type AttachedImage } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
-import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
+import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -40,6 +40,7 @@ import {
   MOUNT_WINDOW_SHIFT,
   MOUNTED_GROUP_LIMIT,
   restoreScrollTop,
+  shouldApplyPromptAnchorHeight,
 } from "@/lib/chat-lazy-load";
 
 interface Props {
@@ -81,21 +82,17 @@ interface Props {
   unlockAudio?: () => void;
 }
 
-function phaseLabel(phase: AgentPhase, t: (key: string, params?: Record<string, string | number>) => string): string | null {
-  if (phase?.kind === "running_tools") {
-    const latest = phase.tools[phase.tools.length - 1];
-    if (latest?.progress) {
-      return `${t("chat.runningNamedTool", { name: latest.name })} ${latest.progress}`;
-    }
-    const names = phase.tools.map((t) => t.name);
-    if (names.length === 0) return t("chat.runningTool");
-    if (names.length === 1) return t("chat.runningNamedTool", { name: names[0] });
-    if (names.length <= 3) return t("chat.runningTools", { names: names.join(", ") });
-    return t("chat.runningToolsMore", { names: names.slice(0, 2).join(", "), count: names.length - 2 });
-  }
-  if (phase?.kind === "waiting_model") return t("chat.waitingModel");
-  if (phase?.kind === "running_command") return t("chat.runningCommand");
-  return null;
+function ActivityPulse({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      aria-label={label}
+      className="flex h-[30px] items-center px-2"
+      style={{ marginBottom: 10 }}
+    >
+      <LivePulseBeacon size={14} />
+    </div>
+  );
 }
 
 const CHAT_COLUMN_PADDING = 16;
@@ -248,12 +245,15 @@ function isLiveProcessActivity(
   isStreaming: boolean,
   streamingMessage: AssistantMessage | null,
   phase: AgentPhase,
+  hasAnswer = false,
 ): boolean {
   if (!isLiveTail) return false;
   if (phase?.kind === "running_tools") return true;
-  if (!isStreaming) return false;
   const lastBlock = lastStreamingBlock(streamingMessage);
-  return lastBlock?.type === "thinking" || lastBlock?.type === "toolCall";
+  if (isStreaming && (lastBlock?.type === "thinking" || lastBlock?.type === "toolCall")) {
+    return true;
+  }
+  return !hasAnswer;
 }
 
 function liveProcessSummary(
@@ -376,13 +376,14 @@ function ProcessDetailsGroup({
           strokeLinejoin="round"
           style={{
             flexShrink: 0,
+            display: "block",
             transform: isPanelOpen ? "rotate(90deg)" : "none",
             transition: "transform 0.15s ease",
           }}
         >
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)", flexShrink: 0 }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)", flexShrink: 0, lineHeight: 1 }}>
           {stepsLabel}
         </span>
         {isStreaming && (
@@ -400,17 +401,7 @@ function ProcessDetailsGroup({
               whiteSpace: "nowrap",
             }}
           >
-            <span
-              className="animate-pulse"
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: "50%",
-                background: "var(--accent)",
-                flexShrink: 0,
-              }}
-              aria-hidden="true"
-            />
+            <LivePulseBeacon size={14} />
             {activeStepSummary && (
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {activeStepSummary}
@@ -500,7 +491,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionStatuses, extensionWidgets, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
+    notices, extensionDialog, extensionCustomUi, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -518,6 +509,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     deferInitialScroll: Boolean(pendingScrollRestore),
   });
   const sessionBusy = agentRunning || bashRunning;
+  const cachePromptTokens = sessionStats
+    ? sessionStats.tokens.input + sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite
+    : 0;
+  const cacheHitRate = sessionStats && cachePromptTokens > 0
+    ? (sessionStats.tokens.cacheRead / cachePromptTokens) * 100
+    : null;
   const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [quotedSelection, setQuotedSelection] = useState<{
@@ -1203,6 +1200,29 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [pendingOutlineJump, entryIds, keepBoundedWindow, messages.length, mountLimit, unmountedNewerCount, scrollToMessage]);
 
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
+  const currentTurnHasVisibleOutput = useMemo(() => {
+    let anchorIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index--) {
+      if (isMessageGroupAnchor(messages[index])) {
+        anchorIndex = index;
+        break;
+      }
+    }
+    for (let index = anchorIndex + 1; index < messages.length; index++) {
+      const message = messages[index];
+      if (message.role === "custom") return true;
+      if (message.role !== "assistant") continue;
+      if (getDisplayableAssistantBlocks(message).length > 0 || getAssistantErrorMessage(message)) return true;
+    }
+    return false;
+  }, [messages]);
+  const hasSeenTurnOutputRef = useRef(false);
+  useEffect(() => {
+    if (currentTurnHasVisibleOutput || Boolean(streamState.streamingMessage?.content.length)) {
+      hasSeenTurnOutputRef.current = true;
+    }
+  }, [currentTurnHasVisibleOutput, streamState.streamingMessage?.content.length]);
+
   const streamingAssistant = streamState.streamingMessage?.role === "assistant"
     ? streamState.streamingMessage as AssistantMessage
     : null;
@@ -1240,6 +1260,18 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         || promptAnchorSpacerRef.current !== spacer
       ) return;
 
+      // Hidden tabs (`display: none`) report clientHeight 0. Measuring against
+      // that collapses the spacer; the next visible step would re-inflate it
+      // and live-follow would jump the transcript. Collapse without consuming
+      // the send-time initial measurement, then refuse to grow again.
+      if (container.clientHeight <= 0) {
+        if (promptAnchorAdjustmentDoneRef.current && promptAnchorSpacerHeightRef.current !== 0) {
+          promptAnchorSpacerHeightRef.current = 0;
+          spacer.style.height = "";
+        }
+        return;
+      }
+
       const containerTop = container.getBoundingClientRect().top;
       const userMessageTop = userMessage.getBoundingClientRect().top
         - containerTop
@@ -1256,9 +1288,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
       const isInitialMeasurement = !promptAnchorAdjustmentDoneRef.current;
       const needsInitialAdjustment = isInitialMeasurement
+        && !hasSeenTurnOutputRef.current
         && nextPromptAnchorSpacerHeight > 0;
       if (isInitialMeasurement) promptAnchorAdjustmentDoneRef.current = true;
-      if (nextPromptAnchorSpacerHeight === promptAnchorSpacerHeightRef.current) return;
+      if (!shouldApplyPromptAnchorHeight(
+        nextPromptAnchorSpacerHeight,
+        promptAnchorSpacerHeightRef.current,
+        isInitialMeasurement,
+      )) return;
 
       promptAnchorSpacerHeightRef.current = nextPromptAnchorSpacerHeight;
       spacer.style.height = nextPromptAnchorSpacerHeight > 0
@@ -1298,6 +1335,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     agentRunning,
     lastUserMsgRef,
     messages.length,
+    isFocusedPane,
     promptAnchorActive,
     scrollContainerRef,
     scrollUserMsgToTop,
@@ -1307,6 +1345,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     promptAnchorUpdateRef.current?.();
   }, [streamState.streamingMessage]);
 
+  const wasFocusedPaneRef = useRef(isFocusedPane);
+  useLayoutEffect(() => {
+    const wasFocused = wasFocusedPaneRef.current;
+    wasFocusedPaneRef.current = isFocusedPane;
+    if (wasFocused && !isFocusedPane) {
+      promptAnchorUpdateRef.current?.();
+    }
+    if (!wasFocused && isFocusedPane) {
+      if (sessionBusy && !showScrollBottom) {
+        scrollToBottom("instant");
+      }
+    }
+  }, [isFocusedPane, sessionBusy, showScrollBottom, scrollToBottom]);
+
   const availableThinkingLevels = displayModelValue
     ? (modelThinkingLevels[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
@@ -1315,10 +1367,23 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     ? (modelThinkingLevelMaps[`${displayModelValue.provider}:${displayModelValue.modelId}`] ?? null)
     : null;
 
+  const handleChatSend = useCallback(async (message: string, images?: AttachedImage[]) => {
+    hasSeenTurnOutputRef.current = false;
+    outlineJumpControllerRef.current?.abort();
+    setPendingOutlineJump(null);
+    setPendingSearchScroll(null);
+    setUnmountedNewerCount(0);
+    setMountLimit(MOUNTED_GROUP_LIMIT);
+    await handleSend(message, images);
+    requestAnimationFrame(() => {
+      scrollUserMsgToTop();
+    });
+  }, [handleSend, scrollUserMsgToTop]);
+
   const chatInputElement = (
     <ChatInput
       ref={setChatInputElement}
-      onSend={handleSend}
+      onSend={handleChatSend}
       onAbort={handleAbort}
       onSteer={agentRunning ? handleSteer : undefined}
       onFollowUp={agentRunning ? handleFollowUp : undefined}
@@ -1338,6 +1403,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       compactError={compactError}
       compactResult={compactResult}
       contextUsage={contextUsage}
+      cacheHitRate={cacheHitRate}
       onOpenSessionStats={onSessionStatsPanelOpen}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
@@ -1374,7 +1440,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         </div>
         <div className="relative shrink-0">
           {chatInputElement}
-          <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
         </div>
       </div>
     );
@@ -1586,7 +1651,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                         defaultExpanded
                         isMobile={isMobile}
                         activeStepSummary={liveProcessSummary(streamingParts.processMessage, agentPhase, t)}
-                        isStreaming={isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase)}
+                        isStreaming={isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage))}
                         t={t}
                       >
                         <MessageView
@@ -1662,11 +1727,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   );
                 }
 
+                const hasLiveAnswer = Boolean(finalAnswerMessage || streamingParts.answerMessage);
                 const liveProcessActive = isLiveProcessActivity(
                   isLiveTail,
                   streamState.isStreaming,
                   streamingAssistant,
                   agentPhase,
+                  hasLiveAnswer,
                 );
                 const activeStepSummary = liveProcessSummary(streamingAssistant, agentPhase, t);
 
@@ -1734,27 +1801,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               );
             })()}
             {streamState.isStreaming && streamingParts.answerMessage && (
-              <>
-                <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
-                <div
-                  className="flex items-center gap-1.5 py-0.5 text-[11px] sm:text-xs text-text-muted font-mono select-none overflow-hidden whitespace-nowrap min-w-0"
-                  style={{ marginTop: 2 }}
-                >
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-                </div>
-              </>
+              <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
             )}
 
-            {agentRunning && !hasStreamingContent && agentPhase && (
-              <div className="break-words py-2 text-[13px] text-text-muted">
-                <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t)}</span>
-              </div>
+            {agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput && (
+              <ActivityPulse label={t("chat.agentWorking")} />
             )}
 
             {bashRunning && !pendingBash && (
-              <div className="py-2 text-[13px] text-text-muted">
-                 <span className="animate-[pulse_1.5s_infinite]">{t("chat.runningCommand")}</span>
-              </div>
+              <ActivityPulse label={t("chat.agentWorking")} />
             )}
 
             {pendingBash && (
@@ -1899,7 +1954,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           </div>
         )}
         {chatInputElement}
-        <ExtensionStatusBar statuses={extensionStatuses} widgets={extensionWidgets} />
       </div>
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>

@@ -31,11 +31,12 @@ export function TurnWrittenFiles({ files, onOpenFile }: {
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 4.5,
-              padding: "2px 7px",
+              gap: 5,
+              padding: "2.5px 7px",
               minHeight: 22,
               fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
               fontFamily: "var(--font-mono)",
+              lineHeight: 1,
               color: "var(--text-muted)",
               background: "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))",
               border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
@@ -52,8 +53,10 @@ export function TurnWrittenFiles({ files, onOpenFile }: {
               e.currentTarget.style.color = "var(--text-muted)";
             }}
           >
-            {getFileIcon(name, 12)}
-            <span>{name}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transform: "translateY(0.5px)" }}>
+              {getFileIcon(name, 12)}
+            </span>
+            <span style={{ lineHeight: 1 }}>{name}</span>
           </button>
         );
       })}

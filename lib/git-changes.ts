@@ -35,9 +35,50 @@ async function findRepositoryRoot(cwd: string): Promise<string | null> {
   }
 }
 
-function isWithinPath(parent: string, target: string): boolean {
-  const relative = path.relative(path.resolve(parent), path.resolve(target));
-  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+function realPathOrSelf(filePath: string): string {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    return path.resolve(filePath);
+  }
+}
+
+function isEscapingRelative(relative: string): boolean {
+  return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+}
+
+/**
+ * Map a repo-relative git path onto the explorer cwd's spelling so tree nodes
+ * match. Containment uses realpath so a symlink cwd and git's toplevel still
+ * agree. Files outside cwd are dropped.
+ */
+export function toCwdSpelledGitPath(
+  cwd: string,
+  repositoryRoot: string,
+  gitRelativePath: string,
+): string | null {
+  const realCwd = realPathOrSelf(cwd);
+  const realRoot = realPathOrSelf(repositoryRoot);
+  const absFromRoot = path.resolve(realRoot, gitRelativePath);
+  const relFromCwd = path.relative(realCwd, absFromRoot);
+  if (isEscapingRelative(relFromCwd)) return null;
+  const cwdPrefix = cwd.replace(/[\\/]+$/, "") || cwd;
+  if (!relFromCwd || relFromCwd === ".") return cwdPrefix;
+  return `${cwdPrefix}/${relFromCwd.split(path.sep).join("/")}`;
+}
+
+function toRepoRelativePath(cwd: string, repositoryRoot: string, filePath: string): string | null {
+  const realRoot = realPathOrSelf(repositoryRoot);
+  const realCwd = realPathOrSelf(cwd);
+  const resolvedFile = path.resolve(filePath);
+  let rel = path.relative(realRoot, resolvedFile);
+  if (isEscapingRelative(rel)) {
+    const relFromCwd = path.relative(path.resolve(cwd), resolvedFile);
+    if (isEscapingRelative(relFromCwd)) return null;
+    rel = path.relative(realRoot, path.resolve(realCwd, relFromCwd));
+  }
+  if (isEscapingRelative(rel)) return null;
+  return toGitPath(rel);
 }
 
 function toGitPath(filePath: string): string {
@@ -58,7 +99,7 @@ async function readTrackedLineStats(
   repositoryRoot: string,
   cwd: string,
 ): Promise<{ additions: number; deletions: number }> {
-  const relativeCwd = toGitPath(path.relative(repositoryRoot, cwd));
+  const relativeCwd = toGitPath(path.relative(realPathOrSelf(repositoryRoot), realPathOrSelf(cwd)));
   const pathspec = relativeCwd || ".";
   try {
     const output = await git(repositoryRoot, [
@@ -116,8 +157,8 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResponse> {
     readTrackedLineStats(repositoryRoot, cwd),
   ]);
   const files = entries.flatMap((entry): GitFileStatus[] => {
-    const filePath = path.resolve(repositoryRoot, entry.path);
-    if (!isWithinPath(cwd, filePath)) return [];
+    const filePath = toCwdSpelledGitPath(cwd, repositoryRoot, entry.path);
+    if (!filePath) return [];
     const classified = classifyGitStatus(entry);
     return [{
       filePath,
@@ -187,10 +228,10 @@ async function createTrackedFilePatch(
 
 export async function getGitFileDiff(cwd: string, filePath: string): Promise<GitFileDiffResponse> {
   const repositoryRoot = await findRepositoryRoot(cwd);
-  if (!repositoryRoot || !isWithinPath(repositoryRoot, filePath)) return { supported: false };
+  const relativePath = repositoryRoot ? toRepoRelativePath(cwd, repositoryRoot, filePath) : null;
+  if (!repositoryRoot || relativePath === null) return { supported: false };
 
   const resolvedFilePath = path.resolve(filePath);
-  const relativePath = toGitPath(path.relative(repositoryRoot, resolvedFilePath));
   const entries = await readStatusEntries(repositoryRoot);
   const entry = entries.find((candidate) => candidate.path === relativePath);
   if (!entry) return { supported: false };

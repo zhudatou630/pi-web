@@ -109,8 +109,101 @@ test("keeps the main composer compact in idle and streaming states", () => {
     assert.match(html, /padding:4px 6px 4px 10px/);
     assert.match(html, /<textarea[^>]*rows="1"[^>]*min-height:24px;max-height:200px/);
     const buttons = html.match(/<button[^>]*height:28px;padding:0 10px[^>]*>/g) ?? [];
-    assert.equal(buttons.length, isStreaming ? 2 : 1);
+    assert.equal(buttons.length, 1);
   }
+
+  const draftKey = "test:composer-streaming-intervene";
+  try {
+    setDraft(draftKey, { value: "wait", images: [] });
+    const html = renderToStaticMarkup(React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(ChatInput, {
+        onSend() {}, onAbort() {}, onSteer() {}, onFollowUp() {}, isStreaming: true, draftKey,
+      }),
+    ));
+    const buttons = html.match(/<button[^>]*height:28px;padding:0 10px[^>]*>/g) ?? [];
+    assert.equal(buttons.length, 2);
+  } finally {
+    clearDraft(draftKey);
+  }
+});
+
+test("shows context as a compact ring with cache beside it", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: false,
+      contextUsage: { percent: 17, contextWindow: 872000, tokens: 150000 },
+      cacheHitRate: 98,
+      onOpenSessionStats() {},
+    }),
+  ));
+  const meter = html.match(/<button[^>]*data-top-panel-trigger="session"[\s\S]*?<\/button>/)?.[0];
+  assert.ok(meter);
+  assert.match(meter, /viewBox="0 0 16 16"/);
+  assert.match(meter, /stroke-dasharray="17 100"/);
+  assert.match(meter, /stroke="currentColor"/);
+  assert.match(meter, /150k\/872k/);
+  assert.match(meter, />98%<\/span>/);
+  assert.doesNotMatch(meter, /98% cache/);
+  assert.doesNotMatch(meter, /--text-dim/);
+  assert.match(html, /data-top-panel-trigger="session"/);
+  assert.match(html, /aria-controls="workspace-top-panel"/);
+  assert.doesNotMatch(html, /width:42px;height:4px/);
+});
+
+test("orders toolbar controls as effort, context, tools, compact", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: false,
+      onThinkingLevelChange() {},
+      thinkingLevel: "high",
+      onToolPresetChange() {},
+      toolPreset: "default",
+      contextUsage: { percent: 17, contextWindow: 500000, tokens: 43000 },
+      cacheHitRate: 88,
+      onCompact() {},
+    }),
+  ));
+  const effort = html.indexOf("Change reasoning level");
+  const context = html.indexOf("43k/500k");
+  const tools = html.indexOf("Change tool preset");
+  const compact = html.indexOf("Compact context");
+  assert.ok(effort >= 0, "effort control");
+  assert.ok(context > effort, "context after effort");
+  assert.ok(tools > context, "tools after context");
+  assert.ok(compact > tools, "compact after tools");
+});
+
+test("keeps effort visible but locked while streaming", () => {
+  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /\{onThinkingLevelChange && \(/);
+  assert.doesNotMatch(source, /ThinkingIcon active=\{thinkingLevel/);
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: true,
+      onThinkingLevelChange() {},
+      thinkingLevel: "high",
+      onToolPresetChange() {},
+      onCompact() {},
+    }),
+  ));
+  assert.match(html, /aria-label="Change reasoning level"/);
+  assert.match(html, />high<\/span>/);
+  assert.doesNotMatch(html, /Change tool preset/);
+  assert.doesNotMatch(html, /Compact context/);
 });
 
 test("keeps empty Send quiet and highlights text or image submissions", () => {
@@ -149,10 +242,31 @@ test("uses a short mobile Options label while preserving the descriptive accessi
   const options = source.slice(start, source.indexOf("</button>", start));
   assert.match(options, /aria-label=\{t\("chat.moreControls"\)\}/);
   assert.match(options, /<span>\{t\("chat.inputOptions"\)\}<\/span>/);
-  assert.match(options, /<svg width="16" height="16"[^>]*strokeWidth="1\.8"/);
+  assert.match(options, /<svg width="14" height="14"[^>]*strokeWidth="1\.8"/);
+  assert.match(options, /fontWeight:\s*400/);
   assert.match(options, /height:\s*isMobile \? 32 : 28/);
+  assert.match(options, /padding:\s*isMobile \? "0 6px" : "0 10px"/);
   assert.match(options, /aria-hidden=\{controlsMenuOpen \|\| undefined\}/);
   assert.match(options, /tabIndex=\{controlsMenuOpen \? -1 : undefined\}/);
+});
+
+test("aligns mobile toolbar options and collapse controls with model selector style", () => {
+  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  // Compact attach button in mobile to reduce gap to model selector
+  assert.match(source, /width:\s*isMobile \? 24 : 28/);
+  assert.match(source, /gap:\s*isMobile \? 1 : 2/);
+  // Controls menu hover protections for mobile touch
+  assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?thinkingDropdownOpen/);
+  assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?toolDropdownOpen/);
+  assert.match(source, /if \(isMobile \|\| \(isStreaming && !isCompacting\)\) return;/);
+  // Collapse controls button styled consistently with text-muted and no heavy background block
+  const collapseStart = source.indexOf('title={t("chat.collapseControls")}');
+  assert.ok(collapseStart >= 0);
+  const collapseButton = source.slice(collapseStart, source.indexOf("</button>", collapseStart));
+  assert.match(collapseButton, /color:\s*"var\(--text-muted\)"/);
+  assert.match(collapseButton, /background:\s*"none"/);
+  assert.doesNotMatch(collapseButton, /borderLeft/);
+  assert.match(collapseButton, /<svg width="14" height="14"[^>]*strokeWidth="1\.8"/);
 });
 
 test("keeps the message input free of hints but accessible", () => {
@@ -174,14 +288,20 @@ test("keeps the message input free of hints but accessible", () => {
 });
 
 test("shows the follow-up shortcut in the button tooltip", () => {
-  const html = renderToStaticMarkup(
-    React.createElement(I18nProvider, null, React.createElement(ChatInput, {
-      onSend() {}, onAbort() {}, onFollowUp() {}, isStreaming: true,
-    })),
-  );
+  const draftKey = "test:follow-up-tooltip";
+  try {
+    setDraft(draftKey, { value: "queue next", images: [] });
+    const html = renderToStaticMarkup(
+      React.createElement(I18nProvider, null, React.createElement(ChatInput, {
+        onSend() {}, onAbort() {}, onFollowUp() {}, isStreaming: true, draftKey,
+      })),
+    );
 
-  assert.match(html, /title="Queue this message after the agent finishes \(Alt\/Option\+Enter\)"/);
-  assert.match(html, /aria-keyshortcuts="Alt\+Enter"/);
+    assert.match(html, /title="Queue this message after the agent finishes \(Alt\/Option\+Enter\)"/);
+    assert.match(html, /aria-keyshortcuts="Alt\+Enter"/);
+  } finally {
+    clearDraft(draftKey);
+  }
 });
 
 test("renders the upstream model error", () => {
@@ -334,12 +454,14 @@ test("shows and locks the optimistic model while a switch is pending", () => {
   assert.match(html, /animation:spin 0\.8s linear infinite/);
 });
 
-test("keeps the model name left aligned beside its icon", () => {
+test("keeps the toolbar model name left aligned without a chip icon", () => {
   const html = renderToStaticMarkup(React.createElement(ModelSelector, {
     options: [{ provider: "openai", modelId: "gpt-test", name: "GPT Test" }],
     value: { provider: "openai", modelId: "gpt-test" }, onChange() {},
   }));
   assert.match(html, /justify-content:flex-start;text-align:left;gap:6px/);
+  assert.match(html, />GPT Test</);
+  assert.doesNotMatch(html, /<rect x="4" y="4" width="16" height="16"/);
 });
 
 test("renders the shared field model selector as a disabled gray control", () => {
@@ -364,6 +486,7 @@ test("renders the shared field model selector as a disabled gray control", () =>
   assert.match(html, /disabled=""/);
   assert.match(html, /background:var\(--bg-panel\)/);
   assert.match(html, />Parent default</);
+  assert.match(html, /<rect x="4" y="4" width="16" height="16"/);
 });
 
 test("caps an upward menu to the visible space above its anchor", () => {

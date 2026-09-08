@@ -78,3 +78,18 @@ export function getPromptAnchorSpacerHeight(
     clampedTargetTop + clientHeight - Math.max(0, contentEnd),
   ));
 }
+
+/**
+ * After the send-time pin, the spacer may only shrink as the reply grows.
+ * Hidden tabs measure `clientHeight = 0` and would otherwise collapse then
+ * re-inflate on the next visible step, jumping the transcript.
+ */
+export function shouldApplyPromptAnchorHeight(
+  nextHeight: number,
+  currentHeight: number,
+  isInitialMeasurement: boolean,
+): boolean {
+  if (nextHeight === currentHeight) return false;
+  if (!isInitialMeasurement && nextHeight > currentHeight) return false;
+  return true;
+}

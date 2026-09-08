@@ -13,6 +13,7 @@ import {
   openDraftInTabs,
   closeChatTab,
   getDraftTabTitle,
+  chatTabMountKey,
   promoteDraftToSession,
   type ChatTabItem,
 } from "@/lib/chat-tab-state";
@@ -21,6 +22,7 @@ import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { openFileTab, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
+import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
 import { SessionHistoryControl } from "./SessionHistoryControl";
@@ -47,12 +49,7 @@ import {
 import { setupPushSubscription } from "@/lib/push-client";
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { clearDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
-import {
-  clearLastOpen,
-  getLastOpenSession,
-  setLastOpenSession,
-  workspaceKeyOf,
-} from "@/lib/workspace-memory";
+import { workspaceKeyOf } from "@/lib/workspace-key";
 import {
   getDefaultRightPanelWidth,
   getChatSplitRatioBounds,
@@ -143,8 +140,19 @@ export function AppShell() {
     }
   }, []);
   const notifiedAttentionRequestIdsRef = useRef(new Set<string>());
-  const handleBackgroundTaskDone = useCallback(() => {
-    if (soundEnabledRef.current) playDoneSound();
+  const handleBackgroundTaskDone = useCallback((completedSessionIds?: string[]) => {
+    if (!soundEnabledRef.current) return;
+    const openTabSessionIds = new Set(
+      chatTabsRef.current
+        .filter((tab) => tab.kind === "session" && tab.session)
+        .map((tab) => tab.session!.id),
+    );
+    const hasUnmountedCompletion = completedSessionIds && completedSessionIds.length > 0
+      ? completedSessionIds.some((id) => !openTabSessionIds.has(id))
+      : true;
+    if (hasUnmountedCompletion) {
+      playDoneSound();
+    }
   }, [playDoneSound, soundEnabledRef]);
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
@@ -549,10 +557,10 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (!isMobile || !sidebarOpen) return;
+    if (!isMobile || !sidebarOpen || !mobileSidebarReady) return;
     const frame = requestAnimationFrame(() => {
       const panel = sidebarResizer.panelRef.current;
-      panel?.querySelector<HTMLElement>('[aria-current="page"], button:not(:disabled)')?.focus();
+      panel?.querySelector<HTMLElement>('[aria-current="page"], button:not([data-sidebar-brand]):not(:disabled)')?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -564,7 +572,7 @@ export function AppShell() {
       cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [dismissMobileSidebar, isMobile, sidebarOpen, sidebarResizer.panelRef]);
+  }, [dismissMobileSidebar, isMobile, mobileSidebarReady, sidebarOpen, sidebarResizer.panelRef]);
 
   const handleMobileToolbarMoreToggle = useCallback(() => {
     setSidebarOpen(false);
@@ -737,28 +745,8 @@ export function AppShell() {
   const initialSessionId = initialNavigation.sessionId;
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
   const activeProjectKeyRef = useRef<string | null>(null);
-  // True once the initial ?session= URL param has been resolved (or confirmed absent)
-  const [initialSessionRestored, setInitialSessionRestored] = useState<boolean>(() => !initialSessionId);
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
-  // Guards the async workspace restore so a slow response from an earlier
-  // switch cannot resurrect a session into a project the user already left.
-  const workspaceRestoreTokenRef = useRef(0);
-
-  const invalidateWorkspaceRestore = useCallback(() => {
-    workspaceRestoreTokenRef.current += 1;
-  }, []);
-
-  // Persist every active-session transition, including new and forked sessions
-  // that bypass the sidebar selection handler. Transient sessions do not yet
-  // carry projectKey, so use the active project identity until hydration.
-  useEffect(() => {
-    if (!selectedSession) return;
-    const projectKey = selectedSession.projectKey
-      ?? activeProjectKeyRef.current
-      ?? workspaceKeyOf(selectedSession);
-    setLastOpenSession(projectKey, selectedSession.id);
-  }, [selectedSession]);
 
   useEffect(() => {
     const requestedCwd = initialNavigation.requestedCwd;
@@ -798,61 +786,11 @@ export function AppShell() {
     return () => controller.abort();
   }, [initialNavigation]);
 
-  // Restore the workspace's last open session after switching to it. Called
-  // from handleCwdChange once the outgoing context has been reset. The session
-  // is looked up against the live list so a deleted or drifted session falls
-  // back to the default welcome page instead of erroring.
-  const restoreWorkspaceContext = useCallback((projectKey: string, cwd: string) => {
-    const token = ++workspaceRestoreTokenRef.current;
-    const lastOpenSessionId = getLastOpenSession(projectKey);
-    if (!lastOpenSessionId) return;
-    void fetch("/api/sessions")
-      .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
-      .then((d) => {
-        if (token !== workspaceRestoreTokenRef.current) return; // stale switch
-        const s = d?.sessions.find((x) => x.id === lastOpenSessionId);
-        if (!s) {
-          // The list loaded but the remembered session is gone — forget it.
-          // When the list itself failed (d === null) keep the memory so a
-          // later switch retries the restore.
-          if (d) clearLastOpen(projectKey);
-          return;
-        }
-        if (workspaceKeyOf(s) !== projectKey) {
-          // Defensive: the remembered session drifted out of this workspace.
-          clearLastOpen(projectKey);
-          return;
-        }
-        // Keep the temporary composer's draft in its cwd, even when the
-        // remembered session belongs to another worktree of this project.
-        const activeDraftKey = activeNewSessionDraftKeyRef.current;
-        if (activeDraftKey) {
-          rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(cwd));
-        }
-        activeNewSessionDraftKeyRef.current = null;
-        // Selecting the session must remount the chat with the session
-        // present: useAgentSession loads content in a mount-only effect, so
-        // the null-session welcome mount from the switch would never load
-        // the restored session's messages.
-        setSelectedSession(s);
-        setChatTabs((prev) => viewSessionInCurrentTab(prev, s, activeChatTabIdRef.current).tabs);
-        setActiveChatTabId(s.id);
-        setSessionKey((k) => k + 1);
-        if (new URLSearchParams(window.location.search).get("session") !== s.id) {
-          router.replace(`?session=${encodeURIComponent(s.id)}`, { scroll: false });
-        }
-      })
-      .catch(() => {
-        // Network hiccup: keep the remembered session for a later retry.
-      });
-  }, [router]);
-
   const handleCwdChange = useCallback((
     cwd: string | null,
     projectRoot?: string | null,
     projectKey?: string | null,
   ) => {
-    invalidateWorkspaceRestore();
     const currentFreshCwd = newSessionCwd ?? activeCwd;
     setActiveCwd(cwd);
     // Skip if cwd is null (initial mount).
@@ -917,16 +855,12 @@ export function AppShell() {
         setActiveFileTabId(null);
         setRightPanelOpen(false);
       }
-      // Restore the workspace we switched to: its last open session, or keep
-      // the default welcome page when none is remembered.
-      restoreWorkspaceContext(newProject, cwd);
     }
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [activeCwd, activeFileTabId, invalidateWorkspaceRestore, newSessionCwd, router, selectedSession, restoreWorkspaceContext]);
+  }, [activeCwd, activeFileTabId, newSessionCwd, router, selectedSession]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number) => {
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
-    invalidateWorkspaceRestore();
     const activeDraftKey = activeNewSessionDraftKeyRef.current;
     const activeDraftCwd = newSessionCwd ?? (selectedSession === null ? activeCwd : null);
     const activeTabId = isSplitActiveRef.current && activeChatPaneRef.current === "secondary"
@@ -1001,7 +935,6 @@ export function AppShell() {
     setSystemPrompt(null);
     setSystemTools(null);
     setSystemInfoLoading(false);
-    setInitialSessionRestored(true);
     // On mobile, collapse the overlay drawer so the chat is revealed after pick.
     if (isMobile && !isRestore) setSidebarOpen(false);
     if (isRestore) {
@@ -1014,10 +947,9 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [activeCwd, activeFileTabId, invalidateWorkspaceRestore, router, isMobile, newSessionCwd, selectedSession, syncSessionMetadata]);
+  }, [activeCwd, activeFileTabId, router, isMobile, newSessionCwd, selectedSession, syncSessionMetadata]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
-    invalidateWorkspaceRestore();
     const draftKey = `new:${sessionId}:${cwd}`;
     rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
     activeNewSessionDraftKeyRef.current = draftKey;
@@ -1050,7 +982,7 @@ export function AppShell() {
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [invalidateWorkspaceRestore, router, isMobile]);
+  }, [router, isMobile]);
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
@@ -1120,13 +1052,12 @@ export function AppShell() {
       return nextTabs;
     });
     if (activeNewSessionDraftKeyRef.current !== sourceDraftKey) return;
-    invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
     setNewSessionCwd(null);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
+  }, [router, hydrateSelectedSession]);
 
   const deliverSessionNotification = useCallback(({
     targetSession,
@@ -1205,6 +1136,7 @@ export function AppShell() {
 
     if (targetSession?.relation?.kind === "subagent") return;
     if (!shouldShowBrowserNotification()) return;
+
     deliverSessionNotification({
       targetSession,
       title: targetSession?.name ?? translate("i18n.sessionComplete"),
@@ -1296,14 +1228,13 @@ export function AppShell() {
     hydrateSelectedSession(newSessionId);
     if (!shouldFocus) return;
 
-    invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
     setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
     setSelectedSession(forkedSession);
     setActiveChatTabId(newSessionId);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [hydrateSelectedSession, invalidateWorkspaceRestore, router, selectedSession]);
+  }, [hydrateSelectedSession, router, selectedSession]);
 
   const handleAskInNewChat = useCallback(async (
     prompt: string,
@@ -1319,12 +1250,7 @@ export function AppShell() {
     handleSessionForked(result.newSessionId, sourceSessionId);
   }, [handleSessionForked, translate]);
 
-  const handleInitialRestoreDone = useCallback(() => {
-    setInitialSessionRestored(true);
-  }, []);
-
   const handleSessionDeleted = useCallback((sessionId: string) => {
-    invalidateWorkspaceRestore();
     setRefreshKey((k) => k + 1);
 
     // Any open tab pointing to the deleted session is closed immediately
@@ -1385,7 +1311,7 @@ export function AppShell() {
       setSystemInfoLoading(false);
       setActiveTopPanel(null);
     }
-  }, [activeCwd, invalidateWorkspaceRestore, router, translate]);
+  }, [activeCwd, router, translate]);
 
   const updateChatSplitRatio = useCallback((clientX: number) => {
     const container = chatPanesContainerRef.current;
@@ -1864,8 +1790,6 @@ export function AppShell() {
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const sessionHeaderReady = Boolean(selectedSession && sessionStats?.sessionId === selectedSession.id);
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
-  // While restoring initial session from URL, don't show the placeholder
-  const showPlaceholder = initialSessionRestored && !showChat;
 
   useEffect(() => {
     setProjectTrust(null);
@@ -1936,7 +1860,6 @@ export function AppShell() {
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
-        onInitialRestoreDone={handleInitialRestoreDone}
         refreshKey={refreshKey}
         onSessionDeleted={handleSessionDeleted}
         selectedCwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
@@ -2192,9 +2115,7 @@ export function AppShell() {
             className="workspace-header-action"
             data-mobile-toolbar-action={mobile ? "agents" : undefined}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="5" y="7" width="14" height="11" rx="2" /><path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
-            </svg>
+            <SubagentIcon size={13} strokeWidth={1.9} />
             <span
               aria-hidden="true"
               style={{
@@ -2280,7 +2201,7 @@ export function AppShell() {
           className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "system" : undefined}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemPrompt ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
             <line x1="8" y1="13" x2="16" y2="13" />
@@ -2318,7 +2239,7 @@ export function AppShell() {
           className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "tools" : undefined}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: systemTools?.some((tool) => tool.active) ? "var(--accent)" : "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
           </svg>
         </button>
@@ -2372,29 +2293,36 @@ export function AppShell() {
 
   const renderSessionStatsButton = (mobile: boolean) => {
     if (!mobile && (!showChat || !sessionHeaderReady)) return null;
+    const ctx = contextUsage ?? sessionStats?.contextUsage;
+    if (!sessionStats && (!mobile || !ctx)) return null;
 
     const tokens = sessionStats?.tokens;
     const cost = sessionStats?.cost ?? 0;
-    const formatCompact = (value: number) => value >= 1_000_000
-      ? `${(value / 1_000_000).toFixed(1)}M`
-      : value >= 1000
-        ? `${(value / 1000).toFixed(0)}k`
-        : String(value);
-    const costText = cost > 0 ? (cost >= 0.01 ? `$${cost.toFixed(2)}` : `<$0.01`) : null;
+    const costText = cost >= 0.01
+      ? `$${cost.toFixed(2)}`
+      : cost > 0
+        ? `<$0.01`
+        : "$0.00";
+    const cacheTotal = (tokens?.cacheRead ?? 0) + (tokens?.cacheWrite ?? 0);
+    const promptTotal = cacheTotal + (tokens?.input ?? 0);
+    const cacheHitRateVal = promptTotal > 0
+      ? (((tokens?.cacheRead ?? 0) / promptTotal) * 100)
+      : null;
 
-    let contextColor = "var(--text-muted)";
-    let desktopContextText: string | null = null;
-    let mobileContextText: string | null = null;
-    const ctx = contextUsage ?? sessionStats?.contextUsage;
-    if (ctx?.contextWindow) {
-      const percent = ctx.percent;
-      if (percent !== null && percent >= 85) contextColor = "#ef4444";
-      else if (percent !== null && percent >= 70) contextColor = "rgba(234,179,8,0.95)";
-      desktopContextText = percent !== null
-        ? `${percent.toFixed(0)}% / ${formatTokensK(ctx.contextWindow, locale)}`
-        : `? / ${formatTokensK(ctx.contextWindow, locale)}`;
-      mobileContextText = percent !== null ? `${percent.toFixed(0)}%` : null;
-    }
+    const windowTokens = ctx?.contextWindow ?? 0;
+    const ctxTokens = ctx?.tokens ?? null;
+    const percent = ctx?.percent ?? (ctxTokens !== null && windowTokens > 0 ? (ctxTokens / windowTokens) * 100 : null);
+    const clampedPercent = percent !== null ? Math.min(100, Math.max(0, percent)) : 0;
+    const isHigh = percent !== null && percent >= 85;
+    const isWarning = percent !== null && percent >= 70 && percent < 85;
+    const meterColor = isHigh
+      ? "#ef4444"
+      : isWarning
+        ? "rgba(234,179,8,0.95)"
+        : "var(--text-muted)";
+    const contextLabel = windowTokens > 0
+      ? (ctxTokens !== null ? `${formatTokensK(ctxTokens, locale)}/${formatTokensK(windowTokens, locale)}` : `?/${formatTokensK(windowTokens, locale)}`)
+      : null;
 
     const tooltipParts: string[] = [];
     if (tokens) {
@@ -2402,15 +2330,17 @@ export function AppShell() {
       tooltipParts.push(`out: ${tokens.output.toLocaleString(locale)}`);
       tooltipParts.push(`cache read: ${tokens.cacheRead.toLocaleString(locale)}`);
       tooltipParts.push(`cache write: ${tokens.cacheWrite.toLocaleString(locale)}`);
+      if (cacheHitRateVal !== null) {
+        tooltipParts.push(`${translate("session.cacheHitRate")}: ${cacheHitRateVal.toFixed(1)}%`);
+      }
       if (cost > 0) tooltipParts.push(`cost: $${cost.toFixed(4)}`);
     }
     if (ctx?.contextWindow) {
-      const percent = ctx.percent;
-      tooltipParts.push(`context: ${percent !== null ? percent.toFixed(1) + "%" : "unknown"} of ${ctx.contextWindow.toLocaleString()} tokens`);
+      const pct = ctx.percent;
+      tooltipParts.push(`context: ${pct !== null ? pct.toFixed(1) + "%" : "unknown"} of ${ctx.contextWindow.toLocaleString()} tokens`);
     }
     const tooltip = tooltipParts.join("  |  ");
     const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;
-    const hasMobileValues = Boolean(costText || mobileContextText);
 
     return (
       <button
@@ -2419,20 +2349,20 @@ export function AppShell() {
         disabled={!showChat || covered}
         tabIndex={covered ? -1 : undefined}
         title={tooltip || translate("session.title")}
-        aria-label={translate("session.title")}
+        aria-label={tooltip || translate("session.title")}
         aria-pressed={activeTopPanel === "session"}
         aria-expanded={activeTopPanel === "session"}
         aria-controls="workspace-top-panel"
         data-top-panel-trigger="session"
         aria-hidden={covered ? true : undefined}
-        className={`workspace-header-action${mobile ? " mobile-session-stats" : ""}`}
+        className="workspace-header-action"
         data-mobile-toolbar-stats={mobile ? "true" : undefined}
         style={{
           marginLeft: mobile ? 0 : "auto",
           display: "flex", alignItems: "center", justifyContent: "flex-end",
           flex: mobile ? 1 : undefined,
           minWidth: 0,
-          gap: mobile ? 7 : 10,
+          gap: mobile ? 8 : 10,
           paddingLeft: mobile ? 6 : 8,
           paddingRight: mobile ? 6 : 8,
           height: "100%",
@@ -2453,41 +2383,36 @@ export function AppShell() {
           event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
         }}
       >
-        {mobile ? (
-          <>
-            {costText && (
-              <span className="mobile-session-stat-cost" style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400, flexShrink: 0 }}>
-                {costText}
+        {mobile && contextLabel && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, lineHeight: 1, color: meterColor }}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "rotate(-90deg)" }}>
+              <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" opacity="0.22" />
+              <circle
+                cx="8"
+                cy="8"
+                r="5.5"
+                pathLength="100"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeDasharray={`${clampedPercent} 100`}
+                style={{ transition: "stroke-dasharray 0.3s ease" }}
+              />
+            </svg>
+            <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em", lineHeight: 1 }}>
+              {contextLabel}
+            </span>
+            {cacheHitRateVal !== null && (
+              <span style={{ lineHeight: 1 }}>
+                {cacheHitRateVal.toFixed(0)}%
               </span>
             )}
-            {mobileContextText && (
-              <span style={{ color: contextColor, flexShrink: 0, display: "flex", alignItems: "center", gap: 3.5 }}>
-                <span style={{ width: 5, height: 5, borderRadius: "50%", background: contextColor, flexShrink: 0 }} aria-hidden="true" />
-                {mobileContextText}
-              </span>
-            )}
-            {!hasMobileValues && showChat && (
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-dim)" }}>
-                {translate("session.title")}
-              </span>
-            )}
-          </>
-        ) : (
-          <>
-            {costText && (
-              <span style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400 }}>
-                {costText}
-              </span>
-            )}
-            {desktopContextText && (
-              <span style={{ display: "flex", alignItems: "center", gap: 4, color: contextColor, fontWeight: 400 }}>
-                <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M1 9 L1 5 Q1 1 5 1 Q9 1 9 5 L9 9" /><line x1="1" y1="9" x2="9" y2="9" />
-                </svg>
-                {desktopContextText}
-              </span>
-            )}
-          </>
+          </span>
+        )}
+        {costText && (
+          <span style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400, flexShrink: 0, lineHeight: 1 }}>
+            {costText}
+          </span>
         )}
       </button>
     );
@@ -2509,7 +2434,7 @@ export function AppShell() {
         className="workspace-header-action"
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
-          marginLeft: !mobile && !sessionStats && !contextUsage ? "auto" : 0,
+          marginLeft: !sessionStats && !contextUsage ? "auto" : 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
           visibility: covered ? "hidden" : "visible",
@@ -2550,14 +2475,6 @@ export function AppShell() {
       @media (prefers-reduced-motion: reduce) {
         .session-info-popover {
           animation: none;
-        }
-      }
-      .mobile-session-stats {
-        container-type: inline-size;
-      }
-      @container (max-width: 88px) {
-        .mobile-session-stat-cost {
-          display: none !important;
         }
       }
       @media (max-width: 640px) {
@@ -3195,9 +3112,10 @@ export function AppShell() {
                         .filter((t) => (isSplitActive ? t.id !== splitChatTabId : true))
                         .map((tab) => {
                           const isCurrent = tab.id === activeChatTabId;
+                          const mountKey = chatTabMountKey(tab);
                           return (
                             <div
-                              key={tab.id}
+                              key={mountKey}
                               style={{
                                 display: isCurrent ? "flex" : "none",
                                 flexDirection: "column",
@@ -3215,7 +3133,7 @@ export function AppShell() {
                                 tab.kind === "draft" ? tab.newSessionCwd : null,
                                 tab.kind === "draft" ? tab.newSessionDraftKey : null,
                                 isCurrent && activeChatPane === "primary",
-                                tab.id,
+                                mountKey,
                               )}
                             </div>
                           );
@@ -3279,7 +3197,7 @@ export function AppShell() {
                     {/* Secondary Pane Content Container */}
                     <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
                       <div
-                        key={secondaryTab.id}
+                        key={chatTabMountKey(secondaryTab)}
                         style={{
                           display: "flex",
                           flexDirection: "column",
@@ -3297,7 +3215,7 @@ export function AppShell() {
                           secondaryTab.kind === "draft" ? secondaryTab.newSessionCwd : null,
                           secondaryTab.kind === "draft" ? secondaryTab.newSessionDraftKey : null,
                           activeChatPane === "secondary",
-                          secondaryTab.id,
+                          chatTabMountKey(secondaryTab),
                         )}
                       </div>
                     </div>
@@ -3325,25 +3243,6 @@ export function AppShell() {
               </div>
               <div style={{ maxWidth: 720, fontSize: 12 }}>{initialCwdError}</div>
             </div>
-          ) : showPlaceholder ? (
-            activeCwd ? (
-              <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 15 }}>
-                 {translate("workspace.selectSession")}
-              </div>
-            ) : (
-              <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "flex-start", gap: 8, userSelect: "none", pointerEvents: "none" }}>
-                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.7, flexShrink: 0 }}>
-                  <line x1="20" y1="12" x2="4" y2="12" /><polyline points="10 6 4 12 10 18" />
-                </svg>
-                <div>
-                   <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>{translate("workspace.getStarted")}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
-                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>{translate("workspace.selectProject")}<br />
-                     <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>{translate("workspace.addModels")}
-                  </div>
-                </div>
-              </div>
-            )
           ) : null}
           </div>
         </div>

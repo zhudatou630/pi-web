@@ -21,7 +21,6 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
-import { getToolExecutionProgress } from "@/lib/tool-execution-progress";
 import {
   CHAT_SCROLL_REATTACH_TOLERANCE,
   CHAT_SCROLL_TAIL_TOLERANCE,
@@ -134,7 +133,7 @@ type NoticeAction =
 export type AgentPhase =
   | { kind: "waiting_model" }
   | { kind: "running_command" }
-  | { kind: "running_tools"; tools: { id: string; name: string; progress?: string }[] }
+  | { kind: "running_tools"; tools: { id: string; name: string }[] }
   | null;
 
 export interface CompactResultInfo {
@@ -1338,18 +1337,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "tool_execution_update": {
         const id = event.toolCallId as string;
         const name = event.toolName as string;
-        const progress = getToolExecutionProgress(event.partialResult);
         setAgentPhase((prev) => {
-          const tools = prev?.kind === "running_tools" ? [...prev.tools] : [];
+          const tools = prev?.kind === "running_tools" ? prev.tools : [];
           const existing = tools.find((tool) => tool.id === id);
-          const updated = {
-            id,
-            name: name || existing?.name || "tool",
-            progress: progress ?? existing?.progress,
-          };
+          const nextName = name || existing?.name || "tool";
+          if (existing?.name === nextName) return prev;
           return {
             kind: "running_tools",
-            tools: [...tools.filter((tool) => tool.id !== id), updated],
+            tools: [...tools.filter((tool) => tool.id !== id), { id, name: nextName }],
           };
         });
         break;
@@ -2090,8 +2085,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const scrollUserMsgToTop = useCallback(() => {
     const container = scrollContainerRef.current;
+    if (!container) return;
     const el = lastUserMsgRef.current;
-    if (!container || !el) return;
+    if (!el) {
+      if (liveFollowFrameRef.current !== null) {
+        cancelAnimationFrame(liveFollowFrameRef.current);
+        liveFollowFrameRef.current = null;
+      }
+      isNearBottomRef.current = true;
+      scrollToBottom("auto");
+      return;
+    }
     const elAbsTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
     const targetTop = Math.min(Math.max(0, elAbsTop - 16), maxScrollTop);
@@ -2103,7 +2107,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     isNearBottomRef.current = true;
     previousScrollTopRef.current = targetTop;
     container.scrollTo({ top: targetTop, behavior: "auto" });
-  }, []);
+  }, [scrollToBottom]);
 
   const handleScrollPositionChange = useCallback(() => {
     const container = scrollContainerRef.current;

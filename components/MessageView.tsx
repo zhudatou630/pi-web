@@ -425,40 +425,41 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           display: "flex", alignItems: "center", justifyContent: "flex-end",
           gap: 6, marginTop: 2,
         }}>
-          <div style={{
-            display: "flex", gap: 3,
-            opacity: hovered ? 1 : 0,
-            pointerEvents: hovered ? "auto" : "none",
-            transition: "opacity 0.12s",
-          }}>
+          <div
+            className="message-action-group"
+            style={{
+              opacity: hovered ? 1 : 0,
+              pointerEvents: hovered ? "auto" : "none",
+            }}
+          >
             <button
               type="button"
               className="message-action-button"
               data-copied={copied ? "true" : undefined}
               onClick={copyContent}
-              title={t("i18n.copyMessage")}
+              title={copied ? t("i18n.copied") : t("i18n.copyMessage")}
               aria-label={copied ? t("i18n.copied") : t("i18n.copy")}
             >
               {copied ? (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               ) : (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               )}
-              <span>{copied ? t("i18n.copied") : t("i18n.copy")}</span>
             </button>
           </div>
           {(canFork || canNavigate) && (
-            <div style={{
-              display: "flex", gap: 3,
-              opacity: (hovered || forking) ? 1 : 0,
-              pointerEvents: (hovered || forking) ? "auto" : "none",
-              transition: "opacity 0.12s",
-            }}>
+            <div
+              className="message-action-group"
+              style={{
+                opacity: (hovered || forking) ? 1 : 0,
+                pointerEvents: (hovered || forking) ? "auto" : "none",
+              }}
+            >
               {canNavigate && (
                 <button
                   type="button"
@@ -467,11 +468,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                   title={t("i18n.editFromHereTitle")}
                   aria-label={t("i18n.editFromHere")}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="15 10 20 15 15 20" />
                     <path d="M4 4v7a4 4 0 0 0 4 4h12" />
                   </svg>
-                  <span>{t("i18n.editFromHere")}</span>
                 </button>
               )}
               {canFork && (
@@ -483,13 +483,12 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                   title={forking ? t("i18n.creatingSession") : t("i18n.newSessionTitle")}
                   aria-label={forking ? t("i18n.creating") : t("i18n.newSession")}
                 >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <line x1="6" y1="3" x2="6" y2="15" />
                     <circle cx="18" cy="6" r="3" />
                     <circle cx="6" cy="18" r="3" />
                     <path d="M18 9a9 9 0 0 1-9 9" />
                   </svg>
-                  <span>{forking ? t("i18n.creating") : t("i18n.newSession")}</span>
                 </button>
               )}
             </div>
@@ -723,20 +722,19 @@ function AssistantMessageView({
               className="answer-copy-button message-action-button"
               data-copied={copied ? "true" : undefined}
               onClick={copyContent}
-              title={t("i18n.copyMessage")}
+              title={copied ? t("i18n.copied") : t("i18n.copyMessage")}
               aria-label={copied ? t("i18n.copied") : t("i18n.copy")}
             >
               {copied ? (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               ) : (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               )}
-              <span>{copied ? t("i18n.copied") : t("i18n.copy")}</span>
             </button>
           )}
           {time && <span style={{ color: "var(--text-dim)", fontSize: 10, fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
@@ -889,20 +887,20 @@ export function ThinkingBlock({ block, duration, startTime, isStreaming, session
             textAlign: "left",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, flexShrink: 0, opacity: 0.85 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85, transform: "translateY(0.5px)" }}>
             <ThinkingIcon active={expanded} size={12} />
           </div>
-          <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, flexShrink: 0 }}>
+          <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, lineHeight: 1, flexShrink: 0 }}>
             {t("i18n.thinking")}
           </span>
           {!expanded && (
-            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85 }}>
+            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1 }}>
               {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
             </span>
           )}
           {expanded && <div style={{ flex: 1 }} />}
           {duration !== undefined ? (
-            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{duration}s</span>
           ) : isStreaming && startTime ? (
             <LiveDuration startTime={startTime} />
           ) : null}
@@ -915,7 +913,7 @@ export function ThinkingBlock({ block, duration, startTime, isStreaming, session
             strokeWidth="1.4"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }}
+            style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }}
             aria-hidden="true"
           >
             <polyline points="2 3.5 5 6.5 8 3.5" />
@@ -998,19 +996,19 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             textAlign: "left",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, flexShrink: 0, opacity: 0.85 }}>
-            <ToolIcon toolName={block.toolName} isError={isError} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85, transform: "translateY(0.5px)" }}>
+            <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
-          <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, flexShrink: 0 }}>
+          <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, lineHeight: 1, flexShrink: 0 }}>
             {block.toolName}
           </span>
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85 }}>
+          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1 }}>
             {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}
           </span>
           {duration !== undefined && (
-            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{duration}s</span>
+            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{duration}s</span>
           )}
-          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
+          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>

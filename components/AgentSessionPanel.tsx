@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { SessionInfo, SubagentSessionStatus } from "@/lib/types";
+import { LivePulseBeacon } from "./LivePulseBeacon";
+import { SubagentIcon } from "./SubagentIcon";
 
 interface Props {
   rootSession: SessionInfo;
@@ -40,12 +42,7 @@ function statusColor(status: SubagentSessionStatus): string {
 
 function StatusIcon({ status }: { status: SubagentSessionStatus }) {
   if (status === "running" || status === "starting") {
-    return (
-      <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    );
+    return <LivePulseBeacon size={13} />;
   }
   if (status === "failed") {
     return (
@@ -129,12 +126,11 @@ function AgentRow({
       <span style={{ width: 28, height: 28, display: "grid", placeItems: "center", color: main ? "var(--text-muted)" : "var(--accent)" }}>
         {main ? (
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" />
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 9h18" />
           </svg>
         ) : (
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="5" y="7" width="14" height="11" rx="2" /><path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
-          </svg>
+          <SubagentIcon size={17} strokeWidth={1.8} />
         )}
       </span>
       <span style={{ minWidth: 0 }}>

@@ -14,10 +14,20 @@ test("keeps action icons inline in medium mobile sidebars", () => {
   assert.match(source, /\{isNarrowMobile && \([\s\S]*?data-mobile-toolbar-more="true"/);
 });
 
+test("closes the mobile overlay on load even before a chat destination exists", () => {
+  assert.match(
+    source,
+    /useEffect\(\(\) => \{\s*if \(isMobile\) setSidebarOpen\(false\);\s*\}, \[isMobile\]\);/,
+  );
+  assert.doesNotMatch(source, /if \(isMobile && showChat\) setSidebarOpen\(false\)/);
+  assert.doesNotMatch(source, /Keep the real project controls visible on an empty mobile workspace/);
+});
+
 test("removes the closed mobile sidebar from the accessibility tree", () => {
   assert.match(source, /aria-hidden=\{isMobile && !sidebarOpen \? true : undefined\}/);
   assert.match(source, /inert=\{isMobile && !sidebarOpen \? true : undefined\}/);
-  assert.match(source, /panel\?\.querySelector<HTMLElement>\('\[aria-current="page"\], button:not\(:disabled\)'\)\?\.focus\(\)/);
+  assert.match(source, /if \(!isMobile \|\| !sidebarOpen \|\| !mobileSidebarReady\) return/);
+  assert.match(source, /panel\?\.querySelector<HTMLElement>\('\[aria-current="page"\], button:not\(\[data-sidebar-brand\]\):not\(:disabled\)'\)\?\.focus\(\)/);
   assert.match(source, /event\.key !== "Escape"[\s\S]*?dismissMobileSidebar\(\)/);
   assert.match(source, /requestAnimationFrame\(\(\) => sidebarToggleRef\.current\?\.focus\(\)\)/);
 });
@@ -125,11 +135,11 @@ test("keeps the mobile action layer open after using an expanded action", () => 
   assert.match(source, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
 });
 
-test("prioritizes context and cost when the mobile statistics area narrows", () => {
-  assert.match(source, /\.mobile-session-stats \{[\s\S]*?container-type: inline-size/);
-  assert.doesNotMatch(source, /\.mobile-session-stat-io/);
-  assert.match(source, /@container \(max-width: 88px\)[\s\S]*?\.mobile-session-stat-cost/);
-  assert.match(source, /mobileContextText = percent !== null \? `\$\{percent\.toFixed\(0\)\}%` : null/);
+test("keeps the top session status limited to cost", () => {
+  const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
+  assert.match(stats, /const costText = cost >= 0\.01/);
+  assert.doesNotMatch(stats, /mobileContextText|desktopContextText|desktopCacheText|contextMeterFillColor/);
+  assert.doesNotMatch(source, /mobile-session-stat-cost|mobile-session-stats/);
 });
 
 test("keeps mobile toolbar free of session titles and preserves More placement", () => {
@@ -204,4 +214,18 @@ test("places trust warnings below the mobile toolbar and the file toggle in tool
   assert.match(source, /data-mobile-trust-banner=\{mobileBanner \? "true" : undefined\}/);
   assert.doesNotMatch(source, /File panel toggle — always visible at top-right/);
   assert.doesNotMatch(source, /position: "fixed", top: "env\(safe-area-inset-top\)"/);
+});
+
+test("keeps the file panel toggle right-aligned when session stats are absent", () => {
+  const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
+  assert.match(fileToggle, /marginLeft: !sessionStats && !contextUsage \? "auto" : 0/);
+  assert.doesNotMatch(fileToggle, /!mobile && !sessionStats/);
+});
+
+test("mobile session stats keep context ring and cache at the same gray", () => {
+  const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
+  assert.match(stats, /color: meterColor/);
+  assert.match(stats, /stroke="currentColor"/);
+  assert.doesNotMatch(stats, /meterFillColor/);
+  assert.doesNotMatch(stats, /color: "var\(--text-dim\)"/);
 });

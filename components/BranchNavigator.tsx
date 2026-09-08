@@ -296,7 +296,7 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
   const isEffectiveDisabled = disabled || !hasContent;
 
   const branchIcon = (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: isEffectiveDisabled ? "var(--text-dim)" : "var(--accent)", flexShrink: 0 }}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: isEffectiveDisabled ? "var(--text-dim)" : "var(--accent)", flexShrink: 0, display: "block", transform: "translateY(0.5px)" }}>
       <line x1="6" y1="3" x2="6" y2="15" />
       <circle cx="18" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
@@ -358,7 +358,7 @@ export function BranchNavigator({ tree, activeLeafId, onLeafChange, inline, cont
           aria-pressed={open}
         >
           {branchIcon}
-          {!compact && <span>{t("i18n.branches")}</span>}
+          {!compact && <span style={{ lineHeight: 1 }}>{t("i18n.branches")}</span>}
         </button>
         {open && dropdownPos && (
           <div style={{

@@ -4,6 +4,12 @@ import test from "node:test";
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 
+test("session clicks only move explorer for a different live worktree", () => {
+  assert.match(source, /shouldAdoptSessionCwd/);
+  assert.match(source, /worktrees: worktreeState\?\.worktrees/);
+  assert.doesNotMatch(source, /if \(s\.cwd\) setSelectedCwd\(s\.cwd\)/);
+});
+
 test("uses the server-resolved current worktree identity", () => {
   assert.match(source, /currentWorktreePath: string \| null/);
   assert.match(

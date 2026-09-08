@@ -257,7 +257,7 @@ test("post-accept prompt errors do not duplicate the user submission", () => {
   assert.doesNotMatch(promptErrorSource, /restoreSubmission/);
 });
 
-test("delegates event stream readiness and hides an empty agent phase", () => {
+test("delegates event stream readiness and hides activity once the turn has output", () => {
   const ensureSource = source.slice(
     source.indexOf("const ensureEventsConnected"),
     source.indexOf("const respondToExtensionUi"),
@@ -269,8 +269,8 @@ test("delegates event stream readiness and hides an empty agent phase", () => {
   assert.match(ensureSource, /eventConnectionRef\.current!\.maintain\(sid\)/);
   assert.match(chatWindowSource, /const hasStreamingContent = Boolean\(streamState\.streamingMessage\?\.content\.length\)/);
   assert.match(chatWindowSource, /streamState\.isStreaming && streamingParts\.answerMessage/);
-  assert.match(chatWindowSource, /agentRunning && !hasStreamingContent && agentPhase/);
-  assert.match(chatWindowSource, /return null;/);
+  assert.match(chatWindowSource, /agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput/);
+  assert.match(chatWindowSource, /if \(getDisplayableAssistantBlocks\(message\)\.length > 0 \|\| getAssistantErrorMessage\(message\)\) return true/);
 });
 
 test("uses one absolute agent-readiness deadline instead of a five-second transport deadline", () => {
@@ -340,16 +340,15 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
   assert.doesNotMatch(messageEndSource, /streamState\.streamingMessage/);
 });
 
-test("shows the latest streamed tool execution progress in the running phase", () => {
+test("keeps tool progress out of the running phase display", () => {
   const updateSource = source.slice(
     source.indexOf('case "tool_execution_update"'),
     source.indexOf('case "tool_execution_end"'),
   );
 
-  assert.match(updateSource, /getToolExecutionProgress\(event\.partialResult\)/);
-  assert.match(updateSource, /tools: \[\.\.\.tools\.filter\([\s\S]*?, updated\]/);
-  assert.match(chatWindowSource, /if \(latest\?\.progress\)/);
-  assert.match(chatWindowSource, /chat\.runningNamedTool[\s\S]*latest\.progress/);
+  assert.doesNotMatch(updateSource, /partialResult|progress/);
+  assert.match(updateSource, /if \(existing\?\.name === nextName\) return prev/);
+  assert.doesNotMatch(chatWindowSource, /latest\?\.progress|chat\.runningNamedTool/);
 });
 
 test("plays the enabled sound once for each extension dialog", () => {
@@ -518,6 +517,8 @@ test("keeps prompt anchor measurement outside the React update cycle", () => {
   assert.doesNotMatch(anchorSyncEffectSource, /\bset[A-Z][A-Za-z0-9]*\s*\(/);
   assert.doesNotMatch(chatWindowSource, /setPromptAnchorSpacer|useState[^\n]*promptAnchorSpacer/);
   assert.doesNotMatch(anchorLifecycleEffectSource, /streamState\.streamingMessage/);
+  assert.match(anchorLifecycleEffectSource, /container\.clientHeight <= 0/);
+  assert.match(anchorLifecycleEffectSource, /shouldApplyPromptAnchorHeight\(/);
   assert.match(anchorLifecycleEffectSource, /spacer\.style\.height = nextPromptAnchorSpacerHeight > 0/);
   assert.match(anchorLifecycleEffectSource, /promptAnchorUpdateRef\.current = updatePromptAnchorSpacer/);
   assert.match(anchorLifecycleEffectSource, /new ResizeObserver\(schedulePromptAnchorMeasure\)/);
@@ -527,6 +528,7 @@ test("keeps prompt anchor measurement outside the React update cycle", () => {
   assert.match(anchorLifecycleEffectSource, /disposed = true;[\s\S]*?promptAnchorUpdateRef\.current === updatePromptAnchorSpacer[\s\S]*?cancelAnimationFrame\(promptAnchorMeasureFrameRef\.current\)/);
   assert.match(anchorSyncEffectSource, /promptAnchorUpdateRef\.current\?\.\(\);\s*\}, \[streamState\.streamingMessage\]\)/);
   assert.match(chatWindowSource, /<div ref=\{messageContentRef\}[^>]*style=\{\{/);
+  assert.match(anchorSyncEffectSource, /wasFocused && !isFocusedPane/);
 });
 
 test("uses the prompt anchor as the only trailing message spacer", () => {

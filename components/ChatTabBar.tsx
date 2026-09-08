@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
+import { LivePulseBeacon } from "./LivePulseBeacon";
 
 interface Props {
   tabs: ChatTabItem[];
@@ -245,40 +246,26 @@ export function ChatTabBar({
               }}
               title={tab.title}
             >
-              {/* Tab Icon */}
-              <span
-                style={{
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: isRunning ? "var(--accent)" : isVisible ? "var(--text)" : "var(--text-dim)",
-                }}
-              >
-                {isRunning ? (
-                  <svg
-                    className="animate-spin"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    aria-label="Running"
-                  >
-                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.25" />
-                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-                  </svg>
-                ) : tab.kind === "draft" ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                  </svg>
-                )}
-              </span>
+              {/* Tab Icon: running beacon or draft indicator */}
+              {(isRunning || tab.kind === "draft") && (
+                <span
+                  style={{
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: isRunning ? "var(--accent)" : isVisible ? "var(--text)" : "var(--text-dim)",
+                  }}
+                >
+                  {isRunning ? (
+                    <LivePulseBeacon size={12} ariaLabel="Running" />
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  )}
+                </span>
+              )}
 
               {/* Title */}
               <span
@@ -571,10 +558,16 @@ export function ChatTabBar({
                       fontSize: 12,
                     }}
                   >
-                    <span
-                      aria-hidden="true"
-                      style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: running || tab.dirty ? "var(--accent)" : "transparent" }}
-                    />
+                    {running ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, flexShrink: 0 }}>
+                        <LivePulseBeacon size={10} />
+                      </span>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: tab.dirty ? "var(--accent)" : "transparent" }}
+                      />
+                    )}
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tab.title}</span>
                   </button>
                   <button

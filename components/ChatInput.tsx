@@ -24,6 +24,7 @@ import {
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
 import { FolderIcon, getFileIcon } from "./FileIcons";
+import { ThinkingIcon } from "./ThinkingIcon";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useI18n } from "@/hooks/useI18n";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
@@ -62,6 +63,7 @@ interface Props {
   compactError?: string | null;
   compactResult?: CompactResultInfo | null;
   contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
+  cacheHitRate?: number | null;
   onOpenSessionStats?: () => void;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
@@ -473,7 +475,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
-  contextUsage, onOpenSessionStats,
+  contextUsage, cacheHitRate, onOpenSessionStats,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -1465,6 +1467,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!isMobile) setControlsMenuOpen(false);
   }, [isMobile]);
 
+  useEffect(() => {
+    if (!isStreaming) return;
+    setThinkingDropdownOpen(false);
+    setToolDropdownOpen(false);
+  }, [isStreaming]);
+
   const historyListboxId = `${menuId}-history`;
   const slashListboxId = `${menuId}-slash`;
   const fileListboxId = `${menuId}-files`;
@@ -2018,10 +2026,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             fontFamily: "var(--font-mono)",
                           }}
                         >
-                          <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
+                          <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", transform: "translateY(0.5px)" }}>
                             {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}
                           </span>
-                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>
                             {dirPrefix && <span style={{ color: "var(--text-dim)" }}>{dirPrefix}</span>}
                             {name}
                             {entry.isDir && <span style={{ color: "var(--text-dim)" }}>/</span>}
@@ -2071,11 +2079,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 userSelect: "none",
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", transform: "translateY(0.5px)" }} aria-hidden="true">
                 <polyline points="4 17 10 11 4 5" />
                 <line x1="12" y1="19" x2="20" y2="19" />
               </svg>
-              <span>{bashExcluded ? "Local" : "Shell"}</span>
+              <span style={{ lineHeight: 1 }}>{bashExcluded ? "Local" : "Shell"}</span>
             </div>
           )}
           <textarea
@@ -2132,61 +2140,144 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           />
 
           {isStreaming ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, alignSelf: "flex-end" }}>
-              {onSteer && (
+            canQueueStreamingMessage ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, alignSelf: "flex-end" }}>
                 <button
+                  type="button"
                   className="chat-input-action"
-                  aria-label={t("chat.steer")}
-                  onClick={() => sendQueued("steer")}
-                  disabled={!canQueueStreamingMessage}
-                  title={t("chat.steerHint")}
+                  aria-label={t("chat.stop")}
+                  title={t("chat.stopAgent")}
+                  onClick={onAbort}
                   style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    height: isMobile ? 32 : 28,
-                    padding: "0 10px",
-                    background: canQueueStreamingMessage ? "var(--accent)" : "none",
-                    border: canQueueStreamingMessage ? "1px solid var(--accent)" : "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
-                    borderRadius: 4,
-                    color: canQueueStreamingMessage ? "#ffffff" : "var(--text-dim)",
-                    cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
-                    fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
-                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: isMobile ? 32 : 28, height: isMobile ? 32 : 28,
+                    padding: 0,
+                    background: "color-mix(in srgb, #ef4444 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, #ef4444 24%, transparent)",
+                    borderRadius: 5,
+                    color: "#ef4444",
+                    cursor: "pointer",
+                    transition: "background 0.15s, border-color 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "color-mix(in srgb, #ef4444 18%, transparent)";
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, #ef4444 40%, transparent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "color-mix(in srgb, #ef4444 10%, transparent)";
+                    e.currentTarget.style.borderColor = "color-mix(in srgb, #ef4444 24%, transparent)";
                   }}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M5 12h14m-6-6 6 6-6 6" />
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+                    <rect x="5.5" y="5.5" width="13" height="13" rx="2" fill="currentColor" />
                   </svg>
-                  <span className="chat-input-action-label">{t("chat.steer")}</span>
                 </button>
-              )}
-              {onFollowUp && (
-                <button
-                  className="chat-input-action"
-                  aria-label={t("chat.followUp")}
-                  onClick={() => sendQueued("followup")}
-                  disabled={!canQueueStreamingMessage}
-                  title={`${t("chat.followUpHint")} (${isMobile ? "Ctrl/Cmd+" : ""}Alt/Option+Enter)`}
-                  aria-keyshortcuts={isMobile ? "Control+Alt+Enter Meta+Alt+Enter" : "Alt+Enter"}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 5,
-                    height: isMobile ? 32 : 28,
-                    padding: "0 10px",
-                    background: canQueueStreamingMessage ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "none",
-                    border: canQueueStreamingMessage ? "1px solid color-mix(in srgb, var(--accent) 30%, transparent)" : "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
-                    borderRadius: 4,
-                    color: canQueueStreamingMessage ? "var(--accent)" : "var(--text-dim)",
-                    cursor: canQueueStreamingMessage ? "pointer" : "not-allowed",
-                    fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em",
-                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M12 17V5m-6 6 6-6 6 6M5 21h14" />
-                  </svg>
-                  <span className="chat-input-action-label">{t("chat.followUp")}</span>
-                </button>
-              )}
-            </div>
+                {onFollowUp && (
+                  <button
+                    className="chat-input-action"
+                    aria-label={t("chat.followUp")}
+                    onClick={() => sendQueued("followup")}
+                    title={`${t("chat.followUpHint")} (${isMobile ? "Ctrl/Cmd+" : ""}Alt/Option+Enter)`}
+                    aria-keyshortcuts={isMobile ? "Control+Alt+Enter Meta+Alt+Enter" : "Alt+Enter"}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      height: isMobile ? 32 : 28,
+                      padding: "0 10px",
+                      background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                      border: "1px solid color-mix(in srgb, var(--accent) 26%, transparent)",
+                      borderRadius: 5,
+                      color: "var(--accent)",
+                      cursor: "pointer",
+                      fontSize: 12.5, fontWeight: 600, letterSpacing: "-0.01em",
+                      lineHeight: 1,
+                      transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 16%, transparent)";
+                      e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 40%, transparent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 10%, transparent)";
+                      e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 26%, transparent)";
+                    }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
+                      <path d="M12 17V5m-6 6 6-6 6 6M5 21h14" />
+                    </svg>
+                    <span className="chat-input-action-label">{t("chat.followUp")}</span>
+                  </button>
+                )}
+                {onSteer && (
+                  <button
+                    className="chat-input-action"
+                    aria-label={t("chat.steer")}
+                    onClick={() => sendQueued("steer")}
+                    title={t("chat.steerHint")}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      height: isMobile ? 32 : 28,
+                      padding: "0 10px",
+                      background: "var(--accent)",
+                      border: "none",
+                      borderRadius: 5,
+                      color: "#ffffff",
+                      cursor: "pointer",
+                      fontSize: 12.5, fontWeight: 600, letterSpacing: "-0.01em",
+                      lineHeight: 1,
+                      transition: "background 0.12s, filter 0.12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.filter = "brightness(1.08)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.filter = "none";
+                    }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
+                      <path d="M5 12h14m-6-6 6 6-6 6" />
+                    </svg>
+                    <span className="chat-input-action-label">{t("chat.steer")}</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                className="chat-input-action"
+                aria-label={t("chat.stop")}
+                title={t("chat.stopAgent")}
+                onClick={onAbort}
+                style={{
+                  flexShrink: 0,
+                  alignSelf: "flex-end",
+                  display: "flex", alignItems: "center", gap: 5,
+                  height: isMobile ? 32 : 28,
+                  padding: "0 10px",
+                  background: "color-mix(in srgb, #ef4444 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, #ef4444 26%, transparent)",
+                  borderRadius: 5,
+                  color: "#ef4444",
+                  cursor: "pointer",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  lineHeight: 1,
+                  transition: "background 0.15s, border-color 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "color-mix(in srgb, #ef4444 18%, transparent)";
+                  e.currentTarget.style.borderColor = "color-mix(in srgb, #ef4444 40%, transparent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "color-mix(in srgb, #ef4444 12%, transparent)";
+                  e.currentTarget.style.borderColor = "color-mix(in srgb, #ef4444 26%, transparent)";
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+                  <rect x="5.5" y="5.5" width="13" height="13" rx="2" fill="currentColor" />
+                </svg>
+                <span className="chat-input-action-label">{t("chat.stop")}</span>
+              </button>
+            )
           ) : (
             <button
               className="chat-input-action"
@@ -2197,22 +2288,30 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               style={{
                 flexShrink: 0,
                 alignSelf: "flex-end",
-                display: "flex", alignItems: "center", gap: 6,
+                display: "flex", alignItems: "center", gap: 5,
                 height: isMobile ? 32 : 28,
                 padding: "0 10px",
                 background: canSendMessage ? "var(--accent)" : "none",
                 border: "none",
-                borderRadius: 4,
+                borderRadius: 5,
                 color: canSendMessage ? "#fff" : "var(--text-dim)",
+                opacity: canSendMessage ? 1 : 0.45,
                 cursor: canSendMessage ? "pointer" : "not-allowed",
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: 600,
                 letterSpacing: "-0.01em",
-                transition: "background 0.15s, color 0.15s",
+                lineHeight: 1,
+                transition: "background 0.15s, color 0.15s, opacity 0.15s, filter 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (canSendMessage) e.currentTarget.style.filter = "brightness(1.08)";
+              }}
+              onMouseLeave={(e) => {
+                if (canSendMessage) e.currentTarget.style.filter = "none";
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 12h14m-6-6 6 6-6 6" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
+                <path d="M12 19V5m-7 7 7-7 7 7" />
               </svg>
               <span className="chat-input-action-label">{t("chat.send")}</span>
             </button>
@@ -2238,14 +2337,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }}>
 
           {/* LEFT: attach + model selector (idle) or steer/followup toggle (streaming) */}
-          <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 2 }}>
+          <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: isMobile ? 1 : 2 }}>
             <button
               onClick={() => fileInputRef.current?.click()}
               title={t("chat.attachImage")}
               aria-label={t("chat.attachImage")}
               style={{
                 flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                width: isMobile ? 32 : 28, height: isMobile ? 32 : 28, padding: 0,
+                width: isMobile ? 24 : 28, height: isMobile ? 32 : 28, padding: 0,
                 background: "none", border: "none",
                 borderRadius: 4,
                 color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
@@ -2326,14 +2425,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   gap: 5,
                   width: "100%",
                   height: isMobile ? 32 : 28,
-                  padding: "0 10px",
+                  padding: isMobile ? "0 6px" : "0 10px",
                   background: isHighContext ? "rgba(239,68,68,0.06)" : "none",
                   border: isHighContext ? "1px solid rgba(239,68,68,0.25)" : "none",
                   borderRadius: 4,
                   color: isHighContext ? "#ef4444" : isWarningContext ? "rgba(234,179,8,0.95)" : "var(--text-muted)",
                   cursor: controlsMenuOpen ? "default" : "pointer",
                   fontSize: 12,
-                  fontWeight: 500,
+                  fontWeight: 400,
                   visibility: controlsMenuOpen ? "hidden" : "visible",
                   pointerEvents: controlsMenuOpen ? "none" : "auto",
                   transition: "background 0.12s, color 0.12s, border-color 0.12s",
@@ -2350,7 +2449,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 }}
               >
                 <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M10 6h11M3 6h1M20 18h1M3 18h11" />
                     <circle cx="7" cy="6" r="3" /><circle cx="17" cy="18" r="3" />
                   </svg>
@@ -2376,25 +2475,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             <div style={{
               display: isMobile ? (controlsMenuOpen ? "flex" : "none") : "flex",
               alignItems: "center",
-              gap: isMobile ? 1 : 2,
+              gap: isMobile ? 2 : 4,
               ...(isMobile ? {
                 position: "absolute",
                 right: 0,
                 bottom: 0,
                 zIndex: 60,
-                padding: 1,
+                padding: "1px 2px",
                 width: "max-content",
                 maxWidth: "calc(100vw - 32px)",
                 flexWrap: "nowrap",
                 justifyContent: "flex-end",
-                border: "1px solid color-mix(in srgb, var(--border) 72%, transparent)",
-                borderRadius: 4,
-                background: "color-mix(in srgb, var(--bg-panel) 92%, var(--bg))",
-                boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
-                backdropFilter: "blur(10px)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                background: "var(--bg)",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
               } : null),
             }}>
-            {!isStreaming && onThinkingLevelChange && (
+            {onThinkingLevelChange && (
               <div ref={thinkingDropdownRef} style={{ position: "relative" }}>
                 <button
                   onClick={() => !isStreaming && setThinkingDropdownOpen((v) => !v)}
@@ -2403,7 +2501,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                    aria-label={t("chat.changeReasoningLabel")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    padding: isMobile ? "0 6px" : "0 8px",
+                    padding: "0 6px",
                     width: isMobile ? "auto" : undefined,
                     height: isMobile ? 32 : 28,
                     background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
@@ -2412,25 +2510,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     color: "var(--text-muted)",
                     cursor: isStreaming ? "not-allowed" : "pointer",
                     fontSize: 12,
+                    lineHeight: 1,
                     opacity: isStreaming ? 0.5 : 1,
                     transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    if (isStreaming) return;
+                    if (isStreaming || isMobile) return;
                     e.currentTarget.style.background = "var(--bg-hover)";
                     e.currentTarget.style.color = "var(--text)";
                   }}
                   onMouseLeave={(e) => {
+                    if (isMobile) return;
                     e.currentTarget.style.background = thinkingDropdownOpen ? "var(--bg-hover)" : "none";
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-                    <path d="M9.5 2A5.5 5.5 0 0 0 4 7.5c0 1.7.78 3.21 2 4.21V14a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-2.29c1.22-1 2-2.51 2-4.21A5.5 5.5 0 0 0 9.5 2z" />
-                    <line x1="7" y1="18" x2="12" y2="18" />
-                    <line x1="8" y1="21" x2="11" y2="21" />
-                  </svg>
-                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{thinkingDisplayLabel}</span>}
+                  <ThinkingIcon size={14} style={{ display: "block" }} />
+                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap", lineHeight: 1 }}>{thinkingDisplayLabel}</span>}
                 </button>
                 {thinkingDropdownOpen && (
                   <div style={{
@@ -2486,6 +2582,94 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 )}
               </div>
             )}
+
+            {!isMobile && contextUsage && contextUsage.contextWindow > 0 && (() => {
+              const windowTokens = contextUsage.contextWindow;
+              const tokens = contextUsage.tokens;
+              const percent = contextUsage.percent ?? (tokens !== null ? (tokens / windowTokens) * 100 : null);
+              const clampedPercent = percent !== null ? Math.min(100, Math.max(0, percent)) : 0;
+              const isHigh = percent !== null && percent >= 85;
+              const isWarning = percent !== null && percent >= 70 && percent < 85;
+              const meterColor = isHigh
+                ? "#ef4444"
+                : isWarning
+                  ? "rgba(234,179,8,0.95)"
+                  : "var(--text-muted)";
+              const label = tokens !== null
+                ? `${formatTokensK(tokens)}/${formatTokensK(windowTokens)}`
+                : `?/${formatTokensK(windowTokens)}`;
+              const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
+              const tooltip = [
+                `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
+                remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)}` : null,
+                cacheHitRate !== null && cacheHitRate !== undefined
+                  ? `${t("session.cacheHitRate")}: ${cacheHitRate.toFixed(1)}%`
+                  : null,
+                isHigh ? `⚠️ ${t("chat.contextHighWarning")}` : null,
+              ].filter(Boolean).join("\n");
+
+              return (
+                <button
+                  type="button"
+                  onClick={onOpenSessionStats}
+                  title={tooltip}
+                  aria-label={tooltip}
+                  data-top-panel-trigger={onOpenSessionStats ? "session" : undefined}
+                  aria-controls={onOpenSessionStats ? "workspace-top-panel" : undefined}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "0 6px",
+                    height: 28,
+                    background: isHigh ? "rgba(239,68,68,0.06)" : "none",
+                    border: isHigh ? "1px solid rgba(239,68,68,0.25)" : "none",
+                    borderRadius: 4,
+                    color: meterColor,
+                    cursor: onOpenSessionStats ? "pointer" : "default",
+                    fontSize: 12,
+                    lineHeight: 1,
+                    fontVariantNumeric: "tabular-nums",
+                    whiteSpace: "nowrap",
+                    transition: "background 0.12s, border-color 0.12s, color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (onOpenSessionStats) {
+                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (onOpenSessionStats) {
+                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.06)" : "none";
+                    }
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "rotate(-90deg)" }}>
+                    <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" opacity="0.22" />
+                    <circle
+                      cx="8"
+                      cy="8"
+                      r="5.5"
+                      pathLength="100"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeDasharray={`${clampedPercent} 100`}
+                      style={{ transition: "stroke-dasharray 0.3s ease" }}
+                    />
+                  </svg>
+                  <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em", lineHeight: 1 }}>
+                    {label}
+                  </span>
+                  {cacheHitRate !== null && cacheHitRate !== undefined && (
+                    <span style={{ lineHeight: 1 }}>
+                      {cacheHitRate.toFixed(0)}%
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
             {!isStreaming && onToolPresetChange && (
               <div ref={toolDropdownRef} style={{ position: "relative" }}>
                 <button
@@ -2495,7 +2679,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   aria-label={t("chat.changeToolPreset")}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    padding: isMobile ? "0 6px" : "0 8px",
+                    padding: "0 6px",
                     width: isMobile ? "auto" : undefined,
                     height: isMobile ? 32 : 28,
                     background: toolDropdownOpen ? "var(--bg-hover)" : "none",
@@ -2504,23 +2688,25 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     color: "var(--text-muted)",
                     cursor: isStreaming ? "not-allowed" : "pointer",
                     fontSize: 12,
+                    lineHeight: 1,
                     opacity: isStreaming ? 0.5 : 1,
                     transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    if (isStreaming) return;
+                    if (isStreaming || isMobile) return;
                     e.currentTarget.style.background = "var(--bg-hover)";
                     e.currentTarget.style.color = "var(--text)";
                   }}
                   onMouseLeave={(e) => {
+                    if (isMobile) return;
                     e.currentTarget.style.background = toolDropdownOpen ? "var(--bg-hover)" : "none";
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
                     <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                   </svg>
-                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{toolPresetLabel}</span>}
+                  {(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap", lineHeight: 1 }}>{toolPresetLabel}</span>}
                 </button>
                 {toolDropdownOpen && (
                   <div style={{
@@ -2574,99 +2760,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             )}
 
-            {!isMobile && contextUsage && contextUsage.contextWindow > 0 && (() => {
-              const windowTokens = contextUsage.contextWindow;
-              const tokens = contextUsage.tokens;
-              const percent = contextUsage.percent ?? (tokens !== null ? (tokens / windowTokens) * 100 : null);
-              const clampedPercent = percent !== null ? Math.min(100, Math.max(0, percent)) : 0;
-              const isHigh = percent !== null && percent >= 85;
-              const isWarning = percent !== null && percent >= 70 && percent < 85;
-
-              const meterColor = isHigh
-                ? "#ef4444"
-                : isWarning
-                  ? "rgba(234,179,8,0.95)"
-                  : "var(--text-muted)";
-              const meterFillColor = isHigh
-                ? "#ef4444"
-                : isWarning
-                  ? "#eab308"
-                  : "var(--text-dim)";
-
-              const label = tokens !== null
-                ? (isMobile && !controlsMenuOpen
-                    ? `${clampedPercent.toFixed(0)}%`
-                    : `${formatTokensK(tokens)}/${formatTokensK(windowTokens)}`)
-                : `?/${formatTokensK(windowTokens)}`;
-
-              const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
-              const tooltip = [
-                `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
-                remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)}` : null,
-                isHigh ? `⚠️ ${t("chat.contextHighWarning")}` : null,
-              ].filter(Boolean).join("\n");
-
-              return (
-                <button
-                  type="button"
-                  onClick={onOpenSessionStats}
-                  title={tooltip}
-                  aria-label={tooltip}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: isMobile ? "0 6px" : "0 8px",
-                    height: isMobile ? 32 : 28,
-                    background: isHigh ? "rgba(239,68,68,0.06)" : "none",
-                    border: isHigh ? "1px solid rgba(239,68,68,0.25)" : "none",
-                    borderRadius: 4,
-                    color: meterColor,
-                    cursor: onOpenSessionStats ? "pointer" : "default",
-                    fontSize: 11,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                    transition: "background 0.12s, border-color 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (onOpenSessionStats) {
-                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (onOpenSessionStats) {
-                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.06)" : "none";
-                    }
-                  }}
-                >
-                  <div
-                    style={{
-                      width: isMobile && !controlsMenuOpen ? 28 : 42,
-                      height: 4,
-                      borderRadius: 2,
-                      background: "var(--border)",
-                      overflow: "hidden",
-                      flexShrink: 0,
-                    }}
-                    aria-hidden="true"
-                  >
-                    <div
-                      style={{
-                        width: `${clampedPercent}%`,
-                        height: "100%",
-                        background: meterFillColor,
-                        borderRadius: 2,
-                        transition: "width 0.3s ease, background-color 0.2s ease",
-                      }}
-                    />
-                  </div>
-                  <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em" }}>
-                    {label}
-                  </span>
-                </button>
-              );
-            })()}
-
             {!isStreaming && onCompact && (() => {
               const isHighContext = Boolean(contextUsage?.percent && contextUsage.percent >= 85);
               return (
@@ -2680,7 +2773,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   disabled={isStreaming && !isCompacting}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    padding: isMobile ? "0 6px" : "0 8px",
+                    padding: "0 6px",
                     width: isMobile ? "auto" : undefined,
                     height: isMobile ? 32 : 28,
                     background: isCompacting
@@ -2692,15 +2785,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     borderRadius: 4,
                     color: isCompacting || isHighContext ? "#ef4444" : "var(--text-muted)",
                     cursor: (isStreaming && !isCompacting) ? "not-allowed" : "pointer",
-                    fontSize: 12, opacity: (isStreaming && !isCompacting) ? 0.5 : 1,
+                    fontSize: 12, lineHeight: 1, opacity: (isStreaming && !isCompacting) ? 0.5 : 1,
                     transition: "background 0.12s, color 0.12s, border-color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    if (isStreaming && !isCompacting) return;
+                    if (isMobile || (isStreaming && !isCompacting)) return;
                     e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.16)" : isHighContext ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
                     e.currentTarget.style.color = isCompacting || isHighContext ? "#ef4444" : "var(--text)";
                   }}
                   onMouseLeave={(e) => {
+                    if (isMobile) return;
                     e.currentTarget.style.background = isCompacting ? "rgba(239,68,68,0.08)" : isHighContext ? "rgba(239,68,68,0.06)" : "none";
                     e.currentTarget.style.color = isCompacting || isHighContext ? "#ef4444" : "var(--text-muted)";
                   }}
@@ -2708,44 +2802,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                    aria-label={isCompacting ? t("chat.stopCompaction") : t("chat.compactContext")}
                 >
                   {isCompacting ? (
-                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg>{(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{t("chat.compacting")}</span>}</>
+                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" /></svg>{(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap", lineHeight: 1 }}>{t("chat.compacting")}</span>}</>
                   ) : (
-                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                    <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
                       <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
                       <line x1="10" y1="14" x2="3" y2="21" /><line x1="21" y1="3" x2="14" y2="10" />
-                    </svg>{(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap" }}>{t("chat.compact")}</span>}</>
+                    </svg>{(!isMobile || controlsMenuOpen) && <span style={{ whiteSpace: "nowrap", lineHeight: 1 }}>{t("chat.compact")}</span>}</>
                   )}
                 </button>
               </div>
               );
             })()}
 
-            {isStreaming && (
-              <button
-                onClick={onAbort}
-                 title={t("chat.stopAgent")}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "0 10px",
-                  height: isMobile ? 32 : 28,
-                  background: "color-mix(in srgb, #ef4444 8%, transparent)",
-                  border: "1px solid color-mix(in srgb, #ef4444 24%, transparent)",
-                  borderRadius: 4,
-                  color: "#ef4444",
-                  cursor: "pointer",
-                  fontSize: 12, fontWeight: 600,
-                  whiteSpace: "nowrap", letterSpacing: "-0.01em",
-                  transition: "background 0.12s, border-color 0.12s",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "color-mix(in srgb, #ef4444 15%, transparent)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "color-mix(in srgb, #ef4444 8%, transparent)"; }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
-                  <rect x="5.5" y="5.5" width="13" height="13" rx="2.5" fill="currentColor" />
-                </svg>
-                 {t("chat.stop")}
-              </button>
-            )}
 
             {onSoundToggle !== undefined && (
               <button
@@ -2811,26 +2879,29 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: isMobile ? 32 : 28,
+                  width: isMobile ? 28 : 28,
                   height: isMobile ? 32 : 28,
                   padding: 0,
                   marginLeft: 0,
-                  background: "var(--bg-hover)",
+                  background: "none",
                   border: "none",
-                  borderLeft: "1px solid color-mix(in srgb, var(--border) 72%, transparent)",
-                  borderRadius: "0 4px 4px 0",
-                  color: "var(--text)",
+                  borderRadius: 4,
+                  color: "var(--text-muted)",
                   cursor: "pointer",
                   transition: "background 0.12s, color 0.12s",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-selected)";
+                  if (isMobile) return;
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = "var(--text)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
+                  if (isMobile) return;
+                  e.currentTarget.style.background = "none";
+                  e.currentTarget.style.color = "var(--text-muted)";
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
                   <line x1="18" y1="6" x2="6" y2="18" />
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
