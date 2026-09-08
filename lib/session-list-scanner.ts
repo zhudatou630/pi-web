@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
+import { getSessionFirstMessagePreview } from "./session-display-title";
 
 export interface ScannedSessionInfo {
 	path: string;
@@ -38,7 +39,7 @@ function isRecord(value: unknown): value is RawEntry {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-const INDEX_FORMAT_VERSION = 1;
+const INDEX_FORMAT_VERSION = 2;
 
 declare global {
 	var __piWebScanIndex: Map<string, IndexEntry> | undefined;
@@ -169,7 +170,7 @@ export async function scanSessionFileInfo(
 			created: new Date(header.timestamp as string),
 			modified,
 			messageCount,
-			firstMessage: firstMessage || "(no messages)",
+			firstMessage: getSessionFirstMessagePreview(firstMessage || "(no messages)"),
 		};
 	} catch {
 		return null;

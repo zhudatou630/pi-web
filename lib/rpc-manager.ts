@@ -14,6 +14,7 @@ import {
   preferUserBashExtension,
 } from "./project-command-env";
 import { cacheSessionPath, invalidateSessionListCache, resolveSessionPath } from "./session-reader";
+import { getSessionFirstMessagePreview } from "./session-display-title";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
@@ -1944,7 +1945,9 @@ export function getRpcSessionInfos(): SessionInfo[] {
       created,
       modified: new Date(lastActivityMs).toISOString(),
       messageCount: messages.length,
-      firstMessage: firstUserMessage ? runtimeMessageText(firstUserMessage) || "(no messages)" : "(no messages)",
+      firstMessage: getSessionFirstMessagePreview(
+        firstUserMessage ? runtimeMessageText(firstUserMessage) || "(no messages)" : "(no messages)",
+      ),
       ...(subagent ? {
         parentSessionId: subagent.parentSessionId,
         relation: {
