@@ -7,21 +7,28 @@
 环境要求：Node.js >= 22.19.0。自动读取本机已有的 `~/.pi/agent` 配置。
 
 ```bash
+# 1. 安装依赖并构建
 git clone https://github.com/zhudatou630/pi-web.git
 cd pi-web
 npm install
 npm run build
+
+# 2. 启动服务（前台运行）
 npm start
+
+# 或后台常驻启动（推荐 AI Agent 自动部署时使用，避免前台卡命令超时）
+nohup npm start > pi-web.log 2>&1 &
 ```
 
-启动后访问 `http://127.0.0.1:30141`。
+服务启动后，访问 `http://127.0.0.1:30141`。
 
 ## 代码更新
 
-后续拉取更新，在根目录下执行：
+后续拉取更新，在项目根目录下执行：
 
 ```bash
-git pull && npm install && npm run build && npm start
+git pull && npm install && npm run build
+npm start # 或后台运行：nohup npm start > pi-web.log 2>&1 &
 ```
 
 ## 常用参数
@@ -29,8 +36,7 @@ git pull && npm install && npm run build && npm start
 - **改端口**：`npm start -- -p 8080`
 - **局域网访问**：`npm start -- -H 0.0.0.0`
 - **访问密码**（局域网建议设置，用户名固定为 `pi`）：`PI_WEB_PASSWORD='your-password' npm start`
-- **后台常驻 / 不弹浏览器**：`npm start -- --no-open`
-- **使用代理**：`HTTP_PROXY=http://127.0.0.1:7890 HTTPS_PROXY=http://127.0.0.1:7890 npm start`
+- **后台常驻 / 不自动弹浏览器**：`npm start -- --no-open`
 
 ## License
 
