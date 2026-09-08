@@ -18,23 +18,13 @@ Lint: `npm run lint`
 - Do not use `next dev --webpack` as a fallback. This repository's development graph can fail on `undici` imports such as `node:console`; development is expected to use Turbopack.
 - Next.js may append a generated `BEGIN:nextjs-agent-rules` block to `AGENTS.md` when `next dev` starts. Treat that as generated tooling output, verify it with `git status`, and do not include it in an unrelated feature commit.
 
-### Personal runtime on this machine (`personal` branch)
+### Production & Service Runtime Protection
 
-`:30141` is the systemd unit `pi-web-agegr.service`: `next start` from this checkout. It is not `npm run dev`, and it is not the global `@agegr/pi-web` package. PyCharm edits and the live server share the same `.next/`.
-
-**Agents must not** `next build` / `npm run build` / `npm run start` / `npm run dev`, must not `systemctl --user restart|stop pi-web-agegr.service`, and must not run `scripts/pi-web-switch.sh`. Rebuilding or restarting while the unit is up rewrites `.next/` and kills the live process. After code changes, tell the user the command; they run it.
-
-User commands (repo root, or `scripts/pi-web-switch.sh`):
-
-```bash
-scripts/pi-web-switch.sh status          # git vs npm, port, unit
-scripts/pi-web-switch.sh git --rebuild   # stop → next build → start systemd
-scripts/pi-web-switch.sh git             # restart unit only if .next is already new
-scripts/pi-web-switch.sh npm             # temporary official package; reboot returns to git
-scripts/pi-web-switch.sh stop
-```
-
-Do not `npm run dev` on this checkout while the unit is using `:30141`. Global `@agegr/pi-web` stays installed for rollback only.
+When running Pi Web as a persistent service (e.g. systemd, pm2, or `scripts/pi-web-switch.sh` on a host machine):
+- Live service processes execute `next start` directly against `.next/`.
+- **Agents must not run `next build` / `npm run build` / `npm run start` / `npm run dev` or stop/restart services without explicit user confirmation**, because rebuilding rewrites `.next/` and can terminate or corrupt the active server instance.
+- Before starting a dev process on an unmanaged machine, check port availability (`lsof -nP -iTCP:30141 -sTCP:LISTEN`) and reuse an existing healthy process.
+- When code changes require a rebuild on a machine with a running service, output the exact command and let the user execute it.
 
 ---
 
@@ -115,6 +105,7 @@ components/
   SessionSidebar.tsx  session tree + FileExplorer
   ChatWindow.tsx      chat composition + completion sound wrapper
   ChatInput.tsx       input bar + model/thinking/tools/compact controls
+  ChatTabBar.tsx      chat session tab strip & multi-tab navigation
   MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
   BranchNavigator.tsx in-session branch switcher
   ChatMinimap.tsx     scroll minimap alongside the message list
@@ -126,6 +117,10 @@ components/
   FileExplorer.tsx    file tree inside sidebar
   FileIcons.tsx       file icon helpers
   FileViewer.tsx      file content in a tab
+  SessionSearch.tsx   session search modal across conversation histories
+  SettingsPanel.tsx   general workspace preferences and settings
+  TerminalPanel.tsx   in-browser terminal tab with PTY streaming
+  DirectoryPicker.tsx working directory navigation dialog
   TabBar.tsx          tab bar (Chat + open file tabs)
 
 hooks/
