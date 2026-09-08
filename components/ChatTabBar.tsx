@@ -108,6 +108,7 @@ export function ChatTabBar({
           return (
             <div
               key={tab.id}
+              data-chat-tab="true"
               ref={isPrimary ? activeTabRef : undefined}
               role="tab"
               aria-selected={isVisible}
@@ -132,6 +133,15 @@ export function ChatTabBar({
                   const nextIndex = (index + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
                   onSelectTab(tabs[nextIndex].id);
                   (e.currentTarget.parentElement?.children[nextIndex] as HTMLElement)?.focus();
+                } else if (e.key === "Delete") {
+                  e.preventDefault();
+                  onCloseTab(tab.id);
+                  requestAnimationFrame(() => {
+                    const nextTab = document.querySelector<HTMLElement>('[data-chat-tab="true"][tabindex="0"]');
+                    const composer = Array.from(document.querySelectorAll<HTMLTextAreaElement>(".chat-input-textarea"))
+                      .find((element) => element.getClientRects().length > 0);
+                    (nextTab ?? composer)?.focus();
+                  });
                 }
               }}
               style={{
@@ -210,6 +220,7 @@ export function ChatTabBar({
               {(!isMobile || isVisible) && (
                 <button
                   type="button"
+                  tabIndex={-1}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCloseTab(tab.id);

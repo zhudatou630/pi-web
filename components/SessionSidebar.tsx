@@ -2443,7 +2443,21 @@ export function SessionItem({
               <path d="M9 11h.01M15 11h.01M9 15h6M12 7V4M10 4h4" />
             </svg>
           )}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <button
+            type="button"
+            aria-current={isSelected ? "page" : undefined}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: 0,
+              border: "none",
+              background: "none",
+              color: "inherit",
+              font: "inherit",
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
             <div
               style={{
                 display: "flex",
@@ -2461,7 +2475,7 @@ export function SessionItem({
                 {title}
               </span>
             </div>
-          </div>
+          </button>
           {session.isWorktree && session.branch && (
             <span title={`Worktree: ${session.branch}\n${session.cwd}`} style={{ display: "flex", color: "var(--text-dim)", flexShrink: 0 }}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

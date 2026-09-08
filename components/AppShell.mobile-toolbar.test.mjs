@@ -14,6 +14,11 @@ test("keeps action icons inline in medium mobile sidebars", () => {
   assert.match(source, /\{isNarrowMobile && \([\s\S]*?data-mobile-toolbar-more="true"/);
 });
 
+test("removes the closed mobile sidebar from the accessibility tree", () => {
+  assert.match(source, /aria-hidden=\{isMobile && !sidebarOpen \? true : undefined\}/);
+  assert.match(source, /inert=\{isMobile && !sidebarOpen \? true : undefined\}/);
+});
+
 test("uses a compact narrow-mobile toolbar with a floating action layer", () => {
   assert.match(source, /data-mobile-toolbar="true"[\s\S]*?flex: 1,[\s\S]*?minWidth: 0/);
   assert.match(

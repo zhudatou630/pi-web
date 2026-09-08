@@ -2439,6 +2439,7 @@ export function AppShell() {
       {/* Mobile overlay backdrop */}
       <div
         className={`sidebar-overlay-backdrop${mobileSidebarReady ? "" : " sidebar-mobile-pending"}`}
+        aria-hidden="true"
         onClick={() => setSidebarOpen(false)}
         style={{
           position: "fixed",
@@ -2455,6 +2456,8 @@ export function AppShell() {
       <div
         ref={sidebarResizer.panelRef}
         id="session-sidebar"
+        aria-hidden={isMobile && !sidebarOpen ? true : undefined}
+        inert={isMobile && !sidebarOpen ? true : undefined}
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
         style={{
           "--sidebar-width": `${sidebarResizer.width}px`,

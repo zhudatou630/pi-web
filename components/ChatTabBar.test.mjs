@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
 
@@ -67,6 +68,14 @@ test("renders new tab and split toggle buttons", () => {
   const html = render(tabs, "s1");
   assert.match(html, /aria-label="New chat tab"/);
   assert.match(html, /aria-label="Split right"/);
+});
+
+test("keeps close controls out of the tab order and supports Delete on the tab", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /else if \(e\.key === "Delete"\)[\s\S]*?onCloseTab\(tab\.id\)[\s\S]*?requestAnimationFrame/);
+  assert.match(source, /data-chat-tab="true"/);
+  assert.match(source, /nextTab \?\? composer/);
+  assert.match(source, /<button\s*type="button"\s*tabIndex=\{-1\}/);
 });
 
 test("mobile mode hides split toggle and only shows close button on active tab", () => {

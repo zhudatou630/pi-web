@@ -59,10 +59,10 @@ test("only Shift+click bypasses session deletion confirmation", () => {
   );
 });
 
-test("does not register row-level session deletion shortcuts", () => {
+test("uses a native main action without row-level deletion shortcuts", () => {
   assert.doesNotMatch(sessionItemSource, /const handleKeyDown/);
   assert.doesNotMatch(sessionItemSource, /onKeyDown=\{handleKeyDown\}/);
-  assert.doesNotMatch(sessionItemSource, /tabIndex=\{0\}/);
+  assert.match(sessionItemSource, /<button\s*type="button"\s*aria-current=\{isSelected \? "page" : undefined\}/);
 });
 
 test("polls running sessions only while the tab is visible", () => {
