@@ -973,6 +973,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   }, [selectedCwd, onNewSession]);
 
   const recentProjects = getRecentProjects(allSessions);
+  // Empty-state CTA is only for a loaded sidebar with nothing to restore.
+  // First paint has no cwd yet; treating that as "please select" flashes blue.
+  const showSelectProjectPrompt = !selectedCwd && !loading && recentProjects.length === 0;
   const showProjectFilter = recentProjects.length > 8;
   const visibleProjects = projectFilter.trim()
     ? recentProjects.filter((project) => project.root.toLowerCase().includes(projectFilter.trim().toLowerCase()))
@@ -1167,19 +1170,22 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         <div ref={dropdownRef} style={{ position: "relative" }}>
           <button
             onClick={() => setDropdownOpen((v) => !v)}
-            title={selectedProject?.root ?? selectedCwd ?? ""}
+            disabled={!selectedCwd && !showSelectProjectPrompt}
+            aria-busy={!selectedCwd && !showSelectProjectPrompt ? true : undefined}
+            title={selectedProject?.root ?? selectedCwd ?? (showSelectProjectPrompt ? t("sidebar.selectProject") : "")}
             style={{
               width: "100%",
               display: "flex",
               alignItems: "center",
               padding: "6px 10px",
-              background: selectedCwd ? "var(--bg-hover)" : "rgba(37,99,235,0.06)",
-              border: selectedCwd ? "1px solid var(--border)" : "1px solid rgba(37,99,235,0.4)",
+              background: showSelectProjectPrompt ? "rgba(37,99,235,0.06)" : "var(--bg-hover)",
+              border: showSelectProjectPrompt ? "1px solid rgba(37,99,235,0.4)" : "1px solid var(--border)",
               borderRadius: 4,
-              cursor: "pointer",
+              cursor: showSelectProjectPrompt || selectedCwd ? "pointer" : "default",
               fontSize: 12,
               color: "var(--text)",
               textAlign: "left",
+              opacity: 1,
               transition: "border-color 0.15s, background 0.15s",
             }}
           >
@@ -1205,7 +1211,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                   color: "var(--text-dim)",
                 }}
               >
-                 {initialSessionId && !restoredRef.current ? "" : t("sidebar.selectProject")}
+                {showSelectProjectPrompt ? t("sidebar.selectProject") : "\u00a0"}
               </span>
             )}
             {otherWorkspaceActivity.running > 0 ? (
