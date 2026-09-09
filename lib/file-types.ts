@@ -86,3 +86,9 @@ export function isVideoPath(filePath: string): boolean {
 export function isDocumentPreviewPath(filePath: string): boolean {
   return documentPreviewKind(filePath) !== null;
 }
+
+const FILE_PREVIEW_EXTENSIONS = new Set(["md", "mdx", "html", "htm"]);
+
+export function isFilePreviewPath(filePath: string): boolean {
+  return FILE_PREVIEW_EXTENSIONS.has(getFileExt(filePath));
+}

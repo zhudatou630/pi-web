@@ -1458,6 +1458,17 @@ pre, code {
   font-size: 11px;
 }
 
+.file-tab-close {
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: none;
+  outline: none;
+}
+.file-tab-close:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .file-viewer-icon-button {
   display: inline-flex;
   align-items: center;
@@ -1866,7 +1877,8 @@ span.token.table {
 @media (min-width: 960px) {
   .right-panel-container {
     overflow: hidden;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    contain: layout paint;
+    transition: width 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), min-width 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
     flex-shrink: 0;
   }
   .right-panel-container.right-panel-open {
@@ -1885,6 +1897,13 @@ span.token.table {
   }
   .right-panel-container.right-panel-resizing,
   .right-panel-container.right-panel-resizing > * {
+    transition: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .right-panel-container,
+  .right-panel-overlay-backdrop {
     transition: none !important;
   }
 }
@@ -1917,8 +1936,9 @@ span.token.table {
     width: min(560px, calc(100vw - 48px));
     min-width: 300px;
     overflow: hidden;
+    contain: layout paint;
     box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);
-    transition: transform 0.2s ease;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .right-panel-container.right-panel-open {
     transform: translateX(0);

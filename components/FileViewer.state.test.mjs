@@ -81,10 +81,12 @@ test("TextFileViewer snapshots and restores lightweight tab state", () => {
   assert.match(block, /content\.scrollLeft = viewerStateRef\.current\.scrollLeft/);
 });
 
-test("TextFileViewer keeps first-mount preview eligibility across Strict Effects cleanup", () => {
+test("TextFileViewer starts markdown and html files in preview without a post-load mode switch", () => {
   const block = functionBlock("TextFileViewer", null);
-  assert.match(block, /defaultPreviewEligibleRef = useRef\(/);
-  assert.match(block, /defaultPreviewEligibleRef\.current[\s\S]*updateDisplayMode\("preview"\)/);
+  assert.match(block, /resolveFileDisplayMode\(filePath, initialState, initialDisplayMode\)/);
+  assert.doesNotMatch(block, /defaultPreviewEligibleRef/);
+  assert.doesNotMatch(block, /updateDisplayMode\("preview"\)/);
+  assert.match(block, /showHighlightedSource \? \(/);
 });
 
 test("markdown table tokens stay inline despite Tailwind's table utility", () => {

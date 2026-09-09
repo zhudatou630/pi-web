@@ -301,6 +301,7 @@ export function AppShell() {
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [fileWatchEnabled, setFileWatchEnabled] = useState(false);
   const [mobileToolbarMoreOpen, setMobileToolbarMoreOpen] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
   const sidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
@@ -369,6 +370,40 @@ export function AppShell() {
     reclampSidebarWidth();
     reclampRightPanelWidth();
   }, [reclampRightPanelWidth, reclampSidebarWidth, rightPanelOpen]);
+  // Connecting the file watcher (EventSource + git diff) during the open
+  // animation is a common source of dropped frames. Wait until the panel
+  // has settled, then enable live updates.
+  useEffect(() => {
+    if (!rightPanelOpen) {
+      setFileWatchEnabled(false);
+      return;
+    }
+
+    const panel = rightPanelResizer.panelRef.current;
+    let enabled = false;
+    const enable = () => {
+      if (enabled) return;
+      enabled = true;
+      setFileWatchEnabled(true);
+    };
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      enable();
+      return;
+    }
+
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.target !== panel) return;
+      if (event.propertyName === "width" || event.propertyName === "min-width" || event.propertyName === "transform") {
+        enable();
+      }
+    };
+    panel?.addEventListener("transitionend", onTransitionEnd);
+    const timeout = window.setTimeout(enable, 280);
+    return () => {
+      panel?.removeEventListener("transitionend", onTransitionEnd);
+      window.clearTimeout(timeout);
+    };
+  }, [rightPanelOpen, rightPanelResizer.panelRef]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const [pendingQuotePrompt, setPendingQuotePrompt] = useState<{ sessionId: string; text: string } | null>(null);
   const handlePendingQuotePromptConsumed = useCallback((sessionId: string) => {
@@ -3397,7 +3432,7 @@ export function AppShell() {
               gitRefreshKey={explorerRefreshKey}
               initialDisplayMode={activeFileTab.initialDisplayMode}
               initialState={activeFileTab.viewerState}
-              watchEnabled={rightPanelOpen}
+              watchEnabled={fileWatchEnabled}
               onStateChange={(viewerState) => handleFileViewerStateChange(
                 activeFileTab.id,
                 activeFileTab.viewerRevision ?? 0,

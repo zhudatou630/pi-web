@@ -14,7 +14,10 @@ test("large source previews bypass the per-line syntax highlighter", () => {
 
   // Both source trees are memoized so unrelated re-renders (panel open/close,
   // selection changes) reuse them instead of rebuilding every line element.
+  // Preview/diff skip the highlighter so markdown files do not flash source.
+  assert.match(source, /const showHighlightedSource = !useLightweightSource/);
   assert.match(source, /const highlightedSource = useMemo\(/);
+  assert.match(source, /showHighlightedSource \? \(/);
 
   const lightweightStart = source.indexOf("const lightweightSourceLines = useMemo(");
   const lightweightEnd = source.indexOf("[sourceLines, useLightweightSource, wrapLines]", lightweightStart);
@@ -80,7 +83,9 @@ test("diff view preserves Git hunk and metadata rows", () => {
 });
 
 test("an explicit diff request bypasses native media viewers", () => {
-  assert.match(source, /const diffRequested = resolveInitialFileDisplayMode\(initialState, initialDisplayMode\) === "diff";/);
+  assert.match(source, /const diffRequested = resolveFileDisplayMode\(filePath, initialState, initialDisplayMode\) === "diff";/);
+  assert.match(source, /isFilePreviewPath\(filePath\) \? "preview"/);
+
   assert.match(source, /if \(!diffRequested && isImagePath\(filePath\)\)/);
   assert.match(source, /if \(error && !\(effectiveDisplayMode === "diff" && hasGitDiff\)\)/);
   assert.match(source, /if \(!data && !\(effectiveDisplayMode === "diff" && hasGitDiff\)\) return null;/);

@@ -130,6 +130,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               {displayLabel}
             </span>
             <button
+              type="button"
+              className="file-tab-close"
               disabled={tab.closing}
               onClick={(e) => {
                 e.stopPropagation();
@@ -140,7 +142,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               onMouseLeave={() => setHoveredClose(null)}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
-                width: 24, height: 24,
+                width: 20, height: 20,
                 background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
                 border: "none",
                 borderRadius: 4,

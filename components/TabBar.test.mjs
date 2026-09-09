@@ -113,6 +113,8 @@ test("keeps tab roles, keyboard tabindexes, and close controls", () => {
   assert.match(html, /aria-label="Terminate terminal pi-web"/);
   assert.match(html, /aria-label="Terminal: pi-web"/);
   assert.equal([...html.matchAll(/<button/g)].length, 2);
+  assert.equal([...html.matchAll(/type="button"/g)].length, 2);
+  assert.equal([...html.matchAll(/class="file-tab-close"/g)].length, 2);
 });
 
 test("keeps the active tab visible and restores focus after closing", () => {

@@ -15,6 +15,7 @@ import {
   getFileExt,
   isAudioPath,
   isDocumentPreviewPath,
+  isFilePreviewPath,
   isImagePath,
   isVideoPath,
 } from "@/lib/file-types";
@@ -34,6 +35,17 @@ import {
 } from "@/lib/file-viewer-state";
 
 export type { FileViewerState } from "@/lib/file-viewer-state";
+
+function resolveFileDisplayMode(
+  filePath: string,
+  initialState?: FileViewerState,
+  initialDisplayMode?: DisplayMode,
+): DisplayMode {
+  return resolveInitialFileDisplayMode(
+    initialState,
+    initialDisplayMode ?? (isFilePreviewPath(filePath) ? "preview" : undefined),
+  );
+}
 
 interface Props {
   filePath: string;
@@ -1052,7 +1064,7 @@ export function FileViewer({
   onStateChange,
   watchEnabled = true,
 }: Props) {
-  const diffRequested = resolveInitialFileDisplayMode(initialState, initialDisplayMode) === "diff";
+  const diffRequested = resolveFileDisplayMode(filePath, initialState, initialDisplayMode) === "diff";
   if (!diffRequested && isImagePath(filePath)) {
     return <ImageViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} watchEnabled={watchEnabled} />;
   }
@@ -1105,7 +1117,7 @@ function TextFileViewer({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestedInitialDisplayMode = resolveInitialFileDisplayMode(initialState, initialDisplayMode);
+  const requestedInitialDisplayMode = resolveFileDisplayMode(filePath, initialState, initialDisplayMode);
   const skipContentLoad = requestedInitialDisplayMode === "diff" && (
     isImagePath(filePath)
     || isAudioPath(filePath)
@@ -1129,9 +1141,6 @@ function TextFileViewer({
   const gitDiffRequestRef = useRef(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const autoDiffAppliedRef = useRef(false);
-  const defaultPreviewEligibleRef = useRef(
-    initialState === undefined && initialDisplayMode === undefined,
-  );
   const scrollRestorePendingRef = useRef(true);
   const viewerStateRef = useRef<FileViewerState>({
     displayMode: requestedInitialDisplayMode,
@@ -1369,21 +1378,6 @@ function TextFileViewer({
     void fetchGitDiff(filePath);
   }, [fetchGitDiff, filePath, gitRefreshKey]);
 
-  useEffect(() => {
-    // HTML gets the same rendered-first treatment as markdown: a generated page
-    // is usually more useful viewed than read as source. Both have a preview
-    // mode already; the source tab stays one click away. A restored choice or
-    // explicit mode hint always wins over this default.
-    if (
-      defaultPreviewEligibleRef.current
-      && !data?.truncated
-      && (data?.language === "markdown" || data?.language === "html")
-    ) {
-      defaultPreviewEligibleRef.current = false;
-      updateDisplayMode("preview");
-    }
-  }, [data?.language, data?.truncated, updateDisplayMode]);
-
   const hasGitDiff = gitDiff?.supported === true && typeof gitDiff.patch === "string";
   const isDeletedDiff = hasGitDiff && gitDiff.status === "deleted";
 
@@ -1427,11 +1421,16 @@ function TextFileViewer({
   )
     && !(effectiveDisplayMode === "diff" && hasGitDiff)
     && !(effectiveDisplayMode === "preview" && hasPreview);
+  const showHighlightedSource = !useLightweightSource
+    && !(effectiveDisplayMode === "diff" && hasGitDiff)
+    && !(effectiveDisplayMode === "preview" && hasPreview);
   // react-syntax-highlighter rebuilds every token element on each render, which
   // costs hundreds of milliseconds on large files. Cache the rendered trees so
   // unrelated re-renders (panel open/close, selection changes) reuse them as-is.
+  // Skip the tree entirely in preview/diff so opening a markdown file does not
+  // highlight source that will never be painted.
   const highlightedSource = useMemo(
-    () => (
+    () => showHighlightedSource ? (
       <SyntaxHighlighter
         className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
         language={language === "text" ? "plaintext" : language}
@@ -1464,8 +1463,8 @@ function TextFileViewer({
       >
         {viewerContent}
       </SyntaxHighlighter>
-    ),
-    [isDark, language, viewerContent, wrapLines],
+    ) : null,
+    [isDark, language, showHighlightedSource, viewerContent, wrapLines],
   );
   const lightweightSourceLines = useMemo(
     () => useLightweightSource ? sourceLines.map((line, lineIndex) => (

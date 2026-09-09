@@ -35,7 +35,9 @@ test("file mentions carry their source cwd into the focused chat", () => {
 });
 
 test("closing the file panel pauses the active viewer watcher", () => {
-  assert.match(fileContentBlock(), /watchEnabled=\{rightPanelOpen\}/);
+  assert.match(source, /watchEnabled=\{fileWatchEnabled\}/);
+  assert.match(source, /setFileWatchEnabled\(false\)/);
+  assert.match(source, /addEventListener\("transitionend", onTransitionEnd\)/);
 });
 
 test("a closed file panel is removed from keyboard and accessibility navigation", () => {
