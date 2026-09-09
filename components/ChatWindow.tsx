@@ -1912,14 +1912,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               setMountLimit(MOUNTED_GROUP_LIMIT);
               requestAnimationFrame(() => scrollToBottom("smooth"));
             }}
-            className="absolute bottom-4 right-5 z-30 inline-flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg)] px-2.5 text-[var(--text-muted)] shadow-[0_4px_16px_rgba(15,23,42,0.12)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            className="absolute bottom-3 right-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-[4px] border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
             title={t("chat.scrollToBottom")}
             aria-label={t("chat.scrollToBottom")}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m7 10 5 5 5-5" />
             </svg>
-            {streamState.isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" aria-hidden="true" />}
+            {streamState.isStreaming && <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" aria-hidden="true" />}
           </button>
         )}
         {!isFocusedPane || isMobile || pendingScrollRestore ? null : (
