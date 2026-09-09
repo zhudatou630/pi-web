@@ -1441,6 +1441,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     });
   }, [handleSend, scrollUserMsgToTop]);
 
+  const isSessionLoading = !isNew && loading;
+
   const chatInputElement = (
     <ChatInput
       ref={setChatInputElement}
@@ -1450,26 +1452,26 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onFollowUp={agentRunning ? handleFollowUp : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehavior : undefined}
       isStreaming={sessionBusy}
-      model={displayModelValue}
-      isAutoModelSelection={isAutoModelSelection}
+      model={isSessionLoading ? null : displayModelValue}
+      isAutoModelSelection={isSessionLoading ? false : isAutoModelSelection}
       modelNames={modelNames}
       modelList={modelList}
-      modelError={modelError}
-      modelScopeWarnings={modelScopeWarnings}
-      onModelChange={handleModelChange}
+      modelError={isSessionLoading ? null : modelError}
+      modelScopeWarnings={isSessionLoading ? [] : modelScopeWarnings}
+      onModelChange={isSessionLoading ? undefined : handleModelChange}
       modelSwitching={modelSwitching}
       onCompact={session || isNew ? handleCompact : undefined}
       onAbortCompaction={handleAbortCompaction}
       isCompacting={isCompacting}
       compactError={compactError}
       compactResult={compactResult}
-      contextUsage={contextUsage}
+      contextUsage={isSessionLoading ? null : contextUsage}
       cacheHitRate={cacheHitRate}
       onOpenSessionStats={onSessionStatsPanelOpen}
       toolPreset={toolPreset}
       onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
-      thinkingLevel={thinkingLevel}
-      onThinkingLevelChange={session || isNew ? handleThinkingLevelChange : undefined}
+      thinkingLevel={isSessionLoading ? undefined : thinkingLevel}
+      onThinkingLevelChange={isSessionLoading ? undefined : (session || isNew ? handleThinkingLevelChange : undefined)}
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
       retryInfo={retryInfo}
@@ -1919,7 +1921,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m7 10 5 5 5-5" />
             </svg>
-            {streamState.isStreaming && <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" aria-hidden="true" />}
           </button>
         )}
         {!isFocusedPane || isMobile || pendingScrollRestore ? null : (
