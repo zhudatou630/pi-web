@@ -19,6 +19,11 @@ export function chatTabMountKey(tab: Pick<ChatTabItem, "id" | "mountKey">): stri
   return tab.mountKey ?? tab.id;
 }
 
+export function chatTabCwd(tab: ChatTabItem | null | undefined): string | null {
+  if (!tab) return null;
+  return tab.kind === "session" ? tab.session?.cwd ?? null : tab.newSessionCwd;
+}
+
 export function getDraftTabTitle(value: string, defaultTitle: string): string {
   const firstLine = value.split(/\r?\n/).find((line) => line.trim())?.trim();
   if (!firstLine) return defaultTitle;

@@ -14,13 +14,14 @@ import {
   closeChatTab,
   getDraftTabTitle,
   chatTabMountKey,
+  chatTabCwd,
   promoteDraftToSession,
   type ChatTabItem,
 } from "@/lib/chat-tab-state";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
-import { openFileTab, saveFileViewerState } from "./file-tab-state";
+import { getAdjacentTabId, openFileTab, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
 import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
@@ -38,15 +39,24 @@ import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
-import { getFileName } from "@/lib/file-paths";
+import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
   shouldShowBrowserNotification,
   showBrowserNotification,
+  subscribeNotificationPermission,
 } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
+
+function pathForChatMention(path: string, sourceCwd?: string, targetCwd?: string | null): string {
+  if (!sourceCwd || !targetCwd) return path;
+  const source = normalizeFilePathSlashes(sourceCwd).replace(/\/$/, "");
+  const target = normalizeFilePathSlashes(targetCwd).replace(/\/$/, "");
+  if (source === target || path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path)) return path;
+  return joinFilePath(sourceCwd, path);
+}
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { clearDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import { workspaceKeyOf } from "@/lib/workspace-key";
@@ -111,14 +121,11 @@ export function AppShell() {
   const isNarrowMobile = useIsNarrowMobile();
   useViewportHeight();
 
-  // Once the user has granted notification permission, register a Web Push
-  // subscription so the server can notify backgrounded PWAs (notably iOS,
-  // which suspends page JS and never receives the SSE completion event).
-  useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-    void setupPushSubscription(locale);
-  }, [locale]);
+  // Subscribe to push once notification permission is granted — including
+  // grants made later from Chrome site controls rather than our own prompt.
+  useEffect(() => subscribeNotificationPermission((permission) => {
+    if (permission === "granted") void setupPushSubscription(locale);
+  }), [locale]);
   // Audio ownership lives here (not in ChatWindow) so the completion tone can
   // also fire for tasks finishing in a non-active workspace whose ChatWindow
   // is not mounted. ChatWindow receives the audio callbacks as props.
@@ -403,6 +410,7 @@ export function AppShell() {
   const systemInfoLoadIdRef = useRef(0);
   const systemBtnRef = useRef<HTMLButtonElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+  const filePanelToggleRef = useRef<HTMLButtonElement>(null);
   const agentsButtonRef = useRef<HTMLButtonElement>(null);
   const agentsAnchorRef = useRef<HTMLElement | null>(null);
   const topPanelRef = useRef<HTMLDivElement>(null);
@@ -589,6 +597,33 @@ export function AppShell() {
     setRightPanelOpen((open) => !open);
   }, [isMobile]);
 
+  const closeRightPanel = useCallback((restoreFocus = false) => {
+    setRightPanelOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => filePanelToggleRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!rightPanelOpen) return;
+
+    const focusFrame = requestAnimationFrame(() => {
+      if (!isMobile && window.innerWidth >= 960) return;
+      rightPanelResizer.panelRef.current
+        ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+        ?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || (!isMobile && window.innerWidth >= 960)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeRightPanel(true);
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeRightPanel, isMobile, rightPanelOpen, rightPanelResizer.panelRef]);
+
   useEffect(() => {
     if (!mobileToolbarMoreOpen) return;
 
@@ -685,13 +720,16 @@ export function AppShell() {
   const [activeFileTabId, setActiveFileTabId] = useState<string | null>(null);
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([]);
   const [terminalsRestored, setTerminalsRestored] = useState(false);
-  const panelTabs: Tab[] = [...fileTabs, ...terminalTabs.map((tab) => ({
-    id: tab.id,
-    label: getFileName(tab.cwd) || tab.cwd,
-    filePath: tab.cwd,
-    kind: "terminal" as const,
-    closing: Boolean(tab.closing),
-  }))];
+  const panelTabs = useMemo<Tab[]>(() => [
+    ...fileTabs,
+    ...terminalTabs.map((tab) => ({
+      id: tab.id,
+      label: getFileName(tab.cwd) || tab.cwd,
+      filePath: tab.cwd,
+      kind: "terminal" as const,
+      closing: Boolean(tab.closing),
+    })),
+  ], [fileTabs, terminalTabs]);
 
   useEffect(() => {
     try {
@@ -724,26 +762,41 @@ export function AppShell() {
     setFileTabs((prev) => saveFileViewerState(prev, tabId, viewerRevision, viewerState));
   }, []);
 
+  const [activeCwd, setActiveCwd] = useState<string | null>(null);
+  const getFocusedChatCwd = useCallback(() => {
+    const focusedTabId = isSplitActiveRef.current && activeChatPaneRef.current === "secondary"
+      ? splitChatTabIdRef.current
+      : activeChatTabIdRef.current;
+    const focusedTab = chatTabsRef.current.find((tab) => tab.id === focusedTabId);
+    if (focusedTab?.kind === "session") return focusedTab.session?.cwd ?? null;
+    if (focusedTab?.kind === "draft") return focusedTab.newSessionCwd;
+    return selectedSession?.cwd ?? newSessionCwd ?? activeCwd;
+  }, [activeCwd, newSessionCwd, selectedSession?.cwd]);
+
   // Same @mention format as the chat input's @ autocomplete, so the agent's
   // read tool resolves it the same way (it strips the @ prefix).
-  const handleAtMention = useCallback((relativePath: string, isDir: boolean) => {
-    chatInputRef.current?.insertText(buildAtMentionText(relativePath, isDir));
+  const handleAtMention = useCallback((relativePath: string, isDir: boolean, sourceCwd?: string) => {
+    const path = pathForChatMention(relativePath, sourceCwd, getFocusedChatCwd());
+    chatInputRef.current?.insertText(buildAtMentionText(path, isDir));
     if (isMobile) { setRightPanelOpen(false); setSidebarOpen(false); }
-  }, [isMobile]);
+  }, [getFocusedChatCwd, isMobile]);
 
-  const handleAtMentions = useCallback((relativePaths: string[]) => {
-    const mentions = buildFileAtMentionsText(relativePaths);
+  const handleAtMentions = useCallback((relativePaths: string[], sourceCwd?: string) => {
+    const targetCwd = getFocusedChatCwd();
+    const mentions = buildFileAtMentionsText(
+      relativePaths.map((path) => pathForChatMention(path, sourceCwd, targetCwd)),
+    );
     if (mentions) chatInputRef.current?.insertText(mentions);
     if (isMobile) { setRightPanelOpen(false); setSidebarOpen(false); }
-  }, [isMobile]);
+  }, [getFocusedChatCwd, isMobile]);
 
-  const handleFileLineMention = useCallback((relativePath: string, startLine: number, endLine: number) => {
-    chatInputRef.current?.insertText(buildFileLineMentionText(relativePath, startLine, endLine));
+  const handleFileLineMention = useCallback((relativePath: string, startLine: number, endLine: number, sourceCwd?: string) => {
+    const path = pathForChatMention(relativePath, sourceCwd, getFocusedChatCwd());
+    chatInputRef.current?.insertText(buildFileLineMentionText(path, startLine, endLine));
     if (isMobile) { setRightPanelOpen(false); setSidebarOpen(false); }
-  }, [isMobile]);
+  }, [getFocusedChatCwd, isMobile]);
 
   const initialSessionId = initialNavigation.sessionId;
-  const [activeCwd, setActiveCwd] = useState<string | null>(null);
   const activeProjectKeyRef = useRef<string | null>(null);
   // Suppresses sessionKey bump in handleCwdChange during the initial URL restore
   const suppressCwdBumpRef = useRef(false);
@@ -1070,34 +1123,20 @@ export function AppShell() {
     body: string;
     tag?: string;
   }) => {
-    if (!("Notification" in window)) return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
 
-    const fire = () => {
-      const sessionUrl = targetSession ? `/?session=${encodeURIComponent(targetSession.id)}` : "/";
-      void showBrowserNotification({
-        title,
-        body,
-        sessionUrl,
-        tag,
-        onClick: () => {
-          window.focus();
-          if (targetSession) handleSelectSession(targetSession);
-        },
-      });
-    };
-
-    if (Notification.permission === "granted") {
-      fire();
-      void setupPushSubscription(locale);
-    } else if (Notification.permission === "default") {
-      void Notification.requestPermission().then((p) => {
-        if (p === "granted") {
-          fire();
-          void setupPushSubscription(locale);
-        }
-      });
-    }
-  }, [handleSelectSession, locale]);
+    const sessionUrl = targetSession ? `/?session=${encodeURIComponent(targetSession.id)}` : "/";
+    void showBrowserNotification({
+      title,
+      body,
+      sessionUrl,
+      tag,
+      onClick: () => {
+        window.focus();
+        if (targetSession) handleSelectSession(targetSession);
+      },
+    });
+  }, [handleSelectSession]);
 
   const handleSessionRenamed = useCallback((sessionId: string, title: string) => {
     setRefreshKey((key) => key + 1);
@@ -1520,10 +1559,13 @@ export function AppShell() {
   }, [activeChatPane, activeChatTabId, activeCwd, router, splitChatTabId, translate]);
 
   const handleNewChatTab = useCallback((pane?: "primary" | "secondary") => {
+    const openInSecondary = isSplitActive && (
+      pane === "secondary" || (pane !== "primary" && activeChatPane === "secondary")
+    );
+    const effectiveCwd = chatTabCwd(openInSecondary ? secondaryTab : primaryTab) ?? activeCwd;
     const draftId = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-    const effectiveCwd = activeCwd;
     const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
     rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
     activeNewSessionDraftKeyRef.current = draftKey;
@@ -1536,9 +1578,6 @@ export function AppShell() {
       translate("i18n.newSession"),
     );
     setChatTabs(nextTabs);
-    const openInSecondary = isSplitActive && (
-      pane === "secondary" || (pane !== "primary" && activeChatPane === "secondary")
-    );
     if (openInSecondary) {
       setSplitChatTabId(tabId);
       setActiveChatPane("secondary");
@@ -1549,7 +1588,28 @@ export function AppShell() {
     setSelectedSession(null);
     setNewSessionCwd(effectiveCwd);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [activeChatPane, activeCwd, chatTabs, isSplitActive, router, translate]);
+  }, [activeChatPane, activeCwd, chatTabs, isSplitActive, primaryTab, router, secondaryTab, translate]);
+
+  const handleDraftCwdChange = useCallback(async (draftKey: string | null, cwd: string) => {
+    const res = await fetch("/api/cwd/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd }),
+    });
+    const data = await res.json() as { cwd?: string; error?: string };
+    if (!res.ok || !data.cwd) throw new Error(data.error ?? `HTTP ${res.status}`);
+    const nextCwd = data.cwd;
+    if (draftKey) {
+      setChatTabs((tabs) => tabs.map((tab) => (
+        tab.kind === "draft" && tab.newSessionDraftKey === draftKey
+          ? { ...tab, newSessionCwd: nextCwd, projectKey: nextCwd }
+          : tab
+      )));
+    }
+    if (!draftKey || activeNewSessionDraftKeyRef.current === draftKey) {
+      setNewSessionCwd(nextCwd);
+    }
+  }, []);
 
   const handleToggleSplit = useCallback(() => {
     if (splitChatTabId) {
@@ -1608,7 +1668,7 @@ export function AppShell() {
   const handleOpenFile = useCallback((
     filePath: string,
     fileName: string,
-    options?: { sourceSessionId?: string | null; modeHint?: "diff" },
+    options?: { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string },
   ) => {
     const sourceSessionId = options?.sourceSessionId;
     const modeHint = options?.modeHint;
@@ -1616,6 +1676,7 @@ export function AppShell() {
     setFileTabs((prev) => openFileTab(prev, {
       fileName,
       filePath,
+      cwd: options?.cwd ?? activeCwd ?? undefined,
       modeHint,
       sourceSessionId,
       tabId,
@@ -1624,10 +1685,13 @@ export function AppShell() {
     setRightPanelOpen(true);
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
-  }, [isMobile]);
+  }, [activeCwd, isMobile]);
 
   const handleOpenLinkedFile = useCallback((filePath: string, sourceSessionId: string | null) => {
-    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId });
+    const sourceCwd = sourceSessionId
+      ? chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session?.cwd
+      : undefined;
+    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId, cwd: sourceCwd });
   }, [handleOpenFile]);
 
   const handleOpenTerminal = useCallback((cwd: string) => {
@@ -1642,8 +1706,9 @@ export function AppShell() {
   const handleTerminalClosed = (tab: TerminalTab) => {
     const replacement = tab.closing === "restart" ? newTerminalTab(tab.cwd) : null;
     const remaining = terminalTabs.filter((item) => item.id !== tab.id);
+    const adjacentTabId = getAdjacentTabId(panelTabs, tab.id);
     setTerminalTabs((tabs) => tabs.flatMap((item) => item.id !== tab.id ? [item] : replacement ? [replacement] : []));
-    setActiveFileTabId((current) => current !== tab.id ? current : replacement?.id ?? remaining.at(-1)?.id ?? fileTabs.at(-1)?.id ?? null);
+    setActiveFileTabId((current) => current !== tab.id ? current : replacement?.id ?? adjacentTabId);
     if (!replacement && !remaining.length && !fileTabs.length) setRightPanelOpen(false);
   };
 
@@ -1652,6 +1717,7 @@ export function AppShell() {
       setTerminalTabs((tabs) => tabs.map((tab) => tab.id === tabId && !tab.closing ? { ...tab, closing: "close" } : tab));
       return;
     }
+    const adjacentTabId = getAdjacentTabId(panelTabs, tabId);
     setFileTabs((prev) => {
       const next = prev.filter((t) => t.id !== tabId);
       if (next.length === 0 && terminalTabs.length === 0) setRightPanelOpen(false);
@@ -1659,10 +1725,9 @@ export function AppShell() {
     });
     setActiveFileTabId((cur) => {
       if (cur !== tabId) return cur;
-      const remaining = fileTabs.filter((t) => t.id !== tabId);
-      return remaining.at(-1)?.id ?? terminalTabs.at(-1)?.id ?? null;
+      return adjacentTabId;
     });
-  }, [fileTabs, terminalTabs]);
+  }, [panelTabs, terminalTabs]);
 
   const handleViewFullHistory = useCallback(() => {
     if (!selectedSession) return;
@@ -1714,6 +1779,9 @@ export function AppShell() {
         newSessionCwd={effectiveCwd}
         newSessionDraftKey={effectiveDraftKey}
         onDraftChange={handleDraftChange}
+        onNewSessionCwdChange={!tabSession && effectiveCwd
+          ? (cwd) => handleDraftCwdChange(effectiveDraftKey, cwd)
+          : undefined}
         draftPersistenceWarning={draftTabsPersistenceFailed}
         onAgentEnd={handleAgentEnd}
         onAttentionNeeded={handleAttentionNeeded}
@@ -2428,6 +2496,7 @@ export function AppShell() {
     const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;
     return (
       <button
+        ref={filePanelToggleRef}
         type="button"
         onClick={handleRightPanelToggle}
         disabled={covered}
@@ -3257,7 +3326,7 @@ export function AppShell() {
       <div
         aria-hidden="true"
         className={`right-panel-overlay-backdrop${rightPanelOpen ? " is-open" : ""}`}
-        onClick={() => setRightPanelOpen(false)}
+        onClick={() => closeRightPanel(true)}
       />
       {rightPanelOpen && (
         <div
@@ -3273,6 +3342,8 @@ export function AppShell() {
       <div
         ref={rightPanelResizer.panelRef}
         id="file-panel"
+        aria-hidden={!rightPanelOpen}
+        inert={!rightPanelOpen ? true : undefined}
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
@@ -3294,7 +3365,7 @@ export function AppShell() {
           </div>
           <button
             type="button"
-            onClick={() => setRightPanelOpen(false)}
+            onClick={() => closeRightPanel(true)}
             className="workspace-header-action"
             aria-controls="file-panel"
             aria-expanded={rightPanelOpen}
@@ -3321,7 +3392,7 @@ export function AppShell() {
             <FileViewer
               key={`${activeFileTab.id}:${activeFileTab.viewerRevision ?? 0}`}
               filePath={activeFileTab.filePath}
-              cwd={activeCwd ?? undefined}
+              cwd={activeFileTab.cwd ?? activeCwd ?? undefined}
               sourceSessionId={activeFileTab.sourceSessionId}
               gitRefreshKey={explorerRefreshKey}
               initialDisplayMode={activeFileTab.initialDisplayMode}
@@ -3337,7 +3408,7 @@ export function AppShell() {
               onOpenFile={(filePath) => handleOpenFile(
                 filePath,
                 getFileName(filePath),
-                { sourceSessionId: activeFileTab.sourceSessionId },
+                { sourceSessionId: activeFileTab.sourceSessionId, cwd: activeFileTab.cwd },
               )}
             />
           ) : !terminalTabs.some((tab) => tab.id === activeFileTabId) ? (

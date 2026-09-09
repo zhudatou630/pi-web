@@ -59,6 +59,8 @@ test("push shows a notification when no window is visible", async () => {
     title: "Session complete",
     options: {
       body: "Task finished.",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
       data: { url: "/?session=session-1" },
       tag: "pi-session-complete:session-1",
       renotify: true,

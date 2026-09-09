@@ -85,13 +85,15 @@ function toGitPath(filePath: string): string {
   return filePath.split(path.sep).join("/");
 }
 
-async function readStatusEntries(repositoryRoot: string): Promise<GitPorcelainEntry[]> {
-  const output = await git(repositoryRoot, [
+async function readStatusEntries(repositoryRoot: string, pathspec?: string): Promise<GitPorcelainEntry[]> {
+  const args = [
     "status",
     "--porcelain=v1",
     "-z",
     "--untracked-files=all",
-  ]);
+  ];
+  if (pathspec) args.push("--", pathspec);
+  const output = await git(repositoryRoot, args);
   return parseGitPorcelainV1(output);
 }
 
@@ -157,9 +159,21 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResponse> {
     readTrackedLineStats(repositoryRoot, cwd),
   ]);
   const files = entries.flatMap((entry): GitFileStatus[] => {
-    const filePath = toCwdSpelledGitPath(cwd, repositoryRoot, entry.path);
-    if (!filePath) return [];
+    let filePath = toCwdSpelledGitPath(cwd, repositoryRoot, entry.path);
     const classified = classifyGitStatus(entry);
+    if (!filePath && entry.originalPath) {
+      filePath = toCwdSpelledGitPath(cwd, repositoryRoot, entry.originalPath);
+      if (filePath) {
+        return [{
+          filePath,
+          status: "deleted",
+          code: "D",
+          indexStatus: entry.indexStatus,
+          worktreeStatus: entry.worktreeStatus,
+        }];
+      }
+    }
+    if (!filePath) return [];
     return [{
       filePath,
       ...classified,
@@ -232,42 +246,56 @@ export async function getGitFileDiff(cwd: string, filePath: string): Promise<Git
   if (!repositoryRoot || relativePath === null) return { supported: false };
 
   const resolvedFilePath = path.resolve(filePath);
-  const entries = await readStatusEntries(repositoryRoot);
-  const entry = entries.find((candidate) => candidate.path === relativePath);
+  const entries = await readStatusEntries(repositoryRoot, relativePath);
+  let entry = entries.find((candidate) => candidate.path === relativePath);
   if (!entry) return { supported: false };
+
+  if (classifyGitStatus(entry).status === "added") {
+    const fullEntry = (await readStatusEntries(repositoryRoot))
+      .find((candidate) => candidate.path === relativePath && candidate.originalPath);
+    if (fullEntry) entry = fullEntry;
+  }
 
   const { status } = classifyGitStatus(entry);
   if (status === "deleted") {
     const patch = await createTrackedFilePatch(repositoryRoot, relativePath, entry.originalPath);
-    if (!patch?.includes("\n@@ ")) return { supported: false };
+    if (!patch?.trim()) return { supported: false, status };
     return { supported: true, status, patch };
   }
 
-  let stat: fs.Stats;
-  try {
-    stat = fs.lstatSync(resolvedFilePath);
-  } catch {
-    return { supported: false };
-  }
-  if (!stat.isFile() || stat.size > TEXT_PREVIEW_MAX_BYTES) return { supported: false };
-
-  const currentBuffer = fs.readFileSync(resolvedFilePath);
-  if (hasNullByte(currentBuffer)) return { supported: false };
-  const newContent = currentBuffer.toString("utf8");
-
   let patch: string;
   if (status === "untracked") {
+    let stat: fs.Stats;
+    try {
+      stat = fs.lstatSync(resolvedFilePath);
+    } catch {
+      return { supported: false, status };
+    }
+    if (!stat.isFile() || stat.size > TEXT_PREVIEW_MAX_BYTES) return { supported: false, status };
+    const currentBuffer = fs.readFileSync(resolvedFilePath);
+    if (hasNullByte(currentBuffer)) return { supported: false, status };
+    const newContent = currentBuffer.toString("utf8");
     patch = createAddedFilePatch(relativePath, newContent);
   } else {
     const trackedPatch = await createTrackedFilePatch(repositoryRoot, relativePath, entry.originalPath);
     if (trackedPatch === null) {
       if (status !== "added") return { supported: false };
+      let stat: fs.Stats;
+      try {
+        stat = fs.lstatSync(resolvedFilePath);
+      } catch {
+        return { supported: false, status };
+      }
+      if (!stat.isFile() || stat.size > TEXT_PREVIEW_MAX_BYTES) return { supported: false, status };
+      const currentBuffer = fs.readFileSync(resolvedFilePath);
+      if (hasNullByte(currentBuffer)) return { supported: false, status };
+      const newContent = currentBuffer.toString("utf8");
       patch = createAddedFilePatch(relativePath, newContent);
     } else {
       patch = trackedPatch;
     }
   }
 
-  if (!patch.includes("\n@@ ")) return { supported: false };
+  if (!patch.trim()) return { supported: false, status };
   return { supported: true, status, patch };
 }

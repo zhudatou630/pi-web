@@ -1025,6 +1025,11 @@
   min-height: 28px;
 }
 
+.settings-chat-status {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .settings-chat-range-option {
   padding: 0;
 }

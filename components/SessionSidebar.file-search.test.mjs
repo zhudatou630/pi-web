@@ -3,13 +3,13 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(new URL("./FileExplorer.tsx", import.meta.url), "utf8");
-const apiSource = await readFile(new URL("../app/api/files/[...path]/route.ts", import.meta.url), "utf8");
+const apiSource = await readFile(new URL("../app/api/file-index/route.ts", import.meta.url), "utf8");
 
 test("provides a debounced file search UI and opens selected results", () => {
   assert.match(source, /searchQuery/);
   assert.match(source, /\/api\/file-index\?cwd=\$\{encodeURIComponent\(cwd\)\}&q=\$\{encodeURIComponent\(query\)\}/);
   assert.match(source, /setTimeout\(\(\) =>/);
-  assert.match(source, /onOpenFile\(node\.fullPath, node\.name\)/);
+  assert.match(source, /onOpenFile\(node\.fullPath, node\.name, \{ cwd \}\)/);
 });
 
 test("renders search results with the existing expandable file tree", () => {
@@ -19,8 +19,13 @@ test("renders search results with the existing expandable file tree", () => {
   assert.match(source, /expandedPaths=\{searchExpanded\}/);
 });
 
+test("reloads an expanded directory after the tree is remounted", () => {
+  assert.match(source, /if \(open && !loaded\) void loadChildren\(\);/);
+  assert.match(source, /onClick=\{\(\) => void loadChildren\(true\)\}/);
+});
+
 test("search result rows offer mention and download actions like the file tree", () => {
-  assert.match(source, /onAtMention\(getRelativeFilePath\(node\.fullPath, cwd\), node\.isDir\)/);
+  assert.match(source, /onAtMention\(getRelativeFilePath\(node\.fullPath, cwd\), node\.isDir, cwd\)/);
   assert.match(source, /<MentionIcon \/>/);
   assert.match(source, /encodeFilePathForApi\(node\.fullPath\)\}\?type=download/);
 });
@@ -28,5 +33,7 @@ test("search result rows offer mention and download actions like the file tree",
 test("keeps search on the bounded index and reports request failures", () => {
   assert.match(source, /setSearchError\(true\)/);
   assert.match(source, /role="alert"/);
-  assert.doesNotMatch(apiSource, /type === "search"|searchFiles/);
+  assert.match(source, /kind=file&version=/);
+  assert.match(apiSource, /kind === "file"/);
+  assert.match(apiSource, /cached\.version !== version/);
 });

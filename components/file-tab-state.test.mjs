@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { openFileTab, saveFileViewerState } from "./file-tab-state.ts";
+import { getAdjacentTabId, openFileTab, saveFileViewerState } from "./file-tab-state.ts";
 
 const tabA = {
   id: "file:/repo/a.ts",
@@ -24,6 +24,7 @@ const tabB = {
 };
 
 const openA = {
+  cwd: "/repo",
   fileName: "a.ts",
   filePath: "/repo/a.ts",
   tabId: "file:/repo/a.ts",
@@ -43,8 +44,17 @@ test("saving viewer state updates only the matching revision", () => {
 });
 
 test("opening an existing tab normally preserves its state and revision", () => {
-  const tabs = [tabA, tabB];
+  const tabs = [{ ...tabA, cwd: "/repo" }, tabB];
   assert.strictEqual(openFileTab(tabs, openA), tabs);
+});
+
+test("changing cwd remounts the viewer with the file's opening context", () => {
+  const [next] = openFileTab([{ ...tabA, cwd: "/repo-worktrees/a" }], {
+    ...openA,
+    cwd: "/repo-worktrees/b",
+  });
+  assert.equal(next.cwd, "/repo-worktrees/b");
+  assert.equal(next.viewerRevision, 1);
 });
 
 test("changing the source session remounts the viewer without losing its state", () => {
@@ -55,7 +65,7 @@ test("changing the source session remounts the viewer without losing its state",
 });
 
 test("opening from the same source session preserves the viewer revision", () => {
-  const tab = { ...tabA, sourceSessionId: "session-1" };
+  const tab = { ...tabA, cwd: "/repo", sourceSessionId: "session-1" };
   const tabs = [tab];
   assert.strictEqual(
     openFileTab(tabs, { ...openA, sourceSessionId: "session-1" }),
@@ -82,6 +92,10 @@ test("every explicit diff activation resets the mode and increments the revision
     wrapLines: true,
     scrollTop: 0,
     scrollLeft: 0,
+    loadedBytes: undefined,
+    scrollByMode: {
+      diff: { scrollTop: 0, scrollLeft: 0 },
+    },
   });
 
   const returnedToSource = saveFileViewerState(first, tabA.id, 1, tabA.viewerState);
@@ -95,4 +109,13 @@ test("a remounted viewer ignores the previous revision's late cleanup", () => {
   const stale = saveFileViewerState(reopened, tabA.id, 0, tabA.viewerState);
   assert.strictEqual(stale, reopened);
   assert.equal(stale[0].viewerState.displayMode, "diff");
+});
+
+test("closing a tab selects its right neighbor, then its left neighbor", () => {
+  const tabC = { ...tabA, id: "file:/repo/c.ts", filePath: "/repo/c.ts" };
+  const tabs = [tabA, tabB, tabC];
+
+  assert.equal(getAdjacentTabId(tabs, tabB.id), tabC.id);
+  assert.equal(getAdjacentTabId(tabs, tabC.id), tabB.id);
+  assert.equal(getAdjacentTabId([tabA], tabA.id), null);
 });

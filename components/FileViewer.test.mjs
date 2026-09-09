@@ -8,7 +8,9 @@ const source = await readFile(new URL("./FileViewer.tsx", import.meta.url), "utf
 
 test("large source previews bypass the per-line syntax highlighter", () => {
   assert.match(source, /const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;/);
-  assert.match(source, /const useLightweightSource = sourceLines\.length > SOURCE_HIGHLIGHT_MAX_LINES/);
+  assert.match(source, /const SOURCE_HIGHLIGHT_MAX_BYTES = 128 \* 1024;/);
+  assert.match(source, /sourceLines\.length > SOURCE_HIGHLIGHT_MAX_LINES/);
+  assert.match(source, /data\?\.size \?\? 0\) > SOURCE_HIGHLIGHT_MAX_BYTES/);
 
   // Both source trees are memoized so unrelated re-renders (panel open/close,
   // selection changes) reuse them instead of rebuilding every line element.
@@ -44,6 +46,7 @@ test("lightweight source rows are skipped for highlighted, diff, and preview vie
   const { outputText } = ts.transpileModule(`
     return (data, displayMode, hasGitDiff = false, isDeletedDiff = false, wrapLines = false) => {
       const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
+      const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;
       const FILE_LINE_NUMBER_STYLE = {};
       ${calculations}
       return lightweightSourceLines;
@@ -65,4 +68,22 @@ test("lightweight source rows are skipped for highlighted, diff, and preview vie
     assert.equal(rows[0].props.children[1].props.children, "line");
   }
   assert.equal(render(large, "source", false, false, true)[0].props.children[1].props.style.whiteSpace, "pre-wrap");
+  assert.equal(render({ content: "x", language: "text", size: 128 * 1024 + 1 }, "source").length, 1);
+});
+
+test("diff view preserves Git hunk and metadata rows", () => {
+  assert.match(source, /if \(row\.type === "hunk"\) return \[\{ type: "hunk", text: row\.text \}\];/);
+  assert.match(source, /function diffMetadataLines/);
+  assert.doesNotMatch(source, /const CONTEXT = 3/);
+  assert.match(source, /line\.oldLineNo/);
+  assert.match(source, /line\.newLineNo/);
+});
+
+test("an explicit diff request bypasses native media viewers", () => {
+  assert.match(source, /const diffRequested = resolveInitialFileDisplayMode\(initialState, initialDisplayMode\) === "diff";/);
+  assert.match(source, /if \(!diffRequested && isImagePath\(filePath\)\)/);
+  assert.match(source, /if \(error && !\(effectiveDisplayMode === "diff" && hasGitDiff\)\)/);
+  assert.match(source, /if \(!data && !\(effectiveDisplayMode === "diff" && hasGitDiff\)\) return null;/);
+  assert.match(source, /if \(skipContentLoad\) \{[\s\S]*setLoading\(false\);/);
+  assert.match(source, /if \(!skipContentLoad\) void fetchContent\(filePath, 0\);/);
 });

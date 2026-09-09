@@ -22,7 +22,6 @@ for (const [name, nextName] of [
   ["AudioViewer", "VideoViewer"],
   ["VideoViewer", "DocumentViewer"],
   ["DocumentViewer", "FileViewer"],
-  ["TextFileViewer", null],
 ]) {
   test(`${name} pauses its watcher and synchronizes after connecting`, () => {
     const block = functionBlock(name, nextName);
@@ -37,6 +36,32 @@ for (const [name, nextName] of [
   });
 }
 
+test("TextFileViewer compares the connected version before refreshing its snapshot", () => {
+  const block = functionBlock("TextFileViewer", null);
+  assert.match(block, /initialContentLoadRef/);
+  assert.match(block, /connectedVersion === contentVersionRef\.current/);
+  assert.match(block, /if \(esRef\.current !== es \|\| connectedVersion === contentVersionRef\.current\) return;/);
+  assert.match(block, /connectedVersion === contentVersionRef\.current\) return;[\s\S]*fetchContent\(filePath, 0\);[\s\S]*fetchGitDiff\(filePath\)/);
+  assert.match(block, /es\.addEventListener\("change", synchronize\)/);
+  assert.match(block, /if \(reconnecting\) void fetchGitDiff\(filePath\)/);
+});
+
+test("TextFileViewer keeps paginated content on one file version and restores loaded depth", () => {
+  const block = functionBlock("TextFileViewer", null);
+  assert.match(block, /contentVersionRef\.current !== next\.version/);
+  assert.match(block, /contentNextOffsetRef\.current !== effectiveOffset/);
+  assert.match(block, /effectiveOffset = 0;[\s\S]*next = await readAt\(0\)/);
+  assert.match(block, /effectiveOffset && next\.error === "Invalid text preview offset"/);
+  assert.match(block, /viewerStateRef\.current\.loadedBytes = next\.nextOffset/);
+  assert.match(block, /while \(active && chunk\?\.truncated && chunk\.nextOffset < initialLoadedBytes\)/);
+  assert.match(block, /active = false;[\s\S]*contentRequestRef\.current \+= 1/);
+});
+
+test("TextFileViewer does not render a truncated document as a preview", () => {
+  const block = functionBlock("TextFileViewer", null);
+  assert.match(block, /displayMode === "preview" && !hasPreview[\s\S]*\? "source"/);
+});
+
 test("FileViewer forwards watcher state to every viewer implementation", () => {
   const block = functionBlock("FileViewer", "TextFileViewer");
   assert.equal(block.match(/watchEnabled=\{watchEnabled\}/g)?.length, 5);
@@ -48,8 +73,10 @@ test("TextFileViewer snapshots and restores lightweight tab state", () => {
   assert.match(block, /displayMode: requestedInitialDisplayMode/);
   assert.match(block, /viewerStateRef\.current\.displayMode = nextDisplayMode/);
   assert.match(block, /viewerStateRef\.current\.wrapLines = next/);
-  assert.match(block, /viewerStateRef\.current\.scrollTop = event\.currentTarget\.scrollTop/);
-  assert.match(block, /viewerStateRef\.current\.scrollLeft = event\.currentTarget\.scrollLeft/);
+  assert.match(block, /viewerStateRef\.current\.scrollTop = position\.scrollTop/);
+  assert.match(block, /viewerStateRef\.current\.scrollLeft = position\.scrollLeft/);
+  assert.match(block, /\[effectiveDisplayMode\]: position/);
+  assert.match(block, /scrollByMode\?\.\[effectiveDisplayMode\]/);
   assert.match(block, /content\.scrollTop = viewerStateRef\.current\.scrollTop/);
   assert.match(block, /content\.scrollLeft = viewerStateRef\.current\.scrollLeft/);
 });

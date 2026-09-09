@@ -44,6 +44,8 @@ interface CacheEntry {
   listing: FileListing;
   /** Derived lazily on the first ?q= search against this listing */
   entries?: FileIndexEntry[];
+  fileEntries?: FileIndexEntry[];
+  version?: string;
   expiresAt: number;
 }
 
@@ -121,6 +123,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "cwd must be an absolute path" }, { status: 400 });
     }
     const query = req.nextUrl.searchParams.get("q")?.slice(0, MAX_QUERY_LENGTH) ?? "";
+    const kind = req.nextUrl.searchParams.get("kind");
+    const version = req.nextUrl.searchParams.get("version") ?? "";
 
     const allowedRoots = await getAllowedFileRoots();
     if (!isFilePathAllowed(cwd, allowedRoots)) {
@@ -143,17 +147,21 @@ export async function GET(req: NextRequest) {
     const cache = getIndexCache();
     const now = Date.now();
     let cached = cache.get(cwd);
-    if (!cached || cached.expiresAt <= now) {
+    if (!cached || cached.expiresAt <= now || (version && cached.version !== version)) {
       const listing = (await listWithGit(cwd)) ?? listWithWalk(cwd);
       for (const [key, entry] of cache) {
         if (entry.expiresAt <= now) cache.delete(key);
       }
       if (cache.size >= CACHE_MAX_ENTRIES) cache.clear();
-      cached = { listing, expiresAt: now + CACHE_TTL_MS };
+      cached = { listing, version: version || undefined, expiresAt: now + CACHE_TTL_MS };
       cache.set(cwd, cached);
     }
 
     if (query) {
+      if (kind === "file") {
+        cached.fileEntries ??= cached.listing.files.map((filePath) => ({ path: filePath, isDir: false }));
+        return NextResponse.json({ matches: filterFileEntries(cached.fileEntries, query) });
+      }
       cached.entries ??= buildEntriesFromFiles(cached.listing.files);
       return NextResponse.json({ matches: filterFileEntries(cached.entries, query) });
     }

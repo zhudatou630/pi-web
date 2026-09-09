@@ -81,6 +81,8 @@ self.addEventListener("push", (event) => {
       if (clients.some((client) => client.visibilityState === "visible")) return;
       return self.registration.showNotification(title, {
         body,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
         data: { url: typeof url === "string" && url ? url : "/" },
         ...(typeof tag === "string" && tag ? { tag, renotify: true } : {}),
       });

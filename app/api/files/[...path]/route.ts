@@ -9,7 +9,6 @@ import {
 import {
   DOCX_PREVIEW_MAX_BYTES,
   IMAGE_PREVIEW_MAX_BYTES,
-  TEXT_PREVIEW_MAX_BYTES,
   documentPreviewKind,
   getAudioMime,
   getDocumentMime,
@@ -24,9 +23,11 @@ import {
   inspectUploadTargets,
   parseUploadConflictStrategy,
   validateUploadFileNames,
+  writeUploadFile,
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { filePathFromApiSegments, samePath } from "@/lib/paths";
+import { readTextPreviewChunk } from "@/lib/text-preview";
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",
@@ -67,6 +68,10 @@ function getLanguage(filePath: string): string {
   if (base === "makefile" || base === "gnumakefile") return "makefile";
   const ext = base.split(".").pop() ?? "";
   return EXT_TO_LANGUAGE[ext] ?? "text";
+}
+
+function getFileVersion(stat: fs.Stats): string {
+  return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
 }
 
 function parseFileRequestType(value: string): FileRequestType | null {
@@ -208,17 +213,8 @@ export async function POST(
         continue;
       }
 
-      if (conflictSet.has(file.name)) {
-        try {
-          fs.unlinkSync(destination);
-        } catch (error) {
-          errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
-          continue;
-        }
-      }
-
       try {
-        fs.writeFileSync(destination, bytes, { flag: "wx" });
+        writeUploadFile(destination, bytes, conflictSet.has(file.name));
         uploaded.push(file.name);
       } catch (error) {
         errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
@@ -479,12 +475,22 @@ export async function GET(
       if (documentMime) {
         return streamFile(filePath, stat, documentMime, request.headers.get("range"));
       }
-      if (stat.size > TEXT_PREVIEW_MAX_BYTES) {
-        return NextResponse.json({ error: "File too large for preview (>256KB)" }, { status: 413 });
+      const rawOffset = request.nextUrl.searchParams.get("offset");
+      if (rawOffset !== null && !/^\d+$/.test(rawOffset)) {
+        return NextResponse.json({ error: "Invalid text preview offset" }, { status: 400 });
       }
-      const content = fs.readFileSync(filePath, "utf-8");
+      const offset = Number(rawOffset ?? 0);
+      if (!Number.isSafeInteger(offset) || offset > stat.size) {
+        return NextResponse.json({ error: "Invalid text preview offset" }, { status: 400 });
+      }
+      const chunk = readTextPreviewChunk(filePath, stat.size, offset);
       const language = getLanguage(filePath);
-      return NextResponse.json({ content, language, size: stat.size });
+      return NextResponse.json({
+        ...chunk,
+        language,
+        size: stat.size,
+        version: getFileVersion(stat),
+      });
     }
 
     if (type === "download") {
@@ -505,6 +511,7 @@ export async function GET(
       const documentMime = getDocumentMime(filePath);
       return NextResponse.json({
         size: stat.size,
+        version: getFileVersion(stat),
         language: getLanguage(filePath),
         mime: imageMime || audioMime || videoMime || documentMime || "text/plain",
         previewKind: documentPreviewKind(filePath),
@@ -585,7 +592,11 @@ export async function GET(
                 lastCtimeMs = s.ctimeMs;
                 lastIno = s.ino;
                 lastSize = s.size;
-                send("change", { mtime: s.mtime.toISOString(), size: s.size });
+                send("change", {
+                  mtime: s.mtime.toISOString(),
+                  size: s.size,
+                  version: getFileVersion(s),
+                });
               } catch {
                 if (!lastExists) return;
                 lastExists = false;
@@ -599,7 +610,10 @@ export async function GET(
             });
             // The client snapshots only after this event, so emit it after the
             // watcher exists to avoid dropping changes between those steps.
-            send("connected", { filePath });
+            send("connected", {
+              filePath,
+              version: stat ? getFileVersion(stat) : null,
+            });
           } catch {
             send("error", { message: "Failed to watch file" });
             controller.close();

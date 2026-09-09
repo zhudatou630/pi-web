@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { randomUUID } from "crypto";
 
 export const UPLOAD_CONFLICT_STRATEGIES = ["error", "overwrite", "skip"] as const;
 export type UploadConflictStrategy = typeof UPLOAD_CONFLICT_STRATEGIES[number];
@@ -56,4 +57,22 @@ export function inspectUploadTargets(directory: string, fileNames: string[]): Up
   }
 
   return { conflicts, nonReplaceable };
+}
+
+export function writeUploadFile(destination: string, bytes: Buffer, overwrite: boolean): void {
+  if (!overwrite) {
+    fs.writeFileSync(destination, bytes, { flag: "wx" });
+    return;
+  }
+
+  const temporaryPath = path.join(
+    path.dirname(destination),
+    `.${path.basename(destination)}.pi-upload-${randomUUID()}`,
+  );
+  try {
+    fs.writeFileSync(temporaryPath, bytes, { flag: "wx" });
+    fs.renameSync(temporaryPath, destination);
+  } finally {
+    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+  }
 }

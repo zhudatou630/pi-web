@@ -21,6 +21,7 @@ import {
 } from "@/lib/chat-outline-jump";
 import { MessageView } from "./MessageView";
 import { ChatInput, type ChatInputHandle, type AttachedImage } from "./ChatInput";
+import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { AnsiText } from "./AnsiText";
 import { LivePulseBeacon } from "./LivePulseBeacon";
@@ -53,6 +54,7 @@ interface Props {
   newSessionCwd: string | null;
   newSessionDraftKey: string | null;
   onDraftChange?: (draftKey: string, value: string, imageCount: number) => void;
+  onNewSessionCwdChange?: (cwd: string) => Promise<void>;
   draftPersistenceWarning?: boolean;
   onAgentEnd?: (session?: SessionInfo | null) => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest, session: SessionInfo | null) => void;
@@ -96,6 +98,64 @@ function ActivityPulse({ label }: { label: string }) {
 }
 
 const CHAT_COLUMN_PADDING = 16;
+
+function NewSessionCwdControl({
+  cwd,
+  onChange,
+}: {
+  cwd: string;
+  onChange: (cwd: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <>
+      <button
+        type="button"
+        title={t("chat.changeWorkingDirectory")}
+        aria-label={`${t("chat.changeWorkingDirectory")}: ${cwd}`}
+        onClick={() => setOpen(true)}
+        onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+        onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
+        style={{
+          marginTop: 10,
+          maxWidth: "100%",
+          border: "none",
+          background: "none",
+          color: "var(--text-muted)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+          lineHeight: 1.4,
+          padding: 0,
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl", textAlign: "center" }}>
+          <span style={{ unicodeBidi: "plaintext" }}>{cwd}</span>
+        </span>
+      </button>
+      {open && (
+        <DirectoryPicker
+          initialPath={cwd}
+          busy={busy}
+          error={error}
+          onCancel={() => { setOpen(false); setError(null); }}
+          onSelect={(path) => {
+            setBusy(true);
+            setError(null);
+            void onChange(path).then(
+              () => setOpen(false),
+              (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
+            ).finally(() => setBusy(false));
+          }}
+        />
+      )}
+    </>
+  );
+}
 
 function NewSessionUpdateLink({
   label,
@@ -433,7 +493,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onNewSessionCwdChange, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -1954,6 +2014,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               <span style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
               <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
             </div>
+            {newSessionCwd && onNewSessionCwdChange && (
+              <NewSessionCwdControl cwd={newSessionCwd} onChange={onNewSessionCwdChange} />
+            )}
           </div>
         )}
         {chatInputElement}

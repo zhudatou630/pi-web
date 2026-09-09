@@ -36,8 +36,8 @@ interface Props {
   cwd: string;
   onOpenFile: (filePath: string, fileName: string, options?: OpenFileOptions) => void;
   refreshKey?: number;
-  onAtMention?: (relativePath: string, isDir: boolean) => void;
-  onAtMentions?: (relativePaths: string[]) => void;
+  onAtMention?: (relativePath: string, isDir: boolean, sourceCwd?: string) => void;
+  onAtMentions?: (relativePaths: string[], sourceCwd?: string) => void;
   onUploadBusyChange?: (busy: boolean) => void;
   changesCollapsed: boolean;
   onChangesCountChange?: (count: number) => void;
@@ -231,7 +231,7 @@ function TreeNode({
   depth: number;
   cwd: string;
   onOpenFile: (filePath: string, fileName: string, options?: OpenFileOptions) => void;
-  onAtMention?: (relativePath: string, isDir: boolean) => void;
+  onAtMention?: (relativePath: string, isDir: boolean, sourceCwd?: string) => void;
   expandedPaths: Set<string>;
   onToggleExpanded: (fullPath: string, open: boolean) => void;
   refreshToken?: string;
@@ -250,17 +250,19 @@ function TreeNode({
   const [children, setChildren] = useState<FileNode[]>(node.children ?? []);
   const [loaded, setLoaded] = useState(node.loaded ?? false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
 
   const loadChildren = useCallback(async (force = false) => {
     if (loaded && !force) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const entries = await fetchEntries(node.fullPath);
       setChildren(entries);
       setLoaded(true);
-    } catch {
-      // ignore
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoading(false);
     }
@@ -278,11 +280,14 @@ function TreeNode({
     if (node.isDir) {
       const next = !open;
       onToggleExpanded(node.fullPath, next);
-      if (next && !loaded) loadChildren();
     } else {
-      onOpenFile(node.fullPath, node.name);
+      onOpenFile(node.fullPath, node.name, { cwd });
     }
-  }, [node.isDir, node.fullPath, node.name, loaded, open, loadChildren, onOpenFile, onToggleExpanded]);
+  }, [cwd, node.isDir, node.fullPath, node.name, open, onOpenFile, onToggleExpanded]);
+
+  useEffect(() => {
+    if (open && !loaded) void loadChildren();
+  }, [loadChildren, loaded, open]);
 
   return (
     <div>
@@ -368,7 +373,7 @@ function TreeNode({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir);
+              onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir, cwd);
             }}
             title={t("files.insertPath")}
             style={{
@@ -456,13 +461,23 @@ function TreeNode({
               empty
             </div>
           )}
+          {loadError && (
+            <button
+              type="button"
+              onClick={() => void loadChildren(true)}
+              title={loadError}
+              style={{ marginLeft: 8 + (depth + 1) * 14, height: 22, padding: 0, border: 0, background: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}
+            >
+              {t("files.loadFailedRetry")}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-type OpenFileOptions = { sourceSessionId?: string | null; modeHint?: "diff" };
+type OpenFileOptions = { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string };
 
 type OpenFileHandler = (filePath: string, fileName: string, options?: OpenFileOptions) => void;
 
@@ -482,7 +497,7 @@ function ChangeRow({
   const rel = getRelativeFilePath(status.filePath, cwd);
   return (
     <div
-      onClick={() => onOpenFile(status.filePath, name, { modeHint: "diff" })}
+      onClick={() => onOpenFile(status.filePath, name, { modeHint: "diff", cwd })}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       title={status.filePath}
@@ -541,6 +556,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [highlightedPaths, setHighlightedPaths] = useState<Set<string>>(new Set());
   const [gitFiles, setGitFiles] = useState<GitFileStatus[]>([]);
   const [gitLineStats, setGitLineStats] = useState({ additions: 0, deletions: 0 });
+  const [gitStatusCwd, setGitStatusCwd] = useState<string | null>(null);
+  const [gitError, setGitError] = useState<string | null>(null);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -553,6 +570,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [searchExpanded, setSearchExpanded] = useState<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const prevCwdRef = useRef<string | null>(null);
+  const gitStatusCwdRef = useRef<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const refreshToken = `${refreshKey ?? 0}:${treeRefreshKey}`;
   const uploadBusy = uploadPhase !== "idle";
@@ -572,7 +590,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     setSearchLoading(true);
     setSearchError(false);
     const timer = setTimeout(() => {
-      fetch(`/api/file-index?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}`, { signal: controller.signal })
+      fetch(`/api/file-index?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}&kind=file&version=${encodeURIComponent(refreshToken)}`, { signal: controller.signal })
         .then((response) => response.ok ? response.json() as Promise<{ matches?: FileIndexEntry[] }> : Promise.reject(new Error("Search failed")))
         .then((data) => setSearchPaths((data.matches ?? []).filter((entry) => !entry.isDir).map((entry) => entry.path)))
         .catch(() => {
@@ -584,7 +602,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
         .finally(() => { if (!controller.signal.aborted) setSearchLoading(false); });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [cwd, fileSearchOpen, searchQuery]);
+  }, [cwd, fileSearchOpen, refreshToken, searchQuery]);
 
   // Focus the search input whenever the search panel opens.
   useEffect(() => {
@@ -778,6 +796,13 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
 
   useEffect(() => {
     let cancelled = false;
+    const cwdChanged = gitStatusCwdRef.current !== cwd;
+    if (cwdChanged) {
+      setGitStatusCwd(null);
+      setGitFiles([]);
+      setGitLineStats({ additions: 0, deletions: 0 });
+    }
+    setGitError(null);
     fetchGitStatus(cwd)
       .then((status) => {
         if (!cancelled) {
@@ -785,20 +810,21 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           setGitLineStats(status.isGitRepository
             ? { additions: status.additions, deletions: status.deletions }
             : { additions: 0, deletions: 0 });
+          gitStatusCwdRef.current = cwd;
+          setGitStatusCwd(cwd);
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
-          setGitFiles([]);
-          setGitLineStats({ additions: 0, deletions: 0 });
+          setGitError(error instanceof Error ? error.message : String(error));
         }
       });
     return () => { cancelled = true; };
   }, [cwd, refreshKey, treeRefreshKey]);
 
   useEffect(() => {
-    onChangesCountChange?.(gitFiles.length);
-  }, [gitFiles, onChangesCountChange]);
+    onChangesCountChange?.(gitStatusCwd === cwd ? gitFiles.length : 0);
+  }, [cwd, gitFiles, gitStatusCwd, onChangesCountChange]);
 
   const showUploadFeedback = uploadBusy || pendingConflict !== null || uploadError !== null || uploadSummary !== null;
 
@@ -806,6 +832,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     if (!uploadSummary || uploadSummary.uploaded.length === 0) return;
     onAtMentions?.(
       uploadSummary.uploaded.map((name) => getRelativeFilePath(joinFilePath(cwd, name), cwd)),
+      cwd,
     );
   }, [cwd, onAtMentions, uploadSummary]);
 
@@ -997,7 +1024,13 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       </div>
       )}
 
-      {!changesCollapsed && gitFiles.length > 0 && (
+      {gitError && (
+        <div role="alert" title={gitError} style={{ padding: "6px 12px", fontSize: 11, color: "#f87171" }}>
+          {t("files.gitStatusFailed")}
+        </div>
+      )}
+
+      {!changesCollapsed && gitStatusCwd === cwd && gitFiles.length > 0 && (
         <div style={{ padding: "0 4px 2px" }}>
           <div
             aria-label={t("files.changeStats", {
@@ -1019,7 +1052,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
         </div>
       )}
 
-      {(changesCollapsed || gitFiles.length === 0) && (!fileSearchOpen || !hasSearchQuery) && (
+      {(changesCollapsed || gitStatusCwd !== cwd || gitFiles.length === 0) && (!fileSearchOpen || !hasSearchQuery) && (
         <div style={{ padding: "2px 4px" }}>
           {loading ? (
             <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-dim)" }}>Loading files...</div>

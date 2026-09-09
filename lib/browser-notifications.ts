@@ -24,12 +24,37 @@ export interface BrowserNotificationOptions {
 
 export type NotificationDelivery = "service-worker" | "window" | null;
 
+const NOTIFICATION_ICON = "/icons/icon-192.png";
+
 type DocumentAttentionState = Pick<Document, "visibilityState" | "hasFocus">;
 
 export function shouldShowBrowserNotification(
   attentionState: DocumentAttentionState = document,
 ): boolean {
   return attentionState.visibilityState !== "visible" || !attentionState.hasFocus();
+}
+
+export function subscribeNotificationPermission(
+  onChange: (permission: NotificationPermission) => void,
+): () => void {
+  if (typeof Notification === "undefined") return () => {};
+  onChange(Notification.permission);
+
+  const permissions = typeof navigator === "undefined" ? undefined : navigator.permissions;
+  if (!permissions?.query) return () => {};
+
+  let status: PermissionStatus | undefined;
+  let cancelled = false;
+  void permissions.query({ name: "notifications" }).then((permissionStatus) => {
+    if (cancelled) return;
+    status = permissionStatus;
+    permissionStatus.onchange = () => onChange(Notification.permission);
+  }).catch(() => {});
+
+  return () => {
+    cancelled = true;
+    if (status) status.onchange = null;
+  };
 }
 
 export function isBlockingExtensionUiRequest(
@@ -72,6 +97,8 @@ export async function showBrowserNotification(
 ): Promise<NotificationDelivery> {
   const notificationOptions: NotificationOptions = {
     body: options.body,
+    icon: NOTIFICATION_ICON,
+    badge: NOTIFICATION_ICON,
     ...(options.tag ? { tag: options.tag, renotify: true } : {}),
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getFileIcon } from "./FileIcons";
 import { useI18n } from "@/hooks/useI18n";
 import type { FileViewerDisplayMode, FileViewerState } from "@/lib/file-viewer-state";
@@ -10,6 +10,7 @@ export interface Tab {
   id: string;
   label: string;
   filePath: string;
+  cwd?: string;
   kind?: "terminal";
   closing?: boolean;
   sourceSessionId?: string | null;
@@ -28,10 +29,19 @@ interface Props {
 export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
+  const activeTabRef = useRef<HTMLDivElement>(null);
+  const focusAfterCloseRef = useRef(false);
   const displayLabels = useMemo(
     () => disambiguatePathLabels(tabs.map((tab) => ({ id: tab.id, path: tab.filePath, label: tab.label }))),
     [tabs],
   );
+
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (!focusAfterCloseRef.current) return;
+    focusAfterCloseRef.current = false;
+    activeTabRef.current?.focus();
+  }, [activeTabId, tabs]);
 
   return (
     <div
@@ -51,6 +61,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
         return (
           <div
             key={tab.id}
+            ref={isActive ? activeTabRef : null}
             role="tab"
             aria-label={tab.kind === "terminal" ? t("terminal.tabLabel", { name: displayLabel }) : displayLabel}
             aria-selected={isActive}
@@ -120,7 +131,11 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
             </span>
             <button
               disabled={tab.closing}
-              onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                focusAfterCloseRef.current = true;
+                onCloseTab(tab.id);
+              }}
               onMouseEnter={() => setHoveredClose(tab.id)}
               onMouseLeave={() => setHoveredClose(null)}
               style={{

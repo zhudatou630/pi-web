@@ -44,6 +44,13 @@ test("split pane plus buttons create a tab in that pane", () => {
   assert.match(source, /const openInSecondary = isSplitActive && \(/);
 });
 
+test("new chat tab inherits the current pane tab cwd", () => {
+  assert.match(source, /const effectiveCwd = chatTabCwd\(openInSecondary \? secondaryTab : primaryTab\) \?\? activeCwd;/);
+  assert.match(source, /onNewSessionCwdChange=\{!tabSession && effectiveCwd/);
+  assert.match(chatWindowSource, /function NewSessionCwdControl\(/);
+  assert.match(chatWindowSource, /<DirectoryPicker/);
+});
+
 test("collapses split view to the focused tab when the chat container becomes narrow", () => {
   assert.match(source, /width < CHAT_SPLIT_MIN_WIDTH/);
   assert.match(source, /if \(!splitChatTabId \|\| canSplitChat\) return;/);

@@ -27,6 +27,7 @@ import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { subscribeNotificationPermission } from "@/lib/browser-notifications";
 import { ConfigButton, ConfigSwitch } from "./SettingsUi";
 
 interface Props {
@@ -78,10 +79,12 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
   }, []);
+  useEffect(() => subscribeNotificationPermission(setNotificationPermission), []);
   const themeOptions: { id: ThemePreference; label: string }[] = [
     { id: "light", label: t("settings.themeLight") },
     { id: "dark", label: t("settings.themeDark") },
@@ -229,6 +232,25 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
               onChange={onQuoteSelectionChange}
             />
           </div>
+          {notificationPermission && (
+            <div className="settings-chat-option settings-chat-switch-option">
+              <span>{t("settings.browserNotifications")}</span>
+              {notificationPermission === "granted" ? (
+                <span className="settings-chat-status">{t("settings.browserNotificationsOn")}</span>
+              ) : notificationPermission === "denied" ? (
+                <span className="settings-chat-status">{t("settings.browserNotificationsBlocked")}</span>
+              ) : (
+                <ConfigButton
+                  size="small"
+                  onClick={() => {
+                    void Notification.requestPermission().then(setNotificationPermission);
+                  }}
+                >
+                  {t("settings.browserNotificationsEnable")}
+                </ConfigButton>
+              )}
+            </div>
+          )}
         </div>
       </section>
 

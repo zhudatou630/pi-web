@@ -5,6 +5,11 @@ export interface FileViewerState {
   wrapLines: boolean;
   scrollTop: number;
   scrollLeft: number;
+  loadedBytes?: number;
+  scrollByMode?: Partial<Record<FileViewerDisplayMode, {
+    scrollTop: number;
+    scrollLeft: number;
+  }>>;
 }
 
 export function resolveInitialFileDisplayMode(

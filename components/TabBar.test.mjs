@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
 
@@ -10,6 +11,7 @@ const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { TabBar } = await jiti.import("./TabBar.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+const source = await readFile(new URL("./TabBar.tsx", import.meta.url), "utf8");
 
 function render(tabs, activeTabId = tabs[0]?.id) {
   return renderToStaticMarkup(React.createElement(
@@ -111,4 +113,10 @@ test("keeps tab roles, keyboard tabindexes, and close controls", () => {
   assert.match(html, /aria-label="Terminate terminal pi-web"/);
   assert.match(html, /aria-label="Terminal: pi-web"/);
   assert.equal([...html.matchAll(/<button/g)].length, 2);
+});
+
+test("keeps the active tab visible and restores focus after closing", () => {
+  assert.match(source, /scrollIntoView\(\{ block: "nearest", inline: "nearest" \}\)/);
+  assert.match(source, /focusAfterCloseRef\.current = true/);
+  assert.match(source, /activeTabRef\.current\?\.focus\(\)/);
 });
