@@ -256,7 +256,12 @@ export async function GET(
 
     if (format === "md" || format === "markdown") {
       const leafId = searchParams.get("leafId") || undefined;
-      const result = buildSessionMarkdown(getSessionEntries(filePath), { leafId });
+      const tzParam = searchParams.get("tz");
+      const timezoneOffsetMinutes = tzParam && tzParam.trim() !== "" ? Number(tzParam) : null;
+      const result = buildSessionMarkdown(getSessionEntries(filePath), {
+        leafId,
+        timezoneOffsetMinutes,
+      });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 422 });
       }

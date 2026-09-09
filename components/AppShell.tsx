@@ -1863,6 +1863,7 @@ export function AppShell() {
     try {
       const params = new URLSearchParams({ format: "md" });
       if (branchActiveLeafId) params.set("leafId", branchActiveLeafId);
+      params.set("tz", String(-new Date().getTimezoneOffset()));
       const response = await fetch(`/api/sessions/${encodeURIComponent(selectedSession.id)}/export?${params}`);
       if (!response.ok) {
         const data = await response.json().catch(() => null) as { error?: string } | null;

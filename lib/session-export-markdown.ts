@@ -18,6 +18,8 @@ export type SessionMarkdownExportOptions = {
   leafId?: string | null;
   title?: string;
   exportedAt?: Date;
+  /** Minutes east of UTC (e.g. 480 for UTC+8). Null/invalid falls back to UTC. */
+  timezoneOffsetMinutes?: number | null;
 };
 
 export type SessionMarkdownExportResult =
@@ -27,13 +29,13 @@ export type SessionMarkdownExportResult =
 type DialogueRound = {
   title: string;
   question: string;
-  questionImages: number;
   answer: string;
-  answerImages: number;
 };
 
 const TITLE_LIMIT = 44;
 const FILE_STEM_LIMIT = 60;
+const MAX_TIMEZONE_OFFSET_MINUTES = 24 * 60;
+const FENCE_LINE = /^\s*(`{3,}|~{3,})/;
 
 export function sanitizeExportFileName(name: string, limit = FILE_STEM_LIMIT): string {
   const cleaned = name
@@ -54,28 +56,22 @@ export function buildSessionMarkdown(
   if (rounds.length === 0) return { ok: false, error: "empty" };
 
   const exportedAt = options.exportedAt ?? new Date();
+  const timezoneOffsetMinutes = normalizeTimezoneOffset(options.timezoneOffsetMinutes);
   const title = options.title?.trim()
     || sessionNameFromEntries(entries)
     || rounds[0]!.title
     || "session";
   const model = lastModelOf(branch);
-  const timestamp = exportedAt.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const meta = [
-    timestamp,
-    model,
-    `${rounds.length} turn${rounds.length === 1 ? "" : "s"}`,
-  ].filter(Boolean).join(" · ");
 
-  const sections = rounds.map((round, index) => renderRound(round, index + 1));
   const markdown = normalizeMarkdown([
+    renderFrontmatter({ title, exportedAt, timezoneOffsetMinutes, model, turns: rounds.length }),
+    "",
     `# ${title}`,
     "",
-    meta,
-    "",
-    sections.join("\n\n"),
+    rounds.map((round, index) => renderRound(round, index + 1)).join("\n\n"),
   ].join("\n")) + "\n";
 
-  const date = exportedAt.toISOString().slice(0, 10);
+  const date = localDatePart(exportedAt, timezoneOffsetMinutes);
   return {
     ok: true,
     markdown,
@@ -83,6 +79,52 @@ export function buildSessionMarkdown(
     title,
     turns: rounds.length,
   };
+}
+
+function renderFrontmatter(fields: {
+  title: string;
+  exportedAt: Date;
+  timezoneOffsetMinutes: number | null;
+  model: string;
+  turns: number;
+}): string {
+  const lines = [
+    "---",
+    `title: ${yamlScalar(fields.title)}`,
+    `date: ${formatYamlTimestamp(fields.exportedAt, fields.timezoneOffsetMinutes)}`,
+  ];
+  if (fields.model) lines.push(`model: ${yamlScalar(fields.model)}`);
+  lines.push(`turns: ${fields.turns}`, "---");
+  return lines.join("\n");
+}
+
+function yamlScalar(value: string): string {
+  const flattened = value.replace(/\s+/g, " ").trim();
+  return `'${flattened.replace(/'/g, "''")}'`;
+}
+
+function formatYamlTimestamp(date: Date, offsetMinutes: number | null): string {
+  const base = shiftDate(date, offsetMinutes).toISOString().replace(/\.\d{3}Z$/, "");
+  if (offsetMinutes === null) return `${base}Z`;
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(abs / 60)).padStart(2, "0");
+  const minutes = String(abs % 60).padStart(2, "0");
+  return `${base}${sign}${hours}:${minutes}`;
+}
+
+function localDatePart(date: Date, offsetMinutes: number | null): string {
+  return shiftDate(date, offsetMinutes).toISOString().slice(0, 10);
+}
+
+function shiftDate(date: Date, offsetMinutes: number | null): Date {
+  return offsetMinutes === null ? date : new Date(date.getTime() + offsetMinutes * 60_000);
+}
+
+function normalizeTimezoneOffset(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  return Math.abs(rounded) <= MAX_TIMEZONE_OFFSET_MINUTES ? rounded : null;
 }
 
 function activeBranch(
@@ -131,85 +173,81 @@ function buildRounds(entries: readonly SessionMarkdownExportEntry[]): DialogueRo
     if (entry.type !== "message") continue;
     const role = entry.message?.role;
     if (role === "user") {
-      const extracted = extractTextAndImages(entry.message?.content);
-      current = {
-        title: dialogueTitle(extracted.text, extracted.imageCount),
-        question: extracted.text,
-        questionImages: extracted.imageCount,
-        answer: "",
-        answerImages: 0,
-      };
+      const text = extractText(entry.message?.content);
+      current = { title: dialogueTitle(text), question: text, answer: "" };
       rounds.push(current);
       continue;
     }
     if (role !== "assistant" || !current) continue;
-    const extracted = extractTextAndImages(entry.message?.content);
-    if (!extracted.text.trim() && extracted.imageCount === 0) continue;
+    const text = extractText(entry.message?.content);
+    if (!text.trim()) continue;
     current.answer = current.answer
-      ? `${current.answer}\n\n${extracted.text}`
-      : extracted.text;
-    current.answerImages += extracted.imageCount;
+      ? `${current.answer}\n\n${text}`
+      : text;
   }
 
-  return rounds.filter((round) => round.answer.trim() || round.answerImages > 0);
+  return rounds.filter((round) => round.answer.trim());
 }
 
-function extractTextAndImages(content: unknown): { text: string; imageCount: number } {
-  if (typeof content === "string") return { text: content, imageCount: 0 };
-  if (!Array.isArray(content)) return { text: "", imageCount: 0 };
+function extractText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
 
-  const texts: string[] = [];
-  let imageCount = 0;
+  const parts: string[] = [];
   for (const block of content) {
     if (!block || typeof block !== "object") continue;
     const type = "type" in block ? block.type : undefined;
     if (type === "text" && "text" in block && typeof block.text === "string") {
-      texts.push(block.text);
+      parts.push(block.text);
     } else if (type === "image") {
-      imageCount += 1;
+      parts.push(MARKDOWN_IMAGE_PLACEHOLDER);
     }
   }
-  return { text: texts.join("\n"), imageCount };
+  return parts.join("\n\n");
 }
 
-function dialogueTitle(markdown: string, imageCount: number): string {
+function dialogueTitle(markdown: string): string {
   for (const line of normalizeMarkdown(markdown).split("\n")) {
-    if (!line.trim() || /^\s*(`{3,}|~{3,})/.test(line)) continue;
-    let title = line.replace(/^\s*#{1,6}\s*/, "").replace(/^\s*[-*>]\s*/, "");
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === MARKDOWN_IMAGE_PLACEHOLDER) continue;
+    if (FENCE_LINE.test(line)) continue;
+    if (/^([-*>]|\d+[.)])$/.test(trimmed)) continue;
+    let title = trimmed
+      .replace(/^#{1,6}\s+/, "")
+      .replace(/^[-*>]\s+/, "")
+      .replace(/^\d+[.)]\s+/, "");
     title = title.replace(/[`*_]/g, "").replace(/\s+/g, " ").trim();
     if (!title) continue;
     return title.length > TITLE_LIMIT ? `${title.slice(0, TITLE_LIMIT)}…` : title;
   }
-  return imageCount > 0 ? "image" : "Untitled";
+  return markdown.includes(MARKDOWN_IMAGE_PLACEHOLDER) ? "image" : "Untitled";
 }
 
 function renderRound(round: DialogueRound, index: number): string {
-  const heading = `## ${index}. ${round.title}`;
-  const question = withPlaceholders(round.question, round.questionImages);
-  const answer = withPlaceholders(round.answer, round.answerImages);
-  const lines = [heading, ""];
+  const lines = [`## ${index}. ${round.title}`, ""];
+  const question = normalizeMarkdown(round.question);
   if (question && question !== round.title) {
-    lines.push(rebaseHeadings(question, 2), "");
+    lines.push(toBlockquote(question), "");
   }
-  lines.push(rebaseHeadings(answer, 2));
+  lines.push(rebaseHeadings(round.answer, 2));
   return lines.join("\n");
 }
 
-function withPlaceholders(text: string, imageCount: number): string {
-  if (imageCount <= 0) return text;
-  const marks = Array.from({ length: imageCount }, () => MARKDOWN_IMAGE_PLACEHOLDER).join("\n");
-  return text.trim() ? `${text}\n\n${marks}` : marks;
+function toBlockquote(markdown: string): string {
+  return markdown
+    .split("\n")
+    .map((line) => (line.trim() ? `> ${line}` : ">"))
+    .join("\n");
 }
 
 export function rebaseHeadings(markdown: string, wrapperLevel = 2): string {
   const lines = normalizeMarkdown(markdown).split("\n");
-  const fenceRe = /^\s*(`{3,}|~{3,})/;
   let minLevel = 7;
   let inFence = false;
   let fenceChar: string | undefined;
 
   for (const line of lines) {
-    const fence = fenceRe.exec(line);
+    const fence = FENCE_LINE.exec(line);
     if (fence) {
       const character = fence[1]![0]!;
       if (!inFence) {
@@ -232,7 +270,7 @@ export function rebaseHeadings(markdown: string, wrapperLevel = 2): string {
   inFence = false;
   fenceChar = undefined;
   for (const line of lines) {
-    const fence = fenceRe.exec(line);
+    const fence = FENCE_LINE.exec(line);
     if (fence) {
       const character = fence[1]![0]!;
       if (!inFence) {
@@ -261,5 +299,39 @@ export function rebaseHeadings(markdown: string, wrapperLevel = 2): string {
 }
 
 export function normalizeMarkdown(markdown: string): string {
-  return markdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const lines = markdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const out: string[] = [];
+  let pendingBlank = false;
+  let inFence = false;
+  let fenceChar: string | undefined;
+
+  for (const line of lines) {
+    const fence = FENCE_LINE.exec(line);
+    if (fence) {
+      const character = fence[1]![0]!;
+      if (!inFence) {
+        inFence = true;
+        fenceChar = character;
+      } else if (character === fenceChar) {
+        inFence = false;
+        fenceChar = undefined;
+      }
+      out.push(line);
+      pendingBlank = false;
+      continue;
+    }
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      if (pendingBlank) continue;
+      pendingBlank = true;
+      out.push(line);
+      continue;
+    }
+    pendingBlank = false;
+    out.push(line);
+  }
+  return out.join("\n").trim();
 }
