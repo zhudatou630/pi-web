@@ -1734,6 +1734,9 @@ span.token.table {
 .right-panel-overlay-backdrop {
   display: none;
 }
+.right-panel-header-close {
+  display: flex;
+}
 
 .session-list-row,
 .session-list-row * {
@@ -1899,6 +1902,10 @@ span.token.table {
   .right-panel-container.right-panel-resizing,
   .right-panel-container.right-panel-resizing > * {
     transition: none !important;
+  }
+  /* The chat header toggle remains reachable in split layout. */
+  .right-panel-header-close {
+    display: none;
   }
 }
 

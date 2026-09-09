@@ -2549,13 +2549,13 @@ export function AppShell() {
           width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
           visibility: covered ? "hidden" : "visible",
           pointerEvents: covered ? "none" : "auto",
-          background: rightPanelOpen ? "var(--bg-selected)" : "none",
+          background: "none",
           border: "none", borderLeft: "1px solid var(--border)",
-          color: rightPanelOpen ? "var(--text)" : "var(--text-muted)",
-          cursor: "pointer", flexShrink: 0, transition: "color 0.12s, background 0.12s",
+          color: "var(--text-muted)",
+          cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
         }}
         onMouseEnter={(event) => { if (!covered) event.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(event) => { event.currentTarget.style.color = rightPanelOpen ? "var(--text)" : "var(--text-muted)"; }}
+        onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
@@ -3401,22 +3401,21 @@ export function AppShell() {
           <button
             type="button"
             onClick={() => closeRightPanel(true)}
-            className="workspace-header-action"
+            className="workspace-header-action right-panel-header-close"
             aria-controls="file-panel"
-            aria-expanded={rightPanelOpen}
             title={translate("files.hidePanel")}
             aria-label={translate("files.hidePanel")}
             style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
+              alignItems: "center", justifyContent: "center",
               width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: "var(--bg-selected)", border: "none", borderLeft: "1px solid var(--border)",
-              color: "var(--text)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
+              background: "none", border: "none", borderLeft: "1px solid var(--border)",
+              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
             }}
-            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--accent)"; }}
-            onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
             </svg>
           </button>
         </div>

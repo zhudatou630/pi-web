@@ -51,3 +51,18 @@ test("the file panel restores focus to its actual toolbar toggle", () => {
   assert.notEqual(toggleStart, -1);
   assert.match(source.slice(toggleStart, toggleEnd), /ref=\{filePanelToggleRef\}/);
 });
+
+test("the open file panel does not duplicate or depress the header toggle", async () => {
+  const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const toggleStart = source.indexOf("const renderMainFileToggle");
+  const toggleEnd = source.indexOf("\n  };", toggleStart);
+  const fileToggle = source.slice(toggleStart, toggleEnd);
+  assert.doesNotMatch(fileToggle, /background: rightPanelOpen/);
+  assert.doesNotMatch(fileToggle, /color: rightPanelOpen/);
+  assert.match(source, /className="workspace-header-action right-panel-header-close"/);
+  assert.match(cssSource, /\.right-panel-header-close \{\s*display: flex;/);
+  assert.match(
+    cssSource,
+    /@media \(min-width: 960px\)[\s\S]*?\.right-panel-header-close \{\s*display: none;/,
+  );
+});
