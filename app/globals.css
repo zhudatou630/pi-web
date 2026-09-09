@@ -1856,6 +1856,7 @@ span.token.table {
   .sidebar-container.sidebar-open {
     width: var(--sidebar-width, 260px);
     min-width: var(--sidebar-width, 260px);
+    max-width: var(--sidebar-width, 260px);
   }
   .sidebar-container.sidebar-closed {
     width: 0;

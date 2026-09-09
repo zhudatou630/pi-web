@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -209,15 +210,24 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     }
   }, [commitWidth, effectiveMaxWidth, growthDirection, minWidth, resetWidth, widthRef]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
+
+    const panel = panelRef.current;
+    const previousTransition = panel?.style.transition ?? "";
+    if (panel) panel.style.transition = "none";
 
     const storedWidth = readStoredWidth(storageKey);
     const candidate = storedWidth ?? getDefaultWidth?.() ?? defaultWidth;
     const restoredWidth = commitWidth(candidate, { persist: false });
     if (storedWidth !== null && storedWidth !== restoredWidth) {
       writeStoredWidth(storageKey, restoredWidth);
+    }
+
+    if (panel) {
+      void panel.offsetWidth;
+      panel.style.transition = previousTransition;
     }
   }, [commitWidth, defaultWidth, getDefaultWidth, storageKey]);
 

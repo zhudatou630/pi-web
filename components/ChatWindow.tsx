@@ -283,19 +283,6 @@ function partitionAssistantMessage(
   return { processMessage, answerMessage };
 }
 
-function formatToolCallSummary(toolName: string, input: unknown): string {
-  if (typeof input === "object" && input !== null) {
-    const rec = input as Record<string, unknown>;
-    const target = rec.command ?? rec.path ?? rec.filePath ?? rec.query ?? rec.url ?? rec.prompt;
-    if (typeof target === "string" && target.trim()) {
-      const singleLine = target.trim().replace(/\s+/g, " ");
-      const truncated = singleLine.length > 40 ? `${singleLine.slice(0, 40)}…` : singleLine;
-      return `${toolName}: ${truncated}`;
-    }
-  }
-  return toolName;
-}
-
 function lastStreamingBlock(message: AssistantMessage | null | undefined): AssistantContentBlock | undefined {
   return message?.content.at(-1);
 }
@@ -322,16 +309,26 @@ function liveProcessSummary(
   t: (key: string, params?: Record<string, string | number>) => string,
 ): string | null {
   if (phase?.kind === "running_tools") {
-    const latest = phase.tools[phase.tools.length - 1];
-    return latest?.name ?? t("chat.runningTool");
+    return phase.tools[phase.tools.length - 1]?.name ?? null;
   }
   const lastBlock = lastStreamingBlock(streamingMessage);
-  if (lastBlock?.type === "toolCall") {
-    return lastBlock.toolName
-      ? formatToolCallSummary(lastBlock.toolName, lastBlock.input)
-      : t("chat.generatingToolInput");
-  }
+  if (lastBlock?.type === "thinking") return t("chat.thinking");
+  if (lastBlock?.type === "toolCall") return lastBlock.toolName || null;
   return null;
+}
+
+function latchedLiveProcessSummary(
+  confirmed: string | null,
+  active: boolean,
+  latched: { current: string | null },
+  fallback: string,
+): string | null {
+  if (!active) {
+    latched.current = null;
+    return null;
+  }
+  if (confirmed) latched.current = confirmed;
+  return latched.current ?? fallback;
 }
 
 function ProcessDetailsGroup({
@@ -569,6 +566,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     deferInitialScroll: Boolean(pendingScrollRestore),
   });
   const sessionBusy = agentRunning || bashRunning;
+  const liveProcessSummaryRef = useRef<string | null>(null);
   const cachePromptTokens = sessionStats
     ? sessionStats.tokens.input + sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite
     : 0;
@@ -1706,6 +1704,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   }
                   if (isLiveTail && streamingParts.processMessage) {
                     markOutlineTarget([]);
+                    const liveProcessActive = isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage));
                     rendered.push(
                       <ProcessDetailsGroup
                         key="streaming-process-group"
@@ -1713,8 +1712,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                         toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
                         defaultExpanded
                         isMobile={isMobile}
-                        activeStepSummary={liveProcessSummary(streamingParts.processMessage, agentPhase, t)}
-                        isStreaming={isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage))}
+                        activeStepSummary={latchedLiveProcessSummary(
+                          liveProcessSummary(streamingParts.processMessage, agentPhase, t),
+                          liveProcessActive,
+                          liveProcessSummaryRef,
+                          t("chat.thinking"),
+                        )}
+                        isStreaming={liveProcessActive}
                         t={t}
                       >
                         <MessageView
@@ -1798,7 +1802,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   agentPhase,
                   hasLiveAnswer,
                 );
-                const activeStepSummary = liveProcessSummary(streamingAssistant, agentPhase, t);
+                const activeStepSummary = latchedLiveProcessSummary(
+                  liveProcessSummary(streamingAssistant, agentPhase, t),
+                  liveProcessActive,
+                  liveProcessSummaryRef,
+                  t("chat.thinking"),
+                );
 
                 if (processViews.length > 0) {
                   markOutlineTarget(processEntryIds);

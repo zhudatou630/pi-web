@@ -37,6 +37,15 @@ test("passes activeStepSummary and renders telemetry indicator when streaming", 
   assert.doesNotMatch(source, /chat\.thinkingProgress/);
 });
 
+test("live process summary is coarse, latched, and omits tool details", () => {
+  assert.doesNotMatch(source, /function formatToolCallSummary/);
+  assert.match(source, /if \(lastBlock\?\.type === "thinking"\) return t\("chat\.thinking"\)/);
+  assert.match(source, /if \(lastBlock\?\.type === "toolCall"\) return lastBlock\.toolName/);
+  assert.match(source, /function latchedLiveProcessSummary/);
+  assert.match(source, /return latched\.current \?\? fallback/);
+  assert.doesNotMatch(source, /chat\.generatingToolInput/);
+});
+
 test("uses a visual placeholder instead of textual agent phase rows", () => {
   assert.match(source, /function ActivityPulse/);
   assert.match(source, /agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput/);
