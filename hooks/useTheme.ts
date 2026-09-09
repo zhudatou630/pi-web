@@ -43,9 +43,33 @@ function resolveTheme(preference: ThemePreference): ResolvedTheme {
   return preference === "auto" ? getSystemTheme() : preference;
 }
 
+// Match --bg-panel so the PWA status bar blends into the workspace header.
+const THEME_COLOR: Record<ResolvedTheme, string> = {
+  light: "#f5f5f5",
+  dark: "#242424",
+};
+
+function applyThemeColor(theme: ResolvedTheme): void {
+  if (typeof document === "undefined") return;
+  const color = THEME_COLOR[theme];
+  const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+  if (metas.length === 0) {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = color;
+    document.head.appendChild(meta);
+    return;
+  }
+  for (const meta of metas) {
+    meta.removeAttribute("media");
+    meta.content = color;
+  }
+}
+
 function applyDomTheme(theme: ResolvedTheme): void {
   if (typeof document === "undefined") return;
   document.documentElement.classList.toggle("dark", theme === "dark");
+  applyThemeColor(theme);
 }
 
 function ensureState(): ThemeState {
