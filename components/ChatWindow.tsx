@@ -586,6 +586,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const quotePopoverRef = useRef<HTMLDivElement | null>(null);
   const quoteChatInputRef = useRef<ChatInputHandle | null>(null);
+  const dismissingGestureRef = useRef<{ x: number; y: number } | null>(null);
   const closeQuotedSelection = useCallback(() => {
     setQuotedSelection(null);
     setQuoteInputOpen(false);
@@ -596,7 +597,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (!quoteSelectionEnabled) closeQuotedSelection();
   }, [quoteSelectionEnabled, closeQuotedSelection]);
 
-  const captureQuotedSelection = useCallback(() => {
+  const captureQuotedSelection = useCallback((event?: { clientX: number; clientY: number }) => {
+    const down = dismissingGestureRef.current;
+    if (down) {
+      const dragged = event != null && Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4;
+      if (!dragged) return;
+    }
     if (!quoteSelectionEnabled || quoteInputOpen) return;
     const selection = window.getSelection();
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
@@ -668,7 +674,18 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   useEffect(() => {
     if (!quotedSelection) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!quoteInputOpen && !quotePopoverRef.current?.contains(event.target as Node)) closeQuotedSelection();
+      if (quoteInputOpen || quotePopoverRef.current?.contains(event.target as Node)) return;
+      dismissingGestureRef.current = { x: event.clientX, y: event.clientY };
+      const endDismiss = () => {
+        document.removeEventListener("pointerup", endDismiss);
+        document.removeEventListener("pointercancel", endDismiss);
+        queueMicrotask(() => {
+          dismissingGestureRef.current = null;
+        });
+      };
+      document.addEventListener("pointerup", endDismiss);
+      document.addEventListener("pointercancel", endDismiss);
+      closeQuotedSelection();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing) return;
@@ -1949,16 +1966,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             zIndex: 130,
             display: "flex",
             flexWrap: "wrap",
-            gap: 3,
+            gap: 2,
             width: quoteInputOpen ? "min(420px, calc(100vw - 16px))" : undefined,
             maxWidth: "calc(100vw - 16px)",
             maxHeight: "calc(var(--app-viewport-height, 100dvh) - 16px)",
             overflowY: "auto",
-            padding: quoteInputOpen ? 12 : 3,
+            padding: quoteInputOpen ? 12 : 2,
             border: "1px solid var(--border)",
             borderRadius: 4,
             background: "var(--bg)",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
           }}
         >
           {quoteInputOpen ? (
@@ -1985,27 +2001,25 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           ) : <>
           <button
             type="button"
-            className="file-viewer-icon-button"
+            className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
             title={t("chat.askInCurrent")}
             aria-label={t("chat.askInCurrent")}
             onPointerDown={(event) => event.preventDefault()}
             onClick={askSelectionHere}
-            style={{ width: "auto", height: 35, flex: "0 0 auto", gap: 5, padding: "0 10px", border: "none", fontSize: 12, fontWeight: 500 }}
           >
-            <span aria-hidden="true" style={{ fontSize: 15 }}>@</span>
+            <span aria-hidden="true">@</span>
             <span>{t("chat.askInCurrent")}</span>
           </button>
           {onAskInNewChat && quotedSelection.sourceEntryId && !sessionBusy && (
             <button
               type="button"
-              className="file-viewer-icon-button"
+              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
               title={t("chat.askInNewChat")}
               aria-label={t("chat.askInNewChat")}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => { setQuoteInputOpen(true); window.getSelection()?.removeAllRanges(); }}
-              style={{ width: "auto", height: 35, flex: "0 0 auto", gap: 5, padding: "0 10px", border: "none", fontSize: 12, fontWeight: 500 }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M6 3v12M18 9a9 9 0 0 1-9 9" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
               </svg>
               <span>{t("chat.askInNewChat")}</span>

@@ -110,7 +110,7 @@ export function ModelSelector({
         width: isMobile ? "100%" : undefined,
         maxWidth: isMobile ? "100%" : 220,
         height: isMobile ? 32 : 28,
-        padding: isMobile ? "0 4px" : "0 8px",
+        padding: isMobile ? "0 4px 0 2px" : "0 6px 0 2px",
         overflow: "hidden",
         border: "none",
         borderRadius: 4,
@@ -133,7 +133,14 @@ export function ModelSelector({
     <div
       ref={rootRef}
       className={`model-selector is-${variant}${locked ? " is-disabled" : ""}`}
-      style={{ position: "relative", width: variant === "field" || isMobile ? "100%" : undefined, minWidth: 0, flex: variant === "toolbar" && isMobile ? "1 1 auto" : undefined }}
+      style={{
+        position: "relative",
+        width: variant === "field" || isMobile ? "100%" : undefined,
+        minWidth: 0,
+        flex: variant === "toolbar" && isMobile ? "1 1 auto" : undefined,
+        display: variant === "toolbar" ? "flex" : undefined,
+        alignItems: variant === "toolbar" ? "center" : undefined,
+      }}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || !open) return;
         event.preventDefault();
@@ -172,7 +179,7 @@ export function ModelSelector({
         }}
       >
         {busy ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", display: "block", flexShrink: 0 }} aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", display: "block", flexShrink: 0, transform: "translateY(-1px)" }} aria-hidden="true">
             <path d="M21 12a9 9 0 1 1-2.64-6.36" />
           </svg>
         ) : variant === "field" ? (
@@ -185,7 +192,7 @@ export function ModelSelector({
             <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
           </svg>
         ) : null}
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentName}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>{currentName}</span>
         {variant === "field" && (
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, color: "var(--text-dim)" }}>
             <polyline points="6 9 12 15 18 9" />
