@@ -82,11 +82,10 @@ test("exposes the loaded session catalog to the shell", () => {
   assert.match(source, /onSessionsChange\?\.\(allSessions\)/);
 });
 
-test("does not flash the empty-project CTA while the session list is still loading", () => {
-  assert.match(source, /const showSelectProjectPrompt = !selectedCwd && !loading && recentProjects\.length === 0/);
-  assert.match(source, /background: showSelectProjectPrompt \? "rgba\(37,99,235,0\.06\)"/);
-  assert.match(source, /showSelectProjectPrompt \? t\("sidebar\.selectProject"\)/);
-  assert.doesNotMatch(source, /background: selectedCwd \? "var\(--bg-hover\)" : "rgba\(37,99,235,0\.06\)"/);
+test("bootstraps the sidebar without a project picker or loading label", () => {
+  assert.match(source, /const showSelectProjectPrompt = !selectedCwd && !loading && !error && recentProjects\.length === 0/);
+  assert.match(source, /\{\(selectedCwd \|\| showSelectProjectPrompt\) && \(/);
+  assert.doesNotMatch(source, /t\("sidebar\.loading"\)/);
 });
 
 test("subagent completion stays silent and never becomes unread", () => {

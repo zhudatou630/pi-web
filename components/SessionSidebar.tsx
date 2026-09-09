@@ -975,7 +975,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const recentProjects = getRecentProjects(allSessions);
   // Empty-state CTA is only for a loaded sidebar with nothing to restore.
   // First paint has no cwd yet; treating that as "please select" flashes blue.
-  const showSelectProjectPrompt = !selectedCwd && !loading && recentProjects.length === 0;
+  const showSelectProjectPrompt = !selectedCwd && !loading && !error && recentProjects.length === 0;
   const showProjectFilter = recentProjects.length > 8;
   const visibleProjects = projectFilter.trim()
     ? recentProjects.filter((project) => project.root.toLowerCase().includes(projectFilter.trim().toLowerCase()))
@@ -1157,7 +1157,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         </div>
       </div>
 
-      {/* Project & workspace selection */}
+      {/* Project & workspace selection — omitted while the first session list is in flight. */}
+      {(selectedCwd || showSelectProjectPrompt) && (
       <div
         style={{
           padding: "8px 10px",
@@ -1170,22 +1171,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         <div ref={dropdownRef} style={{ position: "relative" }}>
           <button
             onClick={() => setDropdownOpen((v) => !v)}
-            disabled={!selectedCwd && !showSelectProjectPrompt}
-            aria-busy={!selectedCwd && !showSelectProjectPrompt ? true : undefined}
-            title={selectedProject?.root ?? selectedCwd ?? (showSelectProjectPrompt ? t("sidebar.selectProject") : "")}
+            title={selectedProject?.root ?? selectedCwd ?? t("sidebar.selectProject")}
             style={{
               width: "100%",
               display: "flex",
               alignItems: "center",
               padding: "6px 10px",
-              background: showSelectProjectPrompt ? "rgba(37,99,235,0.06)" : "var(--bg-hover)",
-              border: showSelectProjectPrompt ? "1px solid rgba(37,99,235,0.4)" : "1px solid var(--border)",
+              background: selectedCwd ? "var(--bg-hover)" : "rgba(37,99,235,0.06)",
+              border: selectedCwd ? "1px solid var(--border)" : "1px solid rgba(37,99,235,0.4)",
               borderRadius: 4,
-              cursor: showSelectProjectPrompt || selectedCwd ? "pointer" : "default",
+              cursor: "pointer",
               fontSize: 12,
               color: "var(--text)",
               textAlign: "left",
-              opacity: 1,
               transition: "border-color 0.15s, background 0.15s",
             }}
           >
@@ -1211,7 +1209,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                   color: "var(--text-dim)",
                 }}
               >
-                {showSelectProjectPrompt ? t("sidebar.selectProject") : "\u00a0"}
+                {t("sidebar.selectProject")}
               </span>
             )}
             {otherWorkspaceActivity.running > 0 ? (
@@ -1830,6 +1828,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           </button>
         )}
       </div>
+      )}
 
       {/* Session list */}
       <SessionSearch open={sessionSearchOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
@@ -1838,17 +1837,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         onScroll={handleListScroll}
         style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}
       >
-        {loading && (
-          <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
-            {t("sidebar.loading")}
-          </div>
-        )}
         {error && (
           <div style={{ padding: "12px 14px", color: "#f87171", fontSize: 12 }}>
             {error}
           </div>
         )}
-        {!loading && !error && sessionFamilies.length === 0 && (
+        {!loading && !error && !showSelectProjectPrompt && sessionFamilies.length === 0 && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
             {t("sidebar.noSessions")}
           </div>
