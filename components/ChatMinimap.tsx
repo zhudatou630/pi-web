@@ -6,7 +6,7 @@ import type { SessionOutlineItem } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
 import {
   MINIMAP_MARKER_HEIGHT, MINIMAP_MAX_MARKERS, OUTLINE_MAX_HEIGHT, OUTLINE_ROW_HEIGHT,
-  findActiveUser, mapEntriesToUsers, markerWindow, outlineWindow, revealOutlineEntry, type MinimapAnchor,
+  findActiveUser, mapEntriesToUsers, markerWindow, minimapReadingLine, outlineWindow, revealOutlineEntry, type MinimapAnchor,
 } from "@/lib/chat-minimap";
 import styles from "./ChatMinimap.module.css";
 
@@ -309,7 +309,10 @@ function LocatedMinimap({ items, scrollContainer, contentContainer, loadedEntryI
         for (const node of nodes) if (!previousNodes.has(node)) resize.observe(node);
         observed = nodes;
       }
-      setActiveEntryId(findActiveUser(anchors, scroll!.scrollTop + 48));
+      setActiveEntryId(findActiveUser(
+        anchors,
+        minimapReadingLine(scroll!.scrollTop, scroll!.clientHeight, scroll!.scrollHeight),
+      ));
     }
     resize.observe(scroll);
     resize.observe(content);

@@ -2,6 +2,9 @@ export const MINIMAP_MARKER_HEIGHT = 8;
 export const MINIMAP_MAX_MARKERS = 15;
 export const OUTLINE_ROW_HEIGHT = 28;
 export const OUTLINE_MAX_HEIGHT = 360;
+export const MINIMAP_READING_LINE_OFFSET = 48;
+/** Same 8px slack as `isScrollAtTail`. */
+const MINIMAP_TAIL_TOLERANCE = 8;
 
 /** The closed entry point is a compact hint, not a full-height scrollbar. */
 export function markerWindow(count: number, activeIndex: number) {
@@ -29,6 +32,18 @@ export function mapEntriesToUsers(outlineIds: readonly string[], loadedEntryIds:
 export interface MinimapAnchor {
   top: number;
   userId: string;
+}
+
+/**
+ * Reading line is 48px into the viewport, except at the transcript tail:
+ * a last turn shorter than the viewport never crosses that line, so pin past the last anchor.
+ */
+export function minimapReadingLine(scrollTop: number, clientHeight: number, scrollHeight: number): number {
+  const maxScroll = scrollHeight - clientHeight;
+  if (maxScroll > 0 && scrollTop + clientHeight >= scrollHeight - MINIMAP_TAIL_TOLERANCE) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return scrollTop + MINIMAP_READING_LINE_OFFSET;
 }
 
 /** Last group starting above the reading line; no DOM reads on ordinary scrolls. */
