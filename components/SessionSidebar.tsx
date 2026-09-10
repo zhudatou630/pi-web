@@ -2503,7 +2503,7 @@ export function SessionItem({
 
           {/* Action buttons — shown on hover or keyboard focus */}
           {!session.transient && (
-            <div className="session-row-actions" style={{ display: "flex", gap: 4, position: "absolute", right: 8, top: 0, background: isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "var(--bg-panel)" }}>
+            <div className="session-row-actions" style={{ display: "flex", alignItems: "center", gap: 2, position: "absolute", right: 6, top: 0, height: "100%", background: isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "var(--bg-panel)", paddingLeft: 4, borderRadius: 4 }}>
               {onOpenInNewTab && (
                 <button
                   type="button"
@@ -2516,18 +2516,18 @@ export function SessionItem({
                   aria-label={t("chatTabs.openInNewTab", { defaultValue: "在新标签页打开" })}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 28, height: 28, padding: 0,
-                    background: "var(--bg-hover)", border: "none",
+                    width: 20, height: 20, padding: 0,
+                    background: "transparent", border: "none",
                     borderRadius: 4, color: "var(--text-muted)",
                     cursor: "pointer", flexShrink: 0,
-                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                    transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--bg-selected)";
+                    e.currentTarget.style.background = isSelected ? "var(--bg-hover)" : "var(--bg-selected)";
                     e.currentTarget.style.color = "var(--accent)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.background = "transparent";
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
@@ -2551,25 +2551,24 @@ export function SessionItem({
                   aria-label={t("chatTabs.pinTab", { defaultValue: "固定标签" })}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 28, height: 28, padding: 0,
-                    background: "var(--bg-hover)", border: "none",
+                    width: 20, height: 20, padding: 0,
+                    background: "transparent", border: "none",
                     borderRadius: 4, color: "var(--text-muted)",
                     cursor: "pointer", flexShrink: 0,
-                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                    transition: "background 0.12s, color 0.12s",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--bg-selected)";
+                    e.currentTarget.style.background = isSelected ? "var(--bg-hover)" : "var(--bg-selected)";
                     e.currentTarget.style.color = "var(--accent)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.background = "transparent";
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <line x1="12" y1="17" x2="12" y2="22" />
-                    <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7H9z" />
-                    <path d="M8 7h8" />
+                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
                   </svg>
                 </button>
               )}
@@ -2581,24 +2580,22 @@ export function SessionItem({
                 title={t("sidebar.rename")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 28, height: 28, padding: 0,
-                  background: "var(--bg-hover)", border: "none",
+                  width: 20, height: 20, padding: 0,
+                  background: "transparent", border: "none",
                   borderRadius: 4, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  transition: "background 0.12s, color 0.12s",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--bg-selected)";
+                  e.currentTarget.style.background = isSelected ? "var(--bg-hover)" : "var(--bg-selected)";
                   e.currentTarget.style.color = "var(--accent)";
-                  e.currentTarget.style.borderColor = "rgba(37,99,235,0.35)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.background = "transparent";
                   e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
                 </svg>
               </button>
@@ -2610,24 +2607,22 @@ export function SessionItem({
                 title={t("sidebar.deleteWithShiftClick")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 30, height: 28, padding: 0,
-                  background: "var(--bg-hover)", border: "none",
+                  width: 20, height: 20, padding: 0,
+                  background: "transparent", border: "none",
                   borderRadius: 4, color: "var(--text-muted)",
                   cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  transition: "background 0.12s, color 0.12s",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+                  e.currentTarget.style.background = "rgba(239,68,68,0.12)";
                   e.currentTarget.style.color = "#ef4444";
-                  e.currentTarget.style.borderColor = "rgba(239,68,68,0.35)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.background = "transparent";
                   e.currentTarget.style.color = "var(--text-muted)";
-                  e.currentTarget.style.borderColor = "var(--border)";
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                   <path d="M10 11v6M14 11v6" />
