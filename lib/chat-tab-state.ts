@@ -2,6 +2,8 @@ import type { SessionInfo } from "./types";
 import { getSessionDisplayTitle } from "./session-display-title";
 export { getSessionDisplayTitle };
 
+export type ChatPane = "primary" | "secondary";
+
 export interface ChatTabItem {
   id: string;
   kind: "session" | "draft";
@@ -11,6 +13,11 @@ export interface ChatTabItem {
   newSessionDraftKey: string | null;
   projectKey?: string | null;
   dirty?: boolean;
+  /** Group ownership is independent of which tab is currently visible. */
+  pane?: ChatPane;
+  /** Preview tabs are transient: sidebar single-clicks swap their content; every other
+   *  tab-creation path produces non-preview (pinned) tabs. */
+  preview?: boolean;
   /** Stable ChatWindow identity. Frozen when a draft is promoted so the in-flight session is not remounted. */
   mountKey?: string;
 }
@@ -31,68 +38,20 @@ export function getDraftTabTitle(value: string, defaultTitle: string): string {
   return characters.length <= 48 ? firstLine : `${characters.slice(0, 47).join("")}…`;
 }
 
-/**
- * 普通单击会话：在当前 Tab 就地替换查看（In-place replace / reuse），不增加新 Tab。
- * 如果该 session 已经在某个 Tab 打开，则直接切换到该 Tab。
- */
-export function viewSessionInCurrentTab(
-  tabs: ChatTabItem[],
-  session: SessionInfo,
-  currentTabId: string | null,
-): { tabs: ChatTabItem[]; tabId: string } {
-  const existingIndex = tabs.findIndex((t) => t.id === session.id);
-  const title = getSessionDisplayTitle(session);
-
-  // 1. 如果该 session 已经在一个 Tab 中打开了，直接复用该 Tab，并更新最新元数据
-  if (existingIndex >= 0) {
-    const nextTabs = [...tabs];
-    nextTabs[existingIndex] = {
-      ...nextTabs[existingIndex],
-      session,
-      title,
-      projectKey: session.projectKey ?? session.cwd,
-    };
-    return { tabs: nextTabs, tabId: session.id };
-  }
-
-  // 2. 如果当前有处于活动状态的 Tab，就地替换当前 Tab，标签总数不增加！
-  if (currentTabId) {
-    const currentIndex = tabs.findIndex((t) => t.id === currentTabId);
-    if (currentIndex >= 0) {
-      const nextTabs = [...tabs];
-      nextTabs[currentIndex] = {
-        id: session.id,
-        kind: "session",
-        title,
-        session,
-        newSessionCwd: null,
-        newSessionDraftKey: null,
-        projectKey: session.projectKey ?? session.cwd,
-      };
-      return { tabs: nextTabs, tabId: session.id };
-    }
-  }
-
-  // 3. 如果当前没有任何 Tab，创建一个新 Tab
-  const newTab: ChatTabItem = {
-    id: session.id,
-    kind: "session",
-    title,
-    session,
-    newSessionCwd: null,
-    newSessionDraftKey: null,
-    projectKey: session.projectKey ?? session.cwd,
-  };
-  return { tabs: [newTab], tabId: session.id };
+export function chatTabPane(tab: ChatTabItem): ChatPane {
+  return tab.pane ?? "primary";
 }
 
-/**
- * 显式在新标签中打开（中键点击 / 右键菜单“在新标签打开”）：
- * 若已打开则切换过去；若未打开则在末尾追加新 Tab。
- */
-export function openSessionInNewTab(
+export function chatTabsInPane(tabs: ChatTabItem[], pane: ChatPane): ChatTabItem[] {
+  return tabs.filter((tab) => chatTabPane(tab) === pane);
+}
+
+/** Single-click replaces only the target group's preview, in place.
+ * Existing sessions are reused in their own group; pinned tabs and drafts survive. */
+export function openSessionPreview(
   tabs: ChatTabItem[],
   session: SessionInfo,
+  pane: ChatPane = "primary",
 ): { tabs: ChatTabItem[]; tabId: string } {
   const existingIndex = tabs.findIndex((t) => t.id === session.id);
   const title = getSessionDisplayTitle(session);
@@ -108,6 +67,23 @@ export function openSessionInNewTab(
     return { tabs: nextTabs, tabId: session.id };
   }
 
+  const previewIndex = tabs.findIndex((t) => t.preview === true && chatTabPane(t) === pane);
+  if (previewIndex >= 0) {
+    const nextTabs = [...tabs];
+    nextTabs[previewIndex] = {
+      id: session.id,
+      kind: "session",
+      title,
+      session,
+      newSessionCwd: null,
+      newSessionDraftKey: null,
+      projectKey: session.projectKey ?? session.cwd,
+      preview: true,
+      pane,
+    };
+    return { tabs: nextTabs, tabId: session.id };
+  }
+
   const newTab: ChatTabItem = {
     id: session.id,
     kind: "session",
@@ -116,18 +92,90 @@ export function openSessionInNewTab(
     newSessionCwd: null,
     newSessionDraftKey: null,
     projectKey: session.projectKey ?? session.cwd,
+    preview: true,
+    pane,
   };
   return { tabs: [...tabs, newTab], tabId: session.id };
 }
 
-/** 向后兼容别名 */
-export const openSessionInTabs = openSessionInNewTab;
+/** 双击固定 / 发送转正：清掉已有标签的 preview 标志，不改 id 与 mountKey。 */
+export function pinSessionTab(tabs: ChatTabItem[], sessionId: string): ChatTabItem[] {
+  const index = tabs.findIndex((t) => t.id === sessionId);
+  if (index === -1 || tabs[index].preview !== true) return tabs;
+  const nextTabs = [...tabs];
+  nextTabs[index] = { ...nextTabs[index], preview: false };
+  return nextTabs;
+}
+
+/** Reveal an existing tab in its group, or open a new one in the focused group. */
+export function revealSessionPane(
+  tabs: ChatTabItem[],
+  sessionId: string,
+  focusedPane: ChatPane,
+): { activeChatTabId?: string; splitChatTabId?: string; pane: ChatPane } {
+  const existing = tabs.find((tab) => tab.id === sessionId);
+  const pane = existing ? chatTabPane(existing) : focusedPane;
+  return pane === "secondary"
+    ? { splitChatTabId: sessionId, pane }
+    : { activeChatTabId: sessionId, pane };
+}
+
+/** Explicit merge: left order followed by right order, retaining every tab.
+ * Keep the focused preview (or the first preview); pin other previews. */
+export function mergeChatTabPanes(tabs: ChatTabItem[], focusedTabId: string | null): ChatTabItem[] {
+  const ordered = [...chatTabsInPane(tabs, "primary"), ...chatTabsInPane(tabs, "secondary")];
+  const preview = ordered.find((tab) => tab.id === focusedTabId && tab.preview)
+    ?? ordered.find((tab) => tab.preview);
+  return ordered.map((tab) => ({
+    ...tab,
+    pane: "primary",
+    preview: tab.preview === true ? tab.id === preview?.id : tab.preview,
+  }));
+}
+
+/**
+ * 显式在新标签中打开（中键 / 双击固定 / “在新标签打开”）：
+ * 若已打开则固定并切换过去；若未打开则在末尾追加新 Tab。
+ */
+export function openSessionInNewTab(
+  tabs: ChatTabItem[],
+  session: SessionInfo,
+  pane: ChatPane = "primary",
+): { tabs: ChatTabItem[]; tabId: string } {
+  const existingIndex = tabs.findIndex((t) => t.id === session.id);
+  const title = getSessionDisplayTitle(session);
+
+  if (existingIndex >= 0) {
+    const nextTabs = [...tabs];
+    nextTabs[existingIndex] = {
+      ...nextTabs[existingIndex],
+      session,
+      title,
+      projectKey: session.projectKey ?? session.cwd,
+      preview: false,
+    };
+    return { tabs: nextTabs, tabId: session.id };
+  }
+
+  const newTab: ChatTabItem = {
+    id: session.id,
+    kind: "session",
+    title,
+    session,
+    newSessionCwd: null,
+    newSessionDraftKey: null,
+    projectKey: session.projectKey ?? session.cwd,
+    pane,
+  };
+  return { tabs: [...tabs, newTab], tabId: session.id };
+}
 
 export function openDraftInTabs(
   tabs: ChatTabItem[],
   cwd: string | null,
   draftKey: string,
   defaultTitle = "新会话",
+  pane: ChatPane = "primary",
 ): { tabs: ChatTabItem[]; tabId: string } {
   const draftId = `draft:${draftKey}`;
   const existing = tabs.find((t) => t.id === draftId);
@@ -144,6 +192,7 @@ export function openDraftInTabs(
     newSessionDraftKey: draftKey,
     projectKey: cwd,
     dirty: false,
+    pane,
   };
   return { tabs: [...tabs, newTab], tabId: draftId };
 }
@@ -163,42 +212,26 @@ export function closeChatTab(
     return { tabs, nextActiveTabId: activeTabId, nextSplitTabId: splitTabId };
   }
 
-  const nextTabs = tabs.filter((t) => t.id !== tabIdToClose);
+  const remaining = tabs.filter((t) => t.id !== tabIdToClose);
+  const closingPane = chatTabPane(tabs[closeIndex]);
+  const groupBefore = chatTabsInPane(tabs, closingPane);
+  const groupAfter = chatTabsInPane(remaining, closingPane);
+  const adjacentId = groupAfter[Math.min(groupBefore.findIndex((t) => t.id === tabIdToClose), groupAfter.length - 1)]?.id ?? null;
 
-  let nextActiveTabId: string | null = activeTabId;
-  let nextSplitTabId: string | null = splitTabId;
+  const nextActiveTabId = tabIdToClose === activeTabId ? adjacentId : activeTabId;
+  const nextSplitTabId = tabIdToClose === splitTabId ? adjacentId : splitTabId;
 
-  // If closing the active tab in primary pane, pick the adjacent one
-  if (tabIdToClose === activeTabId) {
-    if (nextTabs.length === 0) {
-      nextActiveTabId = null;
-    } else {
-      const newIndex = Math.min(closeIndex, nextTabs.length - 1);
-      nextActiveTabId = nextTabs[newIndex].id;
-    }
+  // An empty group collapses; it never borrows a tab from the other group.
+  if (splitTabId && groupAfter.length === 0) {
+    const retainedId = closingPane === "primary" ? nextSplitTabId : nextActiveTabId;
+    return {
+      tabs: mergeChatTabPanes(remaining, retainedId),
+      nextActiveTabId: retainedId,
+      nextSplitTabId: null,
+    };
   }
 
-  // If closing the tab shown in the split pane
-  if (tabIdToClose === splitTabId) {
-    const availableForSplit = nextTabs.filter((t) => t.id !== nextActiveTabId);
-    if (availableForSplit.length > 0) {
-      nextSplitTabId = availableForSplit[0].id;
-    } else {
-      nextSplitTabId = null;
-    }
-  }
-
-  // If primary and secondary would become the same, close split
-  if (nextSplitTabId && nextSplitTabId === nextActiveTabId) {
-    const other = nextTabs.find((t) => t.id !== nextActiveTabId);
-    nextSplitTabId = other ? other.id : null;
-  }
-
-  return {
-    tabs: nextTabs,
-    nextActiveTabId,
-    nextSplitTabId,
-  };
+  return { tabs: remaining, nextActiveTabId, nextSplitTabId };
 }
 
 export function promoteDraftToSession(

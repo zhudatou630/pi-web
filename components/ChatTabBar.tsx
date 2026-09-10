@@ -14,6 +14,7 @@ interface Props {
   runningSessionIds?: ReadonlySet<string>;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => boolean | void;
+  onPinTab?: (tabId: string) => void;
   onNewTab: () => void;
   onToggleSplit?: () => void;
   onClosePane?: () => void;
@@ -31,6 +32,7 @@ export function ChatTabBar({
   runningSessionIds,
   onSelectTab,
   onCloseTab,
+  onPinTab,
   onNewTab,
   onToggleSplit,
   onClosePane,
@@ -43,14 +45,12 @@ export function ChatTabBar({
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
   const [tabsOverflow, setTabsOverflow] = useState(false);
   const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
-  const [tabsMenuQuery, setTabsMenuQuery] = useState("");
   const [tabsMenuPosition, setTabsMenuPosition] = useState({ top: 0, left: 0, width: 320 });
 
   const activeTabRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const tabsMenuButtonRef = useRef<HTMLButtonElement>(null);
   const tabsMenuRef = useRef<HTMLDivElement>(null);
-  const tabsMenuInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll active tab into view whenever selection changes
   useEffect(() => {
@@ -75,7 +75,6 @@ export function ChatTabBar({
 
   useEffect(() => {
     if (!tabsMenuOpen) return;
-    tabsMenuInputRef.current?.focus();
     const handlePointerDown = (event: PointerEvent) => {
       const path = event.composedPath();
       if (tabsMenuRef.current && path.includes(tabsMenuRef.current)) return;
@@ -106,14 +105,14 @@ export function ChatTabBar({
 
   const effectiveCanSplit = canSplit && !isMobile;
   const isSplitActive = Boolean(splitTabId && !isMobile);
-  const filteredTabs = tabs.filter((tab) => tab.title.toLocaleLowerCase().includes(tabsMenuQuery.trim().toLocaleLowerCase()));
 
   const focusChatSurface = (tabId?: string) => {
     const exactTab = tabId
       ? Array.from(document.querySelectorAll<HTMLElement>("[data-chat-tab-id]"))
           .find((element) => element.dataset.chatTabId === tabId)
       : null;
-    const activeTab = document.querySelector<HTMLElement>('[data-chat-tab="true"][tabindex="0"]');
+    const activeTab = activeTabRef.current
+      ?? document.querySelector<HTMLElement>('[data-chat-tab="true"][tabindex="0"]');
     const composer = Array.from(document.querySelectorAll<HTMLTextAreaElement>(".chat-input-textarea"))
       .find((element) => element.getClientRects().length > 0);
     (exactTab ?? activeTab ?? composer)?.focus();
@@ -131,7 +130,6 @@ export function ChatTabBar({
       left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
       width,
     });
-    setTabsMenuQuery("");
     setTabsMenuOpen(true);
   };
 
@@ -203,6 +201,7 @@ export function ChatTabBar({
                 e.stopPropagation();
                 onCloseTab(tab.id);
               }}
+              onDoubleClick={() => onPinTab?.(tab.id)}
               onKeyDown={(e) => {
                 if (e.target !== e.currentTarget) return;
                 if (e.key === "Enter" || e.key === " ") {
@@ -244,7 +243,7 @@ export function ChatTabBar({
                 transition: "background 0.12s, color 0.12s",
                 boxShadow: isCurrentPane ? "inset 0 -2px 0 var(--accent)" : undefined,
               }}
-              title={tab.title}
+              title={tab.preview ? `${tab.title} · ${t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })}` : tab.title}
             >
               {/* Tab Icon: running beacon or draft indicator */}
               {(isRunning || tab.kind === "draft") && (
@@ -274,6 +273,7 @@ export function ChatTabBar({
                   textOverflow: "ellipsis",
                   flex: 1,
                   fontWeight: isVisible ? 500 : 400,
+                  fontStyle: tab.preview ? "italic" : "normal",
                 }}
               >
                 {tab.title}
@@ -296,6 +296,7 @@ export function ChatTabBar({
                     e.stopPropagation();
                     onCloseTab(tab.id);
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   onMouseEnter={() => setHoveredClose(tab.id)}
                   onMouseLeave={() => setHoveredClose(null)}
                   style={{
@@ -339,7 +340,8 @@ export function ChatTabBar({
           position: "relative",
         }}
       >
-        {tabsOverflow && (
+        {/* All-tabs overflow menu — desktop only; the mobile strip swipes */}
+        {tabsOverflow && !isMobile && (
           <button
             ref={tabsMenuButtonRef}
             type="button"
@@ -504,30 +506,8 @@ export function ChatTabBar({
             boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
           }}
         >
-          <input
-            ref={tabsMenuInputRef}
-            value={tabsMenuQuery}
-            onChange={(event) => setTabsMenuQuery(event.target.value)}
-            placeholder={t("chatTabs.filterTabs")}
-            aria-label={t("chatTabs.filterTabs")}
-            style={{
-              width: "100%",
-              height: 30,
-              padding: "0 8px",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              outline: "none",
-              background: "var(--bg)",
-              color: "var(--text)",
-              fontSize: 12,
-            }}
-          />
-          <div style={{ maxHeight: "min(50vh, 360px)", overflowY: "auto", marginTop: 6 }}>
-            {filteredTabs.length === 0 ? (
-              <div style={{ padding: "8px", color: "var(--text-dim)", fontSize: 12 }}>
-                {t("chatTabs.noMatchingTabs")}
-              </div>
-            ) : filteredTabs.map((tab) => {
+          <div style={{ maxHeight: "min(50vh, 360px)", overflowY: "auto" }}>
+            {tabs.map((tab, index) => {
               const selected = tab.id === activeTabId || tab.id === splitTabId;
               const running = tab.kind === "session" && Boolean(tab.session && runningSessionIds?.has(tab.session.id));
               return (
@@ -572,16 +552,22 @@ export function ChatTabBar({
                   </button>
                   <button
                     type="button"
+                    data-tab-menu-close={tab.id}
                     onClick={() => {
                       if (onCloseTab(tab.id) === false) return;
                       requestAnimationFrame(() => {
                         const container = scrollContainerRef.current;
-                        if (tabsMenuInputRef.current?.isConnected && container && container.scrollWidth > container.clientWidth + 1) {
-                          tabsMenuInputRef.current.focus();
-                        } else {
-                          setTabsMenuOpen(false);
-                          focusChatSurface();
+                        if (container && container.scrollWidth > container.clientWidth + 1) {
+                          // Continue closing at the same position; the last row falls back to its predecessor.
+                          const buttons = tabsMenuRef.current?.querySelectorAll<HTMLButtonElement>("[data-tab-menu-close]");
+                          const nextButton = buttons?.[Math.min(index, buttons.length - 1)];
+                          if (nextButton) {
+                            nextButton.focus();
+                            return;
+                          }
                         }
+                        setTabsMenuOpen(false);
+                        focusChatSurface();
                       });
                     }}
                     title={`${t("chatTabs.closeTab")}: ${tab.title}`}

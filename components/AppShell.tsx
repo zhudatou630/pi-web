@@ -7,9 +7,13 @@ import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { ChatTabBar } from "./ChatTabBar";
 import {
-  openSessionInTabs,
   openSessionInNewTab,
-  viewSessionInCurrentTab,
+  openSessionPreview,
+  pinSessionTab,
+  revealSessionPane,
+  chatTabPane,
+  chatTabsInPane,
+  mergeChatTabPanes,
   openDraftInTabs,
   closeChatTab,
   getDraftTabTitle,
@@ -67,7 +71,6 @@ import {
   getRightPanelMaxWidth,
   getSidebarMaxWidth,
   CHAT_SPLIT_MIN_WIDTH,
-  CHAT_SPLIT_PANE_MIN_WIDTH,
   RIGHT_PANEL_FALLBACK_WIDTH,
   RIGHT_PANEL_MAX_WIDTH,
   RIGHT_PANEL_MIN_WIDTH,
@@ -951,20 +954,16 @@ export function AppShell() {
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
   }, [activeCwd, activeFileTabId, newSessionCwd, router, selectedSession]);
 
-  const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number) => {
+  const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, pinned = false) => {
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
     const activeDraftKey = activeNewSessionDraftKeyRef.current;
     const activeDraftCwd = newSessionCwd ?? (selectedSession === null ? activeCwd : null);
-    const activeTabId = isSplitActiveRef.current && activeChatPaneRef.current === "secondary"
-      ? splitChatTabIdRef.current
-      : activeChatTabIdRef.current;
-    const activeDraftTab = chatTabsRef.current.find((tab) => tab.id === activeTabId && tab.kind === "draft");
-    const activeDraft = activeDraftTab?.newSessionDraftKey ? getDraft(activeDraftTab.newSessionDraftKey) : null;
-    const preserveActiveDraft = Boolean(
-      activeDraftTab
-      && (activeDraftTab.dirty || (activeDraft && (activeDraft.value.trim() || activeDraft.images.length > 0))),
-    );
-    if (!preserveActiveDraft && activeDraftKey && activeDraftCwd) {
+    // Park the draft only when no tab holds it (the tab-less fallback composer).
+    // Draft tabs survive sidebar clicks now and must keep their storage key.
+    if (
+      activeDraftKey && activeDraftCwd
+      && !chatTabsRef.current.some((tab) => tab.id === `draft:${activeDraftKey}`)
+    ) {
       rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
     }
     activeNewSessionDraftKeyRef.current = null;
@@ -987,6 +986,8 @@ export function AppShell() {
       const sameProject =
         workspaceKeyOf(selectedSession) === workspaceKeyOf(session);
       if (selectedSession.id === session.id && sameProject) {
+        // Explicit pin of the active session only flips the tab flag — no remount.
+        if (pinned) setChatTabs((prev) => pinSessionTab(prev, session.id));
         if (isMobile) setSidebarOpen(false);
         return;
       }
@@ -996,30 +997,15 @@ export function AppShell() {
       syncSessionMetadata(session.id);
     }
     setSelectedSession(session);
-    if (typeof viewSessionInCurrentTab === "function") {
-      const isSplit = typeof isSplitActiveRef !== "undefined" && isSplitActiveRef.current;
-      const isSecondary = isSplit && typeof activeChatPaneRef !== "undefined" && activeChatPaneRef.current === "secondary";
-      const targetCurrentTabId = isSecondary
-        ? (typeof splitChatTabIdRef !== "undefined" ? splitChatTabIdRef.current : null)
-        : (typeof activeChatTabIdRef !== "undefined" ? activeChatTabIdRef.current : null);
-
-      setChatTabs((prev) => {
-        const { tabs: nextTabs, tabId } = preserveActiveDraft || (isRestore && prev.some((tab) => tab.kind === "draft" && tab.dirty))
-          ? openSessionInNewTab(prev, session)
-          : viewSessionInCurrentTab(prev, session, targetCurrentTabId);
-        if (isSecondary) {
-          return nextTabs.map((t) => (t.id === tabId ? { ...t, pane: "secondary" as const } : t));
-        }
-        return nextTabs;
-      });
-
-      if (isSecondary) {
-        setSplitChatTabId(session.id);
-      } else {
-        setActiveChatTabId(session.id);
-        setSplitChatTabId((curr) => curr === session.id ? null : curr);
-      }
-    }
+    const pane = isSplitActiveRef.current ? activeChatPaneRef.current : "primary";
+    const reveal = revealSessionPane(chatTabsRef.current, session.id, pane);
+    setChatTabs((prev) => (isRestore || pinned
+      ? openSessionInNewTab(prev, session, pane)
+      : openSessionPreview(prev, session, pane)
+    ).tabs);
+    if (reveal.activeChatTabId !== undefined) setActiveChatTabId(reveal.activeChatTabId);
+    if (reveal.splitChatTabId !== undefined) setSplitChatTabId(reveal.splitChatTabId);
+    setActiveChatPane(reveal.pane);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -1049,16 +1035,10 @@ export function AppShell() {
     setSelectedSession(null);
     setNewSessionCwd(cwd);
     if (typeof openDraftInTabs === "function") {
-      const isSplit = typeof isSplitActiveRef !== "undefined" && isSplitActiveRef.current;
-      const isSecondary = isSplit && typeof activeChatPaneRef !== "undefined" && activeChatPaneRef.current === "secondary";
+      const isSplit = isSplitActiveRef.current;
+      const isSecondary = isSplit && activeChatPaneRef.current === "secondary";
       const draftId = `draft:${draftKey}`;
-      setChatTabs((prev) => {
-        const { tabs: nextTabs } = openDraftInTabs(prev, cwd, draftKey);
-        if (isSecondary) {
-          return nextTabs.map((t) => (t.id === draftId ? { ...t, pane: "secondary" as const } : t));
-        }
-        return nextTabs;
-      });
+      setChatTabs((prev) => openDraftInTabs(prev, cwd, draftKey, translate("i18n.newSession"), isSecondary ? "secondary" : "primary").tabs);
       if (isSecondary) {
         setSplitChatTabId(draftId);
       } else {
@@ -1074,7 +1054,7 @@ export function AppShell() {
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [router, isMobile]);
+  }, [router, isMobile, translate]);
 
   // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
   useGlobalKeyboardShortcuts({
@@ -1106,33 +1086,21 @@ export function AppShell() {
       .catch(() => {});
   }, []);
 
+  // Every explicit open shares selection cleanup, pane routing and mobile navigation.
+  const handlePinSession = useCallback((session: SessionInfo) => {
+    handleSelectSession(session, false, undefined, undefined, true);
+  }, [handleSelectSession]);
+
   const handleOpenSession = useCallback(async (sessionId: string) => {
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
       const data = await response.json() as { info?: SessionInfo; error?: string };
       if (!response.ok || !data.info) throw new Error(data.error ?? `HTTP ${response.status}`);
-      handleSelectSession(data.info);
+      handlePinSession(data.info);
     } catch (error) {
       console.error("[pi-web] failed to open session:", error instanceof Error ? error.message : error);
     }
-  }, [handleSelectSession]);
-
-  const handleOpenSessionInNewTab = useCallback((session: SessionInfo) => {
-    const isSecondary = isSplitActiveRef.current && activeChatPaneRef.current === "secondary";
-    if (isSecondary) {
-      setChatTabs((prev) => {
-        const { tabs: nextTabs, tabId } = openSessionInNewTab(prev, session);
-        return nextTabs.map((t) => (t.id === tabId ? { ...t, pane: "secondary" as const } : t));
-      });
-      setSplitChatTabId(session.id);
-    } else {
-      setChatTabs((prev) => openSessionInNewTab(prev, session).tabs);
-      setActiveChatTabId(session.id);
-    }
-    setSelectedSession(session);
-    setNewSessionCwd(null);
-    router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [router]);
+  }, [handlePinSession]);
 
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo, sourceDraftKey: string) => {
@@ -1172,10 +1140,10 @@ export function AppShell() {
       tag,
       onClick: () => {
         window.focus();
-        if (targetSession) handleSelectSession(targetSession);
+        if (targetSession) handlePinSession(targetSession);
       },
     });
-  }, [handleSelectSession]);
+  }, [handlePinSession]);
 
   const handleSessionRenamed = useCallback((sessionId: string, title: string) => {
     setRefreshKey((key) => key + 1);
@@ -1291,9 +1259,9 @@ export function AppShell() {
   }, []);
 
   const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null) => {
-    const sourceSession = sourceSessionId
-      ? chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session
-      : selectedSession;
+    const sourceTab = chatTabsRef.current.find((tab) => tab.id === (sourceSessionId ?? selectedSession?.id));
+    const sourceSession = sourceSessionId ? sourceTab?.session : selectedSession;
+    const pane = isSplitActiveRef.current && sourceTab ? chatTabPane(sourceTab) : "primary";
     const forkedSession: SessionInfo = {
       ...(sourceSession ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
@@ -1302,7 +1270,7 @@ export function AppShell() {
     const shouldFocus = !sourceSessionId || activeSessionIdRef.current === sourceSessionId;
 
     setRefreshKey((k) => k + 1);
-    setChatTabs((prev) => openSessionInTabs(prev, forkedSession).tabs);
+    setChatTabs((prev) => openSessionInNewTab(prev, forkedSession, pane).tabs);
     hydrateSelectedSession(newSessionId);
     if (!shouldFocus) return;
 
@@ -1310,7 +1278,9 @@ export function AppShell() {
     setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
     setSelectedSession(forkedSession);
-    setActiveChatTabId(newSessionId);
+    if (pane === "secondary") setSplitChatTabId(newSessionId);
+    else setActiveChatTabId(newSessionId);
+    setActiveChatPane(pane);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [hydrateSelectedSession, router, selectedSession]);
 
@@ -1319,6 +1289,7 @@ export function AppShell() {
     sourceSessionId: string,
     sourceEntryId: string,
   ) => {
+    setChatTabs((tabs) => pinSessionTab(tabs, sourceSessionId));
     const result = await sendAgentCommand<{ newSessionId?: string }>(sourceSessionId, {
       type: "fork_branch",
       entryId: sourceEntryId,
@@ -1427,9 +1398,12 @@ export function AppShell() {
     }
   }, [chatPanesWidth]);
 
+  const primaryTabs = useMemo(() => chatTabsInPane(chatTabs, "primary"), [chatTabs]);
+  const secondaryTabs = useMemo(() => chatTabsInPane(chatTabs, "secondary"), [chatTabs]);
+
   const primaryTab = useMemo(() => {
-    return chatTabs.find((t) => t.id === activeChatTabId) ?? chatTabs[0] ?? null;
-  }, [chatTabs, activeChatTabId]);
+    return primaryTabs.find((t) => t.id === activeChatTabId) ?? primaryTabs[0] ?? null;
+  }, [primaryTabs, activeChatTabId]);
 
   const secondaryTab = useMemo(() => {
     return splitChatTabId ? chatTabs.find((t) => t.id === splitChatTabId) ?? null : null;
@@ -1496,6 +1470,7 @@ export function AppShell() {
   useEffect(() => {
     if (!splitChatTabId || canSplitChat) return;
     const retainedTab = activeChatPane === "secondary" ? secondaryTab : primaryTab;
+    setChatTabs((tabs) => mergeChatTabPanes(tabs, retainedTab?.id ?? null));
     setSplitChatTabId(null);
     if (!retainedTab) {
       setActiveChatPane("primary");
@@ -1523,19 +1498,11 @@ export function AppShell() {
     const tab = chatTabs.find((candidate) => candidate.id === tabId);
     if (!tab) return;
 
-    let pane: "primary" | "secondary" = "primary";
-    if (isSplitActive) {
-      if (tabId === splitChatTabId || (tabId !== activeChatTabId && activeChatPane === "secondary")) {
-        pane = "secondary";
-        setSplitChatTabId(tabId);
-      } else {
-        setActiveChatTabId(tabId);
-      }
-    } else {
-      setActiveChatTabId(tabId);
-    }
+    const pane = isSplitActive ? chatTabPane(tab) : "primary";
+    if (pane === "secondary") setSplitChatTabId(tabId);
+    else setActiveChatTabId(tabId);
     focusChatTab(tab, pane);
-  }, [activeChatPane, activeChatTabId, chatTabs, focusChatTab, isSplitActive, splitChatTabId]);
+  }, [chatTabs, focusChatTab, isSplitActive]);
 
   const handleCloseChatTab = useCallback((tabId: string): boolean => {
     const closingTab = chatTabsRef.current.find((tab) => tab.id === tabId);
@@ -1615,6 +1582,7 @@ export function AppShell() {
       effectiveCwd,
       draftKey,
       translate("i18n.newSession"),
+      openInSecondary ? "secondary" : "primary",
     );
     setChatTabs(nextTabs);
     if (openInSecondary) {
@@ -1652,21 +1620,20 @@ export function AppShell() {
 
   const handleToggleSplit = useCallback(() => {
     if (splitChatTabId) {
+      const retainedTab = activeChatPane === "secondary" ? secondaryTab : primaryTab;
+      setChatTabs((tabs) => mergeChatTabPanes(tabs, retainedTab?.id ?? null));
       setSplitChatTabId(null);
       setActiveChatPane("primary");
-      const mainTab = chatTabs.find((t) => t.id === activeChatTabId);
-      if (mainTab?.kind === "session" && mainTab.session) {
-        setSelectedSession(mainTab.session);
-        setNewSessionCwd(null);
-        router.replace(`?session=${encodeURIComponent(mainTab.session.id)}`, { scroll: false });
-      } else if (mainTab?.kind === "draft") {
-        setSelectedSession(null);
-        setNewSessionCwd(mainTab.newSessionCwd);
-        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+      if (retainedTab) {
+        setActiveChatTabId(retainedTab.id);
+        focusChatTab(retainedTab, "primary");
       }
     } else if (canSplitChat) {
-      const otherTab = chatTabs.find((t) => t.id !== activeChatTabId);
+      // Split the adjacent tab to the right (fall back to the left neighbour).
+      const activeIndex = chatTabs.findIndex((t) => t.id === activeChatTabId);
+      const otherTab = chatTabs[activeIndex + 1] ?? chatTabs[activeIndex - 1];
       if (otherTab) {
+        setChatTabs((tabs) => tabs.map((tab) => tab.id === otherTab.id ? { ...tab, pane: "secondary" } : tab));
         setSplitChatTabId(otherTab.id);
         setActiveChatPane("secondary");
         if (otherTab.kind === "session" && otherTab.session) {
@@ -1693,6 +1660,7 @@ export function AppShell() {
           effectiveCwd,
           draftKey,
           translate("i18n.newSession"),
+          "secondary",
         );
         setChatTabs(nextTabs);
         setSplitChatTabId(tabId);
@@ -1702,7 +1670,7 @@ export function AppShell() {
         router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
       }
     }
-  }, [activeChatTabId, activeCwd, canSplitChat, chatTabs, router, splitChatTabId, translate]);
+  }, [activeChatPane, activeChatTabId, activeCwd, canSplitChat, chatTabs, focusChatTab, primaryTab, router, secondaryTab, splitChatTabId, translate]);
 
   const handleOpenFile = useCallback((
     filePath: string,
@@ -1781,7 +1749,7 @@ export function AppShell() {
     if (selectedSession) {
       setChatTabs((prev) => {
         if (prev.some((t) => t.id === selectedSession.id)) return prev;
-        return viewSessionInCurrentTab(prev, selectedSession, activeChatTabId).tabs;
+        return openSessionInNewTab(prev, selectedSession).tabs;
       });
       setActiveChatTabId((curr) => curr ?? selectedSession.id);
     } else if (newSessionCwd) {
@@ -1793,7 +1761,12 @@ export function AppShell() {
       });
       setActiveChatTabId((curr) => curr ?? `draft:${activeNewSessionDraftKeyRef.current ?? newSessionDraftId}`);
     }
-  }, [activeChatTabId, newSessionCwd, newSessionDraftId, selectedSession, translate]);
+  }, [newSessionCwd, newSessionDraftId, selectedSession, translate]);
+
+  // 发送即转正：在预览标签里干活时，它自动变成正式标签，不再被单击替换。
+  const promotePreviewSession = useCallback((sessionId: string) => {
+    setChatTabs((prev) => pinSessionTab(prev, sessionId));
+  }, []);
 
   const renderChatWindow = (
     tabSession: SessionInfo | null,
@@ -1818,6 +1791,7 @@ export function AppShell() {
         newSessionCwd={effectiveCwd}
         newSessionDraftKey={effectiveDraftKey}
         onDraftChange={handleDraftChange}
+        onKeepTabOpen={promotePreviewSession}
         onNewSessionCwdChange={!tabSession && effectiveCwd
           ? (cwd) => handleDraftCwdChange(effectiveDraftKey, cwd)
           : undefined}
@@ -1969,8 +1943,9 @@ export function AppShell() {
     <>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
+        onPinSession={handlePinSession}
         onSelectSession={handleSelectSession}
-        onOpenSessionInNewTab={handleOpenSessionInNewTab}
+        onOpenSessionInNewTab={handlePinSession}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
@@ -2777,6 +2752,7 @@ export function AppShell() {
                     runningSessionIds={runningSessionIds}
                     onSelectTab={handleSelectChatTab}
                     onCloseTab={handleCloseChatTab}
+                    onPinTab={promotePreviewSession}
                     onNewTab={handleNewChatTab}
                     onToggleSplit={handleToggleSplit}
                     canSplit={canSplitChat}
@@ -2845,8 +2821,8 @@ export function AppShell() {
                   subagents={activeSessionFamily.subagents}
                   selectedSessionId={selectedSession.id}
                   runningSessionIds={runningSessionIds}
-                  onSelectSession={handleSelectSession}
-                  onOpenInNewTab={handleOpenSessionInNewTab}
+                  onSelectSession={handlePinSession}
+                  onOpenInNewTab={handlePinSession}
                 />
               )}
               {activeTopPanel === "system" && (
@@ -3172,6 +3148,7 @@ export function AppShell() {
               runningSessionIds={runningSessionIds}
               onSelectTab={handleSelectChatTab}
               onCloseTab={handleCloseChatTab}
+              onPinTab={promotePreviewSession}
               onNewTab={handleNewChatTab}
               canSplit={false}
               isMobile={true}
@@ -3186,85 +3163,82 @@ export function AppShell() {
           {/* Panes area */}
           <div
             ref={chatPanesContainerRef}
-            style={{ flex: 1, overflow: "hidden", position: "relative", display: "flex", minHeight: 0 }}
+            style={{
+              flex: 1,
+              overflow: "hidden",
+              position: "relative",
+              display: "grid",
+              minHeight: 0,
+              gridTemplateColumns: isSplitActive ? `${chatSplitRatio * 100}% 0 minmax(0, 1fr)` : "minmax(0, 1fr)",
+              gridTemplateRows: isSplitActive ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)",
+            }}
           >
             {showChat ? (
               <>
-                {/* Primary Pane */}
-                <div
-                  style={{
-                    flex: isSplitActive ? `0 0 ${chatSplitRatio * 100}%` : 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    minWidth: isSplitActive ? CHAT_SPLIT_PANE_MIN_WIDTH : 0,
-                    overflow: "hidden",
-                    position: "relative",
-                    height: "100%",
-                  }}
-                  onPointerDownCapture={() => {
-                    if (isSplitActive) handleFocusPane("primary");
-                  }}
-                >
-                  {/* Left Pane TabBar (when split is active) */}
-                  {isSplitActive && (
+                {isSplitActive && (
+                  <div
+                    style={{ gridColumn: 1, gridRow: 1, minWidth: 0, overflow: "hidden" }}
+                    onPointerDownCapture={() => handleFocusPane("primary")}
+                  >
                     <ChatTabBar
-                      tabs={chatTabs.filter((t) => t.id !== splitChatTabId)}
+                      tabs={primaryTabs}
                       activeTabId={activeChatTabId ?? ""}
                       activePane={activeChatPane === "primary" ? "primary" : "secondary"}
                       runningSessionIds={runningSessionIds}
                       onSelectTab={handleSelectPrimaryTab}
                       onCloseTab={handleCloseChatTab}
+                      onPinTab={promotePreviewSession}
                       onNewTab={() => handleNewChatTab("primary")}
                       onToggleSplit={handleToggleSplit}
                       canSplit={false}
                     />
-                  )}
-
-                  {/* Left Content Area */}
-                  <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-                    {chatTabs.length > 0 ? (
-                      chatTabs
-                        .filter((t) => (isSplitActive ? t.id !== splitChatTabId : true))
-                        .map((tab) => {
-                          const isCurrent = tab.id === activeChatTabId;
-                          const mountKey = chatTabMountKey(tab);
-                          return (
-                            <div
-                              key={mountKey}
-                              style={{
-                                display: isCurrent ? "flex" : "none",
-                                flexDirection: "column",
-                                width: "100%",
-                                height: "100%",
-                                position: "absolute",
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                              }}
-                            >
-                              {renderChatWindow(
-                                tab.kind === "session" ? tab.session : null,
-                                tab.kind === "draft" ? tab.newSessionCwd : null,
-                                tab.kind === "draft" ? tab.newSessionDraftKey : null,
-                                isCurrent && primaryPaneHasFocus,
-                                mountKey,
-                              )}
-                            </div>
-                          );
-                        })
-                    ) : (
-                      <div style={{ flex: 1, height: "100%", display: "flex", flexDirection: "column" }}>
-                        {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus)}
-                      </div>
-                    )}
                   </div>
-                </div>
+                )}
+
+                {/* Every ChatWindow stays under the same parent across split/merge.
+                    Group ownership changes grid placement, never component identity. */}
+                {chatTabs.length > 0 ? chatTabs.map((tab) => {
+                  const pane = isSplitActive ? chatTabPane(tab) : "primary";
+                  const isCurrent = tab.id === (pane === "secondary" ? splitChatTabId : activeChatTabId);
+                  const isFocused = pane === "secondary" ? activeChatPane === "secondary" : primaryPaneHasFocus;
+                  const mountKey = chatTabMountKey(tab);
+                  return (
+                    <div
+                      key={mountKey}
+                      data-chat-pane={pane}
+                      onPointerDownCapture={() => { if (isCurrent && isSplitActive) handleFocusPane(pane); }}
+                      style={{
+                        gridColumn: pane === "secondary" ? 3 : 1,
+                        gridRow: isSplitActive ? 2 : 1,
+                        display: isCurrent ? "flex" : "none",
+                        flexDirection: "column",
+                        minWidth: 0,
+                        minHeight: 0,
+                        overflow: "hidden",
+                        position: "relative",
+                        borderLeft: pane === "secondary" ? "1px solid var(--border)" : undefined,
+                      }}
+                    >
+                      {renderChatWindow(
+                        tab.kind === "session" ? tab.session : null,
+                        tab.kind === "draft" ? tab.newSessionCwd : null,
+                        tab.kind === "draft" ? tab.newSessionDraftKey : null,
+                        isCurrent && isFocused,
+                        mountKey,
+                      )}
+                    </div>
+                  );
+                }) : (
+                  <div style={{ gridColumn: 1, gridRow: isSplitActive ? 2 : 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                    {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus)}
+                  </div>
+                )}
 
                 {/* Split Resizer */}
                 {isSplitActive && (
                   <div
                     className="split-chat-resize-handle"
+                    style={{ gridColumn: 2, gridRow: "1 / 3" }}
                     role="separator"
                     aria-orientation="vertical"
                     aria-valuemin={Math.round(getChatSplitRatioBounds(chatPanesWidth).min * 100)}
@@ -3281,59 +3255,24 @@ export function AppShell() {
                   />
                 )}
 
-                {/* Secondary Pane */}
+                {/* Secondary group header; its content shares the keyed list above. */}
                 {isSplitActive && secondaryTab && (
                   <div
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                      minWidth: CHAT_SPLIT_PANE_MIN_WIDTH,
-                      overflow: "hidden",
-                      position: "relative",
-                      height: "100%",
-                      borderLeft: "1px solid var(--border)",
-                    }}
+                    style={{ gridColumn: 3, gridRow: 1, minWidth: 0, overflow: "hidden", borderLeft: "1px solid var(--border)" }}
                     onPointerDownCapture={() => handleFocusPane("secondary")}
                   >
-                    {/* Right Pane TabBar — 100% symmetric to Left Pane TabBar with close pane [×] */}
                     <ChatTabBar
-                      tabs={chatTabs.filter((t) => t.id === splitChatTabId)}
+                      tabs={secondaryTabs}
                       activeTabId={splitChatTabId ?? ""}
                       activePane={activeChatPane === "secondary" ? "primary" : "secondary"}
                       runningSessionIds={runningSessionIds}
                       onSelectTab={handleSelectSecondaryTab}
-                      onCloseTab={() => handleToggleSplit()}
+                      onCloseTab={handleCloseChatTab}
+                      onPinTab={promotePreviewSession}
                       onNewTab={() => handleNewChatTab("secondary")}
                       onClosePane={handleToggleSplit}
                       isSecondaryPane={true}
                     />
-
-                    {/* Secondary Pane Content Container */}
-                    <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-                      <div
-                        key={chatTabMountKey(secondaryTab)}
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          width: "100%",
-                          height: "100%",
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                        }}
-                      >
-                        {renderChatWindow(
-                          secondaryTab.kind === "session" ? secondaryTab.session : null,
-                          secondaryTab.kind === "draft" ? secondaryTab.newSessionCwd : null,
-                          secondaryTab.kind === "draft" ? secondaryTab.newSessionDraftKey : null,
-                          activeChatPane === "secondary",
-                          chatTabMountKey(secondaryTab),
-                        )}
-                      </div>
-                    </div>
                   </div>
                 )}
               </>

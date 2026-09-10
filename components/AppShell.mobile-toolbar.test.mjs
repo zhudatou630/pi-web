@@ -69,7 +69,7 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
     source,
     /if \(activeTopPanel === "agents"\)[\s\S]*?Math\.min\(AGENT_PANEL_WIDTH[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
-  assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSelectSession\}/);
+  assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handlePinSession\}/);
 });
 
 test("only renders branch toolbar controls for sessions with branches on mobile and disables desktop button without branches", () => {

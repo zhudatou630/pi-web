@@ -58,8 +58,10 @@ test("collapses split view to the focused tab when the chat container becomes na
   assert.match(source, /setActiveChatTabId\(retainedTab\.id\);\s*focusChatTab\(retainedTab, "primary"\);/);
 });
 
-test("keeps inactive primary-pane tabs mounted while hidden", () => {
-  assert.match(source, /chatTabs[\s\S]*?\.filter\(\(t\) => \(isSplitActive \? t\.id !== splitChatTabId : true\)\)[\s\S]*?\.map\(\(tab\) =>/);
+test("keeps both groups in one keyed content list across split and merge", () => {
+  assert.match(source, /chatTabs\.length > 0 \? chatTabs\.map\(\(tab\) =>/);
+  assert.doesNotMatch(source, /primaryTabs\.map|secondaryTabs\.map/);
+  assert.match(source, /gridColumn: pane === "secondary" \? 3 : 1/);
   assert.match(source, /display: isCurrent \? "flex" : "none"/);
 });
 
@@ -68,9 +70,7 @@ test("keeps ChatWindow mounted when a draft is promoted to a session", () => {
   assert.match(source, /const mountKey = chatTabMountKey\(tab\);/);
   assert.match(source, /key=\{mountKey\}/);
   assert.match(source, /const primaryPaneHasFocus = !isSplitActive \|\| activeChatPane === "primary";/);
-  assert.match(source, /isCurrent && primaryPaneHasFocus,\s*mountKey,/);
-  assert.match(source, /key=\{chatTabMountKey\(secondaryTab\)\}/);
-  assert.match(source, /activeChatPane === "secondary",\s*chatTabMountKey\(secondaryTab\),/);
+  assert.match(source, /isCurrent && isFocused,\s*mountKey,/);
 });
 
 test("unsplit current chat keeps stats callbacks even if the leftover pane is secondary", () => {
@@ -87,13 +87,51 @@ test("unsplit current chat keeps stats callbacks even if the leftover pane is se
   );
 });
 
-test("sidebar single-click views session in current tab while explicit new tab action appends", () => {
-  assert.match(source, /viewSessionInCurrentTab/);
+test("sidebar single-click opens a preview tab while explicit new tab action appends pinned", () => {
+  assert.match(source, /openSessionPreview\(prev, session, pane\)/);
   assert.match(source, /openSessionInNewTab/);
-  assert.match(source, /onOpenSessionInNewTab=\{handleOpenSessionInNewTab\}/);
-  assert.match(sidebarSource, /onOpenInNewTab/);
+  assert.match(source, /onOpenSessionInNewTab=\{handlePinSession\}/);
+  assert.match(source, /const pane = isSplitActiveRef\.current \? activeChatPaneRef\.current : "primary"/);
+  assert.match(source, /if \(pinned\) setChatTabs\(\(prev\) => pinSessionTab\(prev, session\.id\)\);/);
+  assert.match(source, /onPinSession=\{handlePinSession\}/);
+  assert.match(sidebarSource, /onDoubleClick=\{\(\) => \{/);
   assert.match(sidebarSource, /e\.button === 1 && onOpenInNewTab/);
   assert.match(sidebarSource, /title=\{t\("chatTabs\.openInNewTab"/);
+  assert.match(sidebarSource, /title=\{t\("chatTabs\.pinTab"/);
+});
+
+test("explicit opens are pinned: restore, notifications, subagent cards, agent panel, send-promote", () => {
+  assert.match(source, /isRestore \|\| pinned\s*\? openSessionInNewTab\(prev, session, pane\)/);
+  assert.match(source, /handlePinSession\(data\.info\)/);
+  assert.match(source, /handlePinSession\(targetSession\)/);
+  assert.match(source, /handleSelectSession\(session, false, undefined, undefined, true\)/);
+  assert.match(source, /onKeepTabOpen=\{promotePreviewSession\}/);
+  assert.match(chatWindowSource, /const handleSteerWithSubmit = useCallback/);
+  assert.match(chatWindowSource, /const handleFollowUpWithSubmit = useCallback/);
+  assert.match(chatWindowSource, /keepTabOpen\(\);[\s\S]*?void handleSend\(initialPrompt\)/);
+});
+
+test("sidebar and explicit opens reveal existing tabs in their owning group", () => {
+  assert.match(source, /revealSessionPane\(chatTabsRef\.current, session\.id, pane\)/);
+  assert.match(source, /if \(reveal\.splitChatTabId !== undefined\) setSplitChatTabId\(reveal\.splitChatTabId\);/);
+  assert.match(source, /if \(reveal\.activeChatTabId !== undefined\) setActiveChatTabId\(reveal\.activeChatTabId\);/);
+});
+
+test("pane membership is independent of active pointers; close-tab and merge-pane have separate actions", () => {
+  assert.match(source, /chatTabsInPane\(chatTabs, "primary"\)/);
+  assert.match(source, /chatTabsInPane\(chatTabs, "secondary"\)/);
+  assert.match(source, /tabs=\{primaryTabs\}/);
+  assert.match(source, /tabs=\{secondaryTabs\}[\s\S]*?onCloseTab=\{handleCloseChatTab\}[\s\S]*?onClosePane=\{handleToggleSplit\}/);
+  assert.doesNotMatch(source, /moveTabToEnd|prevSplitTabIdRef|replaceableIds/);
+  assert.match(source, /mergeChatTabPanes\(tabs, retainedTab\?\.id \?\? null\)/);
+});
+
+test("the tab-less fallback draft is parked without breaking draft tabs", () => {
+  assert.match(source, /!chatTabsRef\.current\.some\(\(tab\) => tab\.id === `draft:\$\{activeDraftKey\}`\)/);
+  assert.doesNotMatch(source, /preserveActiveDraft/);
+  assert.doesNotMatch(source, /viewSessionInCurrentTab/);
+  // Safety net for selected sessions appends instead of replacing the active tab
+  assert.match(source, /if \(prev\.some\(\(t\) => t\.id === selectedSession\.id\)\) return prev;[\s\S]*?return openSessionInNewTab\(prev, selectedSession\)\.tabs;/);
 });
 
 test("binds per-tab actions to the target session instead of global selection", () => {
@@ -120,14 +158,16 @@ test("updates draft tab titles and confirms before discarding unsent content", (
   assert.match(source, /window\.sessionStorage\.setItem\(DRAFT_TABS_STORAGE_KEY/);
   assert.match(source, /setDraftTabsPersistenceFailed\(true\)/);
   assert.match(source, /draftPersistenceWarning=\{draftTabsPersistenceFailed\}/);
-  assert.match(source, /const preserveActiveDraft = Boolean/);
-  assert.match(source, /preserveActiveDraft \|\| \(isRestore && prev\.some/);
+  assert.doesNotMatch(source, /preserveActiveDraft/);
   assert.match(source, /setActiveChatTabId\(\(current\) => current \?\? first\.id\)/);
 });
 
 test("late fork completion does not steal focus from another tab", () => {
   assert.match(source, /const shouldFocus = !sourceSessionId \|\| activeSessionIdRef\.current === sourceSessionId/);
-  assert.match(source, /setChatTabs\(\(prev\) => openSessionInTabs\(prev, forkedSession\)\.tabs\);[\s\S]*?if \(!shouldFocus\) return/);
+  assert.match(source, /setChatTabs\(\(prev\) => openSessionInNewTab\(prev, forkedSession, pane\)\.tabs\);[\s\S]*?if \(!shouldFocus\) return/);
+  assert.match(source, /if \(pane === "secondary"\) setSplitChatTabId\(newSessionId\)/);
+  assert.match(chatWindowSource, /const handleChatFork = useCallback[\s\S]*?keepTabOpen\(\);[\s\S]*?return handleFork\(entryId\)/);
+  assert.match(source, /pinSessionTab\(tabs, sourceSessionId\)\);\s*const result = await sendAgentCommand/);
   assert.match(chatWindowSource, /onSessionForked\?\.\(newSessionId, sessionRef\.current\?\.id \?\? null\)/);
 });
 

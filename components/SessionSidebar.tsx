@@ -105,6 +105,7 @@ interface Props {
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
   onOpenSessionInNewTab?: (session: SessionInfo) => void;
+  onPinSession?: (session: SessionInfo) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
   skipInitialProjectSelection?: boolean;
@@ -379,7 +380,7 @@ function PiWebTitle() {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onPinSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [sessionListVersion, setSessionListVersion] = useState<number | null>(null);
@@ -1885,6 +1886,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       setRevealedSessionId(null);
                       onOpenSessionInNewTab(family.root);
                     } : undefined}
+                    onPin={onPinSession ? () => {
+                      setRevealedSessionId(null);
+                      onPinSession(family.root);
+                    } : undefined}
                     onDeleted={(id) => {
                       setRevealedSessionId(null);
                       onSessionDeleted?.(id);
@@ -2122,6 +2127,7 @@ export function SessionItem({
   onClick,
   onRenamed,
   onOpenInNewTab,
+  onPin,
   onDeleted,
   depth = 0,
   hasChildren = false,
@@ -2138,6 +2144,7 @@ export function SessionItem({
   onClick: () => void;
   onRenamed?: () => void;
   onOpenInNewTab?: () => void;
+  onPin?: () => void;
   onDeleted?: (id: string) => void;
   depth?: number;
   hasChildren?: boolean;
@@ -2303,6 +2310,10 @@ export function SessionItem({
         }
         if (confirmDelete || renaming) return;
         onClick();
+      }}
+      onDoubleClick={() => {
+        if (confirmDelete || renaming || isActionsRevealed || session.transient) return;
+        onPin?.();
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -2524,6 +2535,41 @@ export function SessionItem({
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </button>
+              )}
+              {onPin && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDismissActions?.();
+                    onPin();
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  title={t("chatTabs.pinTab", { defaultValue: "固定标签" })}
+                  aria-label={t("chatTabs.pinTab", { defaultValue: "固定标签" })}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 28, height: 28, padding: 0,
+                    background: "var(--bg-hover)", border: "none",
+                    borderRadius: 4, color: "var(--text-muted)",
+                    cursor: "pointer", flexShrink: 0,
+                    transition: "background 0.12s, color 0.12s, border-color 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--bg-selected)";
+                    e.currentTarget.style.color = "var(--accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "var(--bg-hover)";
+                    e.currentTarget.style.color = "var(--text-muted)";
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <line x1="12" y1="17" x2="12" y2="22" />
+                    <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7H9z" />
+                    <path d="M8 7h8" />
                   </svg>
                 </button>
               )}

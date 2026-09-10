@@ -54,6 +54,8 @@ interface Props {
   newSessionCwd: string | null;
   newSessionDraftKey: string | null;
   onDraftChange?: (draftKey: string, value: string, imageCount: number) => void;
+  /** Preserve the source tab when the user sends work or starts a fork. */
+  onKeepTabOpen?: (sessionId: string) => void;
   onNewSessionCwdChange?: (cwd: string) => Promise<void>;
   draftPersistenceWarning?: boolean;
   onAgentEnd?: (session?: SessionInfo | null) => void;
@@ -490,7 +492,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onNewSessionCwdChange, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -529,6 +531,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const openFileFromSession = useCallback((filePath: string) => {
     onOpenFile?.(filePath, sessionRef.current?.id ?? null);
   }, [onOpenFile]);
+  const keepTabOpen = useCallback(() => {
+    const sessionId = sessionRef.current?.id;
+    if (sessionId) onKeepTabOpen?.(sessionId);
+  }, [onKeepTabOpen]);
 
   // 稳定化 onEditContent 引用，配合 React.memo 防止历史消息重渲染
   const handleEditContent = useCallback((message: UserMessage) => {
@@ -740,8 +746,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (!targetSessionId) return;
     initialPromptSentRef.current = true;
     onInitialPromptConsumed?.(targetSessionId);
+    keepTabOpen();
     void handleSend(initialPrompt);
-  }, [initialPrompt, loading, error, handleSend, onInitialPromptConsumed, session?.id, sessionIdRef]);
+  }, [initialPrompt, loading, error, handleSend, onInitialPromptConsumed, keepTabOpen, session?.id, sessionIdRef]);
 
   useEffect(() => {
     if (
@@ -1446,6 +1453,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     : null;
 
   const handleChatSend = useCallback(async (message: string, images?: AttachedImage[]) => {
+    keepTabOpen();
     hasSeenTurnOutputRef.current = false;
     outlineJumpControllerRef.current?.abort();
     setPendingOutlineJump(null);
@@ -1456,7 +1464,25 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     requestAnimationFrame(() => {
       scrollUserMsgToTop();
     });
-  }, [handleSend, scrollUserMsgToTop]);
+  }, [handleSend, keepTabOpen, scrollUserMsgToTop]);
+
+  const handleChatFork = useCallback((entryId: string) => {
+    keepTabOpen();
+    return handleFork(entryId);
+  }, [handleFork, keepTabOpen]);
+
+  const handleSteerWithSubmit = useCallback((message: string, images?: AttachedImage[]) => {
+    keepTabOpen();
+    return handleSteer(message, images);
+  }, [handleSteer, keepTabOpen]);
+  const handleFollowUpWithSubmit = useCallback((message: string, images?: AttachedImage[]) => {
+    keepTabOpen();
+    return handleFollowUp(message, images);
+  }, [handleFollowUp, keepTabOpen]);
+  const handlePromptWithStreamingBehaviorWithSubmit = useCallback((message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => {
+    keepTabOpen();
+    return handlePromptWithStreamingBehavior(message, behavior, images);
+  }, [handlePromptWithStreamingBehavior, keepTabOpen]);
 
   const isSessionLoading = !isNew && loading;
 
@@ -1465,9 +1491,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       ref={setChatInputElement}
       onSend={handleChatSend}
       onAbort={handleAbort}
-      onSteer={agentRunning ? handleSteer : undefined}
-      onFollowUp={agentRunning ? handleFollowUp : undefined}
-      onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehavior : undefined}
+      onSteer={agentRunning ? handleSteerWithSubmit : undefined}
+      onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
+      onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehaviorWithSubmit : undefined}
       isStreaming={sessionBusy}
       model={isSessionLoading ? null : displayModelValue}
       isAutoModelSelection={isSessionLoading ? false : isAutoModelSelection}
@@ -1657,7 +1683,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     onOpenSession={onOpenSession}
                     entryId={entryIds[idx]}
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
-                    onFork={sessionBusy || isNew || (idx === 0 && msg.role === "user") ? undefined : handleFork}
+                    onFork={sessionBusy || isNew || (idx === 0 && msg.role === "user") ? undefined : handleChatFork}
                     forking={forkingEntryId === entryIds[idx]}
                     onNavigate={sessionBusy ? undefined : handleNavigate}
                     prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
