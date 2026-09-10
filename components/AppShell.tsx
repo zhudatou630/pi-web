@@ -1774,6 +1774,7 @@ export function AppShell() {
     effectiveDraftKey: string | null,
     isFocusedPane: boolean,
     tabKey?: string,
+    isVisiblePane?: boolean,
   ) => {
     const isTabRunning = tabSession
       ? runningSessionIds.has(tabSession.id)
@@ -1803,6 +1804,7 @@ export function AppShell() {
         modelsRefreshKey={modelsRefreshKey}
         chatInputRef={isFocusedPane ? chatInputRef : undefined}
         isFocusedPane={isFocusedPane}
+        isVisiblePane={isVisiblePane}
         onBranchDataChange={isFocusedPane ? handleBranchDataChange : undefined}
         onSystemPromptChange={isFocusedPane ? handleSystemPromptChange : undefined}
         onSystemToolsChange={isFocusedPane ? handleSystemToolsChange : undefined}
@@ -3225,6 +3227,7 @@ export function AppShell() {
                         tab.kind === "draft" ? tab.newSessionDraftKey : null,
                         isCurrent && isFocused,
                         mountKey,
+                        isCurrent,
                       )}
                     </div>
                   );

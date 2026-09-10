@@ -70,6 +70,7 @@ export async function POST(req: Request) {
     const state = await session.send({ type: "get_state" }) as {
       model?: { id: string; provider: string };
       thinkingLevel?: string;
+      contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
     };
 
     if (promptCommand.type === "ensure_session") {
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
           ? { provider: state.model.provider, modelId: state.model.id }
           : null,
         thinkingLevel: state.thinkingLevel,
+        contextUsage: state.contextUsage,
       });
     }
 

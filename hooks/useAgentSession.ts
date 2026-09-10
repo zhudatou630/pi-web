@@ -17,7 +17,7 @@ import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
-import type { SessionStatsInfo } from "@/lib/pi-types";
+import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import { AgentEventConnection } from "@/lib/agent-event-connection";
@@ -113,6 +113,32 @@ function normalizeQueuedMessages(q?: { steering?: Array<string | { text?: string
     steering: (q?.steering ?? []).map(queuedMessageText),
     followUp: (q?.followUp ?? []).map(queuedMessageText),
   };
+}
+
+function keepContextUsage(prev: ContextUsage | null, next: ContextUsage | null): ContextUsage | null {
+  if (
+    prev === next
+    || (
+      prev !== null
+      && next !== null
+      && prev.tokens === next.tokens
+      && prev.percent === next.percent
+      && prev.contextWindow === next.contextWindow
+    )
+  ) return prev;
+  return next;
+}
+
+function assistantUsageTokens(message: AgentMessage): number | null {
+  if (message.role !== "assistant") return null;
+  if (message.stopReason === "aborted" || message.stopReason === "error") return null;
+  const usage = message.usage;
+  if (!usage) return null;
+  const totalTokens = (usage as { totalTokens?: number }).totalTokens;
+  const tokens = totalTokens && totalTokens > 0
+    ? totalTokens
+    : usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+  return tokens > 0 ? tokens : null;
 }
 
 type ExtensionUiDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
@@ -715,9 +741,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         sessionId: string;
         model?: SelectedModel | null;
         thinkingLevel?: ThinkingLevelOption;
+        contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
       };
       const realId = result.sessionId;
       sessionIdRef.current = realId;
+      if (result.contextUsage !== undefined) setContextUsage(result.contextUsage ?? null);
       if (result.model && newSessionModelOverrideRef.current === selectedModel) {
         setPendingModel(result.model);
         if (!selectedModel) setNewSessionDefaultModel(result.model);
@@ -1114,6 +1142,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // (wrapper destroyed) means nothing is compacting.
       setIsCompacting(state?.isCompacting ?? false);
       setQueuedMessages(normalizeQueuedMessages(state?.queuedMessages));
+      if (state?.contextUsage !== undefined) {
+        setContextUsage((prev) => keepContextUsage(prev, state.contextUsage ?? null));
+      }
       const busy = data.running && state
         && (state.isStreaming || state.isPromptRunning || state.isCompacting);
       if (busy) {
@@ -1123,7 +1154,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       if (!agentRunningRef.current) return;
       if (state) {
-        if (state.contextUsage !== undefined) setContextUsage(state.contextUsage ?? null);
         if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
         if (state.extensionStatuses !== undefined) setExtensionStatuses(state.extensionStatuses ?? []);
         if (state.extensionWidgets !== undefined) setExtensionWidgets(state.extensionWidgets ?? []);
@@ -1317,6 +1347,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else if (completed) {
           const normalized = normalizeToolCalls(completed) as AgentMessage;
           if (normalized.role === "assistant") {
+            const usageTokens = assistantUsageTokens(normalized);
+            if (usageTokens !== null) {
+              setContextUsage((prev) => {
+                const contextWindow = prev?.contextWindow ?? 0;
+                if (contextWindow <= 0) return prev;
+                return keepContextUsage(prev, {
+                  tokens: usageTokens,
+                  contextWindow,
+                  percent: (usageTokens / contextWindow) * 100,
+                });
+              });
+            }
             const completedAt = Date.now();
             const settled = { ...normalized, completedAt };
             const stats = settleAssistantDecode(decodeClockRef.current, settled, completedAt);

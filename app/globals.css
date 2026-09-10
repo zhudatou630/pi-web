@@ -809,9 +809,14 @@ pre, code {
 }
 
 .process-details-list [data-message-text] .markdown-body {
-  font-size: calc(11.5px + var(--chat-font-size-offset, 0px)) !important;
+  font-size: 11px !important;
   line-height: 1.48 !important;
   color: var(--text-muted) !important;
+}
+.process-details-list [data-message-text] .markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  margin: 2px 0 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
 }
 .process-details-list [data-message-text] .markdown-body p {
   margin: 2px 0 !important;

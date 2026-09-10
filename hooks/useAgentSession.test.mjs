@@ -6,6 +6,7 @@ const source = await readFile(new URL("./useAgentSession.ts", import.meta.url), 
 const chatWindowSource = await readFile(new URL("../components/ChatWindow.tsx", import.meta.url), "utf8");
 const chatInputSource = await readFile(new URL("../components/ChatInput.tsx", import.meta.url), "utf8");
 const appShellSource = await readFile(new URL("../components/AppShell.tsx", import.meta.url), "utf8");
+const newAgentRouteSource = await readFile(new URL("../app/api/agent/new/route.ts", import.meta.url), "utf8");
 
 test("keeps the session event stream open through the idle grace window", () => {
   const finishSource = source.slice(
@@ -70,6 +71,29 @@ test("a rejected submission preserves a different run reported by the server", (
   assert.match(reconcileSource, /if \(!agentRunningRef\.current\) return;[\s\S]*?finishPromptWithoutStream/);
 });
 
+test("reconcile applies context usage before bailing out on a busy run", () => {
+  const reconcileSource = source.slice(
+    source.indexOf("  const reconcileAgentState = useCallback"),
+    source.indexOf("  // Recovery net for missed SSE events"),
+  );
+  const usageIndex = reconcileSource.indexOf("state?.contextUsage");
+  const busyIndex = reconcileSource.indexOf("if (busy)");
+  assert.ok(usageIndex !== -1 && busyIndex !== -1 && usageIndex < busyIndex);
+  assert.match(reconcileSource, /keepContextUsage\(prev, state\.contextUsage \?\? null\)/);
+});
+
+test("assistant message_end refreshes context usage without reloading the session", () => {
+  const messageEndSource = source.slice(
+    source.indexOf('case "message_end"'),
+    source.indexOf('case "tool_execution_start"'),
+  );
+  assert.match(messageEndSource, /assistantUsageTokens\(normalized\)/);
+  assert.match(messageEndSource, /keepContextUsage\(prev,/);
+  assert.doesNotMatch(messageEndSource, /loadSession\(/);
+  assert.match(source, /function assistantUsageTokens\(message: AgentMessage\)/);
+  assert.match(source, /stopReason === "aborted" \|\| message\.stopReason === "error"/);
+});
+
 test("opening System or Tools lazily starts a dormant session without sending a prompt", () => {
   const loadSystemInfoSource = source.slice(
     source.indexOf("  const loadSystemInfo = useCallback"),
@@ -98,6 +122,16 @@ test("opening System or Tools lazily starts a dormant session without sending a 
     appShellSource,
     /handleSystemInfoLoaderChange[\s\S]*?systemInfoLoadIdRef\.current \+= 1;[\s\S]*?setSystemInfoLoading\(false\)/,
   );
+});
+
+test("a fresh session exposes context usage before its first prompt runs", () => {
+  const ensureSource = source.slice(
+    source.indexOf("  const ensureNewSession = useCallback"),
+    source.indexOf("  // Opening the System or Tools panel"),
+  );
+
+  assert.match(newAgentRouteSource, /contextUsage: state\.contextUsage/);
+  assert.match(ensureSource, /setContextUsage\(result\.contextUsage \?\? null\)/);
 });
 
 test("new-session promotion rekeys drafts before publishing the real session", () => {

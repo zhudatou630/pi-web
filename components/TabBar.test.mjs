@@ -119,6 +119,7 @@ test("keeps tab roles, keyboard tabindexes, and close controls", () => {
 
 test("keeps the active tab visible and restores focus after closing", () => {
   assert.match(source, /scrollIntoView\(\{ block: "nearest", inline: "nearest" \}\)/);
+  assert.match(source, /setHoveredClose\(null\);\s+focusAfterCloseRef\.current = true;\s+onCloseTab\(tab\.id\)/);
   assert.match(source, /focusAfterCloseRef\.current = true/);
   assert.match(source, /activeTabRef\.current\?\.focus\(\)/);
 });

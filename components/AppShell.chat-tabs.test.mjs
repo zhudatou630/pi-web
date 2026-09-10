@@ -70,7 +70,8 @@ test("keeps ChatWindow mounted when a draft is promoted to a session", () => {
   assert.match(source, /const mountKey = chatTabMountKey\(tab\);/);
   assert.match(source, /key=\{mountKey\}/);
   assert.match(source, /const primaryPaneHasFocus = !isSplitActive \|\| activeChatPane === "primary";/);
-  assert.match(source, /isCurrent && isFocused,\s*mountKey,/);
+  assert.match(source, /isCurrent && isFocused,\s*mountKey,\s*isCurrent,/);
+  assert.match(source, /isVisiblePane=\{isVisiblePane\}/);
 });
 
 test("unsplit current chat keeps stats callbacks even if the leftover pane is secondary", () => {

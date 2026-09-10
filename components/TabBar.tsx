@@ -135,6 +135,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               disabled={tab.closing}
               onClick={(e) => {
                 e.stopPropagation();
+                setHoveredClose(null);
                 focusAfterCloseRef.current = true;
                 onCloseTab(tab.id);
               }}

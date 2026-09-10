@@ -68,8 +68,9 @@ test("keeps completed turn projections stable while only the streaming tail chan
   assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);
 });
 
-test("mounts the minimap only for the focused chat pane", () => {
-  assert.match(source, /!isFocusedPane \|\| isMobile \|\| pendingScrollRestore \? null/);
+test("mounts the minimap for every visible chat pane", () => {
+  assert.match(source, /!isVisiblePane \|\| isMobile \|\| pendingScrollRestore \? null/);
+  assert.doesNotMatch(source, /!isFocusedPane \|\| isMobile \|\| pendingScrollRestore/);
 });
 
 test("keeps process indicator active before answer and drops trailing pulse under streaming answer", () => {
@@ -99,4 +100,16 @@ test("removes the bottom extension status shelf from the chat window", () => {
 test("omits error from partitioned process message to avoid duplicate terminal error card", () => {
   assert.match(source, /omitError:\s*Boolean\(answerMessage\)/);
   assert.match(source, /if\s*\(options\.omitError\)\s*\{\s*if\s*\(next\.stopReason === "error"\)\s*next\.stopReason = "stop";\s*next\.errorMessage = undefined;\s*\}/);
+});
+
+test("matches process detail text paragraph font size to 11px to align with step items", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(
+    css,
+    /\.process-details-list \[data-message-text\] \.markdown-body \{\s*font-size: 11px !important;/,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.process-details-list \[data-message-text\] \.markdown-body \{\s*font-size: calc\(11\.5px/,
+  );
 });
