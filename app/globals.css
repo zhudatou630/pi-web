@@ -811,7 +811,7 @@ pre, code {
 .process-details-list [data-message-text] .markdown-body {
   font-size: calc(11.5px + var(--chat-font-size-offset, 0px)) !important;
   line-height: 1.48 !important;
-  color: color-mix(in srgb, var(--text) 84%, var(--text-muted)) !important;
+  color: var(--text-muted) !important;
 }
 .process-details-list [data-message-text] .markdown-body p {
   margin: 2px 0 !important;

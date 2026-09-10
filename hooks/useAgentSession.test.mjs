@@ -336,6 +336,8 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
   assert.doesNotMatch(streamSource, /case "message_delta"/);
   assert.match(messageEndSource, /const completed = event\.message as AgentMessage/);
   assert.match(messageEndSource, /normalizeToolCalls\(completed\)/);
+  assert.match(messageEndSource, /const completedAt = Date\.now\(\)/);
+  assert.match(messageEndSource, /const settled = \{ \.\.\.normalized, completedAt \}/);
   assert.match(messageEndSource, /dispatch\(\{ type: "end" \}\)/);
   assert.doesNotMatch(messageEndSource, /streamState\.streamingMessage/);
 });

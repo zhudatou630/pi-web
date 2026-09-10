@@ -2074,6 +2074,87 @@ export function AppShell() {
     if (!mobile && !sessionTools && !hasSubagentSessions) return null;
     return (
       <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
+        {hasSubagentSessions && (
+          <button
+            ref={!mobile ? agentsButtonRef : undefined}
+            type="button"
+            onClick={(event) => {
+              agentsAnchorRef.current = event.currentTarget;
+              toggleTopPanel("agents", mobile);
+            }}
+            title={translate("agentSwitcher.title")}
+            aria-label={translate("agentSwitcher.title")}
+            aria-pressed={activeTopPanel === "agents"}
+            aria-expanded={activeTopPanel === "agents"}
+            aria-controls="workspace-top-panel"
+            data-top-panel-trigger="agents"
+            style={{
+              position: "relative",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: TOP_BAR_ICON_BUTTON_SIZE,
+              height: "100%", padding: 0,
+              background: activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
+              border: "none",
+              color: activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
+              cursor: "pointer", flexShrink: 0,
+              transition: "color 0.1s, background 0.1s",
+            }}
+            className="workspace-header-action"
+            data-mobile-toolbar-action={mobile ? "agents" : undefined}
+          >
+            <SubagentIcon size={13} strokeWidth={1.9} />
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute", top: 2, right: 2,
+                minWidth: 13, height: 13, padding: "0 3px", display: "grid", placeItems: "center",
+                borderRadius: 4, background: "var(--bg-selected)", color: "var(--accent)",
+                fontSize: 9, lineHeight: 1, fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {activeSessionFamily!.subagents.length}
+            </span>
+          </button>
+        )}
+        {sessionTools && (mobile ? (sessionHasBranches && (
+          <button
+            type="button"
+            onClick={() => toggleTopPanel("branches", true)}
+            title={translate("i18n.branches")}
+            aria-label={translate("i18n.branches")}
+            aria-pressed={activeTopPanel === "branches"}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+              background: activeTopPanel === "branches" ? "var(--bg-selected)" : "none",
+              border: "none",
+              color: activeTopPanel === "branches" ? "var(--text)" : "var(--text-muted)",
+              cursor: "pointer", flexShrink: 0,
+            }}
+            className="workspace-header-action"
+            data-mobile-toolbar-action="branches"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: branchTree.length > 0 ? "var(--accent)" : "var(--text-dim)" }} aria-hidden="true">
+              <line x1="6" y1="3" x2="6" y2="15" />
+              <circle cx="18" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <path d="M18 9a9 9 0 0 1-9 9" />
+            </svg>
+          </button>
+        )) : (
+          <BranchNavigator
+            tree={branchTree}
+            activeLeafId={branchActiveLeafId}
+            onLeafChange={handleBranchLeafChange}
+            inline
+            compact
+            containerRef={topBarRef}
+            open={activeTopPanel === "branches"}
+            onToggle={() => toggleTopPanel("branches")}
+            disabled={!sessionHasBranches}
+            hasSession
+          />
+        ))}
         {sessionTools && <SessionHistoryControl
           mobile={mobile}
           disabled={!selectedSession}
@@ -2176,87 +2257,6 @@ export function AppShell() {
             </button>
           );
         })()}
-        {hasSubagentSessions && (
-          <button
-            ref={!mobile ? agentsButtonRef : undefined}
-            type="button"
-            onClick={(event) => {
-              agentsAnchorRef.current = event.currentTarget;
-              toggleTopPanel("agents", mobile);
-            }}
-            title={translate("agentSwitcher.title")}
-            aria-label={translate("agentSwitcher.title")}
-            aria-pressed={activeTopPanel === "agents"}
-            aria-expanded={activeTopPanel === "agents"}
-            aria-controls="workspace-top-panel"
-            data-top-panel-trigger="agents"
-            style={{
-              position: "relative",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE,
-              height: "100%", padding: 0,
-              background: activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
-              border: "none",
-              color: activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-              transition: "color 0.1s, background 0.1s",
-            }}
-            className="workspace-header-action"
-            data-mobile-toolbar-action={mobile ? "agents" : undefined}
-          >
-            <SubagentIcon size={13} strokeWidth={1.9} />
-            <span
-              aria-hidden="true"
-              style={{
-                position: "absolute", top: 2, right: 2,
-                minWidth: 13, height: 13, padding: "0 3px", display: "grid", placeItems: "center",
-                borderRadius: 4, background: "var(--bg-selected)", color: "var(--accent)",
-                fontSize: 9, lineHeight: 1, fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {activeSessionFamily!.subagents.length}
-            </span>
-          </button>
-        )}
-        {sessionTools && (mobile ? (sessionHasBranches && (
-          <button
-            type="button"
-            onClick={() => toggleTopPanel("branches", true)}
-            title={translate("i18n.branches")}
-            aria-label={translate("i18n.branches")}
-            aria-pressed={activeTopPanel === "branches"}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: activeTopPanel === "branches" ? "var(--bg-selected)" : "none",
-              border: "none",
-              color: activeTopPanel === "branches" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-            }}
-            className="workspace-header-action"
-            data-mobile-toolbar-action="branches"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: branchTree.length > 0 ? "var(--accent)" : "var(--text-dim)" }} aria-hidden="true">
-              <line x1="6" y1="3" x2="6" y2="15" />
-              <circle cx="18" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
-              <path d="M18 9a9 9 0 0 1-9 9" />
-            </svg>
-          </button>
-        )) : (
-          <BranchNavigator
-            tree={branchTree}
-            activeLeafId={branchActiveLeafId}
-            onLeafChange={handleBranchLeafChange}
-            inline
-            compact
-            containerRef={topBarRef}
-            open={activeTopPanel === "branches"}
-            onToggle={() => toggleTopPanel("branches")}
-            disabled={!sessionHasBranches}
-            hasSession
-          />
-        ))}
         {sessionTools && <>
         <button
           ref={systemBtnRef}

@@ -258,10 +258,14 @@ function getUserInputText(message: AgentMessage): string | null {
 function withAssistantBlocks(
   message: AssistantMessage,
   content: AssistantContentBlock[],
-  options: { omitUsage?: boolean } = {},
+  options: { omitUsage?: boolean; omitError?: boolean } = {},
 ): AssistantMessage {
   const next = { ...message, content };
   if (options.omitUsage) next.usage = undefined;
+  if (options.omitError) {
+    if (next.stopReason === "error") next.stopReason = "stop";
+    next.errorMessage = undefined;
+  }
   return next;
 }
 
@@ -280,7 +284,10 @@ function partitionAssistantMessage(
     options,
   );
   const processMessage = processVisible.length > 0
-    ? withAssistantBlocks(message, processBlocks, { omitUsage: Boolean(answerMessage) && !options.isStreaming })
+    ? withAssistantBlocks(message, processBlocks, {
+        omitUsage: Boolean(answerMessage) && !options.isStreaming,
+        omitError: Boolean(answerMessage),
+      })
     : null;
   return { processMessage, answerMessage };
 }
@@ -1660,7 +1667,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[] } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; isProcess?: boolean } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -1689,9 +1696,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
                     onEditContent={handleEditContent}
                     isTurnEnd={options.isTurnEnd}
-                    prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
+                    isProcess={options.isProcess}
                   />
                 );
                 if (!isVisible) return view;
@@ -1770,6 +1777,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                           key="streaming-process-view"
                           message={streamingParts.processMessage}
                           isStreaming
+                          isProcess
                           cwd={messageCwd}
                           onOpenFile={openFileFromSession}
                           onOpenSession={onOpenSession}
@@ -1800,7 +1808,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   if (processMessage.role === "custom") {
                     revealProcess ||= Boolean(locateEntryId && locateEntryId === entryIds[processIdx]);
                     if (entryIds[processIdx]) processEntryIds.push(entryIds[processIdx]);
-                    processViews.push(renderMessage(processIdx, { attachRef: false, keyPrefix: "process" }));
+                    processViews.push(renderMessage(processIdx, { attachRef: false, keyPrefix: "process", isProcess: true }));
                     continue;
                   }
                   if (processMessage.role !== "assistant") continue;
@@ -1809,7 +1817,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     : processMessage;
                   if (!message) continue;
                   const blocks = getDisplayableAssistantBlocks(message);
-                  if (blocks.length === 0) continue;
+                  const hasError = Boolean(getAssistantErrorMessage(message));
+                  if (blocks.length === 0 && !hasError) continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
                   processToolCount += countToolCallBlocks(blocks);
                   revealProcess ||= Boolean(
@@ -1823,6 +1832,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     keyPrefix: "process",
                     messageOverride: message,
                     isTurnEnd: false,
+                    isProcess: true,
                   }));
                 }
 
@@ -1832,6 +1842,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       key="streaming-process-view"
                       message={streamingParts.processMessage}
                       isStreaming
+                      isProcess
                       cwd={messageCwd}
                       onOpenFile={openFileFromSession}
                       onOpenSession={onOpenSession}

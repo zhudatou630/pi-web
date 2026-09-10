@@ -85,6 +85,8 @@ export interface AssistantMessage {
   timestamp?: number;
   usage?: AgentUsage;
   decode?: AssistantDecodeStats;
+  /** Client-only generation end. From jsonl entry.timestamp or message_end. Not persisted. */
+  completedAt?: number;
 }
 
 export interface ToolResultMessage {

@@ -25,6 +25,16 @@ test("looks up tool durations only for calls in the current assistant message", 
   assert.doesNotMatch(source, /for \(const \[callId, result\] of toolResults\)/);
 });
 
+test("derives thinking and tool durations from message timestamps, not a view clock", () => {
+  assert.match(source, /function elapsedSeconds/);
+  assert.match(source, /elapsedSeconds\(message\.timestamp, message\.completedAt\)/);
+  assert.match(source, /message\.completedAt \?\? message\.timestamp/);
+  assert.doesNotMatch(source, /blockStartTimesRef/);
+  assert.doesNotMatch(source, /finalDurations/);
+  assert.doesNotMatch(source, /thinkingDurationFromFile/);
+  assert.doesNotMatch(source, /prevTimestamp/);
+});
+
 function renderMessage(message, props = {}) {
   return renderToStaticMarkup(
     React.createElement(
@@ -39,6 +49,7 @@ test("updates a reused message when its written files change", () => {
   const props = { message: { role: "assistant", content: [] } };
   assert.equal(MessageView.compare(props, props), true);
   assert.equal(MessageView.compare(props, { ...props, writtenFiles: [{ path: "/tmp/result.txt" }] }), false);
+  assert.equal(MessageView.compare(props, { ...props, isProcess: true }), false);
 });
 
 test("previews the first thinking line and reveals the full text with the saved default", () => {
@@ -65,6 +76,36 @@ test("previews the first thinking line and reveals the full text with the saved 
     if (previousWindow === undefined) delete globalThis.window;
     else globalThis.window = previousWindow;
   }
+});
+
+test("shows thinking duration from completedAt minus start, not the previous message", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "test",
+    model: "test-model",
+    timestamp: 1_000,
+    completedAt: 6_000,
+    content: [{ type: "thinking", thinking: "Plan the charts" }],
+  });
+  assert.match(html, />5s</);
+  assert.doesNotMatch(html, />0s</);
+});
+
+test("shows tool duration from the tool result minus generation end", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "test",
+    model: "test-model",
+    timestamp: 1_000,
+    completedAt: 5_000,
+    content: [{ type: "toolCall", toolCallId: "bash-1", toolName: "bash", input: { command: "mkdir x" } }],
+  }, {
+    toolResults: new Map([
+      ["bash-1", { role: "toolResult", toolCallId: "bash-1", timestamp: 8_000, content: [{ type: "text", text: "ok" }] }],
+    ]),
+  });
+  assert.match(html, />3s</);
+  assert.doesNotMatch(html, />7s</);
 });
 
 test("shows deferred thinking previews without loading the full content", () => {
@@ -277,6 +318,24 @@ test("renders a provider error when the assistant message has no content", () =>
   assert.match(html, /role="alert"/);
   assert.match(html, /Error: OpenAI API error \(403\)/);
   assert.match(html, /&lt;html&gt;request forbidden&lt;\/html&gt;/);
+});
+
+test("renders a collapsed step-card for provider error when in process mode", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "openai",
+    model: "gpt-test",
+    content: [],
+    stopReason: "error",
+    errorMessage: "Internal error during token generation\nDetailed stack trace here",
+  }, { isProcess: true });
+
+  assert.match(html, /data-step-card=""/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /aria-controls="[^"]+"/);
+  assert.match(html, />Model error<\/span>/);
+  assert.match(html, /Internal error during token generation/);
+  assert.doesNotMatch(html, /Detailed stack trace here/);
 });
 
 test("renders partial assistant content before the provider error", () => {

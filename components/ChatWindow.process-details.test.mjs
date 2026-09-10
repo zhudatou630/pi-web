@@ -95,3 +95,8 @@ test("removes the bottom extension status shelf from the chat window", () => {
   assert.doesNotMatch(source, /<ExtensionStatusBar/);
   assert.doesNotMatch(source, /import\s*\{\s*ExtensionStatusBar\s*\}\s*from/);
 });
+
+test("omits error from partitioned process message to avoid duplicate terminal error card", () => {
+  assert.match(source, /omitError:\s*Boolean\(answerMessage\)/);
+  assert.match(source, /if\s*\(options\.omitError\)\s*\{\s*if\s*\(next\.stopReason === "error"\)\s*next\.stopReason = "stop";\s*next\.errorMessage = undefined;\s*\}/);
+});

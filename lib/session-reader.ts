@@ -650,9 +650,7 @@ function entryToUiMessage(
 ): AgentMessage | null {
   // Supported message roles: user, assistant, toolResult, bashExecution.
   // bashExecution messages enter the case "message" branch (entry.type === "message").
-  // The early return at line below ("!options.deferThinking || message.role !== "assistant"")
-  // passes non-assistant messages — including bashExecution — through unchanged.
-  // normalizeToolCalls is a secondary guard (returns non-assistant messages as-is).
+  // Non-assistant messages — including bashExecution — return unchanged after normalizeToolCalls.
   switch (entry.type) {
     case "message": {
       let message = options.deferToolResultImages
@@ -662,11 +660,15 @@ function entryToUiMessage(
       if (typeof legacyContent === "string") {
         message = { ...message, content: [{ type: "text", text: legacyContent }] } as AgentMessage;
       }
-      if (!options.deferThinking || message.role !== "assistant") return message;
-      const content = message.content;
+      if (message.role !== "assistant") return message;
+      const completedAt = parseEntryTimestamp(entry.timestamp);
+      if (completedAt !== undefined) {
+        message = { ...message, completedAt };
+      }
+      if (!options.deferThinking) return message;
       return {
         ...message,
-        content: content.map((block) => (
+        content: message.content.map((block) => (
           block.type === "thinking" && block.thinking.trim() !== ""
             ? { ...block, thinking: getThinkingPreview(block.thinking), deferred: true }
             : block

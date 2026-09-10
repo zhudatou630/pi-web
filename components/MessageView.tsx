@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useMemo } from "react";
+import { memo, useState, useRef, useEffect, useMemo, useId } from "react";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImagePreview } from "./ImagePreview";
@@ -150,7 +150,6 @@ interface Props {
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage) => void;
   isTurnEnd?: boolean;
-  prevTimestamp?: number;
   sessionId?: string;
   /**
    * Files this turn wrote, derived by the caller from the whole turn's
@@ -159,6 +158,13 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
+  isProcess?: boolean;
+}
+
+function elapsedSeconds(start?: number, end?: number): number | undefined {
+  if (typeof start !== "number" || typeof end !== "number") return undefined;
+  const secs = Math.round((end - start) / 1000);
+  return secs > 0 ? secs : undefined;
 }
 
 function formatTime(ts?: number): string | null {
@@ -207,12 +213,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, prevTimestamp, sessionId, writtenFiles }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, sessionId, writtenFiles, isProcess }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} isProcess={isProcess} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -244,9 +250,9 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.onEditContent === next.onEditContent
     && prev.isTurnEnd === next.isTurnEnd
     && prev.modelName === next.modelName
-    && prev.prevTimestamp === next.prevTimestamp
     && prev.writtenFiles === next.writtenFiles
-    && prev.sessionId === next.sessionId;
+    && prev.sessionId === next.sessionId
+    && prev.isProcess === next.isProcess;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
@@ -540,11 +546,11 @@ function AssistantMessageView({
   onOpenFile,
   onOpenSession,
   isTurnEnd,
-  prevTimestamp,
   sessionId,
   entryId,
   searchBlock,
   writtenFiles,
+  isProcess,
 }: {
   message: AssistantMessage;
   modelName?: string;
@@ -554,11 +560,11 @@ function AssistantMessageView({
   onOpenFile?: (filePath: string) => void;
   onOpenSession?: (sessionId: string) => void;
   isTurnEnd?: boolean;
-  prevTimestamp?: number;
   sessionId?: string;
   entryId?: string;
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
+  isProcess?: boolean;
 }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -566,6 +572,19 @@ function AssistantMessageView({
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
+  const thinkingDuration = elapsedSeconds(message.timestamp, message.completedAt);
+  const toolStartedAt = message.completedAt ?? message.timestamp;
+  const toolCallDurations = useMemo<Map<string, number>>(() => {
+    const map = new Map<string, number>();
+    if (!toolResults || toolStartedAt === undefined) return map;
+    for (const block of message.content) {
+      if (block.type !== "toolCall") continue;
+      const result = toolResults.get(block.toolCallId);
+      const secs = elapsedSeconds(toolStartedAt, result?.timestamp);
+      if (secs !== undefined) map.set(block.toolCallId, secs);
+    }
+    return map;
+  }, [message.content, toolResults, toolStartedAt]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
   const textContent = blocks
     .filter((block): block is TextContent => block.type === "text")
@@ -579,78 +598,6 @@ function AssistantMessageView({
       setTimeout(() => setCopied(false), 1500);
     });
   };
-  const blockItemsRef = useRef(blockItems);
-  blockItemsRef.current = blockItems;
-
-  // Streaming-based timing for thinking blocks
-  const blockStartTimesRef = useRef<Map<number, number>>(new Map());
-  const [finalDurations, setFinalDurations] = useState<Map<number, number>>(new Map());
-
-  // Thinking duration derived from file timestamps: time from prev message end to this message end
-  // This is the total generation time (thinking + any text before first tool call)
-  const thinkingDurationFromFile = useMemo<number | undefined>(() => {
-    if (!message.timestamp || !prevTimestamp) return undefined;
-    const secs = Math.round((message.timestamp - prevTimestamp) / 1000);
-    return secs > 0 ? secs : undefined;
-  }, [message.timestamp, prevTimestamp]);
-
-  // Tool call durations derived from session file timestamps (accurate for completed messages)
-  // assistant message timestamp = when generation ended = when tools started running
-  // toolResult timestamp = when tool execution finished
-  const toolCallDurations = useMemo<Map<string, number>>(() => {
-    const map = new Map<string, number>();
-    if (!toolResults || !message.timestamp) return map;
-    for (const block of message.content) {
-      if (block.type !== "toolCall") continue;
-      const result = toolResults.get(block.toolCallId);
-      if (result?.timestamp) {
-        const secs = Math.round((result.timestamp - message.timestamp) / 1000);
-        if (secs > 0) map.set(block.toolCallId, secs);
-      }
-    }
-    return map;
-  }, [message.content, message.timestamp, toolResults]);
-
-  useEffect(() => {
-    const now = Date.now();
-    const items = blockItemsRef.current;
-
-    // Record start time for each block the first time we see it
-    items.forEach(({ originalIndex }) => {
-      if (!blockStartTimesRef.current.has(originalIndex)) {
-        blockStartTimesRef.current.set(originalIndex, now);
-      }
-    });
-
-    if (!isStreaming) {
-      // Finalise any un-finished thinking block durations on stream end
-      setFinalDurations((prev) => {
-        const next = new Map(prev);
-        for (const [idx, start] of blockStartTimesRef.current) {
-          if (!next.has(idx)) next.set(idx, Math.round((now - start) / 1000));
-        }
-        return next;
-      });
-      return;
-    }
-
-    // Finalise predecessor blocks that have completed (successor started)
-    setFinalDurations((prev) => {
-      let changed = false;
-      const next = new Map(prev);
-      for (let i = 0; i < items.length - 1; i++) {
-        const originalIndex = items[i].originalIndex;
-        const nextOriginalIndex = items[i + 1].originalIndex;
-        if (!next.has(originalIndex) && blockStartTimesRef.current.has(originalIndex)) {
-          const start = blockStartTimesRef.current.get(originalIndex)!;
-          const nextStart = blockStartTimesRef.current.get(nextOriginalIndex) ?? now;
-          next.set(originalIndex, Math.round((nextStart - start) / 1000));
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [isStreaming, blockItems.length]);
 
   if (blocks.length === 0 && !isStreaming && !providerError) return null;
 
@@ -667,47 +614,62 @@ function AssistantMessageView({
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {blockItems.map(({ block, originalIndex }) => (
-          <BlockView
-            key={`${entryId ?? "stream"}-${originalIndex}`}
-            block={block}
-            searchTarget={block === searchBlock}
-            toolResults={toolResults}
-            isStreaming={isStreaming}
-            streamingDuration={finalDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)}
-            startTime={blockStartTimesRef.current.get(originalIndex)}
-            toolCallDurations={toolCallDurations}
-            cwd={cwd}
-            onOpenFile={onOpenFile}
-            onOpenSession={onOpenSession}
-            sessionId={sessionId}
-            entryId={entryId}
-            blockIndex={originalIndex}
-          />
-        ))}
+        {blockItems.map(({ block, originalIndex }, displayIndex) => {
+          const isLiveThinking = Boolean(
+            isStreaming
+            && block.type === "thinking"
+            && displayIndex === blockItems.length - 1
+            && thinkingDuration === undefined
+            && typeof message.timestamp === "number",
+          );
+          return (
+            <BlockView
+              key={`${entryId ?? "stream"}-${originalIndex}`}
+              block={block}
+              searchTarget={block === searchBlock}
+              toolResults={toolResults}
+              isStreaming={isStreaming}
+              streamingDuration={block.type === "thinking" ? thinkingDuration : undefined}
+              startTime={isLiveThinking ? message.timestamp : undefined}
+              toolCallDurations={toolCallDurations}
+              cwd={cwd}
+              onOpenFile={onOpenFile}
+              onOpenSession={onOpenSession}
+              sessionId={sessionId}
+              entryId={entryId}
+              blockIndex={originalIndex}
+            />
+          );
+        })}
       </div>
 
       {!isStreaming && isTurnEnd && message.decode && <DecodeStatsLine decode={message.decode} />}
 
       {providerError && (
-        <div
-          role="alert"
-          style={{
-            marginTop: blocks.length > 0 ? 8 : 0,
-            padding: "7px 10px",
-            border: "1px solid rgba(239,68,68,0.3)",
-            borderRadius: 6,
-            background: "rgba(239,68,68,0.07)",
-            color: "#ef4444",
-            fontFamily: "var(--font-mono)",
-            fontSize: 12,
-            lineHeight: 1.5,
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
-          }}
-        >
-          Error: {providerError}
-        </div>
+        isProcess ? (
+          <div style={{ marginTop: blocks.length > 0 ? 4 : 0 }}>
+            <ProcessErrorCard error={providerError} />
+          </div>
+        ) : (
+          <div
+            role="alert"
+            style={{
+              marginTop: blocks.length > 0 ? 8 : 0,
+              padding: "7px 10px",
+              border: "1px solid rgba(239,68,68,0.3)",
+              borderRadius: 6,
+              background: "rgba(239,68,68,0.07)",
+              color: "#ef4444",
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+              lineHeight: 1.5,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+            }}
+          >
+            Error: {providerError}
+          </div>
+        )
       )}
 
       {writtenFiles && writtenFiles.length > 0 && (
@@ -741,6 +703,89 @@ function AssistantMessageView({
         </div>
       )}
 
+    </div>
+  );
+}
+
+function ProcessErrorCard({ error }: { error: string }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const detailId = useId();
+  const preview = useMemo(() => {
+    const clean = error.replace(/^(Error:\s*)+/i, "").trim();
+    return clean.split("\n")[0] || clean;
+  }, [error]);
+
+  return (
+    <div
+      data-step-card=""
+      style={{
+        borderRadius: 6,
+        overflow: "hidden",
+        fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+        border: "1px solid rgba(248,113,113,0.35)",
+        background: "rgba(248,113,113,0.05)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={detailId}
+          title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flex: 1,
+            minWidth: 0,
+            padding: "3px 8px",
+            minHeight: 24,
+            background: "none",
+            border: "none",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            fontSize: "inherit",
+            textAlign: "left",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85, transform: "translateY(0.5px)" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <span style={{ color: "#f87171", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, lineHeight: 1, flexShrink: 0 }}>
+            {t("chat.modelError")}
+          </span>
+          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1 }}>
+            {preview}
+          </span>
+          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
+            <polyline points="2 3.5 5 6.5 8 3.5" />
+          </svg>
+        </button>
+      </div>
+      {expanded && (
+        <div
+          id={detailId}
+          style={{
+            padding: "8px 10px",
+            background: "var(--bg)",
+            borderTop: "1px solid rgba(248,113,113,0.2)",
+            fontFamily: "var(--font-mono)",
+            fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.55,
+            color: "#f87171",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+          }}
+        >
+          Error: {error}
+        </div>
+      )}
     </div>
   );
 }

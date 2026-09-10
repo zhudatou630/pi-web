@@ -195,6 +195,21 @@ test("desktop chat toolbar actions are icon-only", () => {
   assert.match(actions, /inline\s+compact\s+containerRef=\{topBarRef\}/);
 });
 
+test("desktop session controls follow the task-first order", () => {
+  const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
+  const order = [
+    'data-top-panel-trigger="agents"',
+    "<BranchNavigator",
+    "<SessionHistoryControl",
+    'data-mobile-toolbar-action={mobile ? "name" : undefined}',
+    'data-top-panel-trigger="system"',
+    'data-top-panel-trigger="tools"',
+  ].map((needle) => actions.indexOf(needle));
+
+  assert.ok(order.every((index) => index >= 0));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+});
+
 test("toolbar actions use spacing rather than per-button dividers, preserving region boundaries", async () => {
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   assert.doesNotMatch(actions, /borderRight:/);

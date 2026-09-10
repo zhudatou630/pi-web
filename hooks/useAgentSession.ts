@@ -1317,14 +1317,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else if (completed) {
           const normalized = normalizeToolCalls(completed) as AgentMessage;
           if (normalized.role === "assistant") {
-            const stats = settleAssistantDecode(decodeClockRef.current, normalized, Date.now());
+            const completedAt = Date.now();
+            const settled = { ...normalized, completedAt };
+            const stats = settleAssistantDecode(decodeClockRef.current, settled, completedAt);
             decodeClockRef.current = null;
             if (stats) {
-              const key = decodeStatsKey(normalized);
+              const key = decodeStatsKey(settled);
               if (key) decodeByKeyRef.current.set(key, stats);
-              setMessages((prev) => [...prev, { ...normalized, decode: stats }]);
+              setMessages((prev) => [...prev, { ...settled, decode: stats }]);
             } else {
-              setMessages((prev) => [...prev, normalized]);
+              setMessages((prev) => [...prev, settled]);
             }
           } else {
             decodeClockRef.current = null;

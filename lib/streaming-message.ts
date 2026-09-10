@@ -131,9 +131,13 @@ export function streamReducer(
       return { isStreaming: true, streamingMessage: null };
     case "snapshot": {
       const message = normalizeStreamingToolCalls(action.message);
-      return message.role === "assistant"
-        ? { isStreaming: true, streamingMessage: message }
-        : state;
+      if (message.role !== "assistant") return state;
+      return {
+        isStreaming: true,
+        streamingMessage: typeof message.timestamp === "number"
+          ? message
+          : { ...message, timestamp: Date.now() },
+      };
     }
     case "delta":
       return applyDelta(state, action.event);
