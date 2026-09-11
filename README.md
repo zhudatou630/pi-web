@@ -38,6 +38,10 @@ npm start # 或后台运行：nohup npm start > pi-web.log 2>&1 &
 - **访问密码**（局域网建议设置，用户名固定为 `pi`）：`PI_WEB_PASSWORD='your-password' npm start`
 - **后台常驻 / 不自动弹浏览器**：`npm start -- --no-open`
 
+## 对话生图
+
+创建 `~/.pi/agent/images.json` 后，可以由 Agent 调用内置 `generate_image` 工具，也可以从输入栏直接生成图片。两种入口共用同一个轻量 Pi 扩展，无需修改 Pi SDK。配置与使用方式见 [docs/image-generation.md](./docs/image-generation.md)。
+
 ## License
 
 本项目基于 [pi](https://github.com/earendil-works/pi) 与 [agegr/pi-web](https://github.com/agegr/pi-web) 开源生态，遵循 [MIT License](./LICENSE)。

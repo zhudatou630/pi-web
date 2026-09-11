@@ -40,7 +40,8 @@ test("passes activeStepSummary and renders telemetry indicator when streaming", 
 test("live process summary is coarse, latched, and omits tool details", () => {
   assert.doesNotMatch(source, /function formatToolCallSummary/);
   assert.match(source, /if \(lastBlock\?\.type === "thinking"\) return t\("chat\.thinking"\)/);
-  assert.match(source, /if \(lastBlock\?\.type === "toolCall"\) return lastBlock\.toolName/);
+  assert.match(source, /if \(lastBlock\?\.type === "toolCall"\) \{/);
+  assert.match(source, /imageStepLabel\(lastBlock\.toolName, lastBlock\.input, t\)/);
   assert.match(source, /function latchedLiveProcessSummary/);
   assert.match(source, /return latched\.current \?\? fallback/);
   assert.doesNotMatch(source, /chat\.generatingToolInput/);
@@ -66,6 +67,12 @@ test("keeps completed turn projections stable while only the streaming tail chan
   assert.match(source, /const writtenFilesByAssistantIndex = useMemo/);
   assert.match(source, /const finalParts = completedAssistantParts\[finalAssistantIdx\]/);
   assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);
+});
+
+test("renders completed image tool results outside process details", () => {
+  assert.match(source, /imageMessage\.role !== "toolResult"[\s\S]*?getImageGenerationResult\(imageMessage\.details\)/);
+  assert.match(source, /rendered\.push\(renderMessage\(imageIdx\)\)/);
+  assert.match(source, /const view = imageResult \? \([\s\S]*?<GeneratedImageResult/);
 });
 
 test("mounts the minimap for every visible chat pane", () => {

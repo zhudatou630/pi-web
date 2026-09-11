@@ -4,6 +4,8 @@ import { memo, useState, useRef, useEffect, useMemo, useId } from "react";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImagePreview } from "./ImagePreview";
+import { ImageMentionChip } from "./GeneratedImageResult";
+import { imageToolDisplayKind, splitImageMentions } from "@/lib/image-generation";
 import { ThinkingIcon } from "./ThinkingIcon";
 import { ToolIcon } from "./ToolIcon";
 import { copyText } from "@/lib/clipboard";
@@ -255,6 +257,23 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.isProcess === next.isProcess;
 });
 
+function UserTextWithMentions({ text, cwd, onOpenFile }: { text: string; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+  const parts = splitImageMentions(text);
+  const mentions = parts.filter((part): part is { type: "mention"; path: string } => part.type === "mention");
+  const rest = parts.filter((part) => part.type === "text").map((part) => part.value).join("").trim();
+  if (!mentions.length) {
+    return <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</SafeMarkdownBody>;
+  }
+  return (
+    <>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: rest ? 8 : 0 }}>
+        {mentions.map((part) => <ImageMentionChip key={part.path} path={part.path} cwd={cwd} />)}
+      </div>
+      {rest ? <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{rest}</SafeMarkdownBody> : null}
+    </>
+  );
+}
+
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
   message: UserMessage;
   cwd?: string;
@@ -418,7 +437,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           ) : (
           <>
           {imageBlocksNode}
-          {content && <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</SafeMarkdownBody>}
+          {content && <UserTextWithMentions text={content} cwd={cwd} onOpenFile={onOpenFile} />}
           </>
           )}
         </div>
@@ -998,6 +1017,8 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
   const inputStr = getToolCallInputText(block);
   const isStreamingInput = block.rawInput !== undefined;
   const isEditTool = isEditToolName(block.toolName);
+  const imageKind = imageToolDisplayKind(block.toolName, block.input, result?.details);
+  const toolLabel = imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : block.toolName;
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
 
   // Result display
@@ -1045,7 +1066,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
             <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
           <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, lineHeight: 1, flexShrink: 0 }}>
-            {block.toolName}
+            {toolLabel}
           </span>
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1 }}>
             {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}

@@ -10,6 +10,7 @@ import { createInterface } from "node:readline";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { getSessionFirstMessagePreview } from "./session-display-title";
+import { IMAGE_RESULT_TYPE } from "./image-generation";
 
 export interface ScannedSessionInfo {
 	path: string;
@@ -120,6 +121,14 @@ export async function scanSessionFileInfo(
 					typeof entry.name === "string" && entry.name.trim()
 						? entry.name.trim()
 						: undefined;
+			}
+			if (entry.type === "custom_message" && entry.customType === IMAGE_RESULT_TYPE) {
+				messageCount++;
+				const activityTime = new Date(entry.timestamp as string).getTime();
+				if (!Number.isNaN(activityTime)) lastActivityTime = Math.max(lastActivityTime ?? 0, activityTime);
+				const details = entry.details as RawEntry | undefined;
+				if (!firstMessage && typeof details?.prompt === "string") firstMessage = details.prompt;
+				continue;
 			}
 			if (entry.type !== "message") continue;
 			messageCount++;

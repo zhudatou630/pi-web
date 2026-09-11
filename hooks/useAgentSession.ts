@@ -45,6 +45,7 @@ import {
 } from "@/lib/decode-throughput";
 import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand } from "@/lib/prompt-run-control";
 import { recalledQueuedPrompts } from "@/lib/queued-messages";
+import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import {
   loadModelsWithClientCache,
   peekModelsClientCache,
@@ -360,6 +361,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
   const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean } | null>(null);
+  const [directImageRunning, setDirectImageRunning] = useState(false);
+  const directImageRunningRef = useRef(false);
+  const directImageRequestIdRef = useRef<string | null>(null);
+  const directImageCancelledRef = useRef(false);
   const [modelNames, setModelNames] = useState<Record<string, string>>(() => initialModels?.models ?? {});
   const [modelList, setModelList] = useState<ModelEntry[]>(() => initialModels?.modelList ?? []);
   const [modelError, setModelError] = useState<string | null>(() => initialModels?.modelError ?? null);
@@ -1632,6 +1637,42 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission]);
 
+  const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest): Promise<ImageGenerationResult> => {
+    if (agentRunningRef.current || bashRunningRef.current || directImageRunningRef.current) throw new Error("Cannot generate an image while the session is busy");
+    const requestId = crypto.randomUUID();
+    directImageRunningRef.current = true;
+    directImageRequestIdRef.current = requestId;
+    directImageCancelledRef.current = false;
+    setDirectImageRunning(true);
+    try {
+      const sid = session?.id ?? (isNew && newSessionCwd ? await ensureNewSession() : null);
+      if (!sid) throw new Error("No active session for image generation");
+      if (directImageCancelledRef.current) throw new DOMException("Image generation cancelled", "AbortError");
+      const result = await sendAgentCommand<ImageGenerationResult>(sid, {
+        type: IMAGE_DIRECT_COMMAND,
+        requestId,
+        arguments: request,
+      });
+      await loadSession(sid);
+      if (isNew && newSessionCwd) promoteNewSession(1, request.prompt);
+      return result;
+    } finally {
+      if (directImageRequestIdRef.current === requestId) {
+        directImageRunningRef.current = false;
+        directImageRequestIdRef.current = null;
+        directImageCancelledRef.current = false;
+        setDirectImageRunning(false);
+      }
+    }
+  }, [ensureNewSession, isNew, loadSession, newSessionCwd, promoteNewSession, session?.id]);
+
+  const abortDirectImageGeneration = useCallback(async () => {
+    directImageCancelledRef.current = true;
+    const sid = sessionIdRef.current;
+    const requestId = directImageRequestIdRef.current;
+    if (sid && requestId) await sendAgentCommand(sid, { type: IMAGE_ABORT_COMMAND, requestId });
+  }, []);
+
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
     const inputText = `${excludeFromContext ? "!!" : "!"}${command}`;
@@ -2365,7 +2406,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, entryIds, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, directImageRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -2378,7 +2419,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     sessionIdRef, scrollContainerRef,
     lastUserMsgRef, pendingScrollToUserRef, initialScrollDoneRef,
     // Actions
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
+    handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,

@@ -20,9 +20,10 @@ import {
   isBase64ImageWithinLimits,
 } from "@/lib/image-attachments";
 import {
-  buildEntriesFromFiles, buildAtInsertText, extractAtQuery, filterFileEntries,
+  buildEntriesFromFiles, buildAtInsertText, buildAtMentionText, extractAtQuery, filterFileEntries,
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
+import { ImageMentionChip } from "./GeneratedImageResult";
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { ThinkingIcon } from "./ThinkingIcon";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -41,6 +42,7 @@ export interface AttachedImage {
 
 interface Props {
   onSend: (message: string, images?: AttachedImage[]) => void;
+  onOpenImageGeneration?: () => void;
   onAbort: () => void;
   onSteer?: (message: string, images?: AttachedImage[]) => void;
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
@@ -97,6 +99,7 @@ export interface ChatInputHandle {
   addImages: (files: File[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
   restoreSubmission: (text: string, images?: ChatDraftImage[], targetDraftKey?: string) => void;
+  mentionImage: (path: string) => void;
 }
 
 const TOOL_PRESETS = ["chat-only", "read-only", "default", "full"] as const;
@@ -473,7 +476,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  onSend, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, onOpenSessionStats,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -496,6 +499,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
+  const [mentionedImages, setMentionedImages] = useState<string[]>([]);
+  const mentionedImagesRef = useRef<string[]>([]);
+  mentionedImagesRef.current = mentionedImages;
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>(() => (
     draftKey ? draftImagesToAttachedImages(getDraft(draftKey)?.images) : []
   ));
@@ -711,6 +717,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     addImages(files: File[]) {
       processImageFiles(files);
     },
+    mentionImage(path: string) {
+      setMentionedImages((prev) => prev.includes(path) ? prev : [...prev, path]);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
   }));
 
   const processImageFiles = useCallback(async (files: File[]) => {
@@ -769,6 +779,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (draftKey) clearDraft(draftKey);
     if (draftKeyRef.current && draftKeyRef.current !== draftKey) clearDraft(draftKeyRef.current);
     clearImages();
+    mentionedImagesRef.current = [];
+    setMentionedImages([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -851,14 +863,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handleSend = useCallback(async () => {
     const msg = value.trim();
     if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
-    if (!msg && !attachedImages.length) return;
+    const outgoing = `${mentionedImages.map((path) => buildAtMentionText(path, false)).join("")}${msg}`.trim();
+    if (!outgoing && !attachedImages.length) return;
     onAudioUnlock?.();
     const builtinAllowed = !isStreaming || canRunBuiltinSlashCommandWhileStreaming(msg);
     if (builtinAllowed && await runBuiltinCommand(msg)) return;
     if (isStreaming) return;
+    const images = attachedImages.length ? attachedImages : undefined;
     clearInput();
-    onSend(msg, attachedImages.length ? attachedImages : undefined);
-  }, [value, attachedImages, isStreaming, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+    onSend(outgoing, images);
+  }, [value, attachedImages, mentionedImages, isStreaming, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = !compact && value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -894,8 +908,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     : t(slashQuery ? "chat.matches" : "chat.commands", { count: filteredSlashCommands.length });
   const hasInputText = Boolean(value.trim());
   const imageSendBlocked = exceedsAttachedImageSendLimit(attachedImages.length);
-  const canQueueStreamingMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0);
-  const canSendMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0);
+  const canQueueStreamingMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0 || mentionedImages.length > 0);
+  const canSendMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0 || mentionedImages.length > 0);
   // Warn when images are attached but the selected model is known not to accept
   // image input (#584), including a resolved default. Unknown models stay silent.
   const showImageUnsupportedWarning = (
@@ -1092,25 +1106,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const sendQueued = useCallback((mode: "steer" | "followup") => {
     const msg = value.trim();
     if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
-    if (!msg && !attachedImages.length) return;
+    const outgoing = `${mentionedImages.map((path) => buildAtMentionText(path, false)).join("")}${msg}`.trim();
+    if (!outgoing && !attachedImages.length) return;
     onAudioUnlock?.();
     if (!attachedImages.length && onBuiltinCommand && canRunBuiltinSlashCommandWhileStreaming(msg)) {
       void runBuiltinCommand(msg);
       return;
     }
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
+    const images = attachedImages.length ? attachedImages : undefined;
     if (msg.startsWith("/") && onPromptWithStreamingBehavior) {
       clearInput();
-      onPromptWithStreamingBehavior(msg, streamingBehavior, attachedImages.length ? attachedImages : undefined);
+      onPromptWithStreamingBehavior(msg, streamingBehavior, images);
       return;
     }
     clearInput();
     if (mode === "steer" && onSteer) {
-      onSteer(msg, attachedImages.length ? attachedImages : undefined);
+      onSteer(outgoing, images);
     } else if (mode === "followup" && onFollowUp) {
-      onFollowUp(msg, attachedImages.length ? attachedImages : undefined);
+      onFollowUp(outgoing, images);
     }
-  }, [value, attachedImages, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
+  }, [value, attachedImages, mentionedImages, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
 
   const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
     const lastIndex = displayedSlashCommands.length - 1;
@@ -1657,8 +1673,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
         {/* Image previews */}
-        {attachedImages.length > 0 && (
+        {(attachedImages.length > 0 || mentionedImages.length > 0) && (
           <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", padding: "0 2px" }}>
+            {mentionedImages.map((path) => (
+              <ImageMentionChip
+                key={path}
+                path={path}
+                cwd={cwd ?? undefined}
+                onRemove={() => setMentionedImages((prev) => prev.filter((item) => item !== path))}
+              />
+            ))}
             {attachedImages.map((img, i) => (
               <div key={i} style={{ position: "relative", flexShrink: 0, borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2345,7 +2369,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               style={{
                 flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
                 width: isMobile ? 24 : 28, height: isMobile ? 32 : 28, padding: 0,
-                marginRight: isMobile ? -2 : -5,
+                marginRight: isMobile ? -2 : (onOpenImageGeneration ? 0 : -5),
                 background: "none", border: "none",
                 borderRadius: 4,
                 color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
@@ -2371,6 +2395,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <polyline points="21 15 16 10 5 21" />
               </svg>
             </button>
+            {onOpenImageGeneration && (
+              <button
+                type="button"
+                onClick={onOpenImageGeneration}
+                disabled={isStreaming}
+                title={t("image.title")}
+                aria-label={t("image.title")}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-text-muted hover:bg-bg-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m15 4 5 5L8 21l-5-5L15 4Z" /><path d="m14 5 5 5M6 4v3M4.5 5.5h3M19 16v4M17 18h4" />
+                </svg>
+              </button>
+            )}
             {/* Model selector - visible always, disabled while the session or switch is busy */}
             {(modelOptions.length > 0 || model || modelError) && onModelChange && (
               <ModelSelector

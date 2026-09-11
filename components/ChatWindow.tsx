@@ -1,4 +1,8 @@
 "use client";
+import { GeneratedImageResult, PendingGeneratedImage } from "./GeneratedImageResult";
+import { ImageGenerationDialog } from "./ImageGenerationDialog";
+import { encodeFilePathForApi, joinFilePath } from "@/lib/file-paths";
+import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -313,17 +317,28 @@ function isLiveProcessActivity(
   return !hasAnswer;
 }
 
+function imageStepLabel(name: string | null | undefined, args: unknown, t: (key: string) => string): string | null {
+  if (!name) return null;
+  const kind = imageToolDisplayKind(name, args);
+  if (kind === "edit") return t("image.edit");
+  if (kind === "generate") return t("image.generate");
+  return null;
+}
+
 function liveProcessSummary(
   streamingMessage: AssistantMessage | null,
   phase: AgentPhase,
   t: (key: string, params?: Record<string, string | number>) => string,
 ): string | null {
   if (phase?.kind === "running_tools") {
-    return phase.tools[phase.tools.length - 1]?.name ?? null;
+    const name = phase.tools[phase.tools.length - 1]?.name ?? null;
+    return imageStepLabel(name, undefined, t) ?? name;
   }
   const lastBlock = lastStreamingBlock(streamingMessage);
   if (lastBlock?.type === "thinking") return t("chat.thinking");
-  if (lastBlock?.type === "toolCall") return lastBlock.toolName || null;
+  if (lastBlock?.type === "toolCall") {
+    return imageStepLabel(lastBlock.toolName, lastBlock.input, t) ?? lastBlock.toolName ?? null;
+  }
   return null;
 }
 
@@ -558,7 +573,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const {
     data, loading, error, messages, entryIds, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
+    agentRunning, directImageRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -568,7 +583,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     isNew,
     sessionIdRef, scrollContainerRef,
     lastUserMsgRef, promptAnchorActive,
-    handleSend, handleAbort, handleFork, handleNavigate, handleModelChange,
+    handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
@@ -579,7 +594,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     modelsRefreshKey, chatInputRef: ownChatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
     deferInitialScroll: Boolean(pendingScrollRestore),
   });
-  const sessionBusy = agentRunning || bashRunning;
+  const sessionBusy = agentRunning || directImageRunning || bashRunning;
+  const handleActiveAbort = useCallback(() => {
+    if (directImageRunning) return abortDirectImageGeneration();
+    return handleAbort();
+  }, [abortDirectImageGeneration, directImageRunning, handleAbort]);
   const liveProcessSummaryRef = useRef<string | null>(null);
   const cachePromptTokens = sessionStats
     ? sessionStats.tokens.input + sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite
@@ -587,8 +606,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const cacheHitRate = sessionStats && cachePromptTokens > 0
     ? (sessionStats.tokens.cacheRead / cachePromptTokens) * 100
     : null;
-  const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy;
+  const [pendingImage, setPendingImage] = useState<{ prompt: string; size?: string; width?: number; height?: number; previewUrl?: string } | null>(null);
+  const isEmptyNew = isNew && messages.length === 0 && !streamState.isStreaming && !sessionBusy && pendingImage === null;
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [imageConfig, setImageConfig] = useState<ImageConfigView | null>(null);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [imageEdit, setImageEdit] = useState<ImageGenerationResult | null>(null);
+  const [imageConfigRefreshKey, setImageConfigRefreshKey] = useState(0);
   const [quotedSelection, setQuotedSelection] = useState<{
     text: string;
     top: number;
@@ -601,6 +625,57 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const quotePopoverRef = useRef<HTMLDivElement | null>(null);
   const quoteChatInputRef = useRef<ChatInputHandle | null>(null);
   const dismissingGestureRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/image-generation", { signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json() as { available?: boolean; config?: ImageConfigView };
+        if (response.ok && body.available && body.config?.connections.length) setImageConfig(body.config);
+        else {
+          setImageConfig(null);
+          setImageDialogOpen(false);
+          setImageEdit(null);
+        }
+      })
+      .catch((fetchError) => {
+        if (!(fetchError instanceof DOMException && fetchError.name === "AbortError")) console.error("Failed to load image generation config:", fetchError);
+      });
+    return () => controller.abort();
+  }, [imageConfigRefreshKey]);
+
+  const submitDirectImage = useCallback(async (request: ImageGenerationRequest) => {
+    keepTabOpen();
+    let source: ImageGenerationResult | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const details = getImageGenerationResult((messages[i] as { details?: unknown }).details);
+      if (details) { source = details; break; }
+    }
+    const cwd = session?.cwd ?? newSessionCwd;
+    const targetPath = request.target;
+    const absoluteTarget = targetPath && (targetPath.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(targetPath) ? targetPath : cwd ? joinFilePath(cwd, targetPath) : targetPath);
+    setPendingImage({
+      prompt: request.prompt,
+      size: request.size,
+      width: source?.width,
+      height: source?.height,
+      previewUrl: absoluteTarget ? `/api/files/${encodeFilePathForApi(absoluteTarget)}?type=read` : undefined,
+    });
+    try {
+      await handleDirectImageGeneration(request);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setPendingImage(null);
+    }
+  }, [addNotice, handleDirectImageGeneration, keepTabOpen, messages, newSessionCwd, session?.cwd]);
+
+  const handleBuiltinCommandWithImageRefresh = useCallback(async (message: string) => {
+    const result = await handleBuiltinSlashCommand(message);
+    if (!("error" in result) && /^\/reload(?:\s|$)/.test(message.trim())) setImageConfigRefreshKey((value) => value + 1);
+    return result;
+  }, [handleBuiltinSlashCommand]);
   const closeQuotedSelection = useCallback(() => {
     setQuotedSelection(null);
     setQuoteInputOpen(false);
@@ -772,8 +847,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // cleanup is owner-safe, so an old pane cannot clear a newer handler.
   useEffect(() => {
     if (!isFocusedPane || !sessionBusy) return;
-    return registerAbortHandler(handleAbort);
-  }, [isFocusedPane, sessionBusy, handleAbort]);
+    return registerAbortHandler(handleActiveAbort);
+  }, [isFocusedPane, sessionBusy, handleActiveAbort]);
 
   // --- Lazy-load historical messages ---
   // Mount at most MOUNTED_GROUP_LIMIT grouped nodes. Scroll-up either slides
@@ -1175,7 +1250,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const visibleMessages = useMemo(
-    () => messages.filter((message) => isMessageGroupAnchor(message) || message.role === "assistant"),
+    () => messages.filter((message) => isMessageGroupAnchor(message) || message.role === "assistant" || (message.role === "toolResult" && !message.isError && getImageGenerationResult(message.details))),
     [messages],
   );
   // Stable Map identity: `messages` doesn't change during streaming updates
@@ -1498,7 +1573,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     <ChatInput
       ref={setChatInputElement}
       onSend={handleChatSend}
-      onAbort={handleAbort}
+      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy ? () => { setImageEdit(null); setImageDialogOpen(true); } : undefined}
+      onAbort={handleActiveAbort}
       onSteer={agentRunning ? handleSteerWithSubmit : undefined}
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehaviorWithSubmit : undefined}
@@ -1532,7 +1608,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       slashCommands={slashCommands}
       slashCommandsLoading={slashCommandsLoading}
       onLoadSlashCommands={loadSlashCommands}
-      onBuiltinCommand={handleBuiltinSlashCommand}
+      onBuiltinCommand={handleBuiltinCommandWithImageRefresh}
       soundEnabled={soundEnabled}
       onSoundToggle={onSoundToggle}
       onAudioUnlock={unlockAudio}
@@ -1626,6 +1702,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       </div>
 
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {imageDialogOpen && imageConfig && (
+          <ImageGenerationDialog
+            config={imageConfig}
+            edit={imageEdit}
+            editPreviewUrl={imageEdit ? `/api/files/${encodeFilePathForApi(imageEdit.path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(imageEdit.path) ? imageEdit.path : messageCwd ? joinFilePath(messageCwd, imageEdit.path) : imageEdit.path)}?type=read` : undefined}
+            onClose={() => { setImageDialogOpen(false); setImageEdit(null); }}
+            onSubmit={submitDirectImage}
+          />
+        )}
         {extensionDialog && (
           <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} />
         )}
@@ -1658,7 +1743,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               const visibleRefIndexByMessage = new Map<number, number>();
               let refIdx = 0;
               messages.forEach((msg, idx) => {
-                if (isMessageGroupAnchor(msg) || msg.role === "assistant") {
+                const persistedImage = (msg.role === "toolResult" && !msg.isError)
+                  || (msg.role === "custom" && msg.customType === IMAGE_RESULT_TYPE)
+                  ? getImageGenerationResult(msg.details)
+                  : null;
+                if (isMessageGroupAnchor(msg) || msg.role === "assistant" || persistedImage) {
                   visibleRefIndexByMessage.set(idx, refIdx++);
                 }
               });
@@ -1674,11 +1763,25 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
                     ? entryIds[idx - 1]
                     : undefined;
-                const isVisible = isMessageGroupAnchor(msg) || msg.role === "assistant";
+                const imageResult = (msg.role === "toolResult" && !msg.isError)
+                  || (msg.role === "custom" && msg.customType === IMAGE_RESULT_TYPE)
+                  ? getImageGenerationResult(msg.details)
+                  : null;
+                const isVisible = isMessageGroupAnchor(msg) || msg.role === "assistant" || Boolean(imageResult);
                 const currentRefIdx = visibleRefIndexByMessage.get(idx);
                 const keyPrefix = options.keyPrefix ?? "message";
                 const messageKey = entryIds[idx] ?? idx;
-                const view = (
+                const view = imageResult ? (
+                  <GeneratedImageResult
+                    key={`${keyPrefix}-image-${messageKey}`}
+                    value={imageResult}
+                    cwd={messageCwd}
+                    onOpenFile={openFileFromSession}
+                    onEdit={imageConfig && !sessionBusy ? (details) => { setImageEdit(details); setImageDialogOpen(true); } : undefined}
+                    onMention={imageConfig ? (path) => { ownChatInputRef.current?.mentionImage(path); } : undefined}
+                    showPrompt={msg.role === "custom"}
+                  />
+                ) : (
                   <MessageView
                     key={`${keyPrefix}-view-${messageKey}`}
                     message={msg}
@@ -1890,6 +1993,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   );
                 }
 
+                for (let imageIdx = firstIdx; imageIdx <= finalAssistantIdx; imageIdx++) {
+                  const imageMessage = messages[imageIdx];
+                  if (imageMessage.role !== "toolResult" || imageMessage.isError || !getImageGenerationResult(imageMessage.details)) continue;
+                  markOutlineTarget([entryIds[imageIdx]]);
+                  rendered.push(renderMessage(imageIdx));
+                }
+
                 if (finalAnswerMessage) {
                   markOutlineTarget([entryIds[finalAssistantIdx]]);
                   rendered.push(renderMessage(finalAssistantIdx, {
@@ -1952,6 +2062,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                 onOpenSession={onOpenSession}
               />
+            )}
+
+            {pendingImage && (
+              <PendingGeneratedImage prompt={pendingImage.prompt} size={pendingImage.size} width={pendingImage.width} height={pendingImage.height} previewUrl={pendingImage.previewUrl} />
             )}
 
             <div ref={promptAnchorSpacerRef} aria-hidden="true" />

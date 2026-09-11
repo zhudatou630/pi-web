@@ -1851,6 +1851,32 @@ span.token.table {
   }
 }
 
+.image-pending-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 36%,
+    color-mix(in srgb, var(--text) 8%, transparent) 50%,
+    transparent 64%
+  );
+  background-size: 220% 100%;
+  animation: image-pending-sheen 2.8s ease-in-out infinite;
+}
+
+@keyframes image-pending-sheen {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-pending-sheen {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Desktop sidebar: animate width */
 @media (min-width: 641px) {
   .sidebar-overlay-backdrop {
@@ -2075,8 +2101,16 @@ span.token.table {
   select {
     font-size: 16px !important;
   }
-  .chat-input-textarea {
+  .chat-input-textarea,
+  .image-generation-prompt {
     font-size: var(--chat-content-font-size, 14px) !important;
+  }
+  .image-generation-select {
+    font-size: 12px !important;
+    width: auto !important;
+    max-width: 100%;
+    flex: none;
+    field-sizing: content;
   }
   .session-list-row input,
   .session-rename-input {

@@ -44,6 +44,9 @@ import { createSubagentController } from "./subagent-runtime";
 import { isBuiltInSubagentsEnabled } from "./subagent-settings";
 import { resolveShellTools } from "./powershell-settings";
 import { CHAT_ONLY_RESOURCE_LOADER_OPTIONS, contextFilesSystemPrompt } from "./chat-only";
+import { createImageGenerationExtension, preferPiWebImageTool } from "./image-generation-extension";
+import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE } from "./image-generation";
+import { executeImageGeneration } from "./image-generation-runtime";
 import {
   appendSessionToolSelection,
   readSessionToolSelection,
@@ -229,6 +232,9 @@ export class AgentSessionWrapper {
   private extensionWidgetGenerations = new Map<string, number>();
   private extensionWidgetsResetting = false;
   private pendingPromptCount = 0;
+  private directImageAbortController: AbortController | null = null;
+  private directImageRequestId: string | null = null;
+  private pendingImageCancellationId: string | null = null;
   private activeMutatingCommands = 0;
   private sessionReplacement: "fork" | "clone" | null = null;
   private agentRunNeedsCompletion = false;
@@ -290,7 +296,7 @@ export class AgentSessionWrapper {
   }
 
   isRunning(): boolean {
-    return this._alive && (this.pendingPromptCount > 0 || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
+    return this._alive && (this.pendingPromptCount > 0 || this.directImageAbortController !== null || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
   }
 
   isBusyForFileMutation(): boolean {
@@ -490,7 +496,7 @@ export class AgentSessionWrapper {
     }, SESSION_IDLE_TIMEOUT_MS);
   }
 
-  private persistBashOnlySession(): void {
+  private persistCommandOnlySession(): void {
     const manager = this.inner.sessionManager;
     const sessionFile = manager.getSessionFile();
     if (!sessionFile || existsSync(sessionFile)) return;
@@ -504,8 +510,8 @@ export class AgentSessionWrapper {
     writeFileSync(sessionFile, content, { encoding: "utf8", flag: "wx" });
 
     // Pi normally delays the first flush until an assistant message exists.
-    // A leading shell command has no assistant message, so mark this SDK
-    // manager as flushed after writing its own generated entries.
+    // Leading commands have no assistant message, so mark this SDK manager as
+    // flushed after writing its generated entries.
     (manager as unknown as { flushed: boolean }).flushed = true;
     cacheSessionPath(this.inner.sessionId, sessionFile);
   }
@@ -549,7 +555,8 @@ export class AgentSessionWrapper {
     return this.inner.isBashRunning
       || this.inner.isStreaming
       || this.inner.isCompacting
-      || this.pendingPromptCount > 0;
+      || this.pendingPromptCount > 0
+      || this.directImageAbortController !== null;
   }
 
   private async shutdownAfterSessionReplacement(replacement: "fork" | "clone"): Promise<void> {
@@ -599,8 +606,8 @@ export class AgentSessionWrapper {
         // this submission starts a run or joins its streaming queue.
         const releaseAdmission = await this.acquirePromptAdmission();
         try {
-          if (this.inner.isBashRunning) {
-            throw new Error("Cannot send a prompt while a shell command is running");
+          if (this.inner.isBashRunning || this.directImageAbortController) {
+            throw new Error("Cannot send a prompt while another session command is running");
           }
           if (this.extensionUiAbortController.signal.aborted) {
             this.extensionUiAbortController = new AbortController();
@@ -690,6 +697,7 @@ export class AgentSessionWrapper {
 
       case "abort":
         this.forceShutdownOnIdle = true;
+        this.directImageAbortController?.abort(new DOMException("Image generation cancelled", "AbortError"));
         // Stop must unwind extension commands that have not started the agent yet.
         this.extensionUiAbortController.abort(new DOMException("Extension UI cancelled by Stop", "AbortError"));
         try {
@@ -953,6 +961,58 @@ export class AgentSessionWrapper {
         return { commands };
       }
 
+      case IMAGE_DIRECT_COMMAND: {
+        if (this.isRunning()) throw new Error("Cannot generate an image while the session is busy");
+        const requestId = typeof command.requestId === "string" && command.requestId ? command.requestId : null;
+        if (!requestId) throw new Error("Image generation requestId is required");
+        if (this.pendingImageCancellationId === requestId) {
+          this.pendingImageCancellationId = null;
+          throw new DOMException("Image generation cancelled", "AbortError");
+        }
+        this.pendingImageCancellationId = null;
+        const controller = new AbortController();
+        this.directImageAbortController = controller;
+        this.directImageRequestId = requestId;
+        try {
+          const details = await executeImageGeneration(getAgentDir(), command.arguments, {
+            cwd: this.cwd,
+            sessionManager: this.inner.sessionManager,
+            modelRegistry: {
+              getProviderAuth: (provider) => this.inner.modelRuntime.getAuth(provider),
+              getProvider: (provider) => this.inner.modelRuntime.getProvider(provider),
+            },
+          }, controller.signal);
+          const content = [
+            `Generated image: ${details.path}`,
+            `Prompt: ${details.prompt}`,
+            `Connection: ${details.connection}`,
+            `Model: ${details.model}`,
+            ...(details.size ? [`Size: ${details.size}`] : []),
+            ...(details.resolution ? [`Resolution: ${details.resolution}`] : []),
+            ...(details.quality ? [`Quality: ${details.quality}`] : []),
+          ].join("\n");
+          await this.inner.sendCustomMessage({ customType: IMAGE_RESULT_TYPE, content, display: true, details });
+          this.persistCommandOnlySession();
+          invalidateSessionListCache();
+          return details;
+        } finally {
+          this.directImageAbortController = null;
+          this.directImageRequestId = null;
+          this.resetIdleTimer();
+        }
+      }
+
+      case IMAGE_ABORT_COMMAND: {
+        const requestId = typeof command.requestId === "string" && command.requestId ? command.requestId : null;
+        if (!requestId) throw new Error("Image generation requestId is required");
+        if (this.directImageRequestId === requestId) {
+          this.directImageAbortController?.abort(new DOMException("Image generation cancelled", "AbortError"));
+        } else {
+          this.pendingImageCancellationId = requestId;
+        }
+        return null;
+      }
+
       case "set_tools": {
         const toolNames = command.toolNames as string[];
         this.setActiveToolSelection(toolNames);
@@ -999,7 +1059,7 @@ export class AgentSessionWrapper {
       }
 
       case "bash": {
-        if (this.pendingPromptCount > 0 || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning) {
+        if (this.pendingPromptCount > 0 || this.directImageAbortController || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning) {
           throw new Error("Cannot run a shell command while the session is busy");
         }
         const execution = this.inner.executeBash(
@@ -1014,7 +1074,7 @@ export class AgentSessionWrapper {
         );
         try {
           const result = await execution;
-          this.persistBashOnlySession();
+          this.persistCommandOnlySession();
           return result;
         } finally {
           this.resetIdleTimer();
@@ -1045,6 +1105,7 @@ export class AgentSessionWrapper {
     }
     this.closeListeners.clear();
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.directImageAbortController?.abort(new DOMException("Session closed", "AbortError"));
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
     for (const pending of this.pendingUiResponses.values()) pending.cancel();
@@ -1915,10 +1976,14 @@ export function getRpcSessionInfos(): SessionInfo[] {
     const manager = session.inner.sessionManager;
     const header = manager.getHeader();
     const entries = manager.getEntries() as unknown as Array<
-      { type: string; timestamp: string } | SessionMessageEntry
+      { type: string; timestamp: string; customType?: string; details?: unknown } | SessionMessageEntry
     >;
     const messages = entries.filter((entry): entry is SessionMessageEntry => entry.type === "message");
     const firstUserMessage = messages.find((entry) => entry.message.role === "user");
+    const imageResults = entries.filter((entry): entry is { type: string; timestamp: string; customType?: string; details?: unknown } => (
+      entry.type === "custom_message" && "customType" in entry && entry.customType === IMAGE_RESULT_TYPE
+    ));
+    const firstImagePrompt = (imageResults[0]?.details as { prompt?: unknown } | undefined)?.prompt;
     const sessionFile = manager.getSessionFile() ?? session.sessionFile;
     const persisted = Boolean(sessionFile && existsSync(sessionFile));
     const subagent = readSubagentRun(entries as unknown as SessionEntry[], header?.id ?? session.sessionId, sessionFile ?? "");
@@ -1936,6 +2001,10 @@ export function getRpcSessionInfos(): SessionInfo[] {
       const activityMs = runtimeMessageActivityMs(message);
       if (activityMs !== undefined) lastActivityMs = Math.max(lastActivityMs, activityMs);
     }
+    for (const image of imageResults) {
+      const activityMs = new Date(image.timestamp).getTime();
+      if (!Number.isNaN(activityMs)) lastActivityMs = Math.max(lastActivityMs, activityMs);
+    }
 
     sessions.push({
       path: sessionFile ?? "",
@@ -1944,9 +2013,11 @@ export function getRpcSessionInfos(): SessionInfo[] {
       name: manager.getSessionName(),
       created,
       modified: new Date(lastActivityMs).toISOString(),
-      messageCount: messages.length,
+      messageCount: messages.length + imageResults.length,
       firstMessage: getSessionFirstMessagePreview(
-        firstUserMessage ? runtimeMessageText(firstUserMessage) || "(no messages)" : "(no messages)",
+        firstUserMessage
+          ? runtimeMessageText(firstUserMessage) || "(no messages)"
+          : typeof firstImagePrompt === "string" && firstImagePrompt.trim() ? firstImagePrompt : "(no messages)",
       ),
       ...(subagent ? {
         parentSessionId: subagent.parentSessionId,
@@ -2111,13 +2182,14 @@ export async function startRpcSession(
                 cwd: sessionCwd,
                 settings: settingsManager,
               }),
+              createImageGenerationExtension(agentDir),
               createSubagentExtension(
                 SUBAGENT_CONTROLLER.extensionRuntime,
                 () => listSubagentProfiles(sessionCwd),
                 isBuiltInSubagentsEnabled,
               ),
             ],
-            extensionsOverride: (base) => preferUserBashExtension(preferPiWebSubagentExtension(base)),
+            extensionsOverride: (base) => preferUserBashExtension(preferPiWebImageTool(preferPiWebSubagentExtension(base))),
           },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
