@@ -104,7 +104,7 @@
 }
 ```
 
-- `provider` 必须是 `xai`、`openai-codex`、`antigravity` 或 `sub2api`。认证复用 Pi 已登录的对应 provider，不单独保存图片 API Key。Antigravity 读 `auth.json` 里的 `antigravity` OAuth；sub2api 读 `models.json` 里该 provider 的 API Key。不 import `pi-antigravity`。
+- `provider` 必须是 `xai`、`openai-codex`、`antigravity` 或 `sub2api`。认证一律走 Pi 已登录的对应 provider（`getProviderAuth`），不单独保存图片 API Key，也不在生图代码里读 `auth.json` 或刷新 OAuth。
 - 用户侧选项来自连接声明：比例（`sizes` 里的宽高比，含 `auto`）、分辨率（xAI、Banana 2、sub2api Grok 声明 `1k` / `2k`）、质量。ChatGPT 和 sub2api GPT Image 不声明分辨率。Banana 2 不声明质量。
 - 改图一张原图，结果写入新文件，不覆盖原图。未声明 `editing` 的连接不显示改图按钮。
 - 参数窗口把比例显示成「自动 / 正方形 1:1 / 横屏 16:9 / 竖屏 9:16」这类标签，不展示像素。ChatGPT 订阅和 sub2api GPT Image 按所选比例发送对应像素：`1:1`→`1024x1024`，`16:9`→`1536x864`，`9:16`→`864x1536`，`3:2`→`1536x1024`，`2:3`→`1024x1536`，`4:3`→`1024x768`，`3:4`→`768x1024`，`auto`→`auto`。xAI 与 sub2api Grok 发送 `aspect_ratio`（含 `auto`）和 `resolution`。Banana 2 发送官方 `aspectRatio` 字符串；`auto` 不带该字段。分辨率映射为 `1K` / `2K`。

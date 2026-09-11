@@ -1,7 +1,4 @@
-import path from "node:path";
 import { Buffer } from "node:buffer";
-import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import type { Credential } from "@earendil-works/pi-ai";
 import { getBase64DecodedByteLength } from "./image-attachments";
 
 const DEFAULT_ENDPOINTS = [
@@ -13,7 +10,6 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 const MAX_ERROR_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 180_000;
-const REFRESH_SKEW_MS = 60_000;
 const RETRY_STATUSES = new Set([403, 404, 429, 500, 502, 503, 504]);
 
 const ASPECT_RATIOS = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
@@ -108,17 +104,6 @@ function endpointCandidates(baseUrl?: string): string[] {
   return DEFAULT_ENDPOINTS;
 }
 
-function oauthFields(credential: Credential | undefined): { access: string; expires: number; projectId: string } | undefined {
-  if (!credential || credential.type !== "oauth" || typeof credential.access !== "string" || !credential.access) return undefined;
-  const projectId = typeof credential.projectId === "string" ? credential.projectId.trim() : "";
-  if (!projectId) return undefined;
-  return {
-    access: credential.access,
-    expires: typeof credential.expires === "number" ? credential.expires : 0,
-    projectId,
-  };
-}
-
 function packedApiKey(apiKey: string | undefined): { token: string; projectId: string } | undefined {
   if (!apiKey) return undefined;
   try {
@@ -131,15 +116,11 @@ function packedApiKey(apiKey: string | undefined): { token: string; projectId: s
 }
 
 async function antigravityCredentials(
-  agentDir: string,
-  getProviderAuth?: (provider: string) => Promise<{ auth: { apiKey?: string } } | undefined>,
+  getProviderAuth: (provider: string) => Promise<{ auth: { apiKey?: string } } | undefined>,
 ): Promise<{ token: string; projectId: string }> {
-  const packed = packedApiKey((await getProviderAuth?.("antigravity"))?.auth.apiKey);
-  if (packed) return packed;
-  const current = oauthFields(readStoredCredential("antigravity", path.join(agentDir, "auth.json")));
-  if (!current) throw new Error("No Antigravity credentials. Run /login antigravity first.");
-  if (current.expires <= Date.now() + REFRESH_SKEW_MS) throw new Error("Antigravity credentials expired. Run /login antigravity first.");
-  return { token: current.access, projectId: current.projectId };
+  const packed = packedApiKey((await getProviderAuth("antigravity"))?.auth.apiKey);
+  if (!packed) throw new Error("No Antigravity credentials. Run /login antigravity first.");
+  return packed;
 }
 
 async function collectImageFromSse(response: Response, signal: AbortSignal): Promise<Buffer> {
@@ -194,11 +175,10 @@ async function collectImageFromSse(response: Response, signal: AbortSignal): Pro
 }
 
 export async function requestAntigravityImage(
-  agentDir: string,
   connection: { provider: string; model: string },
   ctx: {
     modelRegistry: {
-      getProviderAuth?(provider: string): Promise<{ auth: { apiKey?: string } } | undefined>;
+      getProviderAuth(provider: string): Promise<{ auth: { apiKey?: string } } | undefined>;
       getProvider(provider: string): { baseUrl?: string } | undefined;
     };
   },
@@ -208,7 +188,7 @@ export async function requestAntigravityImage(
   resolution?: string,
   signal?: AbortSignal,
 ): Promise<Buffer> {
-  const { token, projectId } = await antigravityCredentials(agentDir, ctx.modelRegistry.getProviderAuth);
+  const { token, projectId } = await antigravityCredentials(ctx.modelRegistry.getProviderAuth);
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const body = JSON.stringify(buildAntigravityImageBody(connection.model, projectId, prompt, size, resolution, input));

@@ -333,7 +333,7 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
   if (connection.provider === "openai-codex") {
     image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
   } else if (connection.provider === "antigravity") {
-    image = checkedImage(await requestAntigravityImage(agentDir, connection, ctx, request.prompt, input, size, resolution, signal), "generated-image");
+    image = checkedImage(await requestAntigravityImage(connection, ctx, request.prompt, input, size, resolution, signal), "generated-image");
   } else if (connection.provider === "sub2api" && !connection.model.startsWith("grok-imagine")) {
     image = checkedImage(await requestSub2apiImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
   } else {
