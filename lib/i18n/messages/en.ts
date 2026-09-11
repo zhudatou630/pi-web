@@ -383,6 +383,7 @@ export const enLocale: LocalePlugin = {
     "image.qualityAuto": "Auto",
     "image.qualityLow": "Low",
     "image.qualityMedium": "Medium",
+    "image.qualityHigh": "High",
     "image.edit": "Edit",
     "image.quote": "Quote",
     "image.generate": "Generate",

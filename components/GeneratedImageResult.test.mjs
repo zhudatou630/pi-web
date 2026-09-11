@@ -35,10 +35,10 @@ test("generated image results render saved originals and downloads", () => {
   const html = render(details);
   assert.match(html, /type=read/);
   assert.match(html, /type=download/);
-  assert.match(html, /1:1 · 1K · Auto/);
+  assert.match(html, /1:1（1024\u00d71024） · 1K · Auto/);
+  assert.match(html, /fixture-image/);
   assert.match(html, />Edit</);
   assert.match(html, /1024 \/ 1024/);
-  assert.doesNotMatch(html, /fixture-image/);
   assert.doesNotMatch(html, /files.mention|Mention|提及/);
 });
 
@@ -49,6 +49,46 @@ test("generated image results can mention the saved file", () => {
     React.createElement(GeneratedImageResult, { value: details, cwd: "/project", onMention() {} }),
   ));
   assert.match(html, /aria-label="Quote"/);
+});
+
+test("generated image captions use measured pixels instead of the requested ratio", () => {
+  const html = render({ ...details, size: "9:16", width: 1536, height: 1024, resolution: undefined, quality: "low" });
+  assert.match(html, /3:2（1536\u00d71024） · Low/);
+  assert.doesNotMatch(html, /9:16/);
+});
+
+test("generated image captions include model and return time", () => {
+  const createdAt = new Date(2026, 8, 11, 15, 42).getTime();
+  const html = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(GeneratedImageResult, {
+      value: { ...details, model: "gpt-image-2.5-flare" },
+      cwd: "/project",
+      createdAt,
+    }),
+  ));
+  assert.match(html, /1:1（1024\u00d71024） · 1K · Auto/);
+  assert.match(html, /Flare · 15:42/);
+  assert.doesNotMatch(html, />gpt-image-2.5-flare</);
+});
+
+test("relay flare captions use a distinct short name", () => {
+  const html = render({ ...details, connection: "gpt-flare", model: "gpt-image-2.5-flare" });
+  assert.match(html, /Relay Flare/);
+  assert.doesNotMatch(html, / · Flare/);
+});
+
+test("relay grok captions use a distinct short name", () => {
+  const html = render({ ...details, connection: "grok-relay", model: "grok-imagine-image-2.0" });
+  assert.match(html, /Relay Grok/);
+  assert.doesNotMatch(html, / · Grok/);
+});
+
+test("near-standard pixel sizes caption the closest common ratio", () => {
+  const html = render({ ...details, width: 1672, height: 941, resolution: undefined, quality: "low" });
+  assert.match(html, /16:9（1672\u00d7941） · Low/);
+  assert.doesNotMatch(html, /1672:941/);
 });
 
 test("direct image results caption the prompt under the picture", () => {

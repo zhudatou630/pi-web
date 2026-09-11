@@ -30,6 +30,7 @@ function qualityLabel(t: (key: string) => string, value: string): string {
   if (value === "auto") return t("image.qualityAuto");
   if (value === "low") return t("image.qualityLow");
   if (value === "medium") return t("image.qualityMedium");
+  if (value === "high") return t("image.qualityHigh");
   return value;
 }
 

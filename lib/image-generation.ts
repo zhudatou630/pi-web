@@ -5,7 +5,12 @@ export const IMAGE_ABORT_COMMAND = "abort_image_generation";
 
 type ImageAspect = "square" | "portrait" | "landscape";
 
-export const IMAGE_RUNTIME_PROVIDER = "xai";
+export const IMAGE_RUNTIME_PROVIDERS = ["xai", "openai-codex", "antigravity", "sub2api"] as const;
+export type ImageRuntimeProvider = (typeof IMAGE_RUNTIME_PROVIDERS)[number];
+
+export function isImageRuntimeProvider(provider: string): provider is ImageRuntimeProvider {
+  return (IMAGE_RUNTIME_PROVIDERS as readonly string[]).includes(provider);
+}
 
 export interface ImageCapabilities {
   editing?: boolean;
@@ -44,10 +49,60 @@ function imageAspectOfSize(size: string): ImageAspect | null {
   return parsed.width > parsed.height ? "landscape" : "portrait";
 }
 
+const DISPLAY_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"] as const;
+const DISPLAY_RATIO_TOLERANCE = 0.03;
+
+export function imagePixelRatio(width: number, height: number): string {
+  let a = Math.abs(width);
+  let b = Math.abs(height);
+  while (b) {
+    const next = a % b;
+    a = b;
+    b = next;
+  }
+  return `${width / a}:${height / a}`;
+}
+
+export function imageDisplayRatio(width: number, height: number): string {
+  if (width <= 0 || height <= 0) return imagePixelRatio(width, height);
+  const actual = width / height;
+  let best: (typeof DISPLAY_RATIOS)[number] = DISPLAY_RATIOS[0];
+  let bestError = Infinity;
+  for (const ratio of DISPLAY_RATIOS) {
+    const [a, b] = ratio.split(":").map(Number);
+    const error = Math.abs(actual - a / b) / (a / b);
+    if (error < bestError) {
+      best = ratio;
+      bestError = error;
+    }
+  }
+  return bestError <= DISPLAY_RATIO_TOLERANCE ? best : imagePixelRatio(width, height);
+}
+
 export function imageRatioKind(size: string): ImageAspect | "auto" | null {
   const value = size.trim();
   if (value === "auto") return "auto";
   return imageAspectOfSize(value);
+}
+
+const OPENAI_IMAGE_SIZES: Record<string, string> = {
+  auto: "auto",
+  "1:1": "1024x1024",
+  "16:9": "1536x864",
+  "9:16": "864x1536",
+  "3:2": "1536x1024",
+  "2:3": "1024x1536",
+  "4:3": "1024x768",
+  "3:4": "768x1024",
+};
+
+export function openaiImageSize(size?: string): string | undefined {
+  if (!size) return undefined;
+  const value = size.trim();
+  if (!value) return undefined;
+  const mapped = OPENAI_IMAGE_SIZES[value];
+  if (mapped) return mapped;
+  throw new Error(`Unsupported image size: ${size}`);
 }
 
 export function xaiAspectRatio(size?: string): string | undefined {

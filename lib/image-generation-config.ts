@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { IMAGE_RUNTIME_PROVIDER, type ImageCapabilities, type ImageConfigView, type ImageConnectionView } from "./image-generation";
+import { isImageRuntimeProvider, type ImageCapabilities, type ImageConfigView, type ImageConnectionView } from "./image-generation";
 
 export const IMAGE_CONFIG_FILE = "images.json";
 
@@ -99,7 +99,7 @@ export function readImageConfig(agentDir: string): ImageConfig {
 }
 
 export function imageConfigView(config: ImageConfig): ImageConfigView {
-  const connections = Object.values(config.connections).filter((connection) => connection.provider === IMAGE_RUNTIME_PROVIDER);
+  const connections = Object.values(config.connections).filter((connection) => isImageRuntimeProvider(connection.provider));
   const defaultConnection = connections.some((connection) => connection.id === config.defaultConnection)
     ? config.defaultConnection
     : connections[0]?.id ?? "";

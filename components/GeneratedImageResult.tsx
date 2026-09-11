@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ImagePreview } from "./ImagePreview";
 import { useI18n } from "@/hooks/useI18n";
 import { encodeFilePathForApi, joinFilePath } from "@/lib/file-paths";
-import { getImageGenerationResult, type ImageGenerationResult } from "@/lib/image-generation";
+import { getImageGenerationResult, imageDisplayRatio, type ImageGenerationResult } from "@/lib/image-generation";
 
 function fileUrl(filePath: string, type: "read" | "download"): string {
   return `/api/files/${encodeFilePathForApi(filePath)}?type=${type}`;
@@ -41,32 +41,72 @@ function imageFrameStyle(width: number, height: number) {
   };
 }
 
-function caption(details: ImageGenerationResult, t: (key: string) => string): string {
-  const parts: string[] = [];
-  if (details.size === "auto") parts.push(t("image.aspectAuto"));
-  else if (details.size) parts.push(details.size);
-  if (details.resolution) parts.push(details.resolution.toUpperCase());
-  if (details.quality === "low") parts.push(t("image.qualityLow"));
-  else if (details.quality === "medium") parts.push(t("image.qualityMedium"));
-  else if (details.quality === "auto") parts.push(t("image.qualityAuto"));
-  else if (details.quality) parts.push(details.quality);
-  return parts.join(" · ");
+function qualityLabel(details: ImageGenerationResult, t: (key: string) => string): string | undefined {
+  if (details.quality === "low") return t("image.qualityLow");
+  if (details.quality === "medium") return t("image.qualityMedium");
+  if (details.quality === "high") return t("image.qualityHigh");
+  if (details.quality === "auto") return t("image.qualityAuto");
+  return details.quality;
 }
 
-export function GeneratedImageResult({ value, cwd, onEdit, onMention, showPrompt = false }: {
+function formatImageTime(createdAt: number, locale: string): string {
+  const date = new Date(createdAt);
+  const now = new Date();
+  const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
+  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  if (sameDay) return time;
+  const day = date.toLocaleDateString(locale, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+  return `${day} ${time}`;
+}
+
+function shortImageModel(details: ImageGenerationResult): string {
+  if (details.connection === "gpt-flare") return "Relay Flare";
+  if (details.connection === "gpt-sunburst") return "Relay Sunburst";
+  if (details.connection === "grok-relay") return "Relay Grok";
+  if (details.model.includes("sunburst")) return "Sunburst";
+  if (details.model.includes("flare")) return "Flare";
+  if (details.model.includes("grok-imagine")) return "Grok";
+  if (details.model.includes("flash-image")) return "Banana 2";
+  return details.model;
+}
+
+function sizeCaption(details: ImageGenerationResult): string {
+  const ratio = imageDisplayRatio(details.width, details.height);
+  const pixels = `${details.width}\u00d7${details.height}`;
+  return ratio === `${details.width}:${details.height}` ? pixels : `${ratio}（${pixels}）`;
+}
+
+function caption(details: ImageGenerationResult, t: (key: string) => string): string {
+  const parts = [sizeCaption(details)];
+  if (details.resolution) parts.push(details.resolution.toUpperCase());
+  const quality = qualityLabel(details, t);
+  if (quality) parts.push(quality);
+  return parts.join(" \u00b7 ");
+}
+
+export function GeneratedImageResult({ value, cwd, onEdit, onMention, showPrompt = false, createdAt }: {
   value: unknown;
   cwd?: string;
   onEdit?: (details: ImageGenerationResult) => void;
   onMention?: (path: string) => void;
   showPrompt?: boolean;
+  createdAt?: number;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const details = getImageGenerationResult(value);
   const [failed, setFailed] = useState(false);
   if (!details) return null;
   const absolutePath = absoluteImagePath(details.path, cwd);
   const preview = fileUrl(absolutePath, "read");
   const summary = caption(details, t);
+  const meta = [
+    shortImageModel(details),
+    createdAt ? formatImageTime(createdAt, locale) : undefined,
+  ].filter(Boolean).join(" \u00b7 ");
 
   return (
     <article className="mb-3 mt-2 w-fit max-w-full">
@@ -101,7 +141,11 @@ export function GeneratedImageResult({ value, cwd, onEdit, onMention, showPrompt
       {showPrompt && details.prompt ? (
         <p className="mt-1.5 line-clamp-3 text-[12px] leading-snug text-text-muted" title={details.prompt}>{details.prompt}</p>
       ) : null}
-      {summary ? <div className={`${showPrompt && details.prompt ? "mt-1" : "mt-1.5"} text-[11px] tracking-wide text-text-dim`}>{summary}</div> : null}
+      {summary || meta ? (
+        <div className={`${showPrompt && details.prompt ? "mt-1" : "mt-1.5"} max-w-full text-[11px] leading-snug tracking-wide text-text-muted`} title={details.model}>
+          {summary}{summary && meta ? " \u00b7 " : null}{meta}
+        </div>
+      ) : null}
     </article>
   );
 }

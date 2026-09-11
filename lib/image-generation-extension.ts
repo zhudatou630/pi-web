@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import type { InlineExtension, LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
-import { IMAGE_RUNTIME_PROVIDER, IMAGE_TOOL_NAME } from "./image-generation";
+import { IMAGE_TOOL_NAME, isImageRuntimeProvider } from "./image-generation";
 import { IMAGE_CONFIG_FILE, imageConfigView, readImageConfig, type ImageConfig } from "./image-generation-config";
 import { executeImageGeneration } from "./image-generation-runtime";
 
@@ -23,7 +23,7 @@ export function preferPiWebImageTool(base: LoadExtensionsResult): LoadExtensions
 }
 
 function connectionGuideline(config: ImageConfig): string {
-  const descriptions = Object.values(config.connections).filter((connection) => connection.provider === IMAGE_RUNTIME_PROVIDER).map((connection) => {
+  const descriptions = Object.values(config.connections).filter((connection) => isImageRuntimeProvider(connection.provider)).map((connection) => {
     const options = [
       connection.capabilities.editing ? "editing" : undefined,
       connection.capabilities.sizes?.length ? `aspect ratios: ${connection.capabilities.sizes.join(", ")}` : undefined,
@@ -47,8 +47,8 @@ export function createImageGenerationExtension(agentDir: string): InlineExtensio
       pi.registerTool({
         name: IMAGE_TOOL_NAME,
         label: "Generate image",
-        description: "Generate a new image, or edit one existing image, with a configured xAI image connection.",
-        promptSnippet: "Generate or edit an image with a configured xAI image connection",
+        description: "Generate a new image, or edit one existing image, with a configured image connection.",
+        promptSnippet: "Generate or edit an image with a configured image connection",
         promptGuidelines: [
           `Use ${IMAGE_TOOL_NAME} when the user asks to generate or edit an image.`,
           capabilities,
@@ -57,7 +57,7 @@ export function createImageGenerationExtension(agentDir: string): InlineExtensio
           `Set new_image only when the user wants an unrelated new picture, not a change to the current one.`,
           `If the user attached an image to edit, set use_last_attachment. If they named a file under the working directory, set target.`,
           `${IMAGE_TOOL_NAME} results are shown inline; do not embed the image again in the final response.`,
-          `Pass size as a declared aspect ratio such as auto, 1:1, 16:9, or 9:16. Pass resolution as 1k or 2k. Never invent pixel sizes.`,
+          `Pass size as a declared aspect ratio such as auto, 1:1, 16:9, or 9:16. Pass resolution only when the connection declares it. Never invent pixel sizes.`,
           `Do not retry a failed ${IMAGE_TOOL_NAME} call unless the user explicitly asks you to retry.`,
           `Do not read a generated image file after ${IMAGE_TOOL_NAME} succeeds unless the user asks you to inspect it.`,
         ],

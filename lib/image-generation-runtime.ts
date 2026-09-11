@@ -4,7 +4,10 @@ import path from "node:path";
 import { Buffer } from "node:buffer";
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { getBase64DecodedByteLength } from "./image-attachments";
-import { IMAGE_RESULT_TYPE, extractMentionedImagePath, getImageGenerationResult, xaiAspectRatio, type ImageGenerationRequest, type ImageGenerationResult } from "./image-generation";
+import { requestAntigravityImage } from "./image-generation-antigravity";
+import { requestCodexImage } from "./image-generation-codex";
+import { requestSub2apiImage } from "./image-generation-sub2api";
+import { IMAGE_RESULT_TYPE, extractMentionedImagePath, getImageGenerationResult, isImageRuntimeProvider, xaiAspectRatio, type ImageGenerationRequest, type ImageGenerationResult } from "./image-generation";
 import { imageConfigView, readImageConfig, type ImageConnection } from "./image-generation-config";
 import { isPathWithinRoots } from "./path-security";
 import { toNativePath } from "./paths";
@@ -286,7 +289,7 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
   const request = parseImageGenerationRequest(rawRequest);
   const config = readImageConfig(agentDir);
   const connectionId = request.connection ?? imageConfigView(config).defaultConnection;
-  if (!connectionId) throw new Error("No runnable xAI image connection is configured");
+  if (!connectionId) throw new Error("No runnable image connection is configured");
   const connection = config.connections[connectionId];
   if (!connection) throw new Error(`Unknown image connection: ${connectionId}`);
   const useImplicitSource = !request.target && !request.new_image;
@@ -300,7 +303,7 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
     ? latestGeneratedPath(ctx)
     : undefined;
   const hasInput = Boolean(request.target || request.use_last_attachment || mentioned || attachment || lastGenerated);
-  if (connection.provider !== "xai") throw new Error(`Image connection ${connectionId} uses provider ${connection.provider}; only xai is supported`);
+  if (!isImageRuntimeProvider(connection.provider)) throw new Error(`Image connection ${connectionId} uses provider ${connection.provider}; only xai, openai-codex, antigravity, and sub2api are supported`);
   if (hasInput && connection.capabilities.editing !== true) throw new Error(`Image connection ${connectionId} does not declare editing support`);
   if (request.size && !connection.capabilities.sizes?.includes(request.size)) throw new Error(`Image connection ${connectionId} does not support size ${request.size}`);
   if (request.resolution && !connection.capabilities.resolutions?.includes(request.resolution)) throw new Error(`Image connection ${connectionId} does not support resolution ${request.resolution}`);
@@ -326,7 +329,16 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
   const size = request.size ?? connection.defaults?.size;
   const resolution = request.resolution ?? connection.defaults?.resolution;
   const quality = request.quality ?? connection.defaults?.quality;
-  const image = await requestImage(connection, ctx, request.prompt, input, size, resolution, quality, signal);
+  let image: ImageFile;
+  if (connection.provider === "openai-codex") {
+    image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
+  } else if (connection.provider === "antigravity") {
+    image = checkedImage(await requestAntigravityImage(agentDir, connection, ctx, request.prompt, input, size, resolution, signal), "generated-image");
+  } else if (connection.provider === "sub2api" && !connection.model.startsWith("grok-imagine")) {
+    image = checkedImage(await requestSub2apiImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
+  } else {
+    image = await requestImage(connection, ctx, request.prompt, input, size, resolution, quality, signal);
+  }
   signal?.throwIfAborted();
   const filePath = await saveImage(ctx.cwd, image);
   return {

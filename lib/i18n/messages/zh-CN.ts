@@ -383,6 +383,7 @@ export const zhCNLocale: LocalePlugin = {
     "image.qualityAuto": "自动",
     "image.qualityLow": "低",
     "image.qualityMedium": "中",
+    "image.qualityHigh": "高",
     "image.edit": "改图",
     "image.quote": "引用",
     "image.generate": "生成",

@@ -1776,9 +1776,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     key={`${keyPrefix}-image-${messageKey}`}
                     value={imageResult}
                     cwd={messageCwd}
-                    onEdit={imageConfig && !sessionBusy ? (details) => { setImageEdit(details); setImageDialogOpen(true); } : undefined}
+                    onEdit={imageConfig && !sessionBusy && imageConfig.connections.some((connection) => connection.id === imageResult.connection && connection.capabilities.editing === true) ? (details) => { setImageEdit(details); setImageDialogOpen(true); } : undefined}
                     onMention={imageConfig ? (path) => { ownChatInputRef.current?.mentionImage(path); } : undefined}
                     showPrompt={msg.role === "custom"}
+                    createdAt={msg.timestamp}
                   />
                 ) : (
                   <MessageView
