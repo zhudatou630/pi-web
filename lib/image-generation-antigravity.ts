@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { getBase64DecodedByteLength } from "./image-attachments";
+import { readImageResponseBytes } from "./image-generation-response";
 
 const DEFAULT_ENDPOINTS = [
   "https://daily-cloudcode-pa.googleapis.com",
@@ -209,9 +210,8 @@ export async function requestAntigravityImage(
       continue;
     }
     if (!response.ok) {
-      const raw = Buffer.from(await response.arrayBuffer().catch(() => new ArrayBuffer(0)));
-      const clipped = raw.subarray(0, MAX_ERROR_BYTES);
-      lastError = `Image API returned HTTP ${response.status}${upstreamError(clipped) ? `: ${upstreamError(clipped)}` : ""}`;
+      const raw = await readImageResponseBytes(response, MAX_ERROR_BYTES, requestSignal, "Image API error response is too large").catch(() => Buffer.alloc(0));
+      lastError = `Image API returned HTTP ${response.status}${upstreamError(raw) ? `: ${upstreamError(raw)}` : ""}`;
       if (RETRY_STATUSES.has(response.status)) continue;
       throw new Error(lastError);
     }

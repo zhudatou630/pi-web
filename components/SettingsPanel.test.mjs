@@ -22,12 +22,14 @@ test("opens one settings panel from direct sidebar shortcuts", () => {
 });
 
 test("keeps every requested configuration surface inside the settings panel", () => {
-  for (const section of ["general", "models", "skills", "agents", "plugins"]) {
+  for (const section of ["general", "models", "agents", "images", "skills", "plugins"]) {
     assert.match(panelSource, new RegExp(`id: "${section}"`));
   }
+  assert.match(panelSource, /id: "general"[\s\S]*id: "models"[\s\S]*id: "agents"[\s\S]*id: "images"[\s\S]*id: "skills"[\s\S]*id: "plugins"/);
   for (const component of ["ModelsConfig", "SkillsConfig", "AgentsConfig", "PluginsConfig"]) {
     assert.match(panelSource, new RegExp(`<${component} embedded`));
   }
+  assert.match(panelSource, /<ImagesConfig /);
 });
 
 test("restores the settings section and each list detail selection", async () => {
@@ -112,6 +114,15 @@ test("uses top navigation on desktop and one compact section picker on mobile", 
   assert.match(panelSource, /<main className="settings-dialog-main">/);
   assert.doesNotMatch(panelSource, /<style>/);
   assert.doesNotMatch(panelSource, /style=\{\{/);
+});
+
+test("keeps image generation on its own settings page", async () => {
+  const imagesSource = await readFile(new URL("./ImagesConfig.tsx", import.meta.url), "utf8");
+  assert.match(panelSource, /id: "images"/);
+  assert.match(panelSource, /<ImagesConfig /);
+  assert.match(imagesSource, /\/api\/image-generation\/settings/);
+  assert.match(enSource, /"settings\.imagesEnabled": "Enable image generation"/);
+  assert.match(zhSource, /"settings\.imagesEnabled": "启用生图"/);
 });
 
 test("labels agent profiles as sub-agents", () => {

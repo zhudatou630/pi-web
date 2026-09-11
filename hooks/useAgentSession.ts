@@ -45,6 +45,7 @@ import {
 } from "@/lib/decode-throughput";
 import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand } from "@/lib/prompt-run-control";
 import { recalledQueuedPrompts } from "@/lib/queued-messages";
+import type { AttachedImage } from "@/lib/image-attachments";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import {
   loadModelsWithClientCache,
@@ -300,12 +301,6 @@ export interface ChatInputHandle {
   addImages: (files: File[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
   restoreSubmission: (text: string, images?: Array<{ data: string; mimeType: string }>, targetDraftKey?: string) => void;
-}
-
-export interface AttachedImage {
-  data: string;
-  mimeType: string;
-  previewUrl: string;
 }
 
 type SelectedModel = { provider: string; modelId: string };

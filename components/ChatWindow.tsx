@@ -3,6 +3,7 @@ import { GeneratedImageResult, PendingGeneratedImage } from "./GeneratedImageRes
 import { ImageGenerationDialog } from "./ImageGenerationDialog";
 import { encodeFilePathForApi, joinFilePath } from "@/lib/file-paths";
 import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
+import type { AttachedImage } from "@/lib/image-attachments";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -24,7 +25,7 @@ import {
   shouldAbortLocateOnLeafChange,
 } from "@/lib/chat-outline-jump";
 import { MessageView } from "./MessageView";
-import { ChatInput, type ChatInputHandle, type AttachedImage } from "./ChatInput";
+import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { AnsiText } from "./AnsiText";
@@ -642,7 +643,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         if (!(fetchError instanceof DOMException && fetchError.name === "AbortError")) console.error("Failed to load image generation config:", fetchError);
       });
     return () => controller.abort();
-  }, [imageConfigRefreshKey]);
+  }, [imageConfigRefreshKey, modelsRefreshKey]);
 
   const submitDirectImage = useCallback(async (request: ImageGenerationRequest) => {
     keepTabOpen();
@@ -1573,7 +1574,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     <ChatInput
       ref={setChatInputElement}
       onSend={handleChatSend}
-      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy ? () => { setImageEdit(null); setImageDialogOpen(true); } : undefined}
+      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy ? () => { setImageEdit(null); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
       onAbort={handleActiveAbort}
       onSteer={agentRunning ? handleSteerWithSubmit : undefined}
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
@@ -1776,7 +1777,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     key={`${keyPrefix}-image-${messageKey}`}
                     value={imageResult}
                     cwd={messageCwd}
-                    onEdit={imageConfig && !sessionBusy && imageConfig.connections.some((connection) => connection.id === imageResult.connection && connection.capabilities.editing === true) ? (details) => { setImageEdit(details); setImageDialogOpen(true); } : undefined}
+                    onEdit={imageConfig && !sessionBusy && imageConfig.connections.some((connection) => connection.id === imageResult.connection && connection.capabilities.editing === true) ? (details) => { setImageEdit(details); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
                     onMention={imageConfig ? (path) => { ownChatInputRef.current?.mentionImage(path); } : undefined}
                     showPrompt={msg.role === "custom"}
                     createdAt={msg.timestamp}

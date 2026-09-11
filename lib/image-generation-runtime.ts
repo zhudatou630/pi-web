@@ -6,17 +6,15 @@ import { getImageDimensions } from "@earendil-works/pi-tui";
 import { getBase64DecodedByteLength } from "./image-attachments";
 import { requestAntigravityImage } from "./image-generation-antigravity";
 import { requestCodexImage } from "./image-generation-codex";
-import { requestSub2apiImage } from "./image-generation-sub2api";
-import { IMAGE_RESULT_TYPE, extractMentionedImagePath, getImageGenerationResult, isImageRuntimeProvider, xaiAspectRatio, type ImageGenerationRequest, type ImageGenerationResult } from "./image-generation";
-import { imageConfigView, readImageConfig, type ImageConnection } from "./image-generation-config";
+import { requestOpenAIImagesImage } from "./image-generation-openai-images";
+import { requestXaiImage } from "./image-generation-xai";
+import { IMAGE_RESULT_TYPE, extractMentionedImagePath, getImageGenerationResult, imageConnectionTransport, type ImageGenerationRequest, type ImageGenerationResult } from "./image-generation";
+import { imageConfigView, resolveImageConfig } from "./image-generation-config";
 import { isPathWithinRoots } from "./path-security";
 import { toNativePath } from "./paths";
 
 const MAX_PROMPT_LENGTH = 32_000;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
-const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-const MAX_ERROR_BYTES = 64 * 1024;
-const REQUEST_TIMEOUT_MS = 180_000;
 
 interface RuntimeContext {
   cwd: string;
@@ -161,115 +159,6 @@ function latestGeneratedPath(ctx: RuntimeContext): string | undefined {
   return undefined;
 }
 
-async function connectionAuth(connection: ImageConnection, ctx: RuntimeContext): Promise<{ baseUrl: string; headers: Record<string, string> }> {
-  const auth = await ctx.modelRegistry.getProviderAuth(connection.provider);
-  if (!auth) throw new Error(`No credentials configured for image provider ${connection.provider}`);
-  const provider = ctx.modelRegistry.getProvider(connection.provider);
-  const baseUrl = auth.auth.baseUrl ?? provider?.baseUrl;
-  if (!baseUrl) throw new Error(`No base URL configured for image provider ${connection.provider}`);
-  const headers = Object.fromEntries(Object.entries(auth.auth.headers ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-  if (auth.auth.apiKey && !Object.keys(headers).some((name) => name.toLowerCase() === "authorization")) headers.Authorization = `Bearer ${auth.auth.apiKey}`;
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), headers };
-}
-
-async function responseBytes(response: Response, maxBytes: number, signal?: AbortSignal): Promise<Buffer> {
-  const contentLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new Error("Image API response is too large");
-  const reader = response.body?.getReader();
-  if (!reader) {
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length > maxBytes) throw new Error("Image API response is too large");
-    return bytes;
-  }
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    signal?.throwIfAborted();
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error("Image API response is too large");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks, total);
-}
-
-function sanitized(value: string, maxLength: number): string {
-  return value.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").replace(/[\x00-\x1f\x7f]+/g, " ").trim().slice(0, maxLength);
-}
-
-function upstreamError(raw: Buffer): string | undefined {
-  const text = raw.toString("utf8");
-  try {
-    const parsed = JSON.parse(text) as { error?: unknown; code?: unknown; message?: unknown };
-    if (typeof parsed.error === "string" && parsed.error.trim()) {
-      const code = typeof parsed.code === "string" && parsed.code.trim() ? parsed.code.trim() : undefined;
-      return sanitized(code ? `${parsed.error.trim()} (${code})` : parsed.error.trim(), 600);
-    }
-    if (parsed.error && typeof parsed.error === "object" && !Array.isArray(parsed.error)) {
-      const value = parsed.error as { message?: unknown; code?: unknown; type?: unknown };
-      const parts = [value.message, value.code, value.type].filter((part): part is string => typeof part === "string" && Boolean(part.trim()));
-      if (parts.length) return sanitized(parts.join("; "), 600);
-    }
-    if (typeof parsed.message === "string" && parsed.message.trim()) return sanitized(parsed.message.trim(), 600);
-  } catch {
-    // Fall through to a short raw preview.
-  }
-  const preview = sanitized(text, 400);
-  return preview || undefined;
-}
-
-async function requestImage(connection: ImageConnection, ctx: RuntimeContext, prompt: string, input: ImageFile | undefined, size: string | undefined, resolution: string | undefined, quality: string | undefined, signal?: AbortSignal): Promise<ImageFile> {
-  const auth = await connectionAuth(connection, ctx);
-  const aspectRatio = xaiAspectRatio(size);
-  const editing = Boolean(input);
-  const fields: Record<string, unknown> = {
-    model: connection.model,
-    prompt,
-    n: 1,
-    response_format: "b64_json",
-    ...(resolution ? { resolution } : {}),
-    ...(quality ? { quality } : {}),
-  };
-  if (editing) {
-    const source = input as ImageFile;
-    fields.image = { url: `data:${source.mimeType};base64,${source.bytes.toString("base64")}`, type: "image_url" };
-    if (aspectRatio && aspectRatio !== "auto") fields.aspect_ratio = aspectRatio;
-  } else if (aspectRatio) {
-    fields.aspect_ratio = aspectRatio;
-  }
-  const headers = new Headers(auth.headers);
-  headers.set("Accept", "application/json");
-  headers.set("Content-Type", "application/json");
-  const body: BodyInit = JSON.stringify(fields);
-  const endpoint = `${auth.baseUrl}/images/${editing ? "edits" : "generations"}`;
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const response = await fetch(endpoint, { method: "POST", headers, body, signal: requestSignal });
-  if (!response.ok) {
-    const requestId = response.headers.get("x-request-id") ?? response.headers.get("request-id");
-    const raw = await responseBytes(response, MAX_ERROR_BYTES, requestSignal).catch(() => null);
-    const detail = raw ? upstreamError(raw) : undefined;
-    throw new Error(`Image API returned HTTP ${response.status}${detail ? `: ${detail}` : ""}${requestId ? ` (request ${sanitized(requestId, 160)})` : ""}`);
-  }
-  const raw = await responseBytes(response, MAX_RESPONSE_BYTES, requestSignal);
-  let payload: unknown;
-  try {
-    payload = JSON.parse(raw.toString("utf8"));
-  } catch {
-    throw new Error("Image API returned invalid JSON");
-  }
-  const encoded = (payload as { data?: Array<{ b64_json?: unknown }> })?.data?.[0]?.b64_json;
-  if (typeof encoded !== "string") throw new Error("Image API returned no base64 image");
-  const length = getBase64DecodedByteLength(encoded);
-  if (length === null) throw new Error("Image API returned invalid base64 image");
-  if (length > MAX_IMAGE_BYTES) throw new Error("Generated image exceeds the 20MB limit");
-  return checkedImage(Buffer.from(encoded, "base64"), "generated-image");
-}
-
 async function saveImage(cwd: string, image: ImageFile): Promise<string> {
   const root = await realpath(cwd);
   let directory = root;
@@ -287,7 +176,8 @@ async function saveImage(cwd: string, image: ImageFile): Promise<string> {
 export async function executeImageGeneration(agentDir: string, rawRequest: unknown, ctx: RuntimeContext, signal?: AbortSignal): Promise<ImageGenerationResult> {
   signal?.throwIfAborted();
   const request = parseImageGenerationRequest(rawRequest);
-  const config = readImageConfig(agentDir);
+  const config = resolveImageConfig(agentDir);
+  if (!config.enabled) throw new Error("Image generation is disabled");
   const connectionId = request.connection ?? imageConfigView(config).defaultConnection;
   if (!connectionId) throw new Error("No runnable image connection is configured");
   const connection = config.connections[connectionId];
@@ -303,7 +193,6 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
     ? latestGeneratedPath(ctx)
     : undefined;
   const hasInput = Boolean(request.target || request.use_last_attachment || mentioned || attachment || lastGenerated);
-  if (!isImageRuntimeProvider(connection.provider)) throw new Error(`Image connection ${connectionId} uses provider ${connection.provider}; only xai, openai-codex, antigravity, and sub2api are supported`);
   if (hasInput && connection.capabilities.editing !== true) throw new Error(`Image connection ${connectionId} does not declare editing support`);
   if (request.size && !connection.capabilities.sizes?.includes(request.size)) throw new Error(`Image connection ${connectionId} does not support size ${request.size}`);
   if (request.resolution && !connection.capabilities.resolutions?.includes(request.resolution)) throw new Error(`Image connection ${connectionId} does not support resolution ${request.resolution}`);
@@ -330,14 +219,15 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
   const resolution = request.resolution ?? connection.defaults?.resolution;
   const quality = request.quality ?? connection.defaults?.quality;
   let image: ImageFile;
-  if (connection.provider === "openai-codex") {
+  const transport = imageConnectionTransport(connection);
+  if (transport === "codex") {
     image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
-  } else if (connection.provider === "antigravity") {
+  } else if (transport === "antigravity") {
     image = checkedImage(await requestAntigravityImage(connection, ctx, request.prompt, input, size, resolution, signal), "generated-image");
-  } else if (connection.provider === "sub2api" && !connection.model.startsWith("grok-imagine")) {
-    image = checkedImage(await requestSub2apiImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
+  } else if (transport === "openai-images") {
+    image = checkedImage(await requestOpenAIImagesImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
   } else {
-    image = await requestImage(connection, ctx, request.prompt, input, size, resolution, quality, signal);
+    image = checkedImage(await requestXaiImage(connection, ctx, request.prompt, input, size, resolution, quality, signal), "generated-image");
   }
   signal?.throwIfAborted();
   const filePath = await saveImage(ctx.cwd, image);
@@ -350,6 +240,7 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
     height: image.height,
     prompt: request.prompt,
     connection: connection.id,
+    label: connection.label,
     model: connection.model,
     ...(size ? { size } : {}),
     ...(resolution ? { resolution } : {}),

@@ -58,7 +58,8 @@ test("generated image captions use measured pixels instead of the requested rati
 });
 
 test("generated image captions include model and return time", () => {
-  const createdAt = new Date(2026, 8, 11, 15, 42).getTime();
+  const now = new Date();
+  const createdAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 15, 42).getTime();
   const html = renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
@@ -73,16 +74,16 @@ test("generated image captions include model and return time", () => {
   assert.doesNotMatch(html, />gpt-image-2.5-flare</);
 });
 
-test("relay flare captions use a distinct short name", () => {
-  const html = render({ ...details, connection: "gpt-flare", model: "gpt-image-2.5-flare" });
+test("generated image captions prefer the connection label", () => {
+  const html = render({ ...details, connection: "gpt-flare", model: "gpt-image-2.5-flare", label: "Relay Flare" });
   assert.match(html, /Relay Flare/);
   assert.doesNotMatch(html, / · Flare/);
 });
 
-test("relay grok captions use a distinct short name", () => {
+test("generated image captions fall back to a short model name", () => {
   const html = render({ ...details, connection: "grok-relay", model: "grok-imagine-image-2.0" });
-  assert.match(html, /Relay Grok/);
-  assert.doesNotMatch(html, / · Grok/);
+  assert.match(html, / · Grok/);
+  assert.doesNotMatch(html, />grok-imagine-image-2.0</);
 });
 
 test("near-standard pixel sizes caption the closest common ratio", () => {

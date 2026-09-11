@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { getPiUserAgent } from "@earendil-works/pi-ai/utils/pi-user-agent";
 import { getBase64DecodedByteLength } from "./image-attachments";
 import { openaiImageSize } from "./image-generation";
+import { readImageResponseBytes } from "./image-generation-response";
 
 const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const JWT_CLAIM_PATH = "https://api.openai.com/auth";
@@ -65,31 +66,6 @@ function upstreamError(raw: Buffer): string | undefined {
   return preview || undefined;
 }
 
-async function responseBytes(response: Response, maxBytes: number, signal?: AbortSignal): Promise<Buffer> {
-  const contentLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new Error("Image API response is too large");
-  const reader = response.body?.getReader();
-  if (!reader) {
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length > maxBytes) throw new Error("Image API response is too large");
-    return bytes;
-  }
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    signal?.throwIfAborted();
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error("Image API response is too large");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks, total);
-}
-
 export function buildCodexImageBody(
   model: string,
   prompt: string,
@@ -144,11 +120,11 @@ export async function requestCodexImage(
   });
   if (!response.ok) {
     const requestId = response.headers.get("x-request-id") ?? response.headers.get("request-id");
-    const raw = await responseBytes(response, MAX_ERROR_BYTES, requestSignal).catch(() => null);
+    const raw = await readImageResponseBytes(response, MAX_ERROR_BYTES, requestSignal).catch(() => null);
     const detail = raw ? upstreamError(raw) : undefined;
     throw new Error(`Image API returned HTTP ${response.status}${detail ? `: ${detail}` : ""}${requestId ? ` (request ${sanitized(requestId, 160)})` : ""}`);
   }
-  const raw = await responseBytes(response, MAX_RESPONSE_BYTES, requestSignal);
+  const raw = await readImageResponseBytes(response, MAX_RESPONSE_BYTES, requestSignal);
   let payload: unknown;
   try {
     payload = JSON.parse(raw.toString("utf8"));

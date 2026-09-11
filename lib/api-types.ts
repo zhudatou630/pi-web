@@ -9,6 +9,29 @@ export interface SubagentSettingsResponse {
   enabled: boolean;
 }
 
+export interface ImageGenerationSettingsConnection {
+  id: string;
+  label: string;
+  provider: string;
+  model: string;
+  enabled: boolean;
+  signedIn: boolean;
+  kind: "builtin" | "custom";
+}
+
+export interface ImageGenerationSettingsProvider {
+  id: string;
+  name: string;
+  signedIn: boolean;
+}
+
+export interface ImageGenerationSettingsResponse {
+  enabled: boolean;
+  defaultConnection: string;
+  connections: ImageGenerationSettingsConnection[];
+  providers: ImageGenerationSettingsProvider[];
+}
+
 export interface ShellToolSettingsResponse {
   isWindows: boolean;
   powerShellEnabled: boolean;

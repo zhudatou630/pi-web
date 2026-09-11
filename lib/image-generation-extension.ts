@@ -1,9 +1,8 @@
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
-import type { InlineExtension, LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
-import { IMAGE_TOOL_NAME, isImageRuntimeProvider } from "./image-generation";
-import { IMAGE_CONFIG_FILE, imageConfigView, readImageConfig, type ImageConfig } from "./image-generation-config";
+import { ModelRuntime, type InlineExtension, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
+import { IMAGE_TOOL_NAME } from "./image-generation";
+import { imageConfigView, isImageGenerationEnabled, resolveImageConfig, type ImageConfig } from "./image-generation-config";
 import { executeImageGeneration } from "./image-generation-runtime";
 
 export const HOST_IMAGE_EXTENSION_PATH = "<inline:image-generation>";
@@ -23,7 +22,7 @@ export function preferPiWebImageTool(base: LoadExtensionsResult): LoadExtensions
 }
 
 function connectionGuideline(config: ImageConfig): string {
-  const descriptions = Object.values(config.connections).filter((connection) => isImageRuntimeProvider(connection.provider)).map((connection) => {
+  const descriptions = Object.values(config.connections).map((connection) => {
     const options = [
       connection.capabilities.editing ? "editing" : undefined,
       connection.capabilities.sizes?.length ? `aspect ratios: ${connection.capabilities.sizes.join(", ")}` : undefined,
@@ -35,15 +34,40 @@ function connectionGuideline(config: ImageConfig): string {
   return `Configured image connections: ${descriptions.join("; ")}. Omit unsupported or undeclared options.`;
 }
 
-export function createImageGenerationExtension(agentDir: string): InlineExtension {
+export interface ImageGenerationExtensionOptions {
+  hasAuth?: (provider: string) => boolean;
+}
+
+export function createImageGenerationExtension(
+  agentDir: string,
+  options: ImageGenerationExtensionOptions = {},
+): InlineExtension {
   return {
     name: "image-generation",
     hidden: true,
-    factory: (pi) => {
-      if (!existsSync(path.join(agentDir, IMAGE_CONFIG_FILE))) return;
-      const config = readImageConfig(agentDir);
-      if (!imageConfigView(config).connections.length) return;
-      const capabilities = connectionGuideline(config);
+    factory: async (pi) => {
+      if (!isImageGenerationEnabled(agentDir)) return;
+      const config = resolveImageConfig(agentDir);
+      const configured = imageConfigView(config);
+      if (!config.enabled || !configured.connections.length) return;
+      const runtime = options.hasAuth
+        ? undefined
+        : await ModelRuntime.create({
+            authPath: path.join(agentDir, "auth.json"),
+            modelsPath: path.join(agentDir, "models.json"),
+            refreshOnCreate: false,
+          });
+      const hasAuth = options.hasAuth ?? ((provider: string) => runtime?.getProviderAuthStatus(provider).configured === true);
+      const connections = configured.connections.filter((connection) => hasAuth(connection.provider));
+      if (!connections.length) return;
+      const runnableConfig: ImageConfig = {
+        enabled: true,
+        defaultConnection: connections.some((connection) => connection.id === configured.defaultConnection)
+          ? configured.defaultConnection
+          : connections[0].id,
+        connections: Object.fromEntries(connections.map((connection) => [connection.id, connection])),
+      };
+      const capabilities = connectionGuideline(runnableConfig);
       pi.registerTool({
         name: IMAGE_TOOL_NAME,
         label: "Generate image",

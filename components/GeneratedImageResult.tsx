@@ -64,9 +64,7 @@ function formatImageTime(createdAt: number, locale: string): string {
 }
 
 function shortImageModel(details: ImageGenerationResult): string {
-  if (details.connection === "gpt-flare") return "Relay Flare";
-  if (details.connection === "gpt-sunburst") return "Relay Sunburst";
-  if (details.connection === "grok-relay") return "Relay Grok";
+  if (details.label) return details.label;
   if (details.model.includes("sunburst")) return "Sunburst";
   if (details.model.includes("flare")) return "Flare";
   if (details.model.includes("grok-imagine")) return "Grok";

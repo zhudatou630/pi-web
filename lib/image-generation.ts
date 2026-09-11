@@ -5,11 +5,19 @@ export const IMAGE_ABORT_COMMAND = "abort_image_generation";
 
 type ImageAspect = "square" | "portrait" | "landscape";
 
-export const IMAGE_RUNTIME_PROVIDERS = ["xai", "openai-codex", "antigravity", "sub2api"] as const;
-export type ImageRuntimeProvider = (typeof IMAGE_RUNTIME_PROVIDERS)[number];
+export type ImageConnectionTransport = "codex" | "antigravity" | "xai" | "openai-images";
 
-export function isImageRuntimeProvider(provider: string): provider is ImageRuntimeProvider {
-  return (IMAGE_RUNTIME_PROVIDERS as readonly string[]).includes(provider);
+export const IMAGE_CUSTOM_MODEL_PRESETS = [
+  { model: "gpt-image-2.5-flare", label: "Flare" },
+  { model: "gpt-image-2.5-sunburst", label: "Sunburst" },
+  { model: "grok-imagine-image-2.0", label: "Grok" },
+] as const;
+
+export function imageConnectionTransport(connection: { provider: string; model: string }): ImageConnectionTransport {
+  if (connection.provider === "openai-codex") return "codex";
+  if (connection.provider === "antigravity") return "antigravity";
+  if (connection.model.startsWith("grok-imagine")) return "xai";
+  return "openai-images";
 }
 
 export interface ImageCapabilities {
@@ -171,6 +179,7 @@ export interface ImageGenerationResult {
   height: number;
   prompt: string;
   connection: string;
+  label?: string;
   model: string;
   size?: string;
   resolution?: string;
@@ -191,6 +200,7 @@ export function getImageGenerationResult(value: unknown): ImageGenerationResult 
     || typeof value.mimeType !== "string" || !value.mimeType.startsWith("image/")
     || typeof value.prompt !== "string" || !value.prompt
     || typeof value.connection !== "string" || !value.connection
+    || (value.label !== undefined && (typeof value.label !== "string" || !value.label))
     || typeof value.model !== "string" || !value.model
     || typeof value.width !== "number" || !Number.isSafeInteger(value.width) || value.width <= 0
     || typeof value.height !== "number" || !Number.isSafeInteger(value.height) || value.height <= 0

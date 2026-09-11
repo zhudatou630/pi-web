@@ -1,61 +1,60 @@
 # 生图
 
-当前支持 xAI Imagine、ChatGPT 订阅（`openai-codex`）、Antigravity Banana 2，以及 sub2api 中转的 GPT Image Flare/Sunburst 和 Grok Imagine。Pi Web 通过一个轻量扩展复用已登录的 Pi provider，不修改 Pi SDK，也不走 OpenAI Platform 官方 Key 或 `pi-antigravity` 插件代码。
+Pi Web 内置生图：输入栏按钮、结果卡（改图 / 引用 / 下载）、一个 `generate_image` 工具。结果写入当前工作目录的 `.pi/generated-images/`。包插件里的同名工具会让位给这个内置工具。
 
-界面只展示 `provider` 为 `xai`、`openai-codex`、`antigravity` 或 `sub2api` 的连接。
+默认关闭。打开后才注册工具、才出现输入栏按钮。对标内置 subagents：扩展工厂一直在，关掉则不注册工具。`pi-antigravity` 自己的工具不受影响。
 
-## 配置
+## 开关
 
-在 `~/.pi/agent/images.json` 写入图片连接：
+在 Settings → Images：
+
+1. 「启用生图」总开关。改完后需要 `/reload` 当前会话，Agent 才会拿到或丢掉 `generate_image`。输入栏按钮在关掉设置面板后就会更新。
+2. 总开关打开后，列出内置连接和自定义连接，每条可单独开关。没登录的仍显示在设置里，但不会出现在生图弹窗里。
+3. 弹窗里的连接 = 总开关开 ∧ 该连接 enabled ∧ 对应 provider 已有凭证。关掉 Grok Imagine 不会自动关掉 Relay Grok，它们是两条连接。
+
+没有 `~/.pi/agent/images/settings.json`、也没有旧的 `~/.pi/agent/images.json`：总开关关，入口不出现。
+
+若还没有 settings 文件、但已经有 `images.json`：总开关视为开，并把旧连接读进来（祖父条款）。在 Settings 里拧过一次之后，以 `images/settings.json` 为准，不再读 `images.json` 里的内置条目。
+
+内置连接的模型与参数由代码认领，不写进用户文件。用户文件只存总开关、各内置 id 的 enabled、以及自定义连接。
+
+认证一律走 Pi 已登录的对应 provider（`getProviderAuth`）。生图代码不读 `auth.json`、不自己刷新 OAuth、不内嵌客户端密钥。
+
+## 内置连接
+
+| 连接 | provider | 模型 |
+|---|---|---|
+| ChatGPT Flare | `openai-codex` | `gpt-image-2.5-flare` |
+| ChatGPT Sunburst | `openai-codex` | `gpt-image-2.5-sunburst` |
+| Grok Imagine | `xai` | `grok-imagine-image-2.0` |
+| Banana 2 | `antigravity` | `gemini-3.1-flash-image` |
+
+比例产品面统一：`auto / 1:1 / 16:9 / 9:16 / 4:3 / 3:4 / 3:2 / 2:3`。卡片写实测像素；近标准比会贴到 16:9 这类标签，不假装请求比例。上游改写 size/quality 时，产品接受。
+
+ChatGPT 按所选比例发送像素：`1:1`→`1024x1024`，`16:9`→`1536x864`，`9:16`→`864x1536`，`3:2`→`1536x1024`，`2:3`→`1024x1536`，`4:3`→`1024x768`，`3:4`→`768x1024`，`auto`→`auto`。xAI 发送 `aspect_ratio`（含 `auto`）和 `resolution`。Banana 2 发送官方 `aspectRatio` 字符串；`auto` 不带该字段。分辨率映射为 `1K` / `2K`。
+
+改图一张原图，结果写入新文件。未声明 editing 的连接不显示改图按钮。
+
+## 自定义连接
+
+在 Images 页添加：选 `models.json` 里已有的 provider。Flare / Sunburst / Grok 一键带上模型 id 和方言；其他模型仍可手填。密钥和 baseUrl 仍在 Models 里，不在 Images 再存一套。
+
+方言按模型名：`grok-imagine*` 走 xAI 体，其余走 OpenAI Images 体。不要把中转写成第四个品牌。
+
+旧 `images.json` 里不在内置 id 上的条目（例如 Relay Flare / Sunburst / Grok）会在第一次写入 settings 时进 `custom`，之后可在 Images 页改或删。
 
 ```json
 {
+  "version": 1,
+  "enabled": true,
   "default": "grok-imagine",
   "connections": {
-    "grok-imagine": {
-      "label": "Grok Imagine",
-      "provider": "xai",
-      "model": "grok-imagine-image-2.0",
-      "capabilities": {
-        "editing": true,
-        "sizes": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
-        "resolutions": ["1k", "2k"],
-        "qualities": ["low", "medium"]
-      },
-      "defaults": {
-        "size": "auto",
-        "resolution": "1k",
-        "quality": "medium"
-      }
-    },
-    "chatgpt-flare": {
-      "label": "ChatGPT Flare",
-      "provider": "openai-codex",
-      "model": "gpt-image-2.5-flare",
-      "capabilities": {
-        "editing": true,
-        "sizes": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
-        "qualities": ["low", "medium", "high"]
-      },
-      "defaults": {
-        "size": "auto",
-        "quality": "medium"
-      }
-    },
-    "banana-2": {
-      "label": "Banana 2",
-      "provider": "antigravity",
-      "model": "gemini-3.1-flash-image",
-      "capabilities": {
-        "editing": true,
-        "sizes": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
-        "resolutions": ["1k", "2k"]
-      },
-      "defaults": {
-        "size": "auto",
-        "resolution": "1k"
-      }
-    },
+    "chatgpt-flare": { "enabled": true },
+    "chatgpt-sunburst": { "enabled": true },
+    "grok-imagine": { "enabled": true },
+    "banana-2": { "enabled": true }
+  },
+  "custom": {
     "gpt-flare": {
       "label": "Relay Flare",
       "provider": "sub2api",
@@ -65,58 +64,18 @@
         "sizes": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
         "qualities": ["low", "medium", "high"]
       },
-      "defaults": {
-        "size": "auto",
-        "quality": "medium"
-      }
-    },
-    "grok-relay": {
-      "label": "Relay Grok",
-      "provider": "sub2api",
-      "model": "grok-imagine-image-2.0",
-      "capabilities": {
-        "editing": true,
-        "sizes": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
-        "resolutions": ["1k", "2k"],
-        "qualities": ["low", "medium"]
-      },
-      "defaults": {
-        "size": "auto",
-        "resolution": "1k",
-        "quality": "medium"
-      }
-    },
-    "chatgpt-sunburst": {
-      "label": "ChatGPT Sunburst",
-      "provider": "openai-codex",
-      "model": "gpt-image-2.5-sunburst",
-      "capabilities": {
-        "editing": true,
-        "sizes": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
-        "qualities": ["low", "medium", "high"]
-      },
-      "defaults": {
-        "size": "auto",
-        "quality": "medium"
-      }
+      "defaults": { "size": "auto", "quality": "medium" }
     }
   }
 }
 ```
 
-- `provider` 必须是 `xai`、`openai-codex`、`antigravity` 或 `sub2api`。认证一律走 Pi 已登录的对应 provider（`getProviderAuth`），不单独保存图片 API Key，也不在生图代码里读 `auth.json` 或刷新 OAuth。
-- 用户侧选项来自连接声明：比例（`sizes` 里的宽高比，含 `auto`）、分辨率（xAI、Banana 2、sub2api Grok 声明 `1k` / `2k`）、质量。ChatGPT 和 sub2api GPT Image 不声明分辨率。Banana 2 不声明质量。
-- 改图一张原图，结果写入新文件，不覆盖原图。未声明 `editing` 的连接不显示改图按钮。
-- 参数窗口把比例显示成「自动 / 正方形 1:1 / 横屏 16:9 / 竖屏 9:16」这类标签，不展示像素。ChatGPT 订阅和 sub2api GPT Image 按所选比例发送对应像素：`1:1`→`1024x1024`，`16:9`→`1536x864`，`9:16`→`864x1536`，`3:2`→`1536x1024`，`2:3`→`1024x1536`，`4:3`→`1024x768`，`3:4`→`768x1024`，`auto`→`auto`。xAI 与 sub2api Grok 发送 `aspect_ratio`（含 `auto`）和 `resolution`。Banana 2 发送官方 `aspectRatio` 字符串；`auto` 不带该字段。分辨率映射为 `1K` / `2K`。
-- 结果卡片显示实测宽高，不显示请求比例。改图仍可换比例，并按上面映射发出。
-- xAI 与 sub2api Grok 走 `{baseUrl}/images/{generations|edits}`，发 `aspect_ratio` / `resolution` / `quality` / `n: 1` / `response_format: "b64_json"`；改图用 `image: { url, type: "image_url" }`。ChatGPT 订阅走 `chatgpt.com/backend-api/codex/images/{generations|edits}`。sub2api GPT Image 走同一中转的 `/images/{generations|edits}`，但发像素 `size`，改图用 `images[].image_url`，不发 `n` / `background` / `response_format`。Banana 2 走 Cloud Code Assist `streamGenerateContent` SSE，改图把一张原图放进 contents，返回 JPEG。上游可能改写尺寸和质量，卡片写实测像素。
-
-创建或修改配置后，对当前会话执行 `/reload`。`generate_image` 工具会出现在除“仅聊天”以外的现有工具预设中；输入栏的图片生成按钮可在所有工具预设中直接使用。
+卡片简称用连接的 `label`。
 
 ## 使用
 
-- 直接在对话中提出需求。会话里还没有图时，Agent 调用 `generate_image` 文生图；已有图时默认改上一张。Agent 负责把用户的话编译成改动说明，不另开一张。只有用户要另开一张无关的图时才设置 `new_image`。
-- 点击输入栏的图片生成按钮，明确填写提示词和该连接声明的选项。这个入口不调用语言模型。
-- 在结果卡片上点「改图」，打开同一弹窗，原图已绑死。点引用会把该图作为缩略图芯片放进输入栏；发出去后运行时把它当作 edit 的 source。本条消息里拖入的照片同样自动当原图。
+- 对话里提出需求。还没有图时 Agent 文生图；已有图时默认改上一张。只有用户要另开一张无关的图时才设置 `new_image`。
+- 输入栏按钮不调用语言模型，直接填提示词和该连接声明的选项。
+- 结果卡「改图」打开同一弹窗并绑死原图。引用会把该图作为芯片放进输入栏。
 
-结果保存到当前工作目录的 `.pi/generated-images/`，并在对话中显示预览、路径和实际模型参数。Session 只记录相对路径和元数据，不保存生成图片的 Base64。xAI、sub2api Grok 和 Banana 2 返回 JPEG；ChatGPT 订阅和 sub2api GPT Image 返回 PNG。
+`generate_image` 出现在除“仅聊天”以外的工具预设中；输入栏按钮在所有预设中都可以用。Chat-only 会话仍可通过按钮走直接生成命令。

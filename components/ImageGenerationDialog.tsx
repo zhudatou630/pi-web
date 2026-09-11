@@ -71,6 +71,10 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, onClose, o
   const [connectionId, setConnectionId] = useState(() => (
     edit?.connection && config.connections.some((item) => item.id === edit.connection) ? edit.connection : config.defaultConnection
   ));
+  useEffect(() => {
+    if (config.connections.some((item) => item.id === connectionId)) return;
+    setConnectionId(config.defaultConnection || config.connections[0]?.id || "");
+  }, [config, connectionId]);
   const connection = config.connections.find((item) => item.id === connectionId) ?? config.connections[0];
   const [size, setSize] = useState(() => selectedOption(connection, "sizes", "size", edit?.size));
   const [resolution, setResolution] = useState(() => selectedOption(connection, "resolutions", "resolution", edit?.resolution));

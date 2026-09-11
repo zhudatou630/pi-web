@@ -1,15 +1,22 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { NextResponse } from "next/server";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { IMAGE_CONFIG_FILE, imageConfigView, readImageConfig } from "@/lib/image-generation-config";
+import { ModelRuntime, getAgentDir } from "@earendil-works/pi-coding-agent";
+import {
+  imagePopupView,
+  isImageGenerationEnabled,
+  resolveImageConfig,
+} from "@/lib/image-generation-config";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const agentDir = getAgentDir();
-  if (!existsSync(path.join(agentDir, IMAGE_CONFIG_FILE))) return NextResponse.json({ available: false });
+  if (!isImageGenerationEnabled(agentDir)) return NextResponse.json({ available: false });
   try {
-    const config = imageConfigView(readImageConfig(agentDir));
-    return NextResponse.json(config.connections.length ? { available: true, config } : { available: false });
+    const config = resolveImageConfig(agentDir);
+    if (!config.enabled) return NextResponse.json({ available: false });
+    const modelRuntime = await ModelRuntime.create();
+    const view = imagePopupView(config, (provider) => modelRuntime.getProviderAuthStatus(provider).configured);
+    return NextResponse.json(view.connections.length ? { available: true, config: view } : { available: false });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

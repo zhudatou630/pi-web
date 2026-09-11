@@ -6,6 +6,10 @@ export interface Base64ImageAttachment {
   mimeType: string;
 }
 
+export interface AttachedImage extends Base64ImageAttachment {
+  previewUrl: string;
+}
+
 function isBase64DataChar(code: number): boolean {
   return (code >= 0x41 && code <= 0x5a)
     || (code >= 0x61 && code <= 0x7a)

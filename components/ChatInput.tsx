@@ -18,6 +18,7 @@ import {
   MAX_ATTACHED_IMAGE_BYTES,
   MAX_ATTACHED_IMAGES,
   isBase64ImageWithinLimits,
+  type AttachedImage,
 } from "@/lib/image-attachments";
 import {
   buildEntriesFromFiles, buildAtInsertText, buildAtMentionText, extractAtQuery, filterFileEntries,
@@ -33,12 +34,6 @@ import type { ToolPreset } from "@/lib/tool-presets";
 import { formatTokensK } from "@/lib/token-display";
 import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
 
-
-export interface AttachedImage {
-  data: string;   // base64, no prefix
-  mimeType: string;
-  previewUrl: string; // object URL for display
-}
 
 interface Props {
   onSend: (message: string, images?: AttachedImage[]) => void;
