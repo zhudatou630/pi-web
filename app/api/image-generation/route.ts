@@ -8,7 +8,8 @@ export async function GET() {
   const agentDir = getAgentDir();
   if (!existsSync(path.join(agentDir, IMAGE_CONFIG_FILE))) return NextResponse.json({ available: false });
   try {
-    return NextResponse.json({ available: true, config: imageConfigView(readImageConfig(agentDir)) });
+    const config = imageConfigView(readImageConfig(agentDir));
+    return NextResponse.json(config.connections.length ? { available: true, config } : { available: false });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

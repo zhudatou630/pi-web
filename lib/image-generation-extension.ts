@@ -3,7 +3,7 @@ import path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import type { InlineExtension, LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { IMAGE_RUNTIME_PROVIDER, IMAGE_TOOL_NAME } from "./image-generation";
-import { IMAGE_CONFIG_FILE, readImageConfig } from "./image-generation-config";
+import { IMAGE_CONFIG_FILE, imageConfigView, readImageConfig, type ImageConfig } from "./image-generation-config";
 import { executeImageGeneration } from "./image-generation-runtime";
 
 export const HOST_IMAGE_EXTENSION_PATH = "<inline:image-generation>";
@@ -22,8 +22,7 @@ export function preferPiWebImageTool(base: LoadExtensionsResult): LoadExtensions
   return changed ? { ...base, extensions } : base;
 }
 
-function connectionGuideline(agentDir: string): string {
-  const config = readImageConfig(agentDir);
+function connectionGuideline(config: ImageConfig): string {
   const descriptions = Object.values(config.connections).filter((connection) => connection.provider === IMAGE_RUNTIME_PROVIDER).map((connection) => {
     const options = [
       connection.capabilities.editing ? "editing" : undefined,
@@ -33,9 +32,7 @@ function connectionGuideline(agentDir: string): string {
     ].filter(Boolean);
     return `${connection.id}${options.length ? ` (${options.join("; ")})` : ""}`;
   });
-  return descriptions.length
-    ? `Configured image connections: ${descriptions.join("; ")}. Omit unsupported or undeclared options.`
-    : "No runnable xAI image connection is configured.";
+  return `Configured image connections: ${descriptions.join("; ")}. Omit unsupported or undeclared options.`;
 }
 
 export function createImageGenerationExtension(agentDir: string): InlineExtension {
@@ -44,7 +41,9 @@ export function createImageGenerationExtension(agentDir: string): InlineExtensio
     hidden: true,
     factory: (pi) => {
       if (!existsSync(path.join(agentDir, IMAGE_CONFIG_FILE))) return;
-      const capabilities = connectionGuideline(agentDir);
+      const config = readImageConfig(agentDir);
+      if (!imageConfigView(config).connections.length) return;
+      const capabilities = connectionGuideline(config);
       pi.registerTool({
         name: IMAGE_TOOL_NAME,
         label: "Generate image",

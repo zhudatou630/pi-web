@@ -62,7 +62,6 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, onClose, o
   editPreviewUrl?: string;
   onClose: () => void;
   onSubmit: (request: ImageGenerationRequest) => Promise<unknown>;
-  onAbort?: () => Promise<void>;
 }) {
   const { t } = useI18n();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -143,7 +142,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, onClose, o
           const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), textarea:not(:disabled), select:not(:disabled), input:not(:disabled)") ?? []).filter((element) => element.offsetParent !== null);
           if (!focusable.length) return;
           const first = focusable[0];
-          const last = focusable[lastIndex(focusable)];
+          const last = focusable[focusable.length - 1];
           if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
         }}
@@ -209,8 +208,4 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, onClose, o
       </div>
     </div>
   );
-}
-
-function lastIndex<T>(items: T[]): number {
-  return items.length - 1;
 }

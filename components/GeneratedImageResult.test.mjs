@@ -27,7 +27,7 @@ function render(value) {
   return renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
-    React.createElement(GeneratedImageResult, { value, cwd: "/project", onOpenFile() {}, onEdit() {} }),
+    React.createElement(GeneratedImageResult, { value, cwd: "/project", onEdit() {} }),
   ));
 }
 

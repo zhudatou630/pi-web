@@ -45,6 +45,16 @@ function renderMessage(message, props = {}) {
   );
 }
 
+test("renders generated image mentions as chips in user messages", () => {
+  const html = renderMessage({
+    role: "user",
+    content: '@".pi/generated-images/old image.jpg" make the light warmer',
+  }, { cwd: "/project" });
+  assert.match(html, /<img/);
+  assert.match(html, /make the light warmer/);
+  assert.doesNotMatch(html, /@&quot;\.pi\/generated-images/);
+});
+
 test("updates a reused message when its written files change", () => {
   const props = { message: { role: "assistant", content: [] } };
   assert.equal(MessageView.compare(props, props), true);

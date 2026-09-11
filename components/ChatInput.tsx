@@ -179,6 +179,10 @@ export function canClearBuiltinCommandInput(message: string, imageCount: number,
   return imageCount === 0 && message.trim() === submittedMessage;
 }
 
+export function prependImageMentions(message: string, paths: string[]): string {
+  return `${paths.map((path) => buildAtMentionText(path, false)).join("")}${message.trim()}`.trim();
+}
+
 const SLASH_SOURCES: SlashCommandSource[] = ["builtin", "extension", "prompt", "skill"];
 
 const SLASH_SOURCE_GROUP_LABEL_KEYS: Record<SlashCommandSource, string> = {
@@ -863,7 +867,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handleSend = useCallback(async () => {
     const msg = value.trim();
     if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
-    const outgoing = `${mentionedImages.map((path) => buildAtMentionText(path, false)).join("")}${msg}`.trim();
+    const outgoing = prependImageMentions(msg, mentionedImages);
     if (!outgoing && !attachedImages.length) return;
     onAudioUnlock?.();
     const builtinAllowed = !isStreaming || canRunBuiltinSlashCommandWhileStreaming(msg);
@@ -1106,7 +1110,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const sendQueued = useCallback((mode: "steer" | "followup") => {
     const msg = value.trim();
     if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
-    const outgoing = `${mentionedImages.map((path) => buildAtMentionText(path, false)).join("")}${msg}`.trim();
+    const outgoing = prependImageMentions(msg, mentionedImages);
     if (!outgoing && !attachedImages.length) return;
     onAudioUnlock?.();
     if (!attachedImages.length && onBuiltinCommand && canRunBuiltinSlashCommandWhileStreaming(msg)) {

@@ -1776,7 +1776,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     key={`${keyPrefix}-image-${messageKey}`}
                     value={imageResult}
                     cwd={messageCwd}
-                    onOpenFile={openFileFromSession}
                     onEdit={imageConfig && !sessionBusy ? (details) => { setImageEdit(details); setImageDialogOpen(true); } : undefined}
                     onMention={imageConfig ? (path) => { ownChatInputRef.current?.mentionImage(path); } : undefined}
                     showPrompt={msg.role === "custom"}

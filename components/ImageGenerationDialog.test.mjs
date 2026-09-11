@@ -19,7 +19,6 @@ function render(capabilities) {
       },
       onClose() {},
       async onSubmit() {},
-      async onAbort() {},
     }),
   ));
 }
@@ -67,7 +66,6 @@ test("the edit dialog binds the original image", () => {
       editPreviewUrl: "/api/files/preview.png?type=read",
       onClose() {},
       async onSubmit() {},
-      async onAbort() {},
     }),
   ));
   assert.match(html, /Edit image/);

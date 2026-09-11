@@ -56,7 +56,6 @@ function caption(details: ImageGenerationResult, t: (key: string) => string): st
 export function GeneratedImageResult({ value, cwd, onEdit, onMention, showPrompt = false }: {
   value: unknown;
   cwd?: string;
-  onOpenFile?: (filePath: string) => void;
   onEdit?: (details: ImageGenerationResult) => void;
   onMention?: (path: string) => void;
   showPrompt?: boolean;
@@ -65,9 +64,7 @@ export function GeneratedImageResult({ value, cwd, onEdit, onMention, showPrompt
   const details = getImageGenerationResult(value);
   const [failed, setFailed] = useState(false);
   if (!details) return null;
-  const absolutePath = details.path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(details.path)
-    ? details.path
-    : cwd ? joinFilePath(cwd, details.path) : details.path;
+  const absolutePath = absoluteImagePath(details.path, cwd);
   const preview = fileUrl(absolutePath, "read");
   const summary = caption(details, t);
 

@@ -102,6 +102,6 @@ export function imageConfigView(config: ImageConfig): ImageConfigView {
   const connections = Object.values(config.connections).filter((connection) => connection.provider === IMAGE_RUNTIME_PROVIDER);
   const defaultConnection = connections.some((connection) => connection.id === config.defaultConnection)
     ? config.defaultConnection
-    : connections[0]?.id ?? config.defaultConnection;
+    : connections[0]?.id ?? "";
   return { defaultConnection, connections };
 }

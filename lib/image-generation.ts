@@ -3,7 +3,7 @@ export const IMAGE_RESULT_TYPE = "pi-image-result";
 export const IMAGE_DIRECT_COMMAND = "generate_image_direct";
 export const IMAGE_ABORT_COMMAND = "abort_image_generation";
 
-export type ImageAspect = "square" | "portrait" | "landscape";
+type ImageAspect = "square" | "portrait" | "landscape";
 
 export const IMAGE_RUNTIME_PROVIDER = "xai";
 
@@ -28,37 +28,17 @@ export interface ImageConfigView {
   connections: ImageConnectionView[];
 }
 
-const RATIO_ASPECT: Record<string, ImageAspect> = {
-  "1:1": "square",
-  "2:3": "portrait",
-  "3:4": "portrait",
-  "9:16": "portrait",
-  "1:2": "portrait",
-  "9:19.5": "portrait",
-  "9:20": "portrait",
-  "3:2": "landscape",
-  "4:3": "landscape",
-  "16:9": "landscape",
-  "2:1": "landscape",
-  "21:9": "landscape",
-  "5:2": "landscape",
-  "19.5:9": "landscape",
-  "20:9": "landscape",
-};
-
-export function parseImageSize(size: string): { width: number; height: number } | null {
-  const match = /^(\d+)x(\d+)$/.exec(size.trim());
+function parseImageDimensions(size: string): { width: number; height: number } | null {
+  const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(size.trim()) ?? /^(\d+)x(\d+)$/.exec(size.trim());
   if (!match) return null;
   const width = Number(match[1]);
   const height = Number(match[2]);
-  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) return null;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
   return { width, height };
 }
 
-export function imageAspectOfSize(size: string): ImageAspect | null {
-  const value = size.trim();
-  if (RATIO_ASPECT[value]) return RATIO_ASPECT[value];
-  const parsed = parseImageSize(value);
+function imageAspectOfSize(size: string): ImageAspect | null {
+  const parsed = parseImageDimensions(size);
   if (!parsed) return null;
   if (parsed.width === parsed.height) return "square";
   return parsed.width > parsed.height ? "landscape" : "portrait";
@@ -74,35 +54,13 @@ export function xaiAspectRatio(size?: string): string | undefined {
   if (!size) return undefined;
   const value = size.trim();
   if (!value) return undefined;
-  if (value === "auto" || RATIO_ASPECT[value] || /^\d+(?:\.\d+)?:\d+(?:\.\d+)?$/.test(value)) return value;
+  if (value === "auto") return value;
   const aspect = imageAspectOfSize(value);
+  if (value.includes(":") && aspect) return value;
   if (aspect === "square") return "1:1";
   if (aspect === "portrait") return "2:3";
   if (aspect === "landscape") return "16:9";
   throw new Error(`Unsupported image size: ${size}`);
-}
-
-export function imageAspectOptions(sizes: string[] | undefined): Array<{ aspect: ImageAspect; size: string }> {
-  if (!sizes?.length) return [];
-  const seen = new Set<ImageAspect>();
-  const options: Array<{ aspect: ImageAspect; size: string }> = [];
-  for (const size of sizes) {
-    const aspect = imageAspectOfSize(size);
-    if (!aspect || seen.has(aspect)) continue;
-    seen.add(aspect);
-    options.push({ aspect, size });
-  }
-  return options;
-}
-
-export function sizeForImageAspect(sizes: string[] | undefined, aspect: ImageAspect): string | undefined {
-  return imageAspectOptions(sizes).find((option) => option.aspect === aspect)?.size;
-}
-
-export interface EncodedImageInput {
-  data: string;
-  mimeType: string;
-  fileName?: string;
 }
 
 const MENTIONED_IMAGE = /@"([^"]+)"|@([^\s"]+)/g;
@@ -142,11 +100,8 @@ export interface ImageGenerationRequest {
   prompt: string;
   connection?: string;
   target?: string;
-  references?: string[];
   use_last_attachment?: boolean;
   new_image?: boolean;
-  target_image?: EncodedImageInput;
-  reference_images?: EncodedImageInput[];
   size?: string;
   resolution?: string;
   quality?: string;
