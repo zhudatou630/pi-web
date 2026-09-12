@@ -43,7 +43,7 @@ function dispatchPush(payload, clients) {
   return { pending, shown };
 }
 
-test("push shows a notification when no window is visible", async () => {
+test("push always shows a notification, even when a window is visible", async () => {
   const event = dispatchPush(
     {
       title: "Session complete",
@@ -51,7 +51,10 @@ test("push shows a notification when no window is visible", async () => {
       url: "/?session=session-1",
       tag: "pi-session-complete:session-1",
     },
-    [{ url: "https://pi.test/?session=other", visibilityState: "hidden" }],
+    [
+      { url: "https://pi.test/?session=other", visibilityState: "hidden" },
+      { url: "https://pi.test/?session=session-1", visibilityState: "visible" },
+    ],
   );
   await event.pending;
 
@@ -66,19 +69,6 @@ test("push shows a notification when no window is visible", async () => {
       renotify: true,
     },
   }]);
-});
-
-test("push skips the system notification when a window is visible", async () => {
-  const event = dispatchPush(
-    { title: "Session complete", body: "Task finished.", url: "/?session=session-1" },
-    [
-      { url: "https://pi.test/?session=other", visibilityState: "hidden" },
-      { url: "https://pi.test/?session=session-1", visibilityState: "visible" },
-    ],
-  );
-  await event.pending;
-
-  assert.deepEqual(event.shown, []);
 });
 
 test("push ignores malformed payloads", async () => {
