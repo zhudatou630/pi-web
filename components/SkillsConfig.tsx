@@ -706,6 +706,7 @@ export function SkillsConfig({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          cwd,
           filePath: skill.filePath,
           disableModelInvocation: next,
         }),
@@ -731,7 +732,7 @@ export function SkillsConfig({
         return n;
       });
     }
-  }, []);
+  }, [cwd]);
 
   const selectedSkill = skills.find((s) => s.filePath === selected) ?? null;
 

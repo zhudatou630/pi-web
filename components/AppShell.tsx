@@ -42,6 +42,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
+import { useOpenSessionLeases } from "@/hooks/useOpenSessionLeases";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
@@ -243,6 +244,11 @@ export function AppShell() {
   const chatPanesContainerRef = useRef<HTMLDivElement>(null);
   const isResizingSplitRef = useRef(false);
   const [chatPanesWidth, setChatPanesWidth] = useState(CHAT_SPLIT_MIN_WIDTH);
+  const openSessionLeaseIds = useMemo(() => {
+    if (chatTabs.length === 0) return selectedSession?.id ? [selectedSession.id] : [];
+    return chatTabs.flatMap((tab) => (tab.kind === "session" && tab.session ? [tab.session.id] : []));
+  }, [chatTabs, selectedSession?.id]);
+  useOpenSessionLeases(openSessionLeaseIds);
   const handleDraftChange = useCallback((draftKey: string, value: string, imageCount: number) => {
     const dirty = Boolean(value.trim() || imageCount > 0);
     const title = getDraftTabTitle(value, translate("i18n.newSession"));

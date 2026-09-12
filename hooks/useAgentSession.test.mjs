@@ -386,10 +386,31 @@ test("keeps tool progress out of the running phase display", () => {
     source.indexOf('case "tool_execution_update"'),
     source.indexOf('case "tool_execution_end"'),
   );
+  const phaseSource = updateSource.slice(updateSource.indexOf("setAgentPhase"));
 
-  assert.doesNotMatch(updateSource, /partialResult|progress/);
+  assert.doesNotMatch(phaseSource, /partialResult|progress/);
   assert.match(updateSource, /if \(existing\?\.name === nextName\) return prev/);
   assert.doesNotMatch(chatWindowSource, /latest\?\.progress|chat\.runningNamedTool/);
+});
+
+test("reconnects active shell output to its streaming tool call", () => {
+  const updateSource = source.slice(
+    source.indexOf('case "tool_execution_update"'),
+    source.indexOf('case "tool_execution_end"'),
+  );
+  const endSource = source.slice(
+    source.indexOf('case "tool_execution_end"'),
+    source.indexOf('case "queue_update"'),
+  );
+
+  assert.match(updateSource, /name === "bash" \|\| name === "powershell"/);
+  assert.match(updateSource, /setActiveToolResults/);
+  assert.match(endSource, /setActiveToolResults[\s\S]*next\.delete\(id\)/);
+  assert.match(chatWindowSource, /const map = new Map\(activeToolResults\)/);
+  assert.equal(
+    [...chatWindowSource.matchAll(/key="streaming-process-view"[\s\S]*?toolResults=\{toolResultsMap\}/g)].length,
+    2,
+  );
 });
 
 test("plays the enabled sound once for each extension dialog", () => {

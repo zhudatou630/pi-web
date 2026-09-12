@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { homedir } from "os";
-import path from "path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { readFileSync, writeFileSync } from "fs";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
 import { setDisableModelInvocation } from "@/lib/skill-frontmatter";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
@@ -28,22 +25,24 @@ export async function GET(req: Request) {
   }
 }
 
-// PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file
+// PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file.
+// Authorize by cwd (same as GET) plus exact filePath membership in the skills
+// that cwd already loaded. Do not add install-cache directories to the file
+// allow-list: a loaded skill may be a symlink whose realpath lives anywhere.
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json() as { filePath: string; disableModelInvocation: boolean };
-    const { filePath, disableModelInvocation } = body;
+    const body = await req.json() as { cwd: string; filePath: string; disableModelInvocation: boolean };
+    const { cwd, filePath, disableModelInvocation } = body;
+    if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
     if (!filePath) return NextResponse.json({ error: "filePath required" }, { status: 400 });
-    if (!existsSync(filePath)) return NextResponse.json({ error: "file not found" }, { status: 404 });
-    const allowedRoots = new Set(await getAllowedFileRoots());
-    allowedRoots.add(getAgentDir());
-    // Globally installed skills live in ~/.agents/skills and are symlinked into
-    // the agent's skills dir; isExistingFilePathAllowed resolves the symlink, so
-    // the real target sits outside getAgentDir(). Allow the global skills root
-    // too (the SDK always treats ~/.agents/skills as trusted).
-    const globalSkillsDir = path.join(homedir(), ".agents", "skills");
-    if (existsSync(globalSkillsDir)) allowedRoots.add(globalSkillsDir);
-    if (!isExistingFilePathAllowed(filePath, allowedRoots)) {
+
+    const allowedRoots = await getAllowedFileRoots();
+    if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+
+    const { skills } = await loadSkillsWithInstallInfo(cwd);
+    if (!skills.some((skill) => skill.filePath === filePath)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 

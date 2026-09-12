@@ -574,7 +574,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
 
   const {
-    data, loading, error, messages, entryIds, historyCursor, hasEarlierMessages, streamState,
+    data, loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, streamState,
     agentRunning, directImageRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -1260,14 +1260,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // skip re-rendering on every message_update event. An inline `new Map()`
   // here used to defeat MessageView's memo() on each streamed chunk.
   const toolResultsMap = useMemo(() => {
-    const map = new Map<string, ToolResultMessage>();
+    const map = new Map(activeToolResults);
     for (const msg of messages) {
       if (msg.role === "toolResult") {
         map.set((msg as ToolResultMessage).toolCallId, msg as ToolResultMessage);
       }
     }
     return map;
-  }, [messages]);
+  }, [activeToolResults, messages]);
   const completedAssistantParts = useMemo(() => messages.map((message) => (
     message.role === "assistant" ? partitionAssistantMessage(message) : null
   )), [messages]);
@@ -1884,6 +1884,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                           message={streamingParts.processMessage}
                           isStreaming
                           isProcess
+                          toolResults={toolResultsMap}
                           cwd={messageCwd}
                           onOpenFile={openFileFromSession}
                           onOpenSession={onOpenSession}
@@ -1949,6 +1950,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       message={streamingParts.processMessage}
                       isStreaming
                       isProcess
+                      toolResults={toolResultsMap}
                       cwd={messageCwd}
                       onOpenFile={openFileFromSession}
                       onOpenSession={onOpenSession}

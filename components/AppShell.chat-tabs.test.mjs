@@ -5,6 +5,7 @@ import test from "node:test";
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const sidebarSource = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 const chatWindowSource = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
+const leaseHookSource = await readFile(new URL("../hooks/useOpenSessionLeases.ts", import.meta.url), "utf8");
 
 test("declares chat tabs and split view state in AppShell", () => {
   assert.match(source, /const \[chatTabs, setChatTabs\] = useState<ChatTabItem\[\]>\(\[\]\);/);
@@ -177,6 +178,14 @@ test("supports mobile tab bar when multiple tabs are open", () => {
   assert.match(source, /data-mobile-chat-tabs="true"/);
   assert.match(source, /isMobile=\{true\}/);
   assert.match(source, /canSplit=\{false\}/);
+});
+
+test("renews liveness leases for every mounted session tab", () => {
+  assert.match(source, /useOpenSessionLeases\(openSessionLeaseIds\)/);
+  assert.match(source, /tab\.kind === "session" && tab\.session/);
+  assert.match(leaseHookSource, /\/api\/agent\/\$\{encodeURIComponent\(id\)\}\/lease/);
+  assert.match(leaseHookSource, /SESSION_LEASE_RENEW_INTERVAL_MS = 30_000/);
+  assert.doesNotMatch(leaseHookSource, /EventSource|maintainEventsConnected/);
 });
 
 test("seamlessly joins split chat panes with a zero-gap resize handle matching sidebar theme", async () => {
