@@ -4,6 +4,8 @@ import test from "node:test";
 
 const panelSource = await readFile(new URL("./SettingsPanel.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
+const globalCssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+const loginSource = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 const shellSource = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const sidebarSource = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 const themeSource = await readFile(new URL("../hooks/useTheme.ts", import.meta.url), "utf8");
@@ -147,4 +149,15 @@ test("uses the unified SubagentIcon for sub-agents across settings and sidebar",
 
 test("uses the compact controls glyph for General", () => {
   assert.match(panelSource, /section === "general"[\s\S]*?<path d="M20 7h-9M14 17H5" \/>[\s\S]*?<circle cx="7" cy="7" r="3" \/>[\s\S]*?<circle cx="17" cy="17" r="3" \/>/);
+});
+
+test("keeps password authentication to one login field and one settings action", () => {
+  assert.equal((loginSource.match(/type="password"/g) ?? []).length, 1);
+  assert.doesNotMatch(loginSource, /type="(?:text|email)"/);
+  assert.match(loginSource, /autoComplete="current-password"/);
+  assert.match(loginSource, /!destination\.startsWith\("\/\/"\)/);
+  assert.match(panelSource, /fetch\("\/api\/web-auth", \{ method: "DELETE" \}\)/);
+  assert.match(panelSource, /t\("auth\.logOut"\)/);
+  assert.match(loginSource, /className="web-login-composer"[\s\S]*?type="password"[\s\S]*?<button type="submit"/);
+  assert.match(globalCssSource, /\.web-login-composer \{[\s\S]*?display: flex;[\s\S]*?border-radius: 14px/);
 });

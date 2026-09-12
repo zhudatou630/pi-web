@@ -126,6 +126,73 @@ function getVisibleTopBoundary(element: HTMLElement): number {
   return visibleTop;
 }
 
+export function replaceLinksWithMarkdown(
+  text: string,
+  links: Iterable<{ label: string; href: string; occurrence: number }>,
+): string | null {
+  let result = "";
+  let searchFrom = 0;
+  let replaced = false;
+
+  for (const { label, href, occurrence } of links) {
+    if (!label || !href) continue;
+    let index = 0;
+    for (let match = 0; match <= occurrence; match++) {
+      index = text.indexOf(label, match ? index + label.length : 0);
+      if (index < 0) break;
+    }
+    if (index < searchFrom) continue;
+    const escapedLabel = label.replace(/([\\[\]])/g, "\\$1");
+    const escapedHref = href.replace(/([\\()])/g, "\\$1");
+    result += `${text.slice(searchFrom, index)}[${escapedLabel}](${escapedHref})`;
+    searchFrom = index + label.length;
+    replaced = true;
+  }
+
+  return replaced ? result + text.slice(searchFrom) : null;
+}
+
+function subscribeUpwardMenuMaxHeight(
+  menu: HTMLElement,
+  onChange: (height: number) => void,
+): () => void {
+  let frameId: number | null = null;
+  const update = () => {
+    frameId = null;
+    onChange(getUpwardMenuMaxHeight(
+      menu.getBoundingClientRect().bottom,
+      getVisibleTopBoundary(menu),
+    ));
+  };
+  const scheduleUpdate = () => {
+    if (frameId !== null) cancelAnimationFrame(frameId);
+    frameId = requestAnimationFrame(update);
+  };
+
+  update();
+  const parent = menu.parentElement;
+  const layoutContainer = parent?.parentElement;
+  const anchorObserver = typeof ResizeObserver === "undefined" || !parent
+    ? null
+    : new ResizeObserver(scheduleUpdate);
+  if (parent) anchorObserver?.observe(parent);
+  if (layoutContainer) anchorObserver?.observe(layoutContainer);
+  const viewport = window.visualViewport;
+  viewport?.addEventListener("resize", scheduleUpdate);
+  viewport?.addEventListener("scroll", scheduleUpdate);
+  window.addEventListener("resize", scheduleUpdate);
+  window.addEventListener("scroll", scheduleUpdate, true);
+
+  return () => {
+    anchorObserver?.disconnect();
+    viewport?.removeEventListener("resize", scheduleUpdate);
+    viewport?.removeEventListener("scroll", scheduleUpdate);
+    window.removeEventListener("resize", scheduleUpdate);
+    window.removeEventListener("scroll", scheduleUpdate, true);
+    if (frameId !== null) cancelAnimationFrame(frameId);
+  };
+}
+
 const THINKING_LEVELS = ["auto", "off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const THINKING_LEVEL_DESC_KEYS: Record<typeof THINKING_LEVELS[number], string> = {
   auto: "chat.thinkingUseDefault", off: "chat.thinkingOff", minimal: "chat.thinkingMinimal", low: "chat.thinkingLow",
@@ -513,7 +580,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [slashMenuMaxHeight, setSlashMenuMaxHeight] = useState<number | null>(null);
   const [atQuery, setAtQuery] = useState<AtQueryMatch | null>(null);
   const [atMenuOpen, setAtMenuOpen] = useState(false);
+  const [atMenuMaxHeight, setAtMenuMaxHeight] = useState<number | null>(null);
   const [atActiveIndex, setAtActiveIndex] = useState(0);
+  const [builtinCommandPending, setBuiltinCommandPending] = useState(false);
   const [imageWarningDismissed, setImageWarningDismissed] = useState(false);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyActiveIndex, setHistoryActiveIndex] = useState(0);
@@ -541,7 +610,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const slashCommandsRequestedRef = useRef(false);
   const slashMenuRef = useRef<HTMLDivElement>(null);
   const slashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const atMenuRef = useRef<HTMLDivElement>(null);
   const atItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const builtinCommandPendingRef = useRef(false);
   const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
   const fileIndexFetchingRef = useRef<string | null>(null);
@@ -855,10 +926,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const runBuiltinCommand = useCallback(async (msg: string): Promise<boolean> => {
     if (attachedImages.length || !msg.startsWith("/") || !onBuiltinCommand) return false;
-    const result = await onBuiltinCommand(msg);
-    if (!result.handled) return false;
-    if (!result.error && canClearBuiltinCommandInput(valueRef.current, attachedImagesRef.current.length, msg)) clearInput();
-    return true;
+    if (builtinCommandPendingRef.current) return true;
+    builtinCommandPendingRef.current = true;
+    setBuiltinCommandPending(true);
+    try {
+      const result = await onBuiltinCommand(msg);
+      if (!result.handled) return false;
+      if (!result.error && canClearBuiltinCommandInput(valueRef.current, attachedImagesRef.current.length, msg)) clearInput();
+      return true;
+    } finally {
+      builtinCommandPendingRef.current = false;
+      setBuiltinCommandPending(false);
+    }
   }, [attachedImages.length, clearInput, onBuiltinCommand]);
 
   const handleSend = useCallback(async () => {
@@ -1261,12 +1340,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (atMenuOpen && atQuery !== null && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
-          setAtActiveIndex((i) => Math.min(Math.max(0, atMatches.length - 1), i + 1));
+          setAtActiveIndex((i) => atMatches.length === 0 ? 0 : (i + 1) % atMatches.length);
           return;
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setAtActiveIndex((i) => Math.max(0, i - 1));
+          setAtActiveIndex((i) => atMatches.length === 0 ? 0 : (i - 1 + atMatches.length) % atMatches.length);
           return;
         }
         if (e.key === "Escape") {
@@ -1322,15 +1401,47 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, []);
 
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    if (compact) return;
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData?.items ?? []);
     const imageItems = items.filter((item) => item.type.startsWith("image/"));
-    if (!imageItems.length) return;
+    if (!compact && imageItems.length) {
+      e.preventDefault();
+      const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
+      processImageFiles(files);
+      return;
+    }
+
+    const html = e.clipboardData.getData("text/html");
+    const text = e.clipboardData.getData("text/plain");
+    if (!html || !text) return;
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const links = Array.from(parsed.querySelectorAll("a[href]"), (link) => {
+      const label = link.textContent ?? "";
+      const range = parsed.createRange();
+      range.setStart(parsed.body, 0);
+      range.setEndBefore(link);
+      return {
+        label,
+        href: link.getAttribute("href")?.trim() ?? "",
+        occurrence: label ? range.toString().split(label).length - 1 : 0,
+      };
+    });
+    const markdown = replaceLinksWithMarkdown(text, links);
+    if (markdown === null) return;
+
+    const ta = e.currentTarget;
+    const start = ta.selectionStart;
+    const nextValue = ta.value.slice(0, start) + markdown + ta.value.slice(ta.selectionEnd);
     e.preventDefault();
-    const files = imageItems.map((item) => item.getAsFile()).filter((f): f is File => f !== null);
-    processImageFiles(files);
-  }, [compact, processImageFiles]);
+    valueRef.current = nextValue;
+    setValue(nextValue);
+    setHistoryMenuOpen(false);
+    updateAtQuery(nextValue, start + markdown.length);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(start + markdown.length, start + markdown.length);
+    });
+  }, [compact, processImageFiles, updateAtQuery]);
 
   useEffect(() => {
     if (slashQuery === null) {
@@ -1396,44 +1507,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       setSlashMenuMaxHeight(null);
       return;
     }
-
     const menu = slashMenuRef.current;
     if (!menu) return;
-
-    let frameId: number | null = null;
-    const update = () => {
-      frameId = null;
-      const nextHeight = getUpwardMenuMaxHeight(
-        menu.getBoundingClientRect().bottom,
-        getVisibleTopBoundary(menu),
-      );
+    return subscribeUpwardMenuMaxHeight(menu, (nextHeight) => {
       setSlashMenuMaxHeight((current) => current === nextHeight ? current : nextHeight);
-    };
-    const scheduleUpdate = () => {
-      if (frameId !== null) cancelAnimationFrame(frameId);
-      frameId = requestAnimationFrame(update);
-    };
-
-    update();
-    const anchorObserver = typeof ResizeObserver === "undefined" || !menu.parentElement
-      ? null
-      : new ResizeObserver(scheduleUpdate);
-    if (menu.parentElement) anchorObserver?.observe(menu.parentElement);
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", scheduleUpdate);
-    viewport?.addEventListener("scroll", scheduleUpdate);
-    window.addEventListener("resize", scheduleUpdate);
-    window.addEventListener("scroll", scheduleUpdate, true);
-
-    return () => {
-      anchorObserver?.disconnect();
-      viewport?.removeEventListener("resize", scheduleUpdate);
-      viewport?.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
-      window.removeEventListener("scroll", scheduleUpdate, true);
-      if (frameId !== null) cancelAnimationFrame(frameId);
-    };
+    });
   }, [slashMenuOpen, slashQuery]);
+
+  useLayoutEffect(() => {
+    if (!atMenuOpen || atQuery === null) {
+      setAtMenuMaxHeight(null);
+      return;
+    }
+    const menu = atMenuRef.current;
+    if (!menu) return;
+    return subscribeUpwardMenuMaxHeight(menu, (nextHeight) => {
+      setAtMenuMaxHeight((current) => current === nextHeight ? current : nextHeight);
+    });
+  }, [atMenuOpen, atQuery]);
 
   // Build model options: prefer modelList (has provider info), fallback to modelNames
   const modelOptions: ModelSelectorOption[] = (() => {
@@ -1519,13 +1610,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         : undefined;
 
   return (
-    <div
+    <fieldset
+      disabled={builtinCommandPending}
+      aria-busy={builtinCommandPending}
       className={compact ? "chat-input is-compact" : "chat-input"}
       style={{
         flexShrink: 0,
+        minWidth: 0,
+        margin: 0,
+        border: 0,
         background: "transparent",
         padding: compact ? 0 : "0 16px 8px",
         paddingRight: compact ? 0 : 16,
+        opacity: builtinCommandPending ? 0.5 : 1,
+        transition: "opacity 0.15s",
       }}
     >
       {/* Hidden file input */}
@@ -1986,6 +2084,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               : "";
             return (
               <div
+                ref={atMenuRef}
                 style={{
                   position: "absolute",
                   left: 0,
@@ -1997,7 +2096,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   borderRadius: 4,
                   boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
                   overflow: "hidden",
-                  maxHeight: "min(48vh, 400px)",
+                  boxSizing: "border-box",
+                  display: "flex",
+                  flexDirection: "column",
+                  maxHeight: atMenuMaxHeight === null
+                    ? "min(48vh, 400px)"
+                    : `min(48vh, 400px, ${atMenuMaxHeight}px)`,
                 }}
               >
                 <div
@@ -2010,6 +2114,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     gap: 8,
                     fontSize: 11,
                     color: "var(--text-dim)",
+                    flexShrink: 0,
                   }}
                 >
                   <span>
@@ -2019,7 +2124,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   </span>
                    <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
                 </div>
-                <div id={fileListboxId} role="listbox" style={{ maxHeight: "calc(min(48vh, 400px) - 34px)", overflowY: "auto", padding: 4 }}>
+                <div id={fileListboxId} role="listbox" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 4 }}>
                   {!indexLoading && atMatches.length === 0 ? (
                     <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>
                        {needsServerSearch && !serverResultInUse ? t("chat.searching") : t("chat.noMatchingFiles")}
@@ -3033,6 +3138,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
         </div>}
       </div>
-    </div>
+    </fieldset>
   );
 });

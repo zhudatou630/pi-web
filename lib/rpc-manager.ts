@@ -13,7 +13,7 @@ import {
   createProjectCommandBashOperations,
   preferUserBashExtension,
 } from "./project-command-env";
-import { cacheSessionPath, invalidateSessionListCache, resolveSessionPath } from "./session-reader";
+import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, resolveSessionPath } from "./session-reader";
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
@@ -767,21 +767,31 @@ export class AgentSessionWrapper {
 
           const sessionDir = sessionManager.getSessionDir();
           let newSessionFile: string;
+          let forkedManager: SessionManager;
 
           if (!entry.parentId) {
             // Fork before the first message: create an empty session linked to this one
-            const newManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
-            newManager.newSession({ parentSession: currentSessionFile });
-            newSessionFile = newManager.getSessionFile() as string;
+            forkedManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
+            forkedManager.newSession({ parentSession: currentSessionFile });
+            newSessionFile = forkedManager.getSessionFile() as string;
           } else {
             // Fork after some history: copy path up to (but not including) the fork point
-            const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
-            const forkedPath = sourceManager.createBranchedSession(entry.parentId);
+            forkedManager = SessionManager.open(currentSessionFile, sessionDir);
+            const forkedPath = forkedManager.createBranchedSession(entry.parentId);
             if (!forkedPath) throw new Error("Failed to create forked session");
             newSessionFile = forkedPath;
           }
 
-          const newSessionId = SessionManager.open(newSessionFile, sessionDir).getSessionId();
+          if (!existsSync(newSessionFile)) {
+            const header = forkedManager.getHeader();
+            if (!header) throw new Error("Forked session is missing a session header");
+            const content = [header, ...forkedManager.getEntries()]
+              .map((forkedEntry) => JSON.stringify(forkedEntry))
+              .join("\n") + "\n";
+            writeFileSync(newSessionFile, content, { encoding: "utf8", flag: "wx" });
+          }
+
+          const newSessionId = forkedManager.getSessionId();
           cacheSessionPath(newSessionId, newSessionFile);
           invalidateSessionListCache();
           await this.shutdownAfterSessionReplacement("fork");
@@ -2205,22 +2215,30 @@ export async function startRpcSession(
       : undefined;
     const defaultProvider = services.settingsManager.getDefaultProvider();
     const defaultModelId = services.settingsManager.getDefaultModel();
-    const hasExistingMessages = sessionManager.getBranch().some((entry) => entry.type === "message");
-    const initial = hasExistingMessages
-      ? { scopedModels: [...scope.scopedModels] }
-      : selectInitialModelScope(scope, {
+    const branch = sessionManager.getBranch();
+    const hasExistingMessages = branch.some((entry) => entry.type === "message");
+    const savedModel = hasExistingMessages
+      ? getLatestModelChange(branch as unknown as SessionEntry[])
+      : null;
+    const restoredModel = savedModel
+      ? services.modelRuntime.getModel(savedModel.provider, savedModel.modelId)
+      : undefined;
+    const initial = hasExistingMessages ? null : selectInitialModelScope(scope, {
         ...(effectiveInitialModel ? { requestedModel: effectiveInitialModel } : {}),
         ...(defaultProvider && defaultModelId
           ? { defaultModel: { provider: defaultProvider, modelId: defaultModelId } }
           : {}),
         ...(thinkingLevel ? { thinkingLevel } : {}),
       });
+    const startupModel = restoredModel && services.modelRuntime.hasConfiguredAuth(restoredModel.provider)
+      ? restoredModel
+      : initial?.model;
     const { session: inner } = await createAgentSessionFromServices({
       services,
       sessionManager,
-      ...(initial.model ? { model: initial.model } : {}),
-      ...(initial.thinkingLevel ? { thinkingLevel: initial.thinkingLevel } : {}),
-      ...(initial.scopedModels.length > 0 ? { scopedModels: initial.scopedModels } : {}),
+      ...(startupModel ? { model: startupModel } : {}),
+      ...(initial?.thinkingLevel ? { thinkingLevel: initial.thinkingLevel } : {}),
+      ...(scope.scopedModels.length > 0 ? { scopedModels: [...scope.scopedModels] } : {}),
       ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
       ...(subagentResources ? { excludeTools: [...SUBAGENT_CONTROL_TOOL_NAMES] } : {}),
     });

@@ -11,10 +11,31 @@ const jiti = createJiti(import.meta.url, {
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
+const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("@/lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+
+test("preserves pasted HTML links as Markdown without changing plain text layout", () => {
+  const link = (label, href, occurrence = 0) => ({ label, href, occurrence });
+
+  assert.equal(
+    replaceLinksWithMarkdown(
+      "Jobs:\nEngineer\nEngineer\nDone",
+      [link("Engineer", "https://example.com/1"), link("Engineer", "https://example.com/2", 1)],
+    ),
+    "Jobs:\n[Engineer](https://example.com/1)\n[Engineer](https://example.com/2)\nDone",
+  );
+  assert.equal(
+    replaceLinksWithMarkdown("Read [this]", [link("[this]", "https://example.com/a_(b)")]),
+    "Read [\\[this\\]](https://example.com/a_\\(b\\))",
+  );
+  assert.equal(
+    replaceLinksWithMarkdown("Engineer and Engineer", [link("Engineer", "https://example.com/job", 1)]),
+    "Engineer and [Engineer](https://example.com/job)",
+  );
+  assert.equal(replaceLinksWithMarkdown("plain text", [link("missing", "https://example.com")]), null);
+});
 
 test("prepends quoted image paths to outgoing messages", () => {
   assert.equal(
@@ -842,4 +863,11 @@ test("keeps over-limit restored images in the composer and blocks send", () => {
   } finally {
     clearDraft(draftKey);
   }
+});
+
+test("wraps @ file picker selection and caps the menu above the composer", () => {
+  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /setAtActiveIndex\(\(i\) => atMatches\.length === 0 \? 0 : \(i \+ 1\) % atMatches\.length\)/);
+  assert.match(source, /min\(48vh, 400px, \$\{atMenuMaxHeight\}px\)/);
+  assert.match(source, /<fieldset\s+disabled=\{builtinCommandPending\}\s+aria-busy=\{builtinCommandPending\}/);
 });

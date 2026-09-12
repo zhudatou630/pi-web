@@ -22,6 +22,7 @@ import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources, SUBAGENT_META_TYPE } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
 import { writePrivateFileAtomicSync } from "@/lib/atomic-file";
+import { jsonResponse } from "@/lib/json-response";
 
 interface SessionFileRecord {
   path: string;
@@ -101,8 +102,14 @@ function commitSessionDeletes(filePaths: readonly string[]): void {
   const staged: Array<{ original: string; staged: string }> = [];
   try {
     for (const original of filePaths) {
+      if (!existsSync(original)) continue;
       const stagedPath = join(dirname(original), `.${basename(original)}-${randomUUID()}.deleting`);
-      renameSync(original, stagedPath);
+      try {
+        renameSync(original, stagedPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
       staged.push({ original, staged: stagedPath });
     }
   } catch (error) {
@@ -193,7 +200,7 @@ export async function GET(
       transient: !filePath || !existsSync(filePath),
     }]))[0] : null;
 
-    return NextResponse.json({
+    return jsonResponse(req, {
       sessionId: id,
       filePath,
       info,
@@ -242,8 +249,23 @@ export async function DELETE(
   const { id } = await params;
   try {
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    const missingOnDisk = !filePath || !existsSync(filePath);
+    if (missingOnDisk) {
+      const runtime = getRpcSession(id);
+      if (!runtime) {
+        if (filePath) invalidateSessionPathCache(id);
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+      const persistedPath = runtime.sessionFile || filePath;
+      await runtime.shutdown();
+      if (persistedPath) {
+        try { unlinkSync(persistedPath); } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
+      invalidateSessionPathCache(id);
+      invalidateSessionListCache();
+      return NextResponse.json({ ok: true });
     }
 
     // Build and validate the complete mutation plan before touching any file.

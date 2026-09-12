@@ -24,7 +24,8 @@ import {
   resolveActiveLocateEntryId,
   shouldAbortLocateOnLeafChange,
 } from "@/lib/chat-outline-jump";
-import { MessageView } from "./MessageView";
+import { getModelDisplayName, MessageView } from "./MessageView";
+import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -1787,7 +1788,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     key={`${keyPrefix}-view-${messageKey}`}
                     message={msg}
                     modelName={options.isTurnEnd && msg.role === "assistant"
-                      ? modelNames[`${msg.provider}:${msg.model}`] ?? modelNames[msg.model]
+                      ? getModelDisplayName(msg.provider ?? "", msg.model ?? "", modelNames)
                       : undefined}
                     toolResults={toolResultsMap}
                     cwd={messageCwd}
@@ -1795,7 +1796,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     onOpenSession={onOpenSession}
                     entryId={entryIds[idx]}
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
-                    onFork={sessionBusy || isNew || (idx === 0 && msg.role === "user") ? undefined : handleChatFork}
+                    onFork={sessionBusy || isNew ? undefined : handleChatFork}
                     forking={forkingEntryId === entryIds[idx]}
                     onNavigate={sessionBusy ? undefined : handleNavigate}
                     prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
@@ -2325,6 +2326,7 @@ function ExtensionDialog({
   const [value, setValue] = useState(request.method === "editor" ? request.prefill ?? "" : "");
   const [collapsed, setCollapsed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const focusFirstOption = useCallback((element: HTMLDivElement | null) => element?.focus(), []);
   const summary = getExtensionDialogSummary(request);
   const remainingSeconds = request.expiresAt === undefined
     ? null
@@ -2465,14 +2467,14 @@ function ExtensionDialog({
           }}
         >
           {request.method === "confirm" && (
-            <div style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{request.message}</div>
+            <MarkdownBody>{request.message}</MarkdownBody>
           )}
           {request.method === "select" && (
             <div
               onKeyDown={(event) => {
                 if (!["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"].includes(event.key)) return;
-                const buttons = Array.from(event.currentTarget.querySelectorAll("button"));
-                const index = buttons.indexOf(event.target as HTMLButtonElement);
+                const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-extension-option]"));
+                const index = buttons.indexOf(event.target as HTMLElement);
                 if (index < 0) return;
                 event.preventDefault();
                 const next = event.key === "Home" ? 0
@@ -2484,10 +2486,19 @@ function ExtensionDialog({
               style={{ display: "grid", gap: 8 }}
             >
               {request.options.map((option, index) => (
-                <button
+                <div
                   key={option}
-                  autoFocus={index === 0}
+                  role="button"
+                  tabIndex={0}
+                  data-extension-option
+                  aria-label={option}
+                  ref={index === 0 ? focusFirstOption : undefined}
                   onClick={() => onRespond(request, { value: option })}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    onRespond(request, { value: option });
+                  }}
                   style={{
                     width: "100%",
                     padding: "9px 10px",
@@ -2501,8 +2512,10 @@ function ExtensionDialog({
                     overflowWrap: "anywhere",
                   }}
                 >
-                  {option}
-                </button>
+                  <div inert>
+                    <MarkdownBody>{option}</MarkdownBody>
+                  </div>
+                </div>
               ))}
             </div>
           )}

@@ -36,6 +36,7 @@ import {
   ConfigSplitView,
 } from "./SettingsUi";
 import { ProviderIcon } from "./ProviderIcon";
+import { ProviderUsageSummary } from "./ProviderUsageSummary";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1546,6 +1547,8 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
           </>
         )}
       </div>
+
+      <ProviderUsageSummary providerId={provider.id} enabled={provider.loggedIn} />
     </div>
   );
 }
@@ -1678,6 +1681,8 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
            {removing ? t("i18n.removing") : t("i18n.disconnect")}
         </button>
       )}
+
+      <ProviderUsageSummary providerId={provider.id} enabled={provider.configured} />
     </div>
   );
 }

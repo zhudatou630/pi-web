@@ -41,6 +41,11 @@ function ProviderUsageContent({ providerId, enabled }: { providerId: string; ena
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     setRefreshDone(false);
     setSnapshot(null);
+    setError(null);
+    if (!enabled) {
+      try { localStorage.removeItem(`${STORAGE_PREFIX}${providerId}`); } catch {}
+      return;
+    }
     try {
       const cached = localStorage.getItem(`${STORAGE_PREFIX}${providerId}`);
       if (cached) {
@@ -52,11 +57,10 @@ function ProviderUsageContent({ providerId, enabled }: { providerId: string; ena
     } catch {
       try { localStorage.removeItem(`${STORAGE_PREFIX}${providerId}`); } catch {}
     }
-    setError(null);
     return () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     };
-  }, [providerId]);
+  }, [providerId, enabled]);
 
   const query = useCallback(async () => {
     setQuerying(true);

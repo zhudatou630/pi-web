@@ -163,6 +163,25 @@ interface Props {
   isProcess?: boolean;
 }
 
+export function getModelDisplayName(
+  provider: string,
+  responseModel: string,
+  modelNames?: Record<string, string>,
+): string {
+  const normalizedProvider = provider.toLowerCase();
+  const normalizedResponse = responseModel.toLowerCase();
+  const configured = Object.entries(modelNames ?? {}).flatMap(([key, name]) => {
+    const separator = key.indexOf(":");
+    return separator > 0 && key.slice(0, separator).toLowerCase() === normalizedProvider
+      ? [{ id: key.slice(separator + 1).toLowerCase(), name }]
+      : [];
+  });
+  return configured.find((model) => model.id === normalizedResponse)?.name
+    ?? configured.find((model) => normalizedResponse.endsWith(`/${model.id}`))?.name
+    ?? Object.entries(modelNames ?? {}).find(([key]) => key.toLowerCase() === normalizedResponse)?.[1]
+    ?? (provider && responseModel ? `${provider}/${responseModel}` : responseModel);
+}
+
 function elapsedSeconds(start?: number, end?: number): number | undefined {
   if (typeof start !== "number" || typeof end !== "number") return undefined;
   const secs = Math.round((end - start) / 1000);

@@ -358,8 +358,13 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
 
   assert.match(source, /streamReducer,[\s\S]*type ClientAssistantMessageEvent/);
   assert.doesNotMatch(source, /streamingMessageRef/);
-  assert.match(connectedSource, /dispatch\(\{ type: "end" \}\)/);
+  assert.match(connectedSource, /dispatch\(\{ type: event\.isStreaming === true \? "resume" : "end" \}\)/);
   assert.match(connectedSource, /event\.isStreaming === true/);
+  assert.match(source, /dispatch\(\{ type: "resume" \}\)/);
+  assert.doesNotMatch(
+    source.slice(source.indexOf("// Load session on mount"), source.indexOf("if (agentState?.state)")),
+    /dispatch\(\{ type: "start" \}\)/,
+  );
   assert.match(connectedSource, /agentRunningRef\.current = true/);
   assert.match(streamSource, /msg\?\.role === "assistant"[\s\S]*dispatch\(\{ type: "snapshot", message: msg \}\)/);
   assert.match(streamSource, /event\.assistantMessageEvent as ClientAssistantMessageEvent/);

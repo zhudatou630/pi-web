@@ -1196,7 +1196,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (event.type !== "message_update") flushStreamDeltas();
     switch (event.type) {
       case "connected": {
-        dispatch({ type: "end" });
+        dispatch({ type: event.isStreaming === true ? "resume" : "end" });
         if (event.isStreaming === true) {
           cancelEventStreamGrace();
           sdkAgentActiveRef.current = true;
@@ -2240,7 +2240,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             setAgentPhase(agentState.state.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
             observeDecodeFromStartRef.current = false;
             decodeClockRef.current = null;
-            dispatch({ type: "start" });
+            dispatch({ type: "resume" });
             void maintainEventsConnected(session.id);
             if (!agentState.state.isStreaming && agentState.state.isPromptRunning) {
               void waitForPromptSettlement(session.id);

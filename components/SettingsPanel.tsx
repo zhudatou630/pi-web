@@ -33,6 +33,7 @@ import { AgentsConfig } from "./AgentsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { ImagesConfig } from "./ImagesConfig";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
+import { setupPushSubscription } from "@/lib/push-client";
 import { ConfigButton, ConfigSwitch } from "./SettingsUi";
 
 interface Props {
@@ -87,10 +88,21 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [autoSessionTitle, setAutoSessionTitle] = useState(true);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
+  const [pushRegistering, setPushRegistering] = useState(false);
+  const [pushStatus, setPushStatus] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
+  const [webAuthEnabled, setWebAuthEnabled] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
     setAutoSessionTitle(isAutoSessionTitleEnabled());
+  }, []);
+  useEffect(() => {
+    void fetch("/api/web-auth")
+      .then((response) => response.ok ? response.json() : null)
+      .then((data: { enabled?: boolean } | null) => setWebAuthEnabled(data?.enabled === true))
+      .catch(() => {});
   }, []);
   useEffect(() => subscribeNotificationPermission(setNotificationPermission), []);
   const themeOptions: { id: ThemePreference; label: string }[] = [
@@ -133,6 +145,42 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       setShellError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setShellSaving(false);
+    }
+  };
+
+  const registerPush = async () => {
+    if (pushRegistering) return;
+    setPushRegistering(true);
+    setPushStatus(null);
+    try {
+      if (typeof window === "undefined" || !("Notification" in window)) {
+        throw new Error("unsupported or not permitted");
+      }
+      const permission = Notification.permission === "default"
+        ? await Notification.requestPermission()
+        : Notification.permission;
+      if (permission !== "granted") throw new Error("unsupported or not permitted");
+      const ok = await setupPushSubscription(locale);
+      if (!ok) throw new Error("unsupported or not permitted");
+      setPushStatus({ kind: "ok", message: t("settings.pushRegistered") });
+    } catch (cause) {
+      setPushStatus({ kind: "error", message: `${t("settings.pushRegisterFailed")} ${cause instanceof Error ? cause.message : String(cause)}` });
+    } finally {
+      setPushRegistering(false);
+    }
+  };
+
+  const logOut = async () => {
+    setLoggingOut(true);
+    setLogoutError("");
+    try {
+      const response = await fetch("/api/web-auth", { method: "DELETE" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      window.location.replace("/login");
+    } catch {
+      setLogoutError(t("auth.logoutFailed"));
+    } finally {
+      setLoggingOut(false);
     }
   };
 
@@ -319,6 +367,18 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         </div>
       </section>
 
+      {webAuthEnabled && (
+        <section className="settings-general-section">
+          <ConfigButton variant="secondary" disabled={loggingOut} onClick={() => void logOut()}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 17l5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            </svg>
+            {loggingOut ? t("auth.loggingOut") : t("auth.logOut")}
+          </ConfigButton>
+          {logoutError && <p role="alert" className="settings-general-error">{logoutError}</p>}
+        </section>
+      )}
+
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.typography")}</h3>
         <p className="settings-general-description">{t("settings.typographyDescription")}</p>
@@ -338,6 +398,30 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
             <span>{t("settings.fontMonoDownload")}</span>
           </a>
         </div>
+      </section>
+
+      <section className="settings-general-section">
+        <h3 className="settings-general-heading">{t("settings.pushPermission")}</h3>
+        <p className="settings-general-description">{t("settings.pushPermissionDescription")}</p>
+        <div className="settings-font-link-row">
+          <ConfigButton
+            size="small"
+            variant="secondary"
+            disabled={pushRegistering}
+            onClick={() => void registerPush()}
+          >
+            {pushRegistering ? t("settings.pushRegisterLoading") : t("settings.pushRegister")}
+          </ConfigButton>
+        </div>
+        {pushStatus && (
+          <p
+            role="status"
+            className="settings-general-error"
+            style={pushStatus.kind === "ok" ? { color: "var(--accent)" } : undefined}
+          >
+            {pushStatus.message}
+          </p>
+        )}
       </section>
       </div>
       </div>

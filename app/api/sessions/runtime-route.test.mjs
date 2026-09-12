@@ -298,3 +298,45 @@ test("live detail and state routes work without a persisted JSONL file", async (
     state: { isStreaming: true },
   });
 });
+
+test("deletes an unpersisted runtime session without a JSONL file", async (t) => {
+  const previousRegistry = globalThis.__piSessions;
+  const id = "live-unpersisted-delete";
+  let shutdowns = 0;
+  globalThis.__piSessions = new Map([[id, {
+    sessionFile: `/tmp/pi-web-unpersisted-${process.pid}.jsonl`,
+    shutdown: async () => { shutdowns += 1; },
+  }]]);
+  t.after(() => {
+    globalThis.__piSessions = previousRegistry;
+    invalidateSessionPathCache(id);
+    invalidateSessionListCache();
+  });
+
+  const response = await deleteSession(
+    new Request(`http://localhost/api/sessions/${id}`, { method: "DELETE" }),
+    { params: Promise.resolve({ id }) },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(shutdowns, 1);
+});
+
+test("does not treat a missing file as deleted when no runtime session exists", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-web-missing-delete-"));
+  const id = "missing-on-disk";
+  const filePath = join(dir, `${id}.jsonl`);
+  cacheSessionPath(id, filePath);
+  t.after(async () => {
+    invalidateSessionPathCache(id);
+    invalidateSessionListCache();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const response = await deleteSession(
+    new Request(`http://localhost/api/sessions/${id}`, { method: "DELETE" }),
+    { params: Promise.resolve({ id }) },
+  );
+
+  assert.equal(response.status, 404);
+});
