@@ -24,12 +24,11 @@ import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-ty
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
-  ExtensionWidgetItem,
   SessionEntry,
   SessionInfo,
   SessionMessageEntry,
 } from "./types";
-import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS, type HeadlessCustomUiTui } from "./custom-ui-terminal";
+import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS } from "./custom-ui-terminal";
 import {
   createSubagentExtension,
   preferPiWebSubagentExtension,
@@ -75,22 +74,6 @@ type CustomUiComponent = {
   handleInput?: (data: string) => void;
   dispose?: () => void;
   invalidate?: () => void;
-};
-
-type ExtensionWidgetComponent = {
-  render: (width: number) => unknown;
-  dispose?: () => void;
-};
-
-type ExtensionWidgetFactory = (tui: HeadlessCustomUiTui, theme: Theme) => unknown;
-
-type ActiveExtensionWidget = {
-  key: string;
-  component: ExtensionWidgetComponent;
-  placement: "aboveEditor" | "belowEditor";
-  generation: number;
-  clearEmitted: boolean;
-  rendered: boolean;
 };
 
 type ActiveCustomUi = {
@@ -228,11 +211,6 @@ export class AgentSessionWrapper {
   private pendingUiRequests = new Map<string, AgentEvent>();
   private activeCustomUis = new Map<string, ActiveCustomUi>();
   private extensionUiAbortController = new AbortController();
-  private extensionStatuses = new Map<string, string>();
-  private extensionWidgets = new Map<string, ExtensionWidgetItem>();
-  private activeExtensionWidgets = new Map<string, ActiveExtensionWidget>();
-  private extensionWidgetGenerations = new Map<string, number>();
-  private extensionWidgetsResetting = false;
   private pendingPromptCount = 0;
   private directImageAbortController: AbortController | null = null;
   private directImageRequestId: string | null = null;
@@ -742,8 +720,6 @@ export class AgentSessionWrapper {
             : null,
           systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
-          extensionStatuses: this.getExtensionStatuses(),
-          extensionWidgets: this.getExtensionWidgets(),
         };
       }
 
@@ -1046,8 +1022,6 @@ export class AgentSessionWrapper {
         }
         const activeToolNames = this.inner.getActiveToolNames();
         await this.waitForExtensionsBound();
-        this.extensionStatuses.clear();
-        this.resetExtensionWidgetsForReload();
         this.syncProjectTrust();
         await this.inner.reload();
         this.setActiveToolSelection(activeToolNames);
@@ -1134,8 +1108,6 @@ export class AgentSessionWrapper {
     this.pendingUiResponses.clear();
     this.pendingUiRequests.clear();
     this.activeToolEvents.clear();
-    this.clearExtensionWidgets(false);
-
     const finishDispose = () => {
       try {
         this.inner.dispose();
@@ -1204,209 +1176,6 @@ export class AgentSessionWrapper {
     const pending = this.pendingUiResponses.get(response.id);
     if (!pending) return;
     pending.resolve(response);
-  }
-
-  private getExtensionStatuses(): Array<{ key: string; text: string }> {
-    return Array.from(this.extensionStatuses, ([key, text]) => ({ key, text }));
-  }
-
-  private getExtensionWidgets(): ExtensionWidgetItem[] {
-    return Array.from(this.extensionWidgets.values());
-  }
-
-  private nextExtensionWidgetGeneration(key: string): number {
-    const generation = (this.extensionWidgetGenerations.get(key) ?? 0) + 1;
-    this.extensionWidgetGenerations.set(key, generation);
-    return generation;
-  }
-
-  private disposeExtensionWidgetComponent(component: unknown): void {
-    if (!component || (typeof component !== "object" && typeof component !== "function")) return;
-    const dispose = (component as { dispose?: unknown }).dispose;
-    if (typeof dispose !== "function") return;
-    try {
-      dispose.call(component);
-    } catch {
-      // Ignore dispose errors from extension widgets.
-    }
-  }
-
-  private emitExtensionWidgetClear(key: string): void {
-    this.emit({
-      type: "extension_ui_request",
-      id: randomUUID(),
-      method: "setWidget",
-      widgetKey: key,
-      widgetLines: undefined,
-      widgetPlacement: undefined,
-    } as ExtensionUiRequest as AgentEvent);
-  }
-
-  private clearExtensionWidget(key: string, emitClear = true): number {
-    const generation = this.nextExtensionWidgetGeneration(key);
-
-    const active = this.activeExtensionWidgets.get(key);
-    this.activeExtensionWidgets.delete(key);
-    this.extensionWidgets.delete(key);
-    if (active) this.disposeExtensionWidgetComponent(active.component);
-    if (this.extensionWidgetGenerations.get(key) !== generation) return generation;
-    if (emitClear) this.emitExtensionWidgetClear(key);
-    return generation;
-  }
-
-  private clearExtensionWidgets(emitClear: boolean): void {
-    const keys = new Set([
-      ...this.extensionWidgets.keys(),
-      ...this.activeExtensionWidgets.keys(),
-    ]);
-    for (const key of keys) this.clearExtensionWidget(key, emitClear);
-  }
-
-  private resetExtensionWidgetsForReload(): void {
-    this.extensionWidgetsResetting = true;
-    try {
-      const factoryKeys = [...this.activeExtensionWidgets.keys()];
-      for (const key of factoryKeys) this.clearExtensionWidget(key);
-      // Keep the existing array-widget reload behavior: snapshots are reset and
-      // the next extension session_start repopulates them.
-      this.extensionWidgets.clear();
-    } finally {
-      this.extensionWidgetsResetting = false;
-    }
-  }
-
-  private emitExtensionWidgetError(key: string, error: unknown): void {
-    this.emit({
-      type: "extension_error",
-      extensionPath: `extension-widget:${key}`,
-      event: "setWidget",
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  private failExtensionWidget(
-    key: string,
-    generation: number,
-    error: unknown,
-    clearEmitted: boolean,
-    component?: unknown,
-  ): void {
-    if (this.extensionWidgetGenerations.get(key) !== generation) {
-      this.disposeExtensionWidgetComponent(component);
-      return;
-    }
-
-    const active = this.activeExtensionWidgets.get(key);
-    let shouldEmitClear = !clearEmitted;
-    if (active?.generation === generation) {
-      shouldEmitClear = active.rendered || !active.clearEmitted;
-      this.activeExtensionWidgets.delete(key);
-      this.disposeExtensionWidgetComponent(active.component);
-    } else {
-      this.disposeExtensionWidgetComponent(component);
-    }
-    if (this.extensionWidgetGenerations.get(key) !== generation) {
-      this.emitExtensionWidgetError(key, error);
-      return;
-    }
-    this.extensionWidgets.delete(key);
-    if (shouldEmitClear) this.emitExtensionWidgetClear(key);
-    this.emitExtensionWidgetError(key, error);
-  }
-
-  private renderExtensionWidget(active: ActiveExtensionWidget): void {
-    if (
-      this.activeExtensionWidgets.get(active.key) !== active
-      || this.extensionWidgetGenerations.get(active.key) !== active.generation
-    ) return;
-
-    let lines: unknown;
-    try {
-      lines = active.component.render(DEFAULT_CUSTOM_UI_COLUMNS);
-    } catch (error) {
-      this.failExtensionWidget(active.key, active.generation, error, active.clearEmitted);
-      return;
-    }
-    if (!Array.isArray(lines) || !lines.every((line) => typeof line === "string")) {
-      this.failExtensionWidget(
-        active.key,
-        active.generation,
-        new Error("Extension widget render must return string[]"),
-        active.clearEmitted,
-      );
-      return;
-    }
-    if (
-      this.activeExtensionWidgets.get(active.key) !== active
-      || this.extensionWidgetGenerations.get(active.key) !== active.generation
-    ) return;
-
-    const widgetLines = lines as string[];
-    this.extensionWidgets.set(active.key, {
-      key: active.key,
-      lines: widgetLines,
-      placement: active.placement,
-    });
-    active.rendered = true;
-    this.emit({
-      type: "extension_ui_request",
-      id: randomUUID(),
-      method: "setWidget",
-      widgetKey: active.key,
-      widgetLines,
-      widgetPlacement: active.placement,
-    } as ExtensionUiRequest as AgentEvent);
-  }
-
-  private setExtensionWidgetFactory(
-    key: string,
-    factory: ExtensionWidgetFactory,
-    options?: { placement?: "aboveEditor" | "belowEditor" },
-  ): void {
-    const hadPrevious = this.extensionWidgets.has(key) || this.activeExtensionWidgets.has(key);
-    const generation = this.clearExtensionWidget(key, hadPrevious);
-    if (this.extensionWidgetGenerations.get(key) !== generation) return;
-    const tui = createHeadlessCustomUiTui(() => {
-      const active = this.activeExtensionWidgets.get(key);
-      if (active?.generation === generation) this.renderExtensionWidget(active);
-    }, DEFAULT_CUSTOM_UI_COLUMNS);
-
-    let component: unknown;
-    try {
-      component = factory(tui, PLAIN_TEXT_THEME);
-    } catch (error) {
-      this.failExtensionWidget(key, generation, error, hadPrevious);
-      return;
-    }
-    if (this.extensionWidgetGenerations.get(key) !== generation) {
-      this.disposeExtensionWidgetComponent(component);
-      return;
-    }
-    if (
-      !component
-      || (typeof component !== "object" && typeof component !== "function")
-      || typeof (component as { render?: unknown }).render !== "function"
-    ) {
-      this.failExtensionWidget(
-        key,
-        generation,
-        new Error("Extension widget factory must return a component with render(width)"),
-        hadPrevious,
-        component,
-      );
-      return;
-    }
-
-    const active: ActiveExtensionWidget = {
-      key,
-      component: component as ExtensionWidgetComponent,
-      placement: options?.placement ?? "aboveEditor",
-      generation,
-      clearEmitted: hadPrevious,
-      rendered: false,
-    };
-    this.activeExtensionWidgets.set(key, active);
-    this.renderExtensionWidget(active);
   }
 
   private getCustomUiWidth(options: unknown): number {
@@ -1642,8 +1411,6 @@ export class AgentSessionWrapper {
       },
       onTerminalInput: () => () => {},
       setStatus: (key, text) => {
-        if (text === undefined) this.extensionStatuses.delete(key);
-        else this.extensionStatuses.set(key, text);
         this.emit({
           type: "extension_ui_request",
           id: randomUUID(),
@@ -1657,29 +1424,7 @@ export class AgentSessionWrapper {
       setWorkingIndicator: () => {},
       setHiddenThinkingLabel: () => {},
       setWidget: (key, content, options) => {
-        if (!this._alive || this.extensionWidgetsResetting) return;
-        if (typeof content === "function") {
-          this.setExtensionWidgetFactory(
-            key,
-            content as unknown as ExtensionWidgetFactory,
-            options,
-          );
-          return;
-        }
         if (content !== undefined && !Array.isArray(content)) return;
-        if (content === undefined) {
-          this.clearExtensionWidget(key);
-          return;
-        }
-        const generation = this.activeExtensionWidgets.has(key)
-          ? this.clearExtensionWidget(key)
-          : this.nextExtensionWidgetGeneration(key);
-        if (this.extensionWidgetGenerations.get(key) !== generation) return;
-        this.extensionWidgets.set(key, {
-          key,
-          lines: content,
-          placement: options?.placement ?? "aboveEditor",
-        });
         this.emit({
           type: "extension_ui_request",
           id: randomUUID(),
@@ -1743,8 +1488,6 @@ export class AgentSessionWrapper {
       },
       switchSession: async () => ({ cancelled: true }),
       reload: async () => {
-        this.extensionStatuses.clear();
-        this.resetExtensionWidgetsForReload();
         this.syncProjectTrust();
         await this.inner.reload({
           beforeSessionStart: () => {

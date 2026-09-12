@@ -24,7 +24,7 @@ test("unifies running status indicator across sidebar, chat tabs, process steps,
   assert.match(sidebarSource, /function RunningSessionIndicator\(\)[\s\S]*?<LivePulseBeacon/);
   assert.match(sidebarSource, /activity\.running > 0[\s\S]*?<LivePulseBeacon size=\{12\}/);
   assert.match(tabSource, /\{isRunning \? \(\s*<LivePulseBeacon/);
-  assert.match(chatWindowSource, /\{isStreaming && \([\s\S]*?<LivePulseBeacon/);
+  assert.match(chatWindowSource, /\{isStreaming \? \([\s\S]*?<LivePulseBeacon/);
   assert.match(panelSource, /if \(status === "running" \|\| status === "starting"\) \{\s*return <LivePulseBeacon/);
   assert.match(beaconSource, /export function LivePulseBeacon/);
 });

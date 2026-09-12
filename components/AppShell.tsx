@@ -941,8 +941,6 @@ export function AppShell() {
       rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
     }
     activeNewSessionDraftKeyRef.current = null;
-    // Adopt an explicitly selected session before the sidebar reports its cwd.
-    const projectKey = workspaceKeyOf(session);
     // In split/multi-tab mode the sidebar project may belong to another chat
     // tab. Prefer the selected session, and compare only resolved identities;
     // transient session cwd fallbacks are not comparable project keys.

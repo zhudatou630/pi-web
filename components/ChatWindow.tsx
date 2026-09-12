@@ -389,7 +389,7 @@ function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: str
   }, [startTime]);
 
   return (
-    <span style={{ fontSize: 11.5, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+    <span style={{ fontSize: 11.5, color: "var(--accent)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
       {formatProcessDuration(elapsed, t)}
     </span>
   );

@@ -22,7 +22,6 @@ import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources, SUBAGENT_META_TYPE } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
 import { writePrivateFileAtomicSync } from "@/lib/atomic-file";
-import { jsonResponse } from "@/lib/json-response";
 
 interface SessionFileRecord {
   path: string;
@@ -200,7 +199,7 @@ export async function GET(
       transient: !filePath || !existsSync(filePath),
     }]))[0] : null;
 
-    return jsonResponse(req, {
+    return NextResponse.json({
       sessionId: id,
       filePath,
       info,

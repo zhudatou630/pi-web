@@ -212,17 +212,6 @@ export type ExtensionUiResponse =
   | { type: "extension_ui_response"; id: string; confirmed: boolean }
   | { type: "extension_ui_response"; id: string; cancelled: true };
 
-export interface ExtensionStatusItem {
-  key: string;
-  text: string;
-}
-
-export interface ExtensionWidgetItem {
-  key: string;
-  lines: string[];
-  placement: "aboveEditor" | "belowEditor";
-}
-
 export interface SessionMessageEntry extends SessionEntryBase {
   type: "message";
   message: AgentMessage;
@@ -293,8 +282,6 @@ export type SessionEntry =
   | CustomMessageEntry
   | LabelEntry
   | SessionInfoEntry;
-
-export type FileEntry = SessionHeader | SessionEntry;
 
 export interface BranchPreview {
   role?: "user" | "assistant";

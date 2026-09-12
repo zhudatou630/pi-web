@@ -1,17 +1,7 @@
-export const VISIBLE_PAGE_SIZE = 50;
-export const MOUNTED_GROUP_LIMIT = VISIBLE_PAGE_SIZE;
+export const MOUNTED_GROUP_LIMIT = 50;
 export const MOUNT_WINDOW_SHIFT = 25;
 export const CHAT_SCROLL_TAIL_TOLERANCE = 8;
 export const CHAT_SCROLL_REATTACH_TOLERANCE = 96;
-
-export function getVisibleRenderWindow(totalCount: number, visibleCount: number): {
-  startIndex: number;
-  hasMore: boolean;
-} {
-  const clampedVisibleCount = Math.min(Math.max(visibleCount, 0), Math.max(totalCount, 0));
-  const startIndex = Math.max(0, totalCount - clampedVisibleCount);
-  return { startIndex, hasMore: startIndex > 0 };
-}
 
 /** Mount at most `limit` grouped nodes, dropping newer ones first when the user has scrolled up. */
 export function getMountedRange(
@@ -25,10 +15,6 @@ export function getMountedRange(
   const endIndex = total - unmountedNewer;
   const startIndex = Math.max(0, endIndex - limit);
   return { startIndex, endIndex };
-}
-
-export function getNextVisibleCount(currentVisibleCount: number, pageSize = VISIBLE_PAGE_SIZE): number {
-  return currentVisibleCount + pageSize;
 }
 
 export function captureScrollDistance(scrollHeight: number, scrollTop: number): number {

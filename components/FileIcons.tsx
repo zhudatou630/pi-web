@@ -39,14 +39,13 @@ type CatppuccinIconName =
   | "yaml"
   | "go";
 
-const CATPPUCCIN_ICONS_ROOT = "/icons/catppuccin";
+const CATPPUCCIN_ICONS_ROOT = "/icons/catppuccin/latte";
 
 function CatppuccinIcon({ name, size = 14 }: IconProps & { name: CatppuccinIconName }) {
   const style = {
     width: size,
     height: size,
-    "--catppuccin-icon-light": `url(${CATPPUCCIN_ICONS_ROOT}/latte/${name}.svg)`,
-    "--catppuccin-icon-dark": `url(${CATPPUCCIN_ICONS_ROOT}/mocha/${name}.svg)`,
+    "--catppuccin-icon": `url(${CATPPUCCIN_ICONS_ROOT}/${name}.svg)`,
   } as CSSProperties;
 
   return (
