@@ -24,6 +24,10 @@ import {
   setAutoSessionTitleEnabled,
 } from "@/lib/auto-session-title-preference";
 import {
+  isShiftEnterToSend,
+  setShiftEnterToSend,
+} from "@/lib/shift-enter-to-send-preference";
+import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
@@ -87,6 +91,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [autoSessionTitle, setAutoSessionTitle] = useState(true);
+  const [shiftEnterToSend, setShiftEnterToSendState] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
   const [pushRegistering, setPushRegistering] = useState(false);
   const [pushStatus, setPushStatus] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
@@ -97,6 +102,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
     setAutoSessionTitle(isAutoSessionTitleEnabled());
+    setShiftEnterToSendState(isShiftEnterToSend());
   }, []);
   useEffect(() => {
     void fetch("/api/web-auth")
@@ -291,6 +297,17 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
               step={1}
               value={fontSize}
               onChange={(event) => setFontSize(Number(event.target.value))}
+            />
+          </div>
+          <div className="settings-chat-option settings-chat-switch-option">
+            <span>{t("settings.shiftEnterToSend")}</span>
+            <ConfigSwitch
+              checked={shiftEnterToSend}
+              label={t("settings.shiftEnterToSend")}
+              onChange={(enabled) => {
+                setShiftEnterToSend(enabled);
+                setShiftEnterToSendState(enabled);
+              }}
             />
           </div>
           <div className="settings-chat-option settings-chat-switch-option">

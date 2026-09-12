@@ -211,7 +211,7 @@ test("stale fresh-session completion cannot replace the active composer", () => 
   );
   const newSessionSource = appShellSource.slice(
     appShellSource.indexOf("  const handleNewSession = useCallback"),
-    appShellSource.indexOf("  // Global keyboard shortcuts"),
+    appShellSource.indexOf("  // Client-built transient SessionInfo"),
   );
   const createdSource = appShellSource.slice(
     appShellSource.indexOf("  const handleSessionCreated = useCallback"),

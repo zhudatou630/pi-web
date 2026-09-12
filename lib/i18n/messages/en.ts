@@ -30,6 +30,7 @@ export const enLocale: LocalePlugin = {
     "settings.thinkingExpandedDefault": "Expand thinking blocks by default",
     "settings.autoSessionTitle": "Automatically name new sessions",
     "settings.chat": "Chat",
+    "settings.shiftEnterToSend": "Send with Shift+Enter",
     "settings.quoteSelection": "Show actions for selected text",
     "settings.browserNotifications": "Browser notifications",
     "settings.browserNotificationsEnable": "Enable",

@@ -4,7 +4,6 @@ import { ImageGenerationDialog } from "./ImageGenerationDialog";
 import { encodeFilePathForApi, joinFilePath } from "@/lib/file-paths";
 import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { AttachedImage } from "@/lib/image-attachments";
-import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
@@ -909,13 +908,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     soundedExtensionDialogIdRef.current = extensionDialog.id;
     playDoneSoundRef.current();
   }, [completionNotificationsEnabled, extensionDialog]);
-
-  // Only the focused pane owns the global Esc shortcut. The registration's
-  // cleanup is owner-safe, so an old pane cannot clear a newer handler.
-  useEffect(() => {
-    if (!isFocusedPane || !sessionBusy) return;
-    return registerAbortHandler(handleActiveAbort);
-  }, [isFocusedPane, sessionBusy, handleActiveAbort]);
 
   // --- Lazy-load historical messages ---
   // Mount at most MOUNTED_GROUP_LIMIT grouped nodes. Scroll-up either slides

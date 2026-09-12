@@ -33,7 +33,7 @@
   --accent-hover: #1d4ed8;
   --accent-contrast: #ffffff;
   --user-bg: #f3f4f6;
-  --user-border: color-mix(in srgb, var(--accent) 10%, var(--border));
+  --user-border: var(--border);
   --assistant-bg: #ffffff;
   --tool-bg: #f9fafb;
   --bg-subtle: rgba(0,0,0,0.03);
@@ -58,7 +58,7 @@ html.dark {
   --accent-hover: #93c5fd;
   --accent-contrast: #0f172a;
   --user-bg: #22252b;
-  --user-border: color-mix(in srgb, var(--accent) 12%, var(--border));
+  --user-border: var(--border);
   --assistant-bg: #1a1a1a;
   --tool-bg: #1f2937;
   --bg-subtle: rgba(255,255,255,0.04);
@@ -1023,7 +1023,7 @@ pre, code {
 }
 .markdown-user-message p {
   white-space: pre-wrap;
-  margin: 0 0 5px;
+  margin: 0 0 6px;
 }
 .markdown-user-message p:last-child {
   margin-bottom: 0;

@@ -30,6 +30,7 @@ export const zhCNLocale: LocalePlugin = {
     "settings.thinkingExpandedDefault": "默认展开思考块",
     "settings.autoSessionTitle": "自动为新会话生成标题",
     "settings.chat": "对话",
+    "settings.shiftEnterToSend": "用 Shift+Enter 发送",
     "settings.quoteSelection": "选中文字时显示提问浮窗",
     "settings.browserNotifications": "浏览器通知",
     "settings.browserNotificationsEnable": "开启",

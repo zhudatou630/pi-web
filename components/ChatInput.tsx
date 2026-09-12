@@ -32,6 +32,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
 import type { ToolPreset } from "@/lib/tool-presets";
 import { formatTokensK } from "@/lib/token-display";
+import { isShiftEnterToSend } from "@/lib/shift-enter-to-send-preference";
 import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
 
 
@@ -1257,7 +1258,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       const nativeEvent = e.nativeEvent;
-      const sendShortcut = e.key === "Enter" && !e.shiftKey && (!isMobile || e.ctrlKey || e.metaKey);
+      const sendWithShift = !isMobile && isShiftEnterToSend();
+      const sendShortcut = e.key === "Enter" && e.shiftKey === sendWithShift && (!isMobile || e.ctrlKey || e.metaKey);
       const recentlyComposed = Date.now() - lastCompositionEndAtRef.current < COMPOSITION_END_ENTER_GRACE_MS;
       const isComposing =
         isComposingRef.current ||

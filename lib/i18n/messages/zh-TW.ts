@@ -30,6 +30,7 @@ export const zhTWLocale: LocalePlugin = {
     "settings.thinkingExpandedDefault": "預設展開思考區塊",
     "settings.autoSessionTitle": "自動為新工作階段產生標題",
     "settings.chat": "對話",
+    "settings.shiftEnterToSend": "用 Shift+Enter 傳送",
     "settings.quoteSelection": "選取文字時顯示提問浮窗",
     "settings.browserNotifications": "瀏覽器通知",
     "settings.browserNotificationsEnable": "開啟",

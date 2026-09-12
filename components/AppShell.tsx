@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useGlobalKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { ChatTabBar } from "./ChatTabBar";
@@ -1043,12 +1042,6 @@ export function AppShell() {
     if (isMobile) setSidebarOpen(false);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
   }, [router, isMobile, translate]);
-
-  // Global keyboard shortcuts (handles Esc, Ctrl+Alt+N etc.)
-  useGlobalKeyboardShortcuts({
-    onNewSession: (cwd: string) => handleNewSession(`kb-${Date.now()}`, cwd),
-    activeCwd,
-  });
 
   // Client-built transient SessionInfo (new session / fork) lacks the
   // server-computed projectKey, which the same-project check in
