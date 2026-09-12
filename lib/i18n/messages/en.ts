@@ -330,6 +330,8 @@ export const enLocale: LocalePlugin = {
     "chat.toolCalls": "tool calls",
     "chat.step": "step",
     "chat.steps": "steps",
+    "chat.workedFor": "Worked for {duration}",
+    "chat.workedForSteps": "Worked for {duration} · {count} {steps}",
     "chat.collapseProcess": "Collapse process details",
     "chat.expandProcess": "Expand process details",
     "chat.filesWritten": "Files changed",

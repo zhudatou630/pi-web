@@ -358,9 +358,32 @@ function latchedLiveProcessSummary(
   return latched.current ?? fallback;
 }
 
+function elapsedProcessSeconds(start?: number, end?: number): number | undefined {
+  if (
+    typeof start !== "number" ||
+    typeof end !== "number" ||
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start
+  ) {
+    return undefined;
+  }
+  return Math.max(1, Math.round((end - start) / 1000));
+}
+
+function formatProcessDuration(seconds: number, t: (key: string, params?: Record<string, string | number>) => string): string {
+  if (seconds < 60) {
+    return t("chat.decodeSeconds", { seconds });
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return t("chat.decodeMinutes", { minutes, seconds: remainingSeconds });
+}
+
 function ProcessDetailsGroup({
   messageCount,
   toolCallCount,
+  durationSeconds,
   defaultExpanded = false,
   reveal = false,
   isMobile = false,
@@ -371,6 +394,7 @@ function ProcessDetailsGroup({
 }: {
   messageCount: number;
   toolCallCount: number;
+  durationSeconds?: number;
   defaultExpanded?: boolean;
   reveal?: boolean;
   isMobile?: boolean;
@@ -391,7 +415,22 @@ function ProcessDetailsGroup({
 
   const isPanelOpen = expanded || reveal;
   const totalSteps = toolCallCount > 0 ? toolCallCount : messageCount;
-  const stepsLabel = `${totalSteps} ${t(totalSteps === 1 ? "chat.step" : "chat.steps")}`;
+  const stepsUnit = t(totalSteps === 1 ? "chat.step" : "chat.steps");
+  let stepsLabel: string;
+  if (durationSeconds !== undefined && durationSeconds > 0) {
+    const formattedDuration = formatProcessDuration(durationSeconds, t);
+    if (toolCallCount > 0) {
+      stepsLabel = t("chat.workedForSteps", {
+        duration: formattedDuration,
+        count: totalSteps,
+        steps: stepsUnit,
+      });
+    } else {
+      stepsLabel = t("chat.workedFor", { duration: formattedDuration });
+    }
+  } else {
+    stepsLabel = `${totalSteps} ${stepsUnit}`;
+  }
 
   // Automatically keep scrolled to the latest step on mount/update unless user scrolled up
   useLayoutEffect(() => {
@@ -412,17 +451,7 @@ function ProcessDetailsGroup({
   };
 
   return (
-    <div
-      style={{
-        marginBottom: 10,
-        borderRadius: 6,
-        border: "1px solid var(--border)",
-        background: "color-mix(in srgb, var(--bg) 88%, var(--bg-subtle))",
-        overflow: "hidden",
-        isolation: "isolate",
-        transition: "background 0.15s ease, border-color 0.15s ease",
-      }}
-    >
+    <div style={{ marginBottom: 8 }}>
       <button
         type="button"
         aria-expanded={isPanelOpen}
@@ -430,69 +459,81 @@ function ProcessDetailsGroup({
           userToggledRef.current = true;
           setExpanded((v) => !v);
         }}
+        className="process-details-summary"
         style={{
-          display: "flex",
+          display: "inline-flex",
           alignItems: "center",
-          gap: 6,
-          width: "100%",
-          minHeight: 28,
-          padding: "4px 8px",
+          gap: 5,
+          maxWidth: "100%",
+          minHeight: 24,
+          padding: "2px 0",
           border: "none",
-          borderBottom: isPanelOpen ? "1px solid color-mix(in srgb, var(--border) 35%, transparent)" : "none",
           background: "none",
           color: "var(--text-muted)",
           cursor: "pointer",
-          fontSize: 11.5,
-          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+          fontFamily: "var(--font-ui)",
           textAlign: "left",
-          transition: "background 0.12s ease",
+          transition: "color 0.12s ease",
         }}
         title={isPanelOpen ? t("chat.collapseProcess") : t("chat.expandProcess")}
       >
+        {isStreaming ? (
+          <>
+            <LivePulseBeacon size={12} />
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                minWidth: 0,
+                fontSize: 11.5,
+                color: "var(--accent)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {activeStepSummary || t("chat.thinking")}
+            </span>
+          </>
+        ) : (
+          <span
+            data-summary-label=""
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontWeight: 500,
+              color: "var(--text-muted)",
+              lineHeight: 1.35,
+              transition: "color 0.12s ease",
+            }}
+          >
+            {stepsLabel}
+          </span>
+        )}
         <svg
-          width="10"
-          height="10"
-          viewBox="0 0 12 12"
+          width="9"
+          height="9"
+          viewBox="0 0 10 10"
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="1.6"
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
             flexShrink: 0,
+            opacity: 0.5,
             display: "block",
             transform: isPanelOpen ? "rotate(90deg)" : "none",
             transition: "transform 0.15s ease",
           }}
+          aria-hidden="true"
         >
-          <polyline points="4 2.5 7.5 6 4 9.5" />
+          <polyline points="3.5 2 6.5 5 3.5 8" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)", flexShrink: 0, lineHeight: 1.35 }}>
-          {stepsLabel}
-        </span>
-        {isStreaming && (
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              minWidth: 0,
-              marginLeft: 4,
-              fontSize: 11,
-              color: "var(--accent)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <LivePulseBeacon size={14} />
-            {activeStepSummary && (
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {activeStepSummary}
-              </span>
-            )}
-          </span>
-        )}
       </button>
       {isPanelOpen && (
         <div
@@ -503,7 +544,7 @@ function ProcessDetailsGroup({
             display: "flex",
             flexDirection: "column",
             gap: 1,
-            padding: "4px 6px 4px 6px",
+            padding: "2px 0 4px 0",
             maxHeight: isMobile ? 220 : 280,
             overflowY: "auto",
             overflowX: "hidden",
@@ -1869,11 +1910,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   if (isLiveTail && streamingParts.processMessage) {
                     markOutlineTarget([]);
                     const liveProcessActive = isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage));
+                    const streamingDuration = elapsedProcessSeconds(
+                      streamingParts.processMessage.timestamp,
+                      streamingParts.processMessage.completedAt,
+                    );
                     rendered.push(
                       <ProcessDetailsGroup
                         key="streaming-process-group"
                         messageCount={1}
                         toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
+                        durationSeconds={streamingDuration}
                         defaultExpanded
                         isMobile={isMobile}
                         activeStepSummary={latchedLiveProcessSummary(
@@ -1916,9 +1962,18 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 let processToolCount = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
+                let processStartTime: number | undefined;
+                let processEndTime: number | undefined;
 
                 for (let processIdx = processStartIdx; processIdx <= processEndIdx; processIdx++) {
                   const processMessage = messages[processIdx];
+                  if (typeof processMessage.timestamp === "number" && Number.isFinite(processMessage.timestamp)) {
+                    processStartTime = processStartTime === undefined ? processMessage.timestamp : Math.min(processStartTime, processMessage.timestamp);
+                    processEndTime = processEndTime === undefined ? processMessage.timestamp : Math.max(processEndTime, processMessage.timestamp);
+                  }
+                  if (processMessage.role === "assistant" && typeof processMessage.completedAt === "number" && Number.isFinite(processMessage.completedAt)) {
+                    processEndTime = processEndTime === undefined ? processMessage.completedAt : Math.max(processEndTime, processMessage.completedAt);
+                  }
                   if (processMessage.role === "custom") {
                     processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
                     revealProcess ||= Boolean(locateEntryId && locateEntryId === entryIds[processIdx]);
@@ -1981,6 +2036,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   t("chat.thinking"),
                 );
 
+                const processDurationSeconds = elapsedProcessSeconds(processStartTime, processEndTime);
+
                 if (processViews.length > 0) {
                   markOutlineTarget(processEntryIds);
                   rendered.push(
@@ -1992,6 +2049,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       <ProcessDetailsGroup
                         messageCount={processViews.length}
                         toolCallCount={processToolCount}
+                        durationSeconds={processDurationSeconds}
                         defaultExpanded={!finalAnswerMessage && endIdx === messages.length}
                         reveal={revealProcess}
                         isMobile={isMobile}

@@ -330,6 +330,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.toolCalls": "次工具调用",
     "chat.step": "步操作",
     "chat.steps": "步操作",
+    "chat.workedFor": "处理了 {duration}",
+    "chat.workedForSteps": "处理了 {duration} · {count} 步操作",
     "chat.collapseProcess": "收起处理详情",
     "chat.expandProcess": "展开处理详情",
     "chat.filesWritten": "改动的文件",

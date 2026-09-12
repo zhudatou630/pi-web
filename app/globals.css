@@ -924,10 +924,15 @@ pre, code {
   border: none !important;
   background: transparent !important;
   border-radius: 4px;
+  margin: 0 -4px !important;
+  padding: 0 4px !important;
   transition: background 0.1s ease;
 }
+.process-details-list [data-step-trigger] {
+  padding-left: 0 !important;
+}
 .process-details-list [data-message-text] {
-  padding: 3px 8px 3px 27px;
+  padding: 3px 4px 3px 20px;
   margin: 1px 0;
   border-radius: 4px;
   transition: background 0.1s ease;
@@ -940,6 +945,34 @@ pre, code {
   .process-details-list [data-step-card]:hover,
   .process-details-list [data-message-text]:hover {
     background: color-mix(in srgb, var(--bg-hover) 75%, transparent) !important;
+  }
+}
+
+.process-details-list [data-step-chevron] {
+  opacity: 0.25 !important;
+  transition: opacity 0.15s ease, transform 0.15s ease !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .process-details-list [data-step-chevron] {
+    opacity: 0 !important;
+  }
+  .process-details-list [data-step-card]:hover [data-step-chevron] {
+    opacity: 0.5 !important;
+  }
+}
+
+.process-details-list [data-step-trigger]:focus-visible [data-step-chevron],
+.process-details-list [data-step-card] [data-step-trigger][aria-expanded="true"] [data-step-chevron] {
+  opacity: 0.6 !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .process-details-summary:hover {
+    color: var(--text) !important;
+  }
+  .process-details-summary:hover [data-summary-label] {
+    color: var(--text) !important;
   }
 }
 

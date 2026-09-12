@@ -774,6 +774,7 @@ function ProcessErrorCard({ error }: { error: string }) {
         <button
           type="button"
           aria-expanded={expanded}
+          data-step-trigger=""
           aria-controls={detailId}
           title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
           onClick={() => setExpanded((v) => !v)}
@@ -806,7 +807,7 @@ function ProcessErrorCard({ error }: { error: string }) {
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1.35 }}>
             {preview}
           </span>
-          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
+          <svg data-step-chevron="" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
@@ -957,6 +958,7 @@ export function ThinkingBlock({ block, duration, startTime, isStreaming, session
         <button
           type="button"
           aria-expanded={expanded}
+          data-step-trigger=""
           aria-label={`${t("i18n.thinking")}${preview ? `: ${preview}` : ""}`}
           title={t("i18n.thinking")}
           onClick={() => setExpanded((v) => !v)}
@@ -978,11 +980,11 @@ export function ThinkingBlock({ block, duration, startTime, isStreaming, session
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85, transform: "translateY(0.5px)" }}>
             <ThinkingIcon active={expanded} size={12} />
           </div>
-          <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: "var(--text)", fontFamily: "var(--font-ui)", fontWeight: 500, fontSize: 11.5, lineHeight: 1.35, flexShrink: 0 }}>
             {t("i18n.thinking")}
           </span>
           {!expanded && (
-            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1.35 }}>
+            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-ui)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1.35 }}>
               {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
             </span>
           )}
@@ -993,6 +995,7 @@ export function ThinkingBlock({ block, duration, startTime, isStreaming, session
             <LiveDuration startTime={startTime} />
           ) : null}
           <svg
+            data-step-chevron=""
             width="9"
             height="9"
             viewBox="0 0 10 10"
@@ -1069,6 +1072,9 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
       {/* ── Tool call header ── */}
       <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
         <button
+          type="button"
+          aria-expanded={expanded}
+          data-step-trigger=""
           onClick={() => setExpanded((v) => !v)}
           style={{
             display: "flex",
@@ -1098,7 +1104,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
           {duration !== undefined && (
             <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>{duration}s</span>
           )}
-          <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
+          <svg data-step-chevron="" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
@@ -1561,6 +1567,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
       <button
         type="button"
         aria-expanded={expanded}
+        data-step-trigger=""
         title={label}
         onClick={() => setExpanded((value) => !value)}
         style={{
@@ -1583,7 +1590,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
         <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 500 }}>
           {label}
         </span>
-        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} aria-hidden="true">
+        <svg data-step-chevron="" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} aria-hidden="true">
           <polyline points="2 3.5 5 6.5 8 3.5" />
         </svg>
       </button>
