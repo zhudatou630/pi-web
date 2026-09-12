@@ -497,6 +497,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
   const [mentionedImages, setMentionedImages] = useState<string[]>([]);
   const mentionedImagesRef = useRef<string[]>([]);
@@ -531,6 +532,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const toolDropdownRef = useRef<HTMLDivElement>(null);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
+  const imageMenuRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1288,6 +1290,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return;
       }
 
+      if (e.key === "Escape" && imageMenuOpen) {
+        e.preventDefault();
+        setImageMenuOpen(false);
+        return;
+      }
+
       // Esc stops the agent when no slash/@/history menu or IME composition is active.
       if (e.key === "Escape" && !isComposing && isStreaming && onAbort) {
         e.preventDefault();
@@ -1304,7 +1312,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
+    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, imageMenuOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
   );
 
   const handleInput = useCallback(() => {
@@ -1463,6 +1471,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(target)) {
         setThinkingDropdownOpen(false);
       }
+      if (imageMenuRef.current && !imageMenuRef.current.contains(target)) {
+        setImageMenuOpen(false);
+      }
       if (controlsMenuRef.current && !controlsMenuRef.current.contains(target)) {
         setControlsMenuOpen(false);
       }
@@ -1486,6 +1497,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!isStreaming) return;
     setThinkingDropdownOpen(false);
     setToolDropdownOpen(false);
+    setImageMenuOpen(false);
   }, [isStreaming]);
 
   const historyListboxId = `${menuId}-history`;
@@ -2361,53 +2373,121 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
           {/* LEFT: attach + model selector (idle) or steer/followup toggle (streaming) */}
           <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: isMobile ? 1 : 2 }}>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              title={t("chat.attachImage")}
-              aria-label={t("chat.attachImage")}
-              style={{
-                flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                width: isMobile ? 24 : 28, height: isMobile ? 32 : 28, padding: 0,
-                marginRight: isMobile ? -2 : (onOpenImageGeneration ? 0 : -5),
-                background: "none", border: "none",
-                borderRadius: 4,
-                color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
-                cursor: "pointer",
-                opacity: 1,
-                lineHeight: 1,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(e) => {
-                if (isMobile) return;
-                e.currentTarget.style.background = "var(--bg-hover)";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
-              }}
-              onMouseLeave={(e) => {
-                if (isMobile) return;
-                e.currentTarget.style.background = "none";
-                e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text-muted)";
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "translateY(-1px)" }}>
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
-            </button>
-            {onOpenImageGeneration && (
+            <div ref={imageMenuRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
               <button
                 type="button"
-                onClick={onOpenImageGeneration}
-                disabled={isStreaming}
-                title={t("image.title")}
-                aria-label={t("image.title")}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-text-muted hover:bg-bg-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => {
+                  if (onOpenImageGeneration) {
+                    setImageMenuOpen((prev) => !prev);
+                  } else {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                title={onOpenImageGeneration ? `${t("chat.attachImage")} / ${t("image.title")}` : t("chat.attachImage")}
+                aria-label={onOpenImageGeneration ? `${t("chat.attachImage")} / ${t("image.title")}` : t("chat.attachImage")}
+                aria-expanded={onOpenImageGeneration ? imageMenuOpen : undefined}
+                aria-haspopup={onOpenImageGeneration ? "menu" : undefined}
+                style={{
+                  flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  width: isMobile ? 24 : 28, height: isMobile ? 32 : 28, padding: 0,
+                  marginRight: isMobile ? -2 : -5,
+                  background: imageMenuOpen ? "var(--bg-hover)" : "none",
+                  border: "none",
+                  borderRadius: 4,
+                  color: attachedImages.length ? "var(--accent)" : (imageMenuOpen ? "var(--text)" : "var(--text-muted)"),
+                  cursor: "pointer",
+                  opacity: 1,
+                  lineHeight: 1,
+                  transition: "background 0.12s, color 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  if (isMobile) return;
+                  e.currentTarget.style.background = "var(--bg-hover)";
+                  e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  if (isMobile) return;
+                  e.currentTarget.style.background = imageMenuOpen ? "var(--bg-hover)" : "none";
+                  e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : (imageMenuOpen ? "var(--text)" : "var(--text-muted)");
+                }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m15 4 5 5L8 21l-5-5L15 4Z" /><path d="m14 5 5 5M6 4v3M4.5 5.5h3M19 16v4M17 18h4" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "translateY(-1px)" }}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
                 </svg>
               </button>
-            )}
+              {imageMenuOpen && onOpenImageGeneration && (
+                <div
+                  role="menu"
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      setImageMenuOpen(false);
+                    }
+                  }}
+                  style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 6px)",
+                    left: 0,
+                    zIndex: 100,
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 4,
+                    boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+                    overflow: "hidden",
+                    minWidth: 120,
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setImageMenuOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      width: "100%", padding: "7px 12px",
+                      background: "none", border: "none",
+                      color: "var(--text)", cursor: "pointer",
+                      fontSize: 12, textAlign: "left", whiteSpace: "nowrap",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    <span>{t("chat.attachImage")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setImageMenuOpen(false);
+                      onOpenImageGeneration();
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      width: "100%", padding: "7px 12px",
+                      background: "none", border: "none",
+                      color: "var(--text)", cursor: "pointer",
+                      fontSize: 12, textAlign: "left", whiteSpace: "nowrap",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                      <path d="m15 4 5 5L8 21l-5-5L15 4Z" /><path d="m14 5 5 5M6 4v3M4.5 5.5h3M19 16v4M17 18h4" />
+                    </svg>
+                    <span>{t("image.title")}</span>
+                  </button>
+                </div>
+              )}
+            </div>
             {/* Model selector - visible always, disabled while the session or switch is busy */}
             {(modelOptions.length > 0 || model || modelError) && onModelChange && (
               <ModelSelector

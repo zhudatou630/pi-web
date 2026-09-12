@@ -466,7 +466,7 @@ function ProcessDetailsGroup({
         >
           <polyline points="4 2.5 7.5 6 4 9.5" />
         </svg>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)", flexShrink: 0, lineHeight: 1 }}>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500, color: "var(--text)", flexShrink: 0, lineHeight: 1.35 }}>
           {stepsLabel}
         </span>
         {isStreaming && (

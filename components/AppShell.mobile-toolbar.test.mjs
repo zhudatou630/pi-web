@@ -27,7 +27,7 @@ test("removes the closed mobile sidebar from the accessibility tree", () => {
   assert.match(source, /aria-hidden=\{isMobile && !sidebarOpen \? true : undefined\}/);
   assert.match(source, /inert=\{isMobile && !sidebarOpen \? true : undefined\}/);
   assert.match(source, /if \(!isMobile \|\| !sidebarOpen \|\| !mobileSidebarReady\) return/);
-  assert.match(source, /panel\?\.querySelector<HTMLElement>\('\[aria-current="page"\], button:not\(\[data-sidebar-brand\]\):not\(:disabled\)'\)\?\.focus\(\)/);
+  assert.match(source, /panel\?\.querySelector<HTMLElement>\('\[aria-current="page"\], button:not\(:disabled\)'\)\?\.focus\(\)/);
   assert.match(source, /event\.key !== "Escape"[\s\S]*?dismissMobileSidebar\(\)/);
   assert.match(source, /requestAnimationFrame\(\(\) => sidebarToggleRef\.current\?\.focus\(\)\)/);
 });
@@ -52,7 +52,7 @@ test("uses a compact narrow-mobile toolbar with a floating action layer", () => 
   );
 
   assert.match(historySource, /data-mobile-toolbar-action=\{mobile \? "history"/);
-  for (const action of ["name", "agents", "branches", "system", "tools"]) {
+  for (const action of ["agents", "branches", "system", "tools"]) {
     assert.match(source, new RegExp(`data-mobile-toolbar-action=(?:\\{mobile \\? )?"${action}"`));
   }
 });
@@ -121,9 +121,8 @@ test("keeps the mobile action layer open after using an expanded action", () => 
   const historyHandler = source.match(/onViewFullHistory=\{\(\) => \{[\s\S]*?handleViewFullHistory\(\);[\s\S]*?\n          \}\}/)?.[0];
   const historyMenuHandler = source.match(/onMenuOpenChange=\{\(open\) => \{[\s\S]*?handleHistoryMenuOpenChange\(open\);[\s\S]*?\n          \}\}/)?.[0];
   const historyExportHandler = source.match(/onExportMarkdown=\{\(\) => \{[\s\S]*?handleExportMarkdown\(\);[\s\S]*?\n          \}\}/)?.[0];
-  const autoNameHandler = source.match(/onClick=\{\(\) => \{[\s\S]*?void handleAutoName\(\);[\s\S]*?\n              \}\}/)?.[0];
 
-  for (const handler of [toggleTopPanel, historyHandler, historyMenuHandler, historyExportHandler, autoNameHandler]) {
+  for (const handler of [toggleTopPanel, historyHandler, historyMenuHandler, historyExportHandler]) {
     assert.ok(handler);
     assert.doesNotMatch(handler, /setMobileToolbarMoreOpen\(false\)/);
     assert.match(handler, /setMobileToolbarMoreOpen\(true\)/);
@@ -201,7 +200,6 @@ test("desktop session controls follow the task-first order", () => {
     'data-top-panel-trigger="agents"',
     "<BranchNavigator",
     "<SessionHistoryControl",
-    'data-mobile-toolbar-action={mobile ? "name" : undefined}',
     'data-top-panel-trigger="system"',
     'data-top-panel-trigger="tools"',
   ].map((needle) => actions.indexOf(needle));

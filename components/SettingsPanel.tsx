@@ -20,6 +20,10 @@ import {
   type SettingsSection,
 } from "@/lib/settings-navigation";
 import {
+  isAutoSessionTitleEnabled,
+  setAutoSessionTitleEnabled,
+} from "@/lib/auto-session-title-preference";
+import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
@@ -81,10 +85,12 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [autoSessionTitle, setAutoSessionTitle] = useState(true);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
+    setAutoSessionTitle(isAutoSessionTitleEnabled());
   }, []);
   useEffect(() => subscribeNotificationPermission(setNotificationPermission), []);
   const themeOptions: { id: ThemePreference; label: string }[] = [
@@ -169,6 +175,17 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
               onChange={(enabled) => {
                 setThinkingExpandedByDefault(enabled);
                 setThinkingExpanded(enabled);
+              }}
+            />
+          </div>
+          <div className="settings-chat-option settings-chat-switch-option">
+            <span>{t("settings.autoSessionTitle")}</span>
+            <ConfigSwitch
+              checked={autoSessionTitle}
+              label={t("settings.autoSessionTitle")}
+              onChange={(enabled) => {
+                setAutoSessionTitleEnabled(enabled);
+                setAutoSessionTitle(enabled);
               }}
             />
           </div>

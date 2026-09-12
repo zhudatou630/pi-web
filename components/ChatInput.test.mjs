@@ -243,6 +243,22 @@ test("keeps empty Send quiet and highlights text or image submissions", () => {
   }
 });
 
+test("integrates image generation into the image button menu instead of a standalone toolbar button", () => {
+  const withoutGen = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatInput, { onSend() {}, onAbort() {}, isStreaming: false }),
+  ));
+  assert.match(withoutGen, /aria-label="Attach image"/);
+  assert.doesNotMatch(withoutGen, /aria-label="Attach image \/ Generate image"/);
+  assert.doesNotMatch(withoutGen, /aria-haspopup="menu"/);
+
+  const withGen = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatInput, { onSend() {}, onAbort() {}, onOpenImageGeneration() {}, isStreaming: false }),
+  ));
+  assert.match(withGen, /aria-label="Attach image \/ Generate image"/);
+  assert.match(withGen, /aria-haspopup="menu"/);
+  assert.doesNotMatch(withGen, /<button[^>]*aria-label="Generate image"[^>]*class="inline-flex h-7 w-7/);
+});
+
 test("uses a short mobile Options label while preserving the descriptive accessible name", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   const start = source.indexOf('title={controlsMenuOpen ? undefined : t("chat.moreControls")}');

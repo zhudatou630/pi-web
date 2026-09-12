@@ -4,18 +4,17 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
 
-test("压缩后的会话仍可根据持久化消息数生成标题", () => {
-  assert.match(
-    source,
-    /\(sessionStats\?\.userMessages \?\? 0\) > 0 \|\| selectedSession\.messageCount > 0/,
+test("未命名会话在首轮结束后会静默生成标题", () => {
+  const completionSource = source.slice(
+    source.indexOf("  const handleAgentEnd = useCallback"),
+    source.indexOf("  const handleAttentionNeeded = useCallback"),
   );
-});
-
-test("尚未落盘的会话不会触发依赖 JSONL 的自动命名", () => {
-  assert.match(
-    source,
-    /const disabled = !selectedSession \|\| selectedSession\.transient \|\| !hasMessages/,
-  );
+  assert.match(completionSource, /isAutoSessionTitleEnabled\(\)/);
+  assert.match(completionSource, /!targetSession\.name/);
+  assert.match(completionSource, /targetSession\.relation\?\.kind !== "subagent"/);
+  assert.match(completionSource, /handleAutoNameRef\.current\?\.\(\{ sessionId: targetId \}\)/);
+  assert.doesNotMatch(source, /title\.generate/);
+  assert.doesNotMatch(source, /data-mobile-toolbar-action=\{mobile \? "name" : undefined\}/);
 });
 
 test("会话落盘后会用服务端记录清除临时状态", () => {

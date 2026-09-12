@@ -26,7 +26,7 @@ import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { getAdjacentTabId, openFileTab, saveFileViewerState } from "./file-tab-state";
-import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
+import { SettingsPanel } from "./SettingsPanel";
 import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
@@ -85,15 +85,11 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
+import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
 import { formatTokensK } from "@/lib/token-display";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
-type AutoNameStatus =
-  | { kind: "idle" }
-  | { kind: "naming" }
-  | { kind: "success" }
-  | { kind: "error"; message: string };
 
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
 const AGENT_PANEL_WIDTH = 420;
@@ -114,6 +110,26 @@ function filenameFromContentDisposition(header: string | null): string | null {
 
 function parkedNewSessionDraftKey(cwd: string): string {
   return `parked-new:${cwd}`;
+}
+
+function SettingsGearIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
 }
 
 export function AppShell() {
@@ -474,8 +490,6 @@ export function AppShell() {
 
   // Session stats (tokens + cost) — populated by ChatWindow, displayed in top bar
   const [sessionStats, setSessionStats] = useState<SessionStatsInfo | null>(null);
-  const [autoNameStatus, setAutoNameStatus] = useState<AutoNameStatus>({ kind: "idle" });
-  const autoNameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionIdRef = useRef<string | null>(selectedSession?.id ?? null);
   activeSessionIdRef.current = selectedSession?.id ?? null;
   const handleSessionStatsChange = useCallback((stats: SessionStatsInfo | null) => {
@@ -498,7 +512,6 @@ export function AppShell() {
   useEffect(() => {
     return () => {
       if (sessionCopyTimerRef.current) clearTimeout(sessionCopyTimerRef.current);
-      if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
     };
   }, []);
 
@@ -610,7 +623,7 @@ export function AppShell() {
     if (!isMobile || !sidebarOpen || !mobileSidebarReady) return;
     const frame = requestAnimationFrame(() => {
       const panel = sidebarResizer.panelRef.current;
-      panel?.querySelector<HTMLElement>('[aria-current="page"], button:not([data-sidebar-brand]):not(:disabled)')?.focus();
+      panel?.querySelector<HTMLElement>('[aria-current="page"], button:not(:disabled)')?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -1156,7 +1169,7 @@ export function AppShell() {
     setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
   }, []);
 
-  const handleAutoNameRef = useRef<(options?: { silent?: boolean; sessionId?: string }) => Promise<void>>(undefined);
+  const handleAutoNameRef = useRef<(options?: { sessionId?: string }) => Promise<void>>(undefined);
   const namingSessionIdsRef = useRef<Set<string>>(new Set());
 
   const handleAgentEnd = useCallback((paneSession?: SessionInfo | null) => {
@@ -1167,16 +1180,16 @@ export function AppShell() {
 
     // Silent auto-name in the background on the first completed turn if untitled
     if (
+      isAutoSessionTitleEnabled() &&
       targetSession &&
       targetSession.id &&
       !targetSession.name &&
       targetSession.relation?.kind !== "subagent" &&
-      autoNameStatus.kind === "idle" &&
       !namingSessionIdsRef.current.has(targetSession.id)
     ) {
       const targetId = targetSession.id;
       setTimeout(() => {
-        void handleAutoNameRef.current?.({ silent: true, sessionId: targetId });
+        void handleAutoNameRef.current?.({ sessionId: targetId });
       }, 350);
     }
 
@@ -1189,7 +1202,7 @@ export function AppShell() {
       body: translate("i18n.taskFinished"),
       tag: targetSession ? `pi-session-complete:${targetSession.id}` : "pi-session-complete",
     });
-  }, [autoNameStatus.kind, deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
+  }, [deliverSessionNotification, hydrateSelectedSession, selectedSession, translate]);
 
   const handleAttentionNeeded = useCallback((
     request: BlockingExtensionUiRequest,
@@ -1209,17 +1222,11 @@ export function AppShell() {
     });
   }, [deliverSessionNotification, translate]);
 
-  const handleAutoName = useCallback(async (options?: { silent?: boolean; sessionId?: string }) => {
-    const sessionId = options?.sessionId ?? selectedSession?.id;
+  const handleAutoName = useCallback(async (options?: { sessionId?: string }) => {
+    const sessionId = options?.sessionId;
     if (!sessionId) return;
-    if (namingSessionIdsRef.current.has(sessionId) || autoNameStatus.kind === "naming") return;
+    if (namingSessionIdsRef.current.has(sessionId)) return;
     namingSessionIdsRef.current.add(sessionId);
-
-    if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
-    if (!options?.silent) {
-      setActiveTopPanel(null);
-    }
-    setAutoNameStatus({ kind: "naming" });
 
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/auto-name`, {
@@ -1230,29 +1237,14 @@ export function AppShell() {
         throw new Error(body.error || `HTTP ${response.status}`);
       }
 
-      const title = body.title.trim();
-      handleSessionRenamed(sessionId, title);
-      setAutoNameStatus({ kind: "success" });
-      autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 1800);
+      handleSessionRenamed(sessionId, body.title.trim());
     } catch (error) {
-      if (options?.silent) {
-        console.warn("[pi-web] silent auto-name failed:", error instanceof Error ? error.message : error);
-        setAutoNameStatus({ kind: "idle" });
-      } else {
-        const message = error instanceof Error ? error.message : String(error);
-        setAutoNameStatus({ kind: "error", message });
-        autoNameTimerRef.current = setTimeout(() => setAutoNameStatus({ kind: "idle" }), 5000);
-      }
+      console.warn("[pi-web] silent auto-name failed:", error instanceof Error ? error.message : error);
     } finally {
       namingSessionIdsRef.current.delete(sessionId);
     }
-  }, [autoNameStatus.kind, handleSessionRenamed, selectedSession?.id]);
+  }, [handleSessionRenamed]);
   handleAutoNameRef.current = handleAutoName;
-
-  useEffect(() => {
-    if (autoNameTimerRef.current) clearTimeout(autoNameTimerRef.current);
-    setAutoNameStatus({ kind: "idle" });
-  }, [selectedSession?.id]);
 
   const handleExplorerRefresh = useCallback(() => {
     setExplorerRefreshKey((k) => k + 1);
@@ -1965,50 +1957,42 @@ export function AppShell() {
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
       />
-      <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
-        {([
-          ["models", translate("common.models")],
-          ["skills", translate("common.skills")],
-        ] as const).map(([section, label]) => {
-          const disabled = section !== "models" && !projectTrustCwd;
-          return (
-            <button
-              key={section}
-              type="button"
-              onClick={() => setSettingsSection(section)}
-              disabled={disabled}
-              title={disabled ? translate("settings.projectRequired") : label}
-              aria-label={label}
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                height: 32, padding: 0, background: "none", border: "none",
-                borderRadius: 4, color: "var(--text-muted)", cursor: disabled ? "default" : "pointer",
-                fontSize: 12, opacity: disabled ? 0.35 : 1,
-                transition: "background 0.12s, color 0.12s",
-              }}
-              onMouseEnter={(event) => { if (!disabled) { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; } }}
-              onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
-            >
-              <SettingsSectionIcon section={section} size={14} strokeWidth={2} />
-              <span>{label}</span>
-            </button>
-          );
-        })}
+      <div style={{ flexShrink: 0, padding: "4px 8px", borderTop: "1px solid var(--border)" }}>
         <button
           type="button"
           onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
           title={translate("common.settings")}
           aria-label={translate("common.settings")}
           style={{
-            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            height: 32, padding: 0, background: "none", border: "none",
-            borderRadius: 4, color: "var(--text-muted)", cursor: "pointer",
-            fontSize: 12, transition: "background 0.12s, color 0.12s",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            boxSizing: "border-box",
+            width: "100%",
+            height: 30,
+            margin: 0,
+            padding: "0 8px",
+            background: "none",
+            border: "none",
+            borderRadius: 5,
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: 12,
+            fontWeight: 500,
+            textAlign: "left",
+            transition: "color 0.12s, background 0.12s",
           }}
-          onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; event.currentTarget.style.color = "var(--text)"; }}
-          onMouseLeave={(event) => { event.currentTarget.style.background = "none"; event.currentTarget.style.color = "var(--text-muted)"; }}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.color = "var(--text)";
+            event.currentTarget.style.background = "var(--bg-hover)";
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.color = "var(--text-muted)";
+            event.currentTarget.style.background = "none";
+          }}
         >
-          <SettingsSectionIcon section="general" size={14} strokeWidth={2} />
+          <SettingsGearIcon size={14} />
           <span>{translate("common.settings")}</span>
         </button>
       </div>
@@ -2183,82 +2167,6 @@ export function AppShell() {
             if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
           }}
         />}
-        {sessionTools && (() => {
-          // 上下文压缩后当前消息可能不再包含 user 消息，需同时参考会话文件的消息总数。
-          const hasMessages = Boolean(
-            selectedSession
-            && ((sessionStats?.userMessages ?? 0) > 0 || selectedSession.messageCount > 0),
-          );
-          const disabled = !selectedSession || selectedSession.transient || !hasMessages || autoNameStatus.kind === "naming";
-          const isSuccess = autoNameStatus.kind === "success";
-          const isError = autoNameStatus.kind === "error";
-          const label = autoNameStatus.kind === "naming"
-            ? translate("title.generating")
-            : isSuccess
-              ? translate("title.updated")
-              : isError
-                ? translate("title.failed")
-                : translate("title.generate");
-          const title = !selectedSession || selectedSession.transient
-            ? translate("title.unsaved")
-            : !hasMessages
-              ? translate("title.noMessages")
-              : isError
-                ? autoNameStatus.message
-                : translate("title.generateSession");
-
-          return (
-            <button
-              type="button"
-              onClick={() => {
-                void handleAutoName();
-                if (mobile && isNarrowMobile) setMobileToolbarMoreOpen(true);
-              }}
-              disabled={disabled}
-              title={title}
-              aria-label={label}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: TOP_BAR_ICON_BUTTON_SIZE,
-                height: "100%", padding: 0,
-                background: "none", border: "none",
-                color: isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)",
-                cursor: disabled ? "not-allowed" : "pointer",
-                opacity: disabled && autoNameStatus.kind !== "naming" ? 0.45 : 1,
-                flexShrink: 0,
-                transition: "color 0.1s, background 0.1s, opacity 0.1s",
-              }}
-              onMouseEnter={(event) => {
-                if (disabled) return;
-                event.currentTarget.style.color = isError ? "#dc2626" : "var(--text)";
-                event.currentTarget.style.background = "var(--bg-hover)";
-              }}
-              onMouseLeave={(event) => {
-                event.currentTarget.style.color = isError ? "#dc2626" : isSuccess ? "var(--accent)" : disabled ? "var(--text-dim)" : "var(--text-muted)";
-                event.currentTarget.style.background = "none";
-              }}
-              className="workspace-header-action"
-              data-mobile-toolbar-action={mobile ? "name" : undefined}
-            >
-              {autoNameStatus.kind === "naming" ? (
-                <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              ) : isSuccess ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m15 4 5 5L7 22l-5-5Z" />
-                  <path d="m14 5 5 5" />
-                  <path d="M6 4V2M5 3H3M19 19v3M17.5 20.5h3" />
-                </svg>
-              )}
-            </button>
-          );
-        })()}
         {sessionTools && <>
         <button
           ref={systemBtnRef}

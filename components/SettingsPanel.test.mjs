@@ -10,13 +10,17 @@ const themeSource = await readFile(new URL("../hooks/useTheme.ts", import.meta.u
 const enSource = await readFile(new URL("../lib/i18n/messages/en.ts", import.meta.url), "utf8");
 const zhSource = await readFile(new URL("../lib/i18n/messages/zh-CN.ts", import.meta.url), "utf8");
 
-test("opens one settings panel from direct sidebar shortcuts", () => {
+test("opens settings from a single sidebar text control", () => {
   assert.match(shellSource, /<SettingsPanel/);
-  assert.match(shellSource, /setSettingsSection\(section\)/);
+  assert.match(shellSource, /setSettingsSection\(getLastSettingsSection\(projectTrustCwd\)\)/);
   assert.match(shellSource, /initialSection=\{settingsSection\}/);
   assert.match(shellSource, /translate\("common\.settings"\)/);
-  assert.match(shellSource, /<SettingsSectionIcon section=\{section\} size=\{14\} strokeWidth=\{2\} \/>\s*<span>\{label\}<\/span>/);
-  assert.match(shellSource, /<SettingsSectionIcon section="general" size=\{14\} strokeWidth=\{2\} \/>/);
+  assert.match(shellSource, /borderTop: "1px solid var\(--border\)"/);
+  assert.match(shellSource, /color: "var\(--text-muted\)"/);
+  assert.match(shellSource, /<SettingsGearIcon/);
+  assert.doesNotMatch(shellSource, /SettingsSectionIcon/);
+  assert.doesNotMatch(shellSource, /\["models", translate\("common\.models"\)\]/);
+  assert.doesNotMatch(shellSource, /\["skills", translate\("common\.skills"\)\]/);
   assert.doesNotMatch(shellSource, /\["plugins", translate\("common\.plugins"\)\]/);
   assert.doesNotMatch(shellSource, /setModelsConfigOpen|setSkillsConfigOpen|setAgentsConfigOpen|setPluginsConfigOpen/);
 });
@@ -72,9 +76,9 @@ test("groups chat display controls together without row backgrounds", () => {
 
   assert.doesNotMatch(appearanceSection, /settings-chat-content/);
   assert.match(chatSection, /className="settings-chat-options"/);
-  assert.equal((chatSection.match(/className="settings-chat-option(?: |")/g) ?? []).length, 5);
-  assert.equal((chatSection.match(/<ConfigSwitch/g) ?? []).length, 2);
-  for (const key of ["thinkingExpandedDefault", "chatContentWidth", "chatContentFontSize", "quoteSelection", "browserNotifications"]) {
+  assert.equal((chatSection.match(/className="settings-chat-option(?: |")/g) ?? []).length, 6);
+  assert.equal((chatSection.match(/<ConfigSwitch/g) ?? []).length, 3);
+  for (const key of ["thinkingExpandedDefault", "autoSessionTitle", "chatContentWidth", "chatContentFontSize", "quoteSelection", "browserNotifications"]) {
     assert.match(chatSection, new RegExp(`t\\("settings\\.${key}"\\)`));
   }
   assert.doesNotMatch(panelSource, /ThinkingIcon|settings-thinking-/);
