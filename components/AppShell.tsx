@@ -988,7 +988,12 @@ export function AppShell() {
     activeNewSessionDraftKeyRef.current = null;
     // Adopt an explicitly selected session before the sidebar reports its cwd.
     const projectKey = workspaceKeyOf(session);
-    if (activeProjectKeyRef.current !== projectKey) {
+    // In split/multi-tab mode the sidebar project may belong to another chat
+    // tab. Prefer the selected session, and compare only resolved identities;
+    // transient session cwd fallbacks are not comparable project keys.
+    const currentProjectKey = selectedSession?.projectKey
+      ?? (!selectedSession ? activeProjectKeyRef.current : null);
+    if (currentProjectKey && session.projectKey && currentProjectKey !== session.projectKey) {
       setFileTabs([]);
       if (!activeFileTabId || activeFileTabId.startsWith("file:")) {
         setActiveFileTabId(null);
@@ -996,7 +1001,9 @@ export function AppShell() {
       }
       setActiveTopPanel(null);
     }
-    activeProjectKeyRef.current = projectKey;
+    // Only promote a server-resolved identity into the ref. A transient
+    // session's cwd is not a comparable project identity.
+    if (session.projectKey) activeProjectKeyRef.current = session.projectKey;
     // Re-clicking the already-open session must not remount the chat and
     // re-run the full load/positioning cycle. Only skip when the effective
     // cwd context already matches — otherwise a pending cwd move still needs

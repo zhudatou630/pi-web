@@ -35,8 +35,8 @@ for (const [component, prop, split] of [
   ["AgentSessionPanel", "onOpenInNewTab"],
 ].flatMap(([component, prop]) => [false, true].map((split) => [component, prop, split]))) {
   test(`${component}.${prop} pins through full selection cleanup (${split ? "desktop split" : "mobile"})`, () => {
-    const session = { id: "target", name: "Target", cwd: "/new-project" };
-    const primary = { id: "primary", cwd: "/old-project" };
+    const session = { id: "target", name: "Target", cwd: "/new-project", projectKey: "/new-project" };
+    const primary = { id: "primary", cwd: "/old-project", projectKey: "/old-project" };
     let tabs = tabState.openSessionInNewTab([], primary).tabs;
     tabs = tabState.openSessionPreview(tabs, session, split ? "secondary" : "primary").tabs;
     const result = {};
@@ -76,3 +76,78 @@ for (const [component, prop, split] of [
     assert.equal(result.url, "?session=target");
   });
 }
+
+test("does not close the file reader while a session identity is still unresolved", () => {
+  const session = { id: "target", name: "Target", cwd: "/repo/subdir", projectKey: "/repo" };
+  const primary = { id: "primary", cwd: "/repo/subdir", transient: true };
+  const result = {};
+  const tabs = tabState.openSessionInNewTab([], primary).tabs;
+  const scope = {
+    ...tabState,
+    selectedSession: primary,
+    activeCwd: "/repo/subdir",
+    newSessionCwd: null,
+    activeFileTabId: "file:/repo/README.md",
+    isMobile: false,
+    activeNewSessionDraftKeyRef: { current: null },
+    activeProjectKeyRef: { current: null },
+    chatTabsRef: { current: tabs },
+    isSplitActiveRef: { current: false },
+    activeChatPaneRef: { current: "primary" },
+    branchLeafChangeFnRef: { current: null },
+    suppressCwdBumpRef: { current: false },
+    workspaceKeyOf: (item) => item.projectKey ?? item.projectRoot ?? item.cwd,
+    setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
+    router: { replace(url) { result.url = url; } },
+    syncSessionMetadata() {},
+    rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
+  };
+  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen"]) {
+    scope[`set${setter}`] = (value) => { result[setter] = value; };
+  }
+  scope.handleSelectSession = callback("handleSelectSession", scope);
+  scope.handlePinSession = callback("handlePinSession", scope);
+  scope.handlePinSession(session);
+
+  assert.equal(result.FileTabs, undefined);
+  assert.equal(result.ActiveFileTabId, undefined);
+  assert.equal(result.RightPanelOpen, undefined);
+  assert.equal(scope.activeProjectKeyRef.current, "/repo");
+});
+
+test("uses the focused session project instead of the sidebar project in split view", () => {
+  const session = { id: "target", name: "Target", cwd: "/repo/secondary", projectKey: "/repo/secondary" };
+  const primary = { id: "primary", cwd: "/repo/secondary", projectKey: "/repo/secondary" };
+  const result = {};
+  const tabs = tabState.openSessionInNewTab([], primary).tabs;
+  const scope = {
+    ...tabState,
+    selectedSession: primary,
+    activeCwd: "/repo/primary",
+    newSessionCwd: null,
+    activeFileTabId: "file:/repo/secondary/README.md",
+    isMobile: false,
+    activeNewSessionDraftKeyRef: { current: null },
+    activeProjectKeyRef: { current: "/repo/primary" },
+    chatTabsRef: { current: tabs },
+    isSplitActiveRef: { current: true },
+    activeChatPaneRef: { current: "secondary" },
+    branchLeafChangeFnRef: { current: null },
+    suppressCwdBumpRef: { current: false },
+    workspaceKeyOf: (item) => item.projectKey ?? item.projectRoot ?? item.cwd,
+    setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
+    router: { replace(url) { result.url = url; } },
+    syncSessionMetadata() {},
+    rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
+  };
+  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen"]) {
+    scope[`set${setter}`] = (value) => { result[setter] = value; };
+  }
+  scope.handleSelectSession = callback("handleSelectSession", scope);
+  scope.handlePinSession = callback("handlePinSession", scope);
+  scope.handlePinSession(session);
+
+  assert.equal(result.FileTabs, undefined);
+  assert.equal(result.RightPanelOpen, undefined);
+  assert.equal(scope.activeProjectKeyRef.current, "/repo/secondary");
+});
