@@ -380,10 +380,27 @@ function formatProcessDuration(seconds: number, t: (key: string, params?: Record
   return t("chat.decodeMinutes", { minutes, seconds: remainingSeconds });
 }
 
+function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: string, params?: Record<string, string | number>) => string }) {
+  const [elapsed, setElapsed] = useState(() => Math.max(0, Math.round((Date.now() - startTime) / 1000)));
+  useEffect(() => {
+    const id = setInterval(() => {
+      setElapsed(Math.max(0, Math.round((Date.now() - startTime) / 1000)));
+    }, 500);
+    return () => clearInterval(id);
+  }, [startTime]);
+
+  return (
+    <span style={{ fontSize: 11.5, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+      {formatProcessDuration(elapsed, t)}
+    </span>
+  );
+}
+
 function ProcessDetailsGroup({
   messageCount,
   toolCallCount,
   durationSeconds,
+  startTime,
   defaultExpanded = false,
   reveal = false,
   isMobile = false,
@@ -395,6 +412,7 @@ function ProcessDetailsGroup({
   messageCount: number;
   toolCallCount: number;
   durationSeconds?: number;
+  startTime?: number;
   defaultExpanded?: boolean;
   reveal?: boolean;
   isMobile?: boolean;
@@ -481,6 +499,7 @@ function ProcessDetailsGroup({
         {isStreaming ? (
           <>
             <LivePulseBeacon size={12} />
+            {startTime && <ProcessLiveDuration startTime={startTime} t={t} />}
             <span
               style={{
                 display: "inline-flex",
@@ -494,7 +513,10 @@ function ProcessDetailsGroup({
                 whiteSpace: "nowrap",
               }}
             >
-              {activeStepSummary || t("chat.thinking")}
+              {startTime && <span style={{ opacity: 0.5, color: "var(--text-dim)" }}>·</span>}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {activeStepSummary || t("chat.thinking")}
+              </span>
             </span>
           </>
         ) : (
@@ -1910,8 +1932,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   if (isLiveTail && streamingParts.processMessage) {
                     markOutlineTarget([]);
                     const liveProcessActive = isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage));
+                    const turnStartTime = (boundaryIdx >= 0 && typeof messages[boundaryIdx]?.timestamp === "number" && Number.isFinite(messages[boundaryIdx].timestamp))
+                      ? messages[boundaryIdx].timestamp
+                      : streamingParts.processMessage.timestamp;
                     const streamingDuration = elapsedProcessSeconds(
-                      streamingParts.processMessage.timestamp,
+                      turnStartTime,
                       streamingParts.processMessage.completedAt,
                     );
                     rendered.push(
@@ -1920,6 +1945,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                         messageCount={1}
                         toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
                         durationSeconds={streamingDuration}
+                        startTime={turnStartTime}
                         defaultExpanded
                         isMobile={isMobile}
                         activeStepSummary={latchedLiveProcessSummary(
@@ -2036,7 +2062,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   t("chat.thinking"),
                 );
 
-                const processDurationSeconds = elapsedProcessSeconds(processStartTime, processEndTime);
+                const turnStartTime = (boundaryIdx >= 0 && typeof messages[boundaryIdx]?.timestamp === "number" && Number.isFinite(messages[boundaryIdx].timestamp))
+                  ? messages[boundaryIdx].timestamp
+                  : processStartTime;
+                const processDurationSeconds = elapsedProcessSeconds(turnStartTime ?? processStartTime, processEndTime);
 
                 if (processViews.length > 0) {
                   markOutlineTarget(processEntryIds);
@@ -2050,6 +2079,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                         messageCount={processViews.length}
                         toolCallCount={processToolCount}
                         durationSeconds={processDurationSeconds}
+                        startTime={turnStartTime ?? processStartTime}
                         defaultExpanded={!finalAnswerMessage && endIdx === messages.length}
                         reveal={revealProcess}
                         isMobile={isMobile}
