@@ -722,12 +722,5 @@ export const enLocale: LocalePlugin = {
     "i18n.taskFinished": "Task finished.",
     "i18n.attentionNeeded": "Pi needs your attention",
     "i18n.extensionInputNeeded": "An extension is waiting for your input.",
-    "providerUsage.usage": "Usage",
-    "providerUsage.notQueried": "Not queried",
-    "providerUsage.refresh": "Refresh usage",
-    "providerUsage.refreshing": "Refreshing usage",
-    "providerUsage.updated": "Updated {time}",
-    "providerUsage.queryFailed": "Usage query failed.",
-    "providerUsage.available": "Available",
   },
 };

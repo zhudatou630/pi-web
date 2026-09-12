@@ -722,12 +722,5 @@ export const zhCNLocale: LocalePlugin = {
     "i18n.taskFinished": "任务已完成。",
     "i18n.attentionNeeded": "Pi 需要你的操作",
     "i18n.extensionInputNeeded": "扩展正在等待你的输入。",
-    "providerUsage.usage": "用量",
-    "providerUsage.notQueried": "尚未查询",
-    "providerUsage.refresh": "刷新用量",
-    "providerUsage.refreshing": "正在刷新用量",
-    "providerUsage.updated": "更新于 {time}",
-    "providerUsage.queryFailed": "用量查询失败。",
-    "providerUsage.available": "可用",
   },
 };

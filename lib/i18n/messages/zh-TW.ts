@@ -722,12 +722,5 @@ export const zhTWLocale: LocalePlugin = {
     "i18n.taskFinished": "任務已完成。",
     "i18n.attentionNeeded": "Pi 需要你處理",
     "i18n.extensionInputNeeded": "擴充功能正在等待你的輸入。",
-    "providerUsage.usage": "用量",
-    "providerUsage.notQueried": "尚未查詢",
-    "providerUsage.refresh": "重新整理用量",
-    "providerUsage.refreshing": "正在重新整理用量",
-    "providerUsage.updated": "更新於 {time}",
-    "providerUsage.queryFailed": "用量查詢失敗。",
-    "providerUsage.available": "可用",
   },
 };
