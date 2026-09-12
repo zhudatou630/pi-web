@@ -205,11 +205,14 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - `/api/skills/install` shells through `npx skills add ... --agent pi`; project installs run with the selected cwd.
 
 ### Built-in subagents
-- The global `builtInEnabled` switch is persisted in `~/.pi/agent/agents/settings.json` and defaults to `false` when the file or field is absent. Malformed settings fail closed; atomic updates preserve unknown fields.
+- The global `builtInEnabled` switch is persisted in `~/.pi/agent/agents/settings.json` and defaults to `true` when the file or field is absent. An explicit `false` disables it. Malformed settings fail closed; atomic updates preserve unknown fields. Concurrent sub-agent prompts are queued per parent session (`maxConcurrent`, default 10).
 - The inline built-in extension factory is always present so reloading an existing wrapper can apply setting changes, but it registers no tools while disabled. After changing the switch, the user must explicitly reload the current session.
 - When enabled, only a recognized legacy `pi-subagents` extension that registers any reserved tool (`Agent`, `get_subagent_result`, or `steer_subagent`) is removed. Unrelated extensions remain loaded, and resolved conflict diagnostics are discarded.
 - Runtime `Agent` dispatch checks the setting again so a stale tool call cannot start a subagent after the feature is switched off.
 - See `docs/adr/0003-built-in-subagent-toggle.md` for the precedence and persistence rationale.
+- Agent profile files (`~/.pi/agent/agents/*.md`, project `.pi/agents/*.md`) may be shared with other runtimes. A save round-trips frontmatter keys this app does not own (`name`, `allowed_subagents`, `exclude_extensions`, `disallowed_tools`, `prompt_mode`, `isolation`, …) and carries `ext:` tool selectors through `tools:`.
+- Managed keys are exactly `description`, `display_name`, `tools`, `load_skills`, `load_extensions`, `enabled`, `inherit_context`, `run_in_background`, `model`, `thinking`, `max_turns`. The `skills` / `extensions` aliases are seeded on first save and kept in step while they are booleans; a hand-authored whitelist such as `extensions: pi-advisor-flow` is never rewritten. The two flags fall back to those aliases when `load_skills` / `load_extensions` are absent.
+- `ext:` selectors in `tools:` are honored at spawn: they load only matching extension tools instead of every loaded extension tool.
 
 ### Auth and model config
 - `ModelsConfig` combines models from `~/.pi/agent/models.json` with provider auth status from pi's `AuthStorage`/`ModelRegistry`.

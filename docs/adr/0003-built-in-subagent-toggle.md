@@ -1,8 +1,9 @@
 # Built-in sub-agent activation and extension precedence
 
 Pi Web's integrated sub-agent implementation is an inline, hidden extension.
-It is disabled by default and controlled by the global
+It is enabled by default and controlled by the global
 `~/.pi/agent/agents/settings.json` setting `builtInEnabled`.
+An explicit `false` turns it off; a missing file or field stays on.
 
 The inline extension factory remains installed in every ordinary, non-Chat-only
 resource loader so an AgentSession reload can enable or disable its tools without

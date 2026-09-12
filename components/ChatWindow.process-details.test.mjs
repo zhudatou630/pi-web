@@ -21,13 +21,20 @@ test("marks only the separated final answer as the end of a turn", () => {
 });
 
 test("folds a leading process prefix that has no user anchor", () => {
+  assert.match(source, /const hasBoundary = isMessageGroupBoundary\(messages\[idx\]\)/);
   assert.match(source, /const hasAnchor = isMessageGroupAnchor\(messages\[idx\]\)/);
-  assert.match(source, /const userIdx = hasAnchor \? idx : -1/);
-  assert.match(source, /if \(hasAnchor\) \{\s*markOutlineTarget\(\[entryIds\[userIdx\]\]\);\s*rendered\.push\(renderMessage\(userIdx\)\);\s*\}/);
+  assert.match(source, /const boundaryIdx = hasBoundary \? idx : -1/);
+  assert.match(source, /if \(hasAnchor\) \{\s*markOutlineTarget\(\[entryIds\[boundaryIdx\]\]\);\s*rendered\.push\(renderMessage\(boundaryIdx\)\);\s*\}/);
   assert.doesNotMatch(
     source,
     /if \(!isMessageGroupAnchor\(msg\)\) \{\s*rendered\.push\(renderMessage\(idx\)\)/,
   );
+});
+
+test("starts a stable process group at each subagent notification boundary", () => {
+  assert.match(source, /const hasBoundary = isMessageGroupBoundary\(messages\[idx\]\)/);
+  assert.match(source, /const notificationStartsProcess = boundaryIdx >= 0 && isSubagentNotificationMessage\(messages\[boundaryIdx\]\)/);
+  assert.match(source, /finalAssistantIdx === -1 && !notificationStartsProcess/);
 });
 
 test("passes activeStepSummary and renders telemetry indicator when streaming", () => {

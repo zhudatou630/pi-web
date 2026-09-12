@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, splitFinalAssistantBlocks } from "@/lib/message-display";
+import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
 import {
@@ -1252,7 +1252,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const visibleMessages = useMemo(
-    () => messages.filter((message) => isMessageGroupAnchor(message) || message.role === "assistant" || (message.role === "toolResult" && !message.isError && getImageGenerationResult(message.details))),
+    () => messages.filter((message) => isMessageGroupBoundary(message) || message.role === "assistant" || (message.role === "toolResult" && !message.isError && getImageGenerationResult(message.details))),
     [messages],
   );
   // Stable Map identity: `messages` doesn't change during streaming updates
@@ -1274,13 +1274,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const writtenFilesByAssistantIndex = useMemo(() => {
     const filesByIndex = new Map<number, WrittenFile[]>();
     for (let idx = 0; idx < messages.length;) {
-      const userIdx = isMessageGroupAnchor(messages[idx]) ? idx : -1;
-      let endIdx = userIdx >= 0 ? idx + 1 : idx;
-      while (endIdx < messages.length && !isMessageGroupAnchor(messages[endIdx])) endIdx += 1;
-      const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
+      const boundaryIdx = isMessageGroupBoundary(messages[idx]) ? idx : -1;
+      let endIdx = boundaryIdx >= 0 ? idx + 1 : idx;
+      while (endIdx < messages.length && !isMessageGroupBoundary(messages[endIdx])) endIdx += 1;
+      const finalAssistantIdx = findFinalAssistantIndex(messages, boundaryIdx, endIdx);
       if (finalAssistantIdx >= 0 && completedAssistantParts[finalAssistantIdx]?.answerMessage) {
         const turnContent: AssistantContentBlock[] = [];
-        for (let messageIdx = userIdx + 1; messageIdx <= finalAssistantIdx; messageIdx += 1) {
+        for (let messageIdx = boundaryIdx + 1; messageIdx <= finalAssistantIdx; messageIdx += 1) {
           const message = messages[messageIdx];
           if (message?.role === "assistant") turnContent.push(...message.content);
         }
@@ -1371,14 +1371,17 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const hasStreamingContent = Boolean(streamState.streamingMessage?.content.length);
   const currentTurnHasVisibleOutput = useMemo(() => {
-    let anchorIndex = -1;
+    let boundaryIndex = -1;
     for (let index = messages.length - 1; index >= 0; index--) {
-      if (isMessageGroupAnchor(messages[index])) {
-        anchorIndex = index;
+      if (isMessageGroupBoundary(messages[index])) {
+        boundaryIndex = index;
         break;
       }
     }
-    for (let index = anchorIndex + 1; index < messages.length; index++) {
+    const firstOutputIndex = boundaryIndex >= 0 && isSubagentNotificationMessage(messages[boundaryIndex])
+      ? boundaryIndex
+      : boundaryIndex + 1;
+    for (let index = firstOutputIndex; index < messages.length; index++) {
       const message = messages[index];
       if (message.role === "custom") return true;
       if (message.role !== "assistant") continue;
@@ -1570,26 +1573,29 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [handlePromptWithStreamingBehavior, keepTabOpen]);
 
   const isSessionLoading = !isNew && loading;
+  const isQueuedSubagent = session?.relation?.kind === "subagent"
+    && session.relation.status === "queued";
 
   const chatInputElement = (
     <ChatInput
       ref={setChatInputElement}
       onSend={handleChatSend}
-      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy ? () => { setImageEdit(null); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
+      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? () => { setImageEdit(null); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
       onAbort={handleActiveAbort}
       onSteer={agentRunning ? handleSteerWithSubmit : undefined}
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehaviorWithSubmit : undefined}
       isStreaming={sessionBusy}
+      disabled={isQueuedSubagent}
       model={isSessionLoading ? null : displayModelValue}
       isAutoModelSelection={isSessionLoading ? false : isAutoModelSelection}
       modelNames={modelNames}
       modelList={modelList}
       modelError={isSessionLoading ? null : modelError}
       modelScopeWarnings={isSessionLoading ? [] : modelScopeWarnings}
-      onModelChange={isSessionLoading ? undefined : handleModelChange}
+      onModelChange={isSessionLoading || isQueuedSubagent ? undefined : handleModelChange}
       modelSwitching={modelSwitching}
-      onCompact={session || isNew ? handleCompact : undefined}
+      onCompact={!isQueuedSubagent && (session || isNew) ? handleCompact : undefined}
       onAbortCompaction={handleAbortCompaction}
       isCompacting={isCompacting}
       compactError={compactError}
@@ -1598,9 +1604,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       cacheHitRate={cacheHitRate}
       onOpenSessionStats={onSessionStatsPanelOpen}
       toolPreset={toolPreset}
-      onToolPresetChange={session || isNew ? handleToolPresetChange : undefined}
+      onToolPresetChange={!isQueuedSubagent && (session || isNew) ? handleToolPresetChange : undefined}
       thinkingLevel={isSessionLoading ? undefined : thinkingLevel}
-      onThinkingLevelChange={isSessionLoading ? undefined : (session || isNew ? handleThinkingLevelChange : undefined)}
+      onThinkingLevelChange={isSessionLoading || isQueuedSubagent ? undefined : (session || isNew ? handleThinkingLevelChange : undefined)}
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}
       retryInfo={retryInfo}
@@ -1732,14 +1738,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               for (let i = messages.length - 1; i >= 0; i--) {
                 if (messages[i].role === "user") { lastUserIdx = i; break; }
               }
-              // Anchor for live-tail detection: the last user message, or a
-              // compaction summary when compaction has replaced it mid-turn.
-              // Computed independently from lastUserIdx (which is kept for the
-              // scroll-to-user ref) because a compaction summary can sit after
-              // the last user message and anchor the still-streaming segment.
-              let lastAnchorIdx = -1;
+              // A subagent notification triggers a model turn without posing as
+              // a user message, so it is a grouping boundary but not a chat anchor.
+              let lastBoundaryIdx = -1;
               for (let i = messages.length - 1; i >= 0; i--) {
-                if (isMessageGroupAnchor(messages[i])) { lastAnchorIdx = i; break; }
+                if (isMessageGroupBoundary(messages[i])) { lastBoundaryIdx = i; break; }
               }
 
               const visibleRefIndexByMessage = new Map<number, number>();
@@ -1749,7 +1752,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   || (msg.role === "custom" && msg.customType === IMAGE_RESULT_TYPE)
                   ? getImageGenerationResult(msg.details)
                   : null;
-                if (isMessageGroupAnchor(msg) || msg.role === "assistant" || persistedImage) {
+                if (isMessageGroupBoundary(msg) || msg.role === "assistant" || persistedImage) {
                   visibleRefIndexByMessage.set(idx, refIdx++);
                 }
               });
@@ -1769,7 +1772,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   || (msg.role === "custom" && msg.customType === IMAGE_RESULT_TYPE)
                   ? getImageGenerationResult(msg.details)
                   : null;
-                const isVisible = isMessageGroupAnchor(msg) || msg.role === "assistant" || Boolean(imageResult);
+                const isVisible = isMessageGroupBoundary(msg) || msg.role === "assistant" || Boolean(imageResult);
                 const currentRefIdx = visibleRefIndexByMessage.get(idx);
                 const keyPrefix = options.keyPrefix ?? "message";
                 const messageKey = entryIds[idx] ?? idx;
@@ -1843,19 +1846,22 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               };
               let liveTailItemCount = 0;
               for (let idx = 0; idx < messages.length;) {
+                const hasBoundary = isMessageGroupBoundary(messages[idx]);
                 const hasAnchor = isMessageGroupAnchor(messages[idx]);
-                const userIdx = hasAnchor ? idx : -1;
-                let endIdx = hasAnchor ? idx + 1 : idx;
-                while (endIdx < messages.length && !isMessageGroupAnchor(messages[endIdx])) endIdx += 1;
-                const firstIdx = hasAnchor ? userIdx : idx;
+                const boundaryIdx = hasBoundary ? idx : -1;
+                const notificationStartsProcess = boundaryIdx >= 0 && isSubagentNotificationMessage(messages[boundaryIdx]);
+                let endIdx = hasBoundary ? idx + 1 : idx;
+                while (endIdx < messages.length && !isMessageGroupBoundary(messages[endIdx])) endIdx += 1;
+                const firstIdx = hasBoundary ? boundaryIdx : idx;
+                const processStartIdx = notificationStartsProcess ? boundaryIdx : boundaryIdx + 1;
 
-                const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-                const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
+                const finalAssistantIdx = findFinalAssistantIndex(messages, boundaryIdx, endIdx);
+                const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && boundaryIdx === lastBoundaryIdx;
                 if (isLiveTail) {
                   liveTailItemCount = endIdx - firstIdx;
                 }
 
-                if (finalAssistantIdx === -1) {
+                if (finalAssistantIdx === -1 && !notificationStartsProcess) {
                   for (let renderIdx = firstIdx; renderIdx < endIdx; renderIdx++) {
                     markOutlineTarget([entryIds[renderIdx]]);
                     rendered.push(renderMessage(renderIdx));
@@ -1897,12 +1903,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
 
                 if (hasAnchor) {
-                  markOutlineTarget([entryIds[userIdx]]);
-                  rendered.push(renderMessage(userIdx));
+                  markOutlineTarget([entryIds[boundaryIdx]]);
+                  rendered.push(renderMessage(boundaryIdx));
                 }
 
                 const finalParts = completedAssistantParts[finalAssistantIdx];
                 const finalAnswerMessage = finalParts?.answerMessage ?? null;
+                const processEndIdx = finalAssistantIdx >= 0 ? finalAssistantIdx : endIdx - 1;
 
                 const processViews: ReactNode[] = [];
                 const processEntryIds: string[] = [];
@@ -1910,9 +1917,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
 
-                for (let processIdx = userIdx + 1; processIdx <= finalAssistantIdx; processIdx++) {
+                for (let processIdx = processStartIdx; processIdx <= processEndIdx; processIdx++) {
                   const processMessage = messages[processIdx];
                   if (processMessage.role === "custom") {
+                    processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
                     revealProcess ||= Boolean(locateEntryId && locateEntryId === entryIds[processIdx]);
                     if (entryIds[processIdx]) processEntryIds.push(entryIds[processIdx]);
                     processViews.push(renderMessage(processIdx, { attachRef: false, keyPrefix: "process", isProcess: true }));
@@ -1978,7 +1986,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   rendered.push(
                     <div
                       key={`process-group-${entryIds[firstIdx] ?? firstIdx}`}
-                      data-entry-id={entryIds[hasAnchor ? userIdx + 1 : firstIdx]}
+                      data-entry-id={entryIds[processStartIdx]}
                       ref={processRefIdx === undefined ? undefined : (el) => { messageRefs.current[processRefIdx] = el; }}
                     >
                       <ProcessDetailsGroup
@@ -1997,7 +2005,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   );
                 }
 
-                for (let imageIdx = firstIdx; imageIdx <= finalAssistantIdx; imageIdx++) {
+                for (let imageIdx = firstIdx; imageIdx <= processEndIdx; imageIdx++) {
                   const imageMessage = messages[imageIdx];
                   if (imageMessage.role !== "toolResult" || imageMessage.isError || !getImageGenerationResult(imageMessage.details)) continue;
                   markOutlineTarget([entryIds[imageIdx]]);
@@ -2012,9 +2020,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     writtenFiles: writtenFilesByAssistantIndex.get(finalAssistantIdx),
                   }));
                 }
-                for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
-                  markOutlineTarget([entryIds[renderIdx]]);
-                  rendered.push(renderMessage(renderIdx));
+                if (finalAssistantIdx >= 0) {
+                  for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
+                    markOutlineTarget([entryIds[renderIdx]]);
+                    rendered.push(renderMessage(renderIdx));
+                  }
                 }
                 idx = endIdx;
               }

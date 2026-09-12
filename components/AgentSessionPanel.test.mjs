@@ -14,8 +14,9 @@ test("keeps the main session first and makes every agent session selectable", ()
   assert.match(source, /aria-selected=\{selected\}/);
 });
 
-test("sorts running subagents first and enables search only for larger families", () => {
-  assert.match(source, /if \(aRunning !== bRunning\) return aRunning \? -1 : 1/);
+test("sorts active subagents first and enables search only for larger families", () => {
+  assert.match(source, /const rank = statusPriority\(sessionStatus\(a,/);
+  assert.match(source, /if \(rank !== 0\) return rank/);
   assert.match(source, /subagents\.length > 8/);
   assert.match(source, /relation\?\.description, relation\?\.profile, session\.name, session\.firstMessage/);
   assert.match(source, /maxHeight: "min\(58dvh, 480px\)"/);
@@ -28,8 +29,13 @@ test("renders as a floating popover card without a centered inner width", () => 
 });
 
 test("shows persisted completion states while live running state takes precedence", () => {
-  assert.match(source, /const status: SubagentSessionStatus = running \? "running" : relation\?\.status \?\? "completed"/);
+  assert.match(source, /const status = sessionStatus\(session, running\)/);
   assert.match(source, /t\(`agentSwitcher\.status\.\$\{status\}`\)/);
   assert.match(source, /status === "failed"/);
   assert.match(source, /status === "aborted" \|\| status === "interrupted"/);
+});
+
+test("shows queued agents distinctly and sorts them before terminal runs", () => {
+  assert.match(source, /if \(status === "queued"\)/);
+  assert.match(source, /if \(status === "queued"\) return 1/);
 });

@@ -438,6 +438,25 @@ test("renders custom-message images as buttons that open a larger preview", () =
   assert.match(html, /<img[^>]+src="data:image\/png;base64,YWJj"/);
 });
 
+test("renders subagent notifications as a compact collapsed step", () => {
+  const html = renderMessage({
+    role: "custom",
+    customType: "pi-web:subagent-notification",
+    content: "## First result\nFull result body",
+    display: true,
+    details: {
+      kind: "pi-web-subagent-wave",
+      sessionIds: ["one", "two", "three"],
+    },
+  });
+
+  assert.match(html, /data-step-card=""/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /3 sub-agents finished/);
+  assert.doesNotMatch(html, /markdown-subagent-notification/);
+  assert.doesNotMatch(html, /pi-web:subagent-notification|First result|Full result body|Show details/);
+});
+
 test("renders assistant image answers instead of leaving a blank final answer", () => {
   const image = { type: "image", source: { type: "base64", media_type: "image/png", data: "YWJj" } };
   const mixed = renderMessage({

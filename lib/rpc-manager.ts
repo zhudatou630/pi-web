@@ -40,7 +40,7 @@ import {
   readSubagentSessionResources,
   SUBAGENT_CONTROL_TOOL_NAMES,
 } from "./subagents";
-import { createSubagentController } from "./subagent-runtime";
+import { createSubagentController, getActiveSubagentRuns, isSubagentQueued } from "./subagent-runtime";
 import { isBuiltInSubagentsEnabled } from "./subagent-settings";
 import { resolveShellTools } from "./powershell-settings";
 import { CHAT_ONLY_RESOURCE_LOADER_OPTIONS, contextFilesSystemPrompt } from "./chat-only";
@@ -168,6 +168,7 @@ export interface RpcSessionStartOptions {
   initialModel?: { provider: string; modelId: string };
   allowInitialModelFallback?: boolean;
   thinkingLevel?: ThinkingLevel;
+  cwdOverride?: string;
 }
 
 const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
@@ -1814,6 +1815,13 @@ const SUBAGENT_CONTROLLER = createSubagentController({
     registerRpcWrapper(wrapper);
   },
   resolveSessionPath,
+  reopenSession: async (sessionId, sessionPath, cwdOverride) => {
+    const { session } = await startRpcSession(sessionId, sessionPath, undefined, {
+      ...(cwdOverride ? { cwdOverride } : {}),
+    });
+    return session;
+  },
+  isSessionFileMutationReserved: (sessionId) => getSessionFileMutations().has(sessionId),
   invalidateSessionList: invalidateSessionListCache,
   isBuiltInSubagentsEnabled,
 });
@@ -1829,6 +1837,8 @@ export function steerSubagent(sessionId: string, message: string) {
 export function abortSubagent(sessionId: string) {
   return SUBAGENT_CONTROLLER.abort(sessionId);
 }
+
+export { isSubagentQueued };
 
 function getLocks(): Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> {
   if (!globalThis.__piStartLocks) globalThis.__piStartLocks = new Map();
@@ -1884,6 +1894,7 @@ export async function reserveRpcSessionFileMutation(
   const wrappers = ids
     .map((id) => getRegistry().get(id))
     .filter((wrapper): wrapper is AgentSessionWrapper => Boolean(wrapper));
+  if (getActiveSubagentRuns().some((run) => ids.includes(run.sessionId))) return null;
   if (wrappers.some((wrapper) => wrapper.isBusyForFileMutation())) return null;
 
   for (const id of ids) reservations.add(id);
@@ -1991,6 +2002,7 @@ function runtimeMessageActivityMs(entry: SessionMessageEntry): number | undefine
  */
 export function getRpcSessionInfos(): SessionInfo[] {
   const sessions: SessionInfo[] = [];
+  const activeSubagents = new Map(getActiveSubagentRuns().map((run) => [run.sessionId, run]));
   for (const session of getRegistry().values()) {
     if (!session.isAlive()) continue;
 
@@ -2047,10 +2059,35 @@ export function getRpcSessionInfos(): SessionInfo[] {
           parentSessionId: subagent.parentSessionId,
           profile: subagent.profile,
           description: subagent.description,
-          status: session.isRunning() ? "running" as const : subagent.status,
+          status: activeSubagents.get(session.sessionId)?.status
+            ?? (session.isRunning() ? "running" as const : subagent.status),
         },
       } : {}),
       transient: !persisted,
+    });
+  }
+  const listedIds = new Set(sessions.map((session) => session.id));
+  for (const run of activeSubagents.values()) {
+    if (listedIds.has(run.sessionId)) continue;
+    const parent = getRegistry().get(run.parentSessionId);
+    sessions.push({
+      path: run.sessionPath,
+      id: run.sessionId,
+      cwd: parent?.cwd ?? "",
+      name: run.description,
+      created: run.createdAt,
+      modified: run.createdAt,
+      messageCount: 0,
+      firstMessage: getSessionFirstMessagePreview(run.task || "(no messages)"),
+      parentSessionId: run.parentSessionId,
+      relation: {
+        kind: "subagent",
+        parentSessionId: run.parentSessionId,
+        profile: run.profile,
+        description: run.description,
+        status: run.status,
+      },
+      transient: !run.sessionPath || !existsSync(run.sessionPath),
     });
   }
   return sessions;
@@ -2104,7 +2141,7 @@ export async function startRpcSession(
   cwd: string | undefined,
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
-  const { initialModel, allowInitialModelFallback, thinkingLevel } = options;
+  const { initialModel, allowInitialModelFallback, thinkingLevel, cwdOverride } = options;
   if (getSessionFileMutations().has(sessionId)) {
     throw new Error("Session file is being modified");
   }
@@ -2122,7 +2159,7 @@ export async function startRpcSession(
 
   let sessionManager: SessionManager;
   if (sessionFile) {
-    sessionManager = SessionManager.open(sessionFile, undefined);
+    sessionManager = SessionManager.open(sessionFile, undefined, cwdOverride);
   } else {
     if (!cwd) throw new Error("cwd is required for a new session");
     sessionManager = SessionManager.create(cwd, undefined);
@@ -2187,7 +2224,7 @@ export async function startRpcSession(
             noPromptTemplates: true,
             noThemes: true,
             noContextFiles: true,
-            ...(chatOnly
+            ...(chatOnly || subagentResources.exactSystemPrompt !== undefined
               ? {
                   systemPrompt: " ",
                   systemPromptOverride: () => undefined,
@@ -2277,11 +2314,13 @@ export async function startRpcSession(
       inner.setActiveToolsByName(withExtensionTools(inner, selectedToolNames ?? inner.getActiveToolNames()));
     }
 
-    const exactSystemPrompt = chatOnly
-      ? subagentResources
-        ? () => subagentResources.appendSystemPrompt[0] ?? ""
-        : () => contextFilesSystemPrompt(inner.resourceLoader.getAgentsFiles().agentsFiles)
-      : undefined;
+    const exactSystemPrompt = subagentResources?.exactSystemPrompt !== undefined
+      ? () => subagentResources.exactSystemPrompt!
+      : chatOnly
+        ? subagentResources
+          ? () => subagentResources.appendSystemPrompt[0] ?? ""
+          : () => contextFilesSystemPrompt(inner.resourceLoader.getAgentsFiles().agentsFiles)
+        : undefined;
     const wrapper = new AgentSessionWrapper(inner, {
       exactSystemPrompt,
       chatOnly,

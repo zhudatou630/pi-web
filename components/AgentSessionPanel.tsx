@@ -40,6 +40,20 @@ function statusColor(status: SubagentSessionStatus): string {
   return "var(--text-dim)";
 }
 
+function sessionStatus(session: SessionInfo, running: boolean): SubagentSessionStatus {
+  return running
+    ? "running"
+    : session.relation?.kind === "subagent"
+      ? session.relation.status
+      : "completed";
+}
+
+function statusPriority(status: SubagentSessionStatus): number {
+  if (status === "running" || status === "starting") return 0;
+  if (status === "queued") return 1;
+  return 2;
+}
+
 function StatusIcon({ status }: { status: SubagentSessionStatus }) {
   if (status === "running" || status === "starting") {
     return <LivePulseBeacon size={13} />;
@@ -48,6 +62,13 @@ function StatusIcon({ status }: { status: SubagentSessionStatus }) {
     return (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
         <circle cx="12" cy="12" r="9" /><path d="m9 9 6 6M15 9l-6 6" />
+      </svg>
+    );
+  }
+  if (status === "queued") {
+    return (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
       </svg>
     );
   }
@@ -82,7 +103,7 @@ function AgentRow({
 }) {
   const { locale, t } = useI18n();
   const relation = session.relation?.kind === "subagent" ? session.relation : null;
-  const status: SubagentSessionStatus = running ? "running" : relation?.status ?? "completed";
+  const status = sessionStatus(session, running);
   const primary = main ? t("agentSwitcher.main") : relation?.description || sessionTitle(session);
   const secondary = main
     ? sessionTitle(session)
@@ -166,9 +187,9 @@ export function AgentSessionPanel({
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const sortedSubagents = useMemo(() => [...subagents].sort((a, b) => {
-    const aRunning = runningSessionIds.has(a.id);
-    const bRunning = runningSessionIds.has(b.id);
-    if (aRunning !== bRunning) return aRunning ? -1 : 1;
+    const rank = statusPriority(sessionStatus(a, runningSessionIds.has(a.id)))
+      - statusPriority(sessionStatus(b, runningSessionIds.has(b.id)));
+    if (rank !== 0) return rank;
     return b.modified.localeCompare(a.modified);
   }), [runningSessionIds, subagents]);
   const normalizedQuery = query.trim().toLowerCase();

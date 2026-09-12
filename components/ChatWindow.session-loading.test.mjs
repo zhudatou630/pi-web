@@ -7,11 +7,11 @@ const source = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf
 test("withholds model, effort, and context controls while an existing session is loading", () => {
   assert.match(source, /const isSessionLoading = !isNew && loading;/);
   assert.match(source, /model=\{isSessionLoading \? null : displayModelValue\}/);
-  assert.match(source, /onModelChange=\{isSessionLoading \? undefined : handleModelChange\}/);
+  assert.match(source, /onModelChange=\{isSessionLoading \|\| isQueuedSubagent \? undefined : handleModelChange\}/);
   assert.match(source, /thinkingLevel=\{isSessionLoading \? undefined : thinkingLevel\}/);
   assert.match(
     source,
-    /onThinkingLevelChange=\{isSessionLoading \? undefined : \(session \|\| isNew \? handleThinkingLevelChange : undefined\)\}/,
+    /onThinkingLevelChange=\{isSessionLoading \|\| isQueuedSubagent \? undefined : \(session \|\| isNew \? handleThinkingLevelChange : undefined\)\}/,
   );
   assert.match(source, /contextUsage=\{isSessionLoading \? null : contextUsage\}/);
 });

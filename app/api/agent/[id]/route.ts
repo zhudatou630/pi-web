@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
-import { startRpcSession, getRpcSession, setRpcSessionTools } from "@/lib/rpc-manager";
+import { startRpcSession, getRpcSession, isSubagentQueued, setRpcSessionTools } from "@/lib/rpc-manager";
 
 // POST /api/agent/[id] - Send a command to an existing session
 export async function POST(
@@ -22,6 +22,9 @@ export async function POST(
       throw new Error("toolNames must be an array of strings");
     }
     const toolNames = requestedToolNames as string[] | undefined;
+    if (isSubagentQueued(id)) {
+      return NextResponse.json({ error: "Subagent is queued" }, { status: 409 });
+    }
 
     // Fast path: already-running session
     const existing = getRpcSession(id);

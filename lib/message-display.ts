@@ -13,6 +13,18 @@ export function isMessageGroupAnchor(message: { role?: AgentMessage["role"]; cus
     || (message.role === "custom" && message.customType === "compaction");
 }
 
+export function isSubagentNotificationMessage(
+  message: { role?: AgentMessage["role"]; customType?: string },
+): boolean {
+  return message.role === "custom" && message.customType === "pi-web:subagent-notification";
+}
+
+export function isMessageGroupBoundary(
+  message: { role?: AgentMessage["role"]; customType?: string },
+): boolean {
+  return isMessageGroupAnchor(message) || isSubagentNotificationMessage(message);
+}
+
 export function isEmptyThinkingBlock(block: AssistantContentBlock, options: DisplayOptions = {}): block is ThinkingContent {
   return block.type === "thinking" && !block.deferred && !options.isStreaming && block.thinking.trim() === "";
 }

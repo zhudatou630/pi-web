@@ -40,6 +40,10 @@ declare global {
 
 const PROJECT_CACHE_TTL_MS = 60_000;
 
+export function isEphemeralAgentWorktreePath(worktreePath: string): boolean {
+  return basename(worktreePath).startsWith("pi-web-agent-");
+}
+
 function getProjectCache(): Map<string, { info: ProjectInfo; expiresAt: number }> {
   if (!globalThis.__piProjectCache) globalThis.__piProjectCache = new Map();
   return globalThis.__piProjectCache;
@@ -151,7 +155,7 @@ export async function listWorktrees(cwd: string): Promise<WorktreeInfo[]> {
       // Prunable worktrees point at missing/broken gitdirs and cannot be
       // browsed or selected usefully. Also skip vanished paths even if git has
       // not marked them prunable yet.
-      if (!current.prunable && existsSync(current.path)) {
+      if (!current.prunable && existsSync(current.path) && !isEphemeralAgentWorktreePath(current.path)) {
         worktrees.push({
           path: current.path,
           branch: current.branch ?? null,

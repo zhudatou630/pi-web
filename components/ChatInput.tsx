@@ -43,6 +43,8 @@ interface Props {
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
   onPromptWithStreamingBehavior?: (message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => void;
   isStreaming: boolean;
+  /** Keep a session inspectable while preventing it from accepting new input. */
+  disabled?: boolean;
   /** Text-only composer without the session controls or outer spacing. */
   compact?: boolean;
   model?: { provider: string; modelId: string } | null;
@@ -542,7 +544,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, onOpenSessionStats,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -941,6 +943,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [attachedImages.length, clearInput, onBuiltinCommand]);
 
   const handleSend = useCallback(async () => {
+    if (disabled) return;
     const msg = value.trim();
     if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
     const outgoing = prependImageMentions(msg, mentionedImages);
@@ -952,7 +955,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const images = attachedImages.length ? attachedImages : undefined;
     clearInput();
     onSend(outgoing, images);
-  }, [value, attachedImages, mentionedImages, isStreaming, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [disabled, value, attachedImages, mentionedImages, isStreaming, runBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = !compact && value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -989,7 +992,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const hasInputText = Boolean(value.trim());
   const imageSendBlocked = exceedsAttachedImageSendLimit(attachedImages.length);
   const canQueueStreamingMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0 || mentionedImages.length > 0);
-  const canSendMessage = !imageSendBlocked && (hasInputText || attachedImages.length > 0 || mentionedImages.length > 0);
+  const canSendMessage = !disabled && !imageSendBlocked && (hasInputText || attachedImages.length > 0 || mentionedImages.length > 0);
   // Warn when images are attached but the selected model is known not to accept
   // image input (#584), including a resolved default. Unknown models stay silent.
   const showImageUnsupportedWarning = (
@@ -1632,6 +1635,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         type="file"
         accept="image/*"
         multiple
+        disabled={disabled}
         style={{ display: "none" }}
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
@@ -2236,6 +2240,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             aria-controls={activeListboxId}
             aria-activedescendant={activeOptionId}
             aria-label={compact ? t("chat.quoteQuestion") : t("chat.message")}
+            disabled={disabled}
+            placeholder={disabled ? t("agentSwitcher.status.queued") : undefined}
             value={value}
             onChange={(e) => {
               valueRef.current = e.target.value;
@@ -2481,6 +2487,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             <div ref={imageMenuRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
               <button
                 type="button"
+                disabled={disabled}
                 onClick={() => {
                   if (onOpenImageGeneration) {
                     setImageMenuOpen((prev) => !prev);
@@ -2500,8 +2507,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   border: "none",
                   borderRadius: 4,
                   color: attachedImages.length ? "var(--accent)" : (imageMenuOpen ? "var(--text)" : "var(--text-muted)"),
-                  cursor: "pointer",
-                  opacity: 1,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.45 : 1,
                   lineHeight: 1,
                   transition: "background 0.12s, color 0.12s",
                 }}

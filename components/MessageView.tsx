@@ -8,10 +8,11 @@ import { ImageMentionChip } from "./GeneratedImageResult";
 import { imageToolDisplayKind, splitImageMentions } from "@/lib/image-generation";
 import { ThinkingIcon } from "./ThinkingIcon";
 import { ToolIcon } from "./ToolIcon";
+import { SubagentIcon } from "./SubagentIcon";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
-import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock } from "@/lib/message-display";
+import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock, isSubagentNotificationMessage } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import { isEditToolName } from "@/lib/tool-names";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
@@ -246,10 +247,14 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     return null;
   }
   if (message.role === "custom") {
-    if ((message as CustomMessage).customType === "compaction") {
-      return <CompactionMessageView message={message as CustomMessage} />;
+    const customMessage = message as CustomMessage;
+    if (customMessage.customType === "compaction") {
+      return <CompactionMessageView message={customMessage} />;
     }
-    return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
+    if (isSubagentNotificationMessage(customMessage)) {
+      return <SubagentNotificationView message={customMessage} cwd={cwd} onOpenFile={onOpenFile} />;
+    }
+    return <CustomMessageView message={customMessage} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (message.role === "bashExecution") {
     return <BashExecutionView message={message as BashExecutionMessage} sessionId={sessionId} />;
@@ -1533,6 +1538,60 @@ function CompactionFileList({ title, files }: { title: string; files: string[] }
           <li key={file}>{file}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function SubagentNotificationView({ message, cwd, onOpenFile }: {
+  message: CustomMessage;
+  cwd?: string;
+  onOpenFile?: (filePath: string) => void;
+}) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const sessionIds = (message.details as { sessionIds?: string[] } | undefined)?.sessionIds ?? [];
+  const count = sessionIds.length || 1;
+  const label = count === 1
+    ? t("subagent.notificationSingle")
+    : t("subagent.notificationMany", { count });
+  const text = getMessageText(message.content);
+
+  return (
+    <div data-step-card="" style={{ overflow: "hidden", borderRadius: 4 }}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        title={label}
+        onClick={() => setExpanded((value) => !value)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          width: "100%",
+          minHeight: 24,
+          padding: "3px 8px",
+          border: "none",
+          background: "none",
+          color: "var(--text-muted)",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", flexShrink: 0 }}>
+          <SubagentIcon size={12} strokeWidth={2} />
+        </span>
+        <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 500 }}>
+          {label}
+        </span>
+        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} aria-hidden="true">
+          <polyline points="2 3.5 5 6.5 8 3.5" />
+        </svg>
+      </button>
+      {expanded && text && (
+        <div style={{ padding: "7px 10px 8px 28px", borderTop: "1px solid color-mix(in srgb, var(--border) 65%, transparent)", color: "var(--text-muted)", fontSize: "calc(11px + var(--chat-font-size-offset, 0px))", lineHeight: 1.48 }}>
+          <SafeMarkdownBody className="markdown-subagent-notification" cwd={cwd} onOpenFile={onOpenFile}>{text}</SafeMarkdownBody>
+        </div>
+      )}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import {
   readSessionHeader,
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
-import { getRpcSession, reserveRpcSessionFileMutation } from "@/lib/rpc-manager";
+import { getRpcSession, getSubagentRun, reserveRpcSessionFileMutation } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
@@ -92,7 +92,6 @@ function reparentSessionRecord(
       ) continue;
       entry.data = { ...entry.data, parentSessionId, parentSessionPath };
       lines[index] = JSON.stringify(entry);
-      break;
     }
   }
   return lines.join("\n");
@@ -175,6 +174,7 @@ export async function GET(
     const subagent = header
       ? readSubagentRun(entries as never, header.id, filePath)
       : null;
+    const activeSubagent = subagent ? await getSubagentRun(id) : null;
     const toolNames = readSubagentSessionResources(entries as never)?.tools
       ?? readSessionToolSelection(entries as never);
     const info = header ? (await attachSessionProjectInfo([{
@@ -193,7 +193,7 @@ export async function GET(
         : "(no messages)",
       parentSessionId,
       ...(subagent
-        ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: liveRpc?.isRunning() ? "running" as const : subagent.status } }
+        ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: activeSubagent?.status ?? subagent.status } }
         : header.parentSession
           ? { relation: { kind: "fork" as const, ...(parentSessionId ? { originSessionId: parentSessionId } : {}) } }
           : {}),

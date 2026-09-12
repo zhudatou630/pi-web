@@ -1034,6 +1034,36 @@ pre, code {
   margin: 4px 0;
 }
 
+.markdown-subagent-notification {
+  font-family: var(--font-chat);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.markdown-subagent-notification p {
+  margin: 1px 0 6px;
+  color: var(--text-muted);
+}
+.markdown-subagent-notification :is(h1, h2, h3, h4, h5, h6) {
+  margin: 7px 0 2px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--text);
+  font-family: var(--font-chat);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+.markdown-subagent-notification :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.markdown-subagent-notification > :last-child {
+  margin-bottom: 0;
+}
+
 .markdown-compaction-message {
   line-height: 1.5;
 }

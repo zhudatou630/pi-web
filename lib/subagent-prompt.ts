@@ -11,12 +11,16 @@ export function buildSubagentPromptPlan(options: {
   tools: readonly string[];
   loadSkills?: boolean;
   loadExtensions?: boolean;
+  promptMode?: "replace" | "append";
   task: string;
   inheritedParentContext?: string;
 }): SubagentPromptPlan {
   const chatOnly = options.tools.length === 0 && !options.loadSkills && !options.loadExtensions;
-  const appendSystemPrompt = [options.profileSystemPrompt, options.projectInstructions]
-    .filter((part): part is string => Boolean(part?.trim()));
+  const replacePrompt = options.promptMode === "replace";
+  const appendSystemPrompt = [
+    options.profileSystemPrompt,
+    ...(!replacePrompt && options.projectInstructions ? [options.projectInstructions] : []),
+  ].filter((part): part is string => Boolean(part?.trim()));
   if (options.inheritedParentContext && !chatOnly) {
     appendSystemPrompt.push(options.inheritedParentContext);
   }
@@ -26,6 +30,6 @@ export function buildSubagentPromptPlan(options: {
     delegatedTask: options.inheritedParentContext && chatOnly
       ? `${options.task}\n\n${options.inheritedParentContext}`
       : options.task,
-    ...(chatOnly ? { exactSystemPrompt: appendSystemPrompt.join("\n\n") } : {}),
+    ...(chatOnly || replacePrompt ? { exactSystemPrompt: appendSystemPrompt.join("\n\n") } : {}),
   };
 }

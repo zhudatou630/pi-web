@@ -43,6 +43,18 @@ export interface StartSubagentRequest {
   thinking?: string;
   maxTurns?: number;
   inheritContext?: boolean;
+  isolation?: "worktree";
+  signal?: AbortSignal;
+  onUpdate?: (run: SubagentRunInfo) => void;
+}
+
+export interface ResumeSubagentRequest {
+  parentContext: ExtensionContext;
+  parentToolCallId: string;
+  sessionId: string;
+  task: string;
+  description: string;
+  runInBackground?: boolean;
   signal?: AbortSignal;
   onUpdate?: (run: SubagentRunInfo) => void;
 }
@@ -54,6 +66,7 @@ export interface SubagentExecution {
 
 export interface SubagentExtensionRuntime {
   start(request: StartSubagentRequest): Promise<SubagentExecution>;
+  resume(request: ResumeSubagentRequest): Promise<SubagentExecution>;
   get(sessionId: string): Promise<SubagentRunInfo | null>;
   steer(sessionId: string, message: string): Promise<void>;
 }
@@ -87,7 +100,7 @@ export function subagentToolDetails(run: SubagentRunInfo): SubagentToolDetails {
 }
 
 export function subagentFinalText(run: SubagentRunInfo): string {
-  if (run.status === "starting" || run.status === "running") {
+  if (run.status === "starting" || run.status === "running" || run.status === "queued") {
     return `Subagent ${run.sessionId} is ${run.status}.`;
   }
   if (run.status === "completed") {
@@ -123,31 +136,49 @@ export function createSubagentExtension(
       pi.registerTool(defineTool({
         name: "Agent",
         label: "Agent",
-        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Use foreground mode when the current response needs the result. Use background mode only for independent work, then retrieve the result later with get_subagent_result.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
+        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately and the parent is notified when the wave of background agents finishes. Use foreground mode when the current response needs the result before it can continue.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
         promptSnippet: "Delegate a focused task to an inspectable subagent session",
         promptGuidelines: [
           "Use Agent for a focused task that benefits from an isolated context.",
           "Use multiple background Agent calls in the same response for independent parallel work.",
           "Use foreground Agent calls when their results are needed before the current response can finish.",
+          "Pass resume with an existing subagent session ID to continue that session instead of creating a new one.",
           "Do not duplicate work already delegated to a running subagent.",
         ],
         executionMode: "parallel",
         parameters: Type.Object({
           subagent_type: Type.Optional(Type.String({ description: `Configured agent profile. Available types: ${availableTypes}. Default: general-purpose.` })),
           prompt: Type.String({ description: "The complete task for the subagent." }),
+          resume: Type.Optional(Type.String({ description: "Existing subagent session ID to continue instead of creating a new session." })),
           input_files: Type.Optional(Type.Array(Type.String(), {
             description: "UTF-8 text files under the session cwd to include with the task.",
             maxItems: MAX_SUBAGENT_INPUT_FILES,
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
-          run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Retrieve the result later with get_subagent_result." })),
+          run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. The parent is notified when the background wave finishes." })),
           model: Type.Optional(Type.String({ description: "Optional provider/modelId override." })),
           thinking: Type.Optional(Type.String({ description: "Optional thinking level override." })),
           max_turns: Type.Optional(Type.Number({ description: "Optional positive agent turn limit." })),
           inherit_context: Type.Optional(Type.Boolean({ description: "Include the parent session's active conversation context." })),
+          isolation: Type.Optional(Type.String({ description: "Run the subagent in an isolated git worktree copy." })),
         }),
         async execute(toolCallId, params, signal, onUpdate, ctx) {
-          const execution = await runtime.start({
+          const resume = params.resume?.trim();
+          const execution = resume
+            ? await runtime.resume({
+                parentContext: ctx,
+                parentToolCallId: toolCallId,
+                sessionId: resume,
+                task: params.prompt,
+                description: params.description,
+                ...(params.run_in_background !== undefined ? { runInBackground: params.run_in_background } : {}),
+                signal,
+                onUpdate: (run) => onUpdate?.({
+                  content: [{ type: "text", text: `${run.profile}: ${run.description} (${run.status})` }],
+                  details: subagentToolDetails(run),
+                }),
+              })
+            : await runtime.start({
             parentContext: ctx,
             parentToolCallId: toolCallId,
             profile: params.subagent_type ?? "general-purpose",
@@ -159,6 +190,7 @@ export function createSubagentExtension(
             ...(params.thinking ? { thinking: params.thinking } : {}),
             ...(params.max_turns ? { maxTurns: params.max_turns } : {}),
             ...(params.inherit_context !== undefined ? { inheritContext: params.inherit_context } : {}),
+            ...(params.isolation === "worktree" ? { isolation: "worktree" as const } : {}),
             signal,
             onUpdate: (run) => onUpdate?.({
               content: [{ type: "text", text: `${run.profile}: ${run.description} (${run.status})` }],
@@ -206,7 +238,7 @@ export function createSubagentExtension(
           if (!run) throw new Error(`Subagent not found: ${params.agent_id}`);
           const timeoutMs = params.timeout_ms ?? DEFAULT_RESULT_WAIT_TIMEOUT_MS;
           const deadline = Date.now() + timeoutMs;
-          while (params.wait && (run.status === "starting" || run.status === "running")) {
+          while (params.wait && (run.status === "starting" || run.status === "queued" || run.status === "running")) {
             const remainingMs = deadline - Date.now();
             if (remainingMs <= 0) {
               return {

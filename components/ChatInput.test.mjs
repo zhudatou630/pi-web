@@ -280,6 +280,15 @@ test("integrates image generation into the image button menu instead of a standa
   assert.doesNotMatch(withGen, /<button[^>]*aria-label="Generate image"[^>]*class="inline-flex h-7 w-7/);
 });
 
+test("keeps queued subagent sessions inspectable without accepting input", () => {
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatInput, { onSend() {}, onAbort() {}, isStreaming: false, disabled: true }),
+  ));
+
+  assert.match(html, /<textarea[^>]*disabled=""[^>]*placeholder="Queued"/);
+  assert.match(html, /<button[^>]*aria-label="Send"[^>]*disabled=""/);
+});
+
 test("uses a short mobile Options label while preserving the descriptive accessible name", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   const start = source.indexOf('title={controlsMenuOpen ? undefined : t("chat.moreControls")}');

@@ -22,6 +22,8 @@ test("uses the shared enabled status treatment", () => {
 test("offers a persisted built-in sub-agent switch with explicit session reload", () => {
   assert.match(source, /fetch\("\/api\/subagents\/settings"/);
   assert.match(source, /JSON\.stringify\(\{ enabled \}\)/);
+  assert.match(source, /JSON\.stringify\(\{ maxConcurrent: value \}\)/);
+  assert.match(source, /t\("agents\.maxConcurrent"\)/);
   assert.match(source, /<ConfigSwitch[\s\S]*?checked=\{builtInEnabled\}[\s\S]*?t\("agents\.builtInTitle"\)/);
   assert.match(source, /sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
   assert.match(source, /reloadNeeded && sessionId/);
