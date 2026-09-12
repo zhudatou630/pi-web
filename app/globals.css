@@ -969,10 +969,7 @@ pre, code {
 
 @media (hover: hover) and (pointer: fine) {
   .process-details-summary:hover {
-    color: var(--text) !important;
-  }
-  .process-details-summary:hover [data-summary-label] {
-    color: var(--text) !important;
+    color: var(--text-muted) !important;
   }
 }
 

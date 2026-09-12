@@ -120,6 +120,7 @@ export const zhTWLocale: LocalePlugin = {
     "subagent.notificationMany": "{count} 個子代理已結束",
     "agentSwitcher.title": "Agents",
     "agentSwitcher.main": "主 Agent",
+    "agentSwitcher.backToMain": "返回主 Agent",
     "agentSwitcher.subagent": "子 Agent",
     "agentSwitcher.current": "目前",
     "agentSwitcher.count": "{count} 個子 Agent",

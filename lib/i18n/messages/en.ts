@@ -120,6 +120,7 @@ export const enLocale: LocalePlugin = {
     "subagent.notificationMany": "{count} sub-agents finished",
     "agentSwitcher.title": "Agents",
     "agentSwitcher.main": "Main agent",
+    "agentSwitcher.backToMain": "Back to main agent",
     "agentSwitcher.subagent": "Sub-agent",
     "agentSwitcher.current": "Current",
     "agentSwitcher.count": "{count} sub-agents",

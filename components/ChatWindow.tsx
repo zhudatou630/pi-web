@@ -458,6 +458,7 @@ function ProcessDetailsGroup({
     }
     const box = scrollBoxRef.current;
     if (!box || userScrolledUpRef.current) return;
+    if (box.scrollHeight <= box.clientHeight + 1) return;
     box.scrollTop = box.scrollHeight;
   }, [isPanelOpen, messageCount, toolCallCount]);
 
@@ -487,10 +488,11 @@ function ProcessDetailsGroup({
           padding: "2px 0",
           border: "none",
           background: "none",
-          color: "var(--text-muted)",
+          color: "var(--text-dim)",
           cursor: "pointer",
-          fontSize: 12,
+          fontSize: 11.5,
           fontFamily: "var(--font-ui)",
+          fontWeight: 400,
           textAlign: "left",
           transition: "color 0.12s ease",
         }}
@@ -527,8 +529,8 @@ function ProcessDetailsGroup({
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              fontWeight: 500,
-              color: "var(--text-muted)",
+              fontWeight: 400,
+              color: "inherit",
               lineHeight: 1.35,
               transition: "color 0.12s ease",
             }}
@@ -542,12 +544,12 @@ function ProcessDetailsGroup({
           viewBox="0 0 10 10"
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.6"
+          strokeWidth="1.4"
           strokeLinecap="round"
           strokeLinejoin="round"
           style={{
             flexShrink: 0,
-            opacity: 0.5,
+            opacity: 0.45,
             display: "block",
             transform: isPanelOpen ? "rotate(90deg)" : "none",
             transition: "transform 0.15s ease",
@@ -1453,11 +1455,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return false;
   }, [messages]);
   const hasSeenTurnOutputRef = useRef(false);
-  useEffect(() => {
-    if (currentTurnHasVisibleOutput || Boolean(streamState.streamingMessage?.content.length)) {
-      hasSeenTurnOutputRef.current = true;
-    }
-  }, [currentTurnHasVisibleOutput, streamState.streamingMessage?.content.length]);
+  if (currentTurnHasVisibleOutput || Boolean(streamState.streamingMessage?.content.length)) {
+    hasSeenTurnOutputRef.current = true;
+  }
 
   const streamingAssistant = streamState.streamingMessage?.role === "assistant"
     ? streamState.streamingMessage as AssistantMessage
@@ -1516,11 +1516,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       const contentEnd = spacer.getBoundingClientRect().top
         - containerTop
         + container.scrollTop;
-      const nextPromptAnchorSpacerHeight = getPromptAnchorSpacerHeight(
-        targetTop,
-        contentEnd,
-        container.clientHeight,
-      );
+      // Compact process rows never fill the send-time pin. Keep the spacer for
+      // the waiting pulse, then drop it — same end state as hiding the tab.
+      const nextPromptAnchorSpacerHeight = hasSeenTurnOutputRef.current
+        ? 0
+        : getPromptAnchorSpacerHeight(
+          targetTop,
+          contentEnd,
+          container.clientHeight,
+        );
 
       const isInitialMeasurement = !promptAnchorAdjustmentDoneRef.current;
       const needsInitialAdjustment = isInitialMeasurement
@@ -1940,34 +1944,35 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       streamingParts.processMessage.completedAt,
                     );
                     rendered.push(
-                      <ProcessDetailsGroup
-                        key="streaming-process-group"
-                        messageCount={1}
-                        toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
-                        durationSeconds={streamingDuration}
-                        startTime={turnStartTime}
-                        defaultExpanded
-                        isMobile={isMobile}
-                        activeStepSummary={latchedLiveProcessSummary(
-                          liveProcessSummary(streamingParts.processMessage, agentPhase, t),
-                          liveProcessActive,
-                          liveProcessSummaryRef,
-                          t("chat.thinking"),
-                        )}
-                        isStreaming={liveProcessActive}
-                        t={t}
-                      >
-                        <MessageView
-                          key="streaming-process-view"
-                          message={streamingParts.processMessage}
-                          isStreaming
-                          isProcess
-                          toolResults={toolResultsMap}
-                          cwd={messageCwd}
-                          onOpenFile={openFileFromSession}
-                          onOpenSession={onOpenSession}
-                        />
-                      </ProcessDetailsGroup>,
+                      <div key={`process-group-${entryIds[firstIdx] ?? firstIdx}`}>
+                        <ProcessDetailsGroup
+                          messageCount={1}
+                          toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
+                          durationSeconds={streamingDuration}
+                          startTime={turnStartTime}
+                          defaultExpanded
+                          isMobile={isMobile}
+                          activeStepSummary={latchedLiveProcessSummary(
+                            liveProcessSummary(streamingParts.processMessage, agentPhase, t),
+                            liveProcessActive,
+                            liveProcessSummaryRef,
+                            t("chat.thinking"),
+                          )}
+                          isStreaming={liveProcessActive}
+                          t={t}
+                        >
+                          <MessageView
+                            key="streaming-process-view"
+                            message={streamingParts.processMessage}
+                            isStreaming
+                            isProcess
+                            toolResults={toolResultsMap}
+                            cwd={messageCwd}
+                            onOpenFile={openFileFromSession}
+                            onOpenSession={onOpenSession}
+                          />
+                        </ProcessDetailsGroup>
+                      </div>,
                     );
                   }
                   idx = endIdx;

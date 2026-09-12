@@ -102,7 +102,7 @@ test("sidebar single-click opens a preview tab while explicit new tab action app
   assert.match(sidebarSource, /title=\{t\("chatTabs\.pinTab"/);
 });
 
-test("explicit opens are pinned: restore, notifications, subagent cards, agent panel, send-promote", () => {
+test("explicit opens are pinned: restore, notifications, subagent cards, send-promote", () => {
   assert.match(source, /isRestore \|\| pinned\s*\? openSessionInNewTab\(prev, session, pane\)/);
   assert.match(source, /handlePinSession\(data\.info\)/);
   assert.match(source, /handlePinSession\(targetSession\)/);

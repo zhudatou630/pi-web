@@ -4,14 +4,12 @@ import test from "node:test";
 
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const historySource = await readFile(new URL("./SessionHistoryControl.tsx", import.meta.url), "utf8");
-const mobileHookSource = await readFile(new URL("../hooks/useIsMobile.ts", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-test("keeps action icons inline in medium mobile sidebars", () => {
-  assert.match(mobileHookSource, /NARROW_MOBILE_QUERY = "\(max-width: 480px\)"/);
-  assert.match(source, /const isNarrowMobile = useIsNarrowMobile\(\);/);
-  assert.match(source, /\{!isNarrowMobile && renderChatToolbarActions\(true\)\}/);
-  assert.match(source, /\{isNarrowMobile && \([\s\S]*?data-mobile-toolbar-more="true"/);
+test("keeps session actions inline at every mobile width", () => {
+  const toolbar = mobileToolbarSource();
+  assert.match(toolbar, /\{renderChatToolbarActions\(true\)\}[\s\S]*?\{renderSessionStatsButton\(true\)\}[\s\S]*?\{renderMainFileToggle\(true\)\}/);
+  assert.doesNotMatch(source, /useIsNarrowMobile|mobileToolbarMoreOpen|data-mobile-toolbar-more|data-mobile-toolbar-actions/);
 });
 
 test("closes the mobile overlay on load even before a chat destination exists", () => {
@@ -40,16 +38,10 @@ test("closes shared top panels consistently and restores their trigger on Escape
   assert.match(source, /data-top-panel-trigger="tools"/);
   assert.match(source, /data-top-panel-trigger="session"/);
   assert.match(source, /id="workspace-top-panel"/);
-  assert.match(source, /event\.key !== "Escape" \|\| activeTopPanel/);
-  assert.match(source, /querySelector<HTMLElement>\('\[data-mobile-toolbar-more="true"\]'\)/);
 });
 
-test("uses a compact narrow-mobile toolbar with a floating action layer", () => {
+test("uses a single inline mobile toolbar", () => {
   assert.match(source, /data-mobile-toolbar="true"[\s\S]*?flex: 1,[\s\S]*?minWidth: 0/);
-  assert.match(
-    source,
-    /data-mobile-toolbar-actions="true"[\s\S]*?position: "absolute"[\s\S]*?right: 0,[\s\S]*?left: TOP_BAR_ICON_BUTTON_SIZE/,
-  );
 
   assert.match(historySource, /data-mobile-toolbar-action=\{mobile \? "history"/);
   for (const action of ["agents", "branches", "system", "tools"]) {
@@ -59,7 +51,7 @@ test("uses a compact narrow-mobile toolbar with a floating action layer", () => 
 
 test("only renders the Agents switcher when the active session family has subagents", () => {
   assert.match(source, /const hasSubagentSessions = Boolean\(activeSessionFamily\?\.subagents\.length\)/);
-  assert.match(source, /\{hasSubagentSessions && \(\s*<button[\s\S]*?toggleTopPanel\("agents", mobile\)/);
+  assert.match(source, /\{hasSubagentSessions && \(\s*<button[\s\S]*?toggleTopPanel\("agents"\)/);
   assert.match(source, /activeTopPanel === "agents" && activeSessionFamily && selectedSession/);
 });
 
@@ -69,7 +61,11 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
     source,
     /if \(activeTopPanel === "agents"\)[\s\S]*?Math\.min\(AGENT_PANEL_WIDTH[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
-  assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handlePinSession\}/);
+  assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSwitchFamilySession\}/);
+  assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);
+  assert.match(source, /handleSelectSession\(session, false, undefined, undefined, false, true\)/);
+  assert.match(source, /selectedSession\?\.relation\?\.kind === "subagent"/);
+  assert.match(source, /agentSwitcher\.backToMain/);
 });
 
 test("only renders branch toolbar controls for sessions with branches on mobile and disables desktop button without branches", () => {
@@ -95,43 +91,14 @@ function mobileToolbarSource() {
   return source.slice(start, end);
 }
 
-test("keeps covered statistics and file controls out of interaction and focus", () => {
+test("keeps statistics and file controls directly interactive on mobile", () => {
   const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
   const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
   for (const block of [stats, fileToggle]) {
-    assert.match(block, /const covered = mobile && isNarrowMobile && mobileToolbarMoreOpen;/);
-    assert.match(block, /tabIndex=\{covered \? -1 : undefined\}/);
-    assert.match(block, /visibility: covered \? "hidden" : "visible"/);
-    assert.match(block, /pointerEvents: covered \? "none" : "auto"/);
-    assert.match(block, /aria-hidden=\{covered \? true : undefined\}/);
+    assert.doesNotMatch(block, /\bcovered\b|visibility: covered|pointerEvents: covered|aria-hidden=\{covered|tabIndex=\{covered/);
   }
-  assert.match(stats, /disabled=\{!showChat \|\| covered\}/);
-  assert.match(fileToggle, /disabled=\{covered\}/);
-});
-
-test("closes the mobile action layer on outside click, Escape, layout changes, and session changes", () => {
-  assert.match(source, /event\.composedPath\(\)\.includes\(toolbar\)/);
-  assert.match(source, /document\.addEventListener\("pointerdown", handlePointerDown, true\)/);
-  assert.match(source, /event\.key !== "Escape"[\s\S]*?setMobileToolbarMoreOpen\(false\)/);
-  assert.match(source, /\}, \[isMobile, isNarrowMobile, selectedSession\?\.id, newSessionDraftId\]\);/);
-});
-
-test("keeps the mobile action layer open after using an expanded action", () => {
-  const toggleTopPanel = source.match(/const toggleTopPanel = useCallback\([\s\S]*?\n  \}, \[isMobile, isNarrowMobile\]\);/)?.[0];
-  const historyHandler = source.match(/onViewFullHistory=\{\(\) => \{[\s\S]*?handleViewFullHistory\(\);[\s\S]*?\n          \}\}/)?.[0];
-  const historyMenuHandler = source.match(/onMenuOpenChange=\{\(open\) => \{[\s\S]*?handleHistoryMenuOpenChange\(open\);[\s\S]*?\n          \}\}/)?.[0];
-  const historyExportHandler = source.match(/onExportMarkdown=\{\(\) => \{[\s\S]*?handleExportMarkdown\(\);[\s\S]*?\n          \}\}/)?.[0];
-
-  for (const handler of [toggleTopPanel, historyHandler, historyMenuHandler, historyExportHandler]) {
-    assert.ok(handler);
-    assert.doesNotMatch(handler, /setMobileToolbarMoreOpen\(false\)/);
-    assert.match(handler, /setMobileToolbarMoreOpen\(true\)/);
-  }
-
-  assert.match(source, /toggleTopPanel\("branches", true\)/);
-  assert.match(source, /handleSystemInfoToggle\("system", mobile\)/);
-  assert.match(source, /handleSystemInfoToggle\("tools", mobile\)/);
-  assert.match(source, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
+  assert.match(stats, /disabled=\{!showChat\}/);
+  assert.doesNotMatch(fileToggle, /disabled=/);
 });
 
 test("keeps the top session status limited to cost", () => {
@@ -141,17 +108,10 @@ test("keeps the top session status limited to cost", () => {
   assert.doesNotMatch(source, /mobile-session-stat-cost|mobile-session-stats/);
 });
 
-test("keeps mobile toolbar free of session titles and preserves More placement", () => {
+test("keeps mobile toolbar free of session titles and overflow layers", () => {
   const toolbar = mobileToolbarSource();
-  const moreIdx = toolbar.indexOf('data-mobile-toolbar-more="true"');
-  const overlayIdx = toolbar.indexOf('data-mobile-toolbar-actions="true"');
-  const wideActionsIdx = toolbar.indexOf("{!isNarrowMobile && renderChatToolbarActions(true)}");
-  assert.ok(moreIdx >= 0, "More button stays in the mobile toolbar");
-  assert.ok(wideActionsIdx > moreIdx);
-  assert.ok(overlayIdx > moreIdx);
   assert.doesNotMatch(toolbar, /renderCollapsedSessionTitle|data-collapsed-session-title/);
-  assert.match(toolbar, /left: TOP_BAR_ICON_BUTTON_SIZE/);
-  assert.doesNotMatch(toolbar, /flexDirection: "column"/);
+  assert.doesNotMatch(toolbar, /position: "absolute"|data-mobile-toolbar-more|data-mobile-toolbar-actions/);
   assert.doesNotMatch(source, /\{mobile && renderThemeButton\(true\)\}/);
   assert.doesNotMatch(source, /\{mobile && renderLanguageButton\(true\)\}/);
 });

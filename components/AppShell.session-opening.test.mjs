@@ -31,7 +31,6 @@ function boundAction(component, prop, scope) {
 for (const [component, prop, split] of [
   ["SessionSidebar", "onPinSession"],
   ["SessionSidebar", "onOpenSessionInNewTab"],
-  ["AgentSessionPanel", "onSelectSession"],
   ["AgentSessionPanel", "onOpenInNewTab"],
 ].flatMap(([component, prop]) => [false, true].map((split) => [component, prop, split]))) {
   test(`${component}.${prop} pins through full selection cleanup (${split ? "desktop split" : "mobile"})`, () => {
@@ -76,6 +75,62 @@ for (const [component, prop, split] of [
     assert.equal(result.url, "?session=target");
   });
 }
+
+function familySwitchScope(tabs, primary, result) {
+  const scope = {
+    ...tabState,
+    selectedSession: primary, activeCwd: "/repo", newSessionCwd: null,
+    activeFileTabId: null, isMobile: false,
+    activeNewSessionDraftKeyRef: { current: null }, activeProjectKeyRef: { current: "/repo" },
+    chatTabsRef: { current: tabs }, isSplitActiveRef: { current: false }, activeChatPaneRef: { current: "primary" },
+    activeChatTabIdRef: { current: "primary" }, splitChatTabIdRef: { current: null },
+    branchLeafChangeFnRef: { current: null }, suppressCwdBumpRef: { current: false },
+    workspaceKeyOf: (item) => item.projectKey ?? item.cwd,
+    setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
+    router: { replace(url) { result.url = url; } },
+    syncSessionMetadata(id) { result.metadata = id; },
+    rekeyDraft() { assert.fail("family switch must not rekey a draft"); },
+  };
+  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen"]) {
+    scope[`set${setter}`] = (value) => { result[setter] = value; };
+  }
+  scope.handleSelectSession = callback("handleSelectSession", scope);
+  scope.handleSwitchFamilySession = callback("handleSwitchFamilySession", scope);
+  return scope;
+}
+
+test("AgentSessionPanel.onSelectSession replaces the current tab in place", () => {
+  const session = { id: "child", name: "Child", cwd: "/repo", projectKey: "/repo" };
+  const primary = { id: "primary", name: "Main", cwd: "/repo", projectKey: "/repo" };
+  const tabs = tabState.openSessionInNewTab([], primary).tabs;
+  const result = {};
+  const scope = familySwitchScope(tabs, primary, result);
+  boundAction("AgentSessionPanel", "onSelectSession", scope)(session);
+
+  assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["child"]);
+  assert.equal(scope.chatTabsRef.current[0].title, "Child");
+  assert.equal(scope.chatTabsRef.current[0].preview, undefined);
+  assert.equal(result.ActiveChatTabId, "child");
+  assert.equal(result.SelectedSession, session);
+  assert.equal(result.FileTabs, undefined);
+  assert.equal(result.metadata, "child");
+  assert.equal(result.url, "?session=child");
+});
+
+test("AgentSessionPanel.onSelectSession focuses an already-open tab without pinning it", () => {
+  const session = { id: "child", name: "Child", cwd: "/repo", projectKey: "/repo" };
+  const primary = { id: "primary", name: "Main", cwd: "/repo", projectKey: "/repo" };
+  let tabs = tabState.openSessionInNewTab([], primary).tabs;
+  tabs = tabState.openSessionPreview(tabs, session).tabs;
+  const result = {};
+  const scope = familySwitchScope(tabs, primary, result);
+  boundAction("AgentSessionPanel", "onSelectSession", scope)(session);
+
+  assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["primary", "child"]);
+  assert.equal(scope.chatTabsRef.current[1].preview, true);
+  assert.equal(result.ActiveChatTabId, "child");
+  assert.equal(result.SelectedSession, session);
+});
 
 test("does not close the file reader while a session identity is still unresolved", () => {
   const session = { id: "target", name: "Target", cwd: "/repo/subdir", projectKey: "/repo" };

@@ -120,6 +120,47 @@ export function revealSessionPane(
     : { activeChatTabId: sessionId, pane };
 }
 
+/** Family switcher: focus an open tab, otherwise replace the current session tab. */
+export function switchSessionInPlace(
+  tabs: ChatTabItem[],
+  currentTabId: string | null,
+  session: SessionInfo,
+  pane: ChatPane = "primary",
+): { tabs: ChatTabItem[]; tabId: string } {
+  const existingIndex = tabs.findIndex((t) => t.id === session.id);
+  const title = getSessionDisplayTitle(session);
+
+  if (existingIndex >= 0) {
+    const nextTabs = [...tabs];
+    nextTabs[existingIndex] = {
+      ...nextTabs[existingIndex],
+      session,
+      title,
+      projectKey: session.projectKey ?? session.cwd,
+    };
+    return { tabs: nextTabs, tabId: session.id };
+  }
+
+  const currentIndex = currentTabId ? tabs.findIndex((t) => t.id === currentTabId) : -1;
+  const current = currentIndex >= 0 ? tabs[currentIndex] : undefined;
+  if (!current || current.kind !== "session") {
+    return openSessionPreview(tabs, session, pane);
+  }
+
+  const nextTabs = [...tabs];
+  nextTabs[currentIndex] = {
+    ...current,
+    id: session.id,
+    title,
+    session,
+    newSessionCwd: null,
+    newSessionDraftKey: null,
+    projectKey: session.projectKey ?? session.cwd,
+    mountKey: undefined,
+  };
+  return { tabs: nextTabs, tabId: session.id };
+}
+
 /** Explicit merge: left order followed by right order, retaining every tab.
  * Keep the focused preview (or the first preview); pin other previews. */
 export function mergeChatTabPanes(tabs: ChatTabItem[], focusedTabId: string | null): ChatTabItem[] {

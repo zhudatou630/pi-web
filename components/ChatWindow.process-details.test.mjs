@@ -127,3 +127,29 @@ test("matches process detail text paragraph font size to 11px to align with step
     /\.process-details-list \[data-message-text\] \.markdown-body \{\s*font-size: calc\(11\.5px/,
   );
 });
+
+test("drops the prompt-anchor spacer once the turn has visible output", () => {
+  assert.match(
+    source,
+    /hasSeenTurnOutputRef\.current\s*\?\s*0\s*:\s*getPromptAnchorSpacerHeight/,
+  );
+  assert.match(
+    source,
+    /if \(currentTurnHasVisibleOutput \|\| Boolean\(streamState\.streamingMessage\?\.content\.length\)\) \{\s*hasSeenTurnOutputRef\.current = true;/,
+  );
+});
+
+test("keeps one process group identity from streaming into the persisted assistant", () => {
+  assert.doesNotMatch(source, /key="streaming-process-group"/);
+  assert.equal(
+    (source.match(/key=\{`process-group-\$\{entryIds\[firstIdx\] \?\? firstIdx\}`\}/g) ?? []).length,
+    2,
+  );
+});
+
+test("only auto-scrolls process details when the list overflows", () => {
+  assert.match(
+    source,
+    /if \(!box \|\| userScrolledUpRef\.current\) return;\s*if \(box\.scrollHeight <= box\.clientHeight \+ 1\) return;/,
+  );
+});
