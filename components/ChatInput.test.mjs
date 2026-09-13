@@ -294,40 +294,35 @@ test("keeps queued subagent sessions inspectable without accepting input", () =>
   assert.match(html, /<button[^>]*aria-label="Send"[^>]*disabled=""/);
 });
 
-test("uses a short mobile Options label while preserving the descriptive accessible name", () => {
+test("shows the live mobile contract on the overflow chip instead of a generic Options label", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
-  const start = source.indexOf('title={controlsMenuOpen ? undefined : t("chat.moreControls")}');
+  const labelStart = source.indexOf("const mobileContractLabel = [");
+  const label = source.slice(labelStart, source.indexOf("].filter(Boolean).join", labelStart));
+  assert.match(label, /thinkingDisplayLabel/);
+  assert.doesNotMatch(label, /toolPresetLabel/);
+  assert.match(label, /contextPercent >= 70/);
+  const start = source.indexOf("title={controlsMenuOpen ? t(\"chat.collapseControls\") : t(\"chat.moreControls\")}");
   assert.ok(start >= 0);
   const options = source.slice(start, source.indexOf("</button>", start));
   assert.match(options, /aria-label=\{t\("chat.moreControls"\)\}/);
-  assert.match(options, /<span>\{t\("chat.inputOptions"\)\}<\/span>/);
-  assert.match(options, /<svg width="14" height="14"[^>]*strokeWidth="1\.8"/);
-  assert.match(options, /fontWeight:\s*400/);
-  assert.match(options, /height:\s*isMobile \? 32 : 28/);
-  assert.match(options, /padding:\s*isMobile \? "0 6px" : "0 10px"/);
-  assert.match(options, /aria-hidden=\{controlsMenuOpen \|\| undefined\}/);
-  assert.match(options, /tabIndex=\{controlsMenuOpen \? -1 : undefined\}/);
+  assert.match(options, /<ThinkingIcon size=\{14\}/);
+  assert.match(options, /\{mobileContractLabel\}/);
+  assert.doesNotMatch(options, /chat\.inputOptions/);
+  assert.doesNotMatch(options, /aria-hidden/);
+  assert.doesNotMatch(options, /visibility:/);
 });
 
-test("aligns mobile toolbar options and collapse controls with model selector style", () => {
+test("opens mobile session controls upward as a compact panel", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
-  // Attach/model and the right-side controls share a 1px cluster gap and 4px button padding.
   assert.match(source, /display: "flex", alignItems: "center", gap: 1 \}\}>/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?gap: 1,/);
-  assert.match(source, /padding: "0 4px"/);
-
-  // Controls menu hover protections for mobile touch
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?bottom: "calc\(100% \+ 6px\)"/);
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?flexWrap: "wrap"/);
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?thinkingDropdownOpen/);
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?toolDropdownOpen/);
   assert.match(source, /if \(isMobile \|\| \(isStreaming && !isCompacting\)\) return;/);
-  // Collapse controls button styled consistently with text-muted and no heavy background block
-  const collapseStart = source.indexOf('title={t("chat.collapseControls")}');
-  assert.ok(collapseStart >= 0);
-  const collapseButton = source.slice(collapseStart, source.indexOf("</button>", collapseStart));
-  assert.match(collapseButton, /color:\s*"var\(--text-muted\)"/);
-  assert.match(collapseButton, /background:\s*"none"/);
-  assert.doesNotMatch(collapseButton, /borderLeft/);
-  assert.match(collapseButton, /<svg width="14" height="14"[^>]*strokeWidth="1\.8"/);
+  assert.doesNotMatch(source, /title=\{t\("chat.collapseControls"\)\}/);
+  assert.doesNotMatch(source, /top: "50%"[\s\S]*?translateY\(-50%\)/);
 });
 
 test("keeps the message input free of hints but accessible", () => {

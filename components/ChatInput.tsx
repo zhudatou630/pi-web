@@ -1556,6 +1556,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   })();
   const rawToolPresetLabel = Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? "default"))?.[0] ?? "default";
   const toolPresetLabel = rawToolPresetLabel === "chat-only" ? t("chat.chatOnly") : rawToolPresetLabel;
+  const contextPercent = contextUsage?.percent ?? null;
+  const mobileContractLabel = [
+    thinkingDisplayLabel,
+    contextPercent != null && contextPercent >= 70 ? `${Math.round(contextPercent)}%` : null,
+  ].filter(Boolean).join(" · ");
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -2635,73 +2640,51 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             justifyContent: "flex-end",
             position: "relative",
             marginLeft: isMobile ? 0 : "auto",
+            zIndex: isMobile && controlsMenuOpen ? 60 : undefined,
           }}>
             {isMobile && (() => {
-              const isHighContext = Boolean(contextUsage?.percent && contextUsage.percent >= 85);
-              const isWarningContext = Boolean(contextUsage?.percent && contextUsage.percent >= 70 && contextUsage.percent < 85);
+              const isHighContext = Boolean(contextPercent != null && contextPercent >= 85);
+              const isWarningContext = Boolean(contextPercent != null && contextPercent >= 70 && contextPercent < 85);
               return (
               <button
                 type="button"
-                 title={controlsMenuOpen ? undefined : t("chat.moreControls")}
-                 aria-label={t("chat.moreControls")}
+                title={controlsMenuOpen ? t("chat.collapseControls") : t("chat.moreControls")}
+                aria-label={t("chat.moreControls")}
                 aria-expanded={controlsMenuOpen}
-                aria-hidden={controlsMenuOpen || undefined}
-                tabIndex={controlsMenuOpen ? -1 : undefined}
                 onClick={() => {
-                  setControlsMenuOpen(true);
+                  if (controlsMenuOpen) {
+                    setToolDropdownOpen(false);
+                    setThinkingDropdownOpen(false);
+                    setControlsMenuOpen(false);
+                  } else {
+                    setControlsMenuOpen(true);
+                  }
                 }}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: 5,
-                  width: "100%",
-                  height: isMobile ? 32 : 28,
-                  padding: isMobile ? "0 6px" : "0 10px",
-                  background: isHighContext ? "rgba(239,68,68,0.06)" : "none",
+                  gap: 4,
+                  maxWidth: "min(48vw, 200px)",
+                  height: 32,
+                  padding: "0 6px",
+                  background: controlsMenuOpen
+                    ? (isHighContext ? "rgba(239,68,68,0.12)" : "var(--bg-hover)")
+                    : isHighContext ? "rgba(239,68,68,0.06)" : "none",
                   border: isHighContext ? "1px solid rgba(239,68,68,0.25)" : "none",
                   borderRadius: 4,
                   color: isHighContext ? "#ef4444" : isWarningContext ? "rgba(234,179,8,0.95)" : "var(--text-muted)",
-                  cursor: controlsMenuOpen ? "default" : "pointer",
+                  cursor: "pointer",
                   fontSize: 12,
                   fontWeight: 400,
                   lineHeight: 1,
-                  visibility: controlsMenuOpen ? "hidden" : "visible",
-                  pointerEvents: controlsMenuOpen ? "none" : "auto",
                   transition: "background 0.12s, color 0.12s, border-color 0.12s",
                 }}
-                onMouseEnter={(e) => {
-                  if (isMobile || controlsMenuOpen) return;
-                  e.currentTarget.style.background = isHighContext ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
-                  e.currentTarget.style.color = isHighContext ? "#ef4444" : "var(--text)";
-                }}
-                onMouseLeave={(e) => {
-                  if (isMobile || controlsMenuOpen) return;
-                  e.currentTarget.style.background = isHighContext ? "rgba(239,68,68,0.06)" : "none";
-                  e.currentTarget.style.color = isHighContext ? "#ef4444" : isWarningContext ? "rgba(234,179,8,0.95)" : "var(--text-muted)";
-                }}
               >
-                <span style={{ position: "relative", display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
-                    <path d="M10 6h11M3 6h1M20 18h1M3 18h11" />
-                    <circle cx="7" cy="6" r="3" /><circle cx="17" cy="18" r="3" />
-                  </svg>
-                  {isHighContext && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: -1,
-                        right: -1,
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: "#ef4444",
-                      }}
-                      aria-hidden="true"
-                    />
-                  )}
+                <ThinkingIcon size={14} style={{ display: "block" }} />
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {mobileContractLabel}
                 </span>
-                <span>{t("chat.inputOptions")}</span>
               </button>
               );
             })()}
@@ -2712,18 +2695,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               ...(isMobile ? {
                 position: "absolute",
                 right: 0,
-                top: "50%",
-                transform: "translateY(-50%)",
+                bottom: "calc(100% + 6px)",
                 zIndex: 60,
                 padding: "1px 2px",
                 width: "max-content",
                 maxWidth: "calc(100vw - 32px)",
-                flexWrap: "nowrap",
+                flexWrap: "wrap",
                 justifyContent: "flex-end",
                 border: "1px solid var(--border)",
-                borderRadius: 6,
+                borderRadius: 4,
                 background: "var(--bg)",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+                boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
               } : null),
             }}>
             {onThinkingLevelChange && (
@@ -3095,49 +3077,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     <line x1="17" y1="9" x2="23" y2="15" />
                   </svg>
                 )}
-              </button>
-            )}
-            {isMobile && controlsMenuOpen && (
-              <button
-                type="button"
-                 title={t("chat.collapseControls")}
-                 aria-label={t("chat.collapseControls")}
-                aria-expanded={true}
-                onClick={() => {
-                  setToolDropdownOpen(false);
-                  setThinkingDropdownOpen(false);
-                  setControlsMenuOpen(false);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: isMobile ? 28 : 28,
-                  height: isMobile ? 32 : 28,
-                  padding: 0,
-                  marginLeft: 0,
-                  background: "none",
-                  border: "none",
-                  borderRadius: 4,
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  transition: "background 0.12s, color 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  if (isMobile) return;
-                  e.currentTarget.style.background = "var(--bg-hover)";
-                  e.currentTarget.style.color = "var(--text)";
-                }}
-                onMouseLeave={(e) => {
-                  if (isMobile) return;
-                  e.currentTarget.style.background = "none";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
               </button>
             )}
             </div>
