@@ -1,7 +1,8 @@
 {
-  "name": "pi-web",
+  "name": "@calmabacus/pi-web",
   "version": "0.9.0",
-  "description": "Web UI for the pi coding agent (Enhanced Fork)",
+  "description": "Web UI for the pi coding agent",
+  "author": "calmabacus",
   "homepage": "https://github.com/zhudatou630/pi-web#readme",
   "repository": {
     "type": "git",
@@ -11,6 +12,10 @@
     "url": "https://github.com/zhudatou630/pi-web/issues"
   },
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

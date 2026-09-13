@@ -6,6 +6,15 @@
 
 环境要求：Node.js >= 22.19.0。自动读取本机已有的 `~/.pi/agent` 配置。
 
+### npm
+
+```bash
+npm install -g @calmabacus/pi-web
+pi-web
+```
+
+### Git
+
 ```bash
 # 1. 安装依赖并构建
 git clone https://github.com/zhudatou630/pi-web.git
@@ -22,9 +31,15 @@ nohup npm start > pi-web.log 2>&1 &
 
 服务启动后，访问 `http://127.0.0.1:30141`。
 
-## 代码更新
+## 更新
 
-后续拉取更新，在项目根目录下执行：
+npm：
+
+```bash
+npm update -g @calmabacus/pi-web
+```
+
+Git，在项目根目录下执行：
 
 ```bash
 git pull && npm install && npm run build
@@ -32,6 +47,8 @@ npm start # 或后台运行：nohup npm start > pi-web.log 2>&1 &
 ```
 
 ## 常用参数
+
+Git 安装用 `npm start --`，npm 全局安装把前面换成 `pi-web` 即可。
 
 - **改端口**：`npm start -- -p 8080`
 - **局域网访问**：`npm start -- -H 0.0.0.0`

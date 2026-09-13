@@ -10,6 +10,6 @@ export function isNewerStableVersion(candidate: string, current: string): boolea
 
 export function getPiWebReleaseUrl(version: string): string | null {
   return isStableVersion(version)
-    ? `https://github.com/agegr/pi-web/releases/tag/v${version}`
+    ? `https://github.com/zhudatou630/pi-web/releases/tag/v${version}`
     : null;
 }
