@@ -292,8 +292,6 @@ export const zhTWLocale: LocalePlugin = {
     "chat.scrollToBottom": "回到最新位置",
     "chat.generatingToolInput": "正在產生參數...",
     "chat.agentWorking": "Agent 正在處理",
-    "chat.ttft": "首字 {duration}",
-    "chat.tokensPerSecond": "{throughput} tok/s",
     "chat.decodeSeconds": "{seconds}秒",
     "chat.decodeMinutes": "{minutes}分{seconds}秒",
     "chat.thinking": "正在思考...",

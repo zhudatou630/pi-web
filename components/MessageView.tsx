@@ -20,11 +20,6 @@ import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import type { SubagentToolDetails } from "@/lib/subagent-extension";
-import {
-  formatDecodeDurationParts,
-  formatTokensPerSecond,
-  shouldDisplayTtft,
-} from "@/lib/decode-throughput";
 import type {
   AgentMessage,
   UserMessage,
@@ -447,8 +442,9 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     lineHeight: 1.58,
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
-                    minWidth: 0,
-                    flex: 1,
+                    flex: "1 0 auto",
+                    width: "max-content",
+                    maxWidth: "100%",
                   }}>
                     {commandArgs}
                   </span>
@@ -545,37 +541,6 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           {time && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
         </div>
       )}
-    </div>
-  );
-}
-
-function DecodeStatsLine({ decode }: { decode: NonNullable<AssistantMessage["decode"]> }) {
-  const { t } = useI18n();
-  const parts: string[] = [];
-  if (shouldDisplayTtft(decode.ttftMs)) {
-    const durationParts = formatDecodeDurationParts(decode.ttftMs);
-    const duration = "minutes" in durationParts
-      ? t("chat.decodeMinutes", durationParts)
-      : t("chat.decodeSeconds", durationParts);
-    parts.push(t("chat.ttft", { duration }));
-  }
-  if (decode.tokensPerSecond !== undefined) {
-    parts.push(t("chat.tokensPerSecond", { throughput: formatTokensPerSecond(decode.tokensPerSecond) }));
-  }
-  if (parts.length === 0) return null;
-  return (
-    <div
-      data-decode-stats
-      style={{
-        marginTop: 4,
-        color: "var(--text-muted)",
-        fontSize: 11,
-        fontFamily: "var(--font-mono)",
-        fontVariantNumeric: "tabular-nums",
-        userSelect: "none",
-      }}
-    >
-      {parts.join(" · ")}
     </div>
   );
 }
@@ -689,8 +654,6 @@ function AssistantMessageView({
           );
         })}
       </div>
-
-      {!isStreaming && isTurnEnd && message.decode && <DecodeStatsLine decode={message.decode} />}
 
       {providerError && (
         isProcess ? (

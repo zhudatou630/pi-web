@@ -73,12 +73,6 @@ export interface AgentUsage {
   };
 }
 
-/** Client-only settled decode reading. Not written to the session file. */
-export interface AssistantDecodeStats {
-  ttftMs: number;
-  tokensPerSecond?: number;
-}
-
 export interface AssistantMessage {
   role: "assistant";
   content: AssistantContentBlock[];
@@ -88,7 +82,6 @@ export interface AssistantMessage {
   errorMessage?: string;
   timestamp?: number;
   usage?: AgentUsage;
-  decode?: AssistantDecodeStats;
   /** Client-only generation end. From jsonl entry.timestamp or message_end. Not persisted. */
   completedAt?: number;
 }

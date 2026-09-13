@@ -292,8 +292,6 @@ export const enLocale: LocalePlugin = {
     "chat.scrollToBottom": "Scroll to latest",
     "chat.generatingToolInput": "Generating parameters...",
     "chat.agentWorking": "Agent is working",
-    "chat.ttft": "TTFT {duration}",
-    "chat.tokensPerSecond": "{throughput} tok/s",
     "chat.decodeSeconds": "{seconds}s",
     "chat.decodeMinutes": "{minutes}m{seconds}s",
     "chat.thinking": "Thinking...",

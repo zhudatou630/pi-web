@@ -32,17 +32,6 @@ import {
   streamReducer,
   type ClientAssistantMessageEvent,
 } from "@/lib/streaming-message";
-import {
-  applyStoredDecodeThroughput,
-  armDecodeClock,
-  decodeStatsKey,
-  deltaIndicatesGeneratedToken,
-  messageHasGeneratedToken,
-  observeGeneratedToken,
-  settleAssistantDecode,
-  type DecodeCallClock,
-  type DecodeThroughput,
-} from "@/lib/decode-throughput";
 import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand } from "@/lib/prompt-run-control";
 import { recalledQueuedPrompts } from "@/lib/queued-messages";
 import type { AttachedImage } from "@/lib/image-attachments";
@@ -432,10 +421,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const modelsRefreshKeyRef = useRef(modelsRefreshKey);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
-  const observeDecodeFromStartRef = useRef(false);
-  const decodeClockRef = useRef<DecodeCallClock | null>(null);
-  const decodeByKeyRef = useRef(new Map<string, DecodeThroughput>());
-  const decodeSessionIdRef = useRef<string | null>(session?.id ?? null);
 
   sessionPropIdRef.current = session?.id ?? null;
   sessionRunningRef.current = Boolean(sessionRunning);
@@ -468,19 +453,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!existingSessionId && (!isNew || sessionIdRef.current)) return;
     setToolPresetState(getPreferredToolPreset());
   }, [existingSessionId, isNew, setToolPresetState]);
-
-  useEffect(() => {
-    const id = session?.id ?? null;
-    if (decodeSessionIdRef.current === id) return;
-    if (decodeSessionIdRef.current === null && id && decodeClockRef.current) {
-      decodeSessionIdRef.current = id;
-      return;
-    }
-    decodeSessionIdRef.current = id;
-    decodeByKeyRef.current = new Map();
-    decodeClockRef.current = null;
-    observeDecodeFromStartRef.current = false;
-  }, [session?.id]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const container = scrollContainerRef.current;
@@ -583,7 +555,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const merged = showLoading ? incoming : mergeLoadedHistory(loadedHistoryRef.current, incoming);
       setData({ ...d, context: { ...d.context, ...merged } });
       setActiveLeafId(d.leafId);
-      setMessages(applyStoredDecodeThroughput(merged.messages, decodeByKeyRef.current));
+      setMessages(merged.messages);
       setEntryIds(merged.entryIds);
       setHistoryCursor(merged.oldestEntryId);
       setHasEarlierMessages(merged.hasMore);
@@ -657,10 +629,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
       if (before) {
         // Older page: prepend so scroll position stays anchored.
-        setMessages((prev) => [...applyStoredDecodeThroughput(d.context.messages, decodeByKeyRef.current), ...prev]);
+        setMessages((prev) => [...d.context.messages, ...prev]);
         setEntryIds((prev) => [...d.context.entryIds, ...prev]);
       } else {
-        setMessages(applyStoredDecodeThroughput(d.context.messages, decodeByKeyRef.current));
+        setMessages(d.context.messages);
         setEntryIds(d.context.entryIds ?? []);
       }
       return d.context;
@@ -1188,8 +1160,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         agentRunningRef.current = true;
         setAgentRunning(true);
         setAgentPhase({ kind: "waiting_model" });
-        observeDecodeFromStartRef.current = true;
-        if (!decodeClockRef.current) decodeClockRef.current = armDecodeClock(Date.now());
         dispatch({ type: "start" });
         break;
       case "agent_end":
@@ -1270,12 +1240,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (msg?.role === "assistant") {
             dispatch({ type: "snapshot", message: msg });
             if (msg.content.length > 0) setAgentPhase(null);
-            if (observeDecodeFromStartRef.current) {
-              if (!decodeClockRef.current) decodeClockRef.current = armDecodeClock(Date.now());
-              if (messageHasGeneratedToken(msg)) {
-                decodeClockRef.current = observeGeneratedToken(decodeClockRef.current, Date.now());
-              }
-            }
           } else if (msg) {
             setAgentPhase(null);
           }
@@ -1285,9 +1249,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             queueStreamDelta(delta);
             if (delta.type !== "toolcall_start" && delta.type !== "toolcall_delta") {
               setAgentPhase(null);
-            }
-            if (observeDecodeFromStartRef.current && decodeClockRef.current && deltaIndicatesGeneratedToken(delta)) {
-              decodeClockRef.current = observeGeneratedToken(decodeClockRef.current, Date.now());
             }
           }
         }
@@ -1336,17 +1297,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             const completedAt = Date.now();
             const settled = { ...normalized, completedAt };
             const timed = applyThinkingTimings(settled, streamStateRef.current.streamingMessage, completedAt);
-            const stats = settleAssistantDecode(decodeClockRef.current, timed, completedAt);
-            decodeClockRef.current = null;
-            if (stats) {
-              const key = decodeStatsKey(timed);
-              if (key) decodeByKeyRef.current.set(key, stats);
-              setMessages((prev) => [...prev, { ...timed, decode: stats }]);
-            } else {
-              setMessages((prev) => [...prev, timed]);
-            }
+            setMessages((prev) => [...prev, timed]);
           } else {
-            decodeClockRef.current = null;
             setMessages((prev) => [...prev, normalized]);
           }
         }
@@ -1489,8 +1441,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunningRef.current = true;
     setAgentRunning(true);
     setAgentPhase(isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" });
-    observeDecodeFromStartRef.current = true;
-    decodeClockRef.current = armDecodeClock(Date.now());
     dispatch({ type: "start" });
     pendingScrollToBottomRef.current = true;
     pendingPromptRef.current = { runId: promptRunId, message, images, userMsg };
@@ -2218,8 +2168,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             agentRunningRef.current = true;
             setAgentRunning(true);
             setAgentPhase(agentState.state.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
-            observeDecodeFromStartRef.current = false;
-            decodeClockRef.current = null;
             dispatch({ type: "resume" });
             void maintainEventsConnected(session.id);
             if (!agentState.state.isStreaming && agentState.state.isPromptRunning) {

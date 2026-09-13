@@ -1586,6 +1586,18 @@ button.file-outline-fold:hover {
   .file-viewer-meta {
     display: none;
   }
+
+  /* Anchor to the toolbar, not the 24px button — otherwise the 240px menu clips off the left edge. */
+  .file-outline {
+    position: static;
+  }
+
+  .file-outline-menu {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: min(70dvh, 480px);
+  }
 }
 
 @media (max-width: 380px) {
