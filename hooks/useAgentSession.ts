@@ -28,6 +28,7 @@ import {
 import { mergeLoadedHistory } from "@/lib/chat-history-merge";
 import {
   INITIAL_STREAMING_STATE,
+  applyThinkingTimings,
   streamReducer,
   type ClientAssistantMessageEvent,
 } from "@/lib/streaming-message";
@@ -351,6 +352,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     hasMore: hasEarlierMessages,
   };
   const [streamState, dispatch] = useReducer(streamReducer, INITIAL_STREAMING_STATE);
+  const streamStateRef = useRef(streamState);
+  streamStateRef.current = streamState;
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
   const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean } | null>(null);
@@ -379,7 +382,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
-  const [promptAnchorActive, setPromptAnchorActive] = useState(false);
   const [slashCommands, setSlashCommands] = useState<SlashCommandInfo[]>([]);
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
   const [noticeState, dispatchNotice] = useReducer(noticeReducer, { visible: [], pending: [] });
@@ -400,11 +402,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const rpcPromptPendingRef = useRef(false);
   const notifiedPromptRunIdRef = useRef(-1);
   const bashRunningRef = useRef(false);
+  const stopRequestPendingRef = useRef(false);
   const bashRecoveryIdRef = useRef(0);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
   const initialScrollDoneRef = useRef(Boolean(opts.deferInitialScroll));
-  const lastUserMsgRef = useRef<HTMLDivElement | null>(null);
-  const pendingScrollToUserRef = useRef(false);
+  const pendingScrollToBottomRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const previousScrollTopRef = useRef(0);
   const liveFollowFrameRef = useRef<number | null>(null);
@@ -487,6 +489,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // into view: that propagates to every scrollable ancestor, and on mobile
     // the keyboard-shifted document layer visibly jumps the whole app while
     // streaming content follows the tail.
+    isNearBottomRef.current = true;
     container.scrollTo({ top: container.scrollHeight, behavior });
     previousScrollTopRef.current = container.scrollTop;
   }, []);
@@ -916,7 +919,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [addNotice, onAttentionNeeded, opts.chatInputRef]);
 
   const scheduleLiveFollow = useCallback(() => {
-    if (pendingScrollToUserRef.current || !isNearBottomRef.current || liveFollowFrameRef.current !== null) return;
+    if (pendingScrollToBottomRef.current || !isNearBottomRef.current || liveFollowFrameRef.current !== null) return;
     liveFollowFrameRef.current = requestAnimationFrame(() => {
       liveFollowFrameRef.current = null;
       if (isNearBottomRef.current) scrollToBottom("auto");
@@ -1332,14 +1335,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             }
             const completedAt = Date.now();
             const settled = { ...normalized, completedAt };
-            const stats = settleAssistantDecode(decodeClockRef.current, settled, completedAt);
+            const timed = applyThinkingTimings(settled, streamStateRef.current.streamingMessage, completedAt);
+            const stats = settleAssistantDecode(decodeClockRef.current, timed, completedAt);
             decodeClockRef.current = null;
             if (stats) {
-              const key = decodeStatsKey(settled);
+              const key = decodeStatsKey(timed);
               if (key) decodeByKeyRef.current.set(key, stats);
-              setMessages((prev) => [...prev, { ...settled, decode: stats }]);
+              setMessages((prev) => [...prev, { ...timed, decode: stats }]);
             } else {
-              setMessages((prev) => [...prev, settled]);
+              setMessages((prev) => [...prev, timed]);
             }
           } else {
             decodeClockRef.current = null;
@@ -1488,11 +1492,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     observeDecodeFromStartRef.current = true;
     decodeClockRef.current = armDecodeClock(Date.now());
     dispatch({ type: "start" });
-    pendingScrollToUserRef.current = true;
-    setPromptAnchorActive(true);
+    pendingScrollToBottomRef.current = true;
     pendingPromptRef.current = { runId: promptRunId, message, images, userMsg };
 
     const piImages = images?.map((img) => ({ type: "image" as const, data: img.data, mimeType: img.mimeType }));
+    let managedSubagentPrompt = false;
     promptRunGateRef.current.begin(promptRunId);
 
     const abandonUnsentPrompt = () => {
@@ -1566,11 +1570,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         throw new Error("No active session for the prompt");
       },
       send: async (sid) => {
-        await sendAgentCommand(sid, {
+        const response = await sendAgentCommand<{ subagentAction?: "steered" | "resumed" }>(sid, {
           type: "prompt",
           message,
           ...(piImages?.length ? { images: piImages } : {}),
         });
+        managedSubagentPrompt = response?.subagentAction === "steered" || response?.subagentAction === "resumed";
       },
     });
 
@@ -1620,6 +1625,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return;
     }
     if (isNew && newSessionCwd) promoteNewSession(1, message);
+    if (managedSubagentPrompt && result.sessionId) {
+      rpcPromptPendingRef.current = false;
+      void waitForPromptSettlement(result.sessionId, promptRunId);
+      return;
+    }
     if (isSlashCommandPrompt && result.sessionId) {
       void waitForPromptSettlement(result.sessionId, promptRunId);
     }
@@ -1702,15 +1712,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleAbort = useCallback(async () => {
     const runId = promptRunIdRef.current;
     const sid = sessionIdRef.current;
+    const sendStop = async (type: "abort" | "abort_bash") => {
+      if (!sid || stopRequestPendingRef.current) return;
+      stopRequestPendingRef.current = true;
+      try {
+        await sendAgentCommand(sid, { type });
+      } catch (e) {
+        console.error("Failed to abort:", e);
+        addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      } finally {
+        stopRequestPendingRef.current = false;
+      }
+    };
     if (bashRunningRef.current) {
       bashAbortRequestedRef.current = true;
-      if (!sid) return;
-      try {
-        await sendAgentCommand(sid, { type: "abort_bash" });
-      } catch (e) {
-        console.error("Failed to abort bash:", e);
-        addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
-      }
+      await sendStop("abort_bash");
       return;
     }
 
@@ -1748,14 +1764,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       localUnsent,
       agentRunning: agentRunningRef.current || rpcPromptPendingRef.current,
     });
-    if (command === "none" || !sid) return;
-    try {
-      await sendAgentCommand(sid, { type: command === "abort_bash" ? "abort_bash" : "abort" });
-    } catch (e) {
-      console.error("Failed to abort:", e);
-      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    const queuedSubagent = session?.relation?.kind === "subagent" && session.relation.status === "queued";
+    if (queuedSubagent && sid) {
+      await sendStop("abort");
+      return;
     }
-  }, [addNotice, composerDraftKey, restoreSubmission]);
+    if (command === "none" || !sid) return;
+    await sendStop(command === "abort_bash" ? "abort_bash" : "abort");
+  }, [addNotice, composerDraftKey, restoreSubmission, session]);
 
   const handleFork = useCallback(async (entryId: string) => {
     if (bashRunningRef.current) return;
@@ -2149,9 +2165,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       liveFollowFrameRef.current = null;
     }
     initialScrollDoneRef.current = true;
-    pendingScrollToUserRef.current = false;
+    pendingScrollToBottomRef.current = false;
     isNearBottomRef.current = false;
-    setPromptAnchorActive(false);
     container.scrollTo({
       top: element.getBoundingClientRect().top
         - container.getBoundingClientRect().top
@@ -2161,32 +2176,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     });
     previousScrollTopRef.current = container.scrollTop;
   }, []);
-
-  const scrollUserMsgToTop = useCallback(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const el = lastUserMsgRef.current;
-    if (!el) {
-      if (liveFollowFrameRef.current !== null) {
-        cancelAnimationFrame(liveFollowFrameRef.current);
-        liveFollowFrameRef.current = null;
-      }
-      isNearBottomRef.current = true;
-      scrollToBottom("auto");
-      return;
-    }
-    const elAbsTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.min(Math.max(0, elAbsTop - 16), maxScrollTop);
-
-    if (liveFollowFrameRef.current !== null) {
-      cancelAnimationFrame(liveFollowFrameRef.current);
-      liveFollowFrameRef.current = null;
-    }
-    isNearBottomRef.current = true;
-    previousScrollTopRef.current = targetTop;
-    container.scrollTo({ top: targetTop, behavior: "auto" });
-  }, [scrollToBottom]);
 
   const handleScrollPositionChange = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -2292,16 +2281,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     };
   }, [messages.length, loading, handleScrollPositionChange]);
 
-  useEffect(() => {
-    if (!agentRunning) setPromptAnchorActive(false);
-  }, [agentRunning]);
-
   useLayoutEffect(() => {
     if (messages.length > 0) {
-      if (pendingScrollToUserRef.current) {
-        pendingScrollToUserRef.current = false;
+      if (pendingScrollToBottomRef.current) {
+        pendingScrollToBottomRef.current = false;
         initialScrollDoneRef.current = true;
-        scrollUserMsgToTop();
+        scrollToBottom("instant");
       } else if (!initialScrollDoneRef.current) {
         initialScrollDoneRef.current = true;
         scrollToBottom("instant");
@@ -2309,7 +2294,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         scrollToBottom("auto");
       }
     }
-  }, [messages.length, agentRunning, scrollToBottom, scrollUserMsgToTop]);
+  }, [messages.length, agentRunning, scrollToBottom]);
 
   // Load the model list with bounded retries; loadModels exposes each failure.
   useEffect(() => {
@@ -2398,10 +2383,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     isNew,
-    promptAnchorActive,
     // Refs
     sessionIdRef, scrollContainerRef,
-    lastUserMsgRef, pendingScrollToUserRef, initialScrollDoneRef,
+    initialScrollDoneRef,
     // Actions
     handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
@@ -2410,7 +2394,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     addNotice,
     setNoticePaused: setPausedNoticeId,
     handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext,
-    scrollToBottom, scrollUserMsgToTop, scrollToMessage,
+    scrollToBottom, scrollToMessage,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,
     // Subscriptions

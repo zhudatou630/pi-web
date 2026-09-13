@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
-import { startRpcSession, getRpcSession, isSubagentQueued, setRpcSessionTools } from "@/lib/rpc-manager";
+import { abortSubagent, getSubagentRun, sendSubagentUiMessage, startRpcSession, getRpcSession, isSubagentQueued, setRpcSessionTools } from "@/lib/rpc-manager";
 
 // POST /api/agent/[id] - Send a command to an existing session
 export async function POST(
@@ -22,8 +22,34 @@ export async function POST(
       throw new Error("toolNames must be an array of strings");
     }
     const toolNames = requestedToolNames as string[] | undefined;
+    if (isSubagentQueued(id) && body.type === "abort") {
+      await abortSubagent(id);
+      return NextResponse.json({ success: true, data: null });
+    }
     if (isSubagentQueued(id)) {
       return NextResponse.json({ error: "Subagent is queued" }, { status: 409 });
+    }
+
+    if (body.type === "prompt" || body.type === "abort") {
+      const subagent = await getSubagentRun(id);
+      if (subagent && body.type === "abort") {
+        if (subagent.status === "aborted" || subagent.status === "completed" || subagent.status === "failed" || subagent.status === "interrupted") {
+          return NextResponse.json({ success: true, data: null });
+        }
+        await abortSubagent(id);
+        return NextResponse.json({ success: true, data: null });
+      }
+      if (subagent) {
+        if (typeof body.message !== "string" || !body.message.trim()) {
+          return NextResponse.json({ error: "Subagent message is required", code: "prompt_rejected", accepted: false }, { status: 400 });
+        }
+        if (Array.isArray(body.images) && body.images.length > 0) {
+          return NextResponse.json({ error: "Subagent resume with images is not supported", code: "prompt_rejected", accepted: false }, { status: 400 });
+        }
+        const result = await sendSubagentUiMessage(id, body.message);
+        promptAccepted = true;
+        return NextResponse.json({ success: true, data: { subagentAction: result.action, run: result.run } });
+      }
     }
 
     // Fast path: already-running session
@@ -80,6 +106,9 @@ export async function GET(
   const { id } = await params;
 
   try {
+    if (isSubagentQueued(id)) {
+      return NextResponse.json({ running: true, state: { isStreaming: false, isPromptRunning: true } });
+    }
     const session = getRpcSession(id);
     if (!session || !session.isAlive()) {
       return NextResponse.json({ running: false });

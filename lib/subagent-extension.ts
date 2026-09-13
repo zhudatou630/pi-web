@@ -21,6 +21,7 @@ const DEFAULT_RESULT_WAIT_TIMEOUT_MS = 5 * 60_000;
 export interface SubagentToolDetails {
   kind: "pi-web-subagent";
   sessionId: string;
+  parentToolCallId: string;
   profile: string;
   description: string;
   status: SubagentRunInfo["status"];
@@ -32,7 +33,7 @@ export interface SubagentToolDetails {
 }
 
 export interface StartSubagentRequest {
-  parentContext: ExtensionContext;
+  parentContext: Pick<ExtensionContext, "sessionManager">;
   parentToolCallId: string;
   profile: string;
   task: string;
@@ -49,7 +50,7 @@ export interface StartSubagentRequest {
 }
 
 export interface ResumeSubagentRequest {
-  parentContext: ExtensionContext;
+  parentContext: Pick<ExtensionContext, "sessionManager">;
   parentToolCallId: string;
   sessionId: string;
   task: string;
@@ -67,8 +68,9 @@ export interface SubagentExecution {
 export interface SubagentExtensionRuntime {
   start(request: StartSubagentRequest): Promise<SubagentExecution>;
   resume(request: ResumeSubagentRequest): Promise<SubagentExecution>;
-  get(sessionId: string): Promise<SubagentRunInfo | null>;
-  steer(sessionId: string, message: string): Promise<void>;
+  get(parentSessionId: string, sessionId: string): Promise<SubagentRunInfo | null>;
+  steer(parentSessionId: string, sessionId: string, message: string): Promise<void>;
+  consume(parentSessionId: string, run: SubagentRunInfo): boolean;
 }
 
 export type SubagentProfileProvider = () => readonly SubagentProfile[];
@@ -88,6 +90,7 @@ export function subagentToolDetails(run: SubagentRunInfo): SubagentToolDetails {
   return {
     kind: "pi-web-subagent",
     sessionId: run.sessionId,
+    parentToolCallId: run.parentToolCallId,
     profile: run.profile,
     description: run.description,
     status: run.status,
@@ -136,12 +139,13 @@ export function createSubagentExtension(
       pi.registerTool(defineTool({
         name: "Agent",
         label: "Agent",
-        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately and the parent is notified when the wave of background agents finishes. Use foreground mode when the current response needs the result before it can continue.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
+        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results notify the parent after its current run settles. Use foreground mode when no useful work can continue without the result.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
         promptSnippet: "Delegate a focused task to an inspectable subagent session",
         promptGuidelines: [
           "Use Agent for a focused task that benefits from an isolated context.",
           "Use multiple background Agent calls in the same response for independent parallel work.",
-          "Use foreground Agent calls when their results are needed before the current response can finish.",
+          "Use foreground Agent calls when the next action cannot proceed without their results.",
+          "After useful parallel work is done, use get_subagent_result with wait=true once as the join point; do not repeatedly poll background agents.",
           "Pass resume with an existing subagent session ID to continue that session instead of creating a new one.",
           "Do not duplicate work already delegated to a running subagent.",
         ],
@@ -155,7 +159,7 @@ export function createSubagentExtension(
             maxItems: MAX_SUBAGENT_INPUT_FILES,
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
-          run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. The parent is notified when the background wave finishes." })),
+          run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results notify the parent after its current run settles." })),
           model: Type.Optional(Type.String({ description: "Optional provider/modelId override." })),
           thinking: Type.Optional(Type.String({ description: "Optional thinking level override." })),
           max_turns: Type.Optional(Type.Number({ description: "Optional positive agent turn limit." })),
@@ -233,8 +237,9 @@ export function createSubagentExtension(
             maximum: 30 * 60_000,
           })),
         }),
-        async execute(_toolCallId, params, signal) {
-          let run = await runtime.get(params.agent_id);
+        async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+          const parentSessionId = ctx.sessionManager.getSessionId();
+          let run = await runtime.get(parentSessionId, params.agent_id);
           if (!run) throw new Error(`Subagent not found: ${params.agent_id}`);
           const timeoutMs = params.timeout_ms ?? DEFAULT_RESULT_WAIT_TIMEOUT_MS;
           const deadline = Date.now() + timeoutMs;
@@ -258,8 +263,11 @@ export function createSubagentExtension(
               if (signal?.aborted) onAbort();
               else signal?.addEventListener("abort", onAbort, { once: true });
             });
-            run = await runtime.get(params.agent_id);
+            run = await runtime.get(parentSessionId, params.agent_id);
             if (!run) throw new Error(`Subagent not found: ${params.agent_id}`);
+          }
+          if (run.status !== "starting" && run.status !== "queued" && run.status !== "running") {
+            runtime.consume(parentSessionId, run);
           }
           if (run.status === "failed") throw new Error(subagentFinalText(run));
           return {
@@ -277,8 +285,9 @@ export function createSubagentExtension(
           agent_id: Type.String({ description: "Subagent session ID." }),
           message: Type.String({ description: "Instruction to inject after the current tool execution." }),
         }),
-        async execute(_toolCallId, params) {
-          await runtime.steer(params.agent_id, params.message);
+        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+          const parentSessionId = ctx.sessionManager.getSessionId();
+          await runtime.steer(parentSessionId, params.agent_id, params.message);
           return { content: [{ type: "text", text: `Steering message sent to ${params.agent_id}.` }], details: undefined };
         },
       }));

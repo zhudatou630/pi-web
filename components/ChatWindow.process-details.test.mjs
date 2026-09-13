@@ -101,7 +101,7 @@ test("keeps process indicator active before answer and drops trailing pulse unde
 test("resets unmounted window and jumps to latest turn when sending a prompt", () => {
   assert.match(
     source,
-    /const handleChatSend = useCallback\(async[\s\S]*?setUnmountedNewerCount\(0\);[\s\S]*?setMountLimit\(MOUNTED_GROUP_LIMIT\);[\s\S]*?await handleSend\(message, images\);[\s\S]*?scrollUserMsgToTop\(\)/,
+    /const handleChatSend = useCallback\(async[\s\S]*?setUnmountedNewerCount\(0\);[\s\S]*?setMountLimit\(MOUNTED_GROUP_LIMIT\);[\s\S]*?await handleSend\(message, images\);[\s\S]*?\}, \[handleSend, keepTabOpen\]\)/,
   );
   assert.match(source, /<ChatInput[\s\S]*?onSend=\{handleChatSend\}/);
 });
@@ -125,17 +125,6 @@ test("matches process detail text paragraph font size to 11px to align with step
   assert.doesNotMatch(
     css,
     /\.process-details-list \[data-message-text\] \.markdown-body \{\s*font-size: calc\(11\.5px/,
-  );
-});
-
-test("drops the prompt-anchor spacer once the turn has visible output", () => {
-  assert.match(
-    source,
-    /hasSeenTurnOutputRef\.current\s*\?\s*0\s*:\s*getPromptAnchorSpacerHeight/,
-  );
-  assert.match(
-    source,
-    /if \(currentTurnHasVisibleOutput \|\| Boolean\(streamState\.streamingMessage\?\.content\.length\)\) \{\s*hasSeenTurnOutputRef\.current = true;/,
   );
 });
 

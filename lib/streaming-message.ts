@@ -4,6 +4,7 @@ import type {
   AgentMessage,
   AssistantContentBlock,
   AssistantMessage,
+  ThinkingContent,
 } from "./types";
 
 export type { ClientAssistantMessageEvent } from "./agent-event-wire";
@@ -65,21 +66,35 @@ function applyDelta(
         type: "text",
         text: event.content,
       }));
-    case "thinking_start":
-      return updateContentBlock(state, event.contentIndex, (current) => (
-        current?.type === "thinking" ? current : { type: "thinking", thinking: "" }
-      ));
+    case "thinking_start": {
+      const now = Date.now();
+      const message = state.streamingMessage;
+      if (!message) return state;
+      const content = [...message.content];
+      for (let i = 0; i < content.length; i++) {
+        const block = content[i];
+        if (i !== event.contentIndex && block?.type === "thinking" && typeof block.endedAt !== "number") {
+          content[i] = { ...block, endedAt: now };
+        }
+      }
+      const current = content[event.contentIndex];
+      content[event.contentIndex] = current?.type === "thinking"
+        ? { ...current, startedAt: current.startedAt ?? now }
+        : { type: "thinking", thinking: "", startedAt: now };
+      return { isStreaming: true, streamingMessage: { ...message, content } };
+    }
     case "thinking_delta":
       return updateContentBlock(state, event.contentIndex, (current) => (
         current?.type === "thinking"
-          ? { ...current, thinking: current.thinking + event.delta }
+          ? { ...current, thinking: current.thinking + event.delta, startedAt: current.startedAt ?? Date.now() }
           : null
       ));
     case "thinking_end":
       return updateContentBlock(state, event.contentIndex, (current) => ({
-        ...(current?.type === "thinking" ? current : {}),
+        ...(current?.type === "thinking" ? current : { startedAt: Date.now() }),
         type: "thinking",
         thinking: event.content,
+        endedAt: Date.now(),
       }));
     case "toolcall_start":
       return updateContentBlock(state, event.contentIndex, (current) => {
@@ -135,11 +150,21 @@ export function streamReducer(
     case "snapshot": {
       const message = normalizeStreamingToolCalls(action.message);
       if (message.role !== "assistant") return state;
+      const timestamp = typeof message.timestamp === "number" ? message.timestamp : Date.now();
+      const prev = state.streamingMessage;
+      const content = message.content.map((block, i) => {
+        if (block.type !== "thinking") return block;
+        const prevBlock = prev?.content[i];
+        const startedAt = block.startedAt
+          ?? (prevBlock?.type === "thinking" ? prevBlock.startedAt : undefined)
+          ?? timestamp;
+        const endedAt = block.endedAt ?? (prevBlock?.type === "thinking" ? prevBlock.endedAt : undefined);
+        if (block.startedAt === startedAt && block.endedAt === endedAt) return block;
+        return { ...block, startedAt, ...(typeof endedAt === "number" ? { endedAt } : {}) };
+      });
       return {
         isStreaming: true,
-        streamingMessage: typeof message.timestamp === "number"
-          ? message
-          : { ...message, timestamp: Date.now() },
+        streamingMessage: { ...message, timestamp, content },
       };
     }
     case "delta":
@@ -151,4 +176,27 @@ export function streamReducer(
     default:
       return state;
   }
+}
+
+export function applyThinkingTimings(
+  message: AssistantMessage,
+  streamed: AssistantMessage | null | undefined,
+  endedAt: number,
+): AssistantMessage {
+  if (!streamed) return message;
+  let changed = false;
+  const content = message.content.map((block, i) => {
+    if (block.type !== "thinking") return block;
+    const src = streamed.content[i];
+    const startedAt = (src?.type === "thinking" ? src.startedAt : undefined) ?? block.startedAt ?? streamed.timestamp;
+    const finishedAt = (src?.type === "thinking" ? src.endedAt : undefined) ?? block.endedAt ?? endedAt;
+    if (block.startedAt === startedAt && block.endedAt === finishedAt) return block;
+    changed = true;
+    return {
+      ...block,
+      ...(typeof startedAt === "number" ? { startedAt } : {}),
+      ...(typeof finishedAt === "number" ? { endedAt: finishedAt } : {}),
+    } satisfies ThinkingContent;
+  });
+  return changed ? { ...message, content } : message;
 }

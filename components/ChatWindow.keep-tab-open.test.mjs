@@ -53,8 +53,7 @@ function bindingsFor(events, overrides = {}) {
     sessionIdRef: { current: "other-runtime-id" },
     onKeepTabOpen: (id) => events.push(["keep", id]),
     handleFork() {}, handleSend() {}, handleSteer() {}, handleFollowUp() {},
-    handlePromptWithStreamingBehavior() {}, scrollUserMsgToTop() {},
-    hasSeenTurnOutputRef: { current: true },
+    handlePromptWithStreamingBehavior() {},
     outlineJumpControllerRef: { current: null },
     setPendingOutlineJump() {}, setPendingSearchScroll() {},
     setUnmountedNewerCount() {}, setMountLimit() {}, MOUNTED_GROUP_LIMIT: 80,
@@ -158,7 +157,7 @@ for (const [name, delegate, args] of entrances) {
   });
 }
 
-test("ordinary send keeps immediately and waits for sending before scheduling scroll", async () => {
+test("ordinary send keeps immediately and delegates without a second scroll", async () => {
   const events = [];
   let finishSend;
   const pendingSend = new Promise((resolve) => { finishSend = resolve; });
@@ -171,17 +170,14 @@ test("ordinary send keeps immediately and waits for sending before scheduling sc
       return pendingSend;
     },
     requestAnimationFrame(callback) { frames.push(callback); },
-    scrollUserMsgToTop() { events.push(["scroll"]); },
   });
   const result = callbackRenderer()(bindings).handleChatSend("send me", images);
   assert.deepEqual(events, [["keep", "own-tab"], ["send"]]);
-  assert.equal(bindings.hasSeenTurnOutputRef.current, false);
   assert.equal(frames.length, 0);
   finishSend();
   await result;
-  assert.equal(frames.length, 1);
-  frames[0]();
-  assert.deepEqual(events, [["keep", "own-tab"], ["send"], ["scroll"]]);
+  assert.equal(frames.length, 0);
+  assert.deepEqual(events, [["keep", "own-tab"], ["send"]]);
 });
 
 // Locate the actual initial-prompt effect by its dependency, then execute it.

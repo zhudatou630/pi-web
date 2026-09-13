@@ -52,6 +52,8 @@ test("keeps the session event stream open through the idle grace window", () => 
   assert.match(promptDoneSource, /scheduleEventStreamClose\(sid\)/);
   assert.match(sendSource, /const definitivelyRejected = !promptRequestStarted/);
   assert.match(sendSource, /if \(!definitivelyRejected && sentSessionId\) \{[\s\S]*?waitForPromptSettlement/);
+  assert.match(sendSource, /response\?\.subagentAction === "steered" \|\| response\?\.subagentAction === "resumed"/);
+  assert.match(sendSource, /if \(managedSubagentPrompt && result\.sessionId\) \{[\s\S]*?rpcPromptPendingRef\.current = false;[\s\S]*?waitForPromptSettlement/);
   assert.match(sendSource, /restoreSubmission\(message, images, composerDraftKey\);[\s\S]*?if \(sentSessionId\) \{[\s\S]*?reconcileAgentState\(sentSessionId\);[\s\S]*?return;[\s\S]*?\}[\s\S]*?closeEvents\(\)/);
   assert.doesNotMatch(
     sendSource,
@@ -161,7 +163,7 @@ test("fresh sessions use the preference while persisted and live sessions restor
   );
   const changeSource = source.slice(
     source.indexOf("  const handleToolPresetChange = useCallback"),
-    source.indexOf("  const scrollUserMsgToTop"),
+    source.indexOf("  const handleScrollPositionChange"),
   );
 
   assert.match(
@@ -377,6 +379,7 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
   assert.match(messageEndSource, /normalizeToolCalls\(completed\)/);
   assert.match(messageEndSource, /const completedAt = Date\.now\(\)/);
   assert.match(messageEndSource, /const settled = \{ \.\.\.normalized, completedAt \}/);
+  assert.match(messageEndSource, /applyThinkingTimings\(settled, streamStateRef\.current\.streamingMessage, completedAt\)/);
   assert.match(messageEndSource, /dispatch\(\{ type: "end" \}\)/);
   assert.doesNotMatch(messageEndSource, /streamState\.streamingMessage/);
 });
@@ -521,14 +524,10 @@ test("restores an in-page session viewport without the default tail jump", () =>
   assert.match(chatWindowSource, /t\("chat\.locateNotFound"\)/);
 });
 
-test("keeps a newly sent user message at the top while its response starts", () => {
+test("keeps sending and streaming on one tail-anchored layout", () => {
   const streamUpdateSource = source.slice(
     source.indexOf('case "message_start"'),
     source.indexOf('case "message_end"'),
-  );
-  const userScrollSource = source.slice(
-    source.indexOf("const scrollUserMsgToTop"),
-    source.indexOf("const handleScrollPositionChange"),
   );
   const liveFollowSource = source.slice(
     source.indexOf("const scheduleLiveFollow"),
@@ -540,63 +539,12 @@ test("keeps a newly sent user message at the top while its response starts", () 
   );
 
   assert.match(streamUpdateSource, /scheduleLiveFollow\(\)/);
-  assert.match(liveFollowSource, /pendingScrollToUserRef\.current \|\| !isNearBottomRef\.current/);
-  assert.match(source, /const \[promptAnchorActive, setPromptAnchorActive\] = useState\(false\)/);
-  assert.match(source, /pendingScrollToUserRef\.current = true;\s*setPromptAnchorActive\(true\)/);
-  assert.match(userScrollSource, /const targetTop = Math\.min\(Math\.max\(0, elAbsTop - 16\), maxScrollTop\)/);
-  assert.match(userScrollSource, /cancelAnimationFrame\(liveFollowFrameRef\.current\)/);
-  assert.match(userScrollSource, /isNearBottomRef\.current = true/);
-  assert.match(userScrollSource, /previousScrollTopRef\.current = targetTop/);
-  assert.match(userScrollSource, /container\.scrollTo\(\{ top: targetTop, behavior: "auto" \}\)/);
-  assert.match(scrollEffectSource, /pendingScrollToUserRef\.current = false;[\s\S]*?scrollUserMsgToTop\(\)/);
-  assert.match(chatWindowSource, /const contentEnd = spacer\.getBoundingClientRect\(\)\.top[\s\S]*?getPromptAnchorSpacerHeight\([\s\S]*?targetTop,[\s\S]*?contentEnd,[\s\S]*?container\.clientHeight/);
-  assert.match(chatWindowSource, /<div ref=\{promptAnchorSpacerRef\} aria-hidden="true" \/>/);
-  assert.match(chatWindowSource, /const promptAnchorAdjustmentDoneRef = useRef\(false\)/);
-  assert.match(chatWindowSource, /promptAnchorAdjustmentDoneRef\.current = false/);
-  assert.match(chatWindowSource, /const isInitialMeasurement = !promptAnchorAdjustmentDoneRef\.current;[\s\S]*?promptAnchorAdjustmentDoneRef\.current = true;[\s\S]*?if \(needsInitialAdjustment\) scrollUserMsgToTop\(\)/);
-});
-
-test("keeps prompt anchor measurement outside the React update cycle", () => {
-  const anchorEffectStart = chatWindowSource.indexOf(
-    "useLayoutEffect(() => {\n    const spacer = promptAnchorSpacerRef.current;",
-  );
-  assert.notEqual(anchorEffectStart, -1);
-  const syncEffectStart = chatWindowSource.indexOf(
-    "useLayoutEffect(() => {\n    promptAnchorUpdateRef.current?.();",
-    anchorEffectStart,
-  );
-  assert.notEqual(syncEffectStart, -1);
-  const anchorLifecycleEffectSource = chatWindowSource.slice(
-    anchorEffectStart,
-    syncEffectStart,
-  );
-  const anchorSyncEffectSource = chatWindowSource.slice(
-    syncEffectStart,
-    chatWindowSource.indexOf("const availableThinkingLevels"),
-  );
-
-  assert.doesNotMatch(anchorLifecycleEffectSource, /\bset[A-Z][A-Za-z0-9]*\s*\(/);
-  assert.doesNotMatch(anchorSyncEffectSource, /\bset[A-Z][A-Za-z0-9]*\s*\(/);
-  assert.doesNotMatch(chatWindowSource, /setPromptAnchorSpacer|useState[^\n]*promptAnchorSpacer/);
-  assert.doesNotMatch(anchorLifecycleEffectSource, /streamState\.streamingMessage/);
-  assert.match(anchorLifecycleEffectSource, /container\.clientHeight <= 0/);
-  assert.match(anchorLifecycleEffectSource, /shouldApplyPromptAnchorHeight\(/);
-  assert.match(anchorLifecycleEffectSource, /spacer\.style\.height = nextPromptAnchorSpacerHeight > 0/);
-  assert.match(anchorLifecycleEffectSource, /promptAnchorUpdateRef\.current = updatePromptAnchorSpacer/);
-  assert.match(anchorLifecycleEffectSource, /new ResizeObserver\(schedulePromptAnchorMeasure\)/);
-  assert.match(anchorLifecycleEffectSource, /observer\?\.observe\(messageContent\)/);
-  assert.match(anchorLifecycleEffectSource, /if \(disposed \|\| promptAnchorMeasureFrameRef\.current !== null\) return/);
-  assert.match(anchorLifecycleEffectSource, /promptAnchorMeasureFrameRef\.current = requestAnimationFrame\(\(\) => \{\s*promptAnchorMeasureFrameRef\.current = null;\s*updatePromptAnchorSpacer\(\)/);
-  assert.match(anchorLifecycleEffectSource, /disposed = true;[\s\S]*?promptAnchorUpdateRef\.current === updatePromptAnchorSpacer[\s\S]*?cancelAnimationFrame\(promptAnchorMeasureFrameRef\.current\)/);
-  assert.match(anchorSyncEffectSource, /promptAnchorUpdateRef\.current\?\.\(\);\s*\}, \[streamState\.streamingMessage\]\)/);
-  assert.match(chatWindowSource, /<div ref=\{messageContentRef\}[^>]*style=\{\{/);
-  assert.match(anchorSyncEffectSource, /wasFocused && !isFocusedPane/);
-});
-
-test("uses the prompt anchor as the only trailing message spacer", () => {
-  assert.match(chatWindowSource, /<div ref=\{promptAnchorSpacerRef\} aria-hidden="true" \/>[\s\S]*?<\/div>/);
-  assert.doesNotMatch(chatWindowSource, /bottomComposer(?:Ref|Height|ScrollFrameRef)/);
-  assert.doesNotMatch(chatWindowSource, /new ResizeObserver\(updateBottomComposerHeight\)/);
+  assert.match(liveFollowSource, /pendingScrollToBottomRef\.current \|\| !isNearBottomRef\.current/);
+  assert.match(source, /pendingScrollToBottomRef\.current = true/);
+  assert.match(scrollEffectSource, /pendingScrollToBottomRef\.current = false;[\s\S]*?scrollToBottom\("instant"\)/);
+  assert.doesNotMatch(source, /promptAnchor|scrollUserMsgToTop|lastUserMsgRef/);
+  assert.doesNotMatch(chatWindowSource, /promptAnchor|scrollUserMsgToTop|lastUserMsgRef/);
+  assert.match(chatWindowSource, /if \(!wasFocused && isFocusedPane\)[\s\S]*?scrollToBottom\("instant"\)/);
 });
 
 test("keeps a detached viewport in place when streaming completes", () => {
@@ -634,4 +582,14 @@ test("stop lifecycle uses run-owned dispatch and can abort server-confirmed runs
   assert.match(abortSource, /localUnsent/);
   assert.doesNotMatch(abortSource, /wasDispatched\(/);
   assert.doesNotMatch(sendSource, /isCancelled\(promptRunId\)\) \{[\s\S]*?abandonUnsentPrompt\(\);/);
+});
+
+test("queued subagent stop bypasses the ordinary running-prompt gate", () => {
+  const abortSource = source.slice(
+    source.indexOf("  const handleAbort = useCallback"),
+    source.indexOf("  const handleFork = useCallback"),
+  );
+  assert.match(abortSource, /const queuedSubagent = session\?\.relation\?\.kind === "subagent" && session\.relation\.status === "queued"/);
+  assert.match(abortSource, /if \(queuedSubagent && sid\) \{[\s\S]*?sendStop\("abort"\)/);
+  assert.match(abortSource, /stopRequestPendingRef/);
 });

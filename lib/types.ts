@@ -36,6 +36,10 @@ export interface ThinkingContent {
   thinking: string;
   /** Historical content is a short preview; full reasoning is loaded on demand. */
   deferred?: boolean;
+  /** Client-only. From thinking_start. Not persisted. */
+  startedAt?: number;
+  /** Client-only. From thinking_end or message_end. Not persisted. */
+  endedAt?: number;
 }
 
 export interface ToolCallContent {

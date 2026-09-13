@@ -157,6 +157,14 @@ test("profiles route rejects missing paths, malformed profiles, and unsafe names
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /Invalid thinking level/);
 
+  response = await PUT(jsonRequest("PUT", { cwd, scope: "project", profile: profile({ tools: ["reed"] }) }));
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Unknown subagent tools: reed/);
+
+  response = await PUT(jsonRequest("PUT", { cwd, scope: "project", profile: profile({ extensionTools: "ext:mcp" }) }));
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /extensionTools must be an array of strings/);
+
   response = await DELETE(jsonRequest("DELETE", { cwd, scope: "project" }));
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "name required" });

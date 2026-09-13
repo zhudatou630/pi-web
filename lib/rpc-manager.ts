@@ -63,6 +63,7 @@ export interface AgentEvent {
 
 type EventListener = (event: AgentEvent) => void;
 type AgentRunCompleteListener = (sessionId: string) => void;
+type AgentRunCompletionGate = (sessionId: string) => boolean;
 
 type PendingUiResponse = {
   resolve: (response: ExtensionUiResponse) => void;
@@ -101,6 +102,7 @@ type ExtensionCommandContextActionsLike = {
 type AgentSessionWrapperOptions = {
   exactSystemPrompt?: () => string;
   chatOnly?: boolean;
+  beforeAgentRunComplete?: AgentRunCompletionGate;
   onAgentRunComplete?: AgentRunCompleteListener;
   suppressCompletionNotifications?: boolean;
 };
@@ -224,6 +226,7 @@ export class AgentSessionWrapper {
   private extensionBindingError: unknown = null;
   private readonly exactSystemPrompt?: () => string;
   private readonly chatOnly: boolean;
+  private readonly beforeAgentRunComplete?: AgentRunCompletionGate;
   private readonly onAgentRunComplete?: AgentRunCompleteListener;
   private readonly suppressCompletionNotifications: boolean;
   private unsubscribe: (() => void) | null = null;
@@ -241,6 +244,7 @@ export class AgentSessionWrapper {
   ) {
     this.exactSystemPrompt = options.exactSystemPrompt;
     this.chatOnly = options.chatOnly ?? false;
+    this.beforeAgentRunComplete = options.beforeAgentRunComplete;
     this.onAgentRunComplete = options.onAgentRunComplete;
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
     this.installExactSystemPromptContinuation();
@@ -294,6 +298,10 @@ export class AgentSessionWrapper {
     return this.suppressCompletionNotifications;
   }
 
+  canStartBackgroundFollowUp(): boolean {
+    return this._alive && !this._closing && !getPausedAutomaticFollowUps().has(this.sessionId);
+  }
+
   start(): void {
     this.unsubscribe = this.inner.subscribe((event: AgentEvent) => {
       if (event.type === "agent_start") this.agentRunNeedsCompletion = true;
@@ -317,6 +325,11 @@ export class AgentSessionWrapper {
 
   private notifyAgentRunCompleteIfIdle(): void {
     if (!this.agentRunNeedsCompletion || this.isRunning()) return;
+    try {
+      if (this.beforeAgentRunComplete?.(this.sessionId) || this.isRunning()) return;
+    } catch (error) {
+      console.error("[pi-web] pre-completion listener failed:", error instanceof Error ? error.message : error);
+    }
     this.agentRunNeedsCompletion = false;
     if (this.suppressCompletionNotifications) return;
     try {
@@ -610,7 +623,9 @@ export class AgentSessionWrapper {
           let rejectPreflight!: (error: unknown) => void;
           const preflight = new Promise<void>((resolve, reject) => {
             acceptPreflight = () => {
+              if (preflightAccepted) return;
               preflightAccepted = true;
+              getPausedAutomaticFollowUps().delete(this.sessionId);
               this.agentRunNeedsCompletion = true;
               if (preflightSettled) return;
               preflightSettled = true;
@@ -686,6 +701,7 @@ export class AgentSessionWrapper {
 
       case "abort":
         this.forceShutdownOnIdle = true;
+        getPausedAutomaticFollowUps().add(this.sessionId);
         this.directImageAbortController?.abort(new DOMException("Image generation cancelled", "AbortError"));
         // Stop must unwind extension commands that have not started the agent yet.
         this.extensionUiAbortController.abort(new DOMException("Extension UI cancelled by Stop", "AbortError"));
@@ -1079,6 +1095,7 @@ export class AgentSessionWrapper {
 
       case "abort_bash": {
         this.forceShutdownOnIdle = true;
+        getPausedAutomaticFollowUps().add(this.sessionId);
         this.inner.abortBash();
         return null;
       }
@@ -1514,6 +1531,12 @@ declare global {
   var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
   var __piStartingSessionCwds: Map<string, number> | undefined;
   var __piSessionFileMutations: Set<string> | undefined;
+  var __piPausedAutomaticFollowUps: Set<string> | undefined;
+}
+
+function getPausedAutomaticFollowUps(): Set<string> {
+  if (!globalThis.__piPausedAutomaticFollowUps) globalThis.__piPausedAutomaticFollowUps = new Set();
+  return globalThis.__piPausedAutomaticFollowUps;
 }
 
 function getRegistry(): Map<string, AgentSessionWrapper> {
@@ -1579,6 +1602,10 @@ export function steerSubagent(sessionId: string, message: string) {
 
 export function abortSubagent(sessionId: string) {
   return SUBAGENT_CONTROLLER.abort(sessionId);
+}
+
+export function sendSubagentUiMessage(sessionId: string, message: string) {
+  return SUBAGENT_CONTROLLER.sendUiMessage(sessionId, message);
 }
 
 export { isSubagentQueued };
@@ -2067,6 +2094,9 @@ export async function startRpcSession(
     const wrapper = new AgentSessionWrapper(inner, {
       exactSystemPrompt,
       chatOnly,
+      beforeAgentRunComplete: (completedSessionId) => (
+        SUBAGENT_CONTROLLER.flushParentNotifications(completedSessionId)
+      ),
       onAgentRunComplete: (completedSessionId) => {
         void notifySessionComplete(completedSessionId).catch((error) => {
           console.error("[pi-web] failed to send completion push:", error instanceof Error ? error.message : error);

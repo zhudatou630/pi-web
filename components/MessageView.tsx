@@ -615,7 +615,6 @@ function AssistantMessageView({
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
-  const thinkingDuration = elapsedSeconds(message.timestamp, message.completedAt);
   const toolStartedAt = message.completedAt ?? message.timestamp;
   const toolCallDurations = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>();
@@ -658,12 +657,17 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {blockItems.map(({ block, originalIndex }, displayIndex) => {
+          const thinking = block.type === "thinking" ? block as ThinkingContent : null;
+          const thinkingStart = thinking ? thinking.startedAt ?? message.timestamp : undefined;
+          const thinkingDuration = thinking
+            ? elapsedSeconds(thinkingStart, thinking.endedAt ?? message.completedAt)
+            : undefined;
           const isLiveThinking = Boolean(
             isStreaming
-            && block.type === "thinking"
+            && thinking
             && displayIndex === blockItems.length - 1
             && thinkingDuration === undefined
-            && typeof message.timestamp === "number",
+            && typeof thinkingStart === "number",
           );
           return (
             <BlockView
@@ -672,8 +676,8 @@ function AssistantMessageView({
               searchTarget={block === searchBlock}
               toolResults={toolResults}
               isStreaming={isStreaming}
-              streamingDuration={block.type === "thinking" ? thinkingDuration : undefined}
-              startTime={isLiveThinking ? message.timestamp : undefined}
+              streamingDuration={thinkingDuration}
+              startTime={isLiveThinking ? thinkingStart : undefined}
               toolCallDurations={toolCallDurations}
               cwd={cwd}
               onOpenFile={onOpenFile}

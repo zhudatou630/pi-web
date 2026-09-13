@@ -41,12 +41,10 @@ import { findChatScrollAnchor, type ChatScrollPosition } from "@/lib/chat-scroll
 import {
   captureScrollDistance,
   getMountedRange,
-  getPromptAnchorSpacerHeight,
   isScrollAtTail,
   MOUNT_WINDOW_SHIFT,
   MOUNTED_GROUP_LIMIT,
   restoreScrollTop,
-  shouldApplyPromptAnchorHeight,
 } from "@/lib/chat-lazy-load";
 
 interface Props {
@@ -648,12 +646,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     agentPhase,
     isNew,
     sessionIdRef, scrollContainerRef,
-    lastUserMsgRef, promptAnchorActive,
     handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
-    handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollUserMsgToTop,
+    handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands,
     loadContext, activeLeafId, scrollToBottom, scrollToMessage,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded: wrappedOnAttentionNeeded, onSessionCreated, onSessionForked: wrappedOnSessionForked,
@@ -1446,144 +1443,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     return false;
   }, [messages]);
-  const hasSeenTurnOutputRef = useRef(false);
-  if (currentTurnHasVisibleOutput || Boolean(streamState.streamingMessage?.content.length)) {
-    hasSeenTurnOutputRef.current = true;
-  }
-
   const streamingAssistant = streamState.streamingMessage?.role === "assistant"
     ? streamState.streamingMessage as AssistantMessage
     : null;
   const streamingParts = streamingAssistant
     ? partitionAssistantMessage(streamingAssistant, { isStreaming: true })
     : { processMessage: null, answerMessage: null };
-  const promptAnchorSpacerRef = useRef<HTMLDivElement | null>(null);
-  const promptAnchorSpacerHeightRef = useRef(0);
-  const promptAnchorMeasureFrameRef = useRef<number | null>(null);
-  const promptAnchorAdjustmentDoneRef = useRef(false);
-  const promptAnchorUpdateRef = useRef<(() => void) | null>(null);
-
-  useLayoutEffect(() => {
-    const spacer = promptAnchorSpacerRef.current;
-    if (!agentRunning || !promptAnchorActive) {
-      promptAnchorUpdateRef.current = null;
-      promptAnchorSpacerHeightRef.current = 0;
-      promptAnchorAdjustmentDoneRef.current = false;
-      if (spacer) spacer.style.height = "";
-      return;
-    }
-
-    const container = scrollContainerRef.current;
-    const messageContent = messageContentRef.current;
-    const userMessage = lastUserMsgRef.current;
-    if (!container || !messageContent || !userMessage || !spacer) return;
-
-    let disposed = false;
-    const updatePromptAnchorSpacer = () => {
-      if (
-        disposed
-        || scrollContainerRef.current !== container
-        || messageContentRef.current !== messageContent
-        || lastUserMsgRef.current !== userMessage
-        || promptAnchorSpacerRef.current !== spacer
-      ) return;
-
-      // Hidden tabs (`display: none`) report clientHeight 0. Measuring against
-      // that collapses the spacer; the next visible step would re-inflate it
-      // and live-follow would jump the transcript. Collapse without consuming
-      // the send-time initial measurement, then refuse to grow again.
-      if (container.clientHeight <= 0) {
-        if (promptAnchorAdjustmentDoneRef.current && promptAnchorSpacerHeightRef.current !== 0) {
-          promptAnchorSpacerHeightRef.current = 0;
-          spacer.style.height = "";
-        }
-        return;
-      }
-
-      const containerTop = container.getBoundingClientRect().top;
-      const userMessageTop = userMessage.getBoundingClientRect().top
-        - containerTop
-        + container.scrollTop;
-      const targetTop = Math.max(0, userMessageTop - 16);
-      const contentEnd = spacer.getBoundingClientRect().top
-        - containerTop
-        + container.scrollTop;
-      // Compact process rows never fill the send-time pin. Keep the spacer for
-      // the waiting pulse, then drop it — same end state as hiding the tab.
-      const nextPromptAnchorSpacerHeight = hasSeenTurnOutputRef.current
-        ? 0
-        : getPromptAnchorSpacerHeight(
-          targetTop,
-          contentEnd,
-          container.clientHeight,
-        );
-
-      const isInitialMeasurement = !promptAnchorAdjustmentDoneRef.current;
-      const needsInitialAdjustment = isInitialMeasurement
-        && !hasSeenTurnOutputRef.current
-        && nextPromptAnchorSpacerHeight > 0;
-      if (isInitialMeasurement) promptAnchorAdjustmentDoneRef.current = true;
-      if (!shouldApplyPromptAnchorHeight(
-        nextPromptAnchorSpacerHeight,
-        promptAnchorSpacerHeightRef.current,
-        isInitialMeasurement,
-      )) return;
-
-      promptAnchorSpacerHeightRef.current = nextPromptAnchorSpacerHeight;
-      spacer.style.height = nextPromptAnchorSpacerHeight > 0
-        ? `${nextPromptAnchorSpacerHeight}px`
-        : "";
-      if (needsInitialAdjustment) scrollUserMsgToTop();
-    };
-
-    promptAnchorUpdateRef.current = updatePromptAnchorSpacer;
-    const schedulePromptAnchorMeasure = () => {
-      if (disposed || promptAnchorMeasureFrameRef.current !== null) return;
-      promptAnchorMeasureFrameRef.current = requestAnimationFrame(() => {
-        promptAnchorMeasureFrameRef.current = null;
-        updatePromptAnchorSpacer();
-      });
-    };
-
-    updatePromptAnchorSpacer();
-    const observer = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(schedulePromptAnchorMeasure);
-    observer?.observe(container);
-    observer?.observe(messageContent);
-    observer?.observe(userMessage);
-    return () => {
-      disposed = true;
-      if (promptAnchorUpdateRef.current === updatePromptAnchorSpacer) {
-        promptAnchorUpdateRef.current = null;
-      }
-      observer?.disconnect();
-      if (promptAnchorMeasureFrameRef.current !== null) {
-        cancelAnimationFrame(promptAnchorMeasureFrameRef.current);
-        promptAnchorMeasureFrameRef.current = null;
-      }
-    };
-  }, [
-    agentRunning,
-    lastUserMsgRef,
-    messages.length,
-    isFocusedPane,
-    promptAnchorActive,
-    scrollContainerRef,
-    scrollUserMsgToTop,
-  ]);
-
-  useLayoutEffect(() => {
-    promptAnchorUpdateRef.current?.();
-  }, [streamState.streamingMessage]);
-
   const wasFocusedPaneRef = useRef(isFocusedPane);
   useLayoutEffect(() => {
     const wasFocused = wasFocusedPaneRef.current;
     wasFocusedPaneRef.current = isFocusedPane;
-    if (wasFocused && !isFocusedPane) {
-      promptAnchorUpdateRef.current?.();
-    }
     if (!wasFocused && isFocusedPane) {
       if (sessionBusy && !showScrollBottom) {
         scrollToBottom("instant");
@@ -1601,17 +1470,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const handleChatSend = useCallback(async (message: string, images?: AttachedImage[]) => {
     keepTabOpen();
-    hasSeenTurnOutputRef.current = false;
     outlineJumpControllerRef.current?.abort();
     setPendingOutlineJump(null);
     setPendingSearchScroll(null);
     setUnmountedNewerCount(0);
     setMountLimit(MOUNTED_GROUP_LIMIT);
     await handleSend(message, images);
-    requestAnimationFrame(() => {
-      scrollUserMsgToTop();
-    });
-  }, [handleSend, keepTabOpen, scrollUserMsgToTop]);
+  }, [handleSend, keepTabOpen]);
 
   const handleChatFork = useCallback((entryId: string) => {
     keepTabOpen();
@@ -1644,7 +1509,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onSteer={agentRunning ? handleSteerWithSubmit : undefined}
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehaviorWithSubmit : undefined}
-      isStreaming={sessionBusy}
+      isStreaming={sessionBusy || isQueuedSubagent}
       disabled={isQueuedSubagent}
       model={isSessionLoading ? null : displayModelValue}
       isAutoModelSelection={isSessionLoading ? false : isAutoModelSelection}
@@ -1793,10 +1658,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div ref={messageContentRef} onPointerUp={captureQuotedSelection} style={{ width: "100%", minWidth: 0, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
             {(() => {
-              let lastUserIdx = -1;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].role === "user") { lastUserIdx = i; break; }
-              }
               // A subagent notification triggers a model turn without posing as
               // a user message, so it is a grouping boundary but not a chat anchor.
               let lastBoundaryIdx = -1;
@@ -1816,9 +1677,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
               });
 
-              const attachVisibleRef = (idx: number, refIndex: number) => (el: HTMLDivElement | null) => {
+              const attachVisibleRef = (refIndex: number) => (el: HTMLDivElement | null) => {
                 messageRefs.current[refIndex] = el;
-                if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
               const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; isProcess?: boolean } = {}): ReactNode => {
@@ -1875,7 +1735,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     key={`${keyPrefix}-${messageKey}`}
                     data-entry-id={entryIds[idx]}
                     data-slot-index={`msg-${idx}`}
-                    ref={options.attachRef === false || currentRefIdx === undefined ? undefined : attachVisibleRef(idx, currentRefIdx)}
+                    ref={options.attachRef === false || currentRefIdx === undefined ? undefined : attachVisibleRef(currentRefIdx)}
                   >
                     {view}
                   </div>
@@ -2167,7 +2027,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               <PendingGeneratedImage prompt={pendingImage.prompt} size={pendingImage.size} width={pendingImage.width} height={pendingImage.height} previewUrl={pendingImage.previewUrl} />
             )}
 
-            <div ref={promptAnchorSpacerRef} aria-hidden="true" />
             </div>
           </div>
         </div>

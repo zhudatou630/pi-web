@@ -55,6 +55,7 @@ interface HostSession {
   isAlive(): boolean;
   isClosing(): boolean;
   isRunning(): boolean;
+  canStartBackgroundFollowUp?(): boolean;
   waitUntilReady(): Promise<void>;
   shutdown(): Promise<void>;
 }
@@ -77,6 +78,11 @@ export interface SubagentController {
   get(sessionId: string): Promise<SubagentRunInfo | null>;
   steer(sessionId: string, message: string): Promise<void>;
   abort(sessionId: string): Promise<void>;
+  sendUiMessage(sessionId: string, message: string): Promise<{
+    action: "steered" | "resumed";
+    run: SubagentRunInfo;
+  }>;
+  flushParentNotifications(parentSessionId: string): boolean;
 }
 
 type StoredSubagentExecution = {
@@ -99,6 +105,7 @@ declare global {
   var __piSubagentRuns: Map<string, StoredSubagentExecution> | undefined;
   var __piSubagentQueue: SubagentQueue<SubagentRunInfo> | undefined;
   var __piSubagentWaves: Map<string, BackgroundWave> | undefined;
+  var __piSubagentNotificationParents: Set<string> | undefined;
   var __piSubagentResumeClaims: Set<string> | undefined;
 }
 const SUBAGENT_CONTEXT_LIMIT = 50_000;
@@ -214,6 +221,11 @@ function getSubagentWaves(): Map<string, BackgroundWave> {
   return globalThis.__piSubagentWaves;
 }
 
+function getSubagentNotificationParents(): Set<string> {
+  if (!globalThis.__piSubagentNotificationParents) globalThis.__piSubagentNotificationParents = new Set();
+  return globalThis.__piSubagentNotificationParents;
+}
+
 function getSubagentResumeClaims(): Set<string> {
   if (!globalThis.__piSubagentResumeClaims) globalThis.__piSubagentResumeClaims = new Set();
   return globalThis.__piSubagentResumeClaims;
@@ -321,6 +333,12 @@ export function projectInstructionsForSubagent(
 }
 
 const WAVE_JOIN_HOLD_MS = 100;
+const SUBAGENT_NOTIFICATION_MAX_CHARS = 6_000;
+const SUBAGENT_NOTIFICATION_RESULT_MAX_CHARS = 1_200;
+
+function subagentResultKey(run: Pick<SubagentRunInfo, "sessionId" | "parentToolCallId">): string {
+  return `${run.sessionId}\0${run.parentToolCallId}`;
+}
 
 function parentWaveKey(parentSessionId: string, parentContext: StartSubagentRequest["parentContext"]): string {
   // Tool results can advance the branch leaf between sequential tool calls;
@@ -331,7 +349,7 @@ function parentWaveKey(parentSessionId: string, parentContext: StartSubagentRequ
   return `${parentSessionId}:${assistantId}`;
 }
 
-function attachBackgroundWave(waveKey: string, parentSessionId: string, sessionId: string): BackgroundWave {
+function attachBackgroundWave(waveKey: string, parentSessionId: string, run: SubagentRunInfo): BackgroundWave {
   const waves = getSubagentWaves();
   const existing = waves.get(waveKey);
   const wave = existing ?? {
@@ -340,7 +358,7 @@ function attachBackgroundWave(waveKey: string, parentSessionId: string, sessionI
     results: new Map<string, SubagentRunInfo>(),
     pending: 0,
   };
-  wave.members.push(sessionId);
+  wave.members.push(subagentResultKey(run));
   wave.pending += 1;
   waves.set(waveKey, wave);
   return wave;
@@ -363,50 +381,213 @@ function persistTerminal(
   sessionManager.appendCustomEntry(SUBAGENT_RESULT_TYPE, persisted);
 }
 
-async function notifyParentWave(
-  dependencies: SubagentRuntimeDependencies,
-  runs: SubagentRunInfo[],
-): Promise<void> {
-  if (runs.length === 0) return;
-  const parentSessionId = runs[0].parentSessionId;
-  let parent = dependencies.getSession(parentSessionId);
-  if (!parent?.isAlive() || parent.isClosing()) {
-    const sessionFile = await dependencies.resolveSessionPath(parentSessionId);
-    if (!sessionFile || !dependencies.reopenSession) return;
-    parent = await dependencies.reopenSession(parentSessionId, sessionFile);
+export function commitSubagentTerminal(
+  sessionManager: { appendCustomEntry: (type: string, data: unknown) => void },
+  result: SubagentRunInfo,
+): { run: SubagentRunInfo; persisted: boolean } {
+  try {
+    persistTerminal(sessionManager, result);
+    return { run: result, persisted: true };
+  } catch (error) {
+    return {
+      run: failedRun(result, new Error(`Failed to persist subagent result: ${errorMessage(error)}`)),
+      persisted: false,
+    };
   }
-  await parent.waitUntilReady();
-  if (!parent.isAlive()) return;
-  const text = runs.length === 1
-    ? subagentFinalText(runs[0])
-    : runs.map((run) => `## ${run.description} (${run.profile}, ${run.status})\n${subagentFinalText(run)}`).join("\n\n");
-  await parent.inner.sendCustomMessage({
+}
+
+function removeEmptySubagentWave(waveKey: string, wave: BackgroundWave): void {
+  if (wave.pending > 0 || wave.results.size > 0) return;
+  if (wave.notifyTimer) {
+    clearTimeout(wave.notifyTimer);
+    wave.notifyTimer = undefined;
+  }
+  getSubagentWaves().delete(waveKey);
+}
+
+function pendingParentNotificationRuns(parentSessionId: string): SubagentRunInfo[] {
+  const pending: SubagentRunInfo[] = [];
+  for (const wave of getSubagentWaves().values()) {
+    if (wave.parentSessionId !== parentSessionId) continue;
+    for (const key of wave.members) {
+      const run = wave.results.get(key);
+      if (run) pending.push(run);
+    }
+  }
+  return pending;
+}
+
+function consumePendingSubagentResult(parentSessionId: string, run: SubagentRunInfo): boolean {
+  if (run.parentSessionId !== parentSessionId) return false;
+  const resultKey = subagentResultKey(run);
+  let consumed = false;
+  for (const [waveKey, wave] of getSubagentWaves()) {
+    if (wave.parentSessionId !== parentSessionId) continue;
+    consumed = wave.results.delete(resultKey) || consumed;
+    removeEmptySubagentWave(waveKey, wave);
+  }
+  return consumed;
+}
+
+function subagentNotificationResult(run: SubagentRunInfo): string {
+  if (run.status !== "failed") return subagentFinalText(run);
+  const failure = `Failure: ${run.error ?? "Unknown error"}`;
+  const partial = run.result?.trim();
+  return partial ? `${failure}\n\nPartial output:\n${partial}` : failure;
+}
+
+function discardPendingParentNotifications(parentSessionId: string): void {
+  for (const [waveKey, wave] of getSubagentWaves()) {
+    if (wave.parentSessionId !== parentSessionId) continue;
+    if (wave.notifyTimer) {
+      clearTimeout(wave.notifyTimer);
+      wave.notifyTimer = undefined;
+    }
+    getSubagentWaves().delete(waveKey);
+  }
+}
+
+function buildSubagentNotification(runs: SubagentRunInfo[]): {
+  text: string;
+  included: SubagentRunInfo[];
+} {
+  const footer = "\n\nUse get_subagent_result with a session ID for the full result.";
+  const sections: string[] = [];
+  const included: SubagentRunInfo[] = [];
+  let remaining = SUBAGENT_NOTIFICATION_MAX_CHARS - footer.length - 80;
+
+  for (const run of runs) {
+    const description = run.description.slice(0, 160);
+    const profile = run.profile.slice(0, 80);
+    const header = `## ${description} (${profile}, ${run.status})\nSession ID: ${run.sessionId}\n`;
+    const separatorLength = sections.length > 0 ? 2 : 0;
+    const bodyLimit = Math.min(
+      SUBAGENT_NOTIFICATION_RESULT_MAX_CHARS,
+      remaining - header.length - separatorLength,
+    );
+    if (bodyLimit < 80) break;
+    const result = subagentNotificationResult(run);
+    const body = result.length <= bodyLimit
+      ? result
+      : `${result.slice(0, Math.max(0, bodyLimit - 24))}\n[Preview truncated]`;
+    const section = header + body;
+    sections.push(section);
+    included.push(run);
+    remaining -= section.length + separatorLength;
+  }
+
+  const omitted = runs.length - included.length;
+  const omittedNote = omitted > 0 ? `\n\n${omitted} additional result(s) remain pending.` : "";
+  const text = `${sections.join("\n\n")}${omittedNote}${footer}`;
+  return {
+    text: text.length <= SUBAGENT_NOTIFICATION_MAX_CHARS
+      ? text
+      : `${text.slice(0, SUBAGENT_NOTIFICATION_MAX_CHARS - footer.length)}${footer}`,
+    included,
+  };
+}
+
+function parentHasSubagentNotification(parent: HostSession, notificationId: string): boolean {
+  return parent.inner.sessionManager.getEntries().some((entry) => {
+    if (entry.type !== "custom_message" || entry.customType !== "pi-web:subagent-notification") return false;
+    const details = entry.details;
+    return typeof details === "object"
+      && details !== null
+      && (details as { notificationId?: unknown }).notificationId === notificationId;
+  });
+}
+
+function flushParentNotifications(
+  dependencies: SubagentRuntimeDependencies,
+  parentSessionId: string,
+): boolean {
+  const inFlightParents = getSubagentNotificationParents();
+  if (inFlightParents.has(parentSessionId)) {
+    return pendingParentNotificationRuns(parentSessionId).length > 0;
+  }
+
+  const parent = dependencies.getSession(parentSessionId);
+  if (!parent?.isAlive() || parent.isClosing()) {
+    discardPendingParentNotifications(parentSessionId);
+    return false;
+  }
+  if (parent.isRunning() || parent.canStartBackgroundFollowUp?.() === false) return false;
+  const runs = pendingParentNotificationRuns(parentSessionId);
+  if (runs.length === 0) return false;
+  const notification = buildSubagentNotification(runs);
+  if (notification.included.length === 0) return false;
+
+  inFlightParents.add(parentSessionId);
+  const reservations: Array<{
+    waveKey: string;
+    wave: BackgroundWave;
+    resultKey: string;
+    run: SubagentRunInfo;
+  }> = [];
+  for (const [waveKey, wave] of getSubagentWaves()) {
+    if (wave.parentSessionId !== parentSessionId) continue;
+    for (const run of notification.included) {
+      const resultKey = subagentResultKey(run);
+      if (wave.results.delete(resultKey)) reservations.push({ waveKey, wave, resultKey, run });
+    }
+    removeEmptySubagentWave(waveKey, wave);
+  }
+
+  const notificationId = randomUUID();
+  const delivery = parent.inner.sendCustomMessage({
     customType: "pi-web:subagent-notification",
-    content: text,
+    content: notification.text,
     display: true,
-    details: { kind: "pi-web-subagent-wave", sessionIds: runs.map((run) => run.sessionId) },
+    details: {
+      kind: "pi-web-subagent-wave",
+      notificationId,
+      sessionIds: notification.included.map((run) => run.sessionId),
+      results: notification.included.map((run) => ({
+        sessionId: run.sessionId,
+        parentToolCallId: run.parentToolCallId,
+      })),
+    },
   }, { deliverAs: "followUp", triggerTurn: true });
+  let continueFlush = true;
+  void delivery.catch((error) => {
+    continueFlush = parentHasSubagentNotification(parent, notificationId);
+    if (!continueFlush && parent.isAlive() && !parent.isClosing()) {
+      const waves = getSubagentWaves();
+      for (const reservation of reservations) {
+        const wave = waves.get(reservation.waveKey) ?? reservation.wave;
+        wave.results.set(reservation.resultKey, reservation.run);
+        waves.set(reservation.waveKey, wave);
+      }
+    }
+    console.error("[pi-web] failed to notify parent of subagent results:", error instanceof Error ? error.message : error);
+  }).finally(() => {
+    inFlightParents.delete(parentSessionId);
+    if (continueFlush) queueMicrotask(() => flushParentNotifications(dependencies, parentSessionId));
+  });
+  return parent.isRunning();
 }
 
 function settleBackgroundWave(
   dependencies: SubagentRuntimeDependencies,
   waveKey: string,
-  sessionId: string,
   result: SubagentRunInfo,
 ): void {
   const wave = getSubagentWaves().get(waveKey);
   if (!wave) return;
-  wave.results.set(sessionId, result);
+  wave.results.set(subagentResultKey(result), result);
   wave.pending = Math.max(0, wave.pending - 1);
-  if (wave.notifyTimer) clearTimeout(wave.notifyTimer);
+  if (wave.notifyTimer) return;
   wave.notifyTimer = setTimeout(() => {
-    if (wave.pending > 0) return;
-    getSubagentWaves().delete(waveKey);
-    const ordered = wave.members.map((id) => wave.results.get(id)).filter((run): run is SubagentRunInfo => Boolean(run));
-    void notifyParentWave(dependencies, ordered).catch((error) => {
-      console.error("[pi-web] failed to notify parent of subagent wave:", error instanceof Error ? error.message : error);
-    });
+    wave.notifyTimer = undefined;
+    flushParentNotifications(dependencies, wave.parentSessionId);
   }, WAVE_JOIN_HOLD_MS);
+}
+
+function abandonBackgroundWave(waveKey: string): void {
+  const wave = getSubagentWaves().get(waveKey);
+  if (!wave) return;
+  wave.pending = Math.max(0, wave.pending - 1);
+  removeEmptySubagentWave(waveKey, wave);
 }
 
 interface SubagentRunContext {
@@ -478,21 +659,25 @@ function enqueueSubagentRun(
   runs.set(options.initialRun.sessionId, stored);
   if (options.runInBackground) {
     stored.waveKey = options.waveKey;
-    attachBackgroundWave(options.waveKey, options.parentSessionId, options.initialRun.sessionId);
+    attachBackgroundWave(options.waveKey, options.parentSessionId, options.initialRun);
   }
 
+  let terminalSettled = false;
   let removeAbortListener = () => {};
   const settle = (result: SubagentRunInfo): SubagentRunInfo => {
+    if (terminalSettled) return stored.run;
+    terminalSettled = true;
     removeAbortListener();
-    persistTerminal(context.manager, result);
-    stored.run = result;
-    options.onUpdate?.(result);
-    if (runs.get(result.sessionId) === stored) runs.delete(result.sessionId);
-    dependencies.invalidateSessionList();
+    const terminal = commitSubagentTerminal(context.manager, result);
+    stored.run = terminal.run;
+    try { options.onUpdate?.(stored.run); } catch { /* observers must not rewrite the terminal result */ }
+    if (runs.get(stored.run.sessionId) === stored) runs.delete(stored.run.sessionId);
+    try { dependencies.invalidateSessionList(); } catch { /* cache invalidation is best effort */ }
     if (options.runInBackground && stored.waveKey) {
-      settleBackgroundWave(dependencies, stored.waveKey, result.sessionId, result);
+      if (terminal.persisted) settleBackgroundWave(dependencies, stored.waveKey, stored.run);
+      else abandonBackgroundWave(stored.waveKey);
     }
-    return result;
+    return stored.run;
   };
 
   const handleAbort = () => {
@@ -1007,11 +1192,25 @@ export function createSubagentController(
     return readSubagentRun(manager.getEntries() as unknown as SessionEntry[], sessionId, sessionPath);
   }
 
+  async function getForParent(parentSessionId: string, sessionId: string): Promise<SubagentRunInfo | null> {
+    const run = await get(sessionId);
+    if (run && run.parentSessionId !== parentSessionId) {
+      throw new Error("Subagent does not belong to this parent session");
+    }
+    return run;
+  }
+
   async function steer(sessionId: string, message: string): Promise<void> {
     const wrapper = dependencies.getSession(sessionId);
     if (!wrapper?.isAlive() || !wrapper.isRunning()) throw new Error("Subagent is not running");
     if (!message.trim()) throw new Error("Steering message is required");
     await wrapper.inner.steer(message.trim());
+  }
+
+  async function steerForParent(parentSessionId: string, sessionId: string, message: string): Promise<void> {
+    const run = await getForParent(parentSessionId, sessionId);
+    if (!run) throw new Error(`Subagent not found: ${sessionId}`);
+    await steer(sessionId, message);
   }
 
   async function abort(sessionId: string): Promise<void> {
@@ -1031,10 +1230,52 @@ export function createSubagentController(
     await wrapper.inner.abort();
   }
 
+  async function sendUiMessage(sessionId: string, message: string): Promise<{
+    action: "steered" | "resumed";
+    run: SubagentRunInfo;
+  }> {
+    const task = message.trim();
+    if (!task) throw new Error("Subagent message is required");
+    const existing = await get(sessionId);
+    if (!existing) throw new Error(`Subagent not found: ${sessionId}`);
+    if (existing.status === "queued") throw new Error("Subagent is queued");
+    if (existing.status === "starting" || existing.status === "running") {
+      await steer(sessionId, task);
+      return { action: "steered", run: existing };
+    }
+
+    let parent = dependencies.getSession(existing.parentSessionId);
+    if (!parent?.isAlive() || parent.isClosing()) {
+      const parentPath = await dependencies.resolveSessionPath(existing.parentSessionId);
+      if (!parentPath || !dependencies.reopenSession) {
+        throw new Error("Parent session is no longer available");
+      }
+      parent = await dependencies.reopenSession(existing.parentSessionId, parentPath);
+    }
+    await parent.waitUntilReady();
+    const execution = await resume({
+      parentContext: { sessionManager: parent.inner.sessionManager },
+      parentToolCallId: `ui:${randomUUID()}`,
+      sessionId,
+      task,
+      description: existing.description,
+      runInBackground: true,
+    });
+    return { action: "resumed", run: execution.run };
+  }
+
   return {
-    extensionRuntime: { start, resume, get, steer },
+    extensionRuntime: {
+      start,
+      resume,
+      get: getForParent,
+      steer: steerForParent,
+      consume: consumePendingSubagentResult,
+    },
     get,
     steer,
     abort,
+    sendUiMessage,
+    flushParentNotifications: (parentSessionId) => flushParentNotifications(dependencies, parentSessionId),
   };
 }

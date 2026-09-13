@@ -37,6 +37,7 @@ export interface SubagentProfile {
   enabled: boolean;
   scope: SubagentScope;
   filePath?: string;
+  configurationError?: string;
 }
 
 export interface SubagentMetadata {
@@ -179,11 +180,6 @@ function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function resourceBoolean(value: unknown, fallback: boolean): boolean {
-  if (typeof value === "boolean") return value;
-  return Array.isArray(value) || typeof value === "string" ? true : fallback;
-}
-
 function stringList(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
@@ -203,6 +199,61 @@ function parseTools(value: unknown, fallback: string[]): string[] {
 
 function parseExtensionToolSelectors(value: unknown): string[] {
   return [...new Set(stringList(value).filter((tool) => tool.toLowerCase().startsWith("ext:")))];
+}
+
+function resourceFlag(
+  data: Record<string, unknown> | null,
+  managedKey: string,
+  alias: string,
+  fallback: boolean,
+): boolean {
+  const aliasValue = data?.[alias];
+  let aliasFlag: boolean | undefined;
+  if (typeof aliasValue === "boolean") aliasFlag = aliasValue;
+  else if (typeof aliasValue === "string") {
+    const normalized = aliasValue.trim().toLowerCase();
+    if (normalized === "all" || normalized === "true") aliasFlag = true;
+    else if (normalized === "none" || normalized === "false") aliasFlag = false;
+    else throw new Error(`${alias} named lists are not supported by Pi Web; use a boolean ${alias} or ${managedKey}`);
+  } else if (aliasValue !== undefined) {
+    throw new Error(`${alias} named lists are not supported by Pi Web; use a boolean ${alias} or ${managedKey}`);
+  }
+
+  const managed = data?.[managedKey];
+  if (managed !== undefined) {
+    if (typeof managed === "boolean") return managed;
+    throw new Error(`${managedKey} must be true or false`);
+  }
+  return aliasFlag ?? fallback;
+}
+
+function assertKnownProfileTools(value: unknown): void {
+  if (
+    value !== undefined
+    && typeof value !== "string"
+    && (!Array.isArray(value) || value.some((tool) => typeof tool !== "string"))
+  ) {
+    throw new Error("Subagent tools must be a string or an array of strings");
+  }
+  const unknown = stringList(value).filter((tool) => (
+    tool !== "none"
+    && tool !== "all"
+    && tool !== "*"
+    && !tool.toLowerCase().startsWith("ext:")
+    && !BUILTIN_TOOLS.has(tool)
+  ));
+  if (unknown.length > 0) throw new Error(`Unknown subagent tools: ${unknown.join(", ")}`);
+}
+
+function validateSavedExtensionTools(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((tool) => typeof tool !== "string")) {
+    throw new Error("Subagent extensionTools must be an array of strings");
+  }
+  const tools = value.map((tool) => tool.trim());
+  const invalid = tools.filter((tool) => !tool.toLowerCase().startsWith("ext:") || tool.length <= 4);
+  if (invalid.length > 0) throw new Error(`Invalid subagent extension tools: ${invalid.join(", ")}`);
+  return [...new Set(tools)];
 }
 
 function isProfileName(value: string): boolean {
@@ -255,16 +306,48 @@ function syncFlagAlias(
   if (owned) frontmatter[alias] = flag;
 }
 
+function invalidProfile(
+  filePath: string,
+  scope: SubagentScope,
+  name: string,
+  error: unknown,
+): SubagentProfile | null {
+  if (!isProfileName(name)) return null;
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    name,
+    displayName: name,
+    description: `Invalid profile: ${message}`,
+    systemPrompt: "",
+    tools: [],
+    loadSkills: false,
+    loadExtensions: false,
+    inheritContext: false,
+    runInBackground: true,
+    enabled: false,
+    scope,
+    filePath,
+    configurationError: message,
+  };
+}
+
 function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfile | null {
+  const fileName = basename(filePath, ".md");
   try {
     const source = readFileSync(filePath, "utf8");
     const { data, rest } = parseFrontmatter(source);
-    const fileName = basename(filePath, ".md");
+    if (FRONTMATTER_OPEN_RE.test(source) && !data) {
+      return invalidProfile(filePath, scope, fileName, "Invalid frontmatter");
+    }
     const named = stringValue(data?.name);
+    if (named && !isProfileName(named)) {
+      return invalidProfile(filePath, scope, fileName, `Invalid agent name: ${named}`);
+    }
     const name = named && isProfileName(named) ? named : fileName;
-    if (!isProfileName(name)) return null;
+    if (!isProfileName(name)) return invalidProfile(filePath, scope, fileName, `Invalid agent name: ${name}`);
     const thinkingValue = stringValue(data?.thinking) as ThinkingLevel | undefined;
     const maxTurnsValue = typeof data?.max_turns === "number" ? Math.floor(data.max_turns) : undefined;
+    assertKnownProfileTools(data?.tools);
     const tools = parseTools(data?.tools, DEFAULT_TOOLS);
     const disallowedTools = new Set(parseTools(data?.disallowed_tools, []));
     const disallowedExtensionTools = new Set(
@@ -272,9 +355,11 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
     );
     const extensionTools = parseExtensionToolSelectors(data?.tools)
       .filter((tool) => !disallowedExtensionTools.has(tool.toLowerCase()));
-    const loadSkills = resourceBoolean(data?.load_skills ?? data?.skills, false);
-    const loadExtensions = resourceBoolean(
-      data?.load_extensions ?? data?.extensions,
+    const loadSkills = resourceFlag(data, "load_skills", "skills", false);
+    const loadExtensions = resourceFlag(
+      data,
+      "load_extensions",
+      "extensions",
       extensionTools.length > 0,
     );
     return {
@@ -301,8 +386,8 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
       scope,
       filePath,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    return invalidProfile(filePath, scope, fileName, error);
   }
 }
 
@@ -345,7 +430,11 @@ export function listSubagentProfiles(cwd: string): SubagentProfile[] {
 }
 
 export function resolveSubagentProfile(cwd: string, name: string): SubagentProfile | undefined {
-  return listSubagentProfiles(cwd).find((profile) => profile.name.toLowerCase() === name.trim().toLowerCase() && profile.enabled);
+  const profile = listSubagentProfiles(cwd).find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
+  if (profile?.configurationError) {
+    throw new Error(`Invalid subagent profile "${profile.name}": ${profile.configurationError}`);
+  }
+  return profile?.enabled ? profile : undefined;
 }
 
 function assertProfileName(name: string): string {
@@ -384,7 +473,9 @@ export function saveSubagentProfile(
   profile: Omit<SubagentProfile, "scope" | "filePath">,
 ): SubagentProfile {
   const name = assertProfileName(profile.name);
-  const tools = [...new Set(profile.tools.filter((tool) => BUILTIN_TOOLS.has(tool)))];
+  if (!Array.isArray(profile.tools)) throw new Error("Subagent tools must be an array of strings");
+  assertKnownProfileTools(profile.tools);
+  const tools = [...new Set(profile.tools)];
   if (profile.thinking && !THINKING_LEVELS.has(profile.thinking)) {
     throw new Error(`Invalid thinking level: ${profile.thinking}`);
   }
@@ -400,7 +491,7 @@ export function saveSubagentProfile(
   const model = profile.model?.trim() || undefined;
   const loadSkills = profile.loadSkills === true;
   const loadExtensions = profile.loadExtensions === true;
-  const extensionTools = [...new Set(profile.extensionTools ?? [])];
+  const extensionTools = validateSavedExtensionTools(profile.extensionTools);
   const dir = assertWritableProfileDirectory(cwd, scope);
   mkdirSync(dir, { recursive: true });
   if (scope === "project" && !isProjectProfilePathAllowed(cwd, dir)) {

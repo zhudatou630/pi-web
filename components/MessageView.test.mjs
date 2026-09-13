@@ -27,7 +27,8 @@ test("looks up tool durations only for calls in the current assistant message", 
 
 test("derives thinking and tool durations from message timestamps, not a view clock", () => {
   assert.match(source, /function elapsedSeconds/);
-  assert.match(source, /elapsedSeconds\(message\.timestamp, message\.completedAt\)/);
+  assert.match(source, /thinking\.startedAt \?\? message\.timestamp/);
+  assert.match(source, /thinking\.endedAt \?\? message\.completedAt/);
   assert.match(source, /message\.completedAt \?\? message\.timestamp/);
   assert.doesNotMatch(source, /blockStartTimesRef/);
   assert.doesNotMatch(source, /finalDurations/);
@@ -99,6 +100,23 @@ test("shows thinking duration from completedAt minus start, not the previous mes
   });
   assert.match(html, />5s</);
   assert.doesNotMatch(html, />0s</);
+});
+
+test("shows per-thinking durations from block start and end times", () => {
+  const html = renderMessage({
+    role: "assistant",
+    provider: "test",
+    model: "test-model",
+    timestamp: 1_000,
+    completedAt: 189_000,
+    content: [
+      { type: "thinking", thinking: "First thought", startedAt: 1_000, endedAt: 4_000 },
+      { type: "thinking", thinking: "Second thought", startedAt: 4_000, endedAt: 9_000 },
+    ],
+  });
+  assert.match(html, />3s</);
+  assert.match(html, />5s</);
+  assert.doesNotMatch(html, />188s</);
 });
 
 test("shows tool duration from the tool result minus generation end", () => {
@@ -452,7 +470,7 @@ test("renders subagent notifications as a compact collapsed step", () => {
 
   assert.match(html, /data-step-card=""/);
   assert.match(html, /aria-expanded="false"/);
-  assert.match(html, /3 sub-agents finished/);
+  assert.match(html, /3 sub-agent results ready/);
   assert.doesNotMatch(html, /markdown-subagent-notification/);
   assert.doesNotMatch(html, /pi-web:subagent-notification|First result|Full result body|Show details/);
 });
