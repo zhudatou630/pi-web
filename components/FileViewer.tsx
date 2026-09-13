@@ -22,9 +22,11 @@ import {
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { parseFrontmatter } from "@/lib/frontmatter";
+import { extractMarkdownOutline } from "@/lib/markdown-outline";
 import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { CodeBlock, MermaidBlock } from "./MermaidBlock";
 import { FrontmatterCard } from "./FrontmatterCard";
+import { MarkdownOutlineMenu } from "./MarkdownOutlineMenu";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
@@ -1403,6 +1405,10 @@ function TextFileViewer({
     () => (data?.language === "markdown" ? parseFrontmatter(data.content) : null),
     [data],
   );
+  const outlineItems = useMemo(
+    () => extractMarkdownOutline(frontmatter?.rest ?? ""),
+    [frontmatter],
+  );
 
   const viewerContent = data?.content ?? "";
   const sourceLines = useMemo(() => viewerContent.split("\n"), [viewerContent]);
@@ -1679,6 +1685,9 @@ function TextFileViewer({
           )}
 
           <div className="file-viewer-actions">
+            {isMarkdown && effectiveDisplayMode === "preview" && (
+              <MarkdownOutlineMenu items={outlineItems} scrollRoot={contentRef} />
+            )}
             {(onAtMention || onMentionLines) && (
               <button
                 type="button"

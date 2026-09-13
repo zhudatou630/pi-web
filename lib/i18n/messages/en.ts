@@ -515,6 +515,7 @@ export const enLocale: LocalePlugin = {
     "i18n.noBranches": "This session has no branches",
     "i18n.source": "Source",
     "i18n.preview": "Preview",
+    "i18n.outline": "Outline",
     "i18n.diff": "Diff",
     "i18n.downloadFile": "Download file",
     "i18n.liveSync": "Live sync active",

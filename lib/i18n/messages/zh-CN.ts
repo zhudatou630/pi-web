@@ -515,6 +515,7 @@ export const zhCNLocale: LocalePlugin = {
     "i18n.noBranches": "此会话没有分支",
     "i18n.source": "源代码",
     "i18n.preview": "预览",
+    "i18n.outline": "目录",
     "i18n.diff": "Diff",
     "i18n.downloadFile": "下载文件",
     "i18n.liveSync": "实时同步已启用",

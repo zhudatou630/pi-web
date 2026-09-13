@@ -515,6 +515,7 @@ export const zhTWLocale: LocalePlugin = {
     "i18n.noBranches": "此工作階段沒有分支",
     "i18n.source": "原始碼",
     "i18n.preview": "預覽",
+    "i18n.outline": "目錄",
     "i18n.diff": "Diff",
     "i18n.downloadFile": "下載檔案",
     "i18n.liveSync": "即時同步已啟用",
