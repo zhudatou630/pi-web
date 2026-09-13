@@ -26,6 +26,7 @@ import {
 import { getModelDisplayName, MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { ExtensionTaskNote } from "./ExtensionTaskNote";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { AnsiText } from "./AnsiText";
@@ -641,7 +642,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
+    notices, extensionDialog, extensionCustomUi, extensionWidget, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -1550,6 +1551,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       cwd={session?.cwd ?? newSessionCwd}
     />
   );
+  const composerStack = (
+    <>
+      <ExtensionTaskNote widget={extensionWidget} active={agentRunning} />
+      {chatInputElement}
+    </>
+  );
 
   if (loading) {
     return (
@@ -1561,7 +1568,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           <div className="text-sm text-text-muted">{t("chat.loadingSession")}</div>
         </div>
         <div className="relative shrink-0">
-          {chatInputElement}
+          {composerStack}
         </div>
       </div>
     );
@@ -2154,7 +2161,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             )}
           </div>
         )}
-        {chatInputElement}
+        {composerStack}
       </div>
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>

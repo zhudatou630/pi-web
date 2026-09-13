@@ -28,7 +28,9 @@ import type {
   SessionInfo,
   SessionMessageEntry,
 } from "./types";
-import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS } from "./custom-ui-terminal";
+import { applyWidgetEvent, type ExtensionWidget } from "./extension-widget";
+import { getExtensionWidget, setExtensionWidget } from "./extension-widget-store";
+import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS, type HeadlessCustomUiTui } from "./custom-ui-terminal";
 import {
   createSubagentExtension,
   preferPiWebSubagentExtension,
@@ -213,6 +215,11 @@ export class AgentSessionWrapper {
   private pendingUiRequests = new Map<string, AgentEvent>();
   private activeCustomUis = new Map<string, ActiveCustomUi>();
   private extensionUiAbortController = new AbortController();
+  private extensionWidget: ExtensionWidget | null = null;
+  private factoryWidget: {
+    key: string;
+    component: { render: (width: number) => unknown; dispose?: () => void };
+  } | null = null;
   private pendingPromptCount = 0;
   private directImageAbortController: AbortController | null = null;
   private directImageRequestId: string | null = null;
@@ -247,6 +254,7 @@ export class AgentSessionWrapper {
     this.beforeAgentRunComplete = options.beforeAgentRunComplete;
     this.onAgentRunComplete = options.onAgentRunComplete;
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
+    this.extensionWidget = getExtensionWidget(inner.sessionId);
     this.installExactSystemPromptContinuation();
     this.applyExactSystemPrompt();
   }
@@ -521,6 +529,15 @@ export class AgentSessionWrapper {
     this.listeners.push(listener);
     for (const event of this.pendingUiRequests.values()) listener(event);
     for (const event of this.activeToolEvents.values()) listener(event);
+    if (this.extensionWidget) {
+      listener({
+        type: "extension_ui_request",
+        id: randomUUID(),
+        method: "setWidget",
+        widgetKey: this.extensionWidget.key,
+        widgetLines: this.extensionWidget.lines,
+      } as AgentEvent);
+    }
     return () => {
       const i = this.listeners.indexOf(listener);
       if (i !== -1) this.listeners.splice(i, 1);
@@ -736,6 +753,7 @@ export class AgentSessionWrapper {
             : null,
           systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
+          extensionWidget: this.extensionWidget,
         };
       }
 
@@ -1038,6 +1056,9 @@ export class AgentSessionWrapper {
         }
         const activeToolNames = this.inner.getActiveToolNames();
         await this.waitForExtensionsBound();
+        this.disposeFactoryWidget();
+        this.extensionWidget = null;
+        setExtensionWidget(this.sessionId, null);
         this.syncProjectTrust();
         await this.inner.reload();
         this.setActiveToolSelection(activeToolNames);
@@ -1125,6 +1146,7 @@ export class AgentSessionWrapper {
     this.pendingUiResponses.clear();
     this.pendingUiRequests.clear();
     this.activeToolEvents.clear();
+    this.disposeFactoryWidget();
     const finishDispose = () => {
       try {
         this.inner.dispose();
@@ -1387,6 +1409,83 @@ export class AgentSessionWrapper {
     });
   }
 
+  private disposeFactoryWidget(): void {
+    const active = this.factoryWidget;
+    this.factoryWidget = null;
+    try { active?.component.dispose?.(); } catch { /* extension dispose */ }
+  }
+
+  private emitWidget(key: string, lines?: string[], placement?: "aboveEditor" | "belowEditor"): void {
+    this.extensionWidget = applyWidgetEvent(this.extensionWidget, key, lines);
+    setExtensionWidget(this.sessionId, this.extensionWidget);
+    this.emit({
+      type: "extension_ui_request",
+      id: randomUUID(),
+      method: "setWidget",
+      widgetKey: key,
+      widgetLines: lines,
+      widgetPlacement: placement,
+    } as ExtensionUiRequest as AgentEvent);
+  }
+
+  private renderFactoryWidget(): void {
+    const active = this.factoryWidget;
+    if (!active) return;
+    let lines: unknown;
+    try {
+      lines = active.component.render(DEFAULT_CUSTOM_UI_COLUMNS);
+    } catch (error) {
+      if (this.factoryWidget !== active) return;
+      this.emitWidget(active.key, undefined);
+      this.emit({
+        type: "extension_error",
+        extensionPath: `extension-widget:${active.key}`,
+        event: "setWidget",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (this.factoryWidget !== active) return;
+    if (!Array.isArray(lines) || lines.length === 0 || lines.some((line) => typeof line !== "string")) {
+      return;
+    }
+    this.emitWidget(active.key, lines);
+  }
+
+  private setFactoryWidget(key: string, factory: (tui: HeadlessCustomUiTui, theme: Theme) => unknown): void {
+    const previous = this.factoryWidget;
+    this.disposeFactoryWidget();
+    let installed: NonNullable<AgentSessionWrapper["factoryWidget"]> | null = null;
+    const tui = createHeadlessCustomUiTui(() => {
+      if (installed && this.factoryWidget === installed) this.renderFactoryWidget();
+    });
+    let component: unknown;
+    try {
+      component = factory(tui, PLAIN_TEXT_THEME);
+    } catch (error) {
+      this.emitWidget(previous?.key ?? key, undefined);
+      this.emit({
+        type: "extension_error",
+        extensionPath: `extension-widget:${key}`,
+        event: "setWidget",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    if (this.factoryWidget) {
+      try { (component as { dispose?: () => void } | null)?.dispose?.(); } catch { /* extension dispose */ }
+      return;
+    }
+    if (!component || typeof component !== "object" || typeof (component as { render?: unknown }).render !== "function") {
+      try { (component as { dispose?: () => void } | null)?.dispose?.(); } catch { /* extension dispose */ }
+      this.emitWidget(previous?.key ?? key, undefined);
+      return;
+    }
+    installed = { key, component: component as { render: (width: number) => unknown; dispose?: () => void } };
+    this.factoryWidget = installed;
+    this.renderFactoryWidget();
+  }
+
   private createExtensionUiContext(): ExtensionUiContextLike {
     return {
       select: (title, options, opts) => this.requestExtensionUi(
@@ -1441,15 +1540,15 @@ export class AgentSessionWrapper {
       setWorkingIndicator: () => {},
       setHiddenThinkingLabel: () => {},
       setWidget: (key, content, options) => {
+        if (typeof content === "function") {
+          this.setFactoryWidget(key, content as (tui: HeadlessCustomUiTui, theme: Theme) => unknown);
+          return;
+        }
         if (content !== undefined && !Array.isArray(content)) return;
-        this.emit({
-          type: "extension_ui_request",
-          id: randomUUID(),
-          method: "setWidget",
-          widgetKey: key,
-          widgetLines: content,
-          widgetPlacement: options?.placement,
-        } as ExtensionUiRequest as AgentEvent);
+        if (content === undefined || (this.factoryWidget && content.length > 0)) {
+          this.disposeFactoryWidget();
+        }
+        this.emitWidget(key, content, options?.placement);
       },
       setFooter: () => {},
       setHeader: () => {},
@@ -1505,6 +1604,9 @@ export class AgentSessionWrapper {
       },
       switchSession: async () => ({ cancelled: true }),
       reload: async () => {
+        this.disposeFactoryWidget();
+        this.extensionWidget = null;
+        setExtensionWidget(this.sessionId, null);
         this.syncProjectTrust();
         await this.inner.reload({
           beforeSessionStart: () => {

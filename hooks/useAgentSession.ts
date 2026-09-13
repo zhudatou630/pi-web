@@ -36,6 +36,7 @@ import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand }
 import { recalledQueuedPrompts } from "@/lib/queued-messages";
 import type { AttachedImage } from "@/lib/image-attachments";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
+import { applyWidgetEvent, type ExtensionWidget } from "@/lib/extension-widget";
 import {
   loadModelsWithClientCache,
   peekModelsClientCache,
@@ -86,6 +87,7 @@ type AgentStateResponse = {
   isBashRunning?: boolean;
   isCompacting?: boolean;
   queuedMessages?: { steering?: Array<string | { text?: string }>; followUp?: Array<string | { text?: string }> } | null;
+  extensionWidget?: ExtensionWidget | null;
 };
 
 export interface QueuedMessages {
@@ -377,6 +379,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
+  const [extensionWidget, setExtensionWidget] = useState<ExtensionWidget | null>(null);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
 
   const eventConnectionRef = useRef<AgentEventConnection | null>(null);
@@ -585,6 +588,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
           if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
+          if (liveState.extensionWidget !== undefined) setExtensionWidget(liveState.extensionWidget);
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
         }
@@ -875,6 +879,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       }
+      case "setWidget":
+        setExtensionWidget((current) => applyWidgetEvent(current, request.widgetKey, request.widgetLines));
+        break;
       case "setTitle":
         if (request.title) document.title = request.title;
         break;
@@ -1105,6 +1112,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!agentRunningRef.current) return;
       if (state) {
         if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
+        if (state.extensionWidget !== undefined) setExtensionWidget(state.extensionWidget);
       }
       await finishPromptWithoutStream(sid, runId);
     } catch {
@@ -2186,6 +2194,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
           if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
+          if (agentState.state.extensionWidget !== undefined) setExtensionWidget(agentState.state.extensionWidget);
         }
       });
     }
@@ -2327,7 +2336,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices: noticeState.visible, extensionDialog, extensionCustomUi, respondToExtensionUi, sendExtensionCustomInput,
+    notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionWidget, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     isNew,

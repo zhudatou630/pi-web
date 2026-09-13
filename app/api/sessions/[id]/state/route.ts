@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRpcSession } from "@/lib/rpc-manager";
 import { resolveSessionPath } from "@/lib/session-reader";
+import { getExtensionWidget } from "@/lib/extension-widget-store";
 
 export async function GET(
   _req: Request,
@@ -17,7 +18,7 @@ export async function GET(
     if (!await resolveSessionPath(id)) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
-    return NextResponse.json({ running: false });
+    return NextResponse.json({ running: false, state: { extensionWidget: getExtensionWidget(id) } });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
