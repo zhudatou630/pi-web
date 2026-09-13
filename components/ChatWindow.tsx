@@ -1617,6 +1617,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       )}
 
       <div
+        className="notice-shelf-wrapper"
         style={{
           position: "absolute",
           top: 12,
@@ -2162,12 +2163,48 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
 // Toast 整体高度上限；文本区高度上限 = 整体上限 - 上下 padding(14*2) - 上下边框(1*2)
 const NOTICE_MAX_HEIGHT_PX = 500;
-const NOTICE_TEXT_MAX_HEIGHT_PX = NOTICE_MAX_HEIGHT_PX - 30;
+const NOTICE_TEXT_MAX_HEIGHT_PX = NOTICE_MAX_HEIGHT_PX - 20;
+
+function NoticeIcon({ type }: { type: NoticeItem["type"] }) {
+  if (type === "success") {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    );
+  }
+  if (type === "error") {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+        <circle cx="12" cy="12" r="10" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+      </svg>
+    );
+  }
+  if (type === "warning") {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
 
 function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: NoticeItem[]; floating?: boolean; onPauseChange?: (id: string | null) => void }) {
   if (notices.length === 0) return null;
   return (
     <div
+      className="notice-shelf-root"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -2176,86 +2213,57 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
         marginBottom: floating ? 0 : 10,
       }}
     >
-      {notices.map((notice, index) => {
-        const color = notice.type === "error"
-          ? "#ef4444"
-          : notice.type === "warning"
-            ? "#d97706"
-            : notice.type === "success"
-              ? "#10b981"
-              : "var(--accent)";
-        return (
-          <div
-            key={notice.id}
-            className="notice-shelf-item"
-            onMouseEnter={() => onPauseChange?.(notice.id)}
-            onMouseLeave={(event) => {
-              if (!event.currentTarget.contains(document.activeElement)) onPauseChange?.(null);
-            }}
-            onFocus={() => onPauseChange?.(notice.id)}
-            onBlur={(event) => {
-              if (!event.currentTarget.matches(":hover")) onPauseChange?.(null);
-            }}
-            style={{
-              display: "flex",
-              // Top-align children so the type dot sits by the first line on multi-line toasts
-              alignItems: "flex-start",
-              gap: 10,
-              minHeight: 60,
-              height: "auto",
-              // 整体高度上限：超出后由文本区内部滚动承担（见下方 span 的 overflowY），
-              // 容器自身保持 hidden，小圆点固定在顶部不随文本滚动
-              maxHeight: NOTICE_MAX_HEIGHT_PX,
-              // The floating wrapper is pointerEvents:"none" (click-through by design),
-              // so the toast itself must opt back into interactivity or hover events never reach it
-              pointerEvents: "auto",
-              marginBottom: index === notices.length - 1 ? 0 : 6,
-              overflow: "hidden",
-              borderRadius: 4,
-              border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
-              background: "var(--bg)",
-              color: "var(--text-muted)",
-              width: "fit-content",
-              maxWidth: "min(100%, 620px)",
-              boxShadow: floating
-                ? "0 1px 2px rgba(15,23,42,0.05), 0 10px 28px -14px rgba(15,23,42,0.24)"
-                : "0 1px 2px rgba(15,23,42,0.04), 0 8px 24px -12px rgba(15,23,42,0.10)",
-              fontSize: 14,
-              lineHeight: 1.5,
-              transformOrigin: "top right",
-              // Use backwards fill for the entrance animation so height styles return to
-              // inline styles once it finishes; otherwise the keyframe's fixed 60px would
-              // stick around in fill mode and permanently clamp the expanded toast
-              animation: notice.exiting
-                ? "notice-shelf-out 0.18s ease-in forwards"
-                : "notice-shelf-in 0.18s ease-out backwards",
-              padding: "0 12px",
-            }}
+      {notices.map((notice, index) => (
+        <div
+          key={notice.id}
+          className="notice-shelf-item"
+          onMouseEnter={() => onPauseChange?.(notice.id)}
+          onMouseLeave={(event) => {
+            if (!event.currentTarget.contains(document.activeElement)) onPauseChange?.(null);
+          }}
+          onFocus={() => onPauseChange?.(notice.id)}
+          onBlur={(event) => {
+            if (!event.currentTarget.matches(":hover")) onPauseChange?.(null);
+          }}
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            minHeight: 34,
+            height: "auto",
+            maxHeight: NOTICE_MAX_HEIGHT_PX,
+            pointerEvents: "auto",
+            marginBottom: index === notices.length - 1 ? 0 : 6,
+            overflow: "hidden",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "color-mix(in srgb, var(--bg) 95%, var(--bg-panel))",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            color: "var(--text)",
+            width: "fit-content",
+            maxWidth: "min(100%, 540px)",
+            boxShadow: floating
+              ? "0 4px 16px -2px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.06)"
+              : "0 2px 8px -2px rgba(0, 0, 0, 0.08)",
+            fontSize: 13,
+            lineHeight: 1.45,
+            transformOrigin: "top right",
+            animation: notice.exiting
+              ? "notice-shelf-out 0.18s ease-in forwards"
+              : "notice-shelf-in 0.18s ease-out backwards",
+            padding: "8px 12px",
+          }}
+        >
+          <NoticeIcon type={notice.type} />
+          <span
+            tabIndex={0}
+            style={{ minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", scrollbarWidth: "thin", whiteSpace: "pre-line", wordBreak: "break-word" }}
           >
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: color,
-                flexShrink: 0,
-                // Align with the optical center of the first text line: 14px vertical
-                // padding + (21px line box - 7px dot) / 2
-                marginTop: 21,
-              }}
-            />
-            {/* Full text by default: pre-line preserves \n (nowrap/normal collapse
-                newlines into spaces) and long lines wrap instead of truncating;
-                content taller than the cap scrolls inside the text area */}
-            <span
-              tabIndex={0}
-              style={{ padding: "14px 0", minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", scrollbarWidth: "thin", whiteSpace: "pre-line", wordBreak: "break-word" }}
-            >
-              {notice.message}
-            </span>
-          </div>
-        );
-      })}
+            {notice.message}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
