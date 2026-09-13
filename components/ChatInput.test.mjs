@@ -311,9 +311,11 @@ test("uses a short mobile Options label while preserving the descriptive accessi
 
 test("aligns mobile toolbar options and collapse controls with model selector style", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
-  // Compact attach button in mobile to reduce gap to model selector
-  assert.match(source, /width:\s*isMobile \? 24 : 28/);
-  assert.match(source, /gap:\s*isMobile \? 1 : 2/);
+  // Attach/model and the right-side controls share a 1px cluster gap and 4px button padding.
+  assert.match(source, /display: "flex", alignItems: "center", gap: 1 \}\}>/);
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?gap: 1,/);
+  assert.match(source, /padding: "0 4px"/);
+
   // Controls menu hover protections for mobile touch
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?thinkingDropdownOpen/);
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?toolDropdownOpen/);

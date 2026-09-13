@@ -5,7 +5,9 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 const {
+  diffModelOverride,
   hasModelCostDraftValue,
+  mergeRuntimeModel,
   modelCostToDraft,
   parseCompleteModelCost,
   serializeHeaderRows,
@@ -21,8 +23,8 @@ test("uses shared sidebar sizing for providers and matching indented model rows"
 
   assert.match(sidebar, /<ConfigSidebarItem[\s\S]*?active=\{isSelected\}/);
   assert.match(sidebar, /<ConfigSidebarItem[\s\S]*?active=\{isProviderSelected\}/);
-  assert.match(sidebar, /className="models-sidebar-indented-item"/);
-  assert.match(sidebar, /className="models-sidebar-indented-item models-sidebar-add-item"/);
+  assert.match(source, /className="models-sidebar-indented-item"/);
+  assert.match(source, /className="models-sidebar-indented-item models-sidebar-add-item"/);
   assert.match(cssSource, /\.models-sidebar-indented-item \{[\s\S]*?padding-left: 26px/);
 });
 
@@ -57,6 +59,33 @@ test("custom model config exposes model headers and supportsDeveloperRole compat
   // model entry as an explicit per-model override.
   assert.match(source, /effectiveCompat\(provider, model\)\["supportsDeveloperRole"\] !== false/);
   assert.match(source, /setCompatBool\(model, "supportsDeveloperRole", v\)/);
+});
+
+test("runtime override diff only keeps changed fields", () => {
+  const runtime = {
+    id: "gpt-6-astra",
+    name: "GPT-6 Astra",
+    reasoning: true,
+    contextWindow: 272000,
+    maxTokens: 128000,
+  };
+  assert.equal(diffModelOverride(runtime, { ...runtime, name: "GPT-6 Astra" }), undefined);
+  assert.deepEqual(
+    diffModelOverride(runtime, { ...runtime, contextWindow: 1050000 }),
+    { contextWindow: 1050000 },
+  );
+  assert.deepEqual(
+    mergeRuntimeModel(runtime, { contextWindow: 1050000 }).contextWindow,
+    1050000,
+  );
+  assert.equal(mergeRuntimeModel(runtime, { name: "Custom" }).id, "gpt-6-astra");
+  assert.deepEqual(
+    mergeRuntimeModel(
+      { ...runtime, cost: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 } },
+      { cost: { input: 9 } },
+    ).cost,
+    { input: 9, output: 2, cacheRead: 3, cacheWrite: 4 },
+  );
 });
 
 test("disabling the developer role writes an explicit false override", () => {

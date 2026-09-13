@@ -70,3 +70,65 @@ export function serializeHeaderRows(rows: readonly HeaderRow[]): Record<string, 
   }
   return Object.keys(headers).length ? headers : undefined;
 }
+
+const MODEL_OVERRIDE_KEYS = [
+  "name", "api", "reasoning", "thinkingLevelMap", "input",
+  "contextWindow", "maxTokens", "cost", "headers", "compat",
+] as const;
+
+export type ModelOverrideFields = {
+  id?: string;
+  name?: string;
+  api?: string;
+  reasoning?: boolean;
+  thinkingLevelMap?: Record<string, string | null>;
+  input?: string[];
+  contextWindow?: number;
+  maxTokens?: number;
+  cost?: Partial<ModelCostRates>;
+  headers?: Record<string, string>;
+  compat?: Record<string, unknown>;
+};
+
+function overrideValueEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function mergeRuntimeModel<T extends ModelOverrideFields>(
+  runtime: T,
+  override?: ModelOverrideFields,
+): T {
+  if (!override) return { ...runtime, id: runtime.id };
+  return {
+    ...runtime,
+    ...override,
+    id: runtime.id,
+    cost: override.cost ? { ...runtime.cost, ...override.cost } : runtime.cost,
+  };
+}
+
+export function assignRuntimeOverride(
+  overrides: Record<string, unknown> | undefined,
+  runtimeId: string,
+  override: ModelOverrideFields | undefined,
+): Record<string, unknown> | undefined {
+  const next = { ...(overrides ?? {}) };
+  delete next[runtimeId];
+  if (override) next[runtimeId] = override;
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+export function diffModelOverride(
+  runtime: ModelOverrideFields,
+  edited: ModelOverrideFields,
+): ModelOverrideFields | undefined {
+  const next: ModelOverrideFields = {};
+  for (const key of MODEL_OVERRIDE_KEYS) {
+    const value = edited[key];
+    if (value === undefined) continue;
+    if (!overrideValueEqual(value, runtime[key])) {
+      (next as Record<string, unknown>)[key] = value;
+    }
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}

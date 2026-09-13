@@ -110,15 +110,15 @@ export function ModelSelector({
         width: isMobile ? "100%" : undefined,
         maxWidth: isMobile ? "100%" : 220,
         height: isMobile ? 32 : 28,
-        padding: isMobile ? "0 4px 0 2px" : "0 6px 0 2px",
-        overflow: "hidden",
+        padding: "0 4px",
+        overflow: "visible",
         border: "none",
         borderRadius: 4,
         background: open ? "var(--bg-hover)" : "none",
         color: "var(--text-muted)",
         cursor: locked ? "not-allowed" : "pointer",
         fontSize: 12,
-        lineHeight: 1,
+        lineHeight: 1.25,
         opacity: locked ? 0.5 : 1,
         transition: "background 0.12s, color 0.12s",
       };
@@ -192,7 +192,7 @@ export function ModelSelector({
             <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
           </svg>
         ) : null}
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>{currentName}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.25 }}>{currentName}</span>
         {variant === "field" && (
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, color: "var(--text-dim)" }}>
             <polyline points="6 9 12 15 18 9" />

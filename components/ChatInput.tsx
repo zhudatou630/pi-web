@@ -2481,11 +2481,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           display: isMobile ? "grid" : "flex",
           gridTemplateColumns: isMobile ? "minmax(0, 1fr) auto" : undefined,
           alignItems: "center",
-          gap: 6,
+          gap: 4,
         }}>
 
           {/* LEFT: attach + model selector (idle) or steer/followup toggle (streaming) */}
-          <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: isMobile ? 1 : 2 }}>
+          <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 1 }}>
             <div ref={imageMenuRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
               <button
                 type="button"
@@ -2503,8 +2503,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 aria-haspopup={onOpenImageGeneration ? "menu" : undefined}
                 style={{
                   flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                  width: isMobile ? 24 : 28, height: isMobile ? 32 : 28, padding: 0,
-                  marginRight: isMobile ? -2 : -5,
+                  height: isMobile ? 32 : 28, padding: "0 4px",
                   background: imageMenuOpen ? "var(--bg-hover)" : "none",
                   border: "none",
                   borderRadius: 4,
@@ -2525,7 +2524,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : (imageMenuOpen ? "var(--text)" : "var(--text-muted)");
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "translateY(-1px)" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                   <circle cx="8.5" cy="8.5" r="1.5" />
                   <polyline points="21 15 16 10 5 21" />
@@ -2706,10 +2705,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </button>
               );
             })()}
-            <div style={{
+            <div className="chat-input-toolbar-controls" style={{
               display: isMobile ? (controlsMenuOpen ? "flex" : "none") : "flex",
               alignItems: "center",
-              gap: isMobile ? 2 : 4,
+              gap: 1,
               ...(isMobile ? {
                 position: "absolute",
                 right: 0,
@@ -2735,8 +2734,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                    title={t("chat.changeReasoning", { level: thinkingDisplayLabel })}
                    aria-label={t("chat.changeReasoningLabel")}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    padding: "0 6px",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                    padding: "0 4px",
                     width: isMobile ? "auto" : undefined,
                     height: isMobile ? 32 : 28,
                     background: thinkingDropdownOpen ? "var(--bg-hover)" : "none",
@@ -2855,8 +2854,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 6,
-                    padding: "0 6px",
+                    gap: 4,
+                    padding: "0 4px",
                     height: 28,
                     background: isHigh ? "rgba(239,68,68,0.06)" : "none",
                     border: isHigh ? "1px solid rgba(239,68,68,0.25)" : "none",
@@ -2913,8 +2912,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   title={t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
                   aria-label={t("chat.changeToolPreset")}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    padding: "0 6px",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                    padding: "0 4px",
                     width: isMobile ? "auto" : undefined,
                     height: isMobile ? 32 : 28,
                     background: toolDropdownOpen ? "var(--bg-hover)" : "none",
@@ -3007,8 +3006,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   }}
                   disabled={isStreaming && !isCompacting}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    padding: "0 6px",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                    padding: "0 4px",
                     width: isMobile ? "auto" : undefined,
                     height: isMobile ? 32 : 28,
                     background: isCompacting
@@ -3060,9 +3059,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                  aria-label={soundEnabled ? t("chat.disableSound") : t("chat.enableSound")}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  width: isMobile ? 32 : 28,
                   height: isMobile ? 32 : 28,
-                  padding: 0,
+                  padding: "0 4px",
                   background: "none",
                   border: "none",
                   borderRadius: 4,

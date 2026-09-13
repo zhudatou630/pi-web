@@ -178,6 +178,58 @@
   padding-left: 26px;
 }
 
+.catalog-shelf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.catalog-shelf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 5px;
+}
+
+.catalog-shelf-row:hover {
+  background: var(--bg-hover);
+}
+
+.catalog-shelf-row.is-active,
+.catalog-shelf-row.is-active:hover {
+  background: var(--bg-selected);
+}
+
+.catalog-shelf-row input[type="checkbox"] {
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.catalog-shelf-row input[type="checkbox"]:disabled {
+  cursor: wait;
+}
+
+.catalog-shelf-name {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .models-sidebar-add-item {
   color: var(--text-dim);
 }
