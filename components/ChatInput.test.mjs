@@ -520,6 +520,21 @@ test("keeps the toolbar model name left aligned without a chip icon", () => {
   assert.doesNotMatch(html, /<rect x="4" y="4" width="16" height="16"/);
 });
 
+test("keeps the model listbox keyboard and ARIA contract explicit", () => {
+  const source = readFileSync(new URL("./ModelSelector.tsx", import.meta.url), "utf8");
+  assert.match(source, /aria-controls=\{listboxId\}/);
+  assert.match(source, /aria-activedescendant=\{open \? activeOptionId : undefined\}/);
+  assert.match(source, /event\.key === "ArrowDown" \|\| event\.key === "ArrowUp"/);
+  assert.match(source, /event\.key === "Home" \|\| event\.key === "End"/);
+  assert.match(source, /event\.key === "Enter" \|\| event\.key === " "/);
+  assert.match(source, /event\.key === "Escape" && open/);
+  assert.match(source, /window\.addEventListener\("scroll", updateAnchor, true\)/);
+  assert.match(source, /window\.addEventListener\("resize", updateAnchor\)/);
+  assert.match(source, /id=\{listboxId\}/);
+  assert.match(source, /id=\{`\$\{listboxId\}-option-/);
+  assert.match(source, /activeOptionId/);
+});
+
 test("renders the shared field model selector as a disabled gray control", () => {
   const html = renderToStaticMarkup(
     React.createElement(

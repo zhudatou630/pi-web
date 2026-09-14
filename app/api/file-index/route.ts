@@ -111,7 +111,8 @@ function listWithWalk(cwd: string): FileListing {
 
 // GET /api/file-index?cwd=/abs/path[&q=query]
 // Without q: { files: string[] (relative to cwd, capped at MAX_FILES),
-// truncated: boolean } — the client-side index for local filtering.
+// clientTruncated: boolean, serverHardTruncated: boolean } — the client-side
+// index and the completeness of the server listing.
 // With q: { matches: { path, isDir }[] } — ranked against the FULL listing so
 // repos larger than MAX_FILES still find deep files (cap applied after
 // matching, like the TUI passing the query to fd).
@@ -167,9 +168,11 @@ export async function GET(req: NextRequest) {
     }
 
     const { files, hardTruncated } = cached.listing;
+    const clientTruncated = files.length > MAX_FILES;
     return NextResponse.json({
       files: files.slice(0, MAX_FILES),
-      truncated: hardTruncated || files.length > MAX_FILES,
+      clientTruncated,
+      serverHardTruncated: hardTruncated,
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

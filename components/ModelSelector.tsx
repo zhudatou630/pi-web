@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 export interface ModelSelectorOption {
@@ -48,8 +48,11 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const isMobile = useIsMobile();
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [anchorRect, setAnchorRect] = useState<{ top: number; right: number; bottom: number; left: number; width: number } | null>(null);
   const locked = disabled || busy;
   const sortedOptions = useMemo(() => [...options].sort(compareModelOptions), [options]);
@@ -64,6 +67,20 @@ export function ModelSelector({
   const currentName = selectedLabel ?? (value
     ? sortedOptions.find((option) => option.modelId === value.modelId && option.provider === value.provider)?.name ?? value.modelId
     : emptyLabel ?? (sortedOptions.length > 0 ? "Select model" : "No models"));
+  const selectableOptions = useMemo<(ModelSelectorOption | null)[]>(
+    () => (onClear ? [null, ...sortedOptions] : sortedOptions),
+    [onClear, sortedOptions],
+  );
+  const selectedIndex = selectableOptions.findIndex((option) => option !== null
+    ? option.modelId === value?.modelId && option.provider === value?.provider
+    : !value);
+  const activeOptionIndex = selectableOptions.length ? Math.min(activeIndex, selectableOptions.length - 1) : 0;
+  const activeOptionId = selectableOptions.length ? `${listboxId}-option-${activeOptionIndex}` : undefined;
+
+  const updateAnchor = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setAnchorRect({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width });
+  }, []);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -82,6 +99,32 @@ export function ModelSelector({
     if (!locked) return;
     setOpen(false);
   }, [locked]);
+
+  useEffect(() => {
+    if (!open) return;
+    updateAnchor();
+    const viewport = window.visualViewport;
+    window.addEventListener("scroll", updateAnchor, true);
+    window.addEventListener("resize", updateAnchor);
+    viewport?.addEventListener("scroll", updateAnchor);
+    viewport?.addEventListener("resize", updateAnchor);
+    return () => {
+      window.removeEventListener("scroll", updateAnchor, true);
+      window.removeEventListener("resize", updateAnchor);
+      viewport?.removeEventListener("scroll", updateAnchor);
+      viewport?.removeEventListener("resize", updateAnchor);
+    };
+  }, [open, updateAnchor]);
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(Math.max(0, Math.min(selectedIndex >= 0 ? selectedIndex : 0, selectableOptions.length - 1)));
+  }, [open, selectedIndex, selectableOptions.length]);
+
+  useEffect(() => {
+    if (!open || !activeOptionId) return;
+    document.getElementById(activeOptionId)?.scrollIntoView({ block: "nearest" });
+  }, [open, activeOptionId]);
 
   const buttonStyle: CSSProperties = variant === "field"
     ? {
@@ -107,8 +150,8 @@ export function ModelSelector({
         justifyContent: "flex-start",
         textAlign: "left",
         gap: 6,
-        width: isMobile ? "100%" : undefined,
-        maxWidth: isMobile ? "100%" : 220,
+        width: undefined,
+        maxWidth: 220,
         height: isMobile ? 32 : 28,
         padding: "0 4px",
         overflow: "visible",
@@ -135,9 +178,8 @@ export function ModelSelector({
       className={`model-selector is-${variant}${locked ? " is-disabled" : ""}`}
       style={{
         position: "relative",
-        width: variant === "field" || isMobile ? "100%" : undefined,
+        width: variant === "field" ? "100%" : undefined,
         minWidth: 0,
-        flex: variant === "toolbar" && isMobile ? "1 1 auto" : undefined,
         display: variant === "toolbar" ? "flex" : undefined,
         alignItems: variant === "toolbar" ? "center" : undefined,
       }}
@@ -149,17 +191,53 @@ export function ModelSelector({
       }}
     >
       <button
+        ref={buttonRef}
         type="button"
+        role="combobox"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-activedescendant={open ? activeOptionId : undefined}
         aria-expanded={open}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && open) {
+            event.preventDefault();
+            setOpen(false);
+            return;
+          }
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) {
+              updateAnchor();
+              setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+              setOpen(true);
+              return;
+            }
+            const direction = event.key === "ArrowDown" ? 1 : -1;
+            setActiveIndex((index) => selectableOptions.length ? (index + direction + selectableOptions.length) % selectableOptions.length : 0);
+            return;
+          }
+          if (!open || !selectableOptions.length) return;
+          if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            setActiveIndex(event.key === "Home" ? 0 : selectableOptions.length - 1);
+          } else if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            const option = selectableOptions[activeOptionIndex];
+            if (option === null) {
+              setOpen(false);
+              onClear?.();
+            } else if (option) {
+              choose(option);
+            }
+          }
+        }}
         aria-busy={busy || undefined}
         disabled={locked}
         title={busy ? "Switching model" : locked ? currentName : sortedOptions.length > 0 || onClear ? "Change model" : "No available models"}
         style={buttonStyle}
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          setAnchorRect({ top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width });
+        onClick={() => {
+          updateAnchor();
           setOpen((current) => !current);
         }}
         onMouseEnter={(event) => {
@@ -217,8 +295,10 @@ export function ModelSelector({
         return (
           <div
             ref={panelRef}
+            id={listboxId}
             role="listbox"
             aria-label={ariaLabel}
+            aria-activedescendant={activeOptionId}
             style={{
               position: "fixed",
               ...verticalPosition,
@@ -236,10 +316,17 @@ export function ModelSelector({
           >
             <div style={{ minHeight: 0, overflowY: "auto" }}>
               {onClear && (
-                <ModelOptionButton active={!value} label={emptyLabel ?? "Default"} onClick={() => {
-                  setOpen(false);
-                  onClear();
-                }} />
+                <ModelOptionButton
+                  id={`${listboxId}-option-0`}
+                  active={!value}
+                  highlighted={activeOptionIndex === 0}
+                  label={emptyLabel ?? "Default"}
+                  onActive={() => setActiveIndex(0)}
+                  onClick={() => {
+                    setOpen(false);
+                    onClear();
+                  }}
+                />
               )}
               {modelsByProvider.length === 0 ? (
                 <div style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
@@ -255,8 +342,11 @@ export function ModelSelector({
                   {group.options.map((option) => (
                     <ModelOptionButton
                       key={`${option.provider}:${option.modelId}`}
+                      id={`${listboxId}-option-${selectableOptions.indexOf(option)}`}
                       active={option.modelId === value?.modelId && option.provider === value?.provider}
+                      highlighted={activeOptionIndex === selectableOptions.indexOf(option)}
                       label={option.name}
+                      onActive={() => setActiveIndex(selectableOptions.indexOf(option))}
                       onClick={() => choose(option)}
                     />
                   ))}
@@ -270,15 +360,17 @@ export function ModelSelector({
   );
 }
 
-function ModelOptionButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+function ModelOptionButton({ id, active, highlighted, label, onActive, onClick }: { id: string; active: boolean; highlighted: boolean; label: string; onActive?: () => void; onClick: () => void }) {
   return (
     <button
+      id={id}
       type="button"
       role="option"
       aria-selected={active}
+      data-active={highlighted || undefined}
       onClick={onClick}
-      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", border: "none", background: active ? "var(--bg-selected)" : "none", color: active ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, fontWeight: active ? 600 : 400, textAlign: "left", whiteSpace: "nowrap" }}
-      onMouseEnter={(event) => { if (!active) event.currentTarget.style.background = "var(--bg-hover)"; }}
+      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", border: "none", background: active ? "var(--bg-selected)" : highlighted ? "var(--bg-hover)" : "none", color: active ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, fontWeight: active ? 600 : 400, textAlign: "left", whiteSpace: "nowrap" }}
+      onMouseEnter={(event) => { onActive?.(); if (!active) event.currentTarget.style.background = "var(--bg-hover)"; }}
       onMouseLeave={(event) => { if (!active) event.currentTarget.style.background = "none"; }}
     >
       {active

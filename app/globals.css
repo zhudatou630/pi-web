@@ -32,6 +32,9 @@
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
   --accent-contrast: #ffffff;
+  --danger: #dc2626;
+  --warning: #b45309;
+  --success: #059669;
   --user-bg: #f3f4f6;
   --user-border: var(--border);
   --assistant-bg: #ffffff;
@@ -57,6 +60,9 @@ html.dark {
   --accent: #60a5fa;
   --accent-hover: #93c5fd;
   --accent-contrast: #0f172a;
+  --danger: #f87171;
+  --warning: #facc15;
+  --success: #34d399;
   --user-bg: #22252b;
   --user-border: var(--border);
   --assistant-bg: #1a1a1a;
@@ -2086,6 +2092,94 @@ span.token.table {
   flex-shrink: 0;
 }
 
+/* Composer feedback shares one quiet treatment; the tone comes from semantic tokens. */
+.chat-input-feedback {
+  --feedback-color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--feedback-color) 24%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--feedback-color) 7%, transparent);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-input-feedback-warning {
+  --feedback-color: var(--warning);
+  color: color-mix(in srgb, var(--feedback-color) 72%, var(--text));
+}
+
+.chat-input-feedback-success {
+  --feedback-color: var(--success);
+  color: color-mix(in srgb, var(--feedback-color) 76%, var(--text));
+}
+
+.chat-input-feedback-error {
+  --feedback-color: var(--danger);
+  align-items: flex-start;
+  border-color: color-mix(in srgb, var(--feedback-color) 42%, var(--border));
+  background: color-mix(in srgb, var(--feedback-color) 6%, transparent);
+  color: var(--text);
+}
+
+.chat-input-feedback-detail {
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-input-feedback-draft {
+  padding-top: 0;
+  padding-bottom: 0;
+  border: 0;
+  background: none;
+  font-size: 11.5px;
+}
+
+.chat-input-image-remove {
+  z-index: 1;
+}
+
+.chat-input-image-preview img {
+  border-radius: 5px;
+}
+
+@media (max-width: 640px) {
+  .chat-input-image-remove {
+    width: 44px !important;
+    height: 44px !important;
+    top: -10px !important;
+    right: -10px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border-radius: 50%;
+    backdrop-filter: none !important;
+  }
+
+  .chat-input-image-remove::before {
+    content: "";
+    position: absolute;
+    inset: 13px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--text) 70%, transparent);
+  }
+
+  .chat-input-image-remove:hover::before,
+  .chat-input-image-remove:focus-visible::before {
+    background: color-mix(in srgb, var(--text) 88%, transparent);
+  }
+
+  .chat-input-image-remove svg {
+    position: relative;
+    z-index: 1;
+  }
+}
+
 .chat-input:not(.is-compact) .chat-input-composer:focus-within {
   border-color: color-mix(in srgb, var(--text-dim) 60%, var(--border)) !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
@@ -2172,7 +2266,11 @@ span.token.table {
   }
 
   .chat-input:not(.is-compact) {
-    padding: 0 10px 6px !important;
+    padding: 0 10px 0 !important;
+  }
+
+  .chat-input-toolbar {
+    margin-top: 0 !important;
   }
 
   .extension-task-note {

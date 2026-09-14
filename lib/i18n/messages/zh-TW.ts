@@ -334,6 +334,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.noMatchingFiles": "找不到相符的檔案",
     "chat.searchingAll": " · 正在搜尋所有檔案…",
     "chat.indexTruncated": " · 索引已截斷",
+    "chat.serverIndexTruncated": " · 伺服器索引不完整",
     "chat.changeWorkingDirectory": "更換工作目錄",
     "chat.steer": "引導",
     "chat.followUp": "後續訊息",

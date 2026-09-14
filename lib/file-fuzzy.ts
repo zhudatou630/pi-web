@@ -177,8 +177,13 @@ export function buildAtMentionText(entryPath: string, isDir: boolean): string {
 
 /** Closed file @mention scoped to one logical line or an inclusive line range. */
 export function buildFileLineMentionText(entryPath: string, startLine: number, endLine: number): string {
-  const firstLine = Math.max(1, Math.min(startLine, endLine));
-  const lastLine = Math.max(1, Math.max(startLine, endLine));
+  // Callers normally provide editor line numbers, but keep malformed input from
+  // leaking NaN/Infinity into a mention. Invalid endpoints mean line 1.
+  const normalizeLine = (line: number) => Number.isFinite(line) && Number.isInteger(line) && line >= 1 ? line : 1;
+  const normalizedStart = normalizeLine(startLine);
+  const normalizedEnd = normalizeLine(endLine);
+  const firstLine = Math.min(normalizedStart, normalizedEnd);
+  const lastLine = Math.max(normalizedStart, normalizedEnd);
   const pathMention = entryPath.includes(" ") ? `@"${entryPath}"` : `@${entryPath}`;
   const lineSuffix = firstLine === lastLine ? `:${firstLine}` : `:${firstLine}-${lastLine}`;
   return `${pathMention}${lineSuffix} `;

@@ -334,6 +334,7 @@ export const enLocale: LocalePlugin = {
     "chat.noMatchingFiles": "No matching files",
     "chat.searchingAll": " · searching all files…",
     "chat.indexTruncated": " · index truncated",
+    "chat.serverIndexTruncated": " · server index is incomplete",
     "chat.changeWorkingDirectory": "Change working directory",
     "chat.steer": "Steer",
     "chat.followUp": "Follow-up",

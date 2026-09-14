@@ -334,6 +334,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.noMatchingFiles": "未找到匹配的文件",
     "chat.searchingAll": " · 正在搜索所有文件…",
     "chat.indexTruncated": " · 索引不完整",
+    "chat.serverIndexTruncated": " · 服务端索引不完整",
     "chat.changeWorkingDirectory": "更换工作目录",
     "chat.steer": "引导",
     "chat.followUp": "后续消息",

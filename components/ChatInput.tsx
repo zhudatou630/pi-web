@@ -278,6 +278,37 @@ function getSlashDescription(command: SlashCommandPaletteItem, t: (key: string) 
   return command.source === "builtin" ? t(command.description) : command.description ?? "";
 }
 
+function focusTextareaAt(textareaRef: React.RefObject<HTMLTextAreaElement | null>, position: number): void {
+  requestAnimationFrame(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(position, position);
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+  });
+}
+
+function renderSlashCommandName(name: string, query: string | null): React.ReactNode {
+  if (!query) return `/${name}`;
+  const matchStart = name.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
+  if (matchStart < 0) return `/${name}`;
+  return <>{`/${name.slice(0, matchStart)}`}<span style={{ color: "var(--accent)", fontWeight: 600 }}>{name.slice(matchStart, matchStart + query.length)}</span>{name.slice(matchStart + query.length)}</>;
+}
+
+const BUILTIN_SIGNATURES: Record<string, string> = {
+  name: "<session-title>",
+  session: "[session-id]",
+  clone: "[new-title]",
+};
+
+function highlightText(text: string, query: string | null): React.ReactNode {
+  if (!query) return text;
+  const start = text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
+  if (start < 0) return text;
+  return <>{text.slice(0, start)}<mark style={{ padding: 0, color: "var(--accent)", background: "transparent", fontWeight: 700 }}>{text.slice(start, start + query.length)}</mark>{text.slice(start + query.length)}</>;
+}
+
 // Skill slash commands are named "skill:<skillName>"; look the skill up in the
 // dormancy map fetched from /api/skills. Unknown skills are treated as active.
 function isDormantSkillCommand(command: SlashCommandPaletteItem, dormancy: Record<string, boolean>): boolean {
@@ -579,6 +610,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const bashMode = attachedImages.length === 0 && trimmedValue.startsWith("!");
   const bashExcluded = bashMode && trimmedValue.startsWith("!!");
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState<number | null>(null);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [slashMenuMaxHeight, setSlashMenuMaxHeight] = useState<number | null>(null);
   const [atQuery, setAtQuery] = useState<AtQueryMatch | null>(null);
@@ -589,8 +621,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [imageWarningDismissed, setImageWarningDismissed] = useState(false);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyActiveIndex, setHistoryActiveIndex] = useState(0);
+  const historyStashRef = useRef<{ text: string } | null>(null);
   const [draftPersistenceFailed, setDraftPersistenceFailed] = useState(false);
-  const [fileIndex, setFileIndex] = useState<{ cwd: string; entries: FileIndexEntry[]; truncated: boolean } | null>(null);
+  const [fileIndex, setFileIndex] = useState<{
+    cwd: string;
+    entries: FileIndexEntry[];
+    clientTruncated: boolean;
+    serverHardTruncated: boolean;
+  } | null>(null);
   const [fileIndexLoading, setFileIndexLoading] = useState(false);
   const [atServerResult, setAtServerResult] = useState<{ cwd: string; query: string; matches: FileIndexEntry[] } | null>(null);
   const [skillDormancyState, setSkillDormancyState] = useState<{
@@ -619,6 +657,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
   const fileIndexFetchingRef = useRef<string | null>(null);
+  const imageProcessEpochRef = useRef(0);
   const draftKeyRef = useRef(draftKey);
   const valueRef = useRef(value);
   const attachedImagesRef = useRef(attachedImages);
@@ -808,6 +847,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       .filter((f) => f.type.startsWith("image/") && f.size <= MAX_ATTACHED_IMAGE_BYTES)
       .slice(0, remaining);
     if (!imageFiles.length) return;
+    const processEpoch = imageProcessEpochRef.current;
     pendingImageCountRef.current += imageFiles.length;
     try {
       const newImages = await Promise.all(
@@ -817,6 +857,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }))
       );
       setAttachedImages((prev) => {
+        if (processEpoch !== imageProcessEpochRef.current) {
+          newImages.forEach(revokeImagePreview);
+          return prev;
+        }
         const accepted = newImages.slice(0, Math.max(0, MAX_ATTACHED_IMAGES - prev.length));
         newImages.slice(accepted.length).forEach(revokeImagePreview);
         const next = [...prev, ...accepted];
@@ -847,6 +891,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const clearInput = useCallback(() => {
+    imageProcessEpochRef.current += 1;
+    historyStashRef.current = null;
     valueRef.current = "";
     setValue("");
     setAtQuery(null);
@@ -886,6 +932,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     draftKeyRef.current = draftKey;
     const nextValue = draft?.value ?? "";
     const nextImages = draftImagesToAttachedImages(draft?.images);
+    imageProcessEpochRef.current += 1;
     valueRef.current = nextValue;
     attachedImagesRef.current = nextImages;
     setValue(nextValue);
@@ -923,6 +970,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   useEffect(() => {
     return () => {
+      imageProcessEpochRef.current += 1;
       attachedImagesRef.current.forEach(revokeImagePreview);
     };
   }, []);
@@ -987,6 +1035,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     groups: groupedSlashCommands,
   } = buildSlashCommandLayout(filteredSlashCommands, skillDormancy);
 
+  const slashUsage = (() => {
+    if (compact) return null;
+    const cursor = cursorPosition ?? value.length;
+    const beforeCursor = value.slice(0, cursor);
+    if (beforeCursor.includes("\n")) return null;
+    const match = /^\/([^\s]+)\s(.*)$/.exec(beforeCursor);
+    if (!match || !BUILTIN_SIGNATURES[match[1]]) return null;
+    return {
+      command: match[1],
+      signature: BUILTIN_SIGNATURES[match[1]],
+      hasArgument: match[2].trim().length > 0,
+    };
+  })();
+
   const slashCommandCountLabel = filteredSlashCommands.length === 1
     ? t(slashQuery ? "chat.match" : "chat.command")
     : t(slashQuery ? "chat.matches" : "chat.commands", { count: filteredSlashCommands.length });
@@ -1029,7 +1091,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // server-side against the full listing. Local matches render immediately
   // and are replaced when the (debounced) server result for the current
   // query arrives; stale responses are ignored via the query/cwd tag.
-  const needsServerSearch = Boolean(atQueryText && fileIndex?.truncated && fileIndex.cwd === cwd);
+  const needsServerSearch = Boolean(atQueryText && fileIndex?.clientTruncated && fileIndex.cwd === cwd);
   useEffect(() => {
     if (!needsServerSearch || !cwd || !atQueryText) return;
     const fetchCwd = cwd;
@@ -1081,10 +1143,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     fetch(`/api/file-index?cwd=${encodeURIComponent(fetchCwd)}`)
       .then((res) => {
         if (!res.ok) throw new Error(`file index failed: ${res.status}`);
-        return res.json() as Promise<{ files?: string[]; truncated?: boolean }>;
+        return res.json() as Promise<{
+          files?: string[];
+          clientTruncated?: boolean;
+          serverHardTruncated?: boolean;
+        }>
       })
       .then((data) => {
-        setFileIndex({ cwd: fetchCwd, entries: buildEntriesFromFiles(data.files ?? []), truncated: !!data.truncated });
+        setFileIndex({
+          cwd: fetchCwd,
+          entries: buildEntriesFromFiles(data.files ?? []),
+          clientTruncated: !!data.clientTruncated,
+          serverHardTruncated: !!data.serverHardTruncated,
+        });
         fileIndexMetaRef.current = { cwd: fetchCwd, fetchedAt: Date.now() };
       })
       .catch(() => {
@@ -1112,19 +1183,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const insert = buildAtInsertText(entry.path, entry.isDir, atQuery.quoted);
     const newValue = before + insert.text + after;
     const newPos = before.length + insert.cursorOffset;
+    valueRef.current = newValue;
     setValue(newValue);
+    setCursorPosition(newPos);
     // setValue alone does not fire onChange — re-derive the token here. Files
     // end with a space (token closes, menu hides); directories end with "/"
     // before the caret (token stays open for drill-down into the directory).
     setAtQuery(extractAtQuery(newValue.slice(0, newPos)));
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(newPos, newPos);
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-    });
+    focusTextareaAt(textareaRef, newPos);
   }, [atQuery, value]);
 
   useEffect(() => {
@@ -1157,34 +1223,35 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     historyItemRefs.current[historyActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [historyActiveIndex, historyMenuOpen]);
 
+  const dismissHistoryMenu = useCallback(() => {
+    const stash = historyStashRef.current;
+    historyStashRef.current = null;
+    if (stash) {
+      valueRef.current = stash.text;
+      setValue(stash.text);
+    }
+    setHistoryMenuOpen(false);
+  }, []);
+
   const applyHistoryInput = useCallback((text: string) => {
+    historyStashRef.current = null;
+    valueRef.current = text;
     setValue(text);
+    setCursorPosition(text.length);
     setHistoryMenuOpen(false);
     setHistoryActiveIndex(0);
     setAtQuery(null);
-    requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(text.length, text.length);
-      ta.style.height = "auto";
-      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-    });
+    focusTextareaAt(textareaRef, text.length);
   }, []);
 
   const applySlashCommand = useCallback((command: SlashCommandPaletteItem) => {
     const nextValue = `/${command.name} `;
+    valueRef.current = nextValue;
     setValue(nextValue);
+    setCursorPosition(nextValue.length);
     setSlashMenuOpen(false);
     setSlashActiveIndex(0);
-    requestAnimationFrame(() => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-      ta.focus();
-      ta.setSelectionRange(nextValue.length, nextValue.length);
-      ta.style.height = "auto";
-      ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-    });
+    focusTextareaAt(textareaRef, nextValue.length);
   }, []);
 
   const sendQueued = useCallback((mode: "steer" | "followup") => {
@@ -1211,49 +1278,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       onFollowUp(outgoing, images);
     }
   }, [value, attachedImages, mentionedImages, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
-
-  const getNextSlashIndex = useCallback((direction: "up" | "down" | "left" | "right") => {
-    const lastIndex = displayedSlashCommands.length - 1;
-    if (lastIndex < 0) return 0;
-
-    if (direction === "left") return Math.max(0, slashActiveIndex - 1);
-    if (direction === "right") return Math.min(lastIndex, slashActiveIndex + 1);
-
-    const currentNode = slashItemRefs.current[slashActiveIndex];
-    if (!currentNode) {
-      return direction === "down"
-        ? Math.min(lastIndex, slashActiveIndex + 1)
-        : Math.max(0, slashActiveIndex - 1);
-    }
-
-    const currentRect = currentNode.getBoundingClientRect();
-    const currentX = currentRect.left + currentRect.width / 2;
-    const currentY = currentRect.top + currentRect.height / 2;
-    let bestIndex = -1;
-    let bestScore = Number.POSITIVE_INFINITY;
-
-    for (let index = 0; index <= lastIndex; index += 1) {
-      if (index === slashActiveIndex) continue;
-      const node = slashItemRefs.current[index];
-      if (!node) continue;
-      const rect = node.getBoundingClientRect();
-      const candidateY = rect.top + rect.height / 2;
-      const verticalDelta = candidateY - currentY;
-      if (direction === "down" ? verticalDelta <= 4 : verticalDelta >= -4) continue;
-
-      const candidateX = rect.left + rect.width / 2;
-      const score = Math.abs(verticalDelta) * 1000 + Math.abs(candidateX - currentX);
-      if (score < bestScore) {
-        bestIndex = index;
-        bestScore = score;
-      }
-    }
-
-    if (bestIndex >= 0) return bestIndex;
-    return direction === "down"
-      ? Math.min(lastIndex, slashActiveIndex + 1)
-      : Math.max(0, slashActiveIndex - 1);
-  }, [displayedSlashCommands.length, slashActiveIndex]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1284,7 +1308,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
         if (e.key === "Escape") {
           e.preventDefault();
-          setHistoryMenuOpen(false);
+          dismissHistoryMenu();
           return;
         }
         if ((e.key === "Tab" || sendShortcut) && inputHistory[historyActiveIndex]) {
@@ -1294,25 +1318,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
 
-      if (slashMenuOpen && slashQuery !== null) {
+      if (slashMenuOpen && slashQuery !== null && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
-          setSlashActiveIndex(getNextSlashIndex("down"));
+          setSlashActiveIndex((index) => displayedSlashCommands.length === 0
+            ? 0
+            : (index + 1) % displayedSlashCommands.length);
           return;
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setSlashActiveIndex(getNextSlashIndex("up"));
-          return;
-        }
-        if (e.key === "ArrowRight") {
-          e.preventDefault();
-          setSlashActiveIndex(getNextSlashIndex("right"));
-          return;
-        }
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          setSlashActiveIndex(getNextSlashIndex("left"));
+          setSlashActiveIndex((index) => displayedSlashCommands.length === 0
+            ? 0
+            : (index - 1 + displayedSlashCommands.length) % displayedSlashCommands.length);
           return;
         }
         if (e.key === "Escape") {
@@ -1365,10 +1383,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
 
-      if (e.key === "ArrowUp" && !isComposing && !isStreaming && inputHistory.length > 0 && value.trim().length === 0) {
+      if (e.key === "ArrowUp" && !isComposing && !isStreaming && inputHistory.length > 0) {
         e.preventDefault();
         setSlashMenuOpen(false);
         setAtMenuOpen(false);
+        historyStashRef.current = { text: value };
         setHistoryActiveIndex(inputHistory.length - 1);
         setHistoryMenuOpen(true);
         return;
@@ -1396,7 +1415,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, imageMenuOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, getNextSlashIndex, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, value]
+    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, imageMenuOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
   );
 
   const handleInput = useCallback(() => {
@@ -1578,17 +1597,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (controlsMenuRef.current && !controlsMenuRef.current.contains(target)) {
         setControlsMenuOpen(false);
       }
+      if (slashMenuRef.current && !slashMenuRef.current.contains(target) && !textareaRef.current?.contains(target)) {
+        setSlashMenuOpen(false);
+      }
+      if (atMenuRef.current && !atMenuRef.current.contains(target) && !textareaRef.current?.contains(target)) {
+        setAtMenuOpen(false);
+      }
       if (historyMenuRef.current && !historyMenuRef.current.contains(target) && !textareaRef.current?.contains(target)) {
-        setHistoryMenuOpen(false);
+        dismissHistoryMenu();
       }
     };
     document.addEventListener("pointerdown", handler);
-    document.addEventListener("mousedown", handler);
     return () => {
       document.removeEventListener("pointerdown", handler);
-      document.removeEventListener("mousedown", handler);
     };
-  }, []);
+  }, [dismissHistoryMenu]);
 
   useEffect(() => {
     if (!isMobile) setControlsMenuOpen(false);
@@ -1741,12 +1764,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         )}
         {/* Retry banner */}
         {retryInfo && (
-          <div style={{
-            marginBottom: 8, padding: "5px 10px",
-            background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)",
-            borderRadius: 4, fontSize: 12, color: "rgba(180,130,0,0.9)",
-            display: "flex", alignItems: "center", gap: 6,
-          }}>
+          <div className="chat-input-feedback chat-input-feedback-warning">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
               <path d="M3 3v5h5" />
@@ -1755,12 +1773,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
         {compactResultText && (
-          <div style={{
-            marginBottom: 8, padding: "5px 10px",
-            background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.24)",
-            borderRadius: 4, fontSize: 12, color: "rgba(5,150,105,0.95)",
-            display: "flex", alignItems: "center", gap: 6,
-          }}>
+          <div className="chat-input-feedback chat-input-feedback-success">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
               <polyline points="20 6 9 17 4 12" />
             </svg>
@@ -1768,27 +1781,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
         {compactError && (
-          <div
-            role="alert"
-            style={{
-              marginBottom: 8,
-              padding: "7px 10px",
-              background: "rgba(239,68,68,0.07)",
-              border: "1px solid rgba(239,68,68,0.3)",
-              borderRadius: 4,
-              color: "#ef4444",
-              fontFamily: "var(--font-mono)",
-              fontSize: 12,
-              lineHeight: 1.5,
-              whiteSpace: "pre-wrap",
-              overflowWrap: "anywhere",
-            }}
-          >
+          <div role="alert" className="chat-input-feedback chat-input-feedback-error chat-input-feedback-detail" style={{ whiteSpace: "pre-wrap" }}>
             {compactError}
           </div>
         )}
         {(draftPersistenceFailed || draftPersistenceWarning) && (
-          <div role="status" style={{ marginBottom: 8, color: "#d97706", fontSize: 11.5 }}>
+          <div role="status" className="chat-input-feedback chat-input-feedback-warning chat-input-feedback-draft">
             {t("chat.draftPageOnly")}
           </div>
         )}
@@ -1804,7 +1802,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               />
             ))}
             {attachedImages.map((img, i) => (
-              <div key={i} style={{ position: "relative", flexShrink: 0, borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+              <div key={i} className="chat-input-image-preview" style={{ position: "relative", flexShrink: 0, borderRadius: 6, overflow: "visible", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={img.previewUrl}
@@ -1812,6 +1810,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   style={{ width: 56, height: 56, objectFit: "cover", display: "block" }}
                 />
                 <button
+                  className="chat-input-image-remove"
                   onClick={() => removeImage(i)}
                   title={t("i18n.close")}
                   aria-label={t("i18n.close")}
@@ -1820,7 +1819,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     width: 18, height: 18, borderRadius: "50%",
                     background: "rgba(0, 0, 0, 0.55)", border: "none",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    cursor: "pointer", padding: 0, color: "#ffffff",
+                    cursor: "pointer", padding: 0, color: "var(--accent-contrast)",
                     backdropFilter: "blur(4px)",
                     transition: "background 0.12s",
                   }}
@@ -1839,6 +1838,35 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
         {/* Main input */}
         <div style={{ position: "relative", minWidth: 0 }}>
+          {slashUsage && !slashMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                bottom: "calc(100% + 6px)",
+                zIndex: 119,
+                height: 24,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "0 8px",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 4,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11.5,
+                lineHeight: 1,
+                color: "var(--text-dim)",
+                opacity: slashUsage.hasArgument ? 0.45 : 0.85,
+                pointerEvents: "none",
+              }}
+            >
+              <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Usage:</span>
+              <span style={{ color: "var(--text)" }}>/{slashUsage.command}</span>
+              <span>{slashUsage.signature}</span>
+            </div>
+          )}
           {historyMenuOpen && inputHistory.length > 0 && (
             <div
               ref={historyMenuRef}
@@ -1968,41 +1996,36 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                  <span>{slashCommandsLoading ? t("chat.loadingCommands") : t("chat.slashCommands", { label: slashCommandCountLabel })}</span>
                  <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
               </div>
-              <div id={slashListboxId} role="listbox" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 10 }}>
+              <div id={slashListboxId} role="listbox" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 6 }}>
                 {!slashCommandsLoading && filteredSlashCommands.length === 0 ? (
-                  <div style={{ padding: "2px 2px 4px", fontSize: 12, color: "var(--text-dim)" }}>
+                  <div style={{ padding: "4px 8px", fontSize: 12, color: "var(--text-dim)" }}>
                      {t("chat.noCommands")}
                   </div>
                 ) : (
                   groupedSlashCommands.map((group) => (
-                    <section key={group.source} style={{ marginBottom: 12 }}>
+                    <section key={group.source} style={{ marginBottom: 8 }}>
                       <div
                         style={{
                           position: "sticky",
-                          top: -10,
+                          top: -6,
                           zIndex: 1,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "space-between",
                           gap: 8,
-                          padding: "4px 0 6px",
+                          padding: "4px 8px 3px",
                           background: "var(--bg)",
                           color: "var(--text-dim)",
                           fontSize: 10,
                           fontWeight: 600,
+                          letterSpacing: "0.04em",
                           textTransform: "uppercase",
                         }}
                       >
-                           <span>{t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}</span>
+                        <span>{t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}</span>
                         <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>{group.items.length}</span>
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                          gap: 8,
-                        }}
-                      >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                         {group.items.map(({ command, index }) => {
                           const active = index === slashActiveIndex;
                           const dormant = isDormantSkillCommand(command, skillDormancy);
@@ -2025,29 +2048,34 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                               style={{
                                 width: "100%",
                                 minWidth: 0,
-                                minHeight: 58,
+                                height: 30,
                                 display: "flex",
-                                flexDirection: "column",
-                                gap: 4,
-                                justifyContent: "center",
-                                padding: "9px 10px",
-                                border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                                alignItems: "center",
+                                gap: 12,
+                                padding: "0 8px",
+                                border: "none",
                                 borderRadius: 4,
-                                background: active ? "var(--bg-selected)" : "var(--bg-panel)",
-                                color: "var(--text)",
+                                background: active ? "var(--bg-selected)" : "none",
+                                color: dormant ? "var(--text-dim)" : "var(--text)",
                                 cursor: "pointer",
                                 textAlign: "left",
-                                boxShadow: active ? "0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent)" : "none",
+                                transition: "background 0.08s ease",
                               }}
                             >
                               <span style={{
-                                fontSize: 13,
+                                flexShrink: 0,
+                                fontSize: 12.5,
                                 fontFamily: "var(--font-mono)",
-                                overflowWrap: "anywhere",
-                                wordBreak: "break-word",
-                                color: dormant ? "var(--text-dim)" : undefined,
+                                whiteSpace: "nowrap",
+                                color: active ? "var(--text)" : (dormant ? "var(--text-dim)" : "var(--text)"),
+                                fontWeight: 500,
                               }}>
-                                /{command.name}
+                                {renderSlashCommandName(command.name, slashQuery)}
+                                {command.source === "builtin" && BUILTIN_SIGNATURES[command.name] && (
+                                  <span style={{ marginLeft: 6, color: "var(--text-dim)", fontSize: 11, fontWeight: 400 }}>
+                                    {BUILTIN_SIGNATURES[command.name]}
+                                  </span>
+                                )}
                                 {dormant && (
                                   <span style={{
                                     marginLeft: 6,
@@ -2062,19 +2090,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                   </span>
                                 )}
                               </span>
-                               {command.description && (
-                                <span style={{
-                                  display: "-webkit-box",
-                                  WebkitBoxOrient: "vertical",
-                                  WebkitLineClamp: 2,
-                                  overflow: "hidden",
-                                  fontSize: 11,
-                                  lineHeight: 1.35,
-                                  color: "var(--text-dim)",
-                                }}>
-                                   {getSlashDescription(command, t)}
-                                </span>
-                              )}
+                              <span style={{
+                                flex: "1 1 auto",
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                color: "var(--text-dim)",
+                                fontSize: 12,
+                              }}>
+                                {getSlashDescription(command, t)}
+                              </span>
                             </button>
                           );
                         })}
@@ -2090,9 +2116,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
              const matchCountLabel = atMatches.length === 1 ? t("chat.match") : t("chat.matches", { count: atMatches.length });
             // With a truncated index, local results are provisional — the
             // debounced server search over the full listing replaces them.
-            const truncatedHint = fileIndex?.truncated && !serverResultInUse
-               ? (atQuery.query ? t("chat.searchingAll") : t("chat.indexTruncated"))
-              : "";
+            const truncatedHint = fileIndex?.serverHardTruncated
+               ? t("chat.serverIndexTruncated")
+               : fileIndex?.clientTruncated && !serverResultInUse
+                 ? (atQuery.query ? t("chat.searchingAll") : t("chat.indexTruncated"))
+                : "";
             return (
               <div
                 ref={atMenuRef}
@@ -2163,10 +2191,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           onMouseEnter={() => setAtActiveIndex(index)}
                           style={{
                             width: "100%",
+                            height: 30,
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
-                            padding: "6px 8px",
+                            padding: "0 8px",
                             border: "none",
                             borderRadius: 4,
                             background: active ? "var(--bg-selected)" : "none",
@@ -2175,16 +2204,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             textAlign: "left",
                             fontSize: 12.5,
                             fontFamily: "var(--font-mono)",
+                            transition: "background 0.08s ease",
                           }}
                         >
-                          <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", transform: "translateY(0.5px)" }}>
+                          <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", color: "var(--text-muted)" }}>
                             {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}
                           </span>
-                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1 }}>
-                            {dirPrefix && <span style={{ color: "var(--text-dim)" }}>{dirPrefix}</span>}
-                            {name}
+                          <span style={{ flexShrink: 0, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap" }}>
+                            {highlightText(name, atQuery?.query ?? null)}
                             {entry.isDir && <span style={{ color: "var(--text-dim)" }}>/</span>}
                           </span>
+                          {dirPrefix && (
+                            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", fontSize: 11.5 }}>
+                              {dirPrefix}
+                            </span>
+                          )}
                         </button>
                       );
                     })
@@ -2253,11 +2287,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             onChange={(e) => {
               valueRef.current = e.target.value;
               setValue(e.target.value);
+              setCursorPosition(e.target.selectionStart);
+              historyStashRef.current = null;
               setHistoryMenuOpen(false);
               updateAtQuery(e.target.value, e.target.selectionStart);
             }}
             onSelect={(e) => {
               const el = e.currentTarget;
+              setCursorPosition(el.selectionStart);
               updateAtQuery(el.value, el.selectionStart);
             }}
             onKeyDown={handleKeyDown}
@@ -2268,6 +2305,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               isComposingRef.current = false;
               lastCompositionEndAtRef.current = Date.now();
               const el = e.currentTarget;
+              setCursorPosition(el.selectionStart);
               updateAtQuery(el.value, el.selectionStart);
             }}
             onInput={handleInput}
@@ -2447,7 +2485,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 background: canSendMessage ? "var(--accent)" : "none",
                 border: "none",
                 borderRadius: 5,
-                color: canSendMessage ? "#fff" : "var(--text-dim)",
+                color: canSendMessage ? "var(--accent-contrast)" : "var(--text-dim)",
                 opacity: canSendMessage ? 1 : 0.45,
                 cursor: canSendMessage ? "pointer" : "not-allowed",
                 fontSize: 12.5,
@@ -2700,6 +2738,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 padding: "1px 2px",
                 width: "max-content",
                 maxWidth: "calc(100vw - 32px)",
+                maxHeight: "min(70dvh, 480px)",
+                overflowY: "auto",
                 flexWrap: "wrap",
                 justifyContent: "flex-end",
                 border: "1px solid var(--border)",

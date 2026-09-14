@@ -35,5 +35,7 @@ test("keeps search on the bounded index and reports request failures", () => {
   assert.match(source, /role="alert"/);
   assert.match(source, /kind=file&version=/);
   assert.match(apiSource, /kind === "file"/);
+  assert.match(apiSource, /clientTruncated/);
+  assert.match(apiSource, /serverHardTruncated/);
   assert.match(apiSource, /cached\.version !== version/);
 });
