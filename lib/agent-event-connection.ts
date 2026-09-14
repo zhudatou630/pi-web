@@ -9,6 +9,10 @@ export interface AgentEventSourceLike {
 
 export type AgentEventConnectionStatus = "ready_timeout" | "startup_error" | "closed";
 
+export function buildAgentEventSourceUrl(sessionId: string): string {
+  return `/api/agent/${encodeURIComponent(sessionId)}/events`;
+}
+
 export class AgentEventConnectionError extends Error {
   constructor(public readonly status: AgentEventConnectionStatus, message?: string) {
     super(message ?? (
@@ -49,10 +53,12 @@ export class AgentEventConnection {
   private current: Connection | null = null;
   private retry: { sessionId: string; timer: ReturnType<typeof setTimeout> } | null = null;
   private retryGeneration = 0;
+  private epoch = 0;
 
   constructor(private readonly options: AgentEventConnectionOptions) {}
 
   close(): void {
+    this.epoch += 1;
     this.stopRetrying();
     if (this.current) this.discard(this.current, new AgentEventConnectionError("closed"));
   }
@@ -71,10 +77,18 @@ export class AgentEventConnection {
     });
   }
 
-  async ensureConnected(sessionId: string): Promise<void> {
+  reconnect(sessionId: string): Promise<void> {
+    return this.ensureConnected(sessionId, true);
+  }
+
+  async ensureConnected(sessionId: string, force = false): Promise<void> {
+    const epoch = this.epoch;
+    let forceOpen = force;
     while (true) {
+      if (this.epoch !== epoch) throw new AgentEventConnectionError("closed");
       let connection = this.current;
-      if (!connection || connection.sessionId !== sessionId) {
+      if (!connection || connection.sessionId !== sessionId || forceOpen) {
+        forceOpen = false;
         connection = this.open(sessionId);
       } else if (
         connection.attempt.ready
@@ -83,7 +97,14 @@ export class AgentEventConnection {
         return;
       }
 
-      await connection.attempt.promise;
+      try {
+        await connection.attempt.promise;
+      } catch (error) {
+        if (this.epoch !== epoch) throw error;
+        if (this.current !== connection && this.current?.sessionId === sessionId) continue;
+        throw error;
+      }
+      if (this.epoch !== epoch) throw new AgentEventConnectionError("closed");
       if (this.current !== connection) {
         if (this.current?.sessionId === sessionId) continue;
         throw new AgentEventConnectionError("closed");
@@ -167,8 +188,11 @@ export class AgentEventConnection {
   private fail(connection: Connection, error: AgentEventConnectionError): void {
     if (this.current !== connection) return;
     this.discard(connection, error);
-    if (error.status === "startup_error") this.stopRetrying();
-    else this.scheduleRetry(connection.sessionId);
+    if (error.status === "startup_error") {
+      this.stopRetrying();
+    } else {
+      this.scheduleRetry(connection.sessionId);
+    }
   }
 
   private discard(connection: Connection, error: AgentEventConnectionError): void {

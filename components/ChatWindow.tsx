@@ -26,7 +26,6 @@ import {
 import { getModelDisplayName, MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
-import { ExtensionTaskNote } from "./ExtensionTaskNote";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { AnsiText } from "./AnsiText";
@@ -642,7 +641,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices, extensionDialog, extensionCustomUi, extensionWidget, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
+    notices, extensionDialog, extensionCustomUi, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
     isAutoModelSelection,
     agentPhase,
     isNew,
@@ -657,6 +656,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded: wrappedOnAttentionNeeded, onSessionCreated, onSessionForked: wrappedOnSessionForked,
     modelsRefreshKey, chatInputRef: ownChatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
     deferInitialScroll: Boolean(pendingScrollRestore),
+    isVisiblePane,
   });
   const sessionBusy = agentRunning || directImageRunning || bashRunning;
   const handleActiveAbort = useCallback(() => {
@@ -1551,12 +1551,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       cwd={session?.cwd ?? newSessionCwd}
     />
   );
-  const composerStack = (
-    <>
-      <ExtensionTaskNote widget={extensionWidget} active={agentRunning} />
-      {chatInputElement}
-    </>
-  );
+  const composerStack = chatInputElement;
 
   if (loading) {
     return (

@@ -3062,7 +3062,7 @@ export function AppShell() {
                   );
                 }) : (
                   <div style={{ gridColumn: 1, gridRow: isSplitActive ? 2 : 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                    {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus)}
+                    {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, undefined, true)}
                   </div>
                 )}
 

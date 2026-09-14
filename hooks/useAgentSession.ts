@@ -19,7 +19,11 @@ import { getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type Too
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
 import { userMessageKey } from "@/lib/prompt-recovery";
-import { AgentEventConnection } from "@/lib/agent-event-connection";
+import {
+  AgentEventConnection,
+  AgentEventConnectionError,
+  buildAgentEventSourceUrl,
+} from "@/lib/agent-event-connection";
 import {
   CHAT_SCROLL_REATTACH_TOLERANCE,
   CHAT_SCROLL_TAIL_TOLERANCE,
@@ -36,7 +40,6 @@ import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand }
 import { recalledQueuedPrompts } from "@/lib/queued-messages";
 import type { AttachedImage } from "@/lib/image-attachments";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
-import { applyWidgetEvent, type ExtensionWidget } from "@/lib/extension-widget";
 import {
   loadModelsWithClientCache,
   peekModelsClientCache,
@@ -87,7 +90,6 @@ type AgentStateResponse = {
   isBashRunning?: boolean;
   isCompacting?: boolean;
   queuedMessages?: { steering?: Array<string | { text?: string }>; followUp?: Array<string | { text?: string }> } | null;
-  extensionWidget?: ExtensionWidget | null;
 };
 
 export interface QueuedMessages {
@@ -198,6 +200,7 @@ export interface UseAgentSessionOptions {
   onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
   /** Registers an action that lazily starts the session and loads its prompt and tools. */
   onSystemInfoLoaderChange?: (loader: (() => Promise<void>) | null) => void;
+  isVisiblePane?: boolean;
   onSessionStatsPanelOpen?: () => void;
   setToolPreset?: (preset: ToolPreset) => void;
   deferInitialScroll?: boolean;
@@ -310,6 +313,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
+    isVisiblePane = false,
   } = opts;
 
   const isNew = session === null && newSessionCwd !== null;
@@ -379,7 +383,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
-  const [extensionWidget, setExtensionWidget] = useState<ExtensionWidget | null>(null);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
 
   const eventConnectionRef = useRef<AgentEventConnection | null>(null);
@@ -389,6 +392,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
   const sessionPropIdRef = useRef<string | null>(session?.id ?? null);
   const sessionRunningRef = useRef(Boolean(sessionRunning));
+  const visiblePaneRef = useRef(isVisiblePane);
   const agentRunningRef = useRef(false);
   const sdkAgentActiveRef = useRef(false);
   const rpcPromptPendingRef = useRef(false);
@@ -427,16 +431,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   sessionPropIdRef.current = session?.id ?? null;
   sessionRunningRef.current = Boolean(sessionRunning);
-
+  visiblePaneRef.current = isVisiblePane;
   if (!eventConnectionRef.current) {
     eventConnectionRef.current = new AgentEventConnection({
-      createSource: (sid) => new EventSource(`/api/agent/${encodeURIComponent(sid)}/events`),
+      createSource: (sid) => new EventSource(buildAgentEventSourceUrl(sid)),
       onEvent: (event) => handleAgentEventRef.current?.(event as AgentEvent),
       shouldMaintain: (sid) => (
         sessionHookMountedRef.current
         && sessionIdRef.current === sid
         && (
-          agentRunningRef.current
+          visiblePaneRef.current
+          || agentRunningRef.current
           || eventStreamGraceActiveRef.current
           || (sessionPropIdRef.current === sid && sessionRunningRef.current)
         )
@@ -588,7 +593,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
           if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
-          if (liveState.extensionWidget !== undefined) setExtensionWidget(liveState.extensionWidget);
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
         }
@@ -684,6 +688,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }, provisionalDraftKey);
   }, [isNew, newSessionCwd, newSessionDraftKey, onSessionCreated, opts.chatInputRef]);
 
+  const handleEventStreamError = useCallback((error: unknown) => {
+    if (error instanceof AgentEventConnectionError) return;
+    console.error("Failed to maintain the agent event stream:", error);
+  }, []);
+
   const ensureNewSession = useCallback(async () => {
     if (sessionIdRef.current) return sessionIdRef.current;
     if (!isNew || !newSessionCwd) return sessionIdRef.current;
@@ -718,6 +727,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       };
       const realId = result.sessionId;
       sessionIdRef.current = realId;
+      if (visiblePaneRef.current) {
+        void eventConnectionRef.current?.ensureConnected(realId).catch(handleEventStreamError);
+      }
       if (result.contextUsage !== undefined) setContextUsage(result.contextUsage ?? null);
       if (result.model && newSessionModelOverrideRef.current === selectedModel) {
         setPendingModel(result.model);
@@ -738,7 +750,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       ensuringNewSessionRef.current = null;
     }
-  }, [isNew, newSessionCwd, toolPreset]);
+  }, [handleEventStreamError, isNew, newSessionCwd, toolPreset]);
 
   // Opening the System or Tools panel may initialize an otherwise dormant
   // session. This is deliberately a non-prompt command: it creates no message
@@ -801,6 +813,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // The sidebar's lightweight running-state poll gives us a cheap signal to
   // attach to the existing SSE stream without adding another synchronization
   // protocol to the chat.
+  const refreshEventStream = useCallback((sid: string) => {
+    void eventConnectionRef.current?.reconnect(sid).catch(handleEventStreamError);
+  }, [handleEventStreamError]);
+
   useEffect(() => {
     if (!session?.id || !sessionRunning) return;
     maintainEventsConnected(session.id);
@@ -809,12 +825,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         sessionIdRef.current === session.id
         && !agentRunningRef.current
         && !eventStreamGraceActiveRef.current
+        && !visiblePaneRef.current
         && (sessionPropIdRef.current !== session.id || !sessionRunningRef.current)
       ) {
         eventConnectionRef.current?.close();
       }
     };
   }, [maintainEventsConnected, session?.id, sessionRunning]);
+
+  useEffect(() => {
+    if (!isVisiblePane) {
+      if (
+        !agentRunningRef.current
+        && !sessionRunningRef.current
+        && !eventStreamGraceActiveRef.current
+      ) {
+        closeEvents();
+      }
+      return;
+    }
+    const sid = session?.id ?? sessionIdRef.current ?? null;
+    if (!sid) return;
+    cancelEventStreamGrace();
+    void eventConnectionRef.current?.ensureConnected(sid).catch(handleEventStreamError);
+  }, [cancelEventStreamGrace, closeEvents, handleEventStreamError, isVisiblePane, session?.id]);
 
   const respondToExtensionUi = useCallback(async (
     request: ExtensionUiDialogRequest,
@@ -879,9 +913,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       }
-      case "setWidget":
-        setExtensionWidget((current) => applyWidgetEvent(current, request.widgetKey, request.widgetLines));
-        break;
       case "setTitle":
         if (request.title) document.title = request.title;
         break;
@@ -946,6 +977,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [onAgentEnd]);
 
   const scheduleEventStreamClose = useCallback((sid: string) => {
+    if (visiblePaneRef.current && sessionIdRef.current === sid) {
+      cancelEventStreamGrace();
+      return;
+    }
     cancelEventStreamGrace();
     eventStreamGraceActiveRef.current = true;
     const generation = eventStreamGraceGenerationRef.current;
@@ -1112,7 +1147,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!agentRunningRef.current) return;
       if (state) {
         if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
-        if (state.extensionWidget !== undefined) setExtensionWidget(state.extensionWidget);
       }
       await finishPromptWithoutStream(sid, runId);
     } catch {
@@ -1143,6 +1177,33 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       window.removeEventListener("online", reconcile);
     };
   }, [agentRunning, reconcileAgentState]);
+
+  useEffect(() => {
+    const reconnectView = () => {
+      const sid = sessionIdRef.current;
+      if (!sid || document.visibilityState === "hidden") return;
+      if (visiblePaneRef.current) {
+        refreshEventStream(sid);
+        return;
+      }
+      if (
+        agentRunningRef.current
+        || eventStreamGraceActiveRef.current
+        || (sessionPropIdRef.current === sid && sessionRunningRef.current)
+      ) {
+        maintainEventsConnected(sid);
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reconnectView();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", reconnectView);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", reconnectView);
+    };
+  }, [maintainEventsConnected, refreshEventStream]);
 
   useEffect(() => {
     agentRunningRef.current = agentRunning;
@@ -2097,12 +2158,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const result = await sendAgentCommand<{ sessionId?: string; recreated?: boolean }>(sid, { type: "set_tools", toolNames });
       const activeSessionId = result?.sessionId ?? sid;
+      const recreated = result?.recreated === true;
       if (activeSessionId !== sid) {
         cancelEventStreamGrace();
         closeEvents();
         sessionIdRef.current = activeSessionId;
       }
       setSlashCommands([]);
+      if (visiblePaneRef.current && (recreated || activeSessionId !== sid)) {
+        refreshEventStream(activeSessionId);
+      }
       const [state] = await Promise.all([
         sendAgentCommand<AgentStateResponse>(activeSessionId, { type: "get_state" }),
         loadTools(activeSessionId),
@@ -2113,7 +2178,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to set tools:", e);
     }
-  }, [cancelEventStreamGrace, closeEvents, loadTools, setToolPresetState]);
+  }, [cancelEventStreamGrace, closeEvents, loadTools, refreshEventStream, setToolPresetState]);
 
   const scrollToMessage = useCallback((element: HTMLElement, viewportOffset = 16) => {
     const container = scrollContainerRef.current;
@@ -2194,7 +2259,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
           if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
-          if (agentState.state.extensionWidget !== undefined) setExtensionWidget(agentState.state.extensionWidget);
         }
       });
     }
@@ -2336,7 +2400,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
-    notices: noticeState.visible, extensionDialog, extensionCustomUi, extensionWidget, respondToExtensionUi, sendExtensionCustomInput,
+    notices: noticeState.visible, extensionDialog, extensionCustomUi, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     isNew,

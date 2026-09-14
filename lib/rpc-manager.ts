@@ -28,9 +28,8 @@ import type {
   SessionInfo,
   SessionMessageEntry,
 } from "./types";
-import { applyWidgetEvent, type ExtensionWidget } from "./extension-widget";
-import { getExtensionWidget, setExtensionWidget } from "./extension-widget-store";
-import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS, type HeadlessCustomUiTui } from "./custom-ui-terminal";
+import { stripAnsi } from "./ansi";
+import { createHeadlessCustomUiTui, DEFAULT_CUSTOM_UI_COLUMNS } from "./custom-ui-terminal";
 import {
   createSubagentExtension,
   preferPiWebSubagentExtension,
@@ -64,6 +63,10 @@ export interface AgentEvent {
 }
 
 type EventListener = (event: AgentEvent) => void;
+type EventSubscription = {
+  listener: EventListener;
+  keepAlive: boolean;
+};
 type AgentRunCompleteListener = (sessionId: string) => void;
 type AgentRunCompletionGate = (sessionId: string) => boolean;
 
@@ -161,7 +164,7 @@ export interface RpcSessionStartOptions {
 const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
 const THINKING_LEVEL_NAMES = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
-// Extensions require a complete Theme, while the web UI applies its own styling.
+// custom() keeps the historical unstyled theme so overlay dialogs stay unchanged.
 class PlainTextTheme extends Theme {
   constructor() {
     super(
@@ -189,6 +192,40 @@ class PlainTextTheme extends Theme {
 const PLAIN_TEXT_THEME = new PlainTextTheme();
 const CUSTOM_UI_KEYBINDINGS = new TuiKeybindingsManager(TUI_KEYBINDINGS);
 
+class WebExtensionTheme extends Theme {
+  constructor() {
+    super(
+      { muted: "", text: "", thinkingXhigh: "", searchMatchText: "" } as ConstructorParameters<typeof Theme>[0],
+      { selectedBg: "" } as ConstructorParameters<typeof Theme>[1],
+      "truecolor",
+    );
+  }
+
+  override fg(color: Parameters<Theme["fg"]>[0], text: string): string {
+    return `${this.getFgAnsi(color)}${text}\x1b[39m`;
+  }
+  override bg(color: Parameters<Theme["bg"]>[0], text: string): string {
+    return `${this.getBgAnsi(color)}${text}\x1b[49m`;
+  }
+  override bold(text: string): string { return `\x1b[1m${text}\x1b[22m`; }
+  override italic(text: string): string { return `\x1b[3m${text}\x1b[23m`; }
+  override underline(text: string): string { return `\x1b[4m${text}\x1b[24m`; }
+  override strikethrough(text: string): string { return `\x1b[9m${text}\x1b[29m`; }
+  override getFgAnsi(color: Parameters<Theme["fg"]>[0]): string {
+    if (color === "accent") return "\x1b[34m";
+    if (color === "success") return "\x1b[32m";
+    if (color === "error") return "\x1b[31m";
+    if (color === "warning") return "\x1b[33m";
+    if (color === "muted" || color === "dim") return "\x1b[90m";
+    return "\x1b[39m";
+  }
+  override getBgAnsi(color: Parameters<Theme["bg"]>[0]): string {
+    return color === "selectedBg" ? "\x1b[100m" : "\x1b[49m";
+  }
+}
+
+const WEB_EXTENSION_THEME = new WebExtensionTheme();
+
 function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
   if (toolNames.length === 0) return [];
 
@@ -208,18 +245,13 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
 // ============================================================================
 
 export class AgentSessionWrapper {
-  private listeners: EventListener[] = [];
+  private subscriptions: EventSubscription[] = [];
   private activeToolEvents = new Map<string, AgentEvent>();
   private closeListeners = new Set<() => void>();
   private pendingUiResponses = new Map<string, PendingUiResponse>();
   private pendingUiRequests = new Map<string, AgentEvent>();
   private activeCustomUis = new Map<string, ActiveCustomUi>();
   private extensionUiAbortController = new AbortController();
-  private extensionWidget: ExtensionWidget | null = null;
-  private factoryWidget: {
-    key: string;
-    component: { render: (width: number) => unknown; dispose?: () => void };
-  } | null = null;
   private pendingPromptCount = 0;
   private directImageAbortController: AbortController | null = null;
   private directImageRequestId: string | null = null;
@@ -254,7 +286,6 @@ export class AgentSessionWrapper {
     this.beforeAgentRunComplete = options.beforeAgentRunComplete;
     this.onAgentRunComplete = options.onAgentRunComplete;
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
-    this.extensionWidget = getExtensionWidget(inner.sessionId);
     this.installExactSystemPromptContinuation();
     this.applyExactSystemPrompt();
   }
@@ -397,11 +428,18 @@ export class AgentSessionWrapper {
       } else {
         this.inner.extensionRunner.setUIContext?.(uiContext, "rpc");
       }
+      if (!this._alive) return;
       this.extensionsBound = true;
       this.applyExactSystemPrompt();
       console.log(`[pi-web] session_start dispatched to extensions for session ${this.inner.sessionId}`);
     })().catch((err) => {
       this.extensionBindingError = err;
+      this.emit({
+        type: "extension_error",
+        extensionPath: "extensions",
+        event: "session_start",
+        error: err instanceof Error ? err.message : String(err),
+      });
       throw err;
     });
 
@@ -463,7 +501,7 @@ export class AgentSessionWrapper {
   }
 
   private emit(event: AgentEvent): void {
-    for (const listener of this.listeners) {
+    for (const { listener } of this.subscriptions) {
       try {
         listener(event);
       } catch (error) {
@@ -492,7 +530,7 @@ export class AgentSessionWrapper {
     if (SESSION_IDLE_TIMEOUT_MS === 0) return;
     if (!this.isRunning()) this.forceShutdownOnIdle = false;
     this.idleTimer = setTimeout(() => {
-      if (!this.forceShutdownOnIdle && (this.isRunning() || hasActiveSessionLivenessProvider({
+      if (!this.forceShutdownOnIdle && (this.isRunning() || this.hasConnectedKeepAlive() || hasActiveSessionLivenessProvider({
         sessionId: this.sessionId,
         sessionFile: this.sessionFile || undefined,
       }))) {
@@ -525,22 +563,19 @@ export class AgentSessionWrapper {
     cacheSessionPath(this.inner.sessionId, sessionFile);
   }
 
-  onEvent(listener: EventListener): () => void {
-    this.listeners.push(listener);
+  onEvent(listener: EventListener, keepAlive = false): () => void {
+    const subscription: EventSubscription = {
+      listener,
+      keepAlive: keepAlive === true,
+    };
+    this.subscriptions.push(subscription);
     for (const event of this.pendingUiRequests.values()) listener(event);
     for (const event of this.activeToolEvents.values()) listener(event);
-    if (this.extensionWidget) {
-      listener({
-        type: "extension_ui_request",
-        id: randomUUID(),
-        method: "setWidget",
-        widgetKey: this.extensionWidget.key,
-        widgetLines: this.extensionWidget.lines,
-      } as AgentEvent);
-    }
+    this.resetIdleTimer();
     return () => {
-      const i = this.listeners.indexOf(listener);
-      if (i !== -1) this.listeners.splice(i, 1);
+      const i = this.subscriptions.indexOf(subscription);
+      if (i !== -1) this.subscriptions.splice(i, 1);
+      this.resetIdleTimer();
     };
   }
 
@@ -753,7 +788,6 @@ export class AgentSessionWrapper {
             : null,
           systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
-          extensionWidget: this.extensionWidget,
         };
       }
 
@@ -1056,9 +1090,6 @@ export class AgentSessionWrapper {
         }
         const activeToolNames = this.inner.getActiveToolNames();
         await this.waitForExtensionsBound();
-        this.disposeFactoryWidget();
-        this.extensionWidget = null;
-        setExtensionWidget(this.sessionId, null);
         this.syncProjectTrust();
         await this.inner.reload();
         this.setActiveToolSelection(activeToolNames);
@@ -1146,7 +1177,6 @@ export class AgentSessionWrapper {
     this.pendingUiResponses.clear();
     this.pendingUiRequests.clear();
     this.activeToolEvents.clear();
-    this.disposeFactoryWidget();
     const finishDispose = () => {
       try {
         this.inner.dispose();
@@ -1409,81 +1439,8 @@ export class AgentSessionWrapper {
     });
   }
 
-  private disposeFactoryWidget(): void {
-    const active = this.factoryWidget;
-    this.factoryWidget = null;
-    try { active?.component.dispose?.(); } catch { /* extension dispose */ }
-  }
-
-  private emitWidget(key: string, lines?: string[], placement?: "aboveEditor" | "belowEditor"): void {
-    this.extensionWidget = applyWidgetEvent(this.extensionWidget, key, lines);
-    setExtensionWidget(this.sessionId, this.extensionWidget);
-    this.emit({
-      type: "extension_ui_request",
-      id: randomUUID(),
-      method: "setWidget",
-      widgetKey: key,
-      widgetLines: lines,
-      widgetPlacement: placement,
-    } as ExtensionUiRequest as AgentEvent);
-  }
-
-  private renderFactoryWidget(): void {
-    const active = this.factoryWidget;
-    if (!active) return;
-    let lines: unknown;
-    try {
-      lines = active.component.render(DEFAULT_CUSTOM_UI_COLUMNS);
-    } catch (error) {
-      if (this.factoryWidget !== active) return;
-      this.emitWidget(active.key, undefined);
-      this.emit({
-        type: "extension_error",
-        extensionPath: `extension-widget:${active.key}`,
-        event: "setWidget",
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-    if (this.factoryWidget !== active) return;
-    if (!Array.isArray(lines) || lines.length === 0 || lines.some((line) => typeof line !== "string")) {
-      return;
-    }
-    this.emitWidget(active.key, lines);
-  }
-
-  private setFactoryWidget(key: string, factory: (tui: HeadlessCustomUiTui, theme: Theme) => unknown): void {
-    const previous = this.factoryWidget;
-    this.disposeFactoryWidget();
-    let installed: NonNullable<AgentSessionWrapper["factoryWidget"]> | null = null;
-    const tui = createHeadlessCustomUiTui(() => {
-      if (installed && this.factoryWidget === installed) this.renderFactoryWidget();
-    });
-    let component: unknown;
-    try {
-      component = factory(tui, PLAIN_TEXT_THEME);
-    } catch (error) {
-      this.emitWidget(previous?.key ?? key, undefined);
-      this.emit({
-        type: "extension_error",
-        extensionPath: `extension-widget:${key}`,
-        event: "setWidget",
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-    if (this.factoryWidget) {
-      try { (component as { dispose?: () => void } | null)?.dispose?.(); } catch { /* extension dispose */ }
-      return;
-    }
-    if (!component || typeof component !== "object" || typeof (component as { render?: unknown }).render !== "function") {
-      try { (component as { dispose?: () => void } | null)?.dispose?.(); } catch { /* extension dispose */ }
-      this.emitWidget(previous?.key ?? key, undefined);
-      return;
-    }
-    installed = { key, component: component as { render: (width: number) => unknown; dispose?: () => void } };
-    this.factoryWidget = installed;
-    this.renderFactoryWidget();
+  private hasConnectedKeepAlive(): boolean {
+    return this.subscriptions.some((subscription) => subscription.keepAlive);
   }
 
   private createExtensionUiContext(): ExtensionUiContextLike {
@@ -1521,7 +1478,7 @@ export class AgentSessionWrapper {
           type: "extension_ui_request",
           id: randomUUID(),
           method: "notify",
-          message,
+          message: stripAnsi(message),
           notifyType: type,
         } as ExtensionUiRequest as AgentEvent);
       },
@@ -1540,15 +1497,15 @@ export class AgentSessionWrapper {
       setWorkingIndicator: () => {},
       setHiddenThinkingLabel: () => {},
       setWidget: (key, content, options) => {
-        if (typeof content === "function") {
-          this.setFactoryWidget(key, content as (tui: HeadlessCustomUiTui, theme: Theme) => unknown);
-          return;
-        }
         if (content !== undefined && !Array.isArray(content)) return;
-        if (content === undefined || (this.factoryWidget && content.length > 0)) {
-          this.disposeFactoryWidget();
-        }
-        this.emitWidget(key, content, options?.placement);
+        this.emit({
+          type: "extension_ui_request",
+          id: randomUUID(),
+          method: "setWidget",
+          widgetKey: key,
+          widgetLines: content,
+          widgetPlacement: options?.placement,
+        } as ExtensionUiRequest as AgentEvent);
       },
       setFooter: () => {},
       setHeader: () => {},
@@ -1581,7 +1538,7 @@ export class AgentSessionWrapper {
       addAutocompleteProvider: () => {},
       setEditorComponent: () => {},
       getEditorComponent: () => undefined,
-      get theme() { return PLAIN_TEXT_THEME; },
+      get theme() { return WEB_EXTENSION_THEME; },
       getAllThemes: () => [],
       getTheme: () => undefined,
       setTheme: () => ({ success: false, error: "Theme switching is not supported in Pi Web extension UI yet" }),
@@ -1604,9 +1561,6 @@ export class AgentSessionWrapper {
       },
       switchSession: async () => ({ cancelled: true }),
       reload: async () => {
-        this.disposeFactoryWidget();
-        this.extensionWidget = null;
-        setExtensionWidget(this.sessionId, null);
         this.syncProjectTrust();
         await this.inner.reload({
           beforeSessionStart: () => {

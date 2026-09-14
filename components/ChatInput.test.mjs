@@ -318,6 +318,8 @@ test("opens mobile session controls upward as a compact panel", () => {
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?gap: 1,/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?bottom: "calc\(100% \+ 6px\)"/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?flexWrap: "wrap"/);
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?overflow: "visible"/);
+  assert.doesNotMatch(source, /className="chat-input-toolbar-controls"[\s\S]*?overflowY: "auto"/);
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?thinkingDropdownOpen/);
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?toolDropdownOpen/);
   assert.match(source, /if \(isMobile \|\| \(isStreaming && !isCompacting\)\) return;/);

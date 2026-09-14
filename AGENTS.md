@@ -53,7 +53,8 @@ Browser                Next.js Server              AgentSession (in-process)
   │◀── data: {...} ─────────│                               │
 ```
 
-**Session browsing** (read-only): reads `.jsonl` files through SDK `SessionManager` helpers and `lib/session-reader.ts` — no AgentSession created.  
+**Session browsing** (read-only): reads `.jsonl` files through SDK `SessionManager` helpers and `lib/session-reader.ts` — no AgentSession created. Sidebar/list/history endpoints stay lightweight.
+**Visible interactive chat pane**: `GET /api/agent/[id]/events` starts or attaches a runtime and keeps it from idle disposal while the view is connected.
 **Sending a message**: `startRpcSession()` in `lib/rpc-manager.ts` creates an AgentSession in-process.
 
 ---
@@ -99,6 +100,7 @@ lib/
   npx.ts               npx runner used by skill install
   pi-types.ts          local structural types for pi SDK objects
   rpc-manager.ts      AgentSessionWrapper + registry + startRpcSession
+  custom-ui-terminal.ts headless terminal dimensions for custom()
   session-reader.ts   SessionManager wrappers + path cache + buildSessionContext adapter
   subagent-settings.ts  read/write ~/.pi/agent/agents/settings.json
   tool-presets.ts     PRESET_NONE/READ_ONLY/DEFAULT/FULL + getPresetFromTools()
@@ -145,7 +147,8 @@ hooks/
 ### AgentSession lifecycle (`lib/rpc-manager.ts`)
 - One `AgentSessionWrapper` per session id, keyed in `globalThis.__piSessions`
 - `globalThis` survives Next.js hot-reload; plain module-level Map does not
-- Idle timeout: 10 minutes. Concurrent `startRpcSession()` calls share a single start Promise (`globalThis.__piStartLocks`)
+- Idle timeout: 10 minutes. Visible-pane SSE subscribers call `onEvent(listener, keepAlive=true)` and keep an idle runtime from disposal; unviewed idle runtimes may be disposed and recreated from `session_start` replay. Concurrent `startRpcSession()` calls share a single start Promise (`globalThis.__piStartLocks`)
+- Stop still aborts work. Observer lifetime must not block abort.
 
 ### Fork must destroy the wrapper immediately
 `AgentSession.fork()` **mutates the wrapper's inner state in-place** — after fork, `inner.sessionId` is the *new* session's id. If the wrapper stays alive in the registry under the old id, the next request gets the already-forked state and subsequent forks produce a corrupt `parentSession` chain.
@@ -173,15 +176,22 @@ The last preset explicitly selected by the user is stored in browser `localStora
 ### `enabledModels` scoping
 The `enabledModels` setting uses pi's `--models` syntax: minimatch globs against `provider/modelId` or a bare `modelId`, fuzzy matching for non-glob patterns, and an optional `:thinkingLevel` suffix. Never compare those patterns as literal strings — `lib/model-scope.ts` delegates to the SDK's `resolveModelScopeWithDiagnostics()` so pi-web and the TUI agree on the visible model list, and falls back to all available models when patterns resolve to nothing. `startRpcSession()` resolves that scope before creating an AgentSession and passes the selected initial model, thinking pin, and SDK-native `scopedModels` atomically; `GET /api/models` reuses the helper only for selector data, `thinkingLevelPins`, and `modelScopeWarnings` display.
 
+### Extension UI (no persistent widgets)
+- Web does not display persistent TUI widgets. `setWidget` remains as a compatibility RPC method: string arrays are fire-and-forget `extension_ui_request` events the browser ignores; factories are not invoked; nothing is cached or rendered.
+- Other extension interactions stay supported: `select` / `confirm` / `input` / `editor` / `custom()`, plus notify / status / title / editor-text RPC, keyboard/focus/cancel/Stop, pending dialog replay, and normal chat SSE.
+- `ctx.ui.theme` is `WebExtensionTheme` (accent 34 / success 32 / error 31 / warning 33 / muted 90 / other 39). `custom()` keeps the unstyled `PlainTextTheme`. `getToolsExpanded()` is always false.
+- Visible-pane SSE calls `onEvent(listener, keepAlive=true)` so the runtime stays live for startup dialogs and other extension UI; this is a generic UI subscription marker, not a widget view.
+- Idle `/api/sessions/[id]/state` is `{ running: false }` with no `state` object.
+
 ### SSE reconnect on page refresh mid-stream
-On `ChatWindow` mount, `GET /api/agent/[id]` is called. If `state.isStreaming === true`, SSE is reconnected automatically. `thinkingLevel` and `isCompacting` are also synced from this response.
+On `ChatWindow` mount, the visible pane connects SSE (which starts the runtime if needed). `GET /api/agent/[id]` still reconciles streaming/thinking/compaction.
 
 ### Compaction SSE events
 Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `auto_compaction_start` / `auto_compaction_end`. `handleAgentEvent` accepts both sets to keep `isCompacting` in sync. Manual compact is a blocking POST — the button stays disabled until the response returns.
 
 ### Running state polling + reconciliation
 - The sidebar polls `/api/agent/running` every 2.5 seconds while the tab is visible and pauses polling in background tabs. The session-list response remains the initial fallback.
-- `useAgentSession` treats per-session SSE as primary for chat events and opens it before each prompt. `prompt_done` completes the current UI stage and notification immediately, but the idle SSE stays open for a 30-second grace window and is reused by the next prompt. `agent_start` cancels that close timer; `agent_settled` finishes extension-injected runs that have no wrapper-level `prompt_done` and starts a fresh grace window. Do not close on the first `agent_end`: retries, compaction, and extension-queued messages can continue the same logical prompt.
+- `useAgentSession` treats per-session SSE as primary. A visible interactive chat pane stays subscribed so extension UI and idle updates converge; unviewed runs keep the 30-second grace window after `prompt_done` for completion. `agent_start` cancels that close timer; `agent_settled` finishes extension-injected runs that have no wrapper-level `prompt_done` and starts a fresh grace window for unviewed runs. Do not close on the first `agent_end`: retries, compaction, and extension-queued messages can continue the same logical prompt.
 - While a run is active, `useAgentSession` periodically calls `GET /api/agent/[id]` and also reconciles on `visibilitychange`/`online`. This fixes missed terminal events from background tabs or half-open connections.
 - Prompt runs use a monotonic run id; late SSE or slow reconciliation responses from an old run must be ignored so they cannot resurrect stale streaming bubbles.
 

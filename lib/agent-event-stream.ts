@@ -7,7 +7,7 @@ import {
 export interface AgentEventStreamSession {
   readonly isStreaming: boolean;
   readonly streamingMessage: unknown;
-  onEvent(listener: (event: AgentEventLike) => void): () => void;
+  onEvent(listener: (event: AgentEventLike) => void, keepAlive?: boolean): () => void;
   onClose?(listener: () => void): () => void;
 }
 
@@ -84,7 +84,7 @@ export function createAgentEventStream(
             forwardEvent(event, snapshot);
           };
 
-          const stopListening = session.onEvent(handleEvent);
+          const stopListening = session.onEvent(handleEvent, true);
           if (closed) {
             stopListening();
             return;

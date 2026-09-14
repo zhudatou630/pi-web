@@ -79,7 +79,7 @@ test("unsplit current chat keeps stats callbacks even if the leftover pane is se
   assert.match(source, /const primaryPaneHasFocus = !isSplitActive \|\| activeChatPane === "primary";/);
   assert.match(
     source,
-    /renderChatWindow\(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus\)/,
+    /renderChatWindow\(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, undefined, true\)/,
   );
   assert.match(source, /onContextUsageChange=\{isFocusedPane \? handleContextUsageChange : undefined\}/);
   assert.match(source, /onSessionStatsChange=\{isFocusedPane \? handleSessionStatsChange : undefined\}/);

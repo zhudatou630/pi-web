@@ -593,3 +593,39 @@ test("queued subagent stop bypasses the ordinary running-prompt gate", () => {
   assert.match(abortSource, /if \(queuedSubagent && sid\) \{[\s\S]*?sendStop\("abort"\)/);
   assert.match(abortSource, /stopRequestPendingRef/);
 });
+
+test("visible idle panes stay subscribed and skip the prompt-complete close", () => {
+  const graceSource = source.slice(
+    source.indexOf("const scheduleEventStreamClose"),
+    source.indexOf("const finishPromptWithoutStream"),
+  );
+  assert.match(graceSource, /visiblePaneRef\.current && sessionIdRef\.current === sid/);
+  assert.match(graceSource, /closeEvents\(\)/);
+  assert.match(source, /isVisiblePane = false/);
+  assert.match(source, /buildAgentEventSourceUrl\(sid\)/);
+  assert.doesNotMatch(source, /new EventSource\(`\/api\/agent\/\$\{encodeURIComponent\(sid\)\}\/events`\)/);
+  assert.match(
+    source,
+    /const sid = session\?\.id \?\? sessionIdRef\.current \?\? null;\s*if \(!sid\) return;/,
+  );
+  const paneSource = source.slice(
+    source.indexOf("if (!isVisiblePane) {"),
+    source.indexOf("const respondToExtensionUi"),
+  );
+  assert.match(paneSource, /ensureConnected\(sid\)/);
+  assert.doesNotMatch(paneSource, /reconnect\(sid\)/);
+  assert.match(source, /if \(visiblePaneRef\.current\) \{[\s\S]*?refreshEventStream\(sid\)/);
+});
+
+test("tool preset recreation refreshes the event stream", () => {
+  const toolsSource = source.slice(
+    source.indexOf("const handleToolPresetChange"),
+    source.indexOf("const scrollToMessage"),
+  );
+  assert.match(toolsSource, /recreated \|\| activeSessionId !== sid/);
+  assert.match(
+    toolsSource,
+    /if \(activeSessionId !== sid\) \{[\s\S]*?closeEvents\(\);[\s\S]*?sessionIdRef\.current = activeSessionId/,
+  );
+  assert.match(toolsSource, /refreshEventStream\(activeSessionId\)/);
+});
