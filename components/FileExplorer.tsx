@@ -965,12 +965,13 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           </svg>
           <input
             ref={searchInputRef}
+            className="file-search-input"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Escape") onFileSearchOpenChange?.(false); }}
             placeholder={t("sidebar.searchFilesPlaceholder")}
             aria-label={t("sidebar.searchFiles")}
-            style={{ width: "100%", boxSizing: "border-box", padding: "6px 24px", border: "1px solid var(--border)", borderRadius: 5, outline: "none", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11 }}
+            style={{ width: "100%", boxSizing: "border-box", padding: "6px 24px", border: "1px solid var(--border)", borderRadius: 5, outline: "none", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit", fontSize: 12 }}
           />
           {searchQuery && (
             <button

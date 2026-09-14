@@ -62,8 +62,8 @@ test("contains chat content and inputs within the mobile viewport", () => {
   assert.match(chatInputSource, /flex: compact \? "none" : 1,\s*minWidth: 0,\s*width: "100%",/);
 });
 
-test("prevents iOS focus zoom from widening the layout", () => {
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?textarea,[\s\S]*?input,[\s\S]*?select \{\s*font-size: 16px !important;/);
+test("does not force a global 16px font-size on mobile inputs", () => {
+  assert.doesNotMatch(cssSource, /@media \(max-width: 640px\)[\s\S]*?textarea,[\s\S]*?input,[\s\S]*?select \{\s*font-size: 16px/);
 });
 
 test("keeps modal dialogs clear of the iOS status bar in standalone mode", () => {

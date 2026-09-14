@@ -2258,17 +2258,7 @@ span.token.table {
     flex-wrap: wrap;
     padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
   }
-  textarea,
-  input,
-  select {
-    font-size: 16px !important;
-  }
-  .chat-input-textarea,
-  .image-generation-prompt {
-    font-size: var(--chat-content-font-size, 14px) !important;
-  }
   .image-generation-select {
-    font-size: 12px !important;
     width: auto !important;
     max-width: 100%;
     flex: none;
@@ -2276,10 +2266,6 @@ span.token.table {
   }
   .session-list-row input,
   .session-rename-input {
-    font-size: 13px !important;
     line-height: 1.4 !important;
-  }
-  .sidebar-dropdown-filter-input {
-    font-size: 12px !important;
   }
 }

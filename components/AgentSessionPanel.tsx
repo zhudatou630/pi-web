@@ -230,6 +230,7 @@ export function AgentSessionPanel({
           <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
             <input
               type="search"
+              className="agent-switcher-search-input"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t("agentSwitcher.search")}

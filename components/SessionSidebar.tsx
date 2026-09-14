@@ -1626,6 +1626,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     <div style={{ padding: "6px 8px" }}>
                       <input
                         ref={wtNewInputRef}
+                        className="sidebar-dropdown-filter-input"
                         value={wtNewBranch}
                         onChange={(e) => {
                           setWtNewBranch(e.target.value);
