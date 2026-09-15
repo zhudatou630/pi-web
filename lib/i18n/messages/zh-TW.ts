@@ -570,6 +570,8 @@ export const zhTWLocale: LocalePlugin = {
     "models.saveModelsJson": "儲存 models.json",
     "models.endpoint": "端點",
     "models.pickerMaterializeConfirm": "隱藏模型會把目前可見清單寫入 settings.json。之後新接入的模型不會自動出現，需要再勾選。繼續？",
+    "models.disconnectConfirm": "中斷 {name}？",
+    "models.disconnectClearsPicker": "中斷 {name}？選擇器裡的 {count} 個模型也會移除。重新連線後可再勾選。",
     "models.pickerProjectOverride": "目前工作區在 .pi/settings.json 覆寫了 enabledModels，請改那個檔案。",
     "models.pickerGlobManaged": "此模型由 enabledModels 的 glob 規則包含，請改 ~/.pi/agent/settings.json。",
     "models.pickerLastModel": "選擇器至少要保留一個模型。",

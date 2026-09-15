@@ -570,6 +570,8 @@ export const zhCNLocale: LocalePlugin = {
     "models.saveModelsJson": "保存 models.json",
     "models.endpoint": "端点",
     "models.pickerMaterializeConfirm": "隐藏模型会把当前可见列表写入 settings.json。之后新接入的模型不会自动出现，需要再勾选。继续？",
+    "models.disconnectConfirm": "断开 {name}？",
+    "models.disconnectClearsPicker": "断开 {name}？选择器里的 {count} 个模型也会移除。重新连接后可再勾选。",
     "models.pickerProjectOverride": "当前工作区在 .pi/settings.json 覆盖了 enabledModels，请改那个文件。",
     "models.pickerGlobManaged": "该模型由 enabledModels 的 glob 规则包含，请改 ~/.pi/agent/settings.json。",
     "models.pickerLastModel": "选择器至少要保留一个模型。",

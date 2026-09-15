@@ -570,6 +570,8 @@ export const enLocale: LocalePlugin = {
     "models.saveModelsJson": "Save models.json",
     "models.endpoint": "Endpoint",
     "models.pickerMaterializeConfirm": "Hiding a model pins the current visible list in settings.json. Newly connected models will stay hidden until you add them. Continue?",
+    "models.disconnectConfirm": "Disconnect {name}?",
+    "models.disconnectClearsPicker": "Disconnect {name}? This will also remove {count} models from the picker. You can add them again after reconnecting.",
     "models.pickerProjectOverride": "This workspace overrides enabledModels in .pi/settings.json. Edit that file instead.",
     "models.pickerGlobManaged": "This model is included by an enabledModels glob. Edit ~/.pi/agent/settings.json.",
     "models.pickerLastModel": "The picker must keep at least one model.",

@@ -30,6 +30,34 @@ export function modelPickerRef(provider: string, id: string): string {
   return `${provider}/${id}`;
 }
 
+const THINKING_SUFFIX = /:(off|minimal|low|medium|high|xhigh|max)$/;
+
+function patternBase(pattern: string): string {
+  return pattern.trim().replace(THINKING_SUFFIX, "");
+}
+
+export function isExactProviderPattern(pattern: string, provider: string): boolean {
+  const base = patternBase(pattern);
+  return Boolean(base) && !/[*?\[]/.test(base) && base.startsWith(`${provider}/`);
+}
+
+export function removeExactProviderPatterns(
+  patterns: string[] | undefined,
+  provider: string,
+): string[] {
+  return (patterns ?? []).filter((pattern) => !isExactProviderPattern(pattern, provider));
+}
+
+export function countExactProviderPatterns(
+  patterns: string[] | undefined,
+  provider: string,
+): number {
+  return (patterns ?? []).reduce(
+    (count, pattern) => count + (isExactProviderPattern(pattern, provider) ? 1 : 0),
+    0,
+  );
+}
+
 export function applyPickerToggle(input: {
   patterns: string[] | undefined;
   projectHasEnabledModels: boolean;

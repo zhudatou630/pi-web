@@ -1,4 +1,5 @@
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { clearExactEnabledModelsForProvider } from "@/lib/enabled-models-disconnect";
 import { invalidateModelsCache } from "@/lib/models-cache";
 import { removeStoredCredentialIfType } from "@/lib/provider-credential-store";
 
@@ -16,6 +17,11 @@ export async function POST(
   const removal = await removeStoredCredentialIfType(provider, "oauth");
   if (removal.status === "type_mismatch") {
     return Response.json({ error: `${provider} is authenticated with an API key, not OAuth` }, { status: 409 });
+  }
+  try {
+    await clearExactEnabledModelsForProvider(provider);
+  } catch {
+    // Credential is already gone; leftover picker entries only resurface as a warning.
   }
   invalidateModelsCache();
   return Response.json({ ok: true });

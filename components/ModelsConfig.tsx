@@ -23,7 +23,7 @@ import {
   type ModelCostKey,
   type ModelOverrideFields,
 } from "./models-config-helpers";
-import type { RuntimeCatalogModel } from "@/lib/model-picker";
+import { countExactProviderPatterns, type RuntimeCatalogModel } from "@/lib/model-picker";
 import {
   ConfigButton,
   ConfigDetail,
@@ -1325,7 +1325,23 @@ function ModelDetail({
 
 // ── OAuth detail ──────────────────────────────────────────────────────────────
 
-function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefresh: () => void }) {
+function confirmProviderDisconnect(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  name: string,
+  count: number,
+): boolean {
+  return window.confirm(count > 0
+    ? t("models.disconnectClearsPicker", { name, count })
+    : t("models.disconnectConfirm", { name }));
+}
+
+function OAuthDetail({
+  provider, pickerCount, onRefresh,
+}: {
+  provider: OAuthProvider;
+  pickerCount: number;
+  onRefresh: () => void;
+}) {
   const [loginState, setLoginState] = useState<OAuthLoginState>({ phase: "idle" });
   const { t } = useI18n();
   const [inputValue, setInputValue] = useState("");
@@ -1402,10 +1418,11 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
   }, [provider.id, onRefresh]);
 
   const handleLogout = useCallback(async () => {
+    if (!confirmProviderDisconnect(t, provider.name, pickerCount)) return;
     await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, { method: "POST" });
     setLoginState({ phase: "idle" });
     onRefresh();
-  }, [provider.id, onRefresh]);
+  }, [provider.id, provider.name, pickerCount, onRefresh, t]);
 
   const submitCode = useCallback(async (token: string, code: string) => {
     if (!code.trim()) return;
@@ -1610,7 +1627,13 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
 
 // ── API Key detail ────────────────────────────────────────────────────────────
 
-function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRefresh: () => void }) {
+function ApiKeyDetail({
+  provider, pickerCount, onRefresh,
+}: {
+  provider: ApiKeyProvider;
+  pickerCount: number;
+  onRefresh: () => void;
+}) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -1653,6 +1676,7 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
   }, [apiKey, provider.id, onRefresh]);
 
   const handleRemove = useCallback(async () => {
+    if (!confirmProviderDisconnect(t, provider.displayName, pickerCount)) return;
     setRemoving(true);
     setError(null);
     try {
@@ -1665,7 +1689,7 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
     } finally {
       setRemoving(false);
     }
-  }, [provider.id, onRefresh]);
+  }, [provider.id, provider.displayName, pickerCount, onRefresh, t]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1879,6 +1903,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [catalog, setCatalog] = useState<RuntimeCatalogModel[]>([]);
+  const [enabledModels, setEnabledModels] = useState<string[]>([]);
   const [pickerUnscoped, setPickerUnscoped] = useState(true);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [pickerBusy, setPickerBusy] = useState<string | null>(null);
@@ -1896,6 +1921,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
   const refreshRuntime = useCallback(() => {
     if (!cwd) {
       setCatalog([]);
+      setEnabledModels([]);
       return;
     }
     const params = new URLSearchParams({ cwd });
@@ -1903,10 +1929,16 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
       .then((r) => r.json())
       .then((d: { catalog?: RuntimeCatalogModel[]; enabledModels?: string[]; unscoped?: boolean }) => {
         if (Array.isArray(d.catalog)) setCatalog(d.catalog);
+        setEnabledModels(Array.isArray(d.enabledModels) ? d.enabledModels : []);
         setPickerUnscoped(Boolean(d.unscoped));
       })
       .catch(() => {});
   }, [cwd]);
+
+  const refreshAuthAndRuntime = useCallback(() => {
+    refreshAuthProviders();
+    refreshRuntime();
+  }, [refreshAuthProviders, refreshRuntime]);
 
   useEffect(() => {
     fetch("/api/models-config")
@@ -2237,8 +2269,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
       const apiKey = apiKeyProviders.find((item) => item.id === p.id && item.configured);
       return (
         <>
-          <OAuthDetail key={p.id} provider={p} onRefresh={refreshAuthProviders} />
-          {apiKey && <ApiKeyDetail key={`${p.id}-key`} provider={apiKey} onRefresh={refreshAuthProviders} />}
+          <OAuthDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} />
+          {apiKey && <ApiKeyDetail key={`${p.id}-key`} provider={apiKey} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} />}
           {renderCatalogShelf(p.id)}
           {hasCustomEndpoint(json) && json && renderEndpoint(p.id, json)}
         </>
@@ -2250,7 +2282,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
       const json = config.providers?.[p.id];
       return (
         <>
-          <ApiKeyDetail key={p.id} provider={p} onRefresh={refreshAuthProviders} />
+          <ApiKeyDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} />
           {renderCatalogShelf(p.id)}
           {hasCustomEndpoint(json) && json && renderEndpoint(p.id, json)}
         </>
