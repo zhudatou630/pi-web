@@ -1927,42 +1927,17 @@ export function AppShell() {
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
       />
-      <div style={{ flexShrink: 0, padding: "4px 8px", borderTop: "1px solid var(--border)" }}>
+      <div className="sidebar-footer">
         <button
           type="button"
           onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
           title={translate("common.settings")}
           aria-label={translate("common.settings")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            boxSizing: "border-box",
-            width: "100%",
-            height: 30,
-            margin: 0,
-            padding: "0 8px",
-            background: "none",
-            border: "none",
-            borderRadius: 5,
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontFamily: "inherit",
-            fontSize: 12,
-            fontWeight: 500,
-            textAlign: "left",
-            transition: "color 0.12s, background 0.12s",
-          }}
-          onMouseEnter={(event) => {
-            event.currentTarget.style.color = "var(--text)";
-            event.currentTarget.style.background = "var(--bg-hover)";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.color = "var(--text-muted)";
-            event.currentTarget.style.background = "none";
-          }}
+          className="sidebar-footer-item"
         >
-          <SettingsGearIcon size={14} />
+          <span className="sidebar-section-gutter">
+            <SettingsGearIcon size={13} />
+          </span>
           <span>{translate("common.settings")}</span>
         </button>
       </div>

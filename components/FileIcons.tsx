@@ -123,3 +123,16 @@ export function getFileIcon(name: string, size = 14): React.ReactNode {
   const icon = EXTENSION_ICONS[ext];
   return icon ? <CatppuccinIcon name={icon} size={size} /> : <GenericFileIcon size={size} />;
 }
+
+export function SidebarChevronGlyph({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="12" height="12" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "block", flexShrink: 0 }}
+    >
+      <polyline points="9 6 15 12 9 18" />
+    </svg>
+  );
+}

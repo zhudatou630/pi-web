@@ -32,8 +32,27 @@ test("conversation and file headers keep the aligned 30px row", () => {
   assert.equal(header["border-bottom"], "1px solid var(--border)");
   assert.equal((shell.match(/className="workspace-header"/g) ?? []).length, 2);
   assert.match(shell, /const TOP_BAR_ICON_BUTTON_SIZE = 30/);
-  assert.match(sidebar, /height:\s*"var\(--workspace-header-height, 30px\)"/);
-  assert.match(sidebar, /borderBottom:\s*"1px solid var\(--border\)"/);
+  assert.equal(declarations(".sidebar-section-row").height, "var(--workspace-header-height, 30px)");
+  assert.equal(declarations(".sidebar-switcher")["border-bottom"], "1px solid var(--border)");
+});
+
+test("sidebar cwd is a switcher, sections share a chevron gutter, settings is a footer", () => {
+  const label = declarations(".sidebar-section-label");
+  const gutter = declarations(".sidebar-section-gutter");
+  const footer = declarations(".sidebar-footer-item");
+  assert.equal(gutter.width, "20px");
+  assert.equal(gutter["justify-content"], "center");
+  assert.equal(label["font-size"], "12px");
+  assert.equal(label["font-weight"], "600");
+  assert.equal(footer["font-weight"], "600");
+  assert.equal(footer.padding, "0 8px 0 2px");
+  assert.equal(declarations(".sidebar-footer").padding, "4px 8px 4px 0");
+  assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 2);
+  assert.match(sidebar, /className="sidebar-switcher"/);
+  assert.match(shell, /className="sidebar-footer"/);
+  assert.match(shell, /className="sidebar-footer-item"/);
+  assert.doesNotMatch(shell, /sidebar-section-label/);
+  assert.doesNotMatch(shell, /toUpperCase\(\)/);
 });
 
 test("selection marks and svg baselines do not shift original icon sizes", () => {

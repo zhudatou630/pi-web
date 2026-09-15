@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
-import { getFileIcon, FolderIcon } from "./FileIcons";
+import { getFileIcon, FolderIcon, SidebarChevronGlyph } from "./FileIcons";
 import {
   encodeFilePathForApi,
   getFileDirectory,
@@ -299,8 +299,8 @@ function TreeNode({
           position: "relative",
           display: "flex",
           alignItems: "center",
-          gap: 4,
-          paddingLeft: 8 + depth * 14,
+          gap: 2,
+          paddingLeft: 2 + depth * 14,
           paddingRight: 8,
           height: 24,
           cursor: "pointer",
@@ -310,15 +310,11 @@ function TreeNode({
         }}
       >
         {node.isDir && (
-          <svg
-            width="10" height="10" viewBox="0 0 10 10" fill="none"
-            stroke="var(--text-dim)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-            style={{ flexShrink: 0, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.1s" }}
-          >
-            <polyline points="3 2 7 5 3 8" />
-          </svg>
+          <span style={{ color: "var(--text-dim)", display: "inline-flex" }}>
+            <SidebarChevronGlyph open={open} />
+          </span>
         )}
-        {!node.isDir && <span style={{ width: 10, flexShrink: 0 }} />}
+        {!node.isDir && <span style={{ width: 12, flexShrink: 0 }} />}
         <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", transform: "translateY(0.5px)" }}>
           {node.isDir ? <FolderIcon size={14} open={open} /> : getFileIcon(node.name, 14)}
         </span>
@@ -457,7 +453,7 @@ function TreeNode({
             />
           ))}
           {children.length === 0 && loaded && (
-            <div style={{ paddingLeft: 8 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
+            <div style={{ paddingLeft: 2 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
               empty
             </div>
           )}
@@ -466,7 +462,7 @@ function TreeNode({
               type="button"
               onClick={() => void loadChildren(true)}
               title={loadError}
-              style={{ marginLeft: 8 + (depth + 1) * 14, height: 22, padding: 0, border: 0, background: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}
+              style={{ marginLeft: 2 + (depth + 1) * 14, height: 22, padding: 0, border: 0, background: "none", color: "#f87171", cursor: "pointer", fontSize: 11 }}
             >
               {t("files.loadFailedRetry")}
             </button>
