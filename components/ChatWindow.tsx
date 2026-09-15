@@ -118,55 +118,111 @@ function NewSessionCwdControl({
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
   const [recentPaths, setRecentPaths] = useState<string[]>([]);
   const [homeDir, setHomeDir] = useState("");
+  const [worktreeInfo, setWorktreeInfo] = useState<{
+    projectRoot: string;
+    currentWorktreePath: string | null;
+    worktrees: { path: string; branch: string | null; isMain: boolean }[];
+  } | null>(null);
   const cwdRows = [
     ...pinnedPaths.map((path) => ({ path, pinned: true })),
     ...recentPaths.filter((path) => !pinnedPaths.includes(path)).map((path) => ({ path, pinned: false })),
   ];
 
   useEffect(() => {
+    fetch("/api/home")
+      .then((response) => (response.ok ? response.json() as Promise<{ home?: string }> : null))
+      .then((data) => {
+        if (typeof data?.home === "string") setHomeDir(data.home);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/worktrees?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() as Promise<{ isGit?: boolean; projectRoot?: string; currentWorktreePath?: string | null; worktrees?: { path: string; branch: string | null; isMain: boolean }[] }> : null))
+      .then((data) => {
+        setWorktreeInfo(data?.isGit && data.worktrees
+          ? { projectRoot: data.projectRoot ?? cwd, currentWorktreePath: data.currentWorktreePath ?? null, worktrees: data.worktrees }
+          : null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setWorktreeInfo(null);
+      });
+    return () => controller.abort();
+  }, [cwd]);
+
+  useEffect(() => {
     if (!menuOpen) return;
     const controller = new AbortController();
     const pins = loadPinnedCwds();
     setPinnedPaths(pins);
-    void Promise.all([
-      fetch("/api/sessions", { cache: "no-store", signal: controller.signal })
-        .then((response) => (response.ok ? response.json() as Promise<{ sessions?: SessionInfo[] }> : { sessions: [] })),
-      fetch("/api/home", { signal: controller.signal })
-        .then((response) => (response.ok ? response.json() as Promise<{ home?: string }> : { home: undefined })),
-    ]).then(([sessions, home]) => {
-      setRecentPaths(getRecentProjects(sessions.sessions ?? []).map((project) => project.root));
-      if (typeof home.home === "string") setHomeDir(home.home);
-    }).catch(() => {
-      if (!controller.signal.aborted) setRecentPaths([]);
-    });
-    const onDocument = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDocument);
-    return () => {
-      controller.abort();
-      document.removeEventListener("mousedown", onDocument);
-    };
+    fetch("/api/sessions", { cache: "no-store", signal: controller.signal })
+      .then((response) => (response.ok ? response.json() as Promise<{ sessions?: SessionInfo[] }> : { sessions: [] }))
+      .then((sessions) => {
+        setRecentPaths(getRecentProjects(sessions.sessions ?? []).map((project) => project.root));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRecentPaths([]);
+      });
+    return () => controller.abort();
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (!menuOpen && !branchMenuOpen) return;
+    const onDocument = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+        setBranchMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocument);
+    return () => document.removeEventListener("mousedown", onDocument);
+  }, [menuOpen, branchMenuOpen]);
+
+  const worktrees = worktreeInfo?.worktrees ?? [];
+  const currentWorktree = worktrees.find((w) => w.path === cwd || w.path === worktreeInfo?.currentWorktreePath)
+    ?? worktrees.find((w) => w.isMain);
+  const currentBranch = currentWorktree?.branch ?? null;
+  const displayProject = worktreeInfo?.projectRoot ?? cwd;
+  const projectLabel = homeDir && displayProject.startsWith(homeDir)
+    ? `~${displayProject.slice(homeDir.length)}`
+    : displayProject;
+  const closeMenus = () => {
+    setMenuOpen(false);
+    setBranchMenuOpen(false);
+  };
+  const choose = (path: string) => {
+    if (path === cwd) {
+      closeMenus();
+      return;
+    }
+    setBusy(true);
+    void onChange(path).then(closeMenus).finally(() => setBusy(false));
+  };
+
   return (
-    <div ref={rootRef} style={{ position: "relative", marginTop: 10, maxWidth: "100%" }}>
+    <div ref={rootRef} style={{ position: "relative", marginTop: 10, maxWidth: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
       <button
         type="button"
         title={t("chat.changeWorkingDirectory")}
-        aria-label={`${t("chat.changeWorkingDirectory")}: ${cwd}`}
+        aria-label={`${t("chat.changeWorkingDirectory")}: ${displayProject}`}
         aria-expanded={menuOpen}
-        onClick={() => setMenuOpen((open) => !open)}
+        onClick={() => {
+          setMenuOpen((open) => !open);
+          setBranchMenuOpen(false);
+        }}
         onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
         onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
         style={{
-          maxWidth: "100%",
+          maxWidth: "min(80vw, 360px)",
           border: "none",
           background: "none",
           color: "var(--text-muted)",
@@ -178,9 +234,43 @@ function NewSessionCwdControl({
         }}
       >
         <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl", textAlign: "center" }}>
-          <span style={{ unicodeBidi: "plaintext" }}>{cwd}</span>
+          <span style={{ unicodeBidi: "plaintext" }}>{projectLabel}</span>
         </span>
       </button>
+      {currentBranch && (
+        <>
+          <span aria-hidden="true" style={{ color: "var(--text-dim)", fontSize: 12, userSelect: "none" }}>|</span>
+          <button
+            type="button"
+            title={currentWorktree?.path}
+            aria-label={`${t("sidebar.switchWorktree")}: ${currentBranch}`}
+            aria-expanded={branchMenuOpen}
+            onClick={() => {
+              setBranchMenuOpen((open) => !open);
+              setMenuOpen(false);
+            }}
+            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
+            style={{
+              maxWidth: 220,
+              border: "none",
+              background: "none",
+              color: "var(--text-muted)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+              lineHeight: 1.4,
+              padding: 0,
+              cursor: "pointer",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {currentBranch}
+          </button>
+        </>
+      )}
+
       {menuOpen && (
         <div
           role="listbox"
@@ -203,90 +293,84 @@ function NewSessionCwdControl({
           }}
         >
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
-            {cwdRows.map(({ path, pinned }) => (
-              <div
-                key={path}
-                className="project-pin-row"
-                style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)" }}
-              >
-              <button
-                type="button"
-                role="option"
-                aria-selected={path === cwd}
-                disabled={busy}
-                onClick={() => {
-                  if (path === cwd) {
-                    setMenuOpen(false);
-                    return;
-                  }
-                  setBusy(true);
-                  void onChange(path).then(
-                    () => setMenuOpen(false),
-                  ).finally(() => setBusy(false));
-                }}
-                title={path}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  flex: 1,
-                  minWidth: 0,
-                  padding: "8px 10px",
-                  background: "var(--bg)",
-                  border: "none",
-                  color: path === cwd ? "var(--text)" : "var(--text-muted)",
-                  cursor: busy ? "default" : "pointer",
-                  fontSize: 11,
-                  fontFamily: "var(--font-mono)",
-                  textAlign: "left",
-                }}
-              >
-                {path === cwd ? (
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                    <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                  </svg>
-                ) : (
-                  <span style={{ width: 10, flexShrink: 0 }} />
-                )}
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {homeDir && path.startsWith(homeDir) ? `~${path.slice(homeDir.length)}` : path}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="project-pin-btn"
-                title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
-                aria-label={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
-                aria-pressed={pinned}
-                onClick={() => {
-                  setPinnedPaths((current) => {
-                    const next = togglePinnedCwd(current, path);
-                    savePinnedCwds(next);
-                    return next;
-                  });
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 24,
-                  height: 24,
-                  marginRight: 4,
-                  padding: 0,
-                  background: "none",
-                  border: "none",
-                  borderRadius: 4,
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="12" y1="17" x2="12" y2="22" />
-                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
-                </svg>
-              </button>
-              </div>
-            ))}
+            {cwdRows.map(({ path, pinned }) => {
+              const isSelected = path === cwd || Boolean(worktreeInfo?.projectRoot && path === worktreeInfo.projectRoot);
+              return (
+                <div
+                  key={path}
+                  className="project-pin-row"
+                  style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)" }}
+                >
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    disabled={busy}
+                    onClick={() => choose(path)}
+                    title={path}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "8px 10px",
+                      background: "var(--bg)",
+                      border: "none",
+                      color: isSelected ? "var(--text)" : "var(--text-muted)",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: 11,
+                      fontFamily: "var(--font-mono)",
+                      textAlign: "left",
+                    }}
+                  >
+                    {isSelected ? (
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <polyline points="1.5 5 4 7.5 8.5 2.5" />
+                      </svg>
+                    ) : (
+                      <span style={{ width: 10, flexShrink: 0 }} />
+                    )}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {homeDir && path.startsWith(homeDir) ? `~${path.slice(homeDir.length)}` : path}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="project-pin-btn"
+                    title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
+                    aria-label={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
+                    aria-pressed={pinned}
+                    onClick={() => {
+                      setPinnedPaths((current) => {
+                        const next = togglePinnedCwd(current, path);
+                        savePinnedCwds(next);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 24,
+                      height: 24,
+                      marginRight: 4,
+                      padding: 0,
+                      background: "none",
+                      border: "none",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="12" y1="17" x2="12" y2="22" />
+                      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
           </div>
           <button
             type="button"
@@ -309,6 +393,74 @@ function NewSessionCwdControl({
           >
             {t("sidebar.customPath")}
           </button>
+        </div>
+      )}
+      {branchMenuOpen && worktrees.length > 0 && (
+        <div
+          role="listbox"
+          aria-label={t("sidebar.switchWorktree")}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "max-content",
+            minWidth: 180,
+            maxWidth: "min(90vw, 260px)",
+            zIndex: 50,
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 4,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
+            overflow: "hidden",
+            textAlign: "left",
+          }}
+        >
+          <div style={{ maxHeight: 280, overflowY: "auto" }}>
+            {worktrees.map((wt) => {
+              const isCurrent = wt.path === cwd || wt.path === worktreeInfo?.currentWorktreePath;
+              return (
+                <button
+                  key={wt.path}
+                  type="button"
+                  role="option"
+                  aria-selected={Boolean(isCurrent)}
+                  disabled={busy}
+                  onClick={() => choose(wt.path)}
+                  title={wt.path}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    width: "100%",
+                    padding: "8px 10px",
+                    background: "var(--bg)",
+                    border: "none",
+                    borderBottom: "1px solid var(--border)",
+                    color: isCurrent ? "var(--text)" : "var(--text-muted)",
+                    cursor: busy ? "default" : "pointer",
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                    textAlign: "left",
+                  }}
+                >
+                  {isCurrent ? (
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <polyline points="1.5 5 4 7.5 8.5 2.5" />
+                    </svg>
+                  ) : (
+                    <span style={{ width: 10, flexShrink: 0 }} />
+                  )}
+                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {wt.branch ?? wt.path}
+                  </span>
+                  {wt.isMain && (wt.branch ?? "").toLowerCase() !== t("sidebar.main").toLowerCase() && (
+                    <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10 }}>{t("sidebar.main")}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
       {pickerOpen && (

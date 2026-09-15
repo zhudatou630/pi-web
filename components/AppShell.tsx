@@ -1578,6 +1578,7 @@ export function AppShell() {
     if (!draftKey || activeNewSessionDraftKeyRef.current === draftKey) {
       setNewSessionCwd(nextCwd);
     }
+    setActiveCwd(nextCwd);
   }, []);
 
   const handleToggleSplit = useCallback(() => {
