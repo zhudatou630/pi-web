@@ -633,7 +633,7 @@ function ProcessDetailsGroup({
   };
 
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div style={{ marginBottom: isPanelOpen ? 8 : 2 }}>
       <button
         type="button"
         aria-expanded={isPanelOpen}
