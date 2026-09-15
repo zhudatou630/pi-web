@@ -50,8 +50,14 @@ export function getAssistantErrorMessage(
   return message.errorMessage?.trim() || "Unknown provider error";
 }
 
+export const PROCESS_TEXT_PROMOTE_MIN_CHARS = 200;
+
 function isFinalAnswerBlock(block: AssistantContentBlock, options: DisplayOptions = {}): boolean {
   return block.type === "image" || (block.type === "text" && (options.isStreaming ? block.text.length > 0 : block.text.trim().length > 0));
+}
+
+function isPromotedProcessText(block: AssistantContentBlock): boolean {
+  return block.type === "text" && block.text.trim().length > PROCESS_TEXT_PROMOTE_MIN_CHARS;
 }
 
 export function splitFinalAssistantBlocks(
@@ -60,12 +66,17 @@ export function splitFinalAssistantBlocks(
 ): { answerBlocks: AssistantContentBlock[]; processBlocks: AssistantContentBlock[] } {
   const blocks = getDisplayableAssistantBlocks(message, options);
   const lastProcessIndex = blocks.findLastIndex((block) => !isFinalAnswerBlock(block, options));
-  if (lastProcessIndex === -1) {
-    return { answerBlocks: blocks, processBlocks: [] };
+  const processBlocks = lastProcessIndex === -1 ? [] : blocks.slice(0, lastProcessIndex + 1);
+  const answerBlocks = lastProcessIndex === -1 ? blocks : blocks.slice(lastProcessIndex + 1);
+  const keptProcess: AssistantContentBlock[] = [];
+  const promoted: AssistantContentBlock[] = [];
+  for (const block of processBlocks) {
+    if (isPromotedProcessText(block)) promoted.push(block);
+    else keptProcess.push(block);
   }
   return {
-    answerBlocks: blocks.slice(lastProcessIndex + 1),
-    processBlocks: blocks.slice(0, lastProcessIndex + 1),
+    answerBlocks: [...promoted, ...answerBlocks],
+    processBlocks: keptProcess,
   };
 }
 

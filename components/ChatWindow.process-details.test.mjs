@@ -76,6 +76,13 @@ test("keeps completed turn projections stable while only the streaming tail chan
   assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);
 });
 
+test("partitions every assistant in a turn so promoted process text can render outside steps", () => {
+  assert.match(source, /const parts = completedAssistantParts\[processIdx\]/);
+  assert.match(source, /promotedAnswers\.push\(\{ idx: processIdx, message: parts\.answerMessage \}\)/);
+  assert.match(source, /keyPrefix: "promoted"/);
+  assert.doesNotMatch(source, /processIdx === finalAssistantIdx\s*\?[\s\S]*?: processMessage/);
+});
+
 test("renders completed image tool results outside process details", () => {
   assert.match(source, /imageMessage\.role !== "toolResult"[\s\S]*?getImageGenerationResult\(imageMessage\.details\)/);
   assert.match(source, /rendered\.push\(renderMessage\(imageIdx\)\)/);

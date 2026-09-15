@@ -223,13 +223,12 @@ test("restores copy and time only on a completed final answer", () => {
     usage: { input: 246, output: 267, cacheRead: 0, cacheWrite: 0, cost: { total: 0.0774 } },
   };
   const html = renderMessage(message, { isTurnEnd: true, modelName: "GPT-6 Astra" });
-  assert.match(html, /data-answer-model[^>]*>GPT-6 Astra<\/div>/);
+  assert.match(html, /data-answer-footer[\s\S]*data-answer-model[^>]*>GPT-6 Astra<\/div>/);
   assert.equal((html.match(/GPT-6 Astra/g) ?? []).length, 1);
   const fallbackHtml = renderMessage(message, { isTurnEnd: true });
-  assert.match(fallbackHtml, /data-answer-model[^>]*>hidden-model<\/div>/);
+  assert.match(fallbackHtml, /data-answer-footer[\s\S]*data-answer-model[^>]*>hidden-model<\/div>/);
   assert.match(html, /margin-bottom:16px/);
-  assert.match(html, /data-answer-footer[^>]*justify-content:flex-end/);
-  assert.doesNotMatch(html.slice(html.indexOf("data-answer-footer")), /margin-left:auto/);
+  assert.match(html.slice(html.indexOf("data-answer-footer")), /margin-left:auto/);
   assert.match(html, /title="Copy message"/);
   assert.ok(html.includes(new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
   assert.doesNotMatch(html, /opacity:0|hidden-model|246 in|267 out|\$0\.0774/);

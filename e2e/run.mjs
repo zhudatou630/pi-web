@@ -76,7 +76,7 @@ try {
     message("call", "user", "assistant", [
       { type: "thinking", thinking: "" },
       { type: "thinking", thinking: "E2E intermediate reasoning\nIntermediate thinking details." },
-      { type: "text", text: "E2E process paragraph.\n\n".repeat(20) },
+      { type: "text", text: "E2E process paragraph." },
       { type: "toolCall", id: "t1", name: "bash", arguments: { command: "echo E2E tool output" } },
     ]),
     toolResult,

@@ -279,17 +279,15 @@ function partitionAssistantMessage(
   options: { isStreaming?: boolean } = {},
 ): { processMessage: AssistantMessage | null; answerMessage: AssistantMessage | null } {
   const split = splitFinalAssistantBlocks(message, options);
-  const processEnd = message.content.indexOf(split.answerBlocks[0]);
-  const processBlocks = message.content.slice(0, processEnd < 0 ? undefined : processEnd);
   const answerMessage = (split.answerBlocks.length > 0 || getAssistantErrorMessage(message, options))
     ? withAssistantBlocks(message, split.answerBlocks)
     : null;
   const processVisible = getDisplayableAssistantBlocks(
-    { ...message, content: processBlocks },
+    { ...message, content: split.processBlocks },
     options,
   );
   const processMessage = processVisible.length > 0
-    ? withAssistantBlocks(message, processBlocks, {
+    ? withAssistantBlocks(message, split.processBlocks, {
         omitUsage: Boolean(answerMessage) && !options.isStreaming,
         omitError: Boolean(answerMessage),
       })
@@ -1851,6 +1849,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
                 const processViews: ReactNode[] = [];
                 const processEntryIds: string[] = [];
+                const promotedAnswers: { idx: number; message: AssistantMessage }[] = [];
                 let processToolCount = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
@@ -1874,9 +1873,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     continue;
                   }
                   if (processMessage.role !== "assistant") continue;
-                  const message = processIdx === finalAssistantIdx
-                    ? finalParts?.processMessage
-                    : processMessage;
+                  const parts = completedAssistantParts[processIdx];
+                  if (processIdx !== finalAssistantIdx && parts?.answerMessage) {
+                    promotedAnswers.push({ idx: processIdx, message: parts.answerMessage });
+                  }
+                  const message = parts?.processMessage;
                   if (!message) continue;
                   const blocks = getDisplayableAssistantBlocks(message);
                   const hasError = Boolean(getAssistantErrorMessage(message));
@@ -1966,6 +1967,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   rendered.push(renderMessage(imageIdx));
                 }
 
+                for (const promoted of promotedAnswers) {
+                  markOutlineTarget([entryIds[promoted.idx]]);
+                  rendered.push(renderMessage(promoted.idx, {
+                    keyPrefix: "promoted",
+                    messageOverride: promoted.message,
+                  }));
+                }
                 if (finalAnswerMessage) {
                   markOutlineTarget([entryIds[finalAssistantIdx]]);
                   rendered.push(renderMessage(finalAssistantIdx, {
