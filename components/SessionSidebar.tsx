@@ -10,6 +10,7 @@ import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
+import { loadPinnedCwds, savePinnedCwds, togglePinnedCwd } from "@/lib/pinned-cwds";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
@@ -302,6 +303,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [customPathError, setCustomPathError] = useState<string | null>(null);
   const [customPathValidating, setCustomPathValidating] = useState(false);
   const [validatedProject, setValidatedProject] = useState<ValidatedProject | null>(null);
+  const [pinnedCwds, setPinnedCwds] = useState<string[]>(() => loadPinnedCwds());
   const dropdownRef = useRef<HTMLDivElement>(null);
   // Worktree switcher state
   const [worktreeState, setWorktreeState] = useState<WorktreeState | null>(null);
@@ -882,9 +884,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   // First paint has no cwd yet; treating that as "please select" flashes blue.
   const showSelectProjectPrompt = !selectedCwd && !loading && !error && recentProjects.length === 0;
   const showProjectFilter = recentProjects.length > 8;
-  const visibleProjects = projectFilter.trim()
-    ? recentProjects.filter((project) => project.root.toLowerCase().includes(projectFilter.trim().toLowerCase()))
+  const projectQuery = projectFilter.trim().toLowerCase();
+  const visibleProjects = projectQuery
+    ? recentProjects.filter((project) => project.root.toLowerCase().includes(projectQuery))
     : recentProjects;
+  const dropdownProjectRows = [
+    ...pinnedCwds
+      .filter((path) => !projectQuery || path.toLowerCase().includes(projectQuery))
+      .map((path) => ({ project: recentProjects.find((item) => item.root === path) ?? { key: path, root: path }, pinned: true })),
+    ...visibleProjects.filter((project) => !pinnedCwds.includes(project.root)).map((project) => ({ project, pinned: false })),
+  ];
 
   // Sessions of every worktree in the selected project are shown together
   const selectedProject = projectFor(selectedCwd);
@@ -1238,9 +1247,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 </div>
               )}
               <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto" }}>
-                {visibleProjects.map((project) => (
+                {dropdownProjectRows.map(({ project, pinned }) => (
+                  <div
+                    key={project.root}
+                    className="project-pin-row"
+                    style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)" }}
+                  >
                   <button
-                    key={project.key}
                     onClick={() => {
                       setSelectedCwd(project.root);
                       setProjectFilter("");
@@ -1252,11 +1265,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       display: "flex",
                       alignItems: "center",
                       gap: 7,
-                      width: "100%",
+                      flex: 1,
+                      minWidth: 0,
                       padding: "8px 10px",
                       background: "var(--bg)",
                       border: "none",
-                      borderBottom: "1px solid var(--border)",
                       color: project.key === selectedProject?.key ? "var(--text)" : "var(--text-muted)",
                       cursor: "pointer",
                       textAlign: "left",
@@ -1277,8 +1290,42 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     <PathLabel text={displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
                     {showProjectActivity(projectActivity.get(project.key), t)}
                   </button>
+                  <button
+                    type="button"
+                    className="project-pin-btn"
+                    onClick={() => {
+                      setPinnedCwds((current) => {
+                        const next = togglePinnedCwd(current, project.root);
+                        savePinnedCwds(next);
+                        return next;
+                      });
+                    }}
+                    title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
+                    aria-label={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
+                    aria-pressed={pinned}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 24,
+                      height: 24,
+                      marginRight: 4,
+                      padding: 0,
+                      background: "none",
+                      border: "none",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="12" y1="17" x2="12" y2="22" />
+                      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                    </svg>
+                  </button>
+                  </div>
                 ))}
-                {visibleProjects.length === 0 && projectFilter.trim() && (
+                {dropdownProjectRows.length === 0 && projectFilter.trim() && (
                    <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.noMatchingProjects")}</div>
                 )}
               </div>

@@ -180,3 +180,10 @@ test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible))
   assert.doesNotMatch(globalCss, /\.session-list-row:has\(\.session-row-actions\):focus-within \.session-row-meta/);
 });
 
+test("project dropdown pins live in the menu, not the sidebar surface", () => {
+  assert.match(source, /from "@\/lib\/pinned-cwds"/);
+  assert.match(source, /dropdownProjectRows/);
+  assert.match(source, /togglePinnedCwd\(current, project.root\)/);
+  assert.match(source, /className="project-pin-btn"/);
+});
+

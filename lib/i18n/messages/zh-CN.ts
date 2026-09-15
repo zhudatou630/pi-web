@@ -202,6 +202,8 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.noMatchingProjects": "没有匹配的项目",
     "sidebar.useDefaultDirectory": "使用默认目录",
     "sidebar.customPath": "自定义路径…",
+    "sidebar.pinDirectory": "固定此目录",
+    "sidebar.unpinDirectory": "取消固定",
     "directoryPicker.selectDirectory": "选择目录",
     "directoryPicker.goToParent": "转到上级目录",
     "directoryPicker.directoryPath": "目录路径",

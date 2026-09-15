@@ -1871,6 +1871,19 @@ span.token.table {
   opacity: 0 !important;
 }
 
+.project-pin-row .project-pin-btn {
+  color: var(--text-dim);
+  opacity: 0;
+}
+.project-pin-row:hover .project-pin-btn,
+.project-pin-row:has(:focus-visible) .project-pin-btn {
+  opacity: 0.7;
+}
+.project-pin-row .project-pin-btn[aria-pressed="true"] {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
 /* Compact running-state beacon: refined 5px core with a smooth expanding wave ring */
 .live-pulse-beacon {
   position: relative;

@@ -27,6 +27,8 @@ import { getModelDisplayName, MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { getRecentProjects } from "@/lib/project-groups";
+import { loadPinnedCwds, savePinnedCwds, togglePinnedCwd } from "@/lib/pinned-cwds";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { MobileChatNav } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
@@ -114,21 +116,56 @@ function NewSessionCwdControl({
   onChange: (cwd: string) => Promise<void>;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
+  const [recentPaths, setRecentPaths] = useState<string[]>([]);
+  const [homeDir, setHomeDir] = useState("");
+  const cwdRows = [
+    ...pinnedPaths.map((path) => ({ path, pinned: true })),
+    ...recentPaths.filter((path) => !pinnedPaths.includes(path)).map((path) => ({ path, pinned: false })),
+  ];
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const controller = new AbortController();
+    const pins = loadPinnedCwds();
+    setPinnedPaths(pins);
+    void Promise.all([
+      fetch("/api/sessions", { cache: "no-store", signal: controller.signal })
+        .then((response) => (response.ok ? response.json() as Promise<{ sessions?: SessionInfo[] }> : { sessions: [] })),
+      fetch("/api/home", { signal: controller.signal })
+        .then((response) => (response.ok ? response.json() as Promise<{ home?: string }> : { home: undefined })),
+    ]).then(([sessions, home]) => {
+      setRecentPaths(getRecentProjects(sessions.sessions ?? []).map((project) => project.root));
+      if (typeof home.home === "string") setHomeDir(home.home);
+    }).catch(() => {
+      if (!controller.signal.aborted) setRecentPaths([]);
+    });
+    const onDocument = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocument);
+    return () => {
+      controller.abort();
+      document.removeEventListener("mousedown", onDocument);
+    };
+  }, [menuOpen]);
 
   return (
-    <>
+    <div ref={rootRef} style={{ position: "relative", marginTop: 10, maxWidth: "100%" }}>
       <button
         type="button"
         title={t("chat.changeWorkingDirectory")}
         aria-label={`${t("chat.changeWorkingDirectory")}: ${cwd}`}
-        onClick={() => setOpen(true)}
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((open) => !open)}
         onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
         onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
         style={{
-          marginTop: 10,
           maxWidth: "100%",
           border: "none",
           background: "none",
@@ -144,23 +181,153 @@ function NewSessionCwdControl({
           <span style={{ unicodeBidi: "plaintext" }}>{cwd}</span>
         </span>
       </button>
-      {open && (
+      {menuOpen && (
+        <div
+          role="listbox"
+          aria-label={t("chat.changeWorkingDirectory")}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "max-content",
+            minWidth: 200,
+            maxWidth: "min(90vw, 260px)",
+            zIndex: 50,
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 4,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
+            overflow: "hidden",
+            textAlign: "left",
+          }}
+        >
+          <div style={{ maxHeight: 280, overflowY: "auto" }}>
+            {cwdRows.map(({ path, pinned }) => (
+              <div
+                key={path}
+                className="project-pin-row"
+                style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)" }}
+              >
+              <button
+                type="button"
+                role="option"
+                aria-selected={path === cwd}
+                disabled={busy}
+                onClick={() => {
+                  if (path === cwd) {
+                    setMenuOpen(false);
+                    return;
+                  }
+                  setBusy(true);
+                  void onChange(path).then(
+                    () => setMenuOpen(false),
+                  ).finally(() => setBusy(false));
+                }}
+                title={path}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  flex: 1,
+                  minWidth: 0,
+                  padding: "8px 10px",
+                  background: "var(--bg)",
+                  border: "none",
+                  color: path === cwd ? "var(--text)" : "var(--text-muted)",
+                  cursor: busy ? "default" : "pointer",
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                  textAlign: "left",
+                }}
+              >
+                {path === cwd ? (
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <polyline points="1.5 5 4 7.5 8.5 2.5" />
+                  </svg>
+                ) : (
+                  <span style={{ width: 10, flexShrink: 0 }} />
+                )}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {homeDir && path.startsWith(homeDir) ? `~${path.slice(homeDir.length)}` : path}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="project-pin-btn"
+                title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
+                aria-label={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
+                aria-pressed={pinned}
+                onClick={() => {
+                  setPinnedPaths((current) => {
+                    const next = togglePinnedCwd(current, path);
+                    savePinnedCwds(next);
+                    return next;
+                  });
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 24,
+                  height: 24,
+                  marginRight: 4,
+                  padding: 0,
+                  background: "none",
+                  border: "none",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="12" y1="17" x2="12" y2="22" />
+                  <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                </svg>
+              </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              setPickerOpen(true);
+              setError(null);
+            }}
+            style={{
+              display: "block",
+              width: "100%",
+              padding: "8px 10px",
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 11,
+              textAlign: "left",
+            }}
+          >
+            {t("sidebar.customPath")}
+          </button>
+        </div>
+      )}
+      {pickerOpen && (
         <DirectoryPicker
           initialPath={cwd}
           busy={busy}
           error={error}
-          onCancel={() => { setOpen(false); setError(null); }}
+          onCancel={() => { setPickerOpen(false); setError(null); }}
           onSelect={(path) => {
             setBusy(true);
             setError(null);
             void onChange(path).then(
-              () => setOpen(false),
+              () => setPickerOpen(false),
               (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
             ).finally(() => setBusy(false));
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 
