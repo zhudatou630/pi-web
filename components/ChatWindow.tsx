@@ -1660,6 +1660,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]"
           style={{
             overflowAnchor: "none",
+            overscrollBehaviorY: "contain",
             visibility: pendingScrollRestore ? "hidden" : undefined,
           }}
         >
@@ -2038,43 +2039,34 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </div>
           </div>
         </div>
-        {(() => {
-          const handleScrollToBottom = () => {
-            outlineJumpControllerRef.current?.abort();
-            setPendingOutlineJump(null);
-            setPendingSearchScroll(null);
-            setUnmountedNewerCount(0);
-            setMountLimit(MOUNTED_GROUP_LIMIT);
-            requestAnimationFrame(() => scrollToBottom("smooth"));
-          };
-          return (
-            <>
-              {!isMobile && showScrollBottom && !pendingScrollRestore && (
-                <button
-                  type="button"
-                  onClick={handleScrollToBottom}
-                  className="absolute bottom-3 right-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-[4px] border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                  title={t("chat.scrollToBottom")}
-                  aria-label={t("chat.scrollToBottom")}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="m7 10 5 5 5-5" />
-                  </svg>
-                </button>
-              )}
-              {isMobile && isVisiblePane && !pendingScrollRestore && (
-                <MobileChatNav
-                  sessionId={session?.id ?? sessionIdRef.current}
-                  leafId={activeLeafId}
-                  outlineRevision={outlineRevision}
-                  showScrollBottom={showScrollBottom}
-                  onScrollToBottom={handleScrollToBottom}
-                  onJumpToEntry={jumpToOutlineEntry}
-                />
-              )}
-            </>
-          );
-        })()}
+        {showScrollBottom && !pendingScrollRestore && (
+          <button
+            type="button"
+            onClick={() => {
+              outlineJumpControllerRef.current?.abort();
+              setPendingOutlineJump(null);
+              setPendingSearchScroll(null);
+              setUnmountedNewerCount(0);
+              setMountLimit(MOUNTED_GROUP_LIMIT);
+              requestAnimationFrame(() => scrollToBottom("smooth"));
+            }}
+            className="absolute bottom-3 right-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-[4px] border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            title={t("chat.scrollToBottom")}
+            aria-label={t("chat.scrollToBottom")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m7 10 5 5 5-5" />
+            </svg>
+          </button>
+        )}
+        {isMobile && isVisiblePane && (
+          <MobileChatNav
+            sessionId={session?.id ?? sessionIdRef.current}
+            leafId={activeLeafId}
+            outlineRevision={outlineRevision}
+            onJumpToEntry={jumpToOutlineEntry}
+          />
+        )}
         {!isVisiblePane || isMobile || pendingScrollRestore ? null : (
           <ChatMinimap
             sessionId={session?.id ?? sessionIdRef.current}

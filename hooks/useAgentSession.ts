@@ -470,7 +470,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // the keyboard-shifted document layer visibly jumps the whole app while
     // streaming content follows the tail.
     isNearBottomRef.current = true;
-    container.scrollTo({ top: container.scrollHeight, behavior });
+    container.scrollTo({ top: Math.max(0, container.scrollHeight - container.clientHeight), behavior });
     previousScrollTopRef.current = container.scrollTop;
   }, []);
 

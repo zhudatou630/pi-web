@@ -598,6 +598,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [toolDropdownOpen, setToolDropdownOpen] = useState(false);
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
+  const [statsActive, setStatsActive] = useState(false);
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
   const [mentionedImages, setMentionedImages] = useState<string[]>([]);
@@ -646,6 +647,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const controlsMenuRef = useRef<HTMLDivElement>(null);
   const composerBoxRef = useRef<HTMLDivElement>(null);
   const toolbarControlsRef = useRef<HTMLDivElement>(null);
+  const statsButtonRef = useRef<HTMLButtonElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
@@ -1599,6 +1601,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (controlsMenuRef.current && !controlsMenuRef.current.contains(target)) {
         setControlsMenuOpen(false);
       }
+      if (statsButtonRef.current && !statsButtonRef.current.contains(target)) {
+        setStatsActive(false);
+      }
       if (slashMenuRef.current && !slashMenuRef.current.contains(target) && !textareaRef.current?.contains(target)) {
         setSlashMenuOpen(false);
       }
@@ -1619,19 +1624,107 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!isMobile) setControlsMenuOpen(false);
   }, [isMobile]);
 
+  const renderContextUsageWidget = (mobile: boolean) => {
+    if (!contextUsage || contextUsage.contextWindow <= 0) return null;
+    const windowTokens = contextUsage.contextWindow;
+    const tokens = contextUsage.tokens;
+    const percent = contextUsage.percent ?? (tokens !== null ? (tokens / windowTokens) * 100 : null);
+    const clampedPercent = percent !== null ? Math.min(100, Math.max(0, percent)) : 0;
+    const isHigh = percent !== null && percent >= 85;
+    const isWarning = percent !== null && percent >= 70 && percent < 85;
+    const meterColor = isHigh
+      ? "#ef4444"
+      : isWarning
+        ? "rgba(234,179,8,0.95)"
+        : "var(--text-muted)";
+    const label = tokens !== null
+      ? `${formatTokensK(tokens)}/${formatTokensK(windowTokens)}`
+      : `?/${formatTokensK(windowTokens)}`;
+    const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
+    const tooltip = [
+      `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
+      remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)}` : null,
+      cacheHitRate !== null && cacheHitRate !== undefined
+        ? `${t("session.cacheHitRate")}: ${cacheHitRate.toFixed(1)}%`
+        : null,
+      isHigh ? `⚠️ ${t("chat.contextHighWarning")}` : null,
+    ].filter(Boolean).join("\n");
+
+    return (
+      <button
+        ref={statsButtonRef}
+        type="button"
+        onClick={() => {
+          setStatsActive((v) => !v);
+          onOpenSessionStats?.();
+        }}
+        title={tooltip}
+        aria-label={tooltip}
+        data-top-panel-trigger={onOpenSessionStats ? "session" : undefined}
+        aria-controls={onOpenSessionStats ? "workspace-top-panel" : undefined}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          padding: "0 4px",
+          height: mobile ? 32 : 28,
+          background: statsActive
+            ? (isHigh ? "rgba(239,68,68,0.12)" : "var(--bg-hover)")
+            : (isHigh ? "rgba(239,68,68,0.06)" : "none"),
+          border: isHigh ? "1px solid rgba(239,68,68,0.25)" : "none",
+          borderRadius: 4,
+          color: meterColor,
+          cursor: onOpenSessionStats ? "pointer" : "default",
+          fontSize: mobile ? 11 : 12,
+          lineHeight: 1,
+          fontVariantNumeric: "tabular-nums",
+          whiteSpace: "nowrap",
+          transition: "background 0.12s, color 0.12s, border-color 0.12s",
+        }}
+        onMouseEnter={(e) => {
+          if (!mobile && onOpenSessionStats && !statsActive) {
+            e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!mobile && onOpenSessionStats && !statsActive) {
+            e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.06)" : "none";
+          }
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "rotate(-90deg)" }}>
+          <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" opacity="0.22" />
+          <circle
+            cx="8"
+            cy="8"
+            r="5.5"
+            pathLength="100"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeDasharray={`${clampedPercent} 100`}
+            style={{ transition: "stroke-dasharray 0.3s ease" }}
+          />
+        </svg>
+        <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em", lineHeight: 1 }}>
+          {label}
+        </span>
+        {cacheHitRate !== null && cacheHitRate !== undefined && (
+          <span style={{ lineHeight: 1 }}>
+            {cacheHitRate.toFixed(0)}%
+          </span>
+        )}
+      </button>
+    );
+  };
+
   useLayoutEffect(() => {
     if (!isMobile || !controlsMenuOpen) return;
-    const box = composerBoxRef.current;
     const panel = toolbarControlsRef.current;
-    if (!box || !panel) return;
-    const syncHeight = () => {
-      panel.style.height = `${box.offsetHeight}px`;
-    };
-    syncHeight();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncHeight);
-    observer?.observe(box);
+    if (!panel) return;
+    panel.style.height = "32px";
     return () => {
-      observer?.disconnect();
       panel.style.height = "";
     };
   }, [isMobile, controlsMenuOpen]);
@@ -2609,7 +2702,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     background: "var(--bg)",
                     border: "1px solid var(--border)",
                     borderRadius: 4,
-                    boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+                    boxShadow: "0 4px 20px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.08)",
                     overflow: "hidden",
                     minWidth: 120,
                   }}
@@ -2690,6 +2783,25 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               }}
             />
           )}
+          {isMobile && (controlsMenuOpen || toolDropdownOpen || thinkingDropdownOpen || imageMenuOpen) && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 55,
+                background: "transparent",
+                WebkitTapHighlightColor: "transparent",
+              }}
+              onClick={() => {
+                setToolDropdownOpen(false);
+                setThinkingDropdownOpen(false);
+                setImageMenuOpen(false);
+                setControlsMenuOpen(false);
+                setStatsActive(false);
+              }}
+              aria-hidden="true"
+            />
+          )}
           <div ref={controlsMenuRef} style={{
             flex: "0 0 auto",
             display: "flex",
@@ -2699,6 +2811,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             marginLeft: isMobile ? 0 : "auto",
             zIndex: isMobile && controlsMenuOpen ? 60 : undefined,
           }}>
+            {isMobile && renderContextUsageWidget(true)}
             {isMobile && (() => {
               const isHighContext = Boolean(contextPercent != null && contextPercent >= 85);
               const isWarningContext = Boolean(contextPercent != null && contextPercent >= 70 && contextPercent < 85);
@@ -2753,6 +2866,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 position: "absolute",
                 right: 0,
                 bottom: "100%",
+                height: 32,
                 zIndex: 60,
                 boxSizing: "border-box",
                 padding: "1px 2px",
@@ -2764,13 +2878,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 border: "1px solid var(--border)",
                 borderRadius: 4,
                 background: "var(--bg)",
-                boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.06)",
               } : null),
             }}>
             {onThinkingLevelChange && (
-              <div ref={thinkingDropdownRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <div ref={thinkingDropdownRef} style={{ position: isMobile ? "static" : "relative", display: "flex", alignItems: "center" }}>
                 <button
-                  onClick={() => !isStreaming && setThinkingDropdownOpen((v) => !v)}
+                  onClick={() => !isStreaming && (setToolDropdownOpen(false), setThinkingDropdownOpen((v) => !v))}
                   disabled={isStreaming}
                    title={t("chat.changeReasoning", { level: thinkingDisplayLabel })}
                    aria-label={t("chat.changeReasoningLabel")}
@@ -2806,9 +2920,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 {thinkingDropdownOpen && (
                   <div style={{
                     position: "absolute", bottom: "calc(100% + 6px)",
-                    ...(isMobile ? { left: 0 } : { right: 0 }),
+                    right: 0,
+                    maxWidth: "calc(100vw - 24px)",
                     zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
-                    borderRadius: 4, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+                    borderRadius: 4, boxShadow: "0 4px 20px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.08)",
                     overflow: "hidden", minWidth: 180,
                   }}>
                     {THINKING_LEVELS.filter((lvl) => {
@@ -2858,97 +2973,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             )}
 
-            {!isMobile && contextUsage && contextUsage.contextWindow > 0 && (() => {
-              const windowTokens = contextUsage.contextWindow;
-              const tokens = contextUsage.tokens;
-              const percent = contextUsage.percent ?? (tokens !== null ? (tokens / windowTokens) * 100 : null);
-              const clampedPercent = percent !== null ? Math.min(100, Math.max(0, percent)) : 0;
-              const isHigh = percent !== null && percent >= 85;
-              const isWarning = percent !== null && percent >= 70 && percent < 85;
-              const meterColor = isHigh
-                ? "#ef4444"
-                : isWarning
-                  ? "rgba(234,179,8,0.95)"
-                  : "var(--text-muted)";
-              const label = tokens !== null
-                ? `${formatTokensK(tokens)}/${formatTokensK(windowTokens)}`
-                : `?/${formatTokensK(windowTokens)}`;
-              const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
-              const tooltip = [
-                `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${percent !== null ? percent.toFixed(1) : "?"}%)`,
-                remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)}` : null,
-                cacheHitRate !== null && cacheHitRate !== undefined
-                  ? `${t("session.cacheHitRate")}: ${cacheHitRate.toFixed(1)}%`
-                  : null,
-                isHigh ? `⚠️ ${t("chat.contextHighWarning")}` : null,
-              ].filter(Boolean).join("\n");
-
-              return (
-                <button
-                  type="button"
-                  onClick={onOpenSessionStats}
-                  title={tooltip}
-                  aria-label={tooltip}
-                  data-top-panel-trigger={onOpenSessionStats ? "session" : undefined}
-                  aria-controls={onOpenSessionStats ? "workspace-top-panel" : undefined}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 4,
-                    padding: "0 4px",
-                    height: 28,
-                    background: isHigh ? "rgba(239,68,68,0.06)" : "none",
-                    border: isHigh ? "1px solid rgba(239,68,68,0.25)" : "none",
-                    borderRadius: 4,
-                    color: meterColor,
-                    cursor: onOpenSessionStats ? "pointer" : "default",
-                    fontSize: 12,
-                    lineHeight: 1,
-                    fontVariantNumeric: "tabular-nums",
-                    whiteSpace: "nowrap",
-                    transition: "background 0.12s, border-color 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (onOpenSessionStats) {
-                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.12)" : "var(--bg-hover)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (onOpenSessionStats) {
-                      e.currentTarget.style.background = isHigh ? "rgba(239,68,68,0.06)" : "none";
-                    }
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "rotate(-90deg)" }}>
-                    <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" opacity="0.22" />
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="5.5"
-                      pathLength="100"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeDasharray={`${clampedPercent} 100`}
-                      style={{ transition: "stroke-dasharray 0.3s ease" }}
-                    />
-                  </svg>
-                  <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em", lineHeight: 1 }}>
-                    {label}
-                  </span>
-                  {cacheHitRate !== null && cacheHitRate !== undefined && (
-                    <span style={{ lineHeight: 1 }}>
-                      {cacheHitRate.toFixed(0)}%
-                    </span>
-                  )}
-                </button>
-              );
-            })()}
+            {!isMobile && renderContextUsageWidget(false)}
             {!isStreaming && onToolPresetChange && (
-              <div ref={toolDropdownRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <div ref={toolDropdownRef} style={{ position: isMobile ? "static" : "relative", display: "flex", alignItems: "center" }}>
                 <button
-                  onClick={() => !isStreaming && setToolDropdownOpen((v) => !v)}
+                  onClick={() => !isStreaming && (setThinkingDropdownOpen(false), setToolDropdownOpen((v) => !v))}
                   disabled={isStreaming}
                   title={t("chat.changeToolPreset") + `: ${toolPresetLabel}`}
                   aria-label={t("chat.changeToolPreset")}
@@ -2987,10 +3016,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   <div style={{
                     position: "absolute",
                     bottom: "calc(100% + 6px)",
-                    right: isMobile ? undefined : 0,
-                    left: isMobile ? 0 : undefined,
+                    right: 0,
+                    maxWidth: "calc(100vw - 24px)",
                     zIndex: 100, background: "var(--bg)", border: "1px solid var(--border)",
-                    borderRadius: 4, boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+                    borderRadius: 4, boxShadow: "0 4px 20px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.08)",
                     overflow: "hidden", minWidth: 120,
                   }}>
                     {TOOL_PRESETS.map((lvl) => {

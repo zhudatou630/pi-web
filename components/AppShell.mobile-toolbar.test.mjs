@@ -195,10 +195,8 @@ test("keeps the file panel toggle right-aligned when session stats are absent", 
   assert.doesNotMatch(fileToggle, /!mobile && !sessionStats/);
 });
 
-test("mobile session stats keep context ring and cache at the same gray", () => {
+test("mobile session stats aligns with desktop to keep top session status limited to cost", () => {
   const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
-  assert.match(stats, /color: meterColor/);
-  assert.match(stats, /stroke="currentColor"/);
-  assert.doesNotMatch(stats, /meterFillColor/);
-  assert.doesNotMatch(stats, /color: "var\(--text-dim\)"/);
+  assert.match(stats, /costText/);
+  assert.doesNotMatch(stats, /contextLabel/);
 });

@@ -316,9 +316,8 @@ test("opens mobile session controls flush with the composer height", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   assert.match(source, /display: "flex", alignItems: "center", gap: 1 \}\}>/);
   assert.match(source, /className="chat-input-toolbar"[\s\S]*?marginTop: isMobile \? 0 : 4/);
-  assert.match(source, /ref=\{composerBoxRef\}/);
   assert.match(source, /ref=\{toolbarControlsRef\}/);
-  assert.match(source, /panel.style.height = `\$\{box.offsetHeight\}px`/);
+  assert.match(source, /panel\.style\.height = "32px"/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?gap: 1,/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?right: 0,/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?bottom: "100%"/);

@@ -2231,6 +2231,30 @@ export function AppShell() {
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
           </svg>
         </button>
+        {sessionTools && mobile && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("pi-toggle-outline"))}
+            title={translate("chatMinimap.userOutline") || "Outline"}
+            aria-label={translate("chatMinimap.userOutline") || "Outline"}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+              background: "none",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer", flexShrink: 0,
+            }}
+            className="workspace-header-action"
+            data-mobile-toolbar-action="outline"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="14" y2="12" />
+              <line x1="4" y1="18" x2="17" y2="18" />
+            </svg>
+          </button>
+        )}
         </>}
       </div>
     );
@@ -2297,21 +2321,6 @@ export function AppShell() {
       ? (((tokens?.cacheRead ?? 0) / promptTotal) * 100)
       : null;
 
-    const windowTokens = ctx?.contextWindow ?? 0;
-    const ctxTokens = ctx?.tokens ?? null;
-    const percent = ctx?.percent ?? (ctxTokens !== null && windowTokens > 0 ? (ctxTokens / windowTokens) * 100 : null);
-    const clampedPercent = percent !== null ? Math.min(100, Math.max(0, percent)) : 0;
-    const isHigh = percent !== null && percent >= 85;
-    const isWarning = percent !== null && percent >= 70 && percent < 85;
-    const meterColor = isHigh
-      ? "#ef4444"
-      : isWarning
-        ? "rgba(234,179,8,0.95)"
-        : "var(--text-muted)";
-    const contextLabel = windowTokens > 0
-      ? (ctxTokens !== null ? `${formatTokensK(ctxTokens, locale)}/${formatTokensK(windowTokens, locale)}` : `?/${formatTokensK(windowTokens, locale)}`)
-      : null;
-
     const tooltipParts: string[] = [];
     if (tokens) {
       tooltipParts.push(`in: ${tokens.input.toLocaleString(locale)}`);
@@ -2343,9 +2352,8 @@ export function AppShell() {
         className="workspace-header-action"
         data-mobile-toolbar-stats={mobile ? "true" : undefined}
         style={{
-          marginLeft: mobile ? 0 : "auto",
+          marginLeft: "auto",
           display: "flex", alignItems: "center", justifyContent: "flex-end",
-          flex: mobile ? 1 : undefined,
           minWidth: 0,
           gap: mobile ? 8 : 10,
           paddingLeft: mobile ? 6 : 8,
@@ -2366,32 +2374,6 @@ export function AppShell() {
           event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
         }}
       >
-        {mobile && contextLabel && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, lineHeight: 1, color: meterColor }}>
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: "block", flexShrink: 0, transform: "rotate(-90deg)" }}>
-              <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5" opacity="0.22" />
-              <circle
-                cx="8"
-                cy="8"
-                r="5.5"
-                pathLength="100"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeDasharray={`${clampedPercent} 100`}
-                style={{ transition: "stroke-dasharray 0.3s ease" }}
-              />
-            </svg>
-            <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em", lineHeight: 1 }}>
-              {contextLabel}
-            </span>
-            {cacheHitRateVal !== null && (
-              <span style={{ lineHeight: 1 }}>
-                {cacheHitRateVal.toFixed(0)}%
-              </span>
-            )}
-          </span>
-        )}
         {costText && (
           <span style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400, flexShrink: 0, lineHeight: 1 }}>
             {costText}

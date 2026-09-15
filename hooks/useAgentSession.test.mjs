@@ -496,7 +496,7 @@ test("keeps live following cancellable when the user scrolls away from the tail"
   assert.match(scrollHandlerSource, /const isAgentRunning = agentRunningRef\.current;[\s\S]*?isAgentRunning\s*\? CHAT_SCROLL_REATTACH_TOLERANCE\s*:\s*CHAT_SCROLL_TAIL_TOLERANCE/);
   assert.match(source, /previousScrollTopRef\.current = scrollTop/);
   assert.match(scrollToBottomSource, /const container = scrollContainerRef\.current;\s*if \(!container\) return;/);
-  assert.match(scrollToBottomSource, /container\.scrollTo\(\{ top: container\.scrollHeight, behavior \}\);\s*previousScrollTopRef\.current = container\.scrollTop;/);
+  assert.match(scrollToBottomSource, /container\.scrollTo\(\{ top: Math\.max\(0, container\.scrollHeight - container\.clientHeight\), behavior \}\);\s*previousScrollTopRef\.current = container\.scrollTop;/);
   assert.doesNotMatch(scrollToBottomSource, /scrollIntoView/);
   assert.match(streamUpdateSource, /scheduleLiveFollow\(\)/);
   assert.match(liveFollowSource, /liveFollowFrameRef\.current !== null/);

@@ -4,35 +4,36 @@ import test from "node:test";
 
 const chatWindowSource = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
 const mobileNavSource = await readFile(new URL("./MobileChatNav.tsx", import.meta.url), "utf8");
-const minimapSource = await readFile(new URL("./ChatMinimap.tsx", import.meta.url), "utf8");
+const appShellSource = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
+const chatInputSource = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
 
-test("preserves desktop scroll-to-bottom button and minimap exclusively for desktop", () => {
+test("unifies scroll-to-bottom button without persistent floating outline in chat window", () => {
   assert.match(
     chatWindowSource,
-    /\{!isMobile && showScrollBottom && !pendingScrollRestore && \(/,
+    /\{showScrollBottom && !pendingScrollRestore && \(/,
   );
-  assert.match(
+  assert.doesNotMatch(
     chatWindowSource,
-    /\{!isVisiblePane \|\| isMobile \|\| pendingScrollRestore \? null : \(/,
-  );
-});
-
-test("mounts MobileChatNav on mobile visible pane", () => {
-  assert.match(
-    chatWindowSource,
-    /<MobileChatNav[\s\S]*?showScrollBottom=\{showScrollBottom\}[\s\S]*?onScrollToBottom=\{handleScrollToBottom\}[\s\S]*?onJumpToEntry=\{jumpToOutlineEntry\}/,
+    /showScrollBottom=\{showScrollBottom\}/,
   );
 });
 
-test("reuses outline fetch hook across desktop and mobile from ChatMinimap", () => {
-  assert.match(minimapSource, /export function useSessionOutline\(/);
-  assert.match(mobileNavSource, /import \{ useSessionOutline \} from "\.\/ChatMinimap";/);
+test("mounts MobileChatNav on mobile visible pane for top-bar toggle", () => {
+  assert.match(
+    chatWindowSource,
+    /<MobileChatNav[\s\S]*?onJumpToEntry=\{jumpToOutlineEntry\}/,
+  );
+  assert.match(mobileNavSource, /window\.addEventListener\("pi-toggle-outline"/);
 });
 
-test("aligns nav buttons strictly to 28px square geometry with no shadow", () => {
-  assert.match(mobileNavSource, /rounded-\[4px\] border border-\[color-mix\(in_srgb,var\(--border\)_75%,transparent\)\] bg-\[var\(--bg\)\]/);
-  assert.match(mobileNavSource, /inline-flex h-7 w-7 items-center justify-center/);
-  assert.doesNotMatch(mobileNavSource, /shadow/);
+test("provides outline trigger in mobile toolbar actions", () => {
+  assert.match(appShellSource, /data-mobile-toolbar-action="outline"/);
+  assert.match(appShellSource, /window\.dispatchEvent\(new CustomEvent\("pi-toggle-outline"\)\)/);
+});
+
+test("enables context usage stats in bottom input toolbar across mobile and desktop", () => {
+  assert.match(chatInputSource, /renderContextUsageWidget\(true\)/);
+  assert.match(chatInputSource, /renderContextUsageWidget\(false\)/);
 });
 
 test("implements bottom sheet with accessible dialog, backdrop and entry selection", () => {
