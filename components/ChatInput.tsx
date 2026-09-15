@@ -644,6 +644,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const imageMenuRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
+  const composerBoxRef = useRef<HTMLDivElement>(null);
+  const toolbarControlsRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
@@ -1617,6 +1619,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (!isMobile) setControlsMenuOpen(false);
   }, [isMobile]);
 
+  useLayoutEffect(() => {
+    if (!isMobile || !controlsMenuOpen) return;
+    const box = composerBoxRef.current;
+    const panel = toolbarControlsRef.current;
+    if (!box || !panel) return;
+    const syncHeight = () => {
+      panel.style.height = `${box.offsetHeight}px`;
+    };
+    syncHeight();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncHeight);
+    observer?.observe(box);
+    return () => {
+      observer?.disconnect();
+      panel.style.height = "";
+    };
+  }, [isMobile, controlsMenuOpen]);
+
   useEffect(() => {
     if (!isStreaming) return;
     setThinkingDropdownOpen(false);
@@ -1837,7 +1856,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         )}
 
         {/* Main input */}
-        <div style={{ position: "relative", minWidth: 0 }}>
+        <div ref={composerBoxRef} style={{ position: "relative", minWidth: 0 }}>
           {slashUsage && !slashMenuOpen && (
             <div
               style={{
@@ -2519,7 +2538,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
         {/* Bottom bar: left | center (context) | right */}
         {!compact && <div className="chat-input-toolbar" style={{
-          marginTop: 4,
+          marginTop: isMobile ? 0 : 4,
           padding: isMobile ? 0 : "0 2px",
           display: isMobile ? "grid" : "flex",
           gridTemplateColumns: isMobile ? "minmax(0, 1fr) auto" : undefined,
@@ -2726,15 +2745,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </button>
               );
             })()}
-            <div className="chat-input-toolbar-controls" style={{
+            <div ref={toolbarControlsRef} className="chat-input-toolbar-controls" style={{
               display: isMobile ? (controlsMenuOpen ? "flex" : "none") : "flex",
               alignItems: "center",
               gap: 1,
               ...(isMobile ? {
                 position: "absolute",
                 right: 0,
-                bottom: "calc(100% + 6px)",
+                bottom: "100%",
                 zIndex: 60,
+                boxSizing: "border-box",
                 padding: "1px 2px",
                 width: "max-content",
                 maxWidth: "calc(100vw - 32px)",

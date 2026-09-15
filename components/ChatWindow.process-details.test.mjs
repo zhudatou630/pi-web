@@ -142,3 +142,8 @@ test("only auto-scrolls process details when the list overflows", () => {
     /if \(!box \|\| userScrolledUpRef\.current\) return;\s*if \(box\.scrollHeight <= box\.clientHeight \+ 1\) return;/,
   );
 });
+
+test("disables scroll anchoring on chat container and steps list to prevent jitter", () => {
+  assert.match(source, /ref=\{scrollContainerRef\}[\s\S]*?overflowAnchor:\s*"none"/);
+  assert.match(source, /ref=\{scrollBoxRef\}[\s\S]*?overflowAnchor:\s*"none"/);
+});

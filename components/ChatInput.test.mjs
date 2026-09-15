@@ -312,13 +312,21 @@ test("shows the live mobile contract on the overflow chip instead of a generic O
   assert.doesNotMatch(options, /visibility:/);
 });
 
-test("opens mobile session controls upward as a compact panel", () => {
+test("opens mobile session controls flush with the composer height", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   assert.match(source, /display: "flex", alignItems: "center", gap: 1 \}\}>/);
+  assert.match(source, /className="chat-input-toolbar"[\s\S]*?marginTop: isMobile \? 0 : 4/);
+  assert.match(source, /ref=\{composerBoxRef\}/);
+  assert.match(source, /ref=\{toolbarControlsRef\}/);
+  assert.match(source, /panel.style.height = `\$\{box.offsetHeight\}px`/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?gap: 1,/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?bottom: "calc\(100% \+ 6px\)"/);
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?right: 0,/);
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?bottom: "100%"/);
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?width: "max-content"/);
+  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?justifyContent: "flex-end"/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?flexWrap: "wrap"/);
   assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?overflow: "visible"/);
+  assert.doesNotMatch(source, /className="chat-input-toolbar-controls"[\s\S]*?justifyContent: "space-between"/);
   assert.doesNotMatch(source, /className="chat-input-toolbar-controls"[\s\S]*?overflowY: "auto"/);
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?thinkingDropdownOpen/);
   assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?toolDropdownOpen/);

@@ -337,10 +337,14 @@ function LocatedMinimap({ items, scrollContainer, contentContainer, loadedEntryI
   return createPortal(<ChatMinimapRail items={items} activeEntryId={activeEntryId} onJumpToEntry={onJumpToEntry} label={label} {...position} />, document.body);
 }
 
-export function ChatMinimap({ sessionId, leafId, outlineRevision, ...props }: Props) {
-  const { t } = useI18n();
+export function useSessionOutline(
+  sessionId: string | null | undefined,
+  leafId: string | null | undefined,
+  outlineRevision?: string,
+): SessionOutlineItem[] {
   const key = JSON.stringify([sessionId, leafId]);
   const [outline, setOutline] = useState<{ key: string; items: SessionOutlineItem[] } | null>(null);
+
   useEffect(() => {
     if (!sessionId) return;
     const controller = new AbortController();
@@ -352,13 +356,24 @@ export function ChatMinimap({ sessionId, leafId, outlineRevision, ...props }: Pr
         if (!response.ok) return { items: [] as SessionOutlineItem[] };
         return response.json() as Promise<{ items?: SessionOutlineItem[] }>;
       })
-      .then((payload) => { if (!controller.signal.aborted) setOutline({ key, items: payload.items ?? [] }); })
-      .catch(() => { if (!controller.signal.aborted) setOutline({ key, items: [] }); });
+      .then((payload) => {
+        if (!controller.signal.aborted) setOutline({ key, items: payload.items ?? [] });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setOutline({ key, items: [] });
+      });
     return () => controller.abort();
   }, [sessionId, leafId, outlineRevision, key]);
 
-  if (!sessionId || outline?.key !== key || !outline.items.length) return null;
-  return <LocatedMinimap key={key} {...props} items={outline.items} label={t("chatMinimap.userOutline")} />;
+  if (!sessionId || outline?.key !== key) return [];
+  return outline.items;
+}
+
+export function ChatMinimap({ sessionId, leafId, outlineRevision, ...props }: Props) {
+  const { t } = useI18n();
+  const items = useSessionOutline(sessionId, leafId, outlineRevision);
+  if (!sessionId || !items.length) return null;
+  return <LocatedMinimap key={JSON.stringify([sessionId, leafId])} {...props} items={items} label={t("chatMinimap.userOutline")} />;
 }
 
 export function useMessageRefs(count: number): RefObject<(HTMLDivElement | null)[]> {

@@ -28,6 +28,7 @@ import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
+import { MobileChatNav } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
@@ -95,10 +96,10 @@ function ActivityPulse({ label }: { label: string }) {
     <div
       role="status"
       aria-label={label}
-      className="flex h-[30px] items-center px-2"
-      style={{ marginBottom: 10 }}
+      className="flex h-[28px] items-center"
+      style={{ marginBottom: 8 }}
     >
-      <LivePulseBeacon size={14} />
+      <LivePulseBeacon size={12} />
     </div>
   );
 }
@@ -570,6 +571,7 @@ function ProcessDetailsGroup({
             overflowY: "auto",
             overflowX: "hidden",
             overscrollBehavior: "contain",
+            overflowAnchor: "none",
           }}
         >
           {children}
@@ -1656,7 +1658,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         <div
           ref={scrollContainerRef}
           className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]"
-          style={{ visibility: pendingScrollRestore ? "hidden" : undefined }}
+          style={{
+            overflowAnchor: "none",
+            visibility: pendingScrollRestore ? "hidden" : undefined,
+          }}
         >
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
             <div ref={messageContentRef} onPointerUp={captureQuotedSelection} style={{ width: "100%", minWidth: 0, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
@@ -2033,26 +2038,43 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             </div>
           </div>
         </div>
-        {showScrollBottom && !pendingScrollRestore && (
-          <button
-            type="button"
-            onClick={() => {
-              outlineJumpControllerRef.current?.abort();
-              setPendingOutlineJump(null);
-              setPendingSearchScroll(null);
-              setUnmountedNewerCount(0);
-              setMountLimit(MOUNTED_GROUP_LIMIT);
-              requestAnimationFrame(() => scrollToBottom("smooth"));
-            }}
-            className="absolute bottom-3 right-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-[4px] border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-            title={t("chat.scrollToBottom")}
-            aria-label={t("chat.scrollToBottom")}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m7 10 5 5 5-5" />
-            </svg>
-          </button>
-        )}
+        {(() => {
+          const handleScrollToBottom = () => {
+            outlineJumpControllerRef.current?.abort();
+            setPendingOutlineJump(null);
+            setPendingSearchScroll(null);
+            setUnmountedNewerCount(0);
+            setMountLimit(MOUNTED_GROUP_LIMIT);
+            requestAnimationFrame(() => scrollToBottom("smooth"));
+          };
+          return (
+            <>
+              {!isMobile && showScrollBottom && !pendingScrollRestore && (
+                <button
+                  type="button"
+                  onClick={handleScrollToBottom}
+                  className="absolute bottom-3 right-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-[4px] border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                  title={t("chat.scrollToBottom")}
+                  aria-label={t("chat.scrollToBottom")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m7 10 5 5 5-5" />
+                  </svg>
+                </button>
+              )}
+              {isMobile && isVisiblePane && !pendingScrollRestore && (
+                <MobileChatNav
+                  sessionId={session?.id ?? sessionIdRef.current}
+                  leafId={activeLeafId}
+                  outlineRevision={outlineRevision}
+                  showScrollBottom={showScrollBottom}
+                  onScrollToBottom={handleScrollToBottom}
+                  onJumpToEntry={jumpToOutlineEntry}
+                />
+              )}
+            </>
+          );
+        })()}
         {!isVisiblePane || isMobile || pendingScrollRestore ? null : (
           <ChatMinimap
             sessionId={session?.id ?? sessionIdRef.current}

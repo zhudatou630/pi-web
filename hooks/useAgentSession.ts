@@ -462,7 +462,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setToolPresetState(getPreferredToolPreset());
   }, [existingSessionId, isNew, setToolPresetState]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "instant") => {
     const container = scrollContainerRef.current;
     if (!container) return;
     // Scroll the chat container itself instead of scrolling a sentinel element
@@ -932,7 +932,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (pendingScrollToBottomRef.current || !isNearBottomRef.current || liveFollowFrameRef.current !== null) return;
     liveFollowFrameRef.current = requestAnimationFrame(() => {
       liveFollowFrameRef.current = null;
-      if (isNearBottomRef.current) scrollToBottom("auto");
+      // Live content changes every frame. A smooth/implicit scroll here keeps
+      // an animation alive while the target (scrollHeight) is moving, which
+      // makes the viewport visibly overshoot and snap back. Live-follow must
+      // be a single synchronous correction after the React commit.
+      if (isNearBottomRef.current) scrollToBottom("instant");
     });
   }, [scrollToBottom]);
 
@@ -2219,7 +2223,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       isNearBottomRef.current = isAttached;
       previousScrollTopRef.current = scrollTop;
       if (!wasAttached && isAttached && isAgentRunning) {
-        scrollToBottom("auto");
+        scrollToBottom("instant");
       } else if (!isAttached && liveFollowFrameRef.current !== null) {
         cancelAnimationFrame(liveFollowFrameRef.current);
         liveFollowFrameRef.current = null;
@@ -2312,7 +2316,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         initialScrollDoneRef.current = true;
         scrollToBottom("instant");
       } else if (!agentRunningRef.current && isNearBottomRef.current) {
-        scrollToBottom("auto");
+        scrollToBottom("instant");
       }
     }
   }, [messages.length, agentRunning, scrollToBottom]);
