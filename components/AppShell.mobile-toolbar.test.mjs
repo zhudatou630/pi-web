@@ -179,7 +179,7 @@ test("toolbar actions use spacing rather than per-button dividers, preserving re
   assert.match(source, /className="workspace-header" style=\{\{ position: "relative" \}\}/);
   assert.match(cssSource, /\.workspace-header \{[^}]*border-bottom: 1px solid var\(--border\)/);
   const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
-  assert.match(fileToggle, /borderLeft: "1px solid var\(--border\)"/);
+  assert.doesNotMatch(fileToggle, /borderLeft:/);
 });
 
 test("places trust warnings below the mobile toolbar and the file toggle in toolbar flow", () => {
