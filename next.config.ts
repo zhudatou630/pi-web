@@ -18,11 +18,10 @@ const nextConfig: NextConfig = {
     "@earendil-works/pi-tui",
   ],
   // Next 16 blocks cross-origin access to dev resources by default. Allow the
-  // loopback, RFC1918 LAN ranges, and Tailscale MagicDNS so the dev server
-  // stays reachable from other machines on the same LAN or tailnet.
+  // loopback and the RFC1918 LAN ranges so the dev server stays reachable
+  // from other machines on the same LAN.
   allowedDevOrigins: [
     "127.0.0.1",
-    "**.ts.net",
     "10.*.*.*",
     // 172.16.0.0/12
     "172.16.*.*",
