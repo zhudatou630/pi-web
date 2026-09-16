@@ -473,14 +473,6 @@ test("routes blocking extension requests through deduplicated browser attention 
 });
 
 test("keeps live following cancellable when the user scrolls away from the tail", () => {
-  const streamUpdateSource = source.slice(
-    source.indexOf('case "message_start"'),
-    source.indexOf('case "message_end"'),
-  );
-  const liveFollowSource = source.slice(
-    source.indexOf("const scheduleLiveFollow"),
-    source.indexOf("const flushStreamDeltas"),
-  );
   const scrollHandlerSource = source.slice(
     source.indexOf("const handleScrollPositionChange"),
     source.indexOf("// Load session on mount"),
@@ -489,8 +481,12 @@ test("keeps live following cancellable when the user scrolls away from the tail"
     source.indexOf("const scrollToBottom"),
     source.indexOf("const currentModel"),
   );
+  const scrollEffectSource = source.slice(
+    source.indexOf("useLayoutEffect(() => {\n    if (messages.length > 0)"),
+    source.indexOf("// Load model list"),
+  );
 
-  assert.match(source, /const liveFollowFrameRef = useRef<number \| null>\(null\)/);
+  assert.doesNotMatch(source, /liveFollowFrameRef|scheduleLiveFollow/);
   assert.match(source, /const previousScrollTopRef = useRef\(0\)/);
   assert.match(source, /const wasAttached = isNearBottomRef\.current;[\s\S]*?const isAttached = getLiveFollowAttached\([\s\S]*?wasAttached,[\s\S]*?previousScrollTopRef\.current,[\s\S]*?scrollTop,[\s\S]*?clientHeight,[\s\S]*?scrollHeight/);
   assert.match(scrollHandlerSource, /const isAgentRunning = agentRunningRef\.current;[\s\S]*?isAgentRunning\s*\? CHAT_SCROLL_REATTACH_TOLERANCE\s*:\s*CHAT_SCROLL_TAIL_TOLERANCE/);
@@ -498,11 +494,9 @@ test("keeps live following cancellable when the user scrolls away from the tail"
   assert.match(scrollToBottomSource, /const container = scrollContainerRef\.current;\s*if \(!container\) return;/);
   assert.match(scrollToBottomSource, /container\.scrollTo\(\{ top: Math\.max\(0, container\.scrollHeight - container\.clientHeight\), behavior \}\);\s*previousScrollTopRef\.current = container\.scrollTop;/);
   assert.doesNotMatch(scrollToBottomSource, /scrollIntoView/);
-  assert.match(streamUpdateSource, /scheduleLiveFollow\(\)/);
-  assert.match(liveFollowSource, /liveFollowFrameRef\.current !== null/);
-  assert.match(liveFollowSource, /requestAnimationFrame\(\(\) => \{[\s\S]*?liveFollowFrameRef\.current = null;[\s\S]*?if \(isNearBottomRef\.current\) scrollToBottom\("instant"\)/);
+  assert.match(scrollEffectSource, /isNearBottomRef\.current[\s\S]*?scrollToBottom\("instant"\)/);
+  assert.match(scrollEffectSource, /streamState\.streamingMessage/);
   assert.match(scrollHandlerSource, /!wasAttached && isAttached && isAgentRunning[\s\S]*?scrollToBottom\("instant"\)/);
-  assert.match(scrollHandlerSource, /cancelAnimationFrame\(liveFollowFrameRef\.current\)/);
   assert.match(source, /previousScrollTopRef\.current = container\.scrollTop;\s*container\.addEventListener\("scroll", handleScrollPositionChange/);
   assert.doesNotMatch(source, /SCROLL_BOTTOM_THRESHOLD|completionScrollAllowedRef|ignoreProgrammaticScrollUntilRef/);
 });
@@ -525,23 +519,14 @@ test("restores an in-page session viewport without the default tail jump", () =>
 });
 
 test("keeps sending and streaming on one tail-anchored layout", () => {
-  const streamUpdateSource = source.slice(
-    source.indexOf('case "message_start"'),
-    source.indexOf('case "message_end"'),
-  );
-  const liveFollowSource = source.slice(
-    source.indexOf("const scheduleLiveFollow"),
-    source.indexOf("const flushStreamDeltas"),
-  );
   const scrollEffectSource = source.slice(
     source.indexOf("useLayoutEffect(() => {\n    if (messages.length > 0)"),
     source.indexOf("// Load model list"),
   );
 
-  assert.match(streamUpdateSource, /scheduleLiveFollow\(\)/);
-  assert.match(liveFollowSource, /pendingScrollToBottomRef\.current \|\| !isNearBottomRef\.current/);
   assert.match(source, /pendingScrollToBottomRef\.current = true/);
   assert.match(scrollEffectSource, /pendingScrollToBottomRef\.current = false;[\s\S]*?scrollToBottom\("instant"\)/);
+  assert.match(scrollEffectSource, /\[messages\.length, agentRunning, scrollToBottom, streamState\.streamingMessage\]/);
   assert.doesNotMatch(source, /promptAnchor|scrollUserMsgToTop|lastUserMsgRef/);
   assert.doesNotMatch(chatWindowSource, /promptAnchor|scrollUserMsgToTop|lastUserMsgRef/);
   assert.match(chatWindowSource, /if \(!wasFocused && isFocusedPane\)[\s\S]*?scrollToBottom\("instant"\)/);
@@ -553,8 +538,8 @@ test("keeps a detached viewport in place when streaming completes", () => {
     source.indexOf("// Load model list"),
   );
 
-  assert.match(scrollEffectSource, /!agentRunningRef\.current && isNearBottomRef\.current[\s\S]*?scrollToBottom\("instant"\)/);
-  assert.doesNotMatch(scrollEffectSource, /\|\|/);
+  assert.match(scrollEffectSource, /else if \(isNearBottomRef\.current\) \{\s*scrollToBottom\("instant"\)/);
+  assert.doesNotMatch(scrollEffectSource, /!agentRunningRef\.current|\|\|/);
   assert.match(source, /addEventListener\("scroll", handleScrollPositionChange/);
 });
 

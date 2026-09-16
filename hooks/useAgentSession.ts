@@ -405,7 +405,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const pendingScrollToBottomRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const previousScrollTopRef = useRef(0);
-  const liveFollowFrameRef = useRef<number | null>(null);
   const streamDeltaFrameRef = useRef<number | null>(null);
   const pendingStreamDeltasRef = useRef<ClientAssistantMessageEvent[]>([]);
   const executeBashRef = useRef<(command: string, excludeFromContext: boolean) => Promise<void> | undefined>(undefined);
@@ -928,18 +927,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [addNotice, onAttentionNeeded, opts.chatInputRef]);
 
-  const scheduleLiveFollow = useCallback(() => {
-    if (pendingScrollToBottomRef.current || !isNearBottomRef.current || liveFollowFrameRef.current !== null) return;
-    liveFollowFrameRef.current = requestAnimationFrame(() => {
-      liveFollowFrameRef.current = null;
-      // Live content changes every frame. A smooth/implicit scroll here keeps
-      // an animation alive while the target (scrollHeight) is moving, which
-      // makes the viewport visibly overshoot and snap back. Live-follow must
-      // be a single synchronous correction after the React commit.
-      if (isNearBottomRef.current) scrollToBottom("instant");
-    });
-  }, [scrollToBottom]);
-
   const flushStreamDeltas = useCallback(() => {
     if (streamDeltaFrameRef.current !== null) {
       cancelAnimationFrame(streamDeltaFrameRef.current);
@@ -949,8 +936,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (events.length === 0) return;
     pendingStreamDeltasRef.current = [];
     dispatch({ type: "deltas", events });
-    scheduleLiveFollow();
-  }, [scheduleLiveFollow]);
+  }, []);
 
   const queueStreamDelta = useCallback((event: ClientAssistantMessageEvent) => {
     pendingStreamDeltasRef.current.push(event);
@@ -1325,7 +1311,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             }
           }
         }
-        if (event.type === "message_start") scheduleLiveFollow();
         break;
       }
       case "message_end": {
@@ -1472,7 +1457,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setExtensionDialog((current) => current?.id === event.id ? null : current);
         break;
     }
-  }, [addNotice, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, queueStreamDelta, scheduleEventStreamClose, scheduleLiveFollow, settleUiStage]);
+  }, [addNotice, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -2187,10 +2172,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const scrollToMessage = useCallback((element: HTMLElement, viewportOffset = 16) => {
     const container = scrollContainerRef.current;
     if (!container) return;
-    if (liveFollowFrameRef.current !== null) {
-      cancelAnimationFrame(liveFollowFrameRef.current);
-      liveFollowFrameRef.current = null;
-    }
     initialScrollDoneRef.current = true;
     pendingScrollToBottomRef.current = false;
     isNearBottomRef.current = false;
@@ -2224,9 +2205,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       previousScrollTopRef.current = scrollTop;
       if (!wasAttached && isAttached && isAgentRunning) {
         scrollToBottom("instant");
-      } else if (!isAttached && liveFollowFrameRef.current !== null) {
-        cancelAnimationFrame(liveFollowFrameRef.current);
-        liveFollowFrameRef.current = null;
       }
     }
   }, [scrollToBottom]);
@@ -2268,10 +2246,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     return () => {
       sessionHookMountedRef.current = false;
-      if (liveFollowFrameRef.current !== null) {
-        cancelAnimationFrame(liveFollowFrameRef.current);
-        liveFollowFrameRef.current = null;
-      }
       if (streamDeltaFrameRef.current !== null) cancelAnimationFrame(streamDeltaFrameRef.current);
       streamDeltaFrameRef.current = null;
       pendingStreamDeltasRef.current = [];
@@ -2315,11 +2289,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       } else if (!initialScrollDoneRef.current) {
         initialScrollDoneRef.current = true;
         scrollToBottom("instant");
-      } else if (!agentRunningRef.current && isNearBottomRef.current) {
+      } else if (isNearBottomRef.current) {
         scrollToBottom("instant");
       }
     }
-  }, [messages.length, agentRunning, scrollToBottom]);
+  }, [messages.length, agentRunning, scrollToBottom, streamState.streamingMessage]);
 
   // Load the model list with bounded retries; loadModels exposes each failure.
   useEffect(() => {
