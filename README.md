@@ -1,6 +1,6 @@
 # Pi Web
 
-这是基于 [pi](https://github.com/earendil-works/pi) 和原版 [agegr/pi-web](https://github.com/agegr/pi-web) 修改的分支，主要做了些日常使用上的调整（多标签分屏、中文与代码排版、工具执行流折叠及部分交互修复）。
+这是 [pi](https://github.com/earendil-works/pi) 的本地浏览器界面，基于原版 [agegr/pi-web](https://github.com/agegr/pi-web)。共用本机 `~/.pi/agent` 配置和会话文件。这个分支主要改日常使用：多标签分屏、中文与代码排版、工具过程折叠、对话生图、内置子代理，以及移动端和若干交互修复。
 
 ## 安装与运行
 
