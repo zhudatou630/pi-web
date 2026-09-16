@@ -83,6 +83,14 @@ test("partitions every assistant in a turn so promoted process text can render o
   assert.doesNotMatch(source, /processIdx === finalAssistantIdx\s*\?[\s\S]*?: processMessage/);
 });
 
+test("does not treat promoted process text as the turn's final answer", () => {
+  assert.match(source, /function hasFinalAssistantAnswer[\s\S]*?return hasTrailingFinalAnswer/);
+  assert.doesNotMatch(
+    source,
+    /function hasFinalAssistantAnswer[\s\S]*?splitFinalAssistantBlocks\([\s\S]*?\)\.answerBlocks/,
+  );
+});
+
 test("renders completed image tool results outside process details", () => {
   assert.match(source, /imageMessage\.role !== "toolResult"[\s\S]*?getImageGenerationResult\(imageMessage\.details\)/);
   assert.match(source, /rendered\.push\(renderMessage\(imageIdx\)\)/);
@@ -116,11 +124,6 @@ test("resets unmounted window and jumps to latest turn when sending a prompt", (
 test("removes the bottom extension status shelf from the chat window", () => {
   assert.doesNotMatch(source, /<ExtensionStatusBar/);
   assert.doesNotMatch(source, /import\s*\{\s*ExtensionStatusBar\s*\}\s*from/);
-});
-
-test("omits error from partitioned process message to avoid duplicate terminal error card", () => {
-  assert.match(source, /omitError:\s*Boolean\(answerMessage\)/);
-  assert.match(source, /if\s*\(options\.omitError\)\s*\{\s*if\s*\(next\.stopReason === "error"\)\s*next\.stopReason = "stop";\s*next\.errorMessage = undefined;\s*\}/);
 });
 
 test("matches process detail text paragraph font size to 11px to align with step items", async () => {

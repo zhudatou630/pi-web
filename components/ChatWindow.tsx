@@ -9,7 +9,7 @@ import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, splitFinalAssistantBlocks } from "@/lib/message-display";
+import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
 import {
@@ -550,9 +550,7 @@ function NewSessionUpdateLink({
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
-  return splitFinalAssistantBlocks(message as AssistantMessage).answerBlocks.some((block) => (
-    block.type === "image" || (block.type === "text" && block.text.trim().length > 0)
-  ));
+  return hasTrailingFinalAnswer(message as AssistantMessage);
 }
 
 function findFinalAssistantIndex(messages: AgentMessage[], userIdx: number, endIdx: number): number {
@@ -577,41 +575,6 @@ function getUserInputText(message: AgentMessage): string | null {
     .join("\n")
     .trim();
   return text.length > 0 ? text : null;
-}
-
-function withAssistantBlocks(
-  message: AssistantMessage,
-  content: AssistantContentBlock[],
-  options: { omitUsage?: boolean; omitError?: boolean } = {},
-): AssistantMessage {
-  const next = { ...message, content };
-  if (options.omitUsage) next.usage = undefined;
-  if (options.omitError) {
-    if (next.stopReason === "error") next.stopReason = "stop";
-    next.errorMessage = undefined;
-  }
-  return next;
-}
-
-function partitionAssistantMessage(
-  message: AssistantMessage,
-  options: { isStreaming?: boolean } = {},
-): { processMessage: AssistantMessage | null; answerMessage: AssistantMessage | null } {
-  const split = splitFinalAssistantBlocks(message, options);
-  const answerMessage = (split.answerBlocks.length > 0 || getAssistantErrorMessage(message, options))
-    ? withAssistantBlocks(message, split.answerBlocks)
-    : null;
-  const processVisible = getDisplayableAssistantBlocks(
-    { ...message, content: split.processBlocks },
-    options,
-  );
-  const processMessage = processVisible.length > 0
-    ? withAssistantBlocks(message, split.processBlocks, {
-        omitUsage: Boolean(answerMessage) && !options.isStreaming,
-        omitError: Boolean(answerMessage),
-      })
-    : null;
-  return { processMessage, answerMessage };
 }
 
 function lastStreamingBlock(message: AssistantMessage | null | undefined): AssistantContentBlock | undefined {

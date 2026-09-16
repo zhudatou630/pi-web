@@ -50,7 +50,7 @@ export function getAssistantErrorMessage(
   return message.errorMessage?.trim() || "Unknown provider error";
 }
 
-export const PROCESS_TEXT_PROMOTE_MIN_CHARS = 200;
+export const PROCESS_TEXT_PROMOTE_MIN_CHARS = 400;
 
 function isFinalAnswerBlock(block: AssistantContentBlock, options: DisplayOptions = {}): boolean {
   return block.type === "image" || (block.type === "text" && (options.isStreaming ? block.text.length > 0 : block.text.trim().length > 0));
@@ -60,14 +60,33 @@ function isPromotedProcessText(block: AssistantContentBlock): boolean {
   return block.type === "text" && block.text.trim().length > PROCESS_TEXT_PROMOTE_MIN_CHARS;
 }
 
-export function splitFinalAssistantBlocks(
+function splitTrailingAssistantBlocks(
   message: AssistantMessage,
   options: DisplayOptions = {},
 ): { answerBlocks: AssistantContentBlock[]; processBlocks: AssistantContentBlock[] } {
   const blocks = getDisplayableAssistantBlocks(message, options);
   const lastProcessIndex = blocks.findLastIndex((block) => !isFinalAnswerBlock(block, options));
-  const processBlocks = lastProcessIndex === -1 ? [] : blocks.slice(0, lastProcessIndex + 1);
-  const answerBlocks = lastProcessIndex === -1 ? blocks : blocks.slice(lastProcessIndex + 1);
+  if (lastProcessIndex === -1) return { answerBlocks: blocks, processBlocks: [] };
+  return {
+    processBlocks: blocks.slice(0, lastProcessIndex + 1),
+    answerBlocks: blocks.slice(lastProcessIndex + 1),
+  };
+}
+
+export function hasTrailingFinalAnswer(
+  message: AssistantMessage,
+  options: DisplayOptions = {},
+): boolean {
+  return splitTrailingAssistantBlocks(message, options).answerBlocks.some((block) => (
+    isFinalAnswerBlock(block, options)
+  ));
+}
+
+export function splitFinalAssistantBlocks(
+  message: AssistantMessage,
+  options: DisplayOptions = {},
+): { answerBlocks: AssistantContentBlock[]; processBlocks: AssistantContentBlock[] } {
+  const { processBlocks, answerBlocks } = splitTrailingAssistantBlocks(message, options);
   const keptProcess: AssistantContentBlock[] = [];
   const promoted: AssistantContentBlock[] = [];
   for (const block of processBlocks) {
@@ -82,4 +101,41 @@ export function splitFinalAssistantBlocks(
 
 export function countToolCallBlocks(blocks: AssistantContentBlock[]): number {
   return blocks.filter((block): block is ToolCallContent => block.type === "toolCall").length;
+}
+
+function withAssistantBlocks(
+  message: AssistantMessage,
+  content: AssistantContentBlock[],
+  options: { omitUsage?: boolean; omitError?: boolean } = {},
+): AssistantMessage {
+  const next = { ...message, content };
+  if (options.omitUsage) next.usage = undefined;
+  if (options.omitError) {
+    if (next.stopReason === "error") next.stopReason = "stop";
+    next.errorMessage = undefined;
+  }
+  return next;
+}
+
+export function partitionAssistantMessage(
+  message: AssistantMessage,
+  options: DisplayOptions = {},
+): { processMessage: AssistantMessage | null; answerMessage: AssistantMessage | null } {
+  const split = splitFinalAssistantBlocks(message, options);
+  const hasTrailingAnswer = hasTrailingFinalAnswer(message, options);
+  const hasError = Boolean(getAssistantErrorMessage(message, options));
+  const answerMessage = split.answerBlocks.length > 0
+    ? withAssistantBlocks(message, split.answerBlocks, { omitError: !hasTrailingAnswer })
+    : null;
+  const processVisible = getDisplayableAssistantBlocks(
+    { ...message, content: split.processBlocks },
+    options,
+  );
+  const processMessage = (processVisible.length > 0 || (hasError && !hasTrailingAnswer))
+    ? withAssistantBlocks(message, split.processBlocks, {
+        omitUsage: Boolean(answerMessage) && !options.isStreaming,
+        omitError: hasTrailingAnswer,
+      })
+    : null;
+  return { processMessage, answerMessage };
 }
