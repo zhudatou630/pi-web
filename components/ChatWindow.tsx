@@ -2487,9 +2487,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       <div className="relative shrink-0">
         {isEmptyNew && (
           <div className="mx-auto mb-6 flex select-none flex-col items-center justify-center text-center" style={{ maxWidth: "var(--chat-content-max-width, 820px)", padding: "0 16px" }}>
-            <div style={{ display: "inline-flex", alignItems: "baseline", gap: isMobile ? 7 : 10, fontFamily: "var(--font-mono)", lineHeight: 1.4 }}>
-              <span style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>π</span>
-              <span style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", flexShrink: 0, whiteSpace: "nowrap" }}>Pi Web</span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 10, lineHeight: 1 }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 32" width="82" height="32" fill="currentColor" role="img" aria-label="Pi Web" style={{ color: "var(--text)", flexShrink: 0, display: "block" }}>
+                <path d="M0 0H24V16H16V8H0ZM0 8H8V16H16V24H8V32H0ZM24 16H32V32H24ZM44 16H46V26H44ZM46 26H48V32H46ZM48 22H50V26H48ZM50 26H52V32H50ZM52 16H54V26H52ZM60 16H68V18H60ZM58 18H60V30H58ZM60 22H66V24H60ZM60 30H68V32H60ZM72 16H80V18H74V22H80V24H74V30H80V32H72ZM80 18H82V22H80ZM80 24H82V30H80Z" />
+              </svg>
               <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
             </div>
             {newSessionCwd && onNewSessionCwdChange && (
