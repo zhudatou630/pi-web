@@ -17,6 +17,8 @@ const notoSerifSC = Noto_Serif_SC({
   preload: false,
 });
 
+const iconVersion = process.env.NEXT_PUBLIC_ICON_VERSION ? `?v=${process.env.NEXT_PUBLIC_ICON_VERSION}` : "";
+
 export const metadata: Metadata = {
   title: "Pi Web",
   description: "Pi Web interface for the pi coding agent",
@@ -25,14 +27,22 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/icons/icon-192.png",
+        url: `/favicon.svg${iconVersion}`,
+        type: "image/svg+xml",
+      },
+      {
+        url: `/icons/icon-192.png${iconVersion}`,
         sizes: "192x192",
         type: "image/png",
+      },
+      {
+        url: `/favicon.ico${iconVersion}`,
+        sizes: "any",
       },
     ],
     apple: [
       {
-        url: "/icons/apple-touch-icon.png",
+        url: `/icons/apple-touch-icon.png${iconVersion}`,
         sizes: "180x180",
         type: "image/png",
       },

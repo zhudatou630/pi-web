@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
+  const iconVersion = process.env.NEXT_PUBLIC_ICON_VERSION ? `?v=${process.env.NEXT_PUBLIC_ICON_VERSION}` : "";
+
   return {
     id: "/",
     name: "Pi Web",
@@ -15,13 +17,13 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "en",
     icons: [
       {
-        src: "/icons/icon-192.png",
+        src: `/icons/icon-192.png${iconVersion}`,
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icons/icon-512.png",
+        src: `/icons/icon-512.png${iconVersion}`,
         sizes: "512x512",
         type: "image/png",
         purpose: "any",

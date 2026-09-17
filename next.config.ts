@@ -1,10 +1,24 @@
 import type { NextConfig } from "next";
-import { readFileSync } from "fs";
+import { createHash } from "crypto";
+import { existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const configDir = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(join(configDir, "package.json"), "utf8")) as { version: string };
+
+function getIconVersion(): string {
+  try {
+    const hash = createHash("md5");
+    for (const file of ["icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "favicon.ico", "favicon.svg"]) {
+      const path = join(configDir, "public", file);
+      if (existsSync(path)) hash.update(readFileSync(path));
+    }
+    return hash.digest("hex").slice(0, 8);
+  } catch {
+    return version;
+  }
+}
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: configDir,
@@ -67,6 +81,7 @@ const nextConfig: NextConfig = {
   },
   env: {
     NEXT_PUBLIC_APP_VERSION: version,
+    NEXT_PUBLIC_ICON_VERSION: getIconVersion(),
   },
 };
 
