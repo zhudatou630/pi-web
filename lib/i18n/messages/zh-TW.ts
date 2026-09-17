@@ -456,7 +456,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.tooManyImagesTitle": "圖片數量超出傳送限制",
     "chat.tooManyImagesBody": "目前草稿有 {count} 張圖片。請刪到不超過 {max} 張後再傳送；已還原的附件不會被丟棄。",
     "chat.tokensSaved": "已節省 {saved}",
-    "chatMinimap.userOutline": "提問",
+    "chatMinimap.userOutline": "目錄",
     "chatMinimap.jumpFailed": "跳轉失敗：",
     "chatMinimap.retry": "重試",
     "i18n.close": "關閉",

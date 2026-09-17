@@ -10,6 +10,7 @@ import { normalizeToolCalls } from "./normalize";
 import { getThinkingPreview } from "./message-display";
 import { projectIdentityKey } from "./project-identity";
 import { sessionPathKey } from "./session-path";
+import { skillExpansionToCommand } from "./slash-display";
 import { MAX_TOOL_RESULT_IMAGE_BYTES, TOOL_RESULT_IMAGE_MIMES } from "./tool-result-images";
 import { resolveProject, type ProjectInfo } from "./worktree";
 import { readSubagentRun, SUBAGENT_META_TYPE } from "./subagents";
@@ -503,6 +504,16 @@ function isSessionGroupAnchor(entry: SessionEntry): boolean {
 
 const OUTLINE_PREVIEW_LIMIT = 120;
 
+function cleanPromptPreviewText(text: string): string {
+  const cmd = skillExpansionToCommand(text);
+  if (cmd) return cmd;
+  const match = text.match(/<skill\s+name="([^"\n]+)"[^>]*>/i);
+  const res = match
+    ? `/skill:${match[1]} ${text.replace(/<skill[^>]*>[\s\S]*?<\/skill>/gi, "").replace(/^<skill[^>]*>[^\n]*/i, "").trim()}`.trimEnd()
+    : text;
+  return res.replace(/^(?:About this passage:\s*(?:>\s*)?|>\s*|[“"「『])/, "");
+}
+
 export function userMessagePreview(content: unknown, limit = OUTLINE_PREVIEW_LIMIT): string {
   let text = "";
   if (typeof content === "string") text = content;
@@ -512,9 +523,10 @@ export function userMessagePreview(content: unknown, limit = OUTLINE_PREVIEW_LIM
       .map((block) => block.text ?? "")
       .join("\n");
   }
-  text = text.replace(/\s+/g, " ").trim();
-  if (text.length <= limit) return text;
-  return `${text.slice(0, limit).trimEnd()}…`;
+  const cleaned = cleanPromptPreviewText(text);
+  const flattened = cleaned.replace(/\s+/g, " ").trim();
+  if (flattened.length <= limit) return flattened;
+  return `${flattened.slice(0, limit).trimEnd()}…`;
 }
 
 /** Active-branch user prompts only: cheap minimap directory, no tool bodies. */
