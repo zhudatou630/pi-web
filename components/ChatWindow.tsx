@@ -2354,6 +2354,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             sessionId={session?.id ?? sessionIdRef.current}
             leafId={activeLeafId}
             outlineRevision={outlineRevision}
+            scrollContainer={scrollContainerRef}
+            contentContainer={messageContentRef}
+            loadedEntryIds={entryIds}
             onJumpToEntry={jumpToOutlineEntry}
           />
         )}
