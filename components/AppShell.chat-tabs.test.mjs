@@ -48,6 +48,11 @@ test("split pane plus buttons create a tab in that pane", () => {
 test("new chat tab inherits the current pane tab cwd", () => {
   assert.match(source, /const effectiveCwd = chatTabCwd\(openInSecondary \? secondaryTab : primaryTab\) \?\? activeCwd;/);
   assert.match(source, /onNewSessionCwdChange=\{!tabSession && effectiveCwd/);
+  assert.match(source, /recentProjectPaths=\{recentProjectPaths\}/);
+  assert.match(source, /getRecentProjects\(sessionCatalog\)/);
+  assert.match(source, /pinnedCwds=\{pinnedCwds\}/);
+  assert.match(source, /worktreeInfo=\{worktreeInfo\}/);
+  assert.match(source, /onWorktreeInfoChange=\{setWorktreeInfo\}/);
   assert.match(chatWindowSource, /function NewSessionCwdControl\(/);
   assert.match(chatWindowSource, /<DirectoryPicker/);
 });

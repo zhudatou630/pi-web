@@ -9,10 +9,18 @@ const control = source.slice(
 );
 
 test("path menu and worktree menu are separate", () => {
-  assert.match(control, /fetch\(`\/api\/worktrees\?cwd=\$\{encodeURIComponent\(cwd\)\}`/);
   assert.match(control, /setBranchMenuOpen\(\(open\) => !open\)/);
   assert.match(control, /onClick=\{\(\) => choose\(wt\.path\)\}/);
   assert.match(control, /aria-label=\{t\("sidebar\.switchWorktree"\)\}/);
   const pathMenu = control.slice(control.indexOf("{menuOpen &&"), control.indexOf("{branchMenuOpen &&"));
   assert.doesNotMatch(pathMenu, /worktrees\.map/);
+});
+
+test("path menu renders sidebar workspace state instead of fetching", () => {
+  assert.match(control, /recentPaths: string\[\]/);
+  assert.match(control, /pinnedPaths: string\[\]/);
+  assert.match(control, /worktreeInfo:/);
+  assert.doesNotMatch(control, /\/api\/sessions/);
+  assert.doesNotMatch(control, /\/api\/worktrees/);
+  assert.doesNotMatch(control, /\/api\/home/);
 });

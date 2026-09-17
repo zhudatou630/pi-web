@@ -27,8 +27,6 @@ import { getModelDisplayName, MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
-import { getRecentProjects } from "@/lib/project-groups";
-import { loadPinnedCwds, savePinnedCwds, togglePinnedCwd } from "@/lib/pinned-cwds";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { MobileChatNav } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
@@ -63,6 +61,16 @@ interface Props {
   /** Preserve the source tab when the user sends work or starts a fork. */
   onKeepTabOpen?: (sessionId: string) => void;
   onNewSessionCwdChange?: (cwd: string) => Promise<void>;
+  recentProjectPaths?: string[];
+  pinnedCwds?: string[];
+  onTogglePinnedCwd?: (cwd: string) => void;
+  homeDir?: string;
+  worktreeInfo?: {
+    forCwd: string;
+    projectRoot: string;
+    currentWorktreePath: string | null;
+    worktrees: { path: string; branch: string | null; isMain: boolean }[];
+  } | null;
   draftPersistenceWarning?: boolean;
   onAgentEnd?: (session?: SessionInfo | null) => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest, session: SessionInfo | null) => void;
@@ -111,9 +119,24 @@ const CHAT_COLUMN_PADDING = 16;
 function NewSessionCwdControl({
   cwd,
   onChange,
+  recentPaths,
+  pinnedPaths,
+  onTogglePinnedCwd,
+  homeDir,
+  worktreeInfo,
 }: {
   cwd: string;
   onChange: (cwd: string) => Promise<void>;
+  recentPaths: string[];
+  pinnedPaths: string[];
+  onTogglePinnedCwd?: (cwd: string) => void;
+  homeDir: string;
+  worktreeInfo: {
+    forCwd: string;
+    projectRoot: string;
+    currentWorktreePath: string | null;
+    worktrees: { path: string; branch: string | null; isMain: boolean }[];
+  } | null;
 }) {
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -122,58 +145,17 @@ function NewSessionCwdControl({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
-  const [recentPaths, setRecentPaths] = useState<string[]>([]);
-  const [homeDir, setHomeDir] = useState("");
-  const [worktreeInfo, setWorktreeInfo] = useState<{
-    projectRoot: string;
-    currentWorktreePath: string | null;
-    worktrees: { path: string; branch: string | null; isMain: boolean }[];
-  } | null>(null);
   const cwdRows = [
     ...pinnedPaths.map((path) => ({ path, pinned: true })),
     ...recentPaths.filter((path) => !pinnedPaths.includes(path)).map((path) => ({ path, pinned: false })),
   ];
-
-  useEffect(() => {
-    fetch("/api/home")
-      .then((response) => (response.ok ? response.json() as Promise<{ home?: string }> : null))
-      .then((data) => {
-        if (typeof data?.home === "string") setHomeDir(data.home);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(`/api/worktrees?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() as Promise<{ isGit?: boolean; projectRoot?: string; currentWorktreePath?: string | null; worktrees?: { path: string; branch: string | null; isMain: boolean }[] }> : null))
-      .then((data) => {
-        setWorktreeInfo(data?.isGit && data.worktrees
-          ? { projectRoot: data.projectRoot ?? cwd, currentWorktreePath: data.currentWorktreePath ?? null, worktrees: data.worktrees }
-          : null);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setWorktreeInfo(null);
-      });
-    return () => controller.abort();
-  }, [cwd]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const controller = new AbortController();
-    const pins = loadPinnedCwds();
-    setPinnedPaths(pins);
-    fetch("/api/sessions", { cache: "no-store", signal: controller.signal })
-      .then((response) => (response.ok ? response.json() as Promise<{ sessions?: SessionInfo[] }> : { sessions: [] }))
-      .then((sessions) => {
-        setRecentPaths(getRecentProjects(sessions.sessions ?? []).map((project) => project.root));
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setRecentPaths([]);
-      });
-    return () => controller.abort();
-  }, [menuOpen]);
+  const activeWorktree = worktreeInfo
+    && (worktreeInfo.forCwd === cwd
+      || worktreeInfo.projectRoot === cwd
+      || worktreeInfo.currentWorktreePath === cwd
+      || worktreeInfo.worktrees.some((wt) => wt.path === cwd))
+    ? worktreeInfo
+    : null;
 
   useEffect(() => {
     if (!menuOpen && !branchMenuOpen) return;
@@ -187,11 +169,11 @@ function NewSessionCwdControl({
     return () => document.removeEventListener("mousedown", onDocument);
   }, [menuOpen, branchMenuOpen]);
 
-  const worktrees = worktreeInfo?.worktrees ?? [];
-  const currentWorktree = worktrees.find((w) => w.path === cwd || w.path === worktreeInfo?.currentWorktreePath)
+  const worktrees = activeWorktree?.worktrees ?? [];
+  const currentWorktree = worktrees.find((w) => w.path === cwd || w.path === activeWorktree?.currentWorktreePath)
     ?? worktrees.find((w) => w.isMain);
   const currentBranch = currentWorktree?.branch ?? null;
-  const displayProject = worktreeInfo?.projectRoot ?? cwd;
+  const displayProject = activeWorktree?.projectRoot ?? cwd;
   const projectLabel = homeDir && displayProject.startsWith(homeDir)
     ? `~${displayProject.slice(homeDir.length)}`
     : displayProject;
@@ -294,7 +276,7 @@ function NewSessionCwdControl({
         >
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
             {cwdRows.map(({ path, pinned }) => {
-              const isSelected = path === cwd || Boolean(worktreeInfo?.projectRoot && path === worktreeInfo.projectRoot);
+              const isSelected = path === cwd || Boolean(activeWorktree?.projectRoot && path === activeWorktree.projectRoot);
               return (
                 <div
                   key={path}
@@ -341,13 +323,7 @@ function NewSessionCwdControl({
                     title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
                     aria-label={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
                     aria-pressed={pinned}
-                    onClick={() => {
-                      setPinnedPaths((current) => {
-                        const next = togglePinnedCwd(current, path);
-                        savePinnedCwds(next);
-                        return next;
-                      });
-                    }}
+                    onClick={() => onTogglePinnedCwd?.(path)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -418,7 +394,7 @@ function NewSessionCwdControl({
         >
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
             {worktrees.map((wt) => {
-              const isCurrent = wt.path === cwd || wt.path === worktreeInfo?.currentWorktreePath;
+              const isCurrent = wt.path === cwd || wt.path === activeWorktree?.currentWorktreePath;
               return (
                 <button
                   key={wt.path}
@@ -861,7 +837,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, recentProjectPaths = [], pinnedCwds = [], onTogglePinnedCwd, homeDir = "", worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -2460,7 +2436,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
             </div>
             {newSessionCwd && onNewSessionCwdChange && (
-              <NewSessionCwdControl cwd={newSessionCwd} onChange={onNewSessionCwdChange} />
+              <NewSessionCwdControl
+                cwd={newSessionCwd}
+                onChange={onNewSessionCwdChange}
+                recentPaths={recentProjectPaths}
+                pinnedPaths={pinnedCwds}
+                onTogglePinnedCwd={onTogglePinnedCwd}
+                homeDir={homeDir}
+                worktreeInfo={worktreeInfo}
+              />
             )}
           </div>
         )}

@@ -181,9 +181,8 @@ test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible))
 });
 
 test("project dropdown pins live in the menu, not the sidebar surface", () => {
-  assert.match(source, /from "@\/lib\/pinned-cwds"/);
   assert.match(source, /dropdownProjectRows/);
-  assert.match(source, /togglePinnedCwd\(current, project.root\)/);
+  assert.match(source, /onTogglePinnedCwd\(project.root\)/);
   assert.match(source, /className="project-pin-btn"/);
 });
 

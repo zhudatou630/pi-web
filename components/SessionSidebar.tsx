@@ -10,7 +10,6 @@ import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
-import { loadPinnedCwds, savePinnedCwds, togglePinnedCwd } from "@/lib/pinned-cwds";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import { getFileName } from "@/lib/file-paths";
@@ -139,6 +138,15 @@ interface Props {
   onBackgroundTaskDone?: (completedSessionIds: string[]) => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   onSessionsChange?: (sessions: SessionInfo[]) => void;
+  pinnedCwds: string[];
+  onTogglePinnedCwd: (cwd: string) => void;
+  onHomeDirChange?: (homeDir: string) => void;
+  onWorktreeInfoChange?: (info: {
+    forCwd: string;
+    projectRoot: string;
+    currentWorktreePath: string | null;
+    worktrees: { path: string; branch: string | null; isMain: boolean }[];
+  } | null) => void;
 }
 
 interface WorktreeEntry {
@@ -295,7 +303,7 @@ function AnimatedDropdown({ open, children, style }: { open: boolean; children: 
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onPinSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onPinSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [sessionListVersion, setSessionListVersion] = useState<number | null>(null);
@@ -313,7 +321,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [customPathError, setCustomPathError] = useState<string | null>(null);
   const [customPathValidating, setCustomPathValidating] = useState(false);
   const [validatedProject, setValidatedProject] = useState<ValidatedProject | null>(null);
-  const [pinnedCwds, setPinnedCwds] = useState<string[]>(() => loadPinnedCwds());
   const dropdownRef = useRef<HTMLDivElement>(null);
   // Worktree switcher state
   const [worktreeState, setWorktreeState] = useState<WorktreeState | null>(null);
@@ -588,6 +595,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (homeDir) onHomeDirChange?.(homeDir);
+  }, [homeDir, onHomeDirChange]);
+
   const restoredRef = useRef(false);
 
   const projectSelection = useCallback((root: string, key: string): ProjectSelection => ({
@@ -684,6 +695,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       });
     return () => { cancelled = true; };
   }, [selectedCwd, wtRefreshKey, refreshKey]);
+
+  useEffect(() => {
+    if (!onWorktreeInfoChange) return;
+    if (!worktreeState?.isGit) {
+      onWorktreeInfoChange(null);
+      return;
+    }
+    onWorktreeInfoChange({
+      forCwd: worktreeState.forCwd,
+      projectRoot: worktreeState.projectRoot,
+      currentWorktreePath: worktreeState.currentWorktreePath,
+      worktrees: worktreeState.worktrees,
+    });
+  }, [worktreeState, onWorktreeInfoChange]);
 
   // Auto-select cwd and restore session from URL on first load
   useEffect(() => {
@@ -1171,13 +1196,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                   <button
                     type="button"
                     className="project-pin-btn"
-                    onClick={() => {
-                      setPinnedCwds((current) => {
-                        const next = togglePinnedCwd(current, project.root);
-                        savePinnedCwds(next);
-                        return next;
-                      });
-                    }}
+                    onClick={() => onTogglePinnedCwd(project.root)}
                     title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
                     aria-label={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
                     aria-pressed={pinned}

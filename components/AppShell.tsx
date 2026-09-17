@@ -66,6 +66,8 @@ function pathForChatMention(path: string, sourceCwd?: string, targetCwd?: string
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { clearDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import { workspaceKeyOf } from "@/lib/workspace-key";
+import { getRecentProjects } from "@/lib/project-groups";
+import { loadPinnedCwds, savePinnedCwds, togglePinnedCwd } from "@/lib/pinned-cwds";
 import {
   getDefaultRightPanelWidth,
   getChatSplitRatioBounds,
@@ -189,6 +191,25 @@ export function AppShell() {
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
     setSessionCatalog(sessions);
   }, []);
+  const recentProjectPaths = useMemo(
+    () => getRecentProjects(sessionCatalog).map((project) => project.root),
+    [sessionCatalog],
+  );
+  const [pinnedCwds, setPinnedCwds] = useState<string[]>(() => loadPinnedCwds());
+  const handleTogglePinnedCwd = useCallback((cwd: string) => {
+    setPinnedCwds((current) => {
+      const next = togglePinnedCwd(current, cwd);
+      savePinnedCwds(next);
+      return next;
+    });
+  }, []);
+  const [homeDir, setHomeDir] = useState("");
+  const [worktreeInfo, setWorktreeInfo] = useState<{
+    forCwd: string;
+    projectRoot: string;
+    currentWorktreePath: string | null;
+    worktrees: { path: string; branch: string | null; isMain: boolean }[];
+  } | null>(null);
   const sessionsWithSelection = useMemo(() => {
     if (!selectedSession) return sessionCatalog;
     return [
@@ -1759,6 +1780,11 @@ export function AppShell() {
         onNewSessionCwdChange={!tabSession && effectiveCwd
           ? (cwd) => handleDraftCwdChange(effectiveDraftKey, cwd)
           : undefined}
+        recentProjectPaths={recentProjectPaths}
+        pinnedCwds={pinnedCwds}
+        onTogglePinnedCwd={handleTogglePinnedCwd}
+        homeDir={homeDir}
+        worktreeInfo={worktreeInfo}
         draftPersistenceWarning={draftTabsPersistenceFailed}
         onAgentEnd={handleAgentEnd}
         onAttentionNeeded={handleAttentionNeeded}
@@ -1927,6 +1953,10 @@ export function AppShell() {
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionsChange={handleSessionsChange}
+        pinnedCwds={pinnedCwds}
+        onTogglePinnedCwd={handleTogglePinnedCwd}
+        onHomeDirChange={setHomeDir}
+        onWorktreeInfoChange={setWorktreeInfo}
       />
       <div className="sidebar-footer">
         <button
