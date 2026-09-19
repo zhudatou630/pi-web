@@ -962,21 +962,9 @@ export function AppShell() {
       rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
     }
     activeNewSessionDraftKeyRef.current = null;
-    // In split/multi-tab mode the sidebar project may belong to another chat
-    // tab. Prefer the selected session, and compare only resolved identities;
-    // transient session cwd fallbacks are not comparable project keys.
-    const currentProjectKey = selectedSession?.projectKey
-      ?? (!selectedSession ? activeProjectKeyRef.current : null);
-    if (currentProjectKey && session.projectKey && currentProjectKey !== session.projectKey) {
-      setFileTabs([]);
-      if (!activeFileTabId || activeFileTabId.startsWith("file:")) {
-        setActiveFileTabId(null);
-        setRightPanelOpen(false);
-      }
-      setActiveTopPanel(null);
-    }
-    // Only promote a server-resolved identity into the ref. A transient
-    // session's cwd is not a comparable project identity.
+    // Chat tabs do not own the file reader. Opening another session must not
+    // clear file tabs or collapse the right panel; project-scoped cleanup stays
+    // in handleCwdChange when the sidebar actually switches workspace.
     if (session.projectKey) activeProjectKeyRef.current = session.projectKey;
     // Re-clicking the already-open session must not remount the chat and
     // re-run the full load/positioning cycle. Only skip when the effective
@@ -1031,7 +1019,7 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [activeCwd, activeFileTabId, router, isMobile, newSessionCwd, selectedSession, syncSessionMetadata]);
+  }, [activeCwd, router, isMobile, newSessionCwd, selectedSession, syncSessionMetadata]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
     const draftKey = `new:${sessionId}:${cwd}`;

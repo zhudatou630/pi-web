@@ -67,9 +67,9 @@ for (const [component, prop, split] of [
     assert.equal(result.ActiveChatPane, split ? "secondary" : "primary");
     assert.equal(result.SelectedSession, session);
     assert.equal(result.SearchTarget, null);
-    assert.equal(result.FileTabs.length, 0);
-    assert.equal(result.ActiveFileTabId, null);
-    assert.equal(result.RightPanelOpen, false);
+    assert.equal(result.FileTabs, undefined);
+    assert.equal(result.ActiveFileTabId, undefined);
+    assert.equal(result.RightPanelOpen, undefined);
     assert.equal(result.SidebarOpen, split ? undefined : false);
     assert.equal(result.metadata, "target");
     assert.equal(result.url, "?session=target");
