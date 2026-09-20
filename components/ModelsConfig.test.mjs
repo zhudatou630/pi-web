@@ -18,6 +18,15 @@ const {
 const source = await readFile(new URL("./ModelsConfig.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
 
+test("connected providers can add local models without opening the endpoint editor", () => {
+  assert.match(source, /const hasCustomEndpoint = \(provider\?: ProviderEntry\) => Boolean\(provider\?\.baseUrl\?\.trim\(\)\)/);
+  assert.doesNotMatch(source, /connectedIds\.has\(providerId\) return false/);
+  assert.match(source, /const extras = jsonModels/);
+  assert.match(source, /!model\.id \|\| !cartIds\.has\(model\.id\)/);
+  assert.match(source, /className="models-sidebar-indented-item models-sidebar-add-item"/);
+  assert.doesNotMatch(source, /showAddModel\(providerId\)/);
+});
+
 test("uses shared sidebar sizing for providers and matching indented model rows", () => {
   const sidebar = source.slice(source.indexOf("<ConfigSidebar>"), source.indexOf("</ConfigSidebar>"));
 

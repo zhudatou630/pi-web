@@ -2131,14 +2131,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
   const configDirty = JSON.stringify(config) !== JSON.stringify(savedConfig);
   const connectedIds = new Set([...activeOAuth.map((item) => item.id), ...activeApiKey.map((item) => item.id)]);
 
-  const hasCustomEndpoint = (provider?: ProviderEntry) => Boolean(
-    provider?.baseUrl?.trim() || (provider?.models && provider.models.length > 0),
-  );
-
-  const showAddModel = (providerId: string) => {
-    if (connectedIds.has(providerId)) return false;
-    return Boolean(config.providers?.[providerId]);
-  };
+  const hasCustomEndpoint = (provider?: ProviderEntry) => Boolean(provider?.baseUrl?.trim());
 
   const selectCatalogModel = (providerId: string, modelId: string) => {
     const localIndex = (config.providers?.[providerId]?.models ?? []).findIndex((entry) => entry.id === modelId);
@@ -2149,9 +2142,10 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
   const renderCartRows = (providerId: string) => {
     const jsonModels = config.providers?.[providerId]?.models ?? [];
     const cart = catalog.filter((model) => model.provider === providerId && model.inPicker);
-    const drafts = jsonModels
+    const cartIds = new Set(cart.map((model) => model.id));
+    const extras = jsonModels
       .map((model, index) => ({ model, index }))
-      .filter(({ model }) => !model.id);
+      .filter(({ model }) => !model.id || !cartIds.has(model.id));
 
     return (
       <>
@@ -2173,7 +2167,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
             </ConfigSidebarItem>
           );
         })}
-        {drafts.map(({ model, index }) => {
+        {extras.map(({ model, index }) => {
           const isModelSelected = selection?.type === "model" && selection.providerName === providerId && selection.index === index;
           return (
             <ConfigSidebarItem
@@ -2188,14 +2182,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
             </ConfigSidebarItem>
           );
         })}
-        {showAddModel(providerId) && (
-          <ConfigSidebarItem
-            className="models-sidebar-indented-item models-sidebar-add-item"
-            onClick={(e) => { e.stopPropagation(); addModel(providerId); }}
-          >
-            <ConfigSidebarText>+ {t("i18n.model")}</ConfigSidebarText>
-          </ConfigSidebarItem>
-        )}
+        <ConfigSidebarItem
+          className="models-sidebar-indented-item models-sidebar-add-item"
+          onClick={(e) => { e.stopPropagation(); addModel(providerId); }}
+        >
+          <ConfigSidebarText>+ {t("i18n.model")}</ConfigSidebarText>
+        </ConfigSidebarItem>
       </>
     );
   };
