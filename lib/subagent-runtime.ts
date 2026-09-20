@@ -39,7 +39,7 @@ import { appendSubagentInputFiles, loadSubagentInputFiles } from "./subagent-inp
 import { projectTrustReloadOptions } from "./project-trust";
 import { resolveShellTools } from "./powershell-settings";
 import { isBuiltInSubagentsEnabled, readSubagentSettings } from "./subagent-settings";
-import { contextFilesSystemPrompt, type ContextFileContent } from "./chat-only";
+import { contextFilesSystemPrompt, createExactSystemPromptExtension, type ContextFileContent } from "./chat-only";
 import { SubagentQueue } from "./subagent-queue";
 import {
   cleanupIsolatedWorktree,
@@ -64,7 +64,7 @@ export interface SubagentRuntimeDependencies {
   getSession(sessionId: string): HostSession | undefined;
   registerSession(
     inner: AgentSessionLike,
-    options?: { exactSystemPrompt?: string; chatOnly?: boolean },
+    options?: { chatOnly?: boolean },
   ): void;
   resolveSessionPath(sessionId: string): Promise<string | null>;
   reopenSession?(sessionId: string, sessionPath: string, cwdOverride?: string): Promise<HostSession>;
@@ -940,10 +940,14 @@ export function createSubagentController(
               noPromptTemplates: true,
               noThemes: true,
               noContextFiles: true,
-              ...(chatOnly || promptPlan.exactSystemPrompt !== undefined
-                ? { systemPrompt: " ", systemPromptOverride: () => undefined }
-                : {}),
-              appendSystemPrompt,
+              ...(promptPlan.exactSystemPrompt !== undefined
+                ? {
+                    extensionFactories: [createExactSystemPromptExtension(promptPlan.exactSystemPrompt)],
+                    systemPrompt: " ",
+                    systemPromptOverride: () => undefined,
+                    appendSystemPrompt: [],
+                  }
+                : { systemPrompt: " ", systemPromptOverride: () => undefined, appendSystemPrompt }),
             },
             ...((profile.loadExtensions || profile.loadSkills)
               ? { resourceLoaderReloadOptions: projectTrustReloadOptions(childCwd, agentDir) }
@@ -974,10 +978,7 @@ export function createSubagentController(
             tools: activeTools,
             excludeTools: [...SUBAGENT_CONTROL_TOOL_NAMES],
           });
-          dependencies.registerSession(inner, {
-            ...(promptPlan.exactSystemPrompt !== undefined ? { exactSystemPrompt: promptPlan.exactSystemPrompt } : {}),
-            chatOnly,
-          });
+          dependencies.registerSession(inner, { chatOnly });
           childWrapper = dependencies.getSession(sessionId);
           await childWrapper?.waitUntilReady();
           if (stored.abortRequested) {

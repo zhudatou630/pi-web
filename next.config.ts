@@ -55,6 +55,7 @@ const nextConfig: NextConfig = {
     "172.30.*.*",
     "172.31.*.*",
     "192.168.*.*",
+    "nuc.tailb8ef79.ts.net",
   ],
   async headers() {
     return [

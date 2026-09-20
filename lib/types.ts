@@ -53,6 +53,15 @@ export interface ToolCallContent {
 
 export type AssistantContentBlock = TextContent | ImageContent | ThinkingContent | ToolCallContent;
 
+export interface SystemMessage {
+  role: "system";
+  content: string | TextContent[];
+  sections?: Record<string, string | null>;
+  toolsAdded?: Array<{ name: string }>;
+  toolsRemoved?: Array<{ name: string }>;
+  timestamp?: number;
+}
+
 export interface UserMessage {
   role: "user";
   content: string | (TextContent | ImageContent)[];
@@ -118,7 +127,7 @@ export interface BashExecutionMessage {
   timestamp?: number;
 }
 
-export type AgentMessage = UserMessage | AssistantMessage | ToolResultMessage | CustomMessage | BashExecutionMessage;
+export type AgentMessage = SystemMessage | UserMessage | AssistantMessage | ToolResultMessage | CustomMessage | BashExecutionMessage;
 
 export type ExtensionUiRequest =
   | {
@@ -225,6 +234,15 @@ export interface ModelChangeEntry extends SessionEntryBase {
   modelId: string;
 }
 
+export interface UsageEntry extends SessionEntryBase {
+  type: "usage";
+  kind: string;
+  provider: string;
+  model: string;
+  usage: AgentUsage;
+  note?: string;
+}
+
 export interface CompactionEntry extends SessionEntryBase {
   type: "compaction";
   summary: string;
@@ -233,6 +251,7 @@ export interface CompactionEntry extends SessionEntryBase {
   details?: unknown;
   fromHook?: boolean;
   usage?: AgentUsage;
+  systemMessage?: SystemMessage;
 }
 
 export interface BranchSummaryEntry extends SessionEntryBase {
@@ -273,6 +292,7 @@ export type SessionEntry =
   | SessionMessageEntry
   | ThinkingLevelChangeEntry
   | ModelChangeEntry
+  | UsageEntry
   | CompactionEntry
   | BranchSummaryEntry
   | CustomEntry

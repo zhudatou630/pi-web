@@ -111,7 +111,7 @@ export function computeSessionStats(entries: SessionEntry[]): SessionFileStats {
   const stats = emptyStats();
 
   for (const entry of entries) {
-    if (entry.type === "compaction" || entry.type === "branch_summary") {
+    if (entry.type === "usage" || entry.type === "compaction" || entry.type === "branch_summary") {
       addUsage(stats, entry.usage);
       continue;
     }

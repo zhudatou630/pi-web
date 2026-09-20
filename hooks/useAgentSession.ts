@@ -1356,7 +1356,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             const settled = { ...normalized, completedAt };
             const timed = applyThinkingTimings(settled, streamStateRef.current.streamingMessage, completedAt);
             setMessages((prev) => [...prev, timed]);
-          } else {
+          } else if (normalized.role !== "system") {
             setMessages((prev) => [...prev, normalized]);
           }
         }

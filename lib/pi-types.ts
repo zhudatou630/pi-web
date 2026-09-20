@@ -7,9 +7,7 @@ import type {
   Theme,
 } from "@earendil-works/pi-coding-agent";
 import type {
-  AgentLoopTurnUpdate,
   AgentMessage as PiAgentMessage,
-  PrepareNextTurnContext,
   ShouldStopAfterTurnContext,
 } from "@earendil-works/pi-agent-core";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
@@ -156,10 +154,6 @@ export interface AgentSessionLike {
       context: ShouldStopAfterTurnContext,
       signal?: AbortSignal,
     ) => boolean | Promise<boolean>;
-    prepareNextTurnWithContext?: (
-      context: PrepareNextTurnContext,
-      signal?: AbortSignal,
-    ) => Promise<AgentLoopTurnUpdate | undefined> | AgentLoopTurnUpdate | undefined;
   };
   readonly extensionRunner: ExtensionRunnerLike;
   readonly promptTemplates: readonly PromptTemplateLike[];
@@ -200,8 +194,8 @@ export interface AgentSessionLike {
   getLastAssistantText(): string | undefined;
   setAutoCompactionEnabled(enabled: boolean): void;
   setAutoRetryEnabled(enabled: boolean): void;
-  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
-  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): Promise<void>;
+  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, options?: { source?: "interactive" | "rpc" }): Promise<void>;
+  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, options?: { source?: "interactive" | "rpc" }): Promise<void>;
   readonly pendingMessageCount: number;
   getSteeringMessages(): readonly string[];
   getFollowUpMessages(): readonly string[];

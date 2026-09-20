@@ -689,6 +689,7 @@ function entryToUiMessage(
       if (typeof legacyContent === "string") {
         message = { ...message, content: [{ type: "text", text: legacyContent }] } as AgentMessage;
       }
+      if (message.role === "system") return null;
       if (message.role !== "assistant") return message;
       const completedAt = parseEntryTimestamp(entry.timestamp);
       if (completedAt !== undefined) {

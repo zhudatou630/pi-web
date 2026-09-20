@@ -5,7 +5,7 @@
 import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import type { Dirent } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
@@ -364,10 +364,18 @@ export async function listSessionsIncremental(): Promise<ScannedSessionInfo[]> {
 
 	if (changed.length > 0 || stale.length > 0) queueIndexPersist();
 
-	// Preserve catalogue order for timestamp ties, independently of cache hits
-	// and the order in which concurrent file reads complete.
+	// Pi 0.86 discovers files by filesystem mtime before sorting session metadata.
+	// Keep that order even when the metadata timestamps are equal or cached.
 	return results.filter((info) => info !== null)
-		.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+		.sort((a, b) => {
+			const aIndex = getIndex().get(a.path);
+			const bIndex = getIndex().get(b.path);
+			const aMtime = aIndex?.fp.mtimeMs ?? 0;
+			const bMtime = bIndex?.fp.mtimeMs ?? 0;
+			return b.modified.getTime() - a.modified.getTime()
+				|| bMtime - aMtime
+				|| basename(b.path).localeCompare(basename(a.path));
+		});
 }
 
 /** Test seam: drop all in-memory index state. */
