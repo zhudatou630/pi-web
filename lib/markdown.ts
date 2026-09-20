@@ -42,6 +42,7 @@ export function normalizeDisplayMath(markdown: string): string {
   let inlineCodeMarkerSize = 0;
   let rawCodeTag: string | null = null;
   const unmatchedDisplayMathUntil = new Map<string, number>();
+  const untouchedCloseAt = new Set<number>();
 
   for (let index = 0; index < lines.length; index++) {
     let line = lines[index];
@@ -78,7 +79,16 @@ export function normalizeDisplayMath(markdown: string): string {
       continue;
     }
 
-    if (/^(?: {4}|\t)/.test(line) || line.trim() === "") {
+    // Nested list items often indent `$$` past 3 spaces. Those lines look like
+    // indented code at column 0, but leaving them untouched lets remark-math
+    // start a math block it never closes.
+    if (line.trim() === "" || (/^(?: {4}|\t)/.test(line) && !/^[ \t]*\$\$/.test(line))) {
+      inlineCodeMarkerSize = 0;
+      normalized.push(line);
+      continue;
+    }
+
+    if (untouchedCloseAt.has(index)) {
       inlineCodeMarkerSize = 0;
       normalized.push(line);
       continue;
@@ -141,7 +151,7 @@ export function normalizeDisplayMath(markdown: string): string {
       }
     }
 
-    const displayMathMatch = line.match(/^([ \t]{0,3})\$\$(.+)\$\$[ \t]*$/);
+    const displayMathMatch = line.match(/^([ \t]*)\$\$(.+)\$\$[ \t]*$/);
     if (displayMathMatch) {
       const math = displayMathMatch[2].trim();
       if (math) {
@@ -162,7 +172,7 @@ export function normalizeDisplayMath(markdown: string): string {
     // is glued to the first formula line and/or the closing `$$` is glued to the
     // end of the last one (`$$x = 1` + `y = 2$$`). Without normalization such a
     // block swallows the following text as math content and renders as garbage.
-    const displayMathMultiLine = line.match(/^([ \t]{0,3})\$\$(.+)$/);
+    const displayMathMultiLine = line.match(/^([ \t]*)\$\$(.+)$/);
     if (displayMathMultiLine) {
       const indent = displayMathMultiLine[1];
       const firstLine = displayMathMultiLine[2].trimEnd();
@@ -185,6 +195,8 @@ export function normalizeDisplayMath(markdown: string): string {
           index = closing.index;
           continue;
         }
+        normalized.push(escapeUnmatchedDisplayMathOpen(line));
+        continue;
       }
     }
 
@@ -196,7 +208,7 @@ export function normalizeDisplayMath(markdown: string): string {
     // the closing `$$` to its own line and re-indenting lazy content lines.
     // A column-0 block with a properly detached closing `$$` is left untouched
     // (remark-math already parses it correctly).
-    const displayMathBareOpen = line.match(/^([ \t]{0,3})\$\$\s*$/);
+    const displayMathBareOpen = line.match(/^([ \t]*)\$\$\s*$/);
     if (displayMathBareOpen) {
       const indent = displayMathBareOpen[1];
       const closing = findDisplayMathClose(
@@ -215,6 +227,13 @@ export function normalizeDisplayMath(markdown: string): string {
         index = closing.index;
         continue;
       }
+      if (closing) {
+        untouchedCloseAt.add(closing.index);
+        normalized.push(line);
+        continue;
+      }
+      normalized.push(escapeUnmatchedDisplayMathOpen(line));
+      continue;
     }
 
     normalized.push(normalizeInlineLatexMath(line));
@@ -259,15 +278,28 @@ function findDisplayMathClose(
   return null;
 }
 
+function escapeUnmatchedDisplayMathOpen(line: string): string {
+  return line.replace(/^([ \t]*)\$\$/, (_match, indent: string) => `${indent}\\$\\$`);
+}
+
+function lineAfterMathIndent(line: string, indent: string): string | null {
+  if (line.startsWith(indent)) return line.slice(indent.length);
+  const whitespace = line.match(/^[ \t]*/)?.[0] ?? "";
+  if (indent && whitespace.length < indent.length) return line.slice(whitespace.length);
+  return null;
+}
+
 function isDisplayMathFence(line: string, indent: string): boolean {
   if (indent === "") return /^ {0,3}\$\$\s*$/.test(line);
-  return line.startsWith(indent) && /^\$\$\s*$/.test(line.slice(indent.length));
+  const rest = lineAfterMathIndent(line, indent);
+  return rest !== null && /^\$\$\s*$/.test(rest);
 }
 
 function getDisplayMathGluedCloseContent(line: string, indent: string): string | null {
-  if (!line.startsWith(indent)) return null;
+  const rest = lineAfterMathIndent(line, indent);
+  if (rest === null) return null;
 
-  const match = line.slice(indent.length).match(/^(.+?)\$\$\s*$/);
+  const match = rest.match(/^(.+?)\$\$\s*$/);
   if (!match) return null;
 
   const content = match[1].trimEnd();
@@ -275,7 +307,7 @@ function getDisplayMathGluedCloseContent(line: string, indent: string): string |
 }
 
 function isDisplayMathOpeningLine(line: string): boolean {
-  return /^ {0,3}\$\$(?:\S|[ \t]+\S)/.test(line);
+  return /^[ \t]*\$\$(?:\S|[ \t]+\S)/.test(line);
 }
 
 function isDisplayMathBlockBoundary(line: string): boolean {

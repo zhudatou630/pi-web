@@ -109,6 +109,22 @@ after`;
   assert.equal(normalizeDisplayMath(markdown), markdown);
 });
 
+test("unclosed display math does not swallow later headings", () => {
+  const html = renderMarkdown("$$x = y\n\n## still a heading\n\nafter");
+
+  assert.match(html, /<h2[^>]*>still a heading<\/h2>/);
+  assert.match(html, />after</);
+  assert.doesNotMatch(html, /katex-error/);
+});
+
+test("nested list display math still renders", () => {
+  const html = renderMarkdown("1. item\n   - nested\n     $$a + b$$\n2. next");
+
+  assert.match(html, /class="katex-display"/);
+  assert.match(html, /<li>/);
+  assert.doesNotMatch(html, /katex-error/);
+});
+
 test("does not normalize LaTeX delimiters inside Markdown code", () => {
   const markdown = "    \\(indented\\)\n\n`code\n\\(inline\\)`\n\n```text\n\\[\nfenced\n\\]\n```";
 
