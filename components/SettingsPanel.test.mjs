@@ -17,7 +17,7 @@ test("opens settings from a single sidebar text control", () => {
   assert.match(shellSource, /setSettingsSection\(getLastSettingsSection\(projectTrustCwd\)\)/);
   assert.match(shellSource, /initialSection=\{settingsSection\}/);
   assert.match(shellSource, /translate\("common\.settings"\)/);
-  assert.match(shellSource, /borderTop: "1px solid var\(--border\)"/);
+  assert.match(shellSource, /className="sidebar-footer"/);
   assert.match(shellSource, /color: "var\(--text-muted\)"/);
   assert.match(shellSource, /<SettingsGearIcon/);
   assert.doesNotMatch(shellSource, /SettingsSectionIcon/);
