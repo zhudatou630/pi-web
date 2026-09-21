@@ -122,7 +122,80 @@ export function writeModelsConfig(
   }
   const dir = dirname(modelsPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const normalized = normalizeModelsConfigCosts(sanitizeModelsConfig(data));
+  const normalized = normalizeModelsConfigCosts(sanitizeModelsConfig(reconcileModelOverrides(data)));
   writePrivateFileAtomicSync(modelsPath, JSON.stringify(normalized, null, 2));
   invalidateModelsCache();
+}
+
+/**
+ * Keep only the leaf keys of `overrideValue` that `definitionValue` does not set.
+ *
+ * The SDK merges an override over its definition one leaf at a time
+ * (`applyModelOverride` copies `cost.input`, `cost.output`, `thinkingLevelMap.off`
+ * … individually), so `{ cost: { input: 99 } }` still wins for `input` alone and
+ * leaves the definition's `output`/`cacheRead` in effect. Reconciling whole
+ * objects would drop leaves that still apply.
+ *
+ * A scalar (either side) is replaced outright: `undefined` means "the definition
+ * already states this, and the override loses".
+ */
+function pruneOverrideLeaves(overrideValue: unknown, definitionValue: unknown): unknown {
+  if (!isRecord(overrideValue) || !isRecord(definitionValue)) return undefined;
+  const kept = Object.fromEntries(
+    Object.entries(overrideValue).filter(([key]) => definitionValue[key] === undefined),
+  );
+  return Object.keys(kept).length > 0 ? kept : undefined;
+}
+
+/**
+ * Remove from every `modelOverrides` entry the fields its `models[]` definition
+ * also sets.
+ *
+ * The SDK resolves an override over its definition, but the Models panel edits
+ * and displays only the definition — so a field present in both silently ignored
+ * every edit made in the panel. Saving converges the layers: the definition owns
+ * the fields it states, and override-only fields keep applying to the catalog
+ * model underneath.
+ */
+export function reconcileModelOverrides(
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!isRecord(data.providers)) return data;
+
+  const providers = Object.fromEntries(Object.entries(data.providers).map(([providerId, provider]) => {
+    if (!isRecord(provider) || !isRecord(provider.modelOverrides) || !Array.isArray(provider.models)) {
+      return [providerId, provider];
+    }
+
+    const next: Record<string, unknown> = { ...provider.modelOverrides };
+    for (const model of provider.models) {
+      const id = isRecord(model) ? model.id : undefined;
+      if (typeof id !== "string" || id.length === 0) continue;
+      const override = next[id];
+      if (!isRecord(override)) continue;
+
+      const kept: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(override)) {
+        // `id` identifies the entry; it is never an override field.
+        if (key === "id") continue;
+        const definitionValue = model[key];
+        // A field the definition does not mention stays with the override.
+        if (definitionValue === undefined) {
+          kept[key] = value;
+          continue;
+        }
+        const pruned = pruneOverrideLeaves(value, definitionValue);
+        if (pruned !== undefined) kept[key] = pruned;
+      }
+
+      if (Object.keys(kept).length > 0) next[id] = kept;
+      else delete next[id];
+    }
+
+    const nextProvider: Record<string, unknown> = { ...provider, modelOverrides: next };
+    if (Object.keys(next).length === 0) delete nextProvider.modelOverrides;
+    return [providerId, nextProvider];
+  }));
+
+  return { ...data, providers };
 }
