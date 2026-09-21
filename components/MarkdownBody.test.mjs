@@ -160,3 +160,9 @@ test("keeps Mermaid source visible while the response is streaming", () => {
   assert.match(html, />Preview</);
   assert.match(html, /A --&gt; B/);
 });
+
+test("renders CJK emphasis closed before a following character", () => {
+  const html = renderMarkdown("**第一，工控主逻辑没坏。**Q2 证明。");
+
+  assert.match(html, /<strong>第一，工控主逻辑没坏。<\/strong>Q2/);
+});

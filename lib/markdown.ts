@@ -2,6 +2,7 @@ import { defaultUrlTransform, type Options as ReactMarkdownOptions } from "react
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -393,15 +394,21 @@ function isLikelyMathExpression(value: string): boolean {
 // GFM's default single-tilde strikethrough silently mangled such ranges (#385).
 const remarkGfmOptions = { singleTilde: false } as const;
 
+// CommonMark only closes `**` before whitespace or ASCII punctuation, so a Chinese
+// run written as `**第一，节奏坏了。**Q2 证明…` rendered as literal asterisks: the
+// closing `**` sits after a CJK punctuation mark. This plugin (CommonMark issue #650)
+// accepts CJK punctuation as an emphasis boundary. Strikethrough is untouched.
 export const markdownRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
   remarkMath,
+  remarkCjkFriendly,
 ];
 export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
   remarkMath,
+  remarkCjkFriendly,
 ];
 
 export const markdownRehypePlugins: ReactMarkdownOptions["rehypePlugins"] = [
