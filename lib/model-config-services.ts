@@ -21,6 +21,14 @@ export async function resolveAllowedCwd(requestedCwd: string): Promise<
   return { cwd };
 }
 
+/** Optional `cwd` on the query string; falls back to the global agent directory. */
+export async function resolveOptionalCwd(
+  requestedCwd: string | null,
+): Promise<{ cwd: string } | { error: string; status: number }> {
+  if (!requestedCwd) return { cwd: getAgentDir() };
+  return resolveAllowedCwd(requestedCwd);
+}
+
 export async function createModelsConfigServices(cwd: string) {
   const agentDir = getAgentDir();
   const trustReloadOptions = projectTrustReloadOptions(cwd, agentDir);

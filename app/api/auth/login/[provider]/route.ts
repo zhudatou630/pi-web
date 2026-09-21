@@ -1,5 +1,5 @@
 import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { createModelsConfigServices, resolveOptionalCwd } from "@/lib/model-config-services";
 import { invalidateModelsCache } from "@/lib/models-cache";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +59,15 @@ export async function GET(
 
   const stream = new ReadableStream({
     async start(controller) {
-      const modelRuntime = await ModelRuntime.create();
+      // Composed runtime so an extension-registered OAuth provider is seen at all.
+      const resolved = await resolveOptionalCwd(new URL(req.url).searchParams.get("cwd"));
+      if ("error" in resolved) {
+        send(controller, { type: "error", message: resolved.error });
+        controller.close();
+        return;
+      }
+      const services = await createModelsConfigServices(resolved.cwd);
+      const modelRuntime = services.modelRuntime;
       if (!modelRuntime.getProvider(provider)?.auth.oauth) {
         send(controller, { type: "error", message: `Unknown provider: ${provider}` });
         controller.close();

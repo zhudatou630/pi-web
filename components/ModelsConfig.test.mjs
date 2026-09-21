@@ -224,3 +224,22 @@ test("thinking level overrides keep explicit default, disabled, and custom contr
   assert.match(editor, /state === "null"/);
   assert.match(editor, /state === "string"/);
 });
+
+test("runtime override diffs never write SDK-ignored keys", () => {
+  const runtime = {
+    id: "gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    api: "antigravity-api",
+    reasoning: true,
+  };
+
+  // `api` exists on the edited entry (the editor renders it) but the SDK does
+  // not merge it from modelOverrides, so it must not become a diff.
+  assert.equal(diffModelOverride(runtime, { ...runtime, api: "openai-responses" }), undefined);
+  assert.deepEqual(diffModelOverride(runtime, { ...runtime, name: "Renamed" }), { name: "Renamed" });
+});
+
+test("the api protocol field is only editable for model definitions", () => {
+  assert.match(source, /const canEditApi = !lockId;/);
+  assert.match(source, /\{canEditApi && \(/);
+});

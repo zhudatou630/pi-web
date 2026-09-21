@@ -4,6 +4,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { createModelsConfigServices, resolveOptionalCwd } from "@/lib/model-config-services";
+import { inheritedModelFields, inheritedProviderFields } from "@/lib/model-discovery-auth";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +41,7 @@ export async function POST(req: Request) {
   let tempDir: string | undefined;
 
   try {
-    const body = await req.json() as { providerName?: unknown; provider?: unknown; model?: unknown };
+    const body = await req.json() as { providerName?: unknown; provider?: unknown; model?: unknown; cwd?: unknown };
     const providerName = typeof body.providerName === "string" ? body.providerName.trim() : "";
     if (!providerName) return NextResponse.json({ ok: false, error: "providerName is required" }, { status: 400 });
     if (!isRecord(body.provider)) return NextResponse.json({ ok: false, error: "provider is required" }, { status: 400 });
@@ -48,13 +50,32 @@ export async function POST(req: Request) {
     const modelId = typeof body.model.id === "string" ? body.model.id.trim() : "";
     if (!modelId) return NextResponse.json({ ok: false, error: "Model ID is required" }, { status: 400 });
 
+    const resolvedCwd = await resolveOptionalCwd(
+      typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : null,
+    );
+    if ("error" in resolvedCwd) {
+      return NextResponse.json({ ok: false, error: resolvedCwd.error }, { status: resolvedCwd.status });
+    }
+    // The sandbox is isolated from real config on purpose, but it must still
+    // inherit endpoint fields an extension supplies, otherwise every provider
+    // that inherits its baseUrl from an extension fails validation here while
+    // working in chat.
+    const composed = (await createModelsConfigServices(resolvedCwd.cwd)).modelRuntime;
+    const registered = composed.getRegisteredProviderConfig(providerName);
+    const runtimeModel = composed.getModel(providerName, modelId);
+
     tempDir = mkdtempSync(join(tmpdir(), "pi-web-model-test-"));
     const modelsPath = join(tempDir, "models.json");
     writeFileSync(modelsPath, JSON.stringify({
       providers: {
         [providerName]: {
           ...body.provider,
-          models: [{ ...body.model, id: modelId }],
+          ...inheritedProviderFields(body.provider, registered),
+          models: [{
+            ...body.model,
+            ...inheritedModelFields(body.model, runtimeModel),
+            id: modelId,
+          }],
         },
       },
     }, null, 2), "utf8");

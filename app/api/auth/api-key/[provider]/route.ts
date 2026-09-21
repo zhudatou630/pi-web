@@ -1,4 +1,4 @@
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { createModelsConfigServices, resolveOptionalCwd } from "@/lib/model-config-services";
 import { NextResponse } from "next/server";
 import { clearExactEnabledModelsForProvider } from "@/lib/enabled-models-disconnect";
 import { invalidateModelsCache } from "@/lib/models-cache";
@@ -8,15 +8,23 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ provider: string }> };
 
-// POST /api/auth/api-key/[provider]  body: { apiKey: string }
+// POST /api/auth/api-key/[provider]  body: { apiKey: string, cwd?: string }
 export async function POST(req: Request, { params }: Params) {
   const { provider } = await params;
   try {
-    const { apiKey } = await req.json() as { apiKey?: string };
+    const body = await req.json() as { apiKey?: string; cwd?: string };
+    const { apiKey } = body;
     if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
       return NextResponse.json({ error: "apiKey is required" }, { status: 400 });
     }
-    const modelRuntime = await ModelRuntime.create();
+    const resolved = await resolveOptionalCwd(body.cwd ?? null);
+    if ("error" in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+    // Composed runtime: a provider registered by an extension is only known to
+    // the same runtime chat uses, so its auth methods must come from there too.
+    const services = await createModelsConfigServices(resolved.cwd);
+    const modelRuntime = services.modelRuntime;
     const apiKeyAuth = modelRuntime.getProvider(provider)?.auth.apiKey;
     if (!apiKeyAuth?.login) {
       throw new Error(`${provider} does not support API key login`);

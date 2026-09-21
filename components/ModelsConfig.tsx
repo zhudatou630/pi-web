@@ -100,6 +100,7 @@ interface ProviderEntry {
 
 interface ModelsJson {
   providers?: Record<string, ProviderEntry>;
+  error?: string;
 }
 
 type ModelTestState =
@@ -834,6 +835,7 @@ function ModelDetail({
   onChange,
   onDelete,
   lockId = false,
+  cwd = null,
 }: {
   providerName: string;
   provider: ProviderEntry;
@@ -841,6 +843,7 @@ function ModelDetail({
   onChange: (m: ModelEntry) => void;
   onDelete?: () => void;
   lockId?: boolean;
+  cwd?: string | null;
 }) {
   const [testState, setTestState] = useState<ModelTestState>({ phase: "idle" });
   const { t } = useI18n();
@@ -853,6 +856,10 @@ function ModelDetail({
   const catalogUndoRef = useRef<ModelEntry | null>(null);
   const costTemplateRef = useRef(model.cost);
   const set = <K extends keyof ModelEntry>(k: K, v: ModelEntry[K]) => onChange({ ...model, [k]: v });
+  // `api` is part of a model definition. On a catalog model the editor writes
+  // `modelOverrides`, where the SDK ignores `api`, so only offer the field when
+  // this really is a definition (`lockId` marks the runtime-override editor).
+  const canEditApi = !lockId;
   const setCost = (key: ModelCostKey, value: string) => {
     const nextDraft = { ...costDraftRef.current, [key]: value };
     const completeCost = parseCompleteModelCost(nextDraft);
@@ -908,7 +915,7 @@ function ModelDetail({
       const res = await fetch("/api/models-config/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerName, provider, model }),
+        body: JSON.stringify({ providerName, provider, model, cwd: cwd ?? undefined }),
       });
       const d = await res.json() as {
         ok?: boolean;
@@ -935,7 +942,7 @@ function ModelDetail({
     } catch (e) {
       setTestState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [model, provider, providerName, testState.phase]);
+  }, [model, provider, providerName, testState.phase, cwd]);
 
   const handleCatalogFill = useCallback(async () => {
     const query = model.id.trim();
@@ -944,6 +951,7 @@ function ModelDetail({
     setCatalogState({ phase: "loading" });
     try {
       const params = new URLSearchParams({ q: query, provider: providerName, limit: "50" });
+      if (cwd) params.set("cwd", cwd);
       if (provider.baseUrl?.trim()) params.set("baseUrl", provider.baseUrl.trim());
       const res = await fetch(`/api/models-config/catalog?${params}`);
       const data = await res.json() as { recommendation?: ModelCatalogRecommendation; error?: string };
@@ -967,7 +975,7 @@ function ModelDetail({
       if (requestId !== catalogRequestIdRef.current) return;
       setCatalogState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [catalogState.phase, model, onChange, provider.baseUrl, providerName]);
+  }, [catalogState.phase, model, onChange, provider.baseUrl, providerName, cwd]);
 
   const undoCatalogFill = () => {
     const previous = catalogUndoRef.current;
@@ -1269,9 +1277,11 @@ function ModelDetail({
 
         {advancedOpen && (
           <div id="model-advanced-settings" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "4px 0 16px" }}>
-            <Field label={t("models.apiOverride")}>
-              <Select value={model.api ?? ""} onChange={(v) => set("api", v || undefined)} options={API_OPTIONS} />
-            </Field>
+            {canEditApi && (
+              <Field label={t("models.apiOverride")}>
+                <Select value={model.api ?? ""} onChange={(v) => set("api", v || undefined)} options={API_OPTIONS} />
+              </Field>
+            )}
 
             <Field label={t("models.headers")}>
               <HeaderListEditor
@@ -1325,6 +1335,11 @@ function ModelDetail({
 
 // ── OAuth detail ──────────────────────────────────────────────────────────────
 
+/** Auth routes describe providers from the same composed runtime as chat, which needs the cwd. */
+function authCwdQuery(cwd: string | null): string {
+  return cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+}
+
 function confirmProviderDisconnect(
   t: (key: string, params?: Record<string, string | number>) => string,
   name: string,
@@ -1336,11 +1351,12 @@ function confirmProviderDisconnect(
 }
 
 function OAuthDetail({
-  provider, pickerCount, onRefresh,
+  provider, pickerCount, onRefresh, cwd,
 }: {
   provider: OAuthProvider;
   pickerCount: number;
   onRefresh: () => void;
+  cwd: string | null;
 }) {
   const [loginState, setLoginState] = useState<OAuthLoginState>({ phase: "idle" });
   const { t } = useI18n();
@@ -1371,7 +1387,7 @@ function OAuthDetail({
     setLoginState({ phase: "connecting" });
     setInputValue("");
 
-    const es = new EventSource(`/api/auth/login/${encodeURIComponent(provider.id)}`);
+    const es = new EventSource(`/api/auth/login/${encodeURIComponent(provider.id)}${authCwdQuery(cwd)}`);
     eventSourceRef.current = es;
 
     es.onmessage = (e) => {
@@ -1415,14 +1431,18 @@ function OAuthDetail({
       es.close();
       setLoginState((prev) => prev.phase === "success" ? prev : { phase: "error", message: "Connection lost" });
     };
-  }, [provider.id, onRefresh]);
+  }, [provider.id, onRefresh, cwd]);
 
   const handleLogout = useCallback(async () => {
     if (!confirmProviderDisconnect(t, provider.name, pickerCount)) return;
-    await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, { method: "POST" });
+    await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd }),
+    });
     setLoginState({ phase: "idle" });
     onRefresh();
-  }, [provider.id, provider.name, pickerCount, onRefresh, t]);
+  }, [provider.id, provider.name, pickerCount, onRefresh, t, cwd]);
 
   const submitCode = useCallback(async (token: string, code: string) => {
     if (!code.trim()) return;
@@ -1628,11 +1648,12 @@ function OAuthDetail({
 // ── API Key detail ────────────────────────────────────────────────────────────
 
 function ApiKeyDetail({
-  provider, pickerCount, onRefresh,
+  provider, pickerCount, onRefresh, cwd,
 }: {
   provider: ApiKeyProvider;
   pickerCount: number;
   onRefresh: () => void;
+  cwd: string | null;
 }) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1657,7 +1678,7 @@ function ApiKeyDetail({
       const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey.trim() }),
+        body: JSON.stringify({ apiKey: apiKey.trim(), cwd }),
       });
       const d = await res.json() as { success?: boolean; error?: string };
       if (!res.ok || d.error) {
@@ -1673,14 +1694,18 @@ function ApiKeyDetail({
     } finally {
       setSaving(false);
     }
-  }, [apiKey, provider.id, onRefresh]);
+  }, [apiKey, provider.id, onRefresh, cwd]);
 
   const handleRemove = useCallback(async () => {
     if (!confirmProviderDisconnect(t, provider.displayName, pickerCount)) return;
     setRemoving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd }),
+      });
       const d = await res.json() as { success?: boolean; error?: string };
       if (!res.ok || d.error) setError(d.error ?? `HTTP ${res.status}`);
       else onRefresh();
@@ -1689,7 +1714,7 @@ function ApiKeyDetail({
     } finally {
       setRemoving(false);
     }
-  }, [provider.id, provider.displayName, pickerCount, onRefresh, t]);
+  }, [provider.id, provider.displayName, pickerCount, onRefresh, t, cwd]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1890,12 +1915,13 @@ function AddProviderPicker({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClose: () => void; embedded?: boolean; cwd?: string | null }) {
+export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsChanged }: { onClose: () => void; embedded?: boolean; cwd?: string | null; onModelsChanged?: () => void }) {
   const { t } = useI18n();
   const [config, setConfig] = useState<ModelsJson>({ providers: {} });
   const [savedConfig, setSavedConfig] = useState<ModelsJson>({ providers: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedOk, setSavedOk] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(readRememberedSelection);
@@ -1906,17 +1932,18 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
   const [enabledModels, setEnabledModels] = useState<string[]>([]);
   const [pickerUnscoped, setPickerUnscoped] = useState(true);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [pickerBusy, setPickerBusy] = useState<string | null>(null);
 
   const refreshAuthProviders = useCallback(() => {
-    fetch("/api/auth/providers")
+    fetch(`/api/auth/providers${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`)
       .then((r) => r.json())
       .then((d: { oauthProviders?: OAuthProvider[]; apiKeyProviders?: ApiKeyProvider[] }) => {
         if (Array.isArray(d.oauthProviders)) setOauthProviders(d.oauthProviders);
         if (Array.isArray(d.apiKeyProviders)) setApiKeyProviders(d.apiKeyProviders);
       })
       .catch(() => {});
-  }, []);
+  }, [cwd]);
 
   const refreshRuntime = useCallback(() => {
     if (!cwd) {
@@ -1927,10 +1954,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
     const params = new URLSearchParams({ cwd });
     fetch(`/api/models-config/runtime?${params}`)
       .then((r) => r.json())
-      .then((d: { catalog?: RuntimeCatalogModel[]; enabledModels?: string[]; unscoped?: boolean }) => {
+      .then((d: { catalog?: RuntimeCatalogModel[]; enabledModels?: string[]; unscoped?: boolean; modelError?: string }) => {
         if (Array.isArray(d.catalog)) setCatalog(d.catalog);
         setEnabledModels(Array.isArray(d.enabledModels) ? d.enabledModels : []);
         setPickerUnscoped(Boolean(d.unscoped));
+        setRuntimeError(d.modelError ?? null);
       })
       .catch(() => {});
   }, [cwd]);
@@ -1945,6 +1973,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
       .then((r) => r.json())
       .then((d: ModelsJson) => {
         const normalized = d.providers ? d : { ...d, providers: {} };
+        setLoadError(d.error ?? null);
         setConfig(normalized);
         setSavedConfig(normalized);
         const keys = Object.keys(normalized.providers ?? {});
@@ -2117,13 +2146,21 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
         setSavedOk(true);
         setTimeout(() => setSavedOk(false), 2000);
         refreshRuntime();
+        onModelsChanged?.();
       }
     } catch (e) {
       setSaveError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [config, refreshRuntime]);
+  }, [config, refreshRuntime, onModelsChanged]);
+
+  // A models.json that neither layer can parse disables every provider in it and
+  // is the first thing to report; the footer shows one line per error.
+  const configFatalError = [loadError, runtimeError]
+    .filter(Boolean)
+    .map((message) => String(message).split("\n")[0])
+    .join(" · ") || null;
 
   const providers = Object.entries(config.providers ?? {});
   const activeOAuth = oauthProviders.filter((p) => p.loggedIn);
@@ -2261,8 +2298,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
       const apiKey = apiKeyProviders.find((item) => item.id === p.id && item.configured);
       return (
         <>
-          <OAuthDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} />
-          {apiKey && <ApiKeyDetail key={`${p.id}-key`} provider={apiKey} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} />}
+          <OAuthDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} cwd={cwd} />
+          {apiKey && <ApiKeyDetail key={`${p.id}-key`} provider={apiKey} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} cwd={cwd} />}
           {renderCatalogShelf(p.id)}
           {hasCustomEndpoint(json) && json && renderEndpoint(p.id, json)}
         </>
@@ -2274,7 +2311,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
       const json = config.providers?.[p.id];
       return (
         <>
-          <ApiKeyDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} />
+          <ApiKeyDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} cwd={cwd} />
           {renderCatalogShelf(p.id)}
           {hasCustomEndpoint(json) && json && renderEndpoint(p.id, json)}
         </>
@@ -2303,6 +2340,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
           provider={provider}
           model={model}
           lockId
+          cwd={cwd}
           onChange={(next) => updateOverride(selection.providerName, runtime, next)}
         />
       );
@@ -2316,6 +2354,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
         providerName={selection.providerName}
         provider={provider}
         model={model}
+        cwd={cwd}
         onChange={(m) => updateModel(selection.providerName, selection.index, m)}
         onDelete={() => removeModel(selection.providerName, selection.index)}
       />
@@ -2414,7 +2453,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null }: { onClos
         </ConfigSplitView>
 
         {/* Footer */}
-        <ConfigFooter status={(saveError || pickerError) && <span style={{ color: "#f87171" }}>{saveError || pickerError}</span>}>
+        <ConfigFooter status={(saveError || pickerError || configFatalError) && (
+          <span style={{ color: "#f87171" }} title={configFatalError ?? undefined}>{saveError || pickerError || configFatalError}</span>
+        )}>
           {!embedded && <ConfigButton onClick={onClose}>{t("i18n.cancel")}</ConfigButton>}
           {(configDirty || saving || savedOk) && (
             <ConfigButton

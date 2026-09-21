@@ -72,13 +72,17 @@ export function serializeHeaderRows(rows: readonly HeaderRow[]): Record<string, 
 }
 
 const MODEL_OVERRIDE_KEYS = [
-  "name", "api", "reasoning", "thinkingLevelMap", "input",
+  // Keys the SDK's applyModelOverride actually merges into a catalog model.
+  // `api` and `baseUrl` are definition-only: an override carrying them would be
+  // written to models.json and then silently ignored at runtime.
+  "name", "reasoning", "thinkingLevelMap", "input",
   "contextWindow", "maxTokens", "cost", "headers", "compat",
 ] as const;
 
 export type ModelOverrideFields = {
   id?: string;
   name?: string;
+  /** Catalog value shown in the editor; not a `modelOverrides` key. */
   api?: string;
   reasoning?: boolean;
   thinkingLevelMap?: Record<string, string | null>;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createModelsConfigServices, resolveOptionalCwd } from "@/lib/model-config-services";
 import { resolveModelDiscoveryAuth } from "@/lib/model-discovery-auth";
 import { buildModelsListUrl, parseDiscoveredModels } from "@/lib/model-discovery";
 
@@ -32,10 +33,16 @@ function buildHeaders(api: string, apiKey: string | undefined, configured: Recor
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json() as { providerName?: unknown; provider?: unknown };
+    const body = await req.json() as { providerName?: unknown; provider?: unknown; cwd?: unknown };
     const providerName = typeof body.providerName === "string" ? body.providerName.trim() : "";
     if (!providerName) return NextResponse.json({ error: "providerName is required" }, { status: 400 });
     if (!isRecord(body.provider)) return NextResponse.json({ error: "provider is required" }, { status: 400 });
+    const resolvedCwd = await resolveOptionalCwd(
+      typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : null,
+    );
+    if ("error" in resolvedCwd) {
+      return NextResponse.json({ error: resolvedCwd.error }, { status: resolvedCwd.status });
+    }
 
     const baseUrl = typeof body.provider.baseUrl === "string" ? body.provider.baseUrl.trim() : "";
     if (!baseUrl) return NextResponse.json({ error: "Base URL is required" }, { status: 400 });
@@ -50,7 +57,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Base URL is invalid" }, { status: 400 });
     }
 
-    const auth = await resolveModelDiscoveryAuth(providerName, body.provider);
+    // Composed runtime: an extension-provided endpoint is only visible there.
+    const registered = (await createModelsConfigServices(resolvedCwd.cwd))
+      .modelRuntime.getRegisteredProviderConfig(providerName);
+    const auth = await resolveModelDiscoveryAuth(providerName, body.provider, registered);
     if (typeof body.provider.apiKey === "string" && body.provider.apiKey.trim() && !auth.apiKey) {
       return NextResponse.json({ error: `No API key found for "${providerName}"` }, { status: 400 });
     }

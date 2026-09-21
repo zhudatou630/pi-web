@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { createModelsConfigServices, resolveAllowedCwd } from "@/lib/model-config-services";
 import { modelPickerRef, type RuntimeCatalogModel } from "@/lib/model-picker";
+import { readModelsConfigResult } from "@/lib/models-config-store";
 import { resolveVisibleModels } from "@/lib/model-scope";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ export async function GET(req: Request) {
   }
 
   try {
+    const configRead = readModelsConfigResult();
     const services = await createModelsConfigServices(resolved.cwd);
     const patterns = services.settingsManager.getEnabledModels();
     const available = await services.modelRuntime.getAvailable();
@@ -49,11 +51,14 @@ export async function GET(req: Request) {
       model,
       visible.has(modelPickerRef(model.provider, model.id)),
     ));
+    // A models.json that the SDK cannot load disables every provider defined in
+    // it without any other visible symptom, so surface both layers' errors.
+    const modelError = [configRead.error, services.modelRuntime.getError()].filter(Boolean).join("\n\n");
     return NextResponse.json({
       catalog,
       enabledModels: patterns ?? [],
       unscoped: !patterns?.length,
-      ...(services.modelRuntime.getError() ? { modelError: services.modelRuntime.getError() } : {}),
+      ...(modelError ? { modelError } : {}),
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
