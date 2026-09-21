@@ -450,6 +450,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.commandSession": "显示会话消息、Token 和费用统计",
     "chat.commandCopy": "复制最后一条助手消息",
     "chat.commandClone": "将当前分支复制为独立新会话",
+    "chat.commandBug": "向 Pi 开发者报告问题（不包含会话记录）",
     "chat.compacted": "已压缩",
     "chat.imageNotSupportedTitle": "图片可能无法发送",
     "chat.imageNotSupportedBody": "当前选择的模型（{model}）不支持图片输入，附加的图片可能会被忽略。",

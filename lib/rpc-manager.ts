@@ -1,9 +1,10 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
-import { resolve } from "path";
+import { join, resolve } from "path";
+import { pathToFileURL } from "url";
 import { validateAgentImages } from "./image-attachments";
 import { parseQueuedDeliverySnapshot, snapshotAgentQueuedMessages } from "./queued-messages";
 import { invalidateModelsCache } from "./models-cache";
@@ -871,6 +872,15 @@ export class AgentSessionWrapper {
           await this.shutdownAfterSessionReplacement("clone");
           return { cancelled: false, newSessionId };
         });
+      }
+
+      case "bug_report": {
+        if (this.isSessionRunningForReplacement()) {
+          throw new Error("Cannot report a bug while the session is running");
+        }
+        return await this.withFinalIdleReset(() =>
+          runBugReport(this.inner, (command.hint as string | undefined)?.trim() || undefined)
+        );
       }
 
       case "navigate_tree": {
@@ -1766,6 +1776,96 @@ export async function setRpcSessionTools(
       : {}),
   });
   return { session: started.session, sessionId: started.realSessionId, recreated: true };
+}
+
+export interface BugReportOutcome {
+  delivery: "upload" | "zip";
+  id: string;
+  path?: string;
+  error?: string;
+}
+
+interface BugReportModules {
+  bugReport: {
+    BUG_REPORT_CUSTOM_ENTRY_TYPE: string;
+    bugReportArchiveFileName(id: string): string;
+    collectBugReportMetadata(options: Record<string, unknown>): { id: string; createdAt: string; hint: string | null };
+    collectBugReportDiagnostics(sessionManager: SessionManager, crashes?: unknown[]): unknown;
+    writeBugReportArchive(bundle: unknown, filePath: string): Promise<void>;
+  };
+  bugReportUpload: { uploadBugReport(bundle: unknown): Promise<{ id: string }> };
+  crashLog: { readCrashLog(): unknown[]; clearCrashLog(): void };
+}
+
+let bugReportModulesPromise: Promise<BugReportModules> | null = null;
+
+// /bug is a TUI-only command upstream: its building blocks live in the SDK at
+// dist/core/bug-report.js but are not exported from the package entry, so load
+// them by file path (available since pi 0.86.0).
+function loadBugReportModules(): Promise<BugReportModules> {
+  bugReportModulesPromise ??= (async () => {
+    const base = join(getPackageDir(), "dist/core");
+    const load = (file: string) => import(pathToFileURL(join(base, file)).href);
+    const [bugReport, bugReportUpload, crashLog] = await Promise.all([
+      load("bug-report.js"),
+      load("bug-report-upload.js"),
+      load("crash-log.js"),
+    ]);
+    return { bugReport, bugReportUpload, crashLog } as BugReportModules;
+  })();
+  return bugReportModulesPromise;
+}
+
+/** Mirror the TUI /bug flow with privacy-safe defaults: no transcript, no model-written summary. */
+async function runBugReport(session: AgentSessionLike, hint: string | undefined): Promise<BugReportOutcome> {
+  const { bugReport, bugReportUpload, crashLog } = await loadBugReportModules();
+  const crashes = crashLog.readCrashLog();
+  const extensions = session.resourceLoader.getExtensions();
+  const bundle = {
+    metadata: bugReport.collectBugReportMetadata({
+      hint,
+      sessionId: session.sessionId,
+      cwd: session.sessionManager.getCwd(),
+      includeSession: false,
+      includeSummary: false,
+      messageCount: session.messages.length,
+      model: session.model,
+      modelRuntime: session.modelRuntime,
+      thinkingLevel: session.thinkingLevel,
+      extensions: extensions.extensions,
+      extensionErrors: extensions.errors,
+      globalSettings: session.settingsManager.getGlobalSettings(),
+      projectSettings: session.settingsManager.getProjectSettings(),
+    }),
+    diagnostics: bugReport.collectBugReportDiagnostics(session.sessionManager, crashes),
+  };
+  const record = (delivery: Record<string, unknown>) => {
+    session.sessionManager.appendCustomEntry(bugReport.BUG_REPORT_CUSTOM_ENTRY_TYPE, {
+      id: bundle.metadata.id,
+      createdAt: bundle.metadata.createdAt,
+      hint: bundle.metadata.hint,
+      sessionIncluded: false,
+      summaryIncluded: false,
+      ...delivery,
+    });
+    if (crashes.length > 0) crashLog.clearCrashLog();
+    invalidateSessionListCache();
+  };
+  try {
+    const result = await bugReportUpload.uploadBugReport(bundle);
+    record({ delivery: "upload" });
+    return { delivery: "upload", id: result.id };
+  } catch (error) {
+    const archivePath = join(session.sessionManager.getCwd(), bugReport.bugReportArchiveFileName(bundle.metadata.id));
+    await bugReport.writeBugReportArchive(bundle, archivePath);
+    record({ delivery: "zip", path: archivePath });
+    return {
+      delivery: "zip",
+      id: bundle.metadata.id,
+      path: archivePath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function runtimeMessageText(entry: SessionMessageEntry): string {

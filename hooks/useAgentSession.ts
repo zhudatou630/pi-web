@@ -17,6 +17,7 @@ import { rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
+import type { BugReportOutcome } from "@/lib/rpc-manager";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
 import { userMessageKey } from "@/lib/prompt-recovery";
 import {
@@ -2019,6 +2020,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const completed = complete({ handled: true, message: "Cloned current session branch" });
           onSessionForked?.(result.newSessionId);
           return completed;
+        }
+
+        case "bug": {
+          if (!sid) return complete({ handled: true, error: "No active session to report" });
+          if (agentRunningRef.current || bashRunningRef.current) {
+            return complete({ handled: true, error: "Cannot report a bug while the session is running" });
+          }
+          const result = await sendAgentCommand<BugReportOutcome>(sid, {
+            type: "bug_report",
+            ...(args ? { hint: args } : {}),
+          });
+          if (!result) return complete({ handled: true, error: "Bug report failed" });
+          return complete({
+            handled: true,
+            message: result.delivery === "upload"
+              ? `Bug report uploaded. Report ID: ${result.id}`
+              : `Upload failed (${result.error ?? "unknown error"}); exported to ${result.path}`,
+          });
         }
 
         default:

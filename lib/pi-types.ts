@@ -74,6 +74,7 @@ interface SkillLike {
 interface ResourceLoaderLike {
   getSkills(): { skills: SkillLike[] };
   getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> };
+  getExtensions(): { extensions: readonly unknown[]; errors: ReadonlyArray<{ path: string; error: string }> };
 }
 
 interface ExtensionRunnerLike {
@@ -134,6 +135,8 @@ export interface AgentSessionLike {
   readonly autoCompactionEnabled: boolean;
   readonly autoRetryEnabled: boolean;
   readonly model: ModelLike | undefined;
+  readonly thinkingLevel: string;
+  readonly messages: PiAgentMessage[];
   readonly modelRuntime: {
     getModel: (provider: string, modelId: string) => ModelLike | undefined;
     getProvider: (provider: string) => { baseUrl?: string } | undefined;
