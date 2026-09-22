@@ -44,7 +44,19 @@
   --chat-content-font-size: 14px;
   --chat-font-size-offset: calc(var(--chat-content-font-size, 14px) - 14px);
   --workspace-header-height: 30px;
-  --font-ui: 'Sarasa UI SC', 'Sarasa UI SC Nerd', 'Sarasa Gothic SC', '更纱黑体 UI SC', '更纱黑体 SC', 'Sarasa Term SC Nerd', 'Sarasa Term SC', 'Sarasa Mono SC Nerd', 'Sarasa Mono SC', '更纱黑体 终端 SC', '更纱黑体 等宽 SC', 'Sarasa UI TC', 'Sarasa Gothic TC', 'Maple Mono SC NF', 'Maple Mono SC', 'Maple Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  /* Sarasa is the intended face for prose and code alike, and the two chains
+     below share one prefix so both resolve to the same face whenever any
+     Sarasa cut is installed. The tails diverge on purpose: with Sarasa
+     absent, prose should land on a proportional UI face and code on a
+     monospace one.
+
+     Order inside the prefix:
+       1. the cut we recommend (Sarasa Term SC), followed by the two patch
+          projects that ship it under a longer family name,
+       2. sibling cuts, in case only one of those was installed,
+       3. other CJK-aware monospace families. */
+  --font-sarasa: 'Sarasa Term SC', 'Sarasa Term SC Nerd', 'Sarasa Term SC Nerd Font', 'Sarasa Mono SC', 'Sarasa Mono SC Nerd', 'Sarasa Term TC', 'Sarasa Term TC Nerd', 'Sarasa Fixed SC', 'Sarasa UI SC', 'Sarasa UI SC Nerd', 'Sarasa Gothic SC', 'Maple Mono SC NF', 'Maple Mono SC', 'Maple Mono';
+  --font-ui: var(--font-sarasa), ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
   --font-chat: var(--font-ui);
 }
 
@@ -568,7 +580,12 @@ html.dark .web-login-error {
 }
 
 :root {
-  --font-mono: 'Sarasa Term SC Nerd', 'Sarasa Term SC', 'Sarasa Mono SC Nerd', 'Sarasa Mono SC', 'Sarasa Term TC Nerd', 'Sarasa Term TC', 'Maple Mono SC NF', 'Maple Mono SC', 'Maple Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', ui-monospace, var(--font-noto-mono), monospace;
+  /* Shares the Sarasa prefix with --font-ui so both resolve to one face when
+     installed. This tail is monospace-first and, unlike the UI tail, ends
+     with explicit CJK families: on systems where the generic monospace face
+     has no Chinese glyphs the browser would otherwise pick an arbitrary
+     CJK fallback, often a proportional one. */
+  --font-mono: var(--font-sarasa), ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', var(--font-noto-mono), monospace, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
 }
 
 pre, code {

@@ -405,7 +405,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
             href="https://github.com/be5invis/Sarasa-Gothic/releases"
             target="_blank"
             rel="noreferrer"
-            title="Sarasa Term SC is a cut of Sarasa Gothic"
+            title="Sarasa UI SC and Term SC are cuts of Sarasa Gothic; download both as TTF"
             className="settings-font-link"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
