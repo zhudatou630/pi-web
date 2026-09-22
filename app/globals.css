@@ -20,6 +20,19 @@
   --font-mono: var(--font-mono);
 }
 
+@font-face {
+  font-family: "Sarasa Term SC Web";
+  src: local("Sarasa Term SC"), local("Sarasa Term SC Nerd"),
+    url("/fonts/SarasaTermSC-Regular.woff2?v=1") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+html.sarasa-term-webfont {
+  --font-sarasa: "Sarasa Term SC Web", var(--font-sarasa-local);
+}
+
 :root {
   --bg: #ffffff;
   --bg-panel: #f5f5f5;
@@ -44,18 +57,11 @@
   --chat-content-font-size: 14px;
   --chat-font-size-offset: calc(var(--chat-content-font-size, 14px) - 14px);
   --workspace-header-height: 30px;
-  /* Sarasa is the intended face for prose and code alike, and the two chains
-     below share one prefix so both resolve to the same face whenever any
-     Sarasa cut is installed. The tails diverge on purpose: with Sarasa
-     absent, prose should land on a proportional UI face and code on a
-     monospace one.
-
-     Order inside the prefix:
-       1. the cut we recommend (Sarasa Term SC), followed by the two patch
-          projects that ship it under a longer family name,
-       2. sibling cuts, in case only one of those was installed,
-       3. other CJK-aware monospace families. */
-  --font-sarasa: 'Sarasa Term SC', 'Sarasa Term SC Nerd', 'Sarasa Term SC Nerd Font', 'Sarasa Mono SC', 'Sarasa Mono SC Nerd', 'Sarasa Term TC', 'Sarasa Term TC Nerd', 'Sarasa Fixed SC', 'Sarasa UI SC', 'Sarasa UI SC Nerd', 'Sarasa Gothic SC', 'Maple Mono SC NF', 'Maple Mono SC', 'Maple Mono';
+  /* Sarasa is the intended face for prose and code alike. Keep the local
+     families first; the optional web face is enabled only after an explicit
+     user download. */
+  --font-sarasa-local: 'Sarasa Term SC', 'Sarasa Term SC Nerd', 'Sarasa Term SC Nerd Font', 'Sarasa Mono SC', 'Sarasa Mono SC Nerd', 'Sarasa Term TC', 'Sarasa Term TC Nerd', 'Sarasa Fixed SC', 'Sarasa UI SC', 'Sarasa UI SC Nerd', 'Sarasa Gothic SC', 'Maple Mono SC NF', 'Maple Mono SC', 'Maple Mono';
+  --font-sarasa: var(--font-sarasa-local);
   --font-ui: var(--font-sarasa), ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
   --font-chat: var(--font-ui);
 }

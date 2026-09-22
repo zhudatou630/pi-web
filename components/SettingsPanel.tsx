@@ -38,6 +38,7 @@ import { PluginsConfig } from "./PluginsConfig";
 import { ImagesConfig } from "./ImagesConfig";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
+import { downloadSarasa, hasDownloadedSarasa } from "@/lib/sarasa-font";
 import { ConfigButton, ConfigSwitch } from "./SettingsUi";
 
 interface Props {
@@ -99,6 +100,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [webAuthEnabled, setWebAuthEnabled] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const [sarasaStatus, setSarasaStatus] = useState<"cached" | "available" | "loading" | "error">("available");
+  const [sarasaError, setSarasaError] = useState<string | null>(null);
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
@@ -174,6 +177,23 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       setPushStatus({ kind: "error", message: `${t("settings.pushRegisterFailed")} ${cause instanceof Error ? cause.message : String(cause)}` });
     } finally {
       setPushRegistering(false);
+    }
+  };
+
+  useEffect(() => {
+    const downloaded = hasDownloadedSarasa();
+    setSarasaStatus(downloaded ? "cached" : "available");
+  }, []);
+
+  const downloadSarasaFont = async () => {
+    setSarasaStatus("loading");
+    setSarasaError(null);
+    try {
+      await downloadSarasa();
+      setSarasaStatus("cached");
+    } catch (cause) {
+      setSarasaStatus("error");
+      setSarasaError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
@@ -400,22 +420,30 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.typography")}</h3>
         <p className="settings-general-description">{t("settings.typographyDescription")}</p>
-        <div className="settings-font-link-row">
-          <a
-            href="https://github.com/be5invis/Sarasa-Gothic/releases"
-            target="_blank"
-            rel="noreferrer"
-            title="Sarasa UI SC and Term SC are cuts of Sarasa Gothic; download both as TTF"
-            className="settings-font-link"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
+        {sarasaStatus === "cached" ? (
+          <div role="status" className="settings-font-status">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
             </svg>
-            <span>{t("settings.fontMonoDownload")}</span>
-          </a>
-        </div>
+            <span>{t("settings.fontCached")} · {t("settings.fontCachedDescription")}</span>
+          </div>
+        ) : (
+          <>
+            <div className="settings-font-link-row">
+              <ConfigButton
+                size="small"
+                variant="secondary"
+                disabled={sarasaStatus === "loading"}
+                onClick={() => void downloadSarasaFont()}
+              >
+                {sarasaStatus === "loading" ? t("settings.fontDownloadLoading") : t("settings.fontDownload")}
+              </ConfigButton>
+            </div>
+            <p role="status" className={sarasaStatus === "error" ? "settings-general-error" : "settings-general-description"}>
+              {sarasaStatus === "error" ? `${t("settings.fontDownloadFailed")} ${sarasaError}` : t("settings.fontNotInstalled")}
+            </p>
+          </>
+        )}
       </section>
 
       <section className="settings-general-section">
