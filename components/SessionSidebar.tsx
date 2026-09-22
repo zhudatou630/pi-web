@@ -55,6 +55,7 @@ function ToolbarIconButton({
   background = "none",
   marginRight,
   ariaPressed,
+  className,
   children,
 }: {
   onClick: () => void;
@@ -65,6 +66,7 @@ function ToolbarIconButton({
   background?: string;
   marginRight?: number;
   ariaPressed?: boolean;
+  className?: string;
   children: ReactNode;
 }) {
   const enter = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -84,6 +86,7 @@ function ToolbarIconButton({
       title={title}
       aria-label={title}
       aria-pressed={ariaPressed}
+      className={className}
       style={{
         position: "relative",
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -184,7 +187,7 @@ interface ValidatedProject {
 }
 
 type WorkspaceRow =
-  | { kind: "workspace"; project: ProjectSelection; cwd: string; sessionCount: number }
+  | { kind: "workspace"; project: ProjectSelection; cwd: string }
   | { kind: "session"; family: ReturnType<typeof listSessionFamilies>[number] }
   | { kind: "showMore"; projectKey: string; remaining: number };
 
@@ -419,6 +422,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   }, [revealedSessionId, revealedWorkspaceKey]);
 
   const handleWorkspaceTouchStart = useCallback((key: string, event: React.TouchEvent) => {
+    // A touch starting on a row action is a tap on that action, not a long
+    // press on the project row (otherwise the new-session button would both
+    // reveal actions and create a session).
+    if ((event.target as HTMLElement | null)?.closest(".workspace-row-action")) return;
     const touch = event.touches[0];
     workspaceTouchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     workspaceLongPressTriggeredRef.current = false;
@@ -1052,7 +1059,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         kind: "workspace",
         project,
         cwd: families[0]?.root.cwd ?? project.root,
-        sessionCount: families.length,
       });
       if (expanded.has(project.key)) {
         const limit = workspaceSessionLimits[project.key] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
@@ -1643,7 +1649,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       {activity?.unread ? (
                         <span aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ color: "#10b981", fontSize: 10 }}>{activity.unread}</span>
                       ) : null}
-                      <span className="sidebar-header-count">{row.sessionCount}</span>
                     </button>
                     {active ? worktreeSwitcher : null}
                     <span className="workspace-row-action">
@@ -1672,6 +1677,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => {
+                          workspaceLongPressTriggeredRef.current = false;
                           setRevealedWorkspaceKey(null);
                           setSelectedCwd(workspaceCwd);
                           setExpandedWorkspaceKeys((current) => new Set([...(current ?? defaultExpandedWorkspaceKeys), row.project.key]));
@@ -1679,6 +1685,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         }}
                         title={t("sidebar.newSessionTitle", { path: workspaceCwd })}
                         color="var(--text-dim)"
+                        className="workspace-new-session"
                         marginRight={6}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -1692,7 +1699,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                   <button
                     key={`more:${row.projectKey}`}
                     type="button"
-                    className="workspace-show-more-row"
+                    className="workspace-show-more-button"
                     aria-label={t("sidebar.showMoreSessionsLabel", { count: row.remaining })}
                     onClick={() => setWorkspaceSessionLimits((current) => ({
                       ...current,
@@ -1702,13 +1709,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     style={{
                       position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT,
                       left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT,
-                      display: "flex", alignItems: "center", gap: 5,
-                      padding: "0 8px 0 26px", border: "none", background: "none",
-                      color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 12, borderRadius: 4,
                     }}
                   >
                     <span>{t("sidebar.showMoreSessions")}</span>
-                    <span className="sidebar-header-count">{row.remaining}</span>
+                    <span className="workspace-show-more-count">{row.remaining}</span>
                   </button>
                 );
               }

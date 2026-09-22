@@ -206,10 +206,14 @@ test("limits recent sessions per project and loads more without marking them as 
   assert.match(source, /const WORKSPACE_SESSION_PREVIEW_LIMIT = 6/);
   assert.match(source, /const WORKSPACE_SESSION_PAGE_SIZE = 20/);
   assert.match(source, /sidebar\.showMoreSessions/);
-  assert.match(source, /padding: "0 8px 0 26px"/);
-  assert.match(source, /sidebar-header-count/);
+  assert.match(source, /workspace-show-more-count/);
   assert.match(source, /indent=\{14\}/);
   assert.doesNotMatch(source, /depth=\{1\}/);
+});
+
+test("project rows carry no session count", () => {
+  assert.doesNotMatch(source, /sessionCount/);
+  assert.doesNotMatch(source, /sidebar-header-count\}\{row\./);
 });
 
 test("workspace actions stay quiet on touch until a long press reveals them", async () => {
@@ -220,7 +224,10 @@ test("workspace actions stay quiet on touch until a long press reveals them", as
   assert.match(source, /workspaceLongPressTriggeredRef/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row \.workspace-row-action/);
   assert.match(globalCss, /\.workspace-list-row\.is-actions-revealed \.workspace-row-action/);
-  assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row:hover,[\s\S]*?background: transparent !important;/);
+  assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row:hover[\s\S]*?background: transparent !important;/);
   assert.match(globalCss, /\.workspace-list-row\[data-active="true"\]:hover[\s\S]*?background: var\(--bg-selected\)/);
+  // New session is the one action phones can reach without a long press.
+  assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-new-session[\s\S]*?visibility: visible/);
+  assert.match(source, /className="workspace-new-session"/);
 });
 
