@@ -82,9 +82,10 @@ test("exposes the loaded session catalog to the shell", () => {
   assert.match(source, /onSessionsChange\?\.\(allSessions\)/);
 });
 
-test("bootstraps the sidebar without a project picker or loading label", () => {
+test("bootstraps the sidebar without a legacy cwd context bar or loading label", () => {
   assert.match(source, /const showSelectProjectPrompt = !selectedCwd && !loading && !error && recentProjects\.length === 0/);
-  assert.match(source, /\{\(selectedCwd \|\| showSelectProjectPrompt\) && \(/);
+  assert.doesNotMatch(source, /sidebar-switcher|Workspace context bar/);
+  assert.match(source, /\{\/\* Projects and their sessions \*\/\}/);
   assert.doesNotMatch(source, /t\("sidebar\.loading"\)/);
 });
 
@@ -117,6 +118,12 @@ test("formats session timestamps with the active locale", () => {
   assert.match(source, /import \{ formatCompactRelativeTime \} from "@\/lib\/i18n\/format"/);
   assert.match(sessionItemSource, /const \{ locale, t \} = useI18n\(\)/);
   assert.match(sessionItemSource, /formatCompactRelativeTime\(session\.modified, locale\)/);
+});
+
+test("worktree sessions expose a compact branch label without changing grouping", () => {
+  assert.match(sessionItemSource, /session\.isWorktree && session\.branch/);
+  assert.match(sessionItemSource, /\{session\.branch\}<\/span>/);
+  assert.match(sessionItemSource, /maxWidth: 82/);
 });
 
 test("does not persist an unchanged fallback title ending in whitespace", () => {
@@ -155,7 +162,7 @@ test("does not expose disk-backed actions for transient sessions", () => {
 });
 
 test("hides subagent rows and aggregates their state into the main session row", () => {
-  assert.match(source, /const sessionFamilies = listSessionFamilies\(filteredSessions\)/);
+  assert.match(source, /const families = listSessionFamilies\(sessionsForProject\(allSessions, project\.key\)\)/);
   assert.match(source, /familySessions\.some\(\(session\) => session\.id === selectedSessionId\)/);
   assert.match(source, /familySessions\.some\(\(session\) => runningSessionIds\.has\(session\.id\)\)/);
   assert.doesNotMatch(source, /function SessionTreeItem/);
@@ -180,9 +187,40 @@ test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible))
   assert.doesNotMatch(globalCss, /\.session-list-row:has\(\.session-row-actions\):focus-within \.session-row-meta/);
 });
 
-test("project dropdown pins live in the menu, not the sidebar surface", () => {
-  assert.match(source, /dropdownProjectRows/);
-  assert.match(source, /onTogglePinnedCwd\(project.root\)/);
-  assert.match(source, /className="project-pin-btn"/);
+test("project pins live on workspace rows and the add menu does not switch projects", () => {
+  assert.doesNotMatch(source, /dropdownProjectRows/);
+  assert.match(source, /pinnedCwds\.includes\(row\.project\.root\)/);
+  assert.match(source, /onTogglePinnedCwd\(row\.project\.root\)/);
+  assert.match(source, /sidebar\.addProject/);
+});
+
+test("viewing a project does not promote it ahead of more recently active projects", () => {
+  const pinned = source.indexOf("pinnedCwds.forEach");
+  const recent = source.indexOf("recentProjects.forEach(add)");
+  const selected = source.indexOf("add(selectedProject)", recent);
+  assert.ok(pinned >= 0 && pinned < recent);
+  assert.ok(recent < selected);
+});
+
+test("limits recent sessions per project and loads more without marking them as subagents", () => {
+  assert.match(source, /const WORKSPACE_SESSION_PREVIEW_LIMIT = 6/);
+  assert.match(source, /const WORKSPACE_SESSION_PAGE_SIZE = 20/);
+  assert.match(source, /sidebar\.showMoreSessions/);
+  assert.match(source, /padding: "0 8px 0 26px"/);
+  assert.match(source, /sidebar-header-count/);
+  assert.match(source, /indent=\{14\}/);
+  assert.doesNotMatch(source, /depth=\{1\}/);
+});
+
+test("workspace actions stay quiet on touch until a long press reveals them", async () => {
+  const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /workspace-row-more/);
+  assert.match(source, /revealedWorkspaceKey/);
+  assert.match(source, /handleWorkspaceTouchStart/);
+  assert.match(source, /workspaceLongPressTriggeredRef/);
+  assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row \.workspace-row-action/);
+  assert.match(globalCss, /\.workspace-list-row\.is-actions-revealed \.workspace-row-action/);
+  assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row:hover,[\s\S]*?background: transparent !important;/);
+  assert.match(globalCss, /\.workspace-list-row\[data-active="true"\]:hover[\s\S]*?background: var\(--bg-selected\)/);
 });
 

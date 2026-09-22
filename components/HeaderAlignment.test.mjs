@@ -33,10 +33,10 @@ test("conversation and file headers keep the aligned 30px row", () => {
   assert.equal((shell.match(/className="workspace-header"/g) ?? []).length, 2);
   assert.match(shell, /const TOP_BAR_ICON_BUTTON_SIZE = 30/);
   assert.equal(declarations(".sidebar-section-row").height, "var(--workspace-header-height, 30px)");
-  assert.equal(declarations(".sidebar-switcher")["border-bottom"], "1px solid var(--border)");
+  assert.equal(declarations(".sidebar-switcher")["border-bottom"], undefined);
 });
 
-test("sidebar cwd is a switcher, sections share a chevron gutter, settings is a footer", () => {
+test("sidebar starts with project sections sharing one chevron gutter and settings footer", () => {
   const label = declarations(".sidebar-section-label");
   const gutter = declarations(".sidebar-section-gutter");
   const footer = declarations(".sidebar-footer-item");
@@ -48,7 +48,7 @@ test("sidebar cwd is a switcher, sections share a chevron gutter, settings is a 
   assert.equal(footer.padding, "0 8px 0 2px");
   assert.equal(declarations(".sidebar-footer").padding, "4px 8px 4px 0");
   assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 2);
-  assert.match(sidebar, /className="sidebar-switcher"/);
+  assert.doesNotMatch(sidebar, /className="sidebar-switcher"|Workspace context bar/);
   assert.match(shell, /className="sidebar-footer"/);
   assert.match(shell, /className="sidebar-footer-item"/);
   assert.doesNotMatch(shell, /sidebar-section-label/);
