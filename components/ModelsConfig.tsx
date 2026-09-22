@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { ModelCatalogPreset, ModelCatalogRecommendation } from "@/lib/model-catalog";
+import { THINKING_LEVELS as THINKING_LEVEL_VALUES } from "@/lib/thinking-levels";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   getLastSettingsSelection,
@@ -23,7 +25,18 @@ import {
   type ModelCostKey,
   type ModelOverrideFields,
 } from "./models-config-helpers";
-import { countExactProviderPatterns, type RuntimeCatalogModel } from "@/lib/model-picker";
+import {
+  appendExactRef,
+  definitionsLost,
+  exactRefOf,
+  isExactList,
+  modelPickerRef,
+  removePattern,
+  removeVisibleModel,
+  unresolvedPatterns,
+  type EnabledModelsPanelState,
+  type RuntimeCatalogModel,
+} from "@/lib/model-picker";
 import {
   ConfigButton,
   ConfigDetail,
@@ -89,6 +102,8 @@ interface ModelEntry {
 }
 
 interface ProviderEntry {
+  /** Display name. `providers[id].name`, distinct from the provider id itself. */
+  name?: string;
   baseUrl?: string;
   api?: string;
   apiKey?: string;
@@ -318,19 +333,24 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 // ── Provider detail ───────────────────────────────────────────────────────────
 
-function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddModels }: {
-  name: string; provider: ProviderEntry;
-  onChange: (p: ProviderEntry) => void; onRename: (n: string) => void; onDelete: () => void;
+function ProviderDetail({ providerId, provider, usableRefs, selectedModelIndex, onChange, onDelete, onAddModel, onAddModels, onSelectModel }: {
+  /** The provider id, which keys models.json, auth.json, and enabledModels. */
+  providerId: string; provider: ProviderEntry;
+  /** `provider/id` of every model that resolves right now, for the usability note. */
+  usableRefs: ReadonlySet<string>;
+  /** Index of the model definition currently open, if any. */
+  selectedModelIndex: number | null;
+  onChange: (p: ProviderEntry) => void; onDelete: () => void;
+  onAddModel: () => void;
   onAddModels: (models: DiscoveredModel[]) => void;
+  onSelectModel: (index: number) => void;
 }) {
   const { t } = useI18n();
-  const [editingName, setEditingName] = useState(name);
   const [discoveryState, setDiscoveryState] = useState<ModelDiscoveryState>({ phase: "idle" });
   const [discoveryQuery, setDiscoveryQuery] = useState("");
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const discoveryRequestIdRef = useRef(0);
   const selectShownRef = useRef<HTMLInputElement>(null);
-  useEffect(() => setEditingName(name), [name]);
   const set = <K extends keyof ProviderEntry>(k: K, v: ProviderEntry[K]) => onChange({ ...provider, [k]: v });
 
   useEffect(() => {
@@ -343,7 +363,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
     setDiscoveryState({ phase: "idle" });
     setDiscoveryQuery("");
     setSelectedModelIds([]);
-  }, [name, provider.baseUrl, provider.api, provider.apiKey]);
+  }, [providerId, provider.baseUrl, provider.api, provider.apiKey]);
 
   const handleDiscoverModels = useCallback(async () => {
     if (!provider.baseUrl?.trim() || discoveryState.phase === "loading") return;
@@ -354,7 +374,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
       const res = await fetch("/api/models-config/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerName: name, provider: { ...provider, models: undefined } }),
+        body: JSON.stringify({ providerName: providerId, provider: { ...provider, models: undefined } }),
       });
       const data = await res.json() as { models?: DiscoveredModel[]; endpoint?: string; error?: string };
       if (requestId !== discoveryRequestIdRef.current) return;
@@ -367,7 +387,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
       if (requestId !== discoveryRequestIdRef.current) return;
       setDiscoveryState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [discoveryState.phase, name, provider]);
+  }, [discoveryState.phase, providerId, provider]);
 
   const existingModelIds = new Set((provider.models ?? []).map((model) => model.id));
   const discoveredModels = discoveryState.phase === "success" ? discoveryState.models : [];
@@ -414,21 +434,22 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-         <SectionTitle>{t("i18n.provider")}</SectionTitle>
+         <SectionTitle>{provider.name ?? providerId}</SectionTitle>
         <button onClick={onDelete}
           style={{ padding: "3px 8px", background: "none", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 4, color: "#ef4444", cursor: "pointer", fontSize: 11 }}>
            {t("i18n.delete")}
         </button>
       </div>
 
-       <Field label={t("i18n.providerName")}>
-        <TextInput value={editingName} onChange={setEditingName} placeholder="provider-name" mono />
-        {editingName !== name && editingName.trim() && (
-          <button onClick={() => onRename(editingName.trim())}
-            style={{ marginTop: 4, padding: "3px 10px", background: "var(--accent)", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 11, alignSelf: "flex-start" }}>
-             {t("i18n.rename")}
-          </button>
-        )}
+      <Field label={t("models.displayName")}>
+        <TextInput
+          value={provider.name ?? ""}
+          onChange={(v) => set("name", v.trim() || undefined)}
+          placeholder={providerId}
+        />
+        <span style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>
+          {t("models.providerIdHint", { id: providerId })}
+        </span>
       </Field>
 
       <Field label="Base URL">
@@ -458,20 +479,57 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
         </span>
       </Field>
 
+      {/* Every definition this provider owns, reachable regardless of whether it
+          is connected — otherwise a definition could be created and then never
+          found again. Editing one changes models.json only, not the chat list. */}
+      {(provider.models?.length ?? 0) > 0 && (
+        <div>
+          <SectionTitle>{t("models.definitions")}</SectionTitle>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 2 }}>
+            {(provider.models ?? []).map((model, index) => (
+              <div key={`${model.id}:${index}`} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <ConfigSidebarItem
+                  active={selectedModelIndex === index}
+                  onClick={() => onSelectModel(index)}
+                  style={{ flex: 1, width: "auto" }}
+                >
+                  <ConfigSidebarText className="is-grow">
+                    {model.name && model.name !== model.id ? `${model.name} · ${model.id}` : model.id}
+                  </ConfigSidebarText>
+                </ConfigSidebarItem>
+                {!usableRefs.has(`${providerId}/${model.id}`) && (
+                  <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0 }}>
+                    {t("models.notUsable")}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-        {discoveryState.phase !== "success" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <button
-            onClick={handleDiscoverModels}
-            disabled={!provider.baseUrl?.trim() || discoveryState.phase === "loading"}
-            style={{
-              alignSelf: "flex-start", height: 30, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 5,
-              background: "var(--bg-panel)", color: !provider.baseUrl?.trim() || discoveryState.phase === "loading" ? "var(--text-dim)" : "var(--text-muted)",
-              cursor: !provider.baseUrl?.trim() || discoveryState.phase === "loading" ? "not-allowed" : "pointer", fontSize: 11,
-            }}
+            onClick={onAddModel}
+            style={{ height: 30, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 5, background: "var(--bg-panel)", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}
           >
-            {discoveryState.phase === "loading" ? t("models.discoveryFetching") : t("models.discoveryFetch")}
+            {t("models.newModel")}
           </button>
-        )}
+          {discoveryState.phase !== "success" && (
+            <button
+              onClick={handleDiscoverModels}
+              disabled={!provider.baseUrl?.trim() || discoveryState.phase === "loading"}
+              style={{
+                height: 30, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 5,
+                background: "var(--bg-panel)", color: !provider.baseUrl?.trim() || discoveryState.phase === "loading" ? "var(--text-dim)" : "var(--text-muted)",
+                cursor: !provider.baseUrl?.trim() || discoveryState.phase === "loading" ? "not-allowed" : "pointer", fontSize: 11,
+              }}
+            >
+              {discoveryState.phase === "loading" ? t("models.discoveryFetching") : t("models.discoveryFetch")}
+            </button>
+          )}
+        </div>
 
         {discoveryState.phase === "error" && (
           <div style={{ padding: "7px 9px", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 5, color: "#ef4444", fontSize: 11, lineHeight: 1.4 }}>
@@ -564,9 +622,7 @@ function ProviderDetail({ name, provider, onChange, onRename, onDelete, onAddMod
 
 // ── ThinkingLevelMap editor ───────────────────────────────────────────────────
 
-const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-type ThinkingLevel = typeof THINKING_LEVELS[number];
-
+const THINKING_LEVELS = THINKING_LEVEL_VALUES;
 const LEVEL_COLORS: Record<ThinkingLevel, string> = {
   off:     "var(--text-dim)",
   minimal: "#6b7280",
@@ -1343,18 +1399,14 @@ function authCwdQuery(cwd: string | null): string {
 function confirmProviderDisconnect(
   t: (key: string, params?: Record<string, string | number>) => string,
   name: string,
-  count: number,
 ): boolean {
-  return window.confirm(count > 0
-    ? t("models.disconnectClearsPicker", { name, count })
-    : t("models.disconnectConfirm", { name }));
+  return window.confirm(t("models.disconnectConfirm", { name }));
 }
 
 function OAuthDetail({
-  provider, pickerCount, onRefresh, cwd,
+  provider, onRefresh, cwd,
 }: {
   provider: OAuthProvider;
-  pickerCount: number;
   onRefresh: () => void;
   cwd: string | null;
 }) {
@@ -1434,7 +1486,7 @@ function OAuthDetail({
   }, [provider.id, onRefresh, cwd]);
 
   const handleLogout = useCallback(async () => {
-    if (!confirmProviderDisconnect(t, provider.name, pickerCount)) return;
+    if (!confirmProviderDisconnect(t, provider.name)) return;
     await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1442,7 +1494,7 @@ function OAuthDetail({
     });
     setLoginState({ phase: "idle" });
     onRefresh();
-  }, [provider.id, provider.name, pickerCount, onRefresh, t, cwd]);
+  }, [provider.id, provider.name, onRefresh, t, cwd]);
 
   const submitCode = useCallback(async (token: string, code: string) => {
     if (!code.trim()) return;
@@ -1648,10 +1700,9 @@ function OAuthDetail({
 // ── API Key detail ────────────────────────────────────────────────────────────
 
 function ApiKeyDetail({
-  provider, pickerCount, onRefresh, cwd,
+  provider, onRefresh, cwd,
 }: {
   provider: ApiKeyProvider;
-  pickerCount: number;
   onRefresh: () => void;
   cwd: string | null;
 }) {
@@ -1697,7 +1748,7 @@ function ApiKeyDetail({
   }, [apiKey, provider.id, onRefresh, cwd]);
 
   const handleRemove = useCallback(async () => {
-    if (!confirmProviderDisconnect(t, provider.displayName, pickerCount)) return;
+    if (!confirmProviderDisconnect(t, provider.displayName)) return;
     setRemoving(true);
     setError(null);
     try {
@@ -1714,7 +1765,7 @@ function ApiKeyDetail({
     } finally {
       setRemoving(false);
     }
-  }, [provider.id, provider.displayName, pickerCount, onRefresh, t, cwd]);
+  }, [provider.id, provider.displayName, onRefresh, t, cwd]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1913,6 +1964,203 @@ function AddProviderPicker({
   );
 }
 
+/**
+ * Picking models for chat. One dialog serves both entries: first-time setup
+ * (nothing selected yet) and adding to an existing list. Both are the same
+ * action — "these models should be in chat" — so they share one UI.
+ */
+function ModelPickerDialog({
+  catalog,
+  listedRefs,
+  mode,
+  providerFilter,
+  saving,
+  error,
+  onClose,
+  onApply,
+  onEditModel,
+}: {
+  catalog: RuntimeCatalogModel[];
+  /** Models already in chat. Empty when picking a list from scratch. */
+  listedRefs: ReadonlySet<string>;
+  mode: "replace" | "add";
+  providerFilter?: string;
+  saving: boolean;
+  error: string | null;
+  onClose: () => void;
+  onApply: (refs: string[]) => void;
+  onEditModel: (providerId: string, id: string) => void;
+}) {
+  const { t } = useI18n();
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 30); }, []);
+
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const selectable = catalog.filter((model) => (
+    (!providerFilter || model.provider === providerFilter)
+    && !listedRefs.has(modelPickerRef(model.provider, model.id))
+    && (!normalizedQuery
+      || model.id.toLocaleLowerCase().includes(normalizedQuery)
+      || model.name?.toLocaleLowerCase().includes(normalizedQuery))
+  ));
+  const grouped = new Map<string, RuntimeCatalogModel[]>();
+  for (const model of selectable) {
+    const list = grouped.get(model.provider) ?? [];
+    list.push(model);
+    grouped.set(model.provider, list);
+  }
+
+  const toggle = (ref: string) => setSelected((current) => {
+    const next = new Set(current);
+    if (next.has(ref)) next.delete(ref);
+    else next.add(ref);
+    return next;
+  });
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center" }}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div style={{ width: 560, maxWidth: "calc(100vw - 32px)", maxHeight: "min(76vh, calc(100vh - 32px))", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{t("models.pickModels")}</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {mode === "replace" ? t("models.pickReplaceHint") : t("models.pickAddHint")}
+          </div>
+        </div>
+        <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("models.pickFilterPlaceholder")}
+            aria-label={t("models.pickFilter")}
+            style={{ width: "100%", boxSizing: "border-box", padding: "6px 9px", background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 5, color: "var(--text)", fontSize: 12, outline: "none" }}
+          />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+          {selectable.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>{t("models.noExtraModels")}</p>
+          ) : (
+            [...grouped.entries()].map(([providerId, models]) => {
+              const refs = models.map((model) => modelPickerRef(model.provider, model.id));
+              const allSelected = refs.every((ref) => selected.has(ref));
+              return (
+                <div key={providerId}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-dim)", marginBottom: 4, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={() => setSelected((current) => {
+                        const next = new Set(current);
+                        for (const ref of refs) {
+                          if (allSelected) next.delete(ref);
+                          else next.add(ref);
+                        }
+                        return next;
+                      })}
+                      style={{ width: 12, height: 12, accentColor: "var(--accent)", flexShrink: 0 }}
+                    />
+                    {providerId}
+                  </label>
+                  {models.map((model) => {
+                    const ref = modelPickerRef(model.provider, model.id);
+                    return (
+                      <div key={ref} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 8px 3px 22px" }}>
+                        <input
+                          id={ref}
+                          type="checkbox"
+                          checked={selected.has(ref)}
+                          onChange={() => toggle(ref)}
+                          style={{ width: 13, height: 13, accentColor: "var(--accent)", flexShrink: 0 }}
+                        />
+                        <label
+                          htmlFor={ref}
+                          style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", fontSize: 12 }}
+                        >
+                          {model.name && model.name !== model.id ? `${model.name} · ${model.id}` : model.id}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => onEditModel(model.provider, model.id)}
+                          style={{ flexShrink: 0, border: 0, background: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 11 }}
+                        >
+                          {t("i18n.edit")}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })
+          )}
+          {error && <p style={{ margin: 0, fontSize: 12, color: "#f87171" }}>{error}</p>}
+        </div>
+        <div style={{ flexShrink: 0, padding: "10px 14px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("models.pickSelected", { count: selected.size })}</span>
+          <span style={{ display: "inline-flex", gap: 8 }}>
+            <ConfigButton type="button" onClick={onClose}>{t("i18n.cancel")}</ConfigButton>
+            <ConfigButton
+              type="button"
+              variant="primary"
+              disabled={selected.size === 0 || saving}
+              onClick={() => onApply([...selected])}
+            >
+              {t("models.pickApply", { count: selected.size })}
+            </ConfigButton>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A group of list entries the panel cannot render as models, with a removal
+ * action. Used for entries that resolve to nothing and for ambiguous ones.
+ */
+function RemovableEntries({
+  title,
+  hint,
+  entries,
+  readOnly,
+  onRemove,
+}: {
+  title: string;
+  hint: string;
+  entries: readonly string[];
+  readOnly: boolean;
+  onRemove: (pattern: string) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div style={{ flexShrink: 0, padding: "8px 8px 0", borderTop: "1px solid var(--border)" }}>
+      <div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 600 }}>{title}</div>
+      <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2, lineHeight: 1.4 }}>{hint}</div>
+      {entries.map((pattern) => (
+        <div key={pattern} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <ConfigSidebarText className="is-grow" style={{ color: "var(--text-dim)" }}>
+            {exactRefOf(pattern)?.id ?? pattern}
+          </ConfigSidebarText>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => onRemove(pattern)}
+              style={{ border: 0, background: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 11, padding: "0 6px" }}
+            >
+              {t("models.removeFromChat")}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsChanged }: { onClose: () => void; embedded?: boolean; cwd?: string | null; onModelsChanged?: () => void }) {
@@ -1928,12 +2176,14 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
+  /** Model picker: first-time setup replaces the list, adding appends to it. */
+  const [modelPick, setModelPick] = useState<{ mode: "replace" | "add"; providerFilter?: string } | null>(null);
   const [catalog, setCatalog] = useState<RuntimeCatalogModel[]>([]);
-  const [enabledModels, setEnabledModels] = useState<string[]>([]);
-  const [pickerUnscoped, setPickerUnscoped] = useState(true);
-  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [scopeDoc, setScopeDoc] = useState<EnabledModelsPanelState | null>(null);
+  const [scopeSaving, setScopeSaving] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
+  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
-  const [pickerBusy, setPickerBusy] = useState<string | null>(null);
 
   const refreshAuthProviders = useCallback(() => {
     fetch(`/api/auth/providers${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`)
@@ -1948,20 +2198,41 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const refreshRuntime = useCallback(() => {
     if (!cwd) {
       setCatalog([]);
-      setEnabledModels([]);
       return;
     }
     const params = new URLSearchParams({ cwd });
     fetch(`/api/models-config/runtime?${params}`)
       .then((r) => r.json())
-      .then((d: { catalog?: RuntimeCatalogModel[]; enabledModels?: string[]; unscoped?: boolean; modelError?: string }) => {
+      .then((d: { catalog?: RuntimeCatalogModel[]; modelError?: string }) => {
         if (Array.isArray(d.catalog)) setCatalog(d.catalog);
-        setEnabledModels(Array.isArray(d.enabledModels) ? d.enabledModels : []);
-        setPickerUnscoped(Boolean(d.unscoped));
         setRuntimeError(d.modelError ?? null);
       })
       .catch(() => {});
   }, [cwd]);
+
+  const refreshScope = useCallback(() => {
+    if (!cwd) {
+      setScopeDoc(null);
+      return;
+    }
+    fetch(`/api/models-config/picker?cwd=${encodeURIComponent(cwd)}`)
+      .then(async (res) => {
+        const d = await res.json() as EnabledModelsPanelState & { error?: string };
+        if (!res.ok || d.error || !d.source) {
+          setScopeError(d.error ?? t("models.scopeError"));
+          return;
+        }
+        setScopeError(null);
+        setScopeDoc(d);
+      })
+      .catch(() => setScopeError(t("models.scopeError")));
+  }, [cwd, t]);
+
+  useEffect(() => {
+    if (!scopeNotice) return;
+    const timer = setTimeout(() => setScopeNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [scopeNotice]);
 
   const refreshAuthAndRuntime = useCallback(() => {
     refreshAuthProviders();
@@ -1990,7 +2261,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   useEffect(() => {
     refreshRuntime();
-  }, [refreshRuntime]);
+    refreshScope();
+  }, [refreshRuntime, refreshScope]);
 
   useEffect(() => {
     if (selection) setLastSettingsSelection("models", JSON.stringify(selection));
@@ -2006,23 +2278,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   const updateProvider = useCallback((name: string, p: ProviderEntry) => {
     setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [name]: p } }));
-  }, []);
-
-  const renameProvider = useCallback((oldName: string, newName: string) => {
-    setConfig((prev) => {
-      const entries = Object.entries(prev.providers ?? {});
-      const idx = entries.findIndex(([k]) => k === oldName);
-      if (idx === -1) return prev;
-      entries[idx] = [newName, entries[idx][1]];
-      return { ...prev, providers: Object.fromEntries(entries) };
-    });
-    setSelection((prev) => {
-      if (!prev) return prev;
-      if (prev.type === "provider" && prev.name === oldName) return { type: "provider", name: newName };
-      if (prev.type === "model" && prev.providerName === oldName) return { ...prev, providerName: newName };
-      if (prev.type === "runtime-model" && prev.providerName === oldName) return { ...prev, providerName: newName };
-      return prev;
-    });
   }, []);
 
   const deleteProvider = useCallback((name: string) => {
@@ -2090,34 +2345,103 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     });
   }, []);
 
-  const togglePicker = useCallback(async (provider: string, id: string, inPicker: boolean) => {
-    if (!cwd) return;
-    if (!inPicker && pickerUnscoped && !window.confirm(t("models.pickerMaterializeConfirm"))) return;
-    const ref = `${provider}/${id}`;
-    setPickerBusy(ref);
-    setPickerError(null);
-    try {
-      const res = await fetch("/api/models-config/picker", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, provider, id, inPicker }),
-      });
-      const d = await res.json() as { error?: string; code?: string };
-      if (!res.ok) {
-        const message = d.code === "project-override" ? t("models.pickerProjectOverride")
-          : d.code === "glob-managed" ? t("models.pickerGlobManaged")
-            : d.code === "last-model" ? t("models.pickerLastModel")
-              : (d.error ?? t("models.pickerError"));
-        setPickerError(message);
-        return;
+  /** Server resolution without touching component state. */
+  const fetchScopeDocument = useCallback(async (): Promise<EnabledModelsPanelState | null> => {
+    if (!cwd) return null;
+    const res = await fetch(`/api/models-config/picker?cwd=${encodeURIComponent(cwd)}`);
+    const d = await res.json() as EnabledModelsPanelState & { error?: string };
+    return !res.ok || d.error || !d.source ? null : d;
+  }, [cwd]);
+
+  /**
+   * Fresh server resolution into state. `requestId` drops a response a later
+   * refresh already superseded, so an out-of-order reply cannot roll the panel
+   * back to an older list.
+   */
+  const scopeRequestIdRef = useRef(0);
+  const fetchScope = useCallback(async (): Promise<EnabledModelsPanelState | null> => {
+    const requestId = ++scopeRequestIdRef.current;
+    const d = await fetchScopeDocument();
+    if (d && requestId === scopeRequestIdRef.current) setScopeDoc(d);
+    return d;
+  }, [fetchScopeDocument]);
+
+  /**
+   * The one writer of `enabledModels`, serialized through a promise chain. Two
+   * clicks in flight would otherwise send two whole-list replacements and the
+   * slower response would undo the faster one. Each write re-derives from the
+   * current server document instead of the snapshot its caller read.
+   *
+   * An empty list deletes the key, which means "every model", so a write that
+   * would produce one is refused.
+   */
+  const scopeWriteRef = useRef<Promise<unknown>>(Promise.resolve());
+  const saveScope = useCallback((update: (current: EnabledModelsPanelState) => string[]) => {
+    if (!cwd) return Promise.resolve(false);
+    const run = scopeWriteRef.current.then(async () => {
+      const current = await fetchScopeDocument();
+      if (!current) {
+        setScopeError(t("models.scopeError"));
+        return false;
       }
-      refreshRuntime();
-    } catch {
-      setPickerError(t("models.pickerError"));
-    } finally {
-      setPickerBusy(null);
-    }
-  }, [cwd, pickerUnscoped, refreshRuntime, t]);
+      if (current.readOnly) return false;
+      const patterns = update(current);
+      if (patterns.length === 0) {
+        setScopeError(t("models.keepOneModel"));
+        return false;
+      }
+      setScopeSaving(true);
+      setScopeError(null);
+      setScopeNotice(null);
+      try {
+        const res = await fetch("/api/models-config/picker", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cwd, patterns }),
+        });
+        const d = await res.json() as EnabledModelsPanelState & { error?: string; code?: string };
+        if (!res.ok || d.error || !d.source) {
+          setScopeError(d.code === "untrusted" ? t("models.scopeReadOnly") : (d.error ?? t("models.scopeError")));
+          return false;
+        }
+        setScopeDoc(d);
+        onModelsChanged?.();
+        return true;
+      } catch {
+        setScopeError(t("models.scopeError"));
+        return false;
+      } finally {
+        setScopeSaving(false);
+      }
+    });
+    // Keep the chain alive when this write fails, so the next one still runs.
+    scopeWriteRef.current = run.catch(() => false);
+    return run;
+  }, [cwd, fetchScopeDocument, onModelsChanged, t]);
+
+  const openAdd = useCallback((providerFilter?: string) => {
+    // Without a loaded document there is no basis for choosing a mode, and a
+    // wrong guess replaces the whole list. Refuse rather than guess.
+    if (!cwd || !scopeDoc) return;
+    setModelPick(scopeDoc.source === "none"
+      ? { mode: "replace", ...(providerFilter ? { providerFilter } : {}) }
+      : { mode: "add", ...(providerFilter ? { providerFilter } : {}) });
+  }, [cwd, scopeDoc]);
+
+  /**
+   * One model leaves chat. A glob can only say "not this one" by writing out
+   * the models it currently covers, so that case reports what it did.
+   */
+  const removeFromChat = useCallback(async (ref: string) => {
+    const materializes = Boolean(scopeDoc) && !isExactList(scopeDoc?.patterns ?? []);
+    const saved = await saveScope((current) => removeVisibleModel({
+      patterns: current.patterns,
+      visible: current.visible.map((model) => modelPickerRef(model.provider, model.id)),
+      pins: current.pins,
+      ref,
+    }));
+    if (saved && materializes) setScopeNotice(t("models.listWritten"));
+  }, [saveScope, scopeDoc, t]);
 
   const removeModel = useCallback((providerName: string, index: number) => {
     setConfig((prev) => {
@@ -2129,6 +2453,15 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     setSelection({ type: "provider", name: providerName });
   }, []);
 
+  /**
+   * Saving models.json can make a list entry unresolvable — a deleted
+   * definition, or an id that changed. Re-resolve afterwards and drop exactly
+   * the entries this save orphaned: resolvable before, not resolvable now. An
+   * entry that was already orphaned stays put, so a temporary outage never
+   * gets silently cleaned up by an unrelated save. A model still served by the
+   * built-in catalog keeps its entry, because deleting the definition only
+   * removed the override.
+   */
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaveError(null);
@@ -2140,20 +2473,34 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         body: JSON.stringify(config),
       });
       const d = await res.json() as { success?: boolean; error?: string };
-      if (!res.ok || d.error) setSaveError(d.error ?? `HTTP ${res.status}`);
-      else {
-        setSavedConfig(config);
-        setSavedOk(true);
-        setTimeout(() => setSavedOk(false), 2000);
-        refreshRuntime();
-        onModelsChanged?.();
+      if (!res.ok || d.error) {
+        setSaveError(d.error ?? `HTTP ${res.status}`);
+        return;
       }
+      setSavedConfig(config);
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2000);
+      refreshRuntime();
+
+      const before = scopeDoc?.defined;
+      const after = await fetchScope();
+      // Only a definition that this save removed justifies dropping a list
+      // entry. `defined` ignores credentials, so a provider that is merely
+      // signed out or briefly unreachable is not mistaken for a deleted model.
+      const orphaned = before && after
+        ? definitionsLost({ patterns: before.length ? scopeDoc?.patterns ?? [] : [], before: new Set(before), after: new Set(after.defined) })
+        : [];
+      if (orphaned.length > 0) {
+        const removed = await saveScope((current) => current.patterns.filter((pattern) => !orphaned.includes(pattern)));
+        if (removed) setScopeNotice(t("models.removedWithDefinition", { count: orphaned.length }));
+      }
+      onModelsChanged?.();
     } catch (e) {
       setSaveError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [config, refreshRuntime, onModelsChanged]);
+  }, [config, fetchScope, onModelsChanged, refreshRuntime, saveScope, scopeDoc, t]);
 
   // A models.json that neither layer can parse disables every provider in it and
   // is the first thing to report; the footer shows one line per error.
@@ -2168,63 +2515,76 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const configDirty = JSON.stringify(config) !== JSON.stringify(savedConfig);
   const connectedIds = new Set([...activeOAuth.map((item) => item.id), ...activeApiKey.map((item) => item.id)]);
 
-  const hasCustomEndpoint = (provider?: ProviderEntry) => Boolean(provider?.baseUrl?.trim());
-
   const selectCatalogModel = (providerId: string, modelId: string) => {
     const localIndex = (config.providers?.[providerId]?.models ?? []).findIndex((entry) => entry.id === modelId);
     if (localIndex >= 0) setSelection({ type: "model", providerName: providerId, index: localIndex });
     else setSelection({ type: "runtime-model", providerName: providerId, id: modelId });
   };
 
-  const renderCartRows = (providerId: string) => {
+  const chatRefs = scopeDoc?.visible ?? [];
+  const listedRefs = new Set(chatRefs.map((model) => modelPickerRef(model.provider, model.id)));
+  // An explicit list is the only state where one model can be removed from it.
+  const hasExplicitList = scopeDoc ? scopeDoc.source !== "none" && !scopeDoc.readOnly : false;
+  // List entries that no longer resolve. Chat ignores them, but they still hold
+  // the list back, so they must stay visible and removable.
+  const unresolved = scopeDoc
+    ? unresolvedPatterns({ patterns: scopeDoc.patterns, visible: [...listedRefs] })
+      // An ambiguous entry is not "unavailable" — it resolves to several models
+      // and needs the qualified form instead. It gets its own notice.
+      .filter((pattern) => !(scopeDoc.ambiguous ?? []).includes(pattern))
+    : [];
+  const availableByProvider = (providerId: string) => catalog
+    .filter((model) => model.provider === providerId && !listedRefs.has(modelPickerRef(model.provider, model.id)))
+    .length;
+
+  const renderOwnedRows = (providerId: string) => {
     const jsonModels = config.providers?.[providerId]?.models ?? [];
-    const cart = catalog.filter((model) => model.provider === providerId && model.inPicker);
-    const cartIds = new Set(cart.map((model) => model.id));
-    const extras = jsonModels
-      .map((model, index) => ({ model, index }))
-      .filter(({ model }) => !model.id || !cartIds.has(model.id));
+    const rows = chatRefs.filter((model) => model.provider === providerId);
+    const availableCount = availableByProvider(providerId);
+    if (rows.length === 0 && availableCount === 0) return null;
 
     return (
       <>
-        {cart.map((model) => {
-          const localIndex = jsonModels.findIndex((entry) => entry.id === model.id);
-          const isModelSelected = localIndex >= 0
-            ? selection?.type === "model" && selection.providerName === providerId && selection.index === localIndex
-            : selection?.type === "runtime-model" && selection.providerName === providerId && selection.id === model.id;
+        {rows.map((model) => {
+          const ref = modelPickerRef(model.provider, model.id);
+          const inCatalog = catalog.some((entry) => entry.provider === providerId && entry.id === model.id);
+          const pin = scopeDoc?.pins[ref];
           return (
-            <ConfigSidebarItem
-              key={model.id}
-              active={isModelSelected}
-              className="models-sidebar-indented-item"
-              onClick={() => selectCatalogModel(providerId, model.id)}
-            >
-              <ConfigSidebarText className="is-grow" style={{ color: "var(--text-muted)" }}>
-                {model.id}
-              </ConfigSidebarText>
-            </ConfigSidebarItem>
+            <div key={ref} style={{ display: "flex", alignItems: "center" }}>
+              <ConfigSidebarItem
+                className="models-sidebar-indented-item"
+                style={{ flex: 1, width: "auto" }}
+                onClick={() => inCatalog || jsonModels.some((entry) => entry.id === model.id)
+                  ? selectCatalogModel(providerId, model.id)
+                  : undefined}
+              >
+                <ConfigSidebarText className="is-grow" style={{ color: inCatalog ? "var(--text-muted)" : "var(--text-dim)" }}>
+                  {model.id}
+                </ConfigSidebarText>
+                {pin && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{t("models.thinkingPin", { level: pin })}</span>}
+              </ConfigSidebarItem>
+              {hasExplicitList && (
+                <button
+                  type="button"
+                  onClick={() => void removeFromChat(ref)}
+                  style={{ border: 0, background: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 11, padding: "0 6px" }}
+                >
+                  {t("models.removeFromChat")}
+                </button>
+              )}
+            </div>
           );
         })}
-        {extras.map(({ model, index }) => {
-          const isModelSelected = selection?.type === "model" && selection.providerName === providerId && selection.index === index;
-          return (
-            <ConfigSidebarItem
-              key={`local-${index}`}
-              active={isModelSelected}
-              className="models-sidebar-indented-item"
-              onClick={() => setSelection({ type: "model", providerName: providerId, index })}
-            >
-              <ConfigSidebarText className="is-grow" style={{ color: "var(--text-dim)" }}>
-                {model.id || t("i18n.newModel")}
-              </ConfigSidebarText>
-            </ConfigSidebarItem>
-          );
-        })}
-        <ConfigSidebarItem
-          className="models-sidebar-indented-item models-sidebar-add-item"
-          onClick={(e) => { e.stopPropagation(); addModel(providerId); }}
-        >
-          <ConfigSidebarText>+ {t("i18n.model")}</ConfigSidebarText>
-        </ConfigSidebarItem>
+        {availableCount > 0 && (
+          <button
+            type="button"
+            className="models-sidebar-indented-item"
+            onClick={() => openAdd(providerId)}
+            style={{ display: "block", width: "100%", padding: "6px 8px 6px 26px", border: 0, background: "none", color: "var(--accent)", cursor: "pointer", fontSize: 11, textAlign: "left" }}
+          >
+            {t("models.availableMore", { count: availableCount })}
+          </button>
+        )}
       </>
     );
   };
@@ -2233,12 +2593,17 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const form = (
       <ProviderDetail
         key={`${providerId}-json`}
-        name={providerId}
+        providerId={providerId}
         provider={json}
+        usableRefs={new Set(catalog.map((entry) => modelPickerRef(entry.provider, entry.id)))}
+        selectedModelIndex={selection?.type === "model" && selection.providerName === providerId
+          ? selection.index
+          : null}
         onChange={(next) => updateProvider(providerId, next)}
-        onRename={(n) => renameProvider(providerId, n)}
         onDelete={() => deleteProvider(providerId)}
+        onAddModel={() => addModel(providerId)}
         onAddModels={(models) => addDiscoveredModels(providerId, models)}
+        onSelectModel={(index) => setSelection({ type: "model", providerName: providerId, index })}
       />
     );
     if (!catalog.some((model) => model.provider === providerId)) return form;
@@ -2252,80 +2617,30 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     );
   };
 
-  const renderCatalogShelf = (providerId: string) => {
-    const models = catalog.filter((model) => model.provider === providerId);
-    if (models.length === 0) return null;
-    return (
-      <div className="catalog-shelf-list">
-        <SectionTitle>{t("models.catalogShelf")}</SectionTitle>
-        {models.map((model) => {
-          const busy = pickerBusy === `${model.provider}/${model.id}`;
-          const localIndex = (config.providers?.[providerId]?.models ?? []).findIndex((entry) => entry.id === model.id);
-          const active = localIndex >= 0
-            ? selection?.type === "model" && selection.providerName === providerId && selection.index === localIndex
-            : selection?.type === "runtime-model" && selection.providerName === providerId && selection.id === model.id;
-          return (
-            <div key={model.id} className={active ? "catalog-shelf-row is-active" : "catalog-shelf-row"}>
-              <input
-                type="checkbox"
-                checked={model.inPicker}
-                disabled={busy}
-                title={t("models.inPicker")}
-                aria-label={t("models.inPicker")}
-                onChange={(event) => void togglePicker(model.provider, model.id, event.target.checked)}
-              />
-              <button
-                type="button"
-                className="catalog-shelf-name"
-                onClick={() => selectCatalogModel(providerId, model.id)}
-              >
-                {model.id}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  // Resolve current detail
   const detailContent = (() => {
     if (!selection) return null;
     if (selection.type === "oauth") {
       const p = oauthProviders.find((item) => item.id === selection.providerId);
       if (!p) return null;
-      const json = config.providers?.[p.id];
       const apiKey = apiKeyProviders.find((item) => item.id === p.id && item.configured);
       return (
         <>
-          <OAuthDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} cwd={cwd} />
-          {apiKey && <ApiKeyDetail key={`${p.id}-key`} provider={apiKey} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} cwd={cwd} />}
-          {renderCatalogShelf(p.id)}
-          {hasCustomEndpoint(json) && json && renderEndpoint(p.id, json)}
+          <OAuthDetail key={p.id} provider={p} onRefresh={refreshAuthAndRuntime} cwd={cwd} />
+          {apiKey && <ApiKeyDetail key={`${p.id}-key`} provider={apiKey} onRefresh={refreshAuthAndRuntime} cwd={cwd} />}
         </>
       );
     }
     if (selection.type === "apikey") {
       const p = apiKeyProviders.find((item) => item.id === selection.providerId);
       if (!p) return null;
-      const json = config.providers?.[p.id];
       return (
-        <>
-          <ApiKeyDetail key={p.id} provider={p} pickerCount={countExactProviderPatterns(enabledModels, p.id)} onRefresh={refreshAuthAndRuntime} cwd={cwd} />
-          {renderCatalogShelf(p.id)}
-          {hasCustomEndpoint(json) && json && renderEndpoint(p.id, json)}
-        </>
+        <ApiKeyDetail key={p.id} provider={p} onRefresh={refreshAuthAndRuntime} cwd={cwd} />
       );
     }
     if (selection.type === "provider") {
       const provider = config.providers?.[selection.name];
       if (!provider) return null;
-      return (
-        <>
-          {renderCatalogShelf(selection.name)}
-          {renderEndpoint(selection.name, provider)}
-        </>
-      );
+      return renderEndpoint(selection.name, provider);
     }
     if (selection.type === "runtime-model") {
       const runtime = catalog.find((model) => model.provider === selection.providerName && model.id === selection.id);
@@ -2371,6 +2686,21 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           {/* Left: tree */}
           <ConfigSidebar>
             <ConfigSidebarList>
+              <div style={{ padding: "8px 8px 4px", fontSize: 11, color: "var(--text-dim)" }}>
+                {!cwd ? t("models.scopeNoCwd") : scopeDoc?.source === "none" ? t("models.chatAll") : t("models.chatList")}
+                {scopeDoc?.readOnly && <div style={{ color: "#d97706", marginTop: 4 }}>{t("models.scopeReadOnly")}</div>}
+                {scopeDoc?.source === "none" && cwd && !scopeDoc.readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => openAdd()}
+                    style={{ marginTop: 6, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 5, background: "var(--bg-panel)", color: "var(--text-muted)", cursor: "pointer", fontSize: 11 }}
+                  >
+                    {t("models.pickOnlyThese")}
+                  </button>
+                )}
+                {scopeNotice && <div style={{ marginTop: 4 }}>{scopeNotice}</div>}
+                {scopeError && <div style={{ color: "#f87171", marginTop: 4 }}>{scopeError}</div>}
+              </div>
               {/* Active OAuth subscriptions */}
               {activeOAuth.map((p) => {
                 const isSelected = selection?.type === "oauth" && selection.providerId === p.id;
@@ -2383,7 +2713,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                       <ProviderIcon id={p.id} size={16} />
                       <ConfigSidebarText className="is-grow">{p.name}</ConfigSidebarText>
                     </ConfigSidebarItem>
-                    {renderCartRows(p.id)}
+                    {renderOwnedRows(p.id)}
                   </div>
                 );
               })}
@@ -2400,7 +2730,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                       <ProviderIcon id={p.id} size={16} />
                       <ConfigSidebarText className="is-grow">{p.displayName}</ConfigSidebarText>
                     </ConfigSidebarItem>
-                    {renderCartRows(p.id)}
+                    {renderOwnedRows(p.id)}
                   </div>
                 );
               })}
@@ -2429,17 +2759,48 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                         <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
                       </svg>
                       <ConfigSidebarText className="is-grow">
-                        {pName}
+                        {config.providers?.[pName]?.name ?? pName}
+                        <span style={{ display: "block", color: "var(--text-dim)", fontSize: 10 }}>
+                          {t("models.customEndpoint")}
+                        </span>
                       </ConfigSidebarText>
                     </ConfigSidebarItem>
-                    {renderCartRows(pName)}
+                    {renderOwnedRows(pName)}
                   </div>
                 );
               })}
+              {chatRefs.flatMap((model) => model.provider)
+                .filter((providerId, index, all) => all.indexOf(providerId) === index && !connectedIds.has(providerId) && !config.providers?.[providerId]).map((providerId) => (
+                <div key={providerId} style={{ marginBottom: 2 }}>
+                  <ConfigSidebarItem>
+                    <ConfigSidebarText className="is-grow">{providerId}</ConfigSidebarText>
+                  </ConfigSidebarItem>
+                  {renderOwnedRows(providerId)}
+                </div>
+              ))}
             </ConfigSidebarList>
 
-            {/* Add provider */}
-            <ConfigListAction onClick={() => setPickerOpen(true)}>{t("i18n.addProvider")}</ConfigListAction>
+            {/* Entries the list still holds but nothing resolves any more. */}
+            {unresolved.length > 0 && (
+              <RemovableEntries
+                title={t("models.unavailable", { count: unresolved.length })}
+                hint={t("models.unavailableHint")}
+                entries={unresolved}
+                readOnly={Boolean(scopeDoc?.readOnly)}
+                onRemove={(pattern) => void saveScope((current) => removePattern(current.patterns, pattern))}
+              />
+            )}
+            {(scopeDoc?.ambiguous?.length ?? 0) > 0 && (
+              <RemovableEntries
+                title={t("models.ambiguous", { count: scopeDoc?.ambiguous?.length ?? 0 })}
+                hint={t("models.ambiguousHint")}
+                entries={scopeDoc?.ambiguous ?? []}
+                readOnly={Boolean(scopeDoc?.readOnly)}
+                onRemove={(pattern) => void saveScope((current) => removePattern(current.patterns, pattern))}
+              />
+            )}
+
+            <ConfigListAction onClick={() => openAdd()}>{t("models.add")}</ConfigListAction>
           </ConfigSidebar>
 
           {/* Right: detail */}
@@ -2453,8 +2814,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         </ConfigSplitView>
 
         {/* Footer */}
-        <ConfigFooter status={(saveError || pickerError || configFatalError) && (
-          <span style={{ color: "#f87171" }} title={configFatalError ?? undefined}>{saveError || pickerError || configFatalError}</span>
+        <ConfigFooter status={(saveError || configFatalError) && (
+          <span style={{ color: "#f87171" }} title={configFatalError ?? undefined}>{saveError || configFatalError}</span>
         )}>
           {!embedded && <ConfigButton onClick={onClose}>{t("i18n.cancel")}</ConfigButton>}
           {(configDirty || saving || savedOk) && (
@@ -2483,6 +2844,25 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         onSelectApiKey={(id) => setSelection({ type: "apikey", providerId: id })}
         onAddCustom={addCustomProvider}
         onClose={() => setPickerOpen(false)}
+      />
+    )}
+    {modelPick && (
+      <ModelPickerDialog
+        catalog={catalog}
+        listedRefs={modelPick.mode === "replace" ? new Set() : listedRefs}
+        mode={modelPick.mode}
+        {...(modelPick.providerFilter ? { providerFilter: modelPick.providerFilter } : {})}
+        saving={scopeSaving}
+        error={scopeError}
+        onClose={() => setModelPick(null)}
+        onEditModel={(providerId, id) => { setModelPick(null); selectCatalogModel(providerId, id); }}
+        onApply={(refs) => {
+          const { mode } = modelPick;
+          setModelPick(null);
+          void saveScope((current) => mode === "replace"
+            ? refs
+            : refs.reduce((list, ref) => appendExactRef(list, ref), current.patterns));
+        }}
       />
     )}
     </>

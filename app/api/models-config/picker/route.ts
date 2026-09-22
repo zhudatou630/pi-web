@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
+import { getAgentDir, type SettingsManager } from "@earendil-works/pi-coding-agent";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { createModelsConfigServices, resolveAllowedCwd } from "@/lib/model-config-services";
 import {
-  applyPickerToggle,
+  describeEnabledModels,
+  enabledModelsWriteScope,
   modelPickerRef,
-  PickerToggleError,
+  normalizePatterns,
+  patternsToStore,
   samePickerPatterns,
+  type EnabledModelsDocument,
+  type EnabledModelsPanelState,
 } from "@/lib/model-picker";
 import { invalidateModelsCache } from "@/lib/models-cache";
+import { getProjectTrustStatus } from "@/lib/project-trust";
 import { resolveVisibleModels } from "@/lib/model-scope";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +23,85 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export async function PATCH(req: Request) {
+function storedPatterns(settings: { enabledModels?: string[] }): { hasKey: boolean; patterns: string[] | undefined } {
+  // setEnabledModels(undefined) leaves the property in memory. Only a real array is a key.
+  return Array.isArray(settings.enabledModels)
+    ? { hasKey: true, patterns: settings.enabledModels }
+    : { hasKey: false, patterns: undefined };
+}
+
+function readEnabledModelsDocument(cwd: string, settings: SettingsManager): EnabledModelsDocument {
+  const global = storedPatterns(settings.getGlobalSettings());
+  const project = storedPatterns(settings.getProjectSettings());
+  return describeEnabledModels({
+    globalPatterns: global.patterns,
+    globalHasKey: global.hasKey,
+    projectPatterns: project.patterns,
+    projectHasKey: project.hasKey,
+    projectWritable: getProjectTrustStatus(cwd, getAgentDir()).trusted,
+  });
+}
+
+/**
+ * The list the panel renders, plus the document behind it. Globs and bare ids
+ * are resolved here so the panel never has to show them.
+ */
+async function readPanelState(
+  cwd: string,
+  settings: SettingsManager,
+  modelRuntime: ModelRuntime,
+): Promise<EnabledModelsPanelState> {
+  const document = readEnabledModelsDocument(cwd, settings);
+  const scope = await resolveVisibleModels(modelRuntime, document.patterns);
+  return {
+    ...document,
+    visible: scope.visible.map((model) => ({ provider: model.provider, id: model.id })),
+    pins: scope.thinkingLevelPins,
+    // Credential-blind: what the definition layers know, so the panel can tell a
+    // deleted definition from a provider that is merely unreachable right now.
+    defined: modelRuntime.getModels().map((model) => modelPickerRef(model.provider, model.id)),
+    ...(scope.ambiguous.length > 0 ? { ambiguous: scope.ambiguous } : {}),
+  };
+}
+
+type ProjectEnabledModelsWriter = {
+  updateProjectSettings(
+    field: "enabledModels",
+    update: (settings: { enabledModels?: string[] }) => void,
+  ): void;
+};
+
+function writeEnabledModels(
+  settings: SettingsManager,
+  scope: "global" | "project",
+  patterns: string[] | undefined,
+): void {
+  if (scope === "global") {
+    settings.setEnabledModels(patterns);
+    return;
+  }
+  // SDK writes this key only through the private project updater. It keeps the file lock and other keys.
+  (settings as unknown as ProjectEnabledModelsWriter).updateProjectSettings("enabledModels", (project) => {
+    if (patterns && patterns.length > 0) project.enabledModels = patterns;
+    else delete project.enabledModels;
+  });
+}
+
+export async function GET(req: Request) {
+  const requestedCwd = new URL(req.url).searchParams.get("cwd");
+  if (!requestedCwd) return NextResponse.json({ error: "cwd is required" }, { status: 400 });
+  const resolved = await resolveAllowedCwd(requestedCwd);
+  if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+
+  try {
+    const services = await createModelsConfigServices(resolved.cwd);
+    return NextResponse.json(await readPanelState(resolved.cwd, services.settingsManager, services.modelRuntime));
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+
+export async function PUT(req: Request) {
   if (!isApiRequestAllowed(req)) {
     return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
   }
@@ -30,44 +115,28 @@ export async function PATCH(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  if (!isRecord(body)) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-
+  if (!isRecord(body) || !Array.isArray(body.patterns) || body.patterns.some((pattern) => typeof pattern !== "string")) {
+    return NextResponse.json({ error: "patterns must be a string array" }, { status: 400 });
+  }
   const cwdValue = typeof body.cwd === "string" ? body.cwd.trim() : "";
-  const provider = typeof body.provider === "string" ? body.provider.trim() : "";
-  const id = typeof body.id === "string" ? body.id.trim() : "";
   if (!cwdValue) return NextResponse.json({ error: "cwd is required" }, { status: 400 });
-  if (!provider || !id) {
-    return NextResponse.json({ error: "provider and id are required" }, { status: 400 });
-  }
-  if (typeof body.inPicker !== "boolean") {
-    return NextResponse.json({ error: "inPicker must be a boolean" }, { status: 400 });
-  }
 
   const resolved = await resolveAllowedCwd(cwdValue);
-  if ("error" in resolved) {
-    return NextResponse.json({ error: resolved.error }, { status: resolved.status });
-  }
+  if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
 
   try {
     const services = await createModelsConfigServices(resolved.cwd);
     const settings = services.settingsManager;
-    const patterns = settings.getEnabledModels();
-    const available = await services.modelRuntime.getAvailable();
-    const scope = await resolveVisibleModels(services.modelRuntime, patterns);
-    const result = applyPickerToggle({
-      patterns,
-      projectHasEnabledModels: Object.prototype.hasOwnProperty.call(
-        settings.getProjectSettings(),
-        "enabledModels",
-      ),
-      availableRefs: available.map((model) => modelPickerRef(model.provider, model.id)),
-      visibleRefs: scope.visible.map((model) => modelPickerRef(model.provider, model.id)),
-      ref: modelPickerRef(provider, id),
-      inPicker: body.inPicker,
-    });
+    const current = readEnabledModelsDocument(resolved.cwd, settings);
+    if (current.readOnly) {
+      return NextResponse.json({ error: "Project is not trusted", code: "untrusted" }, { status: 403 });
+    }
 
-    if (!samePickerPatterns(settings.getGlobalSettings().enabledModels, result.enabledModels)) {
-      settings.setEnabledModels(result.enabledModels);
+    const next = normalizePatterns(body.patterns);
+    const deleting = next.length === 0;
+    const unchanged = deleting ? current.source === "none" : samePickerPatterns(current.patterns, next);
+    if (!unchanged) {
+      writeEnabledModels(settings, enabledModelsWriteScope(current.source), patternsToStore(next));
       await settings.flush();
       const writeError = settings.drainErrors()[0];
       if (writeError) {
@@ -75,12 +144,8 @@ export async function PATCH(req: Request) {
       }
       invalidateModelsCache();
     }
-
-    return NextResponse.json({ enabledModels: result.enabledModels });
+    return NextResponse.json(await readPanelState(resolved.cwd, settings, services.modelRuntime));
   } catch (error) {
-    if (error instanceof PickerToggleError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
-    }
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

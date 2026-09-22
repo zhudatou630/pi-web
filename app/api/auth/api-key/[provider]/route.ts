@@ -1,6 +1,5 @@
 import { createModelsConfigServices, resolveOptionalCwd } from "@/lib/model-config-services";
 import { NextResponse } from "next/server";
-import { clearExactEnabledModelsForProvider } from "@/lib/enabled-models-disconnect";
 import { invalidateModelsCache } from "@/lib/models-cache";
 import { removeStoredCredentialIfType, storeProviderCredential } from "@/lib/provider-credential-store";
 
@@ -67,11 +66,6 @@ export async function DELETE(_req: Request, { params }: Params) {
         { error: `${provider} is authenticated with OAuth, not an API key` },
         { status: 409 },
       );
-    }
-    try {
-      await clearExactEnabledModelsForProvider(provider);
-    } catch {
-      // Credential is already gone; leftover picker entries only resurface as a warning.
     }
     invalidateModelsCache();
     return NextResponse.json({ success: true });

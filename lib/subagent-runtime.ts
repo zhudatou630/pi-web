@@ -1,4 +1,5 @@
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { THINKING_LEVELS as VALID_THINKING_LEVELS } from "./thinking-levels";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -109,7 +110,7 @@ declare global {
   var __piSubagentResumeClaims: Set<string> | undefined;
 }
 const SUBAGENT_CONTEXT_LIMIT = 50_000;
-const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const THINKING_LEVELS = new Set<ThinkingLevel>(VALID_THINKING_LEVELS);
 
 interface SubagentOutcome {
   status: "completed" | "failed" | "aborted";

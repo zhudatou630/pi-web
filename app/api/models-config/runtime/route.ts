@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { createModelsConfigServices, resolveAllowedCwd } from "@/lib/model-config-services";
-import { modelPickerRef, type RuntimeCatalogModel } from "@/lib/model-picker";
+import type { RuntimeCatalogModel } from "@/lib/model-picker";
 import { readModelsConfigResult } from "@/lib/models-config-store";
-import { resolveVisibleModels } from "@/lib/model-scope";
 
 export const dynamic = "force-dynamic";
 
-function serializeRuntimeModel(model: Model<Api>, inPicker: boolean): RuntimeCatalogModel {
+function serializeRuntimeModel(model: Model<Api>): RuntimeCatalogModel {
   return {
     provider: model.provider,
     id: model.id,
@@ -26,7 +25,6 @@ function serializeRuntimeModel(model: Model<Api>, inPicker: boolean): RuntimeCat
     },
     ...(model.headers ? { headers: model.headers } : {}),
     ...(model.compat ? { compat: model.compat as Record<string, unknown> } : {}),
-    inPicker,
   };
 }
 
@@ -43,21 +41,13 @@ export async function GET(req: Request) {
   try {
     const configRead = readModelsConfigResult();
     const services = await createModelsConfigServices(resolved.cwd);
-    const patterns = services.settingsManager.getEnabledModels();
     const available = await services.modelRuntime.getAvailable();
-    const scope = await resolveVisibleModels(services.modelRuntime, patterns);
-    const visible = new Set(scope.visible.map((model) => modelPickerRef(model.provider, model.id)));
-    const catalog = available.map((model) => serializeRuntimeModel(
-      model,
-      visible.has(modelPickerRef(model.provider, model.id)),
-    ));
+    const catalog = available.map((model) => serializeRuntimeModel(model));
     // A models.json that the SDK cannot load disables every provider defined in
     // it without any other visible symptom, so surface both layers' errors.
     const modelError = [configRead.error, services.modelRuntime.getError()].filter(Boolean).join("\n\n");
     return NextResponse.json({
       catalog,
-      enabledModels: patterns ?? [],
-      unscoped: !patterns?.length,
       ...(modelError ? { modelError } : {}),
     });
   } catch (error) {

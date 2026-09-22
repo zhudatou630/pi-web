@@ -18,23 +18,148 @@ const {
 const source = await readFile(new URL("./ModelsConfig.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
 
-test("connected providers can add local models without opening the endpoint editor", () => {
-  assert.match(source, /const hasCustomEndpoint = \(provider\?: ProviderEntry\) => Boolean\(provider\?\.baseUrl\?\.trim\(\)\)/);
-  assert.doesNotMatch(source, /connectedIds\.has\(providerId\) return false/);
-  assert.match(source, /const extras = jsonModels/);
-  assert.match(source, /!model\.id \|\| !cartIds\.has\(model\.id\)/);
-  assert.match(source, /className="models-sidebar-indented-item models-sidebar-add-item"/);
-  assert.doesNotMatch(source, /showAddModel\(providerId\)/);
+test("the provider name field edits the display name, never the provider id", () => {
+  // The id keys models.json, auth.json, and enabledModels, so renaming it here
+  // silently orphaned the credentials, the chat list, and defaultProvider.
+  assert.match(source, /<Field label=\{t\("models\.displayName"\)\}>/);
+  assert.match(source, /value=\{provider\.name \?\? ""\}/);
+  assert.match(source, /onChange=\{\(v\) => set\("name", v\.trim\(\) \|\| undefined\)\}/);
+  assert.doesNotMatch(source, /onRename/);
+  assert.doesNotMatch(source, /renameProvider/);
+  // The id stays visible, because the user sometimes needs it.
+  assert.match(source, /t\("models\.providerIdHint", \{ id: providerId \}\)/);
 });
 
-test("uses shared sidebar sizing for providers and matching indented model rows", () => {
-  const sidebar = source.slice(source.indexOf("<ConfigSidebar>"), source.indexOf("</ConfigSidebar>"));
+test("the provider header and sidebar row show the display name", () => {
+  assert.match(source, /<SectionTitle>\{provider\.name \?\? providerId\}<\/SectionTitle>/);
+  assert.match(source, /\{config\.providers\?\.\[pName\]\?\.name \?\? pName\}/);
+});
+test("every model definition is reachable from its provider, connected or not", () => {
+  // Editing a definition writes models.json and has nothing to do with the chat
+  // list, so a definition must not become unreachable just because the provider
+  // is signed out or the model is not in chat.
+  assert.match(source, /t\("models\.definitions"\)/);
+  assert.match(source, /\(provider\.models \?\? \[\]\)\.map\(\(model, index\) => \(/);
+  assert.match(source, /onClick=\{\(\) => onSelectModel\(index\)\}/);
+  assert.match(source, /onSelectModel=\{\(index\) => setSelection\(\{ type: "model", providerName: providerId, index \}\)\}/);
+  // The list is not gated on the provider being connected.
+  assert.match(source, /const jsonModels = config\.providers\?\.\[providerId\]\?\.models \?\? \[\];/);
+});
 
-  assert.match(sidebar, /<ConfigSidebarItem[\s\S]*?active=\{isSelected\}/);
-  assert.match(sidebar, /<ConfigSidebarItem[\s\S]*?active=\{isProviderSelected\}/);
+test("a definition that does not resolve is marked, not hidden", () => {
+  assert.match(source, /usableRefs: ReadonlySet<string>/);
+  assert.match(source, /!usableRefs\.has\(`\$\{providerId\}\/\$\{model\.id\}`\)/);
+  assert.match(source, /t\("models\.notUsable"\)/);
+});
+
+test("a custom endpoint row is distinguishable from an authenticated provider row", () => {
+  // The two rows come from different sources (models.json vs the auth provider
+  // list) and only the first one's label is editable on this page.
+  assert.match(source, /t\("models\.customEndpoint"\)/);
+});
+
+test("connected providers can add local models without opening the endpoint editor", () => {
+  assert.match(source, /const rows = chatRefs\.filter/);
+  assert.doesNotMatch(source, /connectedIds\.has\(providerId\) return false/);
+  assert.match(source, /onAddModel=\{/);
   assert.match(source, /className="models-sidebar-indented-item"/);
-  assert.match(source, /className="models-sidebar-indented-item models-sidebar-add-item"/);
   assert.match(cssSource, /\.models-sidebar-indented-item \{[\s\S]*?padding-left: 26px/);
+});
+
+test("the sidebar lists the models chat shows, not the rules behind them", () => {
+  // No key means every model: the list still has to be populated from the resolved set.
+  assert.match(source, /const chatRefs = scopeDoc\?\.visible \?\? \[\]/);
+  assert.match(source, /const rows = chatRefs\.filter\(\(model\) => model\.provider === providerId\)/);
+  // A glob or bare id never becomes a row, and the file's two notations stay hidden.
+  assert.doesNotMatch(source, /models\.rules/);
+  assert.doesNotMatch(source, /scopeInactive/);
+});
+
+test("removing the last model reports instead of silently doing nothing", () => {
+  assert.match(source, /if \(patterns\.length === 0\) \{\n\s*setScopeError\(t\("models\.keepOneModel"\)\);/);
+});
+
+test("a glob removal says so, so the changed setting is not a surprise", () => {
+  assert.match(source, /const materializes = Boolean\(scopeDoc\) && !isExactList\(scopeDoc\?\.patterns \?\? \[\]\)/);
+  assert.match(source, /setScopeNotice\(t\("models\.listWritten"\)\)/);
+});
+
+test("list writes are serialized and re-derived from the current document", () => {
+  // Two whole-list replacements in flight would let the slower response undo
+  // the faster one, so writes go through one promise chain.
+  assert.match(source, /const scopeWriteRef = useRef<Promise<unknown>>\(Promise\.resolve\(\)\)/);
+  assert.match(source, /const run = scopeWriteRef\.current\.then\(async \(\) => \{/);
+  assert.match(source, /scopeWriteRef\.current = run\.catch\(\(\) => false\)/);
+  // Each write re-reads and receives an updater, never a caller-side snapshot.
+  assert.match(source, /const current = await fetchScopeDocument\(\)/);
+  assert.match(source, /const patterns = update\(current\)/);
+});
+
+test("an out-of-order scope response cannot roll the panel back", () => {
+  assert.match(source, /const scopeRequestIdRef = useRef\(0\)/);
+  assert.match(source, /const requestId = \+\+scopeRequestIdRef\.current/);
+  assert.match(source, /if \(d && requestId === scopeRequestIdRef\.current\) setScopeDoc\(d\)/);
+});
+
+test("the picker refuses to open before the list is loaded", () => {
+  // `scopeDoc === null` used to fall through to "add", which started from an
+  // empty list and replaced the whole list with whatever was picked.
+  assert.match(source, /if \(!cwd \|\| !scopeDoc\) return;/);
+  assert.match(source, /setModelPick\(scopeDoc\.source === "none"/);
+});
+
+test("one picker dialog serves first-time setup and later additions", () => {
+  assert.match(source, /function ModelPickerDialog\(/);
+  assert.match(source, /mode: "replace" \| "add"/);
+  // The mode decides whether the write replaces the list or appends to it.
+  assert.match(source, /modelPick\.mode === "replace"/);
+  assert.doesNotMatch(source, /function AddChatModelsDialog/);
+});
+
+test("a list entry that no longer resolves stays visible and removable", () => {
+  assert.match(source, /const unresolved = scopeDoc/);
+  assert.match(source, /unresolvedPatterns\(\{ patterns: scopeDoc\.patterns/);
+  assert.match(source, /t\("models\.unavailable", \{ count: unresolved\.length \}\)/);
+  assert.match(source, /<RemovableEntries/);
+  assert.match(source, /onRemove=\{\(pattern\) => void saveScope\(\(current\) => removePattern\(current\.patterns, pattern\)\)\}/);
+});
+
+test("an ambiguous entry is shown separately and cannot mask the unavailable list", () => {
+  assert.match(source, /t\("models\.ambiguous", \{ count: scopeDoc\?\.ambiguous\?\.length \?\? 0 \}\)/);
+  assert.match(source, /\.filter\(\(pattern\) => !\(scopeDoc\.ambiguous \?\? \[\]\)\.includes\(pattern\)\)/);
+});
+
+test("removing one model only appears once an explicit list exists", () => {
+  assert.match(source, /const hasExplicitList = scopeDoc \? scopeDoc\.source !== "none" && !scopeDoc\.readOnly : false/);
+  assert.match(source, /\{hasExplicitList && \(/);
+});
+
+test("no action can write an empty list, because that would mean every model", () => {
+  const saveScope = source.slice(source.indexOf("const saveScope = useCallback"), source.indexOf("const openAdd = useCallback"));
+  // The single writer refuses an empty result, whatever updater produced it.
+  assert.match(saveScope, /if \(patterns\.length === 0\) \{\n\s*setScopeError\(t\("models\.keepOneModel"\)\);/);
+  assert.match(saveScope, /if \(current\.readOnly\) return false;/);
+});
+
+test("the all-models state offers a named way into picking a list", () => {
+  assert.match(source, /t\("models\.pickOnlyThese"\)/);
+  assert.match(source, /onClick=\{\(\) => openAdd\(\)\}/);
+});
+
+test("a provider row points at the models it still has to offer", () => {
+  assert.match(source, /const availableByProvider = \(providerId: string\) => catalog/);
+  assert.match(source, /t\("models\.availableMore", \{ count: availableCount \}\)/);
+  assert.match(source, /onClick=\{\(\) => openAdd\(providerId\)\}/);
+});
+
+test("saving models.json drops only definitions that save removed, not outages", () => {
+  const handleSave = source.slice(source.indexOf("const handleSave = useCallback"), source.indexOf("// A models.json that neither layer can parse"));
+  // The diff is over the credential-blind definition set, so a provider that is
+  // merely signed out or unreachable is never mistaken for a deleted model.
+  assert.match(handleSave, /const before = scopeDoc\?\.defined/);
+  assert.match(handleSave, /definitionsLost\(\{ patterns:.*before: new Set\(before\), after: new Set\(after\.defined\) \}\)/);
+  assert.doesNotMatch(handleSave, /nowVisible/);
+  assert.match(handleSave, /setScopeNotice\(t\("models\.removedWithDefinition", \{ count: orphaned\.length \}\)\)/);
 });
 
 test("ignores malformed auth provider responses", () => {

@@ -8,6 +8,7 @@ import { pathToFileURL } from "url";
 import { validateAgentImages } from "./image-attachments";
 import { parseQueuedDeliverySnapshot, snapshotAgentQueuedMessages } from "./queued-messages";
 import { invalidateModelsCache } from "./models-cache";
+import { THINKING_LEVELS as VALID_THINKING_LEVELS } from "./thinking-levels";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import {
   createProjectCommandBashExtension,
@@ -162,7 +163,7 @@ export interface RpcSessionStartOptions {
 }
 
 const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
-const THINKING_LEVEL_NAMES = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const THINKING_LEVEL_NAMES = new Set<ThinkingLevel>(VALID_THINKING_LEVELS);
 
 // custom() keeps the historical unstyled theme so overlay dialogs stay unchanged.
 class PlainTextTheme extends Theme {
