@@ -160,6 +160,7 @@ export const enLocale: LocalePlugin = {
     "session.info": "Session info",
     "session.name": "Name",
     "session.file": "Session File",
+    "session.directory": "Directory",
     "session.id": "ID",
     "session.user": "User",
     "session.assistant": "Assistant",

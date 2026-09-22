@@ -160,6 +160,7 @@ export const zhTWLocale: LocalePlugin = {
     "session.info": "工作階段資訊",
     "session.name": "名稱",
     "session.file": "工作階段檔案",
+    "session.directory": "目錄",
     "session.id": "ID",
     "session.user": "使用者",
     "session.assistant": "助理",

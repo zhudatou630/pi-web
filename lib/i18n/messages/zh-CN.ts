@@ -160,6 +160,7 @@ export const zhCNLocale: LocalePlugin = {
     "session.info": "会话信息",
     "session.name": "名称",
     "session.file": "会话文件",
+    "session.directory": "目录",
     "session.id": "ID",
     "session.user": "用户",
     "session.assistant": "助手",

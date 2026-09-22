@@ -2879,6 +2879,36 @@ export function AppShell() {
                               </span>
                             </div>
                           )}
+                          {selectedSession && (() => {
+                            const displayWorkspacePath = homeDir && selectedSession.cwd.startsWith(homeDir)
+                              ? `~${selectedSession.cwd.slice(homeDir.length)}`
+                              : selectedSession.cwd;
+                            return (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.directory")}:</span>
+                                <span
+                                  title={selectedSession.cwd}
+                                  style={{
+                                    color: "var(--text-muted)",
+                                    minWidth: 0,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    direction: "rtl",
+                                    textAlign: "left",
+                                  }}
+                                >
+                                  <span style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
+                                </span>
+                                {selectedSession.branch && (
+                                  <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                                    · {selectedSession.branch}
+                                  </span>
+                                )}
+                                {copyButton(selectedSession.isWorktree ? "gitWorktree" : "projectDir", selectedSession.cwd)}
+                              </div>
+                            );
+                          })()}
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.messages")}:</span>
                             <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
@@ -2901,7 +2931,7 @@ export function AppShell() {
                                   textAlign: "left",
                                 }}
                               >
-                                {sessionStats.sessionFile}
+                                <span style={{ unicodeBidi: "plaintext" }}>{sessionStats.sessionFile}</span>
                               </span>
                               {copyButton("file", sessionStats.sessionFile)}
                             </div>
