@@ -109,21 +109,16 @@ test("profiles route keeps same-name global and project profiles independently e
   assert.deepEqual(sources.map((item) => item.scope), ["global", "project"]);
   assert.deepEqual(sources.map((item) => item.description), ["Global profile", "Project profile"]);
 
-  response = await PATCH(jsonRequest("PATCH", {
-    cwd,
-    scope: "global",
-    name: "api-test-agent",
-    enabled: false,
-  }));
+  // The toggle targets the effective (project) file; the shadowed global file is untouched.
+  response = await PATCH(jsonRequest("PATCH", { cwd, name: "api-test-agent", enabled: false }));
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).profile.enabled, false);
   response = await GET(new Request(`http://localhost/api/subagents/profiles?cwd=${encodeURIComponent(cwd)}`));
   const toggledSources = (await response.json()).profiles.filter((item) => item.name === "api-test-agent");
-  assert.equal(toggledSources.find((item) => item.scope === "global").enabled, false);
-  assert.equal(toggledSources.find((item) => item.scope === "global").description, "Global profile");
-  assert.equal(toggledSources.find((item) => item.scope === "global").loadSkills, true);
-  assert.equal(toggledSources.find((item) => item.scope === "global").loadExtensions, true);
-  assert.equal(toggledSources.find((item) => item.scope === "project").enabled, true);
+  assert.equal(toggledSources.find((item) => item.scope === "project").enabled, false);
+  assert.equal(toggledSources.find((item) => item.scope === "project").description, "Project profile");
+  assert.equal(toggledSources.find((item) => item.scope === "project").loadSkills, true);
+  assert.equal(toggledSources.find((item) => item.scope === "project").loadExtensions, true);
+  assert.equal(toggledSources.find((item) => item.scope === "global").enabled, true);
 
   response = await DELETE(jsonRequest("DELETE", { cwd, scope: "project", name: "api-test-agent" }));
   assert.equal(response.status, 200);
@@ -169,19 +164,15 @@ test("profiles route rejects missing paths, malformed profiles, and unsafe names
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "name required" });
 
-  response = await PUT(jsonRequest("PUT", { cwd, scope: "workspace", profile: profile() }));
-  assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { error: "scope must be global or project" });
-
   response = await DELETE(jsonRequest("DELETE", { cwd, scope: "builtin", name: "Explore" }));
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { error: "scope must be global or project" });
+  assert.deepEqual(await response.json(), { error: "scope must be global, workspace, or project" });
 
-  response = await PATCH(jsonRequest("PATCH", { cwd, scope: "project", name: "missing", enabled: false }));
+  response = await PATCH(jsonRequest("PATCH", { cwd, name: "missing", enabled: false }));
   assert.equal(response.status, 404);
   assert.deepEqual(await response.json(), { error: "Agent profile not found" });
 
-  response = await PATCH(jsonRequest("PATCH", { cwd, scope: "project", name: "api-test-agent" }));
+  response = await PATCH(jsonRequest("PATCH", { cwd, name: "api-test-agent" }));
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "enabled required" });
 });

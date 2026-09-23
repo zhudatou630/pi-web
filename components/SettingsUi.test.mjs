@@ -71,7 +71,8 @@ test("all subpanel sidebars share one typography scale", () => {
   for (const source of Object.values(sources)) {
     assert.match(source, /<ConfigSidebarText/);
   }
-  for (const name of ["SkillsConfig", "AgentsConfig", "PluginsConfig"]) {
+  // Agents list one row per name (effective source), so only these group by scope.
+  for (const name of ["SkillsConfig", "PluginsConfig"]) {
     assert.match(sources[name], /<ConfigSidebarGroupLabel/);
   }
 });

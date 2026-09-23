@@ -17,7 +17,7 @@ export const SUBAGENT_CONTROL_TOOL_NAMES = ["Agent", "get_subagent_result", "ste
 
 export type SubagentStatus = SubagentSessionStatus;
 export type SubagentScope = "builtin" | "global" | "workspace" | "project";
-export type SubagentWritableScope = Extract<SubagentScope, "global" | "project">;
+export type SubagentWritableScope = Exclude<SubagentScope, "builtin">;
 
 export interface SubagentProfile {
   name: string;
@@ -36,6 +36,8 @@ export interface SubagentProfile {
   promptMode?: "replace" | "append";
   isolation?: "worktree" | "off";
   enabled: boolean;
+  /** File is only `enabled: false`: it hides the lower-precedence definition, as pi-subagents writes it. */
+  disableStub?: boolean;
   scope: SubagentScope;
   filePath?: string;
   configurationError?: string;
@@ -384,12 +386,19 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
         ? { isolation: data.isolation }
         : {}),
       enabled: booleanValue(data?.enabled, true),
+      ...(isDisableStub(data, rest) ? { disableStub: true } : {}),
       scope,
       filePath,
     };
   } catch (error) {
     return invalidProfile(filePath, scope, fileName, error);
   }
+}
+
+const DISABLE_STUB = "---\nenabled: false\n---\n";
+
+function isDisableStub(data: Record<string, unknown> | null, body: string): boolean {
+  return data?.enabled === false && Object.keys(data).length === 1 && !body.trim();
 }
 
 function isProjectProfilePathAllowed(cwd: string, target: string): boolean {
@@ -447,9 +456,9 @@ function assertProfileName(name: string): string {
 }
 
 function writableProfileDirectory(cwd: string, scope: SubagentWritableScope): string {
-  if (scope === "global") return join(getAgentDir(), "agents");
-  if (scope === "project") return join(resolve(cwd), ".pi", "agents");
-  throw new Error("Agent scope must be global or project");
+  const dir = profileDirectories(cwd).find(([, candidate]) => candidate === scope)?.[0];
+  if (!dir) throw new Error("Agent scope must be global, workspace, or project");
+  return dir;
 }
 
 function assertWritableProfileDirectory(cwd: string, scope: SubagentWritableScope): string {
@@ -495,7 +504,7 @@ export function saveSubagentProfile(
   const extensionTools = validateSavedExtensionTools(profile.extensionTools);
   const dir = assertWritableProfileDirectory(cwd, scope);
   mkdirSync(dir, { recursive: true });
-  if (scope === "project" && !isProjectProfilePathAllowed(cwd, dir)) {
+  if (scope !== "global" && !isProjectProfilePathAllowed(cwd, dir)) {
     throw new Error("Agent profile directory is outside the project root");
   }
   const filePath = join(dir, `${name}.md`);
@@ -545,6 +554,28 @@ export function deleteSubagentProfile(cwd: string, scope: SubagentWritableScope,
   const safeName = assertProfileName(name);
   const filePath = join(assertWritableProfileDirectory(cwd, scope), `${safeName}.md`);
   if (existsSync(filePath)) unlinkSync(filePath);
+}
+
+/**
+ * Toggle the effective definition. Like pi-subagents, the highest-precedence file wins whole:
+ * a built-in is disabled by a project stub, and re-enabling removes that stub.
+ */
+export function setSubagentProfileEnabled(cwd: string, name: string, enabled: boolean): void {
+  const profile = listSubagentProfiles(cwd).find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
+  if (!profile) throw new Error("Agent profile not found");
+  if (profile.configurationError) throw new Error(`Invalid subagent profile "${profile.name}": ${profile.configurationError}`);
+  if (profile.enabled === enabled) return;
+  if (profile.scope === "builtin") {
+    const dir = assertWritableProfileDirectory(cwd, "project");
+    mkdirSync(dir, { recursive: true });
+    writePrivateFileAtomicSync(join(dir, `${profile.name}.md`), DISABLE_STUB);
+    return;
+  }
+  if (profile.disableStub) {
+    unlinkSync(profile.filePath!);
+    return;
+  }
+  saveSubagentProfile(cwd, profile.scope, { ...profile, enabled });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

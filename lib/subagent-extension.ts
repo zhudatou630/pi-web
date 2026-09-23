@@ -151,7 +151,7 @@ export function createSubagentExtension(
         ],
         executionMode: "parallel",
         parameters: Type.Object({
-          subagent_type: Type.Optional(Type.String({ description: `Configured agent profile. Available types: ${availableTypes}. Default: general-purpose.` })),
+          subagent_type: Type.Optional(Type.String({ description: `Configured agent profile. Available types: ${availableTypes}. ${profileNames.includes("general-purpose") ? "Default: general-purpose." : "Required: general-purpose is disabled."}` })),
           prompt: Type.String({ description: "The complete task for the subagent." }),
           resume: Type.Optional(Type.String({ description: "Existing subagent session ID to continue instead of creating a new session." })),
           input_files: Type.Optional(Type.Array(Type.String(), {

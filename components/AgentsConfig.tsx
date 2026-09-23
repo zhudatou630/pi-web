@@ -6,7 +6,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SubagentProfilesResponse, SubagentSettingsResponse } from "@/lib/api-types";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ModelsData } from "@/lib/models-cache";
-import { isSubagentProfileOverridden } from "@/lib/subagent-profile-precedence";
+import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
 import { THINKING_LEVELS as THINKING_LEVEL_VALUES } from "@/lib/thinking-levels";
 import type { SubagentProfile, SubagentScope, SubagentWritableScope } from "@/lib/subagents";
 import {
@@ -26,7 +26,6 @@ import {
   ConfigListAction,
   ConfigPanelShell,
   ConfigSidebar,
-  ConfigSidebarGroupLabel,
   ConfigSidebarItem,
   ConfigSidebarList,
   ConfigSidebarText,
@@ -40,7 +39,8 @@ const TOOL_OPTIONS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const THINKING_OPTIONS = ["", ...THINKING_LEVEL_VALUES] as const;
 
 type EditableProfile = Omit<SubagentProfile, "scope" | "filePath">;
-type EditorMode = "view" | "edit" | "create";
+/** view: read-only built-in or disable stub; edit: the effective file in place; create: new name; customize: copy a built-in to a file. */
+type EditorMode = "view" | "edit" | "create" | "customize";
 
 const EMPTY_PROFILE: EditableProfile = {
   name: "custom-agent",
@@ -92,10 +92,6 @@ function editableProfile(profile: SubagentProfile): EditableProfile {
   };
 }
 
-function profileKey(profile: Pick<SubagentProfile, "scope" | "name">): string {
-  return `${profile.scope}:${profile.name}`;
-}
-
 function duplicateProfileName(name: string, profiles: readonly SubagentProfile[]): string {
   const existing = new Set(profiles.map((profile) => profile.name.toLowerCase()));
   const base = `${name}-copy`;
@@ -106,7 +102,7 @@ function duplicateProfileName(name: string, profiles: readonly SubagentProfile[]
 }
 
 function isWritableScope(scope: SubagentScope): scope is SubagentWritableScope {
-  return scope === "global" || scope === "project";
+  return scope !== "builtin";
 }
 
 function shortenPath(path: string): string {
@@ -154,10 +150,10 @@ export function AgentsConfig({
   const [modelOptions, setModelOptions] = useState<ModelsData["modelList"]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
-  const [selectedKey, setSelectedKey] = useState<string | null>(() => getLastSettingsSelection("agents", cwd));
+  const [selectedName, setSelectedName] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditableProfile>(EMPTY_PROFILE);
   const [mode, setMode] = useState<EditorMode>("view");
-  const [targetScope, setTargetScope] = useState<SubagentWritableScope>("global");
+  const [targetScope, setTargetScope] = useState<SubagentWritableScope>("project");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
@@ -171,43 +167,63 @@ export function AgentsConfig({
   const [reloadNeeded, setReloadNeeded] = useState(false);
   const [reloading, setReloading] = useState(false);
 
-  const selected = useMemo(
-    () => profiles.find((profile) => profileKey(profile) === selectedKey) ?? null,
-    [profiles, selectedKey],
+  // One agent per name. The highest-precedence file wins whole, matching pi-subagents.
+  const sources = useMemo(
+    () => selectedName ? subagentProfileSources(profiles, selectedName) : [],
+    [profiles, selectedName],
   );
+  const effective = sources[0] ?? null;
+  const shadowed = sources.slice(1);
+  /** A disable stub has no definition of its own, so show the one it hides. */
+  const shown = effective?.disableStub ? shadowed[0] ?? effective : effective;
+  const rows = useMemo(() => [...new Set(profiles.map((profile) => profile.name.toLowerCase()))]
+    .map((name) => {
+      const [top, below] = subagentProfileSources(profiles, name);
+      return { name, top, label: (top.disableStub ? below ?? top : top).displayName };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label)), [profiles]);
   const modelSelectorOptions = useMemo(() => modelOptions.map((model) => ({
     provider: model.provider,
     modelId: model.id,
     name: model.name,
   })), [modelOptions]);
 
-  const loadProfiles = useCallback(async (preferredKey?: string) => {
+  const showAgent = useCallback((list: readonly SubagentProfile[], name: string | null) => {
+    setSelectedName(name);
+    setError(null);
+    if (!name) return;
+    const [top, below] = subagentProfileSources(list, name);
+    if (!top) return;
+    setDraft(editableProfile(top.disableStub ? below ?? top : top));
+    // Invalid files are shown read-only: saving would rewrite them from a lossy parse.
+    const editable = isWritableScope(top.scope) && !top.disableStub && !top.configurationError;
+    setMode(editable ? "edit" : "view");
+    if (editable) setTargetScope(top.scope as SubagentWritableScope);
+  }, []);
+
+  const fetchProfiles = useCallback(async () => {
+    const response = await fetch(`/api/subagents/profiles?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" });
+    const data = await response.json() as Partial<SubagentProfilesResponse> & { error?: string };
+    if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+    const next = data.profiles ?? [];
+    setProfiles(next);
+    return next;
+  }, [cwd]);
+
+  const loadProfiles = useCallback(async (preferredName?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/subagents/profiles?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" });
-      const data = await response.json() as Partial<SubagentProfilesResponse> & { error?: string };
-      if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
-      const next = data.profiles ?? [];
-      setProfiles(next);
-      const rememberedKey = preferredKey ?? getLastSettingsSelection("agents", cwd);
-      const chosen = next.find((profile) => profileKey(profile) === rememberedKey)
-        ?? next.find((profile) => profile.scope === "project")
-        ?? next.find((profile) => profile.scope === "global")
-        ?? next[0]
-        ?? null;
-      setSelectedKey(chosen ? profileKey(chosen) : null);
-      if (chosen) {
-        setDraft(editableProfile(chosen));
-        setMode(isWritableScope(chosen.scope) ? "edit" : "view");
-        if (isWritableScope(chosen.scope)) setTargetScope(chosen.scope);
-      }
+      const next = await fetchProfiles();
+      const names = new Set(next.map((profile) => profile.name.toLowerCase()));
+      const remembered = (preferredName ?? getLastSettingsSelection("agents", cwd) ?? "").toLowerCase();
+      showAgent(next, names.has(remembered) ? remembered : names.has("general-purpose") ? "general-purpose" : [...names][0] ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
     }
-  }, [cwd]);
+  }, [cwd, fetchProfiles, showAgent]);
 
   useEffect(() => {
     void loadProfiles();
@@ -240,8 +256,8 @@ export function AgentsConfig({
   }, []);
 
   useEffect(() => {
-    if (selectedKey) setLastSettingsSelection("agents", selectedKey, cwd);
-  }, [cwd, selectedKey]);
+    if (selectedName) setLastSettingsSelection("agents", selectedName, cwd);
+  }, [cwd, selectedName]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -264,40 +280,50 @@ export function AgentsConfig({
     return () => controller.abort();
   }, [cwd]);
 
-  const selectProfile = (profile: SubagentProfile) => {
-    setSelectedKey(profileKey(profile));
-    setDraft(editableProfile(profile));
-    setMode(isWritableScope(profile.scope) ? "edit" : "view");
-    if (isWritableScope(profile.scope)) setTargetScope(profile.scope);
-    setError(null);
-  };
-
   const beginCreate = () => {
     let name = "custom-agent";
     let suffix = 2;
-    while (profiles.some((profile) => profile.name === name)) name = `custom-agent-${suffix++}`;
-    setSelectedKey(null);
+    while (rows.some((row) => row.name === name)) name = `custom-agent-${suffix++}`;
+    setSelectedName(null);
     setDraft({ ...EMPTY_PROFILE, name, displayName: name });
     setMode("create");
-    setTargetScope("global");
+    setTargetScope("project");
     setError(null);
   };
 
   const beginDuplicate = () => {
-    if (!selected) return;
-    const name = duplicateProfileName(selected.name, profiles);
-    setSelectedKey(null);
+    if (!shown) return;
+    const name = duplicateProfileName(shown.name, profiles);
+    setSelectedName(null);
     setDraft({
-      ...editableProfile(selected),
+      ...editableProfile(shown),
       name,
-      displayName: t("agents.copyName", { name: selected.displayName }),
+      displayName: t("agents.copyName", { name: shown.displayName }),
+      enabled: true,
     });
     setMode("create");
-    setTargetScope(isWritableScope(selected.scope) ? selected.scope : "global");
+    setTargetScope("project");
     setError(null);
   };
 
+  const beginCustomize = () => {
+    if (!shown) return;
+    setDraft(editableProfile(shown));
+    setMode("customize");
+    setTargetScope("project");
+    setError(null);
+  };
+
+  const afterChange = async (name?: string) => {
+    await loadProfiles(name);
+    setReloadNeeded(Boolean(sessionId));
+  };
+
   const save = async () => {
+    if (mode === "create" && rows.some((row) => row.name === draft.name.trim().toLowerCase())) {
+      setError(t("agents.nameExists", { name: draft.name.trim() }));
+      return;
+    }
     setSaving(true);
     setError(null);
     setSavedOk(false);
@@ -309,7 +335,7 @@ export function AgentsConfig({
       });
       const data = await response.json() as { profile?: SubagentProfile; error?: string };
       if (!response.ok || data.error || !data.profile) throw new Error(data.error ?? `HTTP ${response.status}`);
-      await loadProfiles(profileKey(data.profile));
+      await afterChange(data.profile.name);
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2000);
     } catch (cause) {
@@ -320,19 +346,23 @@ export function AgentsConfig({
   };
 
   const remove = async () => {
-    if (!selected || !isWritableScope(selected.scope)) return;
-    if (!window.confirm(t("agents.deleteConfirm", { name: selected.displayName }))) return;
+    if (!effective || !shown || !isWritableScope(effective.scope)) return;
+    const fallback = shadowed[0];
+    const message = fallback
+      ? t("agents.restoreConfirm", { name: shown.displayName, scope: t(`agents.scope.${fallback.scope}`) })
+      : t("agents.deleteConfirm", { name: shown.displayName });
+    if (!window.confirm(message)) return;
     setSaving(true);
     setError(null);
     try {
       const response = await fetch("/api/subagents/profiles", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, scope: selected.scope, name: selected.name }),
+        body: JSON.stringify({ cwd, scope: effective.scope, name: effective.name }),
       });
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
-      await loadProfiles();
+      await afterChange(fallback ? effective.name : undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -340,18 +370,18 @@ export function AgentsConfig({
     }
   };
 
+  const writing = mode === "create" || mode === "customize";
   const editing = mode !== "view";
-  const creating = mode === "create";
   const disabled = !editing || saving || toggling;
-  const displayedScope = creating ? targetScope : selected?.scope;
-  const displayedPath = creating
+  const displayedScope = writing ? targetScope : effective?.scope;
+  const displayedPath = writing
     ? targetScope === "global"
       ? `~/.pi/agent/agents/${draft.name || "..."}.md`
       : `./.pi/agents/${draft.name || "..."}.md`
-    : selected
-      ? displayProfilePath(selected, cwd) ?? t("agents.builtinPath")
+    : effective
+      ? displayProfilePath(effective, cwd) ?? t("agents.builtinPath")
       : "";
-  const fullPath = creating ? displayedPath : selected?.filePath ?? displayedPath;
+  const fullPath = writing ? displayedPath : effective?.filePath ?? displayedPath;
   const selectedModelAvailable = !draft.model || modelOptions.some((model) => `${model.provider}/${model.id}` === draft.model);
   const selectedModel = (() => {
     if (!draft.model) return null;
@@ -365,25 +395,27 @@ export function AgentsConfig({
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
+  /** The switch always means "can the model call this agent here"; the server picks which file to touch. */
   const toggleEnabled = async (enabled: boolean) => {
-    if (creating) {
+    if (writing) {
       update("enabled", enabled);
       return;
     }
-    if (!selected || !isWritableScope(selected.scope)) return;
+    if (!effective) return;
     setToggling(true);
     setError(null);
     try {
       const response = await fetch("/api/subagents/profiles", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, scope: selected.scope, name: selected.name, enabled }),
+        body: JSON.stringify({ cwd, name: effective.name, enabled }),
       });
-      const data = await response.json() as { profile?: SubagentProfile; error?: string };
-      if (!response.ok || data.error || !data.profile) throw new Error(data.error ?? `HTTP ${response.status}`);
-      const saved = data.profile;
-      setProfiles((current) => current.map((profile) => profileKey(profile) === profileKey(saved) ? saved : profile));
-      setDraft((current) => ({ ...current, enabled: saved.enabled }));
+      const data = await response.json() as { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+      // Refresh the list but keep unsaved form edits.
+      await fetchProfiles();
+      update("enabled", enabled);
+      setReloadNeeded(Boolean(sessionId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -449,18 +481,20 @@ export function AgentsConfig({
 
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.agents")} subtitle={shortenPath(cwd)} closeLabel={t("agents.close")} onClose={onClose}>
+      {reloadNeeded && sessionId && (
+        <div className="agents-feature-setting">
+          <span role="status" className="agents-feature-reload-notice">{t("agents.reloadRequired")}</span>
+          <ConfigButton size="small" onClick={() => void reloadSession()} disabled={reloading || settingsSaving}>
+            {reloading ? t("agents.reloading") : t("agents.reloadSession")}
+          </ConfigButton>
+        </div>
+      )}
       <div className="agents-feature-setting">
         <div className="agents-feature-copy">
           <strong>{t("agents.builtInTitle")}</strong>
           <span>{t("agents.builtInDescription")}</span>
-          {reloadNeeded && <span role="status" className="agents-feature-reload-notice">{t("agents.reloadRequired")}</span>}
         </div>
         <div className="agents-feature-actions">
-          {reloadNeeded && sessionId && (
-            <ConfigButton size="small" onClick={() => void reloadSession()} disabled={reloading || settingsSaving}>
-              {reloading ? t("agents.reloading") : t("agents.reloadSession")}
-            </ConfigButton>
-          )}
           <ConfigSwitch
             checked={builtInEnabled}
             disabled={settingsLoading || reloading}
@@ -492,32 +526,20 @@ export function AgentsConfig({
           <ConfigSidebarList>
               {loading ? (
                 <div style={{ padding: 10, color: "var(--text-dim)", fontSize: 12 }}>{t("agents.loading")}</div>
-              ) : (["project", "global", "workspace", "builtin"] as const).map((scope) => {
-                const scopedProfiles = profiles.filter((profile) => profile.scope === scope);
-                if (scopedProfiles.length === 0) return null;
-                return (
-                  <div key={scope} className="config-sidebar-group">
-                    <ConfigSidebarGroupLabel>{t(`agents.scope.${scope}`)}</ConfigSidebarGroupLabel>
-                    {scopedProfiles.map((profile) => {
-                      const overridden = isSubagentProfileOverridden(profile, profiles);
-                      return (
-                        <ConfigSidebarItem
-                          key={profileKey(profile)}
-                          active={selectedKey === profileKey(profile) && !creating}
-                          onClick={() => selectProfile(profile)}
-                        >
-                          <ConfigStatusDot active={profile.enabled} />
-                          <ConfigSidebarText className={`is-grow${profile.enabled ? "" : " is-muted"}`}>{profile.displayName}</ConfigSidebarText>
-                          {overridden && <span className="agents-overridden-label">{t("agents.overridden")}</span>}
-                        </ConfigSidebarItem>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+              ) : rows.map(({ name, top, label }) => (
+                <ConfigSidebarItem
+                  key={name}
+                  active={selectedName === name && mode !== "create"}
+                  onClick={() => showAgent(profiles, name)}
+                >
+                  <ConfigStatusDot active={top.enabled} />
+                  <ConfigSidebarText className={`is-grow${top.enabled ? "" : " is-muted"}`}>{label}</ConfigSidebarText>
+                  <span className="agents-scope-label">{t(`agents.scope.${top.scope}`)}</span>
+                </ConfigSidebarItem>
+              ))}
           </ConfigSidebarList>
           <ConfigListAction
-                active={creating}
+                active={mode === "create"}
                 onClick={beginCreate}
               >
                 {t("agents.new")}
@@ -526,7 +548,7 @@ export function AgentsConfig({
 
         <ConfigDetail>
           <ConfigDetailStack className="is-fill">
-              {!selected && !creating ? (
+              {!effective && mode !== "create" ? (
                 <ConfigEmptyState>{t("agents.empty")}</ConfigEmptyState>
               ) : (
                 <ConfigDetailStack>
@@ -542,13 +564,29 @@ export function AgentsConfig({
                       </span>
                     </ConfigDetailHeaderInfo>
                     <ConfigDetailActions>
-                      {selected && (mode === "view" || mode === "edit") && <ConfigButton size="small" onClick={beginDuplicate} disabled={saving || toggling}>{t("agents.duplicate")}</ConfigButton>}
-                      {selected && isWritableScope(selected.scope) && mode === "edit" && <ConfigButton variant="danger" size="small" onClick={() => void remove()} disabled={saving || toggling}>{t("agents.delete")}</ConfigButton>}
-                      <ConfigSwitch checked={draft.enabled} disabled={disabled} label={draft.enabled ? t("agents.disable") : t("agents.enable")} onChange={(checked) => void toggleEnabled(checked)} />
+                      {effective?.scope === "builtin" && mode === "view" && <ConfigButton size="small" onClick={beginCustomize} disabled={saving || toggling}>{t("agents.customize")}</ConfigButton>}
+                      {shown && !writing && <ConfigButton size="small" onClick={beginDuplicate} disabled={saving || toggling}>{t("agents.duplicate")}</ConfigButton>}
+                      {!writing && effective && isWritableScope(effective.scope) && !effective.disableStub && <ConfigButton variant="danger" size="small" onClick={() => void remove()} disabled={saving || toggling}>{shadowed[0] ? t("agents.restore", { scope: t(`agents.scope.${shadowed[0].scope}`) }) : t("agents.delete")}</ConfigButton>}
+                      {(() => {
+                        const checked = writing ? draft.enabled : Boolean(effective?.enabled);
+                        return <ConfigSwitch checked={checked} disabled={saving || toggling || (!writing && Boolean(effective?.configurationError))} label={checked ? t("agents.disable") : t("agents.enable")} onChange={(value) => void toggleEnabled(value)} />;
+                      })()}
                     </ConfigDetailActions>
                   </ConfigDetailHeader>
 
-                  {creating && (
+                  {!writing && effective && (
+                    <div className="agents-source-note">
+                      {effective.disableStub && <span>{t("agents.stubNote")}</span>}
+                      {effective.scope === "global" && <span>{t("agents.globalNote")}</span>}
+                      {shadowed.map((source) => (
+                        <span key={source.scope} title={source.filePath}>
+                          {t("agents.shadows", { scope: t(`agents.scope.${source.scope}`), path: displayProfilePath(source, cwd) ?? t("agents.builtinPath") })}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {writing && (
                     <Field label={t("agents.saveScope")}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, padding: 3, border: "1px solid var(--border)", borderRadius: 5, background: "var(--bg-panel)" }}>
                         {(["global", "project"] as const).map((scope) => (
@@ -568,7 +606,7 @@ export function AgentsConfig({
 
                   <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 12 }}>
                     <Field label={t("agents.name")}>
-                      {creating ? (
+                      {mode === "create" ? (
                         <input aria-label={t("agents.name")} value={draft.name} disabled={disabled} onChange={(event) => update("name", event.target.value)} style={inputStyle} />
                       ) : (
                         <code style={{ minHeight: 34, display: "flex", alignItems: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 12 }}>

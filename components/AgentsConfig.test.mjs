@@ -7,18 +7,6 @@ const cssSource = await readFile(new URL("../app/settings.css", import.meta.url)
 const chatInputSource = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
 const modelSelectorSource = await readFile(new URL("./ModelSelector.tsx", import.meta.url), "utf8");
 
-test("keeps same-name profiles selectable by scope and groups writable sources first", () => {
-  assert.match(source, /return `\$\{profile\.scope\}:\$\{profile\.name\}`/);
-  assert.match(source, /\["project", "global", "workspace", "builtin"\] as const/);
-  assert.match(source, /profile\.scope === scope/);
-});
-
-test("uses the shared enabled status treatment", () => {
-  assert.match(source, /<ConfigStatusDot active=\{profile\.enabled\}/);
-  assert.match(source, /className=\{`is-grow\$\{profile\.enabled \? "" : " is-muted"\}`\}/);
-  assert.match(cssSource, /\.config-sidebar-text\.is-muted \{[\s\S]*?color: var\(--text-dim\)/);
-});
-
 test("offers a persisted built-in sub-agent switch with explicit session reload", () => {
   assert.match(source, /fetch\("\/api\/subagents\/settings"/);
   assert.match(source, /JSON\.stringify\(\{ enabled \}\)/);
@@ -28,51 +16,6 @@ test("offers a persisted built-in sub-agent switch with explicit session reload"
   assert.match(source, /sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
   assert.match(source, /reloadNeeded && sessionId/);
   assert.match(cssSource, /\.agents-feature-setting \{[\s\S]*?border-bottom: 1px solid var\(--border\)/);
-});
-
-test("marks profiles shadowed by a higher-precedence source", () => {
-  assert.match(source, /isSubagentProfileOverridden\(profile, profiles\)/);
-  assert.match(source, /overridden && <span className="agents-overridden-label">\{t\("agents\.overridden"\)\}<\/span>/);
-  assert.match(cssSource, /\.agents-overridden-label \{[\s\S]*?white-space: nowrap;/);
-});
-
-test("treats global and project profiles as directly editable", () => {
-  assert.match(source, /scope === "global" \|\| scope === "project"/);
-  assert.match(source, /setMode\(isWritableScope\(profile\.scope\) \? "edit" : "view"\)/);
-  assert.match(source, /selected && isWritableScope\(selected\.scope\) && mode === "edit"/);
-});
-
-test("offers both writable scopes when creating a profile", () => {
-  assert.match(source, /\{creating && \(/);
-  assert.match(source, /\["global", "project"\] as const/);
-  assert.doesNotMatch(source, /beginOverride|mode === "override"|agents\.readOnly|agents\.override/);
-});
-
-test("uses the shared sidebar action for new profiles", () => {
-  assert.match(source, /<ConfigListAction[\s\S]*?active=\{creating\}[\s\S]*?onClick=\{beginCreate\}/);
-  assert.match(source, /t\("agents\.new"\)[\s\S]*?<\/ConfigListAction>/);
-});
-
-test("sends the selected scope for saves and the source scope for deletes", () => {
-  assert.match(source, /JSON\.stringify\(\{ cwd, scope: targetScope, profile: draft \}\)/);
-  assert.match(source, /JSON\.stringify\(\{ cwd, scope: selected\.scope, name: selected\.name \}\)/);
-});
-
-test("shows a Skills-style path row with the same switch in editable and readonly modes", () => {
-  assert.match(source, /function displayProfilePath\(profile: SubagentProfile, cwd: string\)/);
-  assert.match(source, /profile\.scope === "project" \|\| profile\.scope === "workspace"/);
-  assert.match(source, /`~\/\.pi\/agent\/agents\/\$\{draft\.name \|\| "\.\.\."\}\.md`/);
-  assert.match(source, /<ConfigSwitch checked=\{draft\.enabled\} disabled=\{disabled\}/);
-  assert.doesNotMatch(source, /agents-readonly-status/);
-  assert.doesNotMatch(source, /<Toggle label=\{t\("agents\.enabled"\)\}/);
-});
-
-test("persists existing profile toggles immediately without submitting unsaved fields", () => {
-  assert.match(source, /const toggleEnabled = async \(enabled: boolean\)/);
-  assert.match(source, /method: "PATCH"/);
-  assert.match(source, /JSON\.stringify\(\{ cwd, scope: selected\.scope, name: selected\.name, enabled \}\)/);
-  assert.match(source, /setDraft\(\(current\) => \(\{ \.\.\.current, enabled: saved\.enabled \}\)\)/);
-  assert.doesNotMatch(source, /method: "PATCH"[\s\S]*?profile: draft/);
 });
 
 test("reuses the ChatInput model selector with scoped models", () => {
@@ -87,12 +30,6 @@ test("reuses the ChatInput model selector with scoped models", () => {
   assert.match(modelSelectorSource, /event\.key !== "Escape" \|\| !open[\s\S]*?event\.preventDefault\(\)[\s\S]*?event\.stopPropagation\(\)/);
   assert.match(source, /agents\.modelUnavailable/);
   assert.doesNotMatch(source, /placeholder="provider\/modelId"/);
-});
-
-test("renders the stable agent id as text outside create mode", () => {
-  assert.match(source, /creating \? \(\s*<input aria-label=\{t\("agents\.name"\)\}/);
-  assert.match(source, /<code style=\{\{ minHeight: 34,[\s\S]*?\{draft\.name\}[\s\S]*?<\/code>/);
-  assert.doesNotMatch(source, /disabled=\{disabled \|\| !creating\}/);
 });
 
 test("uses the same form controls for editable and readonly profiles", () => {
@@ -126,22 +63,54 @@ test("keeps a larger resize corner when system instructions need a scrollbar", (
   assert.match(cssSource, /\.agents-system-prompt::-webkit-scrollbar-thumb \{[\s\S]*?border: 5px solid transparent;/);
 });
 
-test("duplicates any selected profile through the existing create flow", () => {
+test("lists one row per agent name with its effective source", () => {
+  assert.match(source, /subagentProfileSources\(profiles, name\)/);
+  assert.match(source, /rows\.map\(\(\{ name, top, label \}\)/);
+  assert.match(source, /<ConfigStatusDot active=\{top\.enabled\} \/>/);
+  assert.match(source, /className=\{`is-grow\$\{top\.enabled \? "" : " is-muted"\}`\}/);
+  assert.match(source, /<span className="agents-scope-label">\{t\(`agents\.scope\.\$\{top\.scope\}`\)\}<\/span>/);
+  assert.match(cssSource, /\.agents-scope-label \{[\s\S]*?white-space: nowrap;/);
+  assert.doesNotMatch(source, /ConfigSidebarGroupLabel|isSubagentProfileOverridden/);
+});
+
+test("shows a disable stub as the definition it hides, read-only", () => {
+  assert.match(source, /const shown = effective\?\.disableStub \? shadowed\[0\] \?\? effective : effective;/);
+  assert.match(source, /const editable = isWritableScope\(top\.scope\) && !top\.disableStub && !top\.configurationError;/);
+  assert.match(source, /effective\.disableStub && <span>\{t\("agents\.stubNote"\)\}<\/span>/);
+  assert.match(source, /t\("agents\.shadows"/);
+});
+
+test("the switch always toggles the effective agent by name", () => {
+  assert.match(source, /JSON\.stringify\(\{ cwd, name: effective\.name, enabled \}\)/);
+  assert.match(source, /const checked = writing \? draft\.enabled : Boolean\(effective\?\.enabled\);/);
+  assert.match(source, /await fetchProfiles\(\);\s*update\("enabled", enabled\);/);
+  assert.doesNotMatch(source, /method: "PATCH"[\s\S]*?profile: draft/);
+});
+
+test("customizes built-ins and creates new agents in a chosen writable scope", () => {
+  assert.match(source, /effective\?\.scope === "builtin" && mode === "view" && <ConfigButton[^>]*onClick=\{beginCustomize\}/);
+  assert.match(source, /\{writing && \(\s*<Field label=\{t\("agents\.saveScope"\)\}>/);
+  assert.match(source, /\["global", "project"\] as const/);
+  assert.match(source, /JSON\.stringify\(\{ cwd, scope: targetScope, profile: draft \}\)/);
+  assert.match(source, /mode === "create" \? \(\s*<input aria-label=\{t\("agents\.name"\)\}/);
+  assert.match(source, /t\("agents\.nameExists"/);
+  assert.match(source, /<ConfigListAction[\s\S]*?active=\{mode === "create"\}[\s\S]*?onClick=\{beginCreate\}/);
+});
+
+test("duplicates the shown definition into a new project agent", () => {
   assert.match(source, /function duplicateProfileName\(name: string, profiles: readonly SubagentProfile\[\]\)/);
-  assert.match(source, /while \(existing\.has\(candidate\.toLowerCase\(\)\)\) candidate = `\$\{base\}-\$\{suffix\+\+\}`/);
-  assert.match(source, /const beginDuplicate = \(\) =>/);
-  assert.match(source, /\.\.\.editableProfile\(selected\),[\s\S]*?name,[\s\S]*?displayName: t\("agents\.copyName"/);
-  assert.match(source, /setMode\("create"\)/);
-  assert.match(source, /setTargetScope\(isWritableScope\(selected\.scope\) \? selected\.scope : "global"\)/);
-  assert.match(source, /onClick=\{beginDuplicate\}[^>]*>[\s\S]*?t\("agents\.duplicate"\)/);
+  assert.match(source, /\.\.\.editableProfile\(shown\),[\s\S]*?name,[\s\S]*?displayName: t\("agents\.copyName"/);
+  assert.match(source, /onClick=\{beginDuplicate\}[\s\S]*?onClick=\{\(\) => void remove\(\)\}[\s\S]*?<ConfigSwitch checked=\{checked\}/);
 });
 
-test("places duplicate and delete immediately before the enabled switch", () => {
-  assert.match(source, /onClick=\{beginDuplicate\}[\s\S]*?onClick=\{\(\) => void remove\(\)\}[\s\S]*?<ConfigSwitch checked=\{draft\.enabled\}/);
+test("removing a file names the version that takes over", () => {
+  assert.match(source, /t\("agents\.restoreConfirm", \{ name: shown\.displayName, scope:/);
+  assert.match(source, /t\("agents\.deleteConfirm", \{ name: shown\.displayName \}\)/);
+  assert.match(source, /JSON\.stringify\(\{ cwd, scope: effective\.scope, name: effective\.name \}\)/);
+  assert.match(source, /shadowed\[0\] \? t\("agents\.restore"/);
 });
 
-test("confirms deletion and limits it to writable profiles", () => {
-  assert.match(source, /window\.confirm\(t\("agents\.deleteConfirm", \{ name: selected\.displayName \}\)\)/);
-  assert.match(source, /selected && isWritableScope\(selected\.scope\) && mode === "edit"/);
-  assert.match(source, /method: "DELETE"/);
+test("any profile change asks for a session reload from one top banner", () => {
+  assert.match(source, /const afterChange = async[\s\S]*?setReloadNeeded\(Boolean\(sessionId\)\)/);
+  assert.match(source, /\{reloadNeeded && sessionId && \(\s*<div className="agents-feature-setting">/);
 });

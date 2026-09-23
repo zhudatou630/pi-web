@@ -7,14 +7,16 @@ const SUBAGENT_SCOPE_PRIORITY: Record<SubagentScope, number> = {
   project: 3,
 };
 
-export function isSubagentProfileOverridden(
-  profile: Pick<SubagentProfile, "name" | "scope">,
-  profiles: readonly Pick<SubagentProfile, "name" | "scope">[],
-): boolean {
-  const name = profile.name.toLowerCase();
-  const priority = SUBAGENT_SCOPE_PRIORITY[profile.scope];
-  return profiles.some((candidate) =>
-    candidate.name.toLowerCase() === name
-    && SUBAGENT_SCOPE_PRIORITY[candidate.scope] > priority
-  );
+/**
+ * Every definition of one agent name, highest precedence first. The first entry is the
+ * effective one and wins whole: lower entries never fill in, even when it is disabled.
+ */
+export function subagentProfileSources<T extends Pick<SubagentProfile, "name" | "scope">>(
+  profiles: readonly T[],
+  name: string,
+): T[] {
+  const key = name.toLowerCase();
+  return profiles
+    .filter((profile) => profile.name.toLowerCase() === key)
+    .sort((a, b) => SUBAGENT_SCOPE_PRIORITY[b.scope] - SUBAGENT_SCOPE_PRIORITY[a.scope]);
 }

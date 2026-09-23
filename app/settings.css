@@ -197,12 +197,21 @@
   color: var(--text-dim);
 }
 
-.agents-overridden-label {
+.agents-scope-label {
   flex: 0 0 auto;
   color: var(--text-dim);
   font-size: 10px;
   line-height: 1;
   white-space: nowrap;
+}
+
+.agents-source-note {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .agents-feature-setting {
@@ -231,7 +240,7 @@
   line-height: 1.4;
 }
 
-.agents-feature-copy > .agents-feature-reload-notice {
+.agents-feature-reload-notice {
   color: #d97706;
 }
 

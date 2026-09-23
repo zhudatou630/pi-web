@@ -222,6 +222,7 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - See `docs/adr/0003-built-in-subagent-toggle.md` for the precedence and persistence rationale.
 - Agent profile files (`~/.pi/agent/agents/*.md`, project `.pi/agents/*.md`) may be shared with other runtimes. A save round-trips frontmatter keys this app does not own (`name`, `allowed_subagents`, `exclude_extensions`, `disallowed_tools`, `prompt_mode`, `isolation`, …) and carries `ext:` tool selectors through `tools:`.
 - Managed keys are exactly `description`, `display_name`, `tools`, `load_skills`, `load_extensions`, `enabled`, `inherit_context`, `run_in_background`, `model`, `thinking`, `max_turns`. The `skills` / `extensions` aliases are seeded on first save and kept in step while they are booleans; a hand-authored whitelist such as `extensions: pi-advisor-flow` is never rewritten. The two flags fall back to those aliases when `load_skills` / `load_extensions` are absent.
+- Profile precedence matches pi-subagents: project `.pi/agents` > workspace `.agents/agents` > global > built-in, and the top file wins whole — a disabled top file never falls back. The Agents UI lists one row per name; its switch targets the effective file (`setSubagentProfileEnabled`): disabling a built-in writes the `---\nenabled: false\n---` project stub, enabling a stub deletes it.
 - `ext:` selectors in `tools:` are honored at spawn: they load only matching extension tools instead of every loaded extension tool.
 
 ### Auth and model config
