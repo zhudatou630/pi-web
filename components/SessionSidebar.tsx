@@ -10,6 +10,7 @@ import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
+import { isSidebarSingleProject, SIDEBAR_SINGLE_PROJECT_EVENT } from "@/lib/sidebar-single-project-preference";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import { getFileName } from "@/lib/file-paths";
@@ -393,6 +394,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const [revealedSessionId, setRevealedSessionId] = useState<string | null>(null);
   const [revealedWorkspaceKey, setRevealedWorkspaceKey] = useState<string | null>(null);
+  const [confirmDeleteProjectKey, setConfirmDeleteProjectKey] = useState<string | null>(null);
+  const [deletingProjectKey, setDeletingProjectKey] = useState<string | null>(null);
+  const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
   const workspaceLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const workspaceTouchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const workspaceLongPressTriggeredRef = useRef(false);
@@ -997,6 +1001,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     onNewSession?.(tempId, cwd);
   }, [onNewSession]);
 
+  // Opt-in pre-1.1.3 layout: list only the current project, switch via dropdown.
+  const [singleProject, setSingleProject] = useState(false);
+  useEffect(() => {
+    const sync = () => setSingleProject(isSidebarSingleProject());
+    sync();
+    window.addEventListener(SIDEBAR_SINGLE_PROJECT_EVENT, sync);
+    return () => window.removeEventListener(SIDEBAR_SINGLE_PROJECT_EVENT, sync);
+  }, []);
+
   const recentProjects = useMemo(() => getRecentProjects(allSessions), [allSessions]);
   // Empty-state CTA is only for a loaded sidebar with nothing to restore.
   // First paint has no cwd yet; treating that as "please select" flashes blue.
@@ -1043,6 +1056,46 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     [allSessions, runningSessionIds, unreadSessionIds],
   );
 
+  const otherProjectActivity = useMemo(() => {
+    let running = 0;
+    let unread = 0;
+    for (const [key, activity] of projectActivity) {
+      if (key === selectedProject?.key) continue;
+      running += activity.running;
+      unread += activity.unread;
+    }
+    return { running, unread };
+  }, [projectActivity, selectedProject?.key]);
+
+  // Removes a project from the sidebar by clearing every source that lists it:
+  // its persisted sessions, any pinned cwd, and the current selection.
+  const deleteProject = useCallback(async (project: ProjectSelection) => {
+    setConfirmDeleteProjectKey(null);
+    setDeleteProjectError(null);
+    setDeletingProjectKey(project.key);
+    try {
+      const response = await fetch("/api/projects", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectKey: project.key }),
+      });
+      const data = await response.json().catch(() => ({})) as { deletedSessionIds?: string[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
+      for (const cwd of pinnedCwds) {
+        if (projectFor(cwd)?.key === project.key) onTogglePinnedCwd(cwd);
+      }
+      if (selectedProject?.key === project.key) {
+        setSelectedCwd(workspaceProjects.find((item) => item.key !== project.key)?.root ?? null);
+      }
+      for (const id of data.deletedSessionIds ?? []) onSessionDeleted?.(id);
+      void loadSessions();
+    } catch (e) {
+      setDeleteProjectError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingProjectKey(null);
+    }
+  }, [loadSessions, onSessionDeleted, onTogglePinnedCwd, pinnedCwds, projectFor, selectedProject?.key, workspaceProjects]);
+
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -1053,15 +1106,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const workspaceRows = useMemo<WorkspaceRow[]>(() => {
     const rows: WorkspaceRow[] = [];
     const expanded = expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys;
-    for (const project of workspaceProjects) {
+    const listedProjects = singleProject
+      ? workspaceProjects.filter((project) => project.key === (selectedProject ?? workspaceProjects[0])?.key)
+      : workspaceProjects;
+    for (const project of listedProjects) {
       const families = listSessionFamilies(sessionsForProject(allSessions, project.key));
       rows.push({
         kind: "workspace",
         project,
         cwd: families[0]?.root.cwd ?? project.root,
       });
-      if (expanded.has(project.key)) {
-        const limit = workspaceSessionLimits[project.key] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
+      if (singleProject || expanded.has(project.key)) {
+        const limit = singleProject ? Infinity : workspaceSessionLimits[project.key] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
         let visibleFamilies = families.slice(0, limit);
         const selectedFamily = families.find((family) => (
           family.root.id === selectedSessionId
@@ -1076,7 +1132,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       }
     }
     return rows;
-  }, [allSessions, defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, selectedSessionId, workspaceProjects, workspaceSessionLimits]);
+  }, [allSessions, defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
 
   const virtualIndices = getSessionListIndices(
     workspaceRows.length,
@@ -1472,23 +1528,40 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         >
           <SidebarChevron open={projectsOpen} />
           <span>{t("sidebar.projects")}</span>
-          {workspaceProjects.length > 0 && <span className="sidebar-header-count">{workspaceProjects.length}</span>}
         </button>
         <div className="sidebar-header-actions">
-          <div>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.unread > 0) && (
+              <span
+                role="status"
+                title={t("sidebar.otherProjectActivity")}
+                aria-label={`${t("sidebar.otherProjectActivity")} (${otherProjectActivity.running + otherProjectActivity.unread})`}
+                style={{ display: "inline-flex", alignItems: "center" }}
+              >
+                {otherProjectActivity.running > 0
+                  ? <LivePulseBeacon size={11} />
+                  : <span style={{ color: "#10b981", fontSize: 10 }}>{otherProjectActivity.unread}</span>}
+              </span>
+            )}
             <ToolbarIconButton
               onClick={() => {
                 setDropdownOpen((open) => !open);
                 setWtDropdownOpen(false);
               }}
-              title={t("sidebar.addProject")}
+              title={t(singleProject ? "sidebar.switchProject" : "sidebar.addProject")}
               ariaPressed={dropdownOpen}
               color={dropdownOpen ? "var(--accent)" : "var(--text-dim)"}
               background={dropdownOpen ? "var(--bg-selected)" : "none"}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
+              {singleProject ? (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                </svg>
+              ) : (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              )}
             </ToolbarIconButton>
           </div>
           <ToolbarIconButton
@@ -1526,6 +1599,59 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             overflow: "hidden",
           }}
         >
+          {singleProject && (
+            <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", borderBottom: "1px solid var(--border)" }}>
+              {workspaceProjects.map((project) => {
+                const active = project.key === selectedProject?.key;
+                const pinned = pinnedCwds.includes(project.root);
+                const activity = projectActivity.get(project.key);
+                return (
+                  <div key={project.key} style={{ display: "flex", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      aria-current={active ? "true" : undefined}
+                      onClick={() => { setSelectedCwd(project.root); setDropdownOpen(false); }}
+                      title={project.root}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0,
+                        padding: "7px 10px", background: "none", border: "none",
+                        color: active ? "var(--text)" : "var(--text-muted)",
+                        cursor: "pointer", textAlign: "left", fontSize: 11, fontFamily: "var(--font-mono)",
+                      }}
+                    >
+                      <PathLabel text={displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
+                      {activity?.running ? <LivePulseBeacon size={11} /> : null}
+                      {activity?.unread ? <span style={{ color: "#10b981", fontSize: 10 }}>{activity.unread}</span> : null}
+                    </button>
+                    {/* Single-project mode: this list is the only place other projects
+                        are visible, so it must be able to delete them without switching. */}
+                    {allSessions.some((session) => workspaceKeyOf(session) === project.key) && (
+                      <ToolbarIconButton
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setConfirmDeleteProjectKey(project.key);
+                        }}
+                        disabled={Boolean(activity?.running) || deletingProjectKey === project.key}
+                        title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
+                        color="var(--text-dim)"
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                      </ToolbarIconButton>
+                    )}
+                    <ToolbarIconButton
+                      onClick={() => onTogglePinnedCwd(project.root)}
+                      title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
+                      ariaPressed={pinned}
+                      color={pinned ? "var(--text-muted)" : "var(--text-dim)"}
+                      marginRight={4}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
+                    </ToolbarIconButton>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <button
             onClick={(event) => { event.stopPropagation(); void handleDefaultCwd(); }}
             style={{
@@ -1574,6 +1700,47 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         </div>
       )}
 
+      {/* Outside the virtual list so the full warning is always visible. */}
+      {(() => {
+        const project = confirmDeleteProjectKey ? workspaceProjects.find((item) => item.key === confirmDeleteProjectKey) : null;
+        if (!project) return null;
+        const name = getFileName(project.root);
+        const count = sessionsForProject(allSessions, project.key).length;
+        return (
+          <div
+            role="alertdialog"
+            aria-labelledby="delete-project-title"
+            aria-describedby="delete-project-detail"
+            onKeyDown={(event) => { if (event.key === "Escape") setConfirmDeleteProjectKey(null); }}
+            style={{ margin: "4px 8px 6px", padding: "8px 10px", flexShrink: 0, border: "1px solid rgba(239,68,68,0.4)", borderRadius: 4, background: "rgba(239,68,68,0.06)", fontSize: 12, lineHeight: 1.45 }}
+          >
+            <div id="delete-project-title" style={{ fontWeight: 600, color: "#ef4444", overflowWrap: "anywhere" }}>
+              {t("sidebar.deleteProjectSessionsConfirm", { name, count })}
+            </div>
+            <div id="delete-project-detail" style={{ marginTop: 4, color: "var(--text-muted)" }}>
+              {t("sidebar.deleteProjectSessionsDetail", { name, count })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setConfirmDeleteProjectKey(null)}
+                style={{ height: 24, padding: "0 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}
+              >
+                {t("sidebar.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteProject(project)}
+                style={{ height: 24, padding: "0 10px", background: "#ef4444", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+              >
+                {t("sidebar.deleteProjectSessionsAction", { count })}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       <SessionSearch open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
       {projectsOpen && (
       <div
@@ -1582,6 +1749,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}
       >
         {error && <div style={{ padding: "12px 14px", color: "#f87171", fontSize: 12 }}>{error}</div>}
+        {deleteProjectError && (
+          <div role="alert" onClick={() => setDeleteProjectError(null)} style={{ padding: "6px 14px", color: "#f87171", fontSize: 12, cursor: "pointer" }}>
+            {t("sidebar.deleteProjectSessionsFailed", { error: deleteProjectError })}
+          </div>
+        )}
         {!loading && !error && !showSelectProjectPrompt && workspaceProjects.length === 0 && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>{t("sidebar.noSessions")}</div>
         )}
@@ -1596,11 +1768,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 const workspaceCwd = active && selectedCwd ? selectedCwd : row.cwd;
                 const pinned = pinnedCwds.includes(row.project.root);
                 const actionsRevealed = revealedWorkspaceKey === row.project.key;
+                const pendingDelete = confirmDeleteProjectKey === row.project.key;
                 return (
                   <div
                     className={`workspace-list-row${actionsRevealed ? " is-actions-revealed" : ""}`}
                     key={`workspace:${row.project.key}`}
                     data-active={active ? "true" : "false"}
+                    data-pending-delete={pendingDelete ? "true" : undefined}
                     onTouchStart={(event) => handleWorkspaceTouchStart(row.project.key, event)}
                     onTouchMove={handleWorkspaceTouchMove}
                     onTouchEnd={handleWorkspaceTouchEnd}
@@ -1615,10 +1789,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     <button
                       type="button"
                       aria-current={active ? "page" : undefined}
-                      aria-expanded={expanded}
+                      aria-expanded={singleProject ? dropdownOpen : expanded}
+                      // Single-project mode: the row opens the switcher; keep the
+                      // document outside-click handler from closing it first.
+                      onMouseDown={singleProject ? (event) => event.stopPropagation() : undefined}
                       onClick={() => {
                         if (workspaceLongPressTriggeredRef.current) {
                           workspaceLongPressTriggeredRef.current = false;
+                          return;
+                        }
+                        if (singleProject) {
+                          setDropdownOpen((open) => !open);
+                          setWtDropdownOpen(false);
                           return;
                         }
                         if (expanded) {
@@ -1639,7 +1821,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       title={row.project.root}
                       style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0, height: "100%", padding: "0 4px 0 0", border: "none", background: "none", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12, fontWeight: 500 }}
                     >
-                      <SidebarChevron open={expanded} />
+                      <SidebarChevron open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{getFileName(row.project.root)}</span>
                       {activity?.running ? (
                         <span role="status" aria-label={`${t("sidebar.agentRunning")} (${activity.running})`}>
@@ -1652,6 +1834,17 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     </button>
                     {active ? worktreeSwitcher : null}
                     <span className="workspace-row-action">
+                      <ToolbarIconButton
+                        onClick={() => {
+                          setRevealedWorkspaceKey(null);
+                          setConfirmDeleteProjectKey(row.project.key);
+                        }}
+                        disabled={Boolean(activity?.running) || deletingProjectKey === row.project.key}
+                        title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
+                        color="var(--text-dim)"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                      </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => {
                           setRevealedWorkspaceKey(null);

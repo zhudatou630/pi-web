@@ -31,6 +31,10 @@ import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
+import {
+  isSidebarSingleProject,
+  setSidebarSingleProject,
+} from "@/lib/sidebar-single-project-preference";
 import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { AgentsConfig } from "./AgentsConfig";
@@ -93,6 +97,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [autoSessionTitle, setAutoSessionTitle] = useState(true);
+  const [singleProject, setSingleProject] = useState(false);
   const [shiftEnterToSend, setShiftEnterToSendState] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
   const [pushRegistering, setPushRegistering] = useState(false);
@@ -106,6 +111,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
     setAutoSessionTitle(isAutoSessionTitleEnabled());
+    setSingleProject(isSidebarSingleProject());
     setShiftEnterToSendState(isShiftEnterToSend());
   }, []);
   useEffect(() => {
@@ -261,6 +267,17 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
               onChange={(enabled) => {
                 setAutoSessionTitleEnabled(enabled);
                 setAutoSessionTitle(enabled);
+              }}
+            />
+          </div>
+          <div className="settings-chat-option settings-chat-switch-option">
+            <span>{t("settings.sidebarSingleProject")}</span>
+            <ConfigSwitch
+              checked={singleProject}
+              label={t("settings.sidebarSingleProject")}
+              onChange={(enabled) => {
+                setSidebarSingleProject(enabled);
+                setSingleProject(enabled);
               }}
             />
           </div>
