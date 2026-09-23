@@ -1218,31 +1218,6 @@
   gap: 8px;
 }
 
-.settings-image-presets {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.settings-image-provider {
-  width: 100%;
-  max-width: 280px;
-  height: 34px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 12px;
-}
-
-.settings-image-preset-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .settings-image-actions {
   display: flex;
   flex-shrink: 0;

@@ -53,6 +53,19 @@ test("settings route rejects enabling an unauthenticated connection", async () =
   assert.equal(stored.connections["grok-imagine"].enabled, false);
 });
 
+test("settings route saves an enabled default and rejects a disabled one", async () => {
+  await writeSettings({
+    enabled: true,
+    connections: { "grok-imagine": { enabled: true }, "banana-2": { enabled: true } },
+  });
+  const saved = await PUT(request("/api/image-generation/settings", { default: "banana-2" }));
+  assert.equal(saved.status, 200);
+  assert.equal((await saved.json()).defaultConnection, "banana-2");
+  const invalid = await PUT(request("/api/image-generation/settings", { default: "chatgpt-flare" }));
+  assert.equal(invalid.status, 400);
+  assert.equal(JSON.parse(await readFile(join(testAgentDir, "images", "settings.json"), "utf8")).default, "banana-2");
+});
+
 test("connections route rejects providers that are not in models.json", async () => {
   const response = await POST(request("/api/image-generation/settings/connections", {
     label: "Unlisted",

@@ -178,10 +178,12 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
   const request = parseImageGenerationRequest(rawRequest);
   const config = resolveImageConfig(agentDir);
   if (!config.enabled) throw new Error("Image generation is disabled");
-  const connectionId = request.connection ?? imageConfigView(config).defaultConnection;
-  if (!connectionId) throw new Error("No runnable image connection is configured");
-  const connection = config.connections[connectionId];
-  if (!connection) throw new Error(`Unknown image connection: ${connectionId}`);
+  const defaultId = imageConfigView(config).defaultConnection;
+  const connectionIds = request.connection
+    ? [request.connection]
+    : [defaultId, ...Object.keys(config.connections).filter((id) => id !== defaultId)];
+  if (!connectionIds[0]) throw new Error("No runnable image connection is configured");
+  if (request.connection && !config.connections[request.connection]) throw new Error(`Unknown image connection: ${request.connection}`);
   const useImplicitSource = !request.target && !request.new_image;
   const mentioned = useImplicitSource
     ? latestMentionedImagePath(ctx)
@@ -193,10 +195,17 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
     ? latestGeneratedPath(ctx)
     : undefined;
   const hasInput = Boolean(request.target || request.use_last_attachment || mentioned || attachment || lastGenerated);
-  if (hasInput && connection.capabilities.editing !== true) throw new Error(`Image connection ${connectionId} does not declare editing support`);
-  if (request.size && !connection.capabilities.sizes?.includes(request.size)) throw new Error(`Image connection ${connectionId} does not support size ${request.size}`);
-  if (request.resolution && !connection.capabilities.resolutions?.includes(request.resolution)) throw new Error(`Image connection ${connectionId} does not support resolution ${request.resolution}`);
-  if (request.quality && !connection.capabilities.qualities?.includes(request.quality)) throw new Error(`Image connection ${connectionId} does not support quality ${request.quality}`);
+  const compatible = (connection: typeof config.connections[string]) => {
+    if (hasInput && connection.capabilities.editing !== true) return `Image connection ${connection.id} does not declare editing support`;
+    if (request.size && !connection.capabilities.sizes?.includes(request.size)) return `Image connection ${connection.id} does not support size ${request.size}`;
+    if (request.resolution && !connection.capabilities.resolutions?.includes(request.resolution)) return `Image connection ${connection.id} does not support resolution ${request.resolution}`;
+    if (request.quality && !connection.capabilities.qualities?.includes(request.quality)) return `Image connection ${connection.id} does not support quality ${request.quality}`;
+    return null;
+  };
+  if (request.connection) {
+    const error = compatible(config.connections[request.connection]);
+    if (error) throw new Error(error);
+  }
 
   let input: ImageFile | undefined;
   let source: string | undefined;
@@ -215,36 +224,59 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
   }
   if (!input && request.use_last_attachment) throw new Error("No image attachment is available in the current conversation");
 
-  const size = request.size ?? connection.defaults?.size;
-  const resolution = request.resolution ?? connection.defaults?.resolution;
-  const quality = request.quality ?? connection.defaults?.quality;
-  let image: ImageFile;
-  const transport = imageConnectionTransport(connection);
-  if (transport === "codex") {
-    image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
-  } else if (transport === "antigravity") {
-    image = checkedImage(await requestAntigravityImage(connection, ctx, request.prompt, input, size, resolution, signal), "generated-image");
-  } else if (transport === "openai-images") {
-    image = checkedImage(await requestOpenAIImagesImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
-  } else {
-    image = checkedImage(await requestXaiImage(connection, ctx, request.prompt, input, size, resolution, quality, signal), "generated-image");
+  let lastFallbackError: unknown;
+  let incompatibleError: string | null = null;
+  for (const id of connectionIds) {
+    const connection = config.connections[id];
+    if (!connection) continue;
+    if (!request.connection && !(await ctx.modelRegistry.getProviderAuth(connection.provider))) continue;
+    if (!request.connection) {
+      const error = compatible(connection);
+      if (error) {
+        incompatibleError ??= error;
+        continue;
+      }
+    }
+    const size = request.size ?? connection.defaults?.size;
+    const resolution = request.resolution ?? connection.defaults?.resolution;
+    const quality = request.quality ?? connection.defaults?.quality;
+    try {
+      let image: ImageFile;
+      const transport = imageConnectionTransport(connection);
+      if (transport === "codex") {
+        image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
+      } else if (transport === "antigravity") {
+        image = checkedImage(await requestAntigravityImage(connection, ctx, request.prompt, input, size, resolution, signal), "generated-image");
+      } else if (transport === "openai-images") {
+        image = checkedImage(await requestOpenAIImagesImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
+      } else {
+        image = checkedImage(await requestXaiImage(connection, ctx, request.prompt, input, size, resolution, quality, signal), "generated-image");
+      }
+      signal?.throwIfAborted();
+      const filePath = await saveImage(ctx.cwd, image);
+      return {
+        type: IMAGE_RESULT_TYPE,
+        version: 1,
+        path: filePath,
+        mimeType: image.mimeType,
+        width: image.width,
+        height: image.height,
+        prompt: request.prompt,
+        connection: connection.id,
+        label: connection.label,
+        model: connection.model,
+        ...(size ? { size } : {}),
+        ...(resolution ? { resolution } : {}),
+        ...(quality ? { quality } : {}),
+        ...(source ? { source } : {}),
+      };
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (request.connection || !(error instanceof Error) || !(/Image API returned HTTP (?:401|402|429)\b/.test(error.message) || /\b(?:quota|rate.?limit|resource.exhausted|insufficient.credits)\b/i.test(error.message))) throw error;
+      lastFallbackError = error;
+    }
   }
-  signal?.throwIfAborted();
-  const filePath = await saveImage(ctx.cwd, image);
-  return {
-    type: IMAGE_RESULT_TYPE,
-    version: 1,
-    path: filePath,
-    mimeType: image.mimeType,
-    width: image.width,
-    height: image.height,
-    prompt: request.prompt,
-    connection: connection.id,
-    label: connection.label,
-    model: connection.model,
-    ...(size ? { size } : {}),
-    ...(resolution ? { resolution } : {}),
-    ...(quality ? { quality } : {}),
-    ...(source ? { source } : {}),
-  };
+  if (lastFallbackError) throw lastFallbackError;
+  if (incompatibleError) throw new Error(incompatibleError);
+  throw new Error("No available image connection supports this request");
 }

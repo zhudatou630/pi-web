@@ -460,6 +460,9 @@ function applySettingsPatch(
       if (!options.hasAuth || options.hasAuth(connection.provider)) next.builtinEnabled[connection.id] = true;
     }
   }
+  if (patch.defaultConnection && !liveConnectionIds(next).includes(patch.defaultConnection)) {
+    throw new ImageConfigError("UNKNOWN_CONNECTION", `Image connection ${patch.defaultConnection} is not enabled`);
+  }
   next.defaultConnection = resolveDefaultConnection(next, patch.defaultConnection ?? snapshot.defaultConnection);
   return next;
 }

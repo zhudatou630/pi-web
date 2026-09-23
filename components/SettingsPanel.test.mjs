@@ -127,6 +127,11 @@ test("keeps image generation on its own settings page", async () => {
   assert.match(panelSource, /id: "images"/);
   assert.match(panelSource, /<ImagesConfig /);
   assert.match(imagesSource, /\/api\/image-generation\/settings/);
+  assert.match(imagesSource, /t\("settings\.imagesAddConnection"\)/);
+  assert.match(imagesSource, /<ModelPicker/);
+  assert.match(imagesSource, /t\("settings\.imagesDefault"\)/);
+  assert.match(imagesSource, /save\(\{ default: event\.target\.value \}\)/);
+  assert.doesNotMatch(imagesSource, /settings-image-presets|addPreset|missingPresets/);
   assert.match(enSource, /"settings\.imagesEnabled": "Enable image generation"/);
   assert.match(zhSource, /"settings\.imagesEnabled": "启用生图"/);
 });

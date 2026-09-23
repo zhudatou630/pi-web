@@ -37,7 +37,6 @@ export function ImagesConfig({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [rename, setRename] = useState<{ id: string; label: string } | null>(null);
-  const [presetProvider, setPresetProvider] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -52,7 +51,6 @@ export function ImagesConfig({
         }
         const next = normalizeSettings(data);
         setSettings(next);
-        setPresetProvider((current) => next.providers.some((provider) => provider.id === current) ? current : preferredCustomProvider(next.providers));
       } catch (cause) {
         if (!(cause instanceof DOMException && cause.name === "AbortError")) {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -73,7 +71,7 @@ export function ImagesConfig({
     setReloadNeeded(Boolean(sessionId));
   };
 
-  const save = async (body: { enabled?: boolean; connections?: Record<string, { enabled: boolean }> }) => {
+  const save = async (body: { enabled?: boolean; default?: string; connections?: Record<string, { enabled: boolean }> }) => {
     setSaving(true);
     setError(null);
     try {
@@ -81,24 +79,6 @@ export function ImagesConfig({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      });
-      await applyResponse(response);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const addPreset = async (preset: (typeof IMAGE_CUSTOM_MODEL_PRESETS)[number]) => {
-    if (!presetProvider) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/image-generation/settings/connections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label: preset.label, provider: presetProvider, model: preset.model }),
       });
       await applyResponse(response);
     } catch (cause) {
@@ -188,9 +168,6 @@ export function ImagesConfig({
   const builtin = settings?.connections.filter((connection) => connection.kind !== "custom") ?? [];
   const custom = settings?.connections.filter((connection) => connection.kind === "custom") ?? [];
   const providers = settings?.providers ?? [];
-  const missingPresets = IMAGE_CUSTOM_MODEL_PRESETS.filter((preset) => (
-    !custom.some((connection) => connection.provider === presetProvider && connection.model === preset.model)
-  ));
 
   return (
     <div className="settings-general">
@@ -216,6 +193,23 @@ export function ImagesConfig({
             </div>
           </div>
           {settings?.enabled && (
+            <>
+            {settings.connections.some((connection) => connection.enabled) && (
+              <label className="settings-image-field">
+                <span>{t("settings.imagesDefault")}</span>
+                <select
+                  value={settings.defaultConnection}
+                  disabled={loading || saving || reloading}
+                  onChange={(event) => void save({ default: event.target.value })}
+                >
+                  {settings.connections.filter((connection) => connection.enabled).map((connection) => (
+                    <option key={connection.id} value={connection.id} disabled={!connection.signedIn}>
+                      {connection.label}{connection.signedIn ? "" : ` (${t("settings.imagesSignedOut")})`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="settings-general-columns">
               <div>
               <h3 className="settings-image-group">{t("settings.imagesBuiltin")}</h3>
@@ -248,12 +242,12 @@ export function ImagesConfig({
                       setDraft({
                         mode: "create",
                         label: "",
-                        provider: presetProvider || providers[0]?.id || "",
+                        provider: preferredCustomProvider(providers),
                         model: "",
                       });
                     }}
                   >
-                    {t("settings.imagesOtherModel")}
+                    {t("settings.imagesAddConnection")}
                   </ConfigButton>
                 )}
               </div>
@@ -282,36 +276,6 @@ export function ImagesConfig({
                   deleteLabel={t("agents.delete")}
                 />
               ))}
-              {missingPresets.length > 0 && providers.length > 0 && (
-                <div className="settings-image-presets">
-                  {providers.length > 1 && (
-                    <select
-                      aria-label={t("settings.imagesProvider")}
-                      className="settings-image-provider"
-                      value={presetProvider}
-                      onChange={(event) => setPresetProvider(event.target.value)}
-                    >
-                      {providers.map((provider) => (
-                        <option key={provider.id} value={provider.id}>
-                          {provider.name === provider.id ? provider.id : `${provider.name} (${provider.id})`}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <div className="settings-image-preset-actions">
-                    {missingPresets.map((preset) => (
-                      <ConfigButton
-                        key={preset.model}
-                        size="small"
-                        disabled={loading || reloading || saving || !presetProvider}
-                        onClick={() => void addPreset(preset)}
-                      >
-                        {preset.label}
-                      </ConfigButton>
-                    ))}
-                  </div>
-                </div>
-              )}
               {draft && (
                 <form
                   className="settings-image-form"
@@ -370,6 +334,7 @@ export function ImagesConfig({
               )}
               </div>
             </div>
+            </>
           )}
           {reloadNeeded && <p role="status" className="settings-image-reload-notice">{t("agents.reloadRequired")}</p>}
           {error && <p role="alert" className="settings-general-error">{error}</p>}
