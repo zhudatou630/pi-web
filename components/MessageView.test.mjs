@@ -495,3 +495,54 @@ test("renders assistant image answers instead of leaving a blank final answer", 
   assert.match(onlyImage, /<img[^>]+src="data:image\/png;base64,YWJj"/);
   assert.doesNotMatch(onlyImage, /data-message-text/);
 });
+
+test("tool-result images render on a collapsed card, not only when expanded (#826)", async () => {
+  const source = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
+  // The image grid must exist outside the `expanded` gate: a screenshot or a
+  // generated image is the point of the call, and hiding it behind the toggle
+  // meant reopening every card to see it.
+  const collapsed = source.slice(
+    source.indexOf("Tool-result images stay visible while the card is collapsed"),
+    source.indexOf("interface ResultDiff"),
+  );
+  assert.ok(collapsed.length > 0, "expected a collapsed-card image block");
+  assert.match(collapsed, /!expanded && resultImages\.length > 0/);
+  assert.match(collapsed, /<ToolResultImages images=\{resultImages\} thumbnails \/>/);
+
+  // Both the collapsed and the expanded path must go through one implementation.
+  const helperUses = source.match(/<ToolResultImages /g) ?? [];
+  assert.equal(helperUses.length, 2, "collapsed and expanded must share the renderer");
+});
+
+test("apply_patch renders as a split diff and keeps its files in the changed list", async () => {
+  const source = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
+  assert.match(source, /isApplyPatchTool = isApplyPatchToolName\(block\.toolName\)/);
+  assert.match(source, /<ApplyPatchView patch=\{applyPatchText\} \/>/);
+  // The raw JSON input must not be shown for a patch tool: the diff replaces it.
+  // The generic raw-JSON input view is skipped entirely for patch tools.
+  assert.match(source, /!isEditTool\) && !isApplyPatchTool &&/);
+});
+
+test("a streaming apply_patch shows its patch text, never the JSON wrapper", async () => {
+  const { extractStreamedPatchArgument } = await jiti.import("./MessageView.tsx");
+  // While arguments stream, the parsed `input` is still empty, so the panel has to
+  // read the partial value out of the raw buffer.
+  assert.equal(extractStreamedPatchArgument(undefined), undefined);
+  assert.equal(extractStreamedPatchArgument(""), undefined);
+  assert.equal(extractStreamedPatchArgument("{\"pat"), undefined);
+  // An unterminated JSON string has no closing quote yet, so nothing is shown
+  // (the caller renders a "generating" hint instead of half an escaped string).
+  assert.equal(extractStreamedPatchArgument("{\"patch\":\"*** Begin Patch\\n*** Update File: a.ts"), undefined);
+  // A trailing partial escape must not be shown as literal garbage.
+  assert.equal(extractStreamedPatchArgument("{\"patch\":\"line\\"), undefined);
+  // A complete value round-trips through JSON unescaping.
+  assert.equal(
+    extractStreamedPatchArgument("{\"patch\":\"a\\nb\\\"c\"}"),
+    'a\nb"c',
+  );
+
+  const source = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
+  // The generic raw-input <pre> must be skipped for patch tools in every case.
+  assert.match(source, /\(isStreamingInput \|\| !isEditTool\) && !isApplyPatchTool &&/);
+  assert.match(source, /isApplyPatchTool && applyPatchText === undefined && \(/);
+});

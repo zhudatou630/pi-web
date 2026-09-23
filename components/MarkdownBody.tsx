@@ -2,7 +2,7 @@
 
 import { useMemo, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
-import { resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
+import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
@@ -12,7 +12,7 @@ interface MarkdownBodyProps {
   className?: string;
   isStreaming?: boolean;
   cwd?: string;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, page?: number) => void;
 }
 
 export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
@@ -59,13 +59,16 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
           </a>
         );
       }
+      // `report.pdf#page=12` must open on page 12: the fragment is dropped when
+      // the href becomes a filesystem path, so carry it alongside.
+      const page = pdfPageFromHref(href);
 
       const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
         if (!shouldOpenLocalFileInApp(event)) return;
         const target = event.currentTarget.getAttribute("target");
         if (target && target !== "_self") return;
         event.preventDefault();
-        openFile(filePath);
+        openFile(filePath, page ?? undefined);
       };
 
       return (

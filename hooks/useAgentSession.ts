@@ -15,7 +15,7 @@ import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
-import { getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
+import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import type { BugReportOutcome } from "@/lib/rpc-manager";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
@@ -25,6 +25,7 @@ import {
   AgentEventConnectionError,
   buildAgentEventSourceUrl,
 } from "@/lib/agent-event-connection";
+import { isSystemMessageEvent } from "@/lib/agent-event-wire";
 import {
   CHAT_SCROLL_REATTACH_TOLERANCE,
   CHAT_SCROLL_TAIL_TOLERANCE,
@@ -90,6 +91,7 @@ type AgentStateResponse = {
   isPromptRunning?: boolean;
   isBashRunning?: boolean;
   isCompacting?: boolean;
+  autoCompactionEnabled?: boolean;
   queuedMessages?: { steering?: Array<string | { text?: string }>; followUp?: Array<string | { text?: string }> } | null;
 };
 
@@ -365,7 +367,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [modelThinkingLevelMaps, setModelThinkingLevelMaps] = useState<Record<string, Record<string, string | null>>>(() => initialModels?.thinkingLevelMaps ?? {});
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(initialDefaultModel);
-  const [toolPreset, setToolPreset] = useState<ToolPreset>("default");
+  const [toolPreset, setToolPreset] = useState<ToolPreset>(CONFIGURED_TOOL_PRESET);
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>(initialThinkingLevel ?? "auto");
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
@@ -375,6 +377,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [pendingModel, setPendingModel] = useState<{ provider: string; modelId: string } | null>(null);
   const [modelSwitching, setModelSwitching] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
+  /** Mirrors the server's auto-compaction toggle for the active session. */
+  const [autoCompactionEnabled, setAutoCompactionEnabled] = useState(true);
   const [compactError, setCompactError] = useState<string | null>(null);
   const [compactResult, setCompactResult] = useState<CompactResultInfo | null>(null);
   const [agentPhase, setAgentPhase] = useState<AgentPhase>(null);
@@ -390,6 +394,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const eventStreamGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eventStreamGraceGenerationRef = useRef(0);
   const eventStreamGraceActiveRef = useRef(false);
+  // False while the session carries no tool selection of its own, so its loadout
+  // follows settings.json defaultTools and the picker must say so rather than
+  // labelling it with whichever preset the resolved tools happen to match.
+  const sessionToolsPinnedRef = useRef(false);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
   const sessionPropIdRef = useRef<string | null>(session?.id ?? null);
   const sessionRunningRef = useRef(Boolean(sessionRunning));
@@ -537,6 +545,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       if (showLoading) setLoading(true);
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
+      // `includeState` marks a session mount or page refresh. Only then does the
+      // server probe the file tail for writes made by another pi process: ordinary
+      // reads keep serving the live snapshot instead of stat-ing on every poll.
+      if (includeState) params.set("force", "1");
       const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
       if (res.status === 404) {
         if (showLoading) {
@@ -567,7 +579,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setEntryIds(merged.entryIds);
       setHistoryCursor(merged.oldestEntryId);
       setHasEarlierMessages(merged.hasMore);
-      setToolPresetState(d.toolNames !== undefined ? getPresetFromToolNames(d.toolNames) : "default");
+      sessionToolsPinnedRef.current = d.toolNames !== undefined;
+      setToolPresetState(d.toolNames !== undefined ? getPresetFromToolNames(d.toolNames) : CONFIGURED_TOOL_PRESET);
       setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
@@ -654,7 +667,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const tools = await sendAgentCommand<ToolEntry[]>(sid, { type: "get_tools" });
       if (!tools || !sessionHookMountedRef.current || sessionIdRef.current !== sid) return null;
       const { getPresetFromTools } = await import("@/lib/tool-presets");
-      setToolPresetState(getPresetFromTools(tools));
+      setToolPresetState(sessionToolsPinnedRef.current ? getPresetFromTools(tools) : CONFIGURED_TOOL_PRESET);
       onSystemToolsChange?.(tools);
       return tools;
     } catch (e) {
@@ -704,14 +717,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const selectedModel = newSessionModelOverrideRef.current;
       const selectedThinkingLevel = thinkingLevelOverrideRef.current;
       if (selectedModel) setPendingModel(selectedModel);
+      // Undefined means the user never overrode the loadout: omit the field so Pi
+      // resolves settings.json defaultTools instead of being pinned to ours.
       const toolNames = getToolNamesForPreset(toolPreset);
+      sessionToolsPinnedRef.current = toolNames !== undefined;
       const res = await fetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cwd: newSessionCwd,
           type: "ensure_session",
-          toolNames,
+          ...(toolNames !== undefined ? { toolNames } : {}),
           ...(selectedModel ? { provider: selectedModel.provider, modelId: selectedModel.modelId } : {}),
           ...(selectedThinkingLevel
             ? { thinkingLevel: selectedThinkingLevel }
@@ -1125,6 +1141,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // (wrapper destroyed) means nothing is compacting.
       setIsCompacting(state?.isCompacting ?? false);
       setQueuedMessages(normalizeQueuedMessages(state?.queuedMessages));
+      // Mirror the server's auto-compaction toggle so a change made in another
+      // client is reflected before the next /auto-compact reads the live value.
+      if (typeof state?.autoCompactionEnabled === "boolean") {
+        setAutoCompactionEnabled(state.autoCompactionEnabled);
+      }
       if (state?.contextUsage !== undefined) {
         setContextUsage((prev) => keepContextUsage(prev, state.contextUsage ?? null));
       }
@@ -1294,6 +1315,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // (e.g. SSE data buffered while the tab was frozen, flushed after
         // reconcile) — they would resurrect a ghost streaming bubble.
         if (!agentRunningRef.current) break;
+        // Transcript system messages (prompt and tool loadout) are filtered
+        // server-side; keep them out of the chat should one arrive.
+        if (isSystemMessageEvent(event)) break;
         if (event.type === "message_start") {
           const msg = event.message as AgentMessage | undefined;
           if (msg?.role === "user") break;
@@ -1319,6 +1343,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // loadSession already loaded this message from the session file —
         // appending it again would duplicate it.
         if (!agentRunningRef.current) break;
+        if (isSystemMessageEvent(event)) break;
         const completed = event.message as AgentMessage | undefined;
         if (completed && completed.role === "user") {
           // Delivered steering/follow-up messages surface here as user
@@ -2005,6 +2030,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           return complete({ handled: true, message: "Copied last assistant message" });
         }
 
+        case "auto-compact": {
+          if (!sid) return complete({ handled: true, error: "No active session" });
+          // Read the live server value instead of a local default: an idle session
+          // has no wrapper, and assuming "enabled" would write the wrong toggle
+          // when settings.json already disabled it.
+          const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
+          const current = typeof state?.autoCompactionEnabled === "boolean"
+            ? state.autoCompactionEnabled
+            : true;
+          const next = !current;
+          await sendAgentCommand(sid, { type: "set_auto_compaction", enabled: next });
+          setAutoCompactionEnabled(next);
+          return complete({
+            handled: true,
+            message: next ? "Auto-compaction enabled" : "Auto-compaction disabled",
+          });
+        }
+
         case "clone": {
           if (!sid) return complete({ handled: true, error: "No active session to clone" });
           if (agentRunningRef.current || bashRunningRef.current) {
@@ -2162,9 +2205,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setPreferredToolPreset(preset);
     setToolPresetState(preset);
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
-    if (!sid) return;
+    if (!sid) {
+      sessionToolsPinnedRef.current = toolNames !== undefined;
+      return;
+    }
     try {
-      const result = await sendAgentCommand<{ sessionId?: string; recreated?: boolean }>(sid, { type: "set_tools", toolNames });
+      const result = await sendAgentCommand<{ sessionId?: string; recreated?: boolean }>(sid, {
+        type: "set_tools",
+        ...(toolNames !== undefined ? { toolNames } : {}),
+      });
+      sessionToolsPinnedRef.current = toolNames !== undefined;
       const activeSessionId = result?.sessionId ?? sid;
       const recreated = result?.recreated === true;
       if (activeSessionId !== sid) {
@@ -2256,6 +2306,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         if (agentState?.state) {
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
+          if (typeof agentState.state.autoCompactionEnabled === "boolean") setAutoCompactionEnabled(agentState.state.autoCompactionEnabled);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
           if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
@@ -2395,7 +2446,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     data, loading, error, activeLeafId, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, streamState,
     agentRunning, directImageRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
-    isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
+    isCompacting,
+    autoCompactionEnabled, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
     notices: noticeState.visible, extensionDialog, extensionCustomUi, respondToExtensionUi, sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,

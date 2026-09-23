@@ -34,6 +34,27 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/**
+ * Bound a network wait so a dead upstream cannot hang the page.
+ *
+ * A reachable port with a server that never answers accepts the connection and
+ * then never responds, so fetch() neither resolves nor rejects: navigation never
+ * fell back to offline.html and a static-asset cache miss waited forever. The
+ * budget covers time to first byte only — the timer is cleared as soon as the
+ * headers arrive, so a streamed body is never cut off mid-stream.
+ */
+const NETWORK_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(request) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NETWORK_TIMEOUT_MS);
+  try {
+    return await fetch(request, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -46,7 +67,7 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(async () => {
+      fetchWithTimeout(request).catch(async () => {
         const fallback = await caches.match(OFFLINE_URL);
         return fallback ?? Response.error();
       }),
@@ -136,7 +157,8 @@ async function cacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) return cached;
 
-  const response = await fetch(request);
+  // A cache miss must not wait on an upstream that never answers.
+  const response = await fetchWithTimeout(request);
   if (response.ok && response.type === "basic") {
     const cache = await caches.open(STATIC_CACHE);
     await cache.put(request, response.clone());

@@ -38,6 +38,8 @@ function addUsage(stats: SessionFileStats, usage?: AgentUsage): void {
 }
 
 function addMessage(stats: SessionFileStats, message: AgentMessage): void {
+  // Like the SDK, every message entry counts toward the total, including the
+  // transcript system messages that hold the prompt and tool loadout.
   stats.totalMessages += 1;
   if (message.role === "user") {
     stats.userMessages += 1;
@@ -99,8 +101,9 @@ export function mergeSessionStats(
  * Aggregate usage across ALL entries in a session file.
  *
  * Mirrors the SDK's `AgentSession.getSessionStats()`: besides assistant
- * (and tool-result) messages, this also counts usage recorded on compaction
- * and branch-summary entries. Compaction only appends a summary entry — the
+ * (and tool-result) messages, this also counts usage recorded on compaction,
+ * branch-summary and `usage` entries (prompt-cache warming, which is billed
+ * but never enters model context). Compaction only appends a summary entry — the
  * summarized history stays in the file — so these totals grow monotonically
  * for the life of the session. Totals computed over the active context alone
  * (the compaction-aware message list) shrink whenever old history is

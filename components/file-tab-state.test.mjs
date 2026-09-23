@@ -119,3 +119,18 @@ test("closing a tab selects its right neighbor, then its left neighbor", () => {
   assert.equal(getAdjacentTabId(tabs, tabC.id), tabB.id);
   assert.equal(getAdjacentTabId([tabA], tabA.id), null);
 });
+
+test("opening a PDF again without a page fragment returns it to the first page", () => {
+  const base = { tabId: "file:/repo/a.pdf", fileName: "a.pdf", filePath: "/repo/a.pdf" };
+  const opened = openFileTab([], { ...base, page: 12 });
+  assert.equal(opened[0].pdfPage, 12);
+
+  // Plain open from the file tree: the tab must not stay stuck on page 12.
+  const plain = openFileTab(opened, base);
+  assert.equal(plain[0].pdfPage, undefined);
+  assert.ok((plain[0].viewerRevision ?? 0) > (opened[0].viewerRevision ?? 0), "clearing the page must remount");
+
+  // Re-opening on the same page is a no-op rather than a needless remount.
+  const again = openFileTab(opened, { ...base, page: 12 });
+  assert.equal(again, opened);
+});

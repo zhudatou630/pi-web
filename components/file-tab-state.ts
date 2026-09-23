@@ -6,6 +6,8 @@ interface OpenFileTabInput {
   fileName: string;
   filePath: string;
   modeHint?: "diff";
+  /** PDF page to open, from a `#page=` link fragment. */
+  page?: number;
   sourceSessionId?: string | null;
   tabId: string;
 }
@@ -20,6 +22,7 @@ export function openFileTab(tabs: Tab[], input: OpenFileTabInput): Tab[] {
       cwd: input.cwd,
       sourceSessionId: input.sourceSessionId,
       initialDisplayMode: input.modeHint,
+      ...(input.page !== undefined ? { pdfPage: input.page } : {}),
       viewerState: input.modeHint ? {
         displayMode: input.modeHint,
         wrapLines: false,
@@ -34,13 +37,23 @@ export function openFileTab(tabs: Tab[], input: OpenFileTabInput): Tab[] {
     input.sourceSessionId && existing.sourceSessionId !== input.sourceSessionId,
   );
   const cwdChanged = Boolean(input.cwd && existing.cwd !== input.cwd);
-  if (!sourceChanged && !cwdChanged && !input.modeHint) return tabs;
+  // Opening a different page of the same file must remount the viewer, because
+  // the page lives in the iframe URL.
+  // Opening a different page of the same file must remount the viewer, because the
+  // page lives in the iframe URL. A plain open (no fragment) clears any page the tab
+  // was left on, so opening the same PDF from the file tree returns to page 1.
+  const pageChanged = (input.page ?? undefined) !== existing.pdfPage;
+  if (!sourceChanged && !cwdChanged && !input.modeHint && !pageChanged) return tabs;
 
   return tabs.map((tab) => {
     if (tab.id !== input.tabId) return tab;
     const next: Tab = { ...tab };
     if (sourceChanged) next.sourceSessionId = input.sourceSessionId;
     if (cwdChanged) next.cwd = input.cwd;
+    if (pageChanged) {
+      next.pdfPage = input.page;
+      next.viewerRevision = (tab.viewerRevision ?? 0) + 1;
+    }
     if (input.modeHint) {
       next.initialDisplayMode = input.modeHint;
       next.viewerState = {

@@ -50,6 +50,7 @@ import { createImageGenerationExtension, preferPiWebImageTool } from "./image-ge
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE } from "./image-generation";
 import { executeImageGeneration } from "./image-generation-runtime";
 import {
+  appendClearedSessionToolSelection,
   appendSessionToolSelection,
   readSessionToolSelection,
   validateSessionToolSelection,
@@ -1675,6 +1676,25 @@ export function getRpcSession(sessionId: string): AgentSessionWrapper | undefine
   return getRegistry().get(sessionId);
 }
 
+/**
+ * Drop an idle wrapper whose session file was written by another process, so the
+ * next read rebuilds it from disk.
+ *
+ * Deliberately refuses while a prompt, bash command, or in-flight start owns the
+ * session: mid-run the wrapper owns the write path, so an external write then is
+ * the unsupported concurrent-write case, not a stale read. Rebuilding is otherwise
+ * safe because startRpcSession restores the persisted tool selection from the file
+ * and the model from its model_change entries, exactly like a cold start.
+ */
+export function releaseRpcSessionForExternalWrite(sessionId: string): boolean {
+  if (getLocks().has(sessionId)) return false;
+  const wrapper = getRegistry().get(sessionId);
+  if (!wrapper?.isAlive() || wrapper.isRunning() || wrapper.isBusyForFileMutation()) return false;
+  if (getSessionFileMutations().has(sessionId)) return false;
+  wrapper.destroy();
+  return true;
+}
+
 function getSessionFileMutations(): Set<string> {
   if (!globalThis.__piSessionFileMutations) globalThis.__piSessionFileMutations = new Set();
   return globalThis.__piSessionFileMutations;
@@ -1717,13 +1737,22 @@ export interface SetRpcSessionToolsResult {
   recreated: boolean;
 }
 
-/** Persist a normal session's tool selection and rebuild when resource policy changes. */
+/**
+ * Persist a normal session's tool selection and rebuild when resource policy changes.
+ *
+ * An undefined `requestedToolNames` returns the session to Pi's configured
+ * `defaultTools`: the pin is retracted by a `cleared` entry and the session is
+ * rebuilt, because the loadout that settings.json resolves to is only known once
+ * Pi builds the session.
+ */
 export async function setRpcSessionTools(
   sessionId: string,
   sessionFile: string | undefined,
   requestedToolNames: unknown,
 ): Promise<SetRpcSessionToolsResult> {
-  const toolNames = validateSessionToolSelection(requestedToolNames);
+  const toolNames = requestedToolNames === undefined
+    ? undefined
+    : validateSessionToolSelection(requestedToolNames);
   const existing = getRpcSession(sessionId);
 
   if (!existing?.isAlive()) {
@@ -1732,7 +1761,8 @@ export async function setRpcSessionTools(
     if (readSubagentSessionResources(manager.getEntries() as unknown as SessionEntry[])) {
       throw new Error("Subagent tool selection is fixed by its profile");
     }
-    appendSessionToolSelection(manager, toolNames);
+    if (toolNames === undefined) appendClearedSessionToolSelection(manager);
+    else appendSessionToolSelection(manager, toolNames);
     invalidateSessionListCache();
     const started = await startRpcSession(sessionId, sessionFile, undefined);
     return { session: started.session, sessionId: started.realSessionId, recreated: false };
@@ -1745,12 +1775,16 @@ export async function setRpcSessionTools(
 
   const hasCurrentResourcePolicy = typeof existing.isChatOnly === "function"
     && typeof existing.setActiveToolSelection === "function";
-  const crossesChatOnlyBoundary = !hasCurrentResourcePolicy
+  // Returning to configured defaults always rebuilds: the resolved loadout is not
+  // known until Pi builds the session.
+  const crossesChatOnlyBoundary = toolNames === undefined
+    || !hasCurrentResourcePolicy
     || existing.isChatOnly() !== (toolNames.length === 0);
-  appendSessionToolSelection(existing.inner.sessionManager, toolNames);
+  if (toolNames === undefined) appendClearedSessionToolSelection(existing.inner.sessionManager);
+  else appendSessionToolSelection(existing.inner.sessionManager, toolNames);
   invalidateSessionListCache();
 
-  if (!crossesChatOnlyBoundary) {
+  if (toolNames !== undefined && !crossesChatOnlyBoundary) {
     existing.setActiveToolSelection(toolNames);
     return { session: existing, sessionId, recreated: false };
   }
@@ -1769,7 +1803,7 @@ export async function setRpcSessionTools(
   }
 
   const started = await startRpcSession(`__recreate__${randomUUID()}`, "", sessionCwd, {
-    toolNames,
+    ...(toolNames !== undefined ? { toolNames } : {}),
     ...(model ? { initialModel: { provider: model.provider, modelId: model.id } } : {}),
     allowInitialModelFallback: true,
     ...(currentThinkingLevel && THINKING_LEVEL_NAMES.has(currentThinkingLevel as ThinkingLevel)
@@ -2077,8 +2111,14 @@ export async function startRpcSession(
     // Some extensions access the SDK's global theme even outside the terminal UI.
     if (!chatOnly) initTheme();
     const agentDir = getAgentDir();
-    const chatOnlySystemPrompt = chatOnly && !subagentResources
-      ? contextFilesSystemPrompt(loadProjectContextFiles({ cwd: sessionCwd, agentDir })) || " "
+    // Chat only's prompt is the session's context files. Resolved per run through
+    // the inline extension below, not captured here: a /reload re-reads them, and
+    // .pi/extensions is left out because chatOnly already disables extensions.
+    const readChatOnlySystemPrompt = () => (
+      contextFilesSystemPrompt(loadProjectContextFiles({ cwd: sessionCwd, agentDir })) || " "
+    );
+    const chatOnlyExtension = chatOnly && !subagentResources
+      ? createExactSystemPromptExtension(readChatOnlySystemPrompt)
       : undefined;
 
     // Determine which tools to pass based on requested toolNames.
@@ -2138,7 +2178,7 @@ export async function startRpcSession(
               noPromptTemplates: true,
               noThemes: true,
               noContextFiles: true,
-              extensionFactories: [createExactSystemPromptExtension(chatOnlySystemPrompt!)],
+              extensionFactories: [chatOnlyExtension!],
               systemPrompt: " ",
               systemPromptOverride: () => undefined,
               appendSystemPrompt: [],

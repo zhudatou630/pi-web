@@ -15,6 +15,8 @@ export interface Tab {
   closing?: boolean;
   sourceSessionId?: string | null;
   initialDisplayMode?: FileViewerDisplayMode;
+  /** PDF page to open, carried from a `#page=` link fragment. */
+  pdfPage?: number;
   viewerState?: FileViewerState;
   viewerRevision?: number;
 }

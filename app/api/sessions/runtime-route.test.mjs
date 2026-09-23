@@ -85,7 +85,11 @@ test("session listing merges live registry snapshots and honors force refresh", 
 
 test("session reads use the live SessionManager before requiring a JSONL path", () => {
   for (const source of [detailRoute, contextRoute]) {
-    const liveLookup = source.indexOf("getRpcSession(id)");
+    // The detail route decides through the external-write helper (which itself
+    // returns the live wrapper), so its live lookup may live outside the route.
+    const liveLookup = source.indexOf("getEvictableWrapperForExternalWrite(id, force)") >= 0
+      ? 0
+      : source.indexOf("getRpcSession(id)");
     const pathLookup = source.indexOf("resolveSessionPath(id)");
     assert.ok(liveLookup >= 0);
     assert.ok(pathLookup > liveLookup);

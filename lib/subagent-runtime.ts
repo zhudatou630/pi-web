@@ -448,6 +448,21 @@ function discardPendingParentNotifications(parentSessionId: string): void {
   }
 }
 
+/**
+ * Pi's `convertToLlm` replays every `custom` message as a plain `user` turn with
+ * its content verbatim, and a background subagent's completion is delivered through
+ * `sendCustomMessage`. A compaction pass asks what *the user* wants, so without this
+ * marker the report would be filed under the summary's Goal / Constraints sections
+ * (#875). The marker lives in code, not in a profile prompt, so a model cannot drop it.
+ */
+const SUBAGENT_NOTIFICATION_HEADER =
+  "The report below was delivered by Pi Web on behalf of a background subagent. It is a report about completed work, not a message from the user: it states no new user goals, constraints, or instructions.\n\n";
+
+/** Test seam: the marker prefixed to every background completion notification. */
+export function getSubagentNotificationHeader(): string {
+  return SUBAGENT_NOTIFICATION_HEADER;
+}
+
 function buildSubagentNotification(runs: SubagentRunInfo[]): {
   text: string;
   included: SubagentRunInfo[];
@@ -455,7 +470,7 @@ function buildSubagentNotification(runs: SubagentRunInfo[]): {
   const footer = "\n\nUse get_subagent_result with a session ID for the full result.";
   const sections: string[] = [];
   const included: SubagentRunInfo[] = [];
-  let remaining = SUBAGENT_NOTIFICATION_MAX_CHARS - footer.length - 80;
+  let remaining = SUBAGENT_NOTIFICATION_MAX_CHARS - SUBAGENT_NOTIFICATION_HEADER.length - footer.length - 80;
 
   for (const run of runs) {
     const description = run.description.slice(0, 160);
@@ -479,7 +494,7 @@ function buildSubagentNotification(runs: SubagentRunInfo[]): {
 
   const omitted = runs.length - included.length;
   const omittedNote = omitted > 0 ? `\n\n${omitted} additional result(s) remain pending.` : "";
-  const text = `${sections.join("\n\n")}${omittedNote}${footer}`;
+  const text = `${SUBAGENT_NOTIFICATION_HEADER}${sections.join("\n\n")}${omittedNote}${footer}`;
   return {
     text: text.length <= SUBAGENT_NOTIFICATION_MAX_CHARS
       ? text
@@ -748,53 +763,52 @@ async function promptSubagent(
   inner: AgentSessionLike,
   task: string,
   stored: StoredSubagentExecution,
-  options: { turnLimit?: number; chatOnlySystemPrompt?: string },
+  options: { turnLimit?: number },
 ): Promise<SubagentOutcome> {
   let turnLimitState: SubagentTurnLimitState = {
     turnCount: 0,
     wrapUpRequested: false,
     turnLimitReached: false,
   };
-  const previousShouldStopAfterTurn = inner.agent.shouldStopAfterTurn;
+  // The prompt plan's exact system prompt is projected by the inline extension
+  // registered when the session was created; see lib/chat-only.ts.
+  const previousFinishTurn = inner.agent.finishTurn;
   if (options.turnLimit) {
-    inner.agent.shouldStopAfterTurn = async (context, signal) => (
-      turnLimitState.turnLimitReached || await previousShouldStopAfterTurn?.(context, signal) === true
-    );
+    // Pi 0.87 replaced `shouldStopAfterTurn` with `finishTurn` and swapped the
+    // ordering: `finishTurn` now runs BEFORE `turn_end` (0.86 emitted `turn_end`
+    // first). The counter therefore has to advance here, from the completed turn it
+    // is given — a `turn_end` subscriber would observe the previous turn's state and
+    // let the agent run one turn past its limit.
+    inner.agent.finishTurn = async (turn, signal) => {
+      const previous = await previousFinishTurn?.(turn, signal);
+      const update = advanceSubagentTurnLimit(turnLimitState, turn.message, options.turnLimit!);
+      turnLimitState = update.state;
+      if (update.requestWrapUp) {
+        // Steering polled by the loop right after this hook returns, so the wrap-up
+        // instruction lands on the very next provider request.
+        inner.agent.steer?.({
+          role: "user",
+          content: [{ type: "text", text: "You have reached your turn limit. Wrap up immediately and provide your final answer now without calling more tools." }],
+          timestamp: Date.now(),
+        });
+      }
+      // Preserve a host handler's verdict: "continue" is not the same as "no
+      // opinion" — it forces one more provider request.
+      if (previous?.action === "continue") return { action: "continue" };
+      if (previous?.action === "end") return { action: "end" };
+      return turnLimitState.turnLimitReached ? { action: "end" } : undefined;
+    };
   }
-  const unsubscribeTurns = options.turnLimit
-    ? inner.subscribe((event) => {
-        if (event.type !== "turn_end") return;
-        const update = advanceSubagentTurnLimit(turnLimitState, event.message, options.turnLimit!);
-        turnLimitState = update.state;
-        if (update.requestWrapUp) {
-          inner.agent.steer?.({
-            role: "user",
-            content: [{ type: "text", text: "You have reached your turn limit. Wrap up immediately and provide your final answer now without calling more tools." }],
-            timestamp: Date.now(),
-          });
-        }
-      })
-    : () => {};
 
   const messageStartIndex = inner.agent.state?.messages?.length ?? 0;
   let thrownError: string | undefined;
   try {
     if (stored.abortRequested) throw new DOMException("Subagent was stopped", "AbortError");
-    await inner.prompt(task, {
-      source: "rpc",
-      ...(options.chatOnlySystemPrompt !== undefined
-        ? {
-            preflightResult: (success: boolean) => {
-              if (success && inner.agent.state) inner.agent.state.systemPrompt = options.chatOnlySystemPrompt;
-            },
-          }
-        : {}),
-    });
+    await inner.prompt(task, { source: "rpc" });
   } catch (error) {
     thrownError = errorMessage(error);
   } finally {
-    unsubscribeTurns();
-    inner.agent.shouldStopAfterTurn = previousShouldStopAfterTurn;
+    inner.agent.finishTurn = previousFinishTurn;
   }
 
   return deriveSubagentOutcome(
@@ -1003,7 +1017,6 @@ export function createSubagentController(
           dependencies.invalidateSessionList();
           const outcome = await promptSubagent(inner, delegatedTask, stored, {
             turnLimit,
-            ...(chatOnly ? { chatOnlySystemPrompt: profile.systemPrompt } : {}),
           });
           let result: SubagentRunInfo = { ...stored.run, ...outcome, completedAt: new Date().toISOString() };
           if (isolated) {

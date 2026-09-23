@@ -87,7 +87,7 @@ interface Props {
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
-  onOpenFile?: (filePath: string, sourceSessionId: string | null) => void;
+  onOpenFile?: (filePath: string, sourceSessionId: string | null, page?: number) => void;
   onOpenSession?: (sessionId: string) => void;
   onAskInNewChat?: (prompt: string, sourceSessionId: string, sourceEntryId: string) => Promise<void>;
   quoteSelectionEnabled?: boolean;
@@ -873,8 +873,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const wrappedOnSessionForked = useCallback((newSessionId: string) => {
     onSessionForked?.(newSessionId, sessionRef.current?.id ?? null);
   }, [onSessionForked]);
-  const openFileFromSession = useCallback((filePath: string) => {
-    onOpenFile?.(filePath, sessionRef.current?.id ?? null);
+  const openFileFromSession = useCallback((filePath: string, page?: number) => {
+    onOpenFile?.(filePath, sessionRef.current?.id ?? null, page);
   }, [onOpenFile]);
   const keepTabOpen = useCallback(() => {
     const sessionId = sessionRef.current?.id;

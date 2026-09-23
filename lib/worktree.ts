@@ -53,9 +53,12 @@ export function invalidateProjectCache(): void {
   globalThis.__piProjectCache?.clear();
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
+/** Large repositories can take minutes to check out; the default 10s is far too short. */
+const WORKTREE_ADD_TIMEOUT_MS = 5 * 60_000;
+
+async function git(cwd: string, args: string[], timeout = 10_000): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
-    timeout: 10_000,
+    timeout,
     maxBuffer: 1024 * 1024,
     // Pin the message locale so error-text matching (e.g. the dirty-worktree
     // detection in the DELETE route) works regardless of system language.
@@ -209,7 +212,10 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
   }
   mkdirSync(baseDir, { recursive: true });
 
-  // Reuse the branch if it already exists, otherwise create it at HEAD.
+  // Reuse the branch if it already exists, otherwise create it. Creating it does
+  // not fetch implicitly: the user's action should not silently hit the network,
+  // so an existing remote-tracking branch is the start point when one is already
+  // known locally, falling back to HEAD.
   let branchExists = false;
   try {
     await git(repoRoot, ["rev-parse", "--verify", "--quiet", `refs/heads/${trimmed}`]);
@@ -218,11 +224,24 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
     branchExists = false;
   }
 
+  let remoteStart: string | null = null;
+  if (!branchExists) {
+    try {
+      await git(repoRoot, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${trimmed}`]);
+      remoteStart = `refs/remotes/origin/${trimmed}`;
+    } catch {
+      remoteStart = null;
+    }
+  }
+
   try {
     if (branchExists) {
-      await git(repoRoot, ["worktree", "add", "--", worktreePath, trimmed]);
+      // A large repository can spend far longer than 10s on checkout.
+      await git(repoRoot, ["worktree", "add", "--", worktreePath, trimmed], WORKTREE_ADD_TIMEOUT_MS);
+    } else if (remoteStart) {
+      await git(repoRoot, ["worktree", "add", "-b", trimmed, "--", worktreePath, remoteStart], WORKTREE_ADD_TIMEOUT_MS);
     } else {
-      await git(repoRoot, ["worktree", "add", "-b", trimmed, "--", worktreePath]);
+      await git(repoRoot, ["worktree", "add", "-b", trimmed, "--", worktreePath], WORKTREE_ADD_TIMEOUT_MS);
     }
   } catch (error) {
     throw new Error(extractGitError(error));

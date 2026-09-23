@@ -12,9 +12,10 @@ import { SubagentIcon } from "./SubagentIcon";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
-import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock, isSubagentNotificationMessage } from "@/lib/message-display";
-import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
-import { isEditToolName } from "@/lib/tool-names";
+import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
+import { parseUnifiedPatch, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
+import { parseApplyPatch } from "@/lib/apply-patch";
+import { isApplyPatchToolName, isEditToolName } from "@/lib/tool-names";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import type { WrittenFile } from "@/lib/turn-written-files";
@@ -593,6 +594,7 @@ function AssistantMessageView({
     return map;
   }, [message.content, toolResults, toolStartedAt]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
+  const truncated = isAssistantTruncated(message, { isStreaming });
   const textContent = blocks
     .filter((block): block is TextContent => block.type === "text")
     .map((block) => block.text)
@@ -607,7 +609,9 @@ function AssistantMessageView({
     });
   };
 
-  if (blocks.length === 0 && !isStreaming && !providerError) return null;
+  // A truncated turn whose only block was empty thinking must still render, so its
+  // notice is not silently swallowed by the empty-content guard.
+  if (blocks.length === 0 && !isStreaming && !providerError && !truncated) return null;
 
   return (
     <div
@@ -675,6 +679,24 @@ function AssistantMessageView({
             Error: {providerError}
           </div>
         )
+      )}
+
+      {truncated && (
+        <div
+          role="status"
+          style={{
+            marginTop: blocks.length > 0 ? 8 : 0,
+            padding: "7px 10px",
+            border: "1px solid rgba(234,179,8,0.35)",
+            borderRadius: 6,
+            background: "rgba(234,179,8,0.08)",
+            color: "var(--text-muted)",
+            fontSize: 12,
+            lineHeight: 1.5,
+          }}
+        >
+          {t("chat.truncatedByOutputLimit")}
+        </div>
       )}
 
       {writtenFiles && writtenFiles.length > 0 && (
@@ -1015,6 +1037,17 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
   const inputStr = getToolCallInputText(block);
   const isStreamingInput = block.rawInput !== undefined;
   const isEditTool = isEditToolName(block.toolName);
+  // Codex-style patch tools carry the whole edit in a `patch` argument instead of
+  // a `file_path`, so they render through the same split diff as `edit`.
+  const isApplyPatchTool = isApplyPatchToolName(block.toolName);
+  // A patch tool's `patch` argument is only parsed once the input is complete, so
+  // while it streams the raw JSON wrapper would be the only thing to show. Read the
+  // partial text back out of the streamed buffer instead.
+  const applyPatchText = isApplyPatchTool
+    ? (typeof block.input?.patch === "string"
+        ? block.input.patch
+        : extractStreamedPatchArgument(block.rawInput))
+    : undefined;
   const imageKind = imageToolDisplayKind(block.toolName, block.input, result?.details);
   const toolLabel = imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : block.toolName;
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
@@ -1093,7 +1126,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
       </div>
 
       {/* ── Expanded: input args ── */}
-      {expanded && (isStreamingInput || !isEditTool) && (
+      {expanded && (isStreamingInput || !isEditTool) && !isApplyPatchTool && (
         <pre
           style={{
             margin: 0,
@@ -1113,7 +1146,30 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
       )}
 
       {/* ── Paired result — only shown when expanded ── */}
-      {expanded && result && (
+      {expanded && isApplyPatchTool && applyPatchText !== undefined && (
+        <div style={{ borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)", background: "var(--bg)" }}>
+          <ApplyPatchView patch={applyPatchText} />
+        </div>
+      )}
+      {expanded && isApplyPatchTool && applyPatchText === undefined && (
+        <pre
+          style={{
+            margin: 0,
+            padding: "8px 10px",
+            color: "var(--text-muted)",
+            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+            lineHeight: 1.5,
+            overflow: "auto",
+            background: "var(--bg)",
+            borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-all",
+          }}
+        >
+          {t("chat.generatingToolInput")}
+        </pre>
+      )}
+      {expanded && result && !(isApplyPatchTool && applyPatchText !== undefined) && (
         resultDiff ? (
           <PairedDiffResult
             diff={resultDiff}
@@ -1127,7 +1183,79 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
           />
         )
       )}
+
+      {/* ── Tool-result images stay visible while the card is collapsed ──
+          They are the point of the call (reading a screenshot, a generated
+          image), and hiding them behind the toggle meant reopening every card. */}
+      {!expanded && resultImages.length > 0 && (
+        <div
+          style={{
+            padding: "6px 10px 8px",
+            borderTop: isError ? "1px solid rgba(239,68,68,0.25)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
+            background: "var(--bg)",
+          }}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <ToolResultImages images={resultImages} thumbnails />
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/** The image grid used both inside an expanded result and on a collapsed card. */
+/**
+ * Pull the `patch` string back out of a partially streamed tool-input buffer.
+ *
+ * `rawInput` is the JSON argument text as it arrives, so an in-progress patch reads
+ * like `{"patch":"*** Begin Patch\n*** Update File: a.ts\n@@\n-old\n+new`. Extracting
+ * the value lets a streaming apply_patch render as a diff instead of the JSON
+ * wrapper. Returns undefined until enough has arrived to be worth showing.
+ */
+export function extractStreamedPatchArgument(rawInput: string | undefined): string | undefined {
+  if (!rawInput) return undefined;
+  const match = /"patch"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(rawInput);
+  if (!match) return undefined;
+  // The closing quote only means the value is complete when it is not escaped last.
+  const body = match[1];
+  if (body.endsWith("\\") && !body.endsWith("\\\\")) return undefined;
+  try {
+    return JSON.parse(`"${body}"`) as string;
+  } catch {
+    // A partial escape sequence at the tail; retry without it next render.
+    return undefined;
+  }
+}
+
+function ToolResultImages({ images, thumbnails = false }: { images: ImageContent[]; thumbnails?: boolean }) {
+  return (
+    <>
+      {images.map((image, index) => {
+        const src = imageSource(image);
+        if (!src) return null;
+        return (
+          <ImagePreview key={`${src}-${index}`} src={src} style={{ maxWidth: "100%" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt=""
+              loading="lazy"
+              style={{
+                display: "block",
+                borderRadius: 6,
+                objectFit: "contain",
+                border: "1px solid var(--border)",
+                // A collapsed card shows a thumbnail; expanding shows full size.
+                ...(thumbnails
+                  ? { maxWidth: 220, maxHeight: 150 }
+                  : { maxWidth: "min(100%, 720px)", maxHeight: 520 }),
+              }}
+            />
+          </ImagePreview>
+        );
+      })}
+    </>
   );
 }
 
@@ -1151,9 +1279,33 @@ function PairedDiffResult({ diff }: {
 }
 
 function SplitPatchView({ text }: { text: string }) {
-  const { t } = useI18n();
   const files = useMemo(() => parseUnifiedPatch(text), [text]);
   if (!files) return <PatchTextView text={text} />;
+  return <SplitDiffFiles files={files} />;
+}
+
+/**
+ * Codex-style `apply_patch` input is a V4A document with no line numbers, so it
+ * is parsed into the shared model and rendered by the same view as `edit`.
+ */
+function ApplyPatchView({ patch }: { patch: string }) {
+  const files = useMemo(() => parseApplyPatch(patch), [patch]);
+  if (!files) return <PatchTextView text={patch} />;
+  return (
+    <SplitDiffFiles
+      files={files.map((file) => ({
+        // Each side names a file that actually exists in that state: an add has no
+        // before, a delete has no after, and a move renames the same content.
+        oldPath: file.operation === "add" ? undefined : file.path,
+        newPath: file.operation === "delete" ? undefined : (file.moveTo ?? file.path),
+        rows: file.rows,
+      }))}
+    />
+  );
+}
+
+function SplitDiffFiles({ files }: { files: SplitDiffFile[] }) {
+  const { t } = useI18n();
   const showFileHeaders = files.length > 1;
 
   return (
@@ -1384,32 +1536,7 @@ function PairedResult({ text, images, isEmpty, isError }: {
     >
       {images.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "10px", background: "var(--bg)" }}>
-          {images.map((image, index) => {
-            const src = imageSource(image);
-            if (!src) return null;
-            return (
-              <ImagePreview
-                key={`${src}-${index}`}
-                src={src}
-                style={{ maxWidth: "100%" }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={src}
-                  alt=""
-                  loading="lazy"
-                  style={{
-                    display: "block",
-                    maxWidth: "min(100%, 720px)",
-                    maxHeight: 520,
-                    borderRadius: 6,
-                    objectFit: "contain",
-                    border: "1px solid var(--border)",
-                  }}
-                />
-              </ImagePreview>
-            );
-          })}
+          <ToolResultImages images={images} />
         </div>
       )}
       {showText && (

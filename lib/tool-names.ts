@@ -23,3 +23,16 @@ export function isEditToolName(toolName: string): boolean {
     name.includes("str_replace") ||
     name.includes("replace_editor");
 }
+
+/**
+ * Codex-style patch tools write files too, and their input is the patch itself
+ * rather than a `file_path` argument, so callers must read the patch instead.
+ * Matches the bare name and the common MCP-decorated forms.
+ */
+export function isApplyPatchToolName(toolName: string): boolean {
+  const name = toolName.toLowerCase();
+  return name === "apply_patch" ||
+    name.endsWith(".apply_patch") ||
+    name.endsWith("/apply_patch") ||
+    name.endsWith("_apply_patch");
+}

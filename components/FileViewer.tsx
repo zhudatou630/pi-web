@@ -62,6 +62,8 @@ interface Props {
   initialState?: FileViewerState;
   onStateChange?: (state: FileViewerState) => void;
   watchEnabled?: boolean;
+  /** PDF page to open, from a `#page=` link fragment. */
+  pdfPage?: number;
 }
 
 interface FileData {
@@ -881,7 +883,7 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
   );
 }
 
-function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Props) {
+function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, pdfPage }: Props) {
   const { t } = useI18n();
   const [watching, setWatching] = useState(false);
   const [bust, setBust] = useState(0);
@@ -894,6 +896,9 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }:
   const isPdf = ext === "pdf";
   const previewUrl = isPdf
     ? getFileApiUrl(filePath, "read", sourceSessionId, bust ? { v: bust } : undefined)
+      // The browser's built-in PDF viewer honours #page=N, so a link like
+      // report.pdf#page=12 opens on the requested page instead of page 1.
+      + (pdfPage ? `#page=${pdfPage}` : "")
     : getFileApiUrl(filePath, "preview", sourceSessionId, bust ? { v: bust } : undefined);
 
   useEffect(() => {
@@ -1065,6 +1070,7 @@ export function FileViewer({
   initialState,
   onStateChange,
   watchEnabled = true,
+  pdfPage,
 }: Props) {
   const diffRequested = resolveFileDisplayMode(filePath, initialState, initialDisplayMode) === "diff";
   if (!diffRequested && isImagePath(filePath)) {
@@ -1077,7 +1083,7 @@ export function FileViewer({
     return <VideoViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} watchEnabled={watchEnabled} />;
   }
   if (!diffRequested && isDocumentPreviewPath(filePath)) {
-    return <DocumentViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} watchEnabled={watchEnabled} />;
+    return <DocumentViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} watchEnabled={watchEnabled} pdfPage={pdfPage} />;
   }
   return (
     <TextFileViewer

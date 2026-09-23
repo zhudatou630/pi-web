@@ -1,4 +1,4 @@
-import { isToolPreset, type ToolPreset } from "./tool-presets";
+import { CONFIGURED_TOOL_PRESET, isToolPreset, type ToolPreset } from "./tool-presets";
 
 const STORAGE_KEY = "pi-tool-preset";
 
@@ -19,12 +19,14 @@ function getBrowserStorage(): StorageLike | null {
 export function getPreferredToolPreset(
   storage: StorageLike | null = getBrowserStorage(),
 ): ToolPreset {
-  if (!storage) return "default";
+  // No stored preference means the user never picked: follow Pi's configured
+  // defaultTools rather than pinning Pi Web's four built-in tools.
+  if (!storage) return CONFIGURED_TOOL_PRESET;
   try {
     const value = storage.getItem(STORAGE_KEY);
-    return isToolPreset(value) ? value : "default";
+    return isToolPreset(value) ? value : CONFIGURED_TOOL_PRESET;
   } catch {
-    return "default";
+    return CONFIGURED_TOOL_PRESET;
   }
 }
 

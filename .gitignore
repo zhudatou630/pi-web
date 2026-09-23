@@ -48,6 +48,8 @@ e2e_*.mjs
 
 # local agent & tools
 /.pi/
+.agents/
+skills-lock.json
 /.thinkrail/
 
 # local host scripts

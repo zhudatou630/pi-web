@@ -8,7 +8,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type {
   AgentMessage as PiAgentMessage,
-  ShouldStopAfterTurnContext,
+  AgentTurnContext,
+  AgentTurnDecision,
 } from "@earendil-works/pi-agent-core";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 
@@ -147,16 +148,23 @@ export interface AgentSessionLike {
   readonly settingsManager: SettingsManager;
   readonly agent: {
     state?: {
-      systemPrompt?: string;
+      /** Replayed from the transcript's system messages since Pi 0.86; never assign it. */
+      readonly systemPrompt?: string;
       thinkingLevel?: string;
       streamingMessage?: PiAgentMessage;
       messages?: PiAgentMessage[];
     };
     steer?: (message: PiAgentMessage) => void;
-    shouldStopAfterTurn?: (
-      context: ShouldStopAfterTurnContext,
+    /**
+     * Pi 0.87's completed-turn hook. `{ action: "end" }` ends the run like the
+     * old `shouldStopAfterTurn` did; `undefined` keeps normal scheduling. It also
+     * runs for error and aborted responses, which are hard exits the hook cannot
+     * affect, so normal-response predicates must return undefined for those.
+     */
+    finishTurn?: (
+      turn: AgentTurnContext,
       signal?: AbortSignal,
-    ) => boolean | Promise<boolean>;
+    ) => AgentTurnDecision | void | Promise<AgentTurnDecision | void>;
   };
   readonly extensionRunner: ExtensionRunnerLike;
   readonly promptTemplates: readonly PromptTemplateLike[];

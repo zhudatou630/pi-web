@@ -22,6 +22,8 @@ const SESSION_HEADER_MAX_BYTES = 64 * 1024;
 const SESSION_RELATION_MAX_BYTES = 256 * 1024;
 const SESSION_RELATION_MAX_LINES = 2;
 const SESSION_RESULT_MAX_BYTES = 256 * 1024;
+/** Bounded tail read used to detect writes made by another process. */
+const SESSION_TAIL_PROBE_BYTES = 64 * 1024;
 
 function readBoundedLines(filePath: string, maxBytes: number, maxLines: number): string[] {
   const fd = openSync(filePath, "r");
@@ -338,6 +340,99 @@ function getPathCache(): Map<string, string> {
 function getPathToIdCache(): Map<string, string> {
   if (!globalThis.__piPathToSessionIdCache) globalThis.__piPathToSessionIdCache = new Map();
   return globalThis.__piPathToSessionIdCache;
+}
+
+/**
+ * The newest entry id in a session file, read from a bounded tail.
+ *
+ * A live in-memory wrapper only reflects appends Pi Web itself made. When another
+ * pi process (the TUI) writes the same file, the wrapper's entries silently
+ * diverge from disk and the read endpoints keep serving that stale snapshot until
+ * the wrapper is evicted by the idle timeout. Comparing the newest on-disk entry
+ * against the wrapper's own entries detects exactly that.
+ *
+ * The header carries the session id rather than an entry id, so it is skipped.
+ * `appendFileSync` is not atomic from a reader's perspective, so a torn trailing
+ * line is tolerated: the scan walks back to the last complete line.
+ *
+ * `overlongLine` reports the one case the window cannot answer: a single entry
+ * larger than `maxBytes` (a big image tool result, say) has no complete line inside
+ * the window, so the newest entry is genuinely unknown. Callers must treat that as
+ * "changed" rather than "unchanged" — silently returning null would leave a stale
+ * wrapper in place, which is the bug this probe exists to fix.
+ */
+export interface LatestEntryProbe {
+  entryId: string | null;
+  overlongLine: boolean;
+}
+
+export function probeLatestEntryId(filePath: string, maxBytes = SESSION_TAIL_PROBE_BYTES): LatestEntryProbe {
+  let fd: number;
+  try {
+    fd = openSync(filePath, "r");
+  } catch {
+    return { entryId: null, overlongLine: false };
+  }
+  try {
+    const size = fstatSync(fd).size;
+    if (size <= 0) return { entryId: null, overlongLine: false };
+    const readSize = Math.min(size, Math.max(1, maxBytes));
+    const start = size - readSize;
+    const buffer = Buffer.allocUnsafe(readSize);
+    const bytesRead = readSync(fd, buffer, 0, readSize, start);
+    if (bytesRead <= 0) return { entryId: null, overlongLine: false };
+
+    // A partial first line (we sliced mid-file) is only dropped when we did not
+    // start at the beginning, where it is genuine content.
+    const raw = buffer.subarray(0, bytesRead);
+    const slicedMidFile = start > 0;
+    // `start > 0` alone does not mean the window's first line is partial: the byte
+    // before the window may be a newline, in which case the window begins exactly
+    // on a line boundary. Only a non-newline byte there proves we cut a line in
+    // half — that is what distinguishes "the newest line is too long to read" from
+    // "the window holds several complete entries".
+    let firstLineIsPartial = false;
+    if (slicedMidFile) {
+      const previousByte = Buffer.allocUnsafe(1);
+      readSync(fd, previousByte, 0, 1, start - 1);
+      firstLineIsPartial = previousByte[0] !== 0x0a;
+    }
+    const lines = raw.toString("utf8").split("\n");
+    if (firstLineIsPartial) lines.shift();
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index]?.trim();
+      if (!line) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        // Torn trailing line from a concurrent append.
+        continue;
+      }
+      if (typeof parsed !== "object" || parsed === null) continue;
+      const entry = parsed as { type?: unknown; id?: unknown };
+      if (entry.type === "session") continue;
+      if (typeof entry.id === "string" && entry.id.length > 0) return { entryId: entry.id, overlongLine: false };
+    }
+
+    // Nothing parseable found. If the window's own first line was cut in half, the
+    // newest entry is longer than the window and the caller must rebuild rather
+    // than trust a stale wrapper.
+    return { entryId: null, overlongLine: firstLineIsPartial };
+  } catch {
+    return { entryId: null, overlongLine: false };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Convenience wrapper for callers that only need the id. */
+export function readLatestEntryIdFromFile(
+  filePath: string,
+  maxBytes = SESSION_TAIL_PROBE_BYTES,
+): string | null {
+  return probeLatestEntryId(filePath, maxBytes).entryId;
 }
 
 export async function resolveSessionPath(sessionId: string): Promise<string | null> {
@@ -682,6 +777,9 @@ function entryToUiMessage(
   // Non-assistant messages — including bashExecution — return unchanged after normalizeToolCalls.
   switch (entry.type) {
     case "message": {
+      // Transcript system messages carry the prompt and tool loadout (Pi >= 0.86).
+      // They are provider input, not conversation, so they never render.
+      if (entry.message.role === "system") return null;
       let message = options.deferToolResultImages
         ? deferToolResultBase64Images(normalizeToolCalls(entry.message), options.sessionId, entry.id)
         : normalizeToolCalls(entry.message);

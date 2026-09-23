@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import type { SizeLimit } from "next/dist/types";
 import { createHash } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
@@ -20,8 +21,30 @@ function getIconVersion(): string {
   }
 }
 
+/**
+ * Body size the proxy layer buffers before a route handler sees it.
+ *
+ * Next caps that buffer at 10 MB by default, but the upload route accepts up to
+ * 100 MB per request, so every larger upload was silently truncated here and failed
+ * as "Failed to parse body as FormData" instead of succeeding or returning 413.
+ * Values are `128mb`, `512kb`, or a raw byte count; anything else falls back.
+ */
+function maxBodySize(): SizeLimit {
+  const raw = process.env.PI_WEB_MAX_BODY_SIZE?.trim();
+  return raw && /^\d+(?:b|kb|mb|gb)?$/i.test(raw) ? (raw as SizeLimit) : "128mb";
+}
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: configDir,
+  images: {
+    // Next's image pipeline is only used for the static login logo, so the whole
+    // /_next/image endpoint is turned off. The AVIF RCE (GHSA-2xp9-vwfh-vxw4) is
+    // patched from 16.3.3, but disabling the endpoint removes the surface entirely.
+    unoptimized: true,
+  },
+  experimental: {
+    proxyClientMaxBodySize: maxBodySize(),
+  },
   serverExternalPackages: [
     "node-pty",
     "undici",

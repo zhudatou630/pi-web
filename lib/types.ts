@@ -223,6 +223,17 @@ export interface SessionMessageEntry extends SessionEntryBase {
   message: AgentMessage;
 }
 
+/**
+ * Append-only edit of an earlier entry's model context (Pi 0.87). Raw history,
+ * usage and the UI are unaffected: `replacement: null` omits the target from
+ * future provider requests, a value replaces only its content.
+ */
+export interface ContextEditEntry extends SessionEntryBase {
+  type: "context_edit";
+  targetId: string;
+  replacement: { content: unknown } | null;
+}
+
 export interface ThinkingLevelChangeEntry extends SessionEntryBase {
   type: "thinking_level_change";
   thinkingLevel: string;
@@ -297,6 +308,7 @@ export type SessionEntry =
   | BranchSummaryEntry
   | CustomEntry
   | CustomMessageEntry
+  | ContextEditEntry
   | LabelEntry
   | SessionInfoEntry;
 

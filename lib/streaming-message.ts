@@ -51,9 +51,12 @@ function applyDelta(
 ): StreamingState {
   switch (event.type) {
     case "text_start":
-      return updateContentBlock(state, event.contentIndex, (current) => (
-        current?.type === "text" ? current : { type: "text", text: "" }
-      ));
+      // pi-ai documents `partial` as a shared live response-so-far object, not an
+      // event-time snapshot, and blocks as empty at their `*_start` until `*_delta`
+      // grows them. By the time this start is consumed the shared object may already
+      // carry the block's first chunk, so a start must reset the block: keeping the
+      // snapshot renders that chunk twice until the authoritative `text_end`.
+      return updateContentBlock(state, event.contentIndex, () => ({ type: "text", text: "" }));
     case "text_delta":
       return updateContentBlock(state, event.contentIndex, (current) => (
         current?.type === "text"
@@ -77,10 +80,9 @@ function applyDelta(
           content[i] = { ...block, endedAt: now };
         }
       }
-      const current = content[event.contentIndex];
-      content[event.contentIndex] = current?.type === "thinking"
-        ? { ...current, startedAt: current.startedAt ?? now }
-        : { type: "thinking", thinking: "", startedAt: now };
+      // Same shared-snapshot leak as text_start: reset so the first thinking chunk
+      // is not appended on top of the text the snapshot already carried.
+      content[event.contentIndex] = { type: "thinking", thinking: "", startedAt: now };
       return { isStreaming: true, streamingMessage: { ...message, content } };
     }
     case "thinking_delta":
@@ -103,7 +105,9 @@ function applyDelta(
             ...current,
             toolCallId: event.id ?? current.toolCallId,
             toolName: event.toolName ?? current.toolName,
-            rawInput: current.rawInput ?? "",
+            // Same shared-snapshot leak: the deltas rebuild rawInput, so any
+            // argument text the snapshot already carried would be duplicated.
+            rawInput: "",
           };
         }
         if (typeof event.toolName !== "string") return null;

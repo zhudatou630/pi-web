@@ -171,9 +171,14 @@ test("fresh sessions use the preference while persisted and live sessions restor
     /const existingSessionId = session\?\.id;[\s\S]*?useLayoutEffect\(\(\) => \{\s*if \(!existingSessionId && \(!isNew \|\| sessionIdRef\.current\)\) return;\s*setToolPresetState\(getPreferredToolPreset\(\)\)/,
   );
   assert.match(source, /if \(agentState\?\.running\) \{\s*loadTools\(session\.id\)/);
-  assert.match(source, /d\.toolNames !== undefined \? getPresetFromToolNames\(d\.toolNames\) : "default"/);
+  // An unpinned session follows settings.json and says so, instead of borrowing
+  // whichever preset its resolved tools happen to match.
+  assert.match(source, /sessionToolsPinnedRef\.current = d\.toolNames !== undefined/);
+  assert.match(source, /d\.toolNames !== undefined \? getPresetFromToolNames\(d\.toolNames\) : CONFIGURED_TOOL_PRESET/);
+  assert.match(source, /sessionToolsPinnedRef\.current \? getPresetFromTools\(tools\) : CONFIGURED_TOOL_PRESET/);
   assert.match(changeSource, /setPreferredToolPreset\(preset\)/);
-  assert.match(changeSource, /\(sid, \{ type: "set_tools", toolNames \}\)/);
+  // Omitting toolNames retracts the pin instead of sending an empty override.
+  assert.match(changeSource, /type: "set_tools",\s*\.\.\.\(toolNames !== undefined \? \{ toolNames \} : \{\}\),/);
   assert.match(changeSource, /sessionIdRef\.current = activeSessionId/);
   assert.doesNotMatch(loadToolsSource, /setPreferredToolPreset/);
 });
@@ -613,4 +618,24 @@ test("tool preset recreation refreshes the event stream", () => {
     /if \(activeSessionId !== sid\) \{[\s\S]*?closeEvents\(\);[\s\S]*?sessionIdRef\.current = activeSessionId/,
   );
   assert.match(toolsSource, /refreshEventStream\(activeSessionId\)/);
+});
+
+test("/auto-compact toggles from the live server value, not a local default", () => {
+  const compactSource = source.slice(
+    source.indexOf('case "auto-compact"'),
+    source.indexOf('case "clone"'),
+  );
+  assert.ok(compactSource.length > 0, "expected an auto-compact command branch");
+  // An idle session has no wrapper and reports no state, so a hard-coded default
+  // would write the wrong toggle when settings.json already disabled it.
+  assert.match(compactSource, /sendAgentCommand<AgentStateResponse>\(sid, \{ type: "get_state" \}\)/);
+  assert.match(compactSource, /state\?\.autoCompactionEnabled === "boolean"/);
+  assert.match(compactSource, /const next = !current/);
+  assert.match(compactSource, /\{ type: "set_auto_compaction", enabled: next \}/);
+  assert.match(compactSource, /setAutoCompactionEnabled\(next\)/);
+});
+
+test("the server's auto-compaction value is mirrored on load and reconcile", () => {
+  assert.match(source, /if \(typeof state\?\.autoCompactionEnabled === "boolean"\) \{\s*setAutoCompactionEnabled\(state\.autoCompactionEnabled\);/);
+  assert.match(source, /autoCompactionEnabled\?: boolean/);
 });

@@ -1647,7 +1647,7 @@ export function AppShell() {
   const handleOpenFile = useCallback((
     filePath: string,
     fileName: string,
-    options?: { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string },
+    options?: { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string; page?: number },
   ) => {
     const sourceSessionId = options?.sourceSessionId;
     const modeHint = options?.modeHint;
@@ -1658,6 +1658,7 @@ export function AppShell() {
       cwd: options?.cwd ?? activeCwd ?? undefined,
       modeHint,
       sourceSessionId,
+      ...(options?.page !== undefined ? { page: options.page } : {}),
       tabId,
     }));
     setActiveFileTabId(tabId);
@@ -1666,11 +1667,15 @@ export function AppShell() {
     if (isMobile) setSidebarOpen(false);
   }, [activeCwd, isMobile]);
 
-  const handleOpenLinkedFile = useCallback((filePath: string, sourceSessionId: string | null) => {
+  const handleOpenLinkedFile = useCallback((filePath: string, sourceSessionId: string | null, page?: number) => {
     const sourceCwd = sourceSessionId
       ? chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session?.cwd
       : undefined;
-    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId, cwd: sourceCwd });
+    handleOpenFile(filePath, getFileName(filePath), {
+      sourceSessionId,
+      cwd: sourceCwd,
+      ...(page !== undefined ? { page } : {}),
+    });
   }, [handleOpenFile]);
 
   const handleOpenTerminal = useCallback((cwd: string) => {
@@ -3220,6 +3225,7 @@ export function AppShell() {
               initialDisplayMode={activeFileTab.initialDisplayMode}
               initialState={activeFileTab.viewerState}
               watchEnabled={fileWatchEnabled}
+              pdfPage={activeFileTab.pdfPage}
               onStateChange={(viewerState) => handleFileViewerStateChange(
                 activeFileTab.id,
                 activeFileTab.viewerRevision ?? 0,

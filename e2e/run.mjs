@@ -156,9 +156,15 @@ try {
   assert.equal(detail.context.messages.length, 50);
   assert.equal(detail.context.hasMore, true);
   assert.ok(JSON.stringify(detail).length < 100_000, "Detail transferred unbounded history");
+  // An explicit tail is still honored exactly.
   const tail = await api(`/api/sessions/${LONG}/context?tail=50`);
   assert.deepEqual(tail.context.entryIds, ids(4950, 5000));
   assert.equal(tail.context.messages.length, 50);
+  // The default window is wider: the enclosing open parses the whole file either
+  // way, so a 50-entry default only bought extra paging round trips.
+  const defaultTail = await api(`/api/sessions/${LONG}/context`);
+  assert.equal(defaultTail.tail, 200);
+  assert.equal(defaultTail.context.messages.length, 200);
   const selectedBranch = await api(`/api/sessions/${BRANCH}/context?leafId=old`);
   assert.deepEqual(selectedBranch.context.entryIds, ["root", "old"]);
   const rootPage = await api(`/api/sessions/${BRANCH}/context?before=old&tail=1`);

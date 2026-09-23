@@ -99,6 +99,8 @@ export function resolveLocalFileHref(
 ): string | null {
   if (!href) return null;
 
+  // A `#page=` selector is a viewer instruction, not part of the path, so it is
+  // stripped here and carried separately by pdfPageFromHref().
   const cleanHref = href.split("#", 1)[0].split("?", 1)[0].trim();
   if (!cleanHref) return null;
 
@@ -135,6 +137,27 @@ export function resolveLocalFileHref(
   const filePath = stripLineSuffix(normalizeLocalPath(candidate));
   if (candidateKind === "relative" && relativeRoot && !isPathInside(filePath, relativeRoot)) return null;
   return filePath;
+}
+
+/**
+ * The `#page=N` selector of a PDF link, if it has one.
+ *
+ * The browser's built-in PDF viewer honours this fragment, so it must survive
+ * the trip from a markdown href to the viewer's iframe URL: resolving the href
+ * to a filesystem path otherwise drops it and the document opens on page 1.
+ * Returns null for any other fragment (`#L42`, `#section`, …) and for page 0.
+ */
+export function pdfPageFromHref(href: string | undefined): number | null {
+  if (!href) return null;
+  const fragment = href.split("#", 2)[1];
+  if (!fragment) return null;
+  // A PDF fragment is `#key=value` pairs (e.g. `#page=12&zoom=100`), so read it as
+  // a parameter list rather than matching one exact shape.
+  const params = new URLSearchParams(fragment);
+  const raw = params.get("page");
+  if (raw === null || !/^\d+$/.test(raw)) return null;
+  const page = Number(raw);
+  return Number.isSafeInteger(page) && page > 0 ? page : null;
 }
 
 /** Resolve a filesystem path without applying URL or source-location syntax. */

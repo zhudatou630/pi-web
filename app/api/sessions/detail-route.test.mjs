@@ -1,6 +1,6 @@
 // Static + behavior coverage for the session detail API's tail bound (the #509/#555
 // transfer fix). Mirrors runtime-route.test.mjs: source assertions confirm the route
-// parses ?tail (default 50, NaN-safe, capped at 1000) and feeds only the sliced chain
+// parses ?tail (default 200, NaN-safe, capped at 1000) and feeds only the sliced chain
 // to buildSessionContext. The data-slicing behavior itself is covered end-to-end in
 // lib/session-reader.pagination.test.mjs (sliceActiveBranch + buildSessionContext).
 import assert from "node:assert/strict";
@@ -16,10 +16,10 @@ const jiti = createJiti(import.meta.url, {
 });
 const { buildSessionContext } = await jiti.import("@/lib/session-reader");
 
-test("detail route parses ?tail: default 50, NaN-safe, capped at 1000", () => {
+test("detail route parses ?tail: default 200, NaN-safe, capped at 1000", () => {
   assert.match(routeSrc, /const rawTail = Number\(searchParams\.get\("tail"\)\)/);
   assert.match(routeSrc, /Math\.min\(rawTail, 1000\)/);
-  assert.match(routeSrc, /Number\.isFinite\(rawTail\) && rawTail > 0 \? Math\.min\(rawTail, 1000\) : 50/);
+  assert.match(routeSrc, /Number\.isFinite\(rawTail\) && rawTail > 0 \? Math\.min\(rawTail, 1000\) : 200/);
   assert.match(routeSrc, /buildSessionContext\(entries as never, leafId, \{[^}]*tail,[^}]*sessionId: id[^}]*\}\)/);
   assert.match(routeSrc, /computeSessionStats\(entries as unknown as SessionEntry\[\]\)/);
   assert.match(routeSrc, /messageCount: stats\.totalMessages/);

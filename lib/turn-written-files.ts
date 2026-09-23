@@ -1,6 +1,7 @@
 import type { AssistantContentBlock, ToolResultMessage } from "./types";
+import { applyPatchPaths } from "./apply-patch";
 import { resolveLocalFilePath } from "./file-links";
-import { isEditToolName, isWriteToolName } from "./tool-names";
+import { isApplyPatchToolName, isEditToolName, isWriteToolName } from "./tool-names";
 
 export interface WrittenFile {
   /** Resolved absolute path of a file this turn wrote. */
@@ -8,13 +9,24 @@ export interface WrittenFile {
 }
 
 function isFileWritingToolName(toolName: string): boolean {
-  return isWriteToolName(toolName) || isEditToolName(toolName);
+  return isWriteToolName(toolName) || isEditToolName(toolName) || isApplyPatchToolName(toolName);
 }
 
 function readToolPath(input: Record<string, unknown> | undefined): string | null {
   if (!input) return null;
   const value = input.file_path ?? input.path;
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * Paths a call wrote. `apply_patch` has no path argument: the targets live inside
+ * the patch document, and a `*** Move to:` target replaces the source path.
+ */
+function readToolPaths(input: Record<string, unknown> | undefined): string[] {
+  const single = readToolPath(input);
+  if (single) return [single];
+  const patch = typeof input?.patch === "string" ? input.patch : null;
+  return patch ? applyPatchPaths(patch) : [];
 }
 
 /**
@@ -43,17 +55,16 @@ export function extractTurnWrittenFiles(
     const result = toolResults?.get(block.toolCallId);
     if (!result || result.isError) continue;
 
-    const rawPath = readToolPath(block.input);
-    if (!rawPath) continue;
+    for (const rawPath of readToolPaths(block.input)) {
+      // Tool arguments are filesystem paths, not hrefs: preserve characters such
+      // as #, ?, and :digits that have special meaning in links and source refs.
+      const filePath = resolveLocalFilePath(rawPath, cwd);
+      if (!filePath) continue;
 
-    // Tool arguments are filesystem paths, not hrefs: preserve characters such
-    // as #, ?, and :digits that have special meaning in links and source refs.
-    const filePath = resolveLocalFilePath(rawPath, cwd);
-    if (!filePath) continue;
-
-    if (seen.has(filePath)) continue;
-    seen.add(filePath);
-    writtenFiles.push({ filePath });
+      if (seen.has(filePath)) continue;
+      seen.add(filePath);
+      writtenFiles.push({ filePath });
+    }
   }
 
   return writtenFiles;

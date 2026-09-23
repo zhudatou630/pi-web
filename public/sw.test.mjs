@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const listeners = new Map();
@@ -138,4 +139,17 @@ test("notification click opens a window and rejects cross-origin targets", async
   await event.pending;
 
   assert.deepEqual(opened, ["https://pi.test/"]);
+});
+
+test("a dead upstream cannot hang navigation or a static-asset miss", async () => {
+  const source = await readFile(new URL("./sw.js", import.meta.url), "utf8");
+  // A reachable port whose server never answers accepts the connection and then
+  // never responds, so an unbounded fetch() neither resolves nor rejects: the
+  // navigation never fell back to offline.html and a cache miss waited forever.
+  assert.match(source, /const NETWORK_TIMEOUT_MS = 8000/);
+  assert.match(source, /AbortController/);
+  assert.match(source, /clearTimeout\(timer\)/, "the budget must cover time to first byte only");
+  assert.match(source, /fetchWithTimeout\(request\)\.catch/, "navigation must bound its wait");
+  assert.match(source, /const response = await fetchWithTimeout\(request\)/, "a cache miss must be bounded too");
+  assert.doesNotMatch(source, /await fetch\(request\)/, "no unbounded fetch may remain in the worker");
 });

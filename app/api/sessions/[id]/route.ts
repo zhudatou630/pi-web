@@ -10,10 +10,11 @@ import {
   invalidateSessionPathCache,
   invalidateSessionListCache,
   buildSessionContext,
+  probeLatestEntryId,
   readSessionHeader,
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
-import { getRpcSession, getSubagentRun, reserveRpcSessionFileMutation } from "@/lib/rpc-manager";
+import { getRpcSession, getSubagentRun, releaseRpcSessionForExternalWrite, reserveRpcSessionFileMutation } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
@@ -124,14 +125,54 @@ function commitSessionDeletes(filePaths: readonly string[]): void {
   }
 }
 
+/**
+ * A live wrapper only reflects appends Pi Web itself made. When another pi process
+ * (e.g. the TUI) wrote the same session file, the wrapper serves a stale snapshot
+ * and the refresh button cannot help — it re-reads the same shadowed endpoint.
+ *
+ * Detect that case by checking whether the newest on-disk entry is unknown to the
+ * wrapper, then drop the wrapper so the request rebuilds from the file. Restricted
+ * to idle wrappers: mid-run the wrapper owns the write path, so an external write
+ * then is the genuinely unsupported concurrent-write case rather than a stale read.
+ *
+ * Only a forced read (session mount / page refresh) probes the file. Two processes
+ * writing one JSONL is unsupported anyway, so ordinary reads keep serving the live
+ * snapshot instead of paying for a stat + tail read on every poll.
+ */
+function getEvictableWrapperForExternalWrite(sessionId: string, force: boolean) {
+  const rpc = getRpcSession(sessionId);
+  if (!rpc?.isAlive()) return undefined;
+  if (!force) return rpc;
+  const filePath = rpc.sessionFile;
+  if (!filePath || rpc.isRunning()) return rpc;
+
+  const latestOnDisk = probeLatestEntryId(filePath);
+  if (!latestOnDisk.overlongLine) {
+    if (!latestOnDisk.entryId) return rpc;
+    const known = rpc.inner.sessionManager.getEntries() as unknown as Array<{ id?: unknown }>;
+    if (known.some((entry) => entry?.id === latestOnDisk.entryId)) return rpc;
+  } else {
+    // An entry larger than the probe window: the newest id cannot be read, so the
+    // safe direction is to treat the file as changed and rebuild from it.
+    console.log(`[pi-web] session ${sessionId} tail exceeds the probe window; rebuilding from the file`);
+    return releaseRpcSessionForExternalWrite(sessionId) ? undefined : rpc;
+  }
+
+  console.log(`[pi-web] session ${sessionId} changed on disk; rebuilding from the file`);
+  // The release rechecks its own guards, so a wrapper that became busy between the
+  // probe and here must keep serving: falling through to the disk snapshot would
+  // leave two sources of truth for the same request.
+  return releaseRpcSessionForExternalWrite(sessionId) ? undefined : rpc;
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   try {
-    const rpc = getRpcSession(id);
-    const liveRpc = rpc?.isAlive() ? rpc : undefined;
+    const force = new URL(req.url).searchParams.get("force") === "1";
+    const liveRpc = getEvictableWrapperForExternalWrite(id, force);
     const resolvedPath = liveRpc ? null : await resolveSessionPath(id);
     if (!liveRpc && !resolvedPath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -146,7 +187,9 @@ export async function GET(
     const deferThinking = searchParams.has("deferThinking");
     const deferToolResultImages = searchParams.has("deferMedia");
     const rawTail = Number(searchParams.get("tail"));
-    const tail = Number.isFinite(rawTail) && rawTail > 0 ? Math.min(rawTail, 1000) : 50;
+    // See the /context route: the enclosing open parses the whole file either way,
+    // so a narrow default only buys extra paging round trips.
+    const tail = Number.isFinite(rawTail) && rawTail > 0 ? Math.min(rawTail, 1000) : 200;
     const context = buildSessionContext(entries as never, leafId, {
       deferThinking,
       deferToolResultImages,

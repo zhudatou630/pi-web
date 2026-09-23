@@ -50,6 +50,17 @@ export function getAssistantErrorMessage(
   return message.errorMessage?.trim() || "Unknown provider error";
 }
 
+/**
+ * A response cut off by the model's output limit ends with `stopReason: "length"`.
+ * Without a notice it looks exactly like a normally finished reply.
+ */
+export function isAssistantTruncated(
+  message: AssistantMessage,
+  options: DisplayOptions = {},
+): boolean {
+  return !options.isStreaming && message.stopReason === "length";
+}
+
 export const PROCESS_TEXT_PROMOTE_MIN_CHARS = 400;
 
 function isFinalAnswerBlock(block: AssistantContentBlock, options: DisplayOptions = {}): boolean {
