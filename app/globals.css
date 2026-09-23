@@ -1997,12 +1997,23 @@ span.token.table {
   background: var(--bg-hover);
 }
 
-.workspace-list-row[data-active="true"] {
-  background: var(--bg-selected);
+/* The working project is marked with an accent rail, not a fill. A fill here
+   would be the same #e8e8e8 block as the selected session right below it — two
+   identical chips for a container and its content. The rail keeps working while
+   the project is collapsed, and leaves the one available fill to the session. */
+.workspace-list-row[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
 }
 
 .workspace-list-row:hover .workspace-row-action,
-.workspace-list-row:focus-within .workspace-row-action {
+.workspace-list-row:has(:focus-visible) .workspace-row-action {
   opacity: 1;
   pointer-events: auto;
 }
@@ -2048,11 +2059,6 @@ span.token.table {
   .workspace-show-more-button:hover {
     background: transparent !important;
     color: var(--text-muted) !important;
-  }
-
-  .workspace-list-row[data-active="true"],
-  .workspace-list-row[data-active="true"]:hover {
-    background: var(--bg-selected) !important;
   }
 
   /* Row actions stay hidden until a long press, except "new session in this

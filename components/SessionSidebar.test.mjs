@@ -182,6 +182,8 @@ test("supports mobile long-press to reveal row action buttons without text selec
 test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible)), or mobile long-press, avoiding mouse click focus retention", async () => {
   const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(globalCss, /\.session-list-row:has\(:focus-visible\) \.session-row-actions/);
+  assert.match(globalCss, /\.workspace-list-row:has\(:focus-visible\) \.workspace-row-action/);
+  assert.doesNotMatch(globalCss, /\.workspace-list-row:focus-within \.workspace-row-action/);
   assert.doesNotMatch(globalCss, /\.session-list-row:focus-within \.session-row-actions/);
   assert.match(globalCss, /\.session-list-row:has\(\.session-row-actions\):has\(:focus-visible\) \.session-row-meta/);
   assert.doesNotMatch(globalCss, /\.session-list-row:has\(\.session-row-actions\):focus-within \.session-row-meta/);
@@ -225,7 +227,8 @@ test("workspace actions stay quiet on touch until a long press reveals them", as
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row \.workspace-row-action/);
   assert.match(globalCss, /\.workspace-list-row\.is-actions-revealed \.workspace-row-action/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row:hover[\s\S]*?background: transparent !important;/);
-  assert.match(globalCss, /\.workspace-list-row\[data-active="true"\]:hover[\s\S]*?background: var\(--bg-selected\)/);
+  assert.match(globalCss, /\.workspace-list-row\[data-active="true"\]::before[\s\S]*?background: var\(--accent\)/);
+  assert.doesNotMatch(globalCss, /\.workspace-list-row\[data-active="true"\][\s\S]{0,80}?background: var\(--bg-selected\)/);
   // New session is the one action phones can reach without a long press.
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-new-session[\s\S]*?visibility: visible/);
   assert.match(source, /className="workspace-new-session"/);

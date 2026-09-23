@@ -206,7 +206,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.chats": "Chats",
     "sidebar.projects": "Projects",
     "sidebar.addProject": "Add project",
-    "sidebar.showMoreSessions": "Show more",
+    "sidebar.showMoreSessions": "show more",
     "sidebar.showMoreSessionsLabel": "Show more, {count} remaining",
     "sidebar.newSessionTitle": "New session in {path}",
     "sidebar.openProjectExplorer": "Open {path} in Explorer",
