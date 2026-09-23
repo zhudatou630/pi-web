@@ -381,6 +381,8 @@ export const zhCNLocale: LocalePlugin = {
     "image.title": "生成图片",
     "image.editTitle": "修改图片",
     "image.editPromptPlaceholder": "描述要改的地方",
+    "image.addSource": "添加原图",
+    "image.removeSource": "移除原图",
     "image.editSource": "原图",
     "image.prompt": "提示词",
     "image.promptPlaceholder": "描述要生成的图片",

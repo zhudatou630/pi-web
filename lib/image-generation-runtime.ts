@@ -173,6 +173,11 @@ async function saveImage(cwd: string, image: ImageFile): Promise<string> {
   return relativePath;
 }
 
+/** Store a user-supplied source image under the cwd so a direct edit can target it. */
+export async function saveSourceImage(cwd: string, input: EncodedImageInput): Promise<string> {
+  return saveImage(cwd, base64Image(input, "source-image"));
+}
+
 export async function executeImageGeneration(agentDir: string, rawRequest: unknown, ctx: RuntimeContext, signal?: AbortSignal): Promise<ImageGenerationResult> {
   signal?.throwIfAborted();
   const request = parseImageGenerationRequest(rawRequest);
@@ -195,16 +200,30 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
     ? latestGeneratedPath(ctx)
     : undefined;
   const hasInput = Boolean(request.target || request.use_last_attachment || mentioned || attachment || lastGenerated);
-  const compatible = (connection: typeof config.connections[string]) => {
-    if (hasInput && connection.capabilities.editing !== true) return `Image connection ${connection.id} does not declare editing support`;
-    if (request.size && !connection.capabilities.sizes?.includes(request.size)) return `Image connection ${connection.id} does not support size ${request.size}`;
-    if (request.resolution && !connection.capabilities.resolutions?.includes(request.resolution)) return `Image connection ${connection.id} does not support resolution ${request.resolution}`;
-    if (request.quality && !connection.capabilities.qualities?.includes(request.quality)) return `Image connection ${connection.id} does not support quality ${request.quality}`;
-    return null;
-  };
+  type Connection = typeof config.connections[string];
+  const options = [
+    ["size", "sizes", request.size],
+    ["resolution", "resolutions", request.resolution],
+    ["quality", "qualities", request.quality],
+  ] as const;
+  const editingError = (connection: Connection) => (
+    hasInput && connection.capabilities.editing !== true ? `Image connection ${connection.id} does not declare editing support` : null
+  );
   if (request.connection) {
-    const error = compatible(config.connections[request.connection]);
+    // A connection the user named must honor every requested option.
+    const connection = config.connections[request.connection];
+    const error = editingError(connection) ?? options
+      .filter(([, list, value]) => value && !connection.capabilities[list]?.includes(value))
+      .map(([name, , value]) => `Image connection ${connection.id} does not support ${name} ${value}`)[0];
     if (error) throw new Error(error);
+  } else {
+    // Automatic routing keeps the user's default connection: an option it does not declare
+    // falls back to its own default instead of steering the request to another connection.
+    for (const [name, list, value] of options) {
+      if (value && !Object.values(config.connections).some((connection) => connection.capabilities[list]?.includes(value))) {
+        throw new Error(`No configured image connection supports ${name} ${value}`);
+      }
+    }
   }
 
   let input: ImageFile | undefined;
@@ -230,16 +249,17 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
     const connection = config.connections[id];
     if (!connection) continue;
     if (!request.connection && !(await ctx.modelRegistry.getProviderAuth(connection.provider))) continue;
-    if (!request.connection) {
-      const error = compatible(connection);
-      if (error) {
-        incompatibleError ??= error;
-        continue;
-      }
+    const error = editingError(connection);
+    if (error) {
+      incompatibleError ??= error;
+      continue;
     }
-    const size = request.size ?? connection.defaults?.size;
-    const resolution = request.resolution ?? connection.defaults?.resolution;
-    const quality = request.quality ?? connection.defaults?.quality;
+    const declared = (list: "sizes" | "resolutions" | "qualities", value: string | undefined) => (
+      value && connection.capabilities[list]?.includes(value) ? value : undefined
+    );
+    const size = declared("sizes", request.size) ?? connection.defaults?.size;
+    const resolution = declared("resolutions", request.resolution) ?? connection.defaults?.resolution;
+    const quality = declared("qualities", request.quality) ?? connection.defaults?.quality;
     try {
       let image: ImageFile;
       const transport = imageConnectionTransport(connection);

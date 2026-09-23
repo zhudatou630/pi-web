@@ -81,3 +81,31 @@ test("undeclared image options stay out of the direct dialog", () => {
   assert.doesNotMatch(html, /1K/);
   assert.doesNotMatch(html, /1024x1536/);
 });
+
+test("a source image turns the direct dialog into an edit on editing connections only", () => {
+  const renderWith = (connections, initialSourceImage) => renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(ImageGenerationDialog, {
+      config: { defaultConnection: connections[0].id, connections },
+      initialSourceImage,
+      onClose() {},
+      async onSubmit() {},
+    }),
+  ));
+  const editor = { id: "editor", label: "Editor", provider: "xai", model: "image", capabilities: { editing: true } };
+  const painter = { id: "painter", label: "Painter", provider: "xai", model: "image", capabilities: {} };
+  const source = { data: "iVBORw0KGgo=", mimeType: "image/png" };
+
+  const fresh = renderWith([painter, editor]);
+  assert.match(fresh, /Add source image/);
+  assert.match(fresh, />Painter</);
+
+  const edit = renderWith([painter, editor], source);
+  assert.match(edit, /Edit image/);
+  assert.match(edit, /data:image\/png;base64,iVBORw0KGgo=/);
+  assert.match(edit, /Remove source image/);
+  assert.doesNotMatch(edit, />Painter</);
+
+  assert.doesNotMatch(renderWith([painter], source), /Add source image|Remove source image|Edit image/);
+});

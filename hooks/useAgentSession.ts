@@ -40,7 +40,7 @@ import {
 } from "@/lib/streaming-message";
 import { PromptRunGate, dispatchBashRun, dispatchPromptRun, resolveStopCommand } from "@/lib/prompt-run-control";
 import { recalledQueuedPrompts } from "@/lib/queued-messages";
-import type { AttachedImage } from "@/lib/image-attachments";
+import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import {
   loadModelsWithClientCache,
@@ -1669,7 +1669,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission]);
 
-  const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest): Promise<ImageGenerationResult> => {
+  const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest, sourceImage?: Base64ImageAttachment): Promise<ImageGenerationResult> => {
     if (agentRunningRef.current || bashRunningRef.current || directImageRunningRef.current) throw new Error("Cannot generate an image while the session is busy");
     const requestId = crypto.randomUUID();
     directImageRunningRef.current = true;
@@ -1684,6 +1684,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         type: IMAGE_DIRECT_COMMAND,
         requestId,
         arguments: request,
+        ...(sourceImage ? { sourceImage } : {}),
       });
       await loadSession(sid);
       if (isNew && newSessionCwd) promoteNewSession(1, request.prompt);

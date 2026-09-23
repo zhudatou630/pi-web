@@ -5,7 +5,7 @@ import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
-import { validateAgentImages } from "./image-attachments";
+import { isBase64ImageWithinLimits, validateAgentImages } from "./image-attachments";
 import { parseQueuedDeliverySnapshot, snapshotAgentQueuedMessages } from "./queued-messages";
 import { invalidateModelsCache } from "./models-cache";
 import { THINKING_LEVELS as VALID_THINKING_LEVELS } from "./thinking-levels";
@@ -48,7 +48,7 @@ import { resolveShellTools } from "./powershell-settings";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, preferPiWebImageTool } from "./image-generation-extension";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE } from "./image-generation";
-import { executeImageGeneration } from "./image-generation-runtime";
+import { executeImageGeneration, saveSourceImage } from "./image-generation-runtime";
 import {
   appendClearedSessionToolSelection,
   appendSessionToolSelection,
@@ -1020,7 +1020,14 @@ export class AgentSessionWrapper {
         this.directImageAbortController = controller;
         this.directImageRequestId = requestId;
         try {
-          const details = await executeImageGeneration(getAgentDir(), command.arguments, {
+          let request = command.arguments;
+          if (command.sourceImage !== undefined) {
+            // A source image picked in the input-bar dialog is stored in the cwd and edited through `target`.
+            if (!isBase64ImageWithinLimits(command.sourceImage)) throw new Error("sourceImage must be base64 image data within the attachment size limit");
+            if (!request || typeof request !== "object" || Array.isArray(request)) throw new Error("Image request must be an object");
+            request = { ...request, target: await saveSourceImage(this.cwd, command.sourceImage) };
+          }
+          const details = await executeImageGeneration(getAgentDir(), request, {
             cwd: this.cwd,
             sessionManager: this.inner.sessionManager,
             modelRegistry: {

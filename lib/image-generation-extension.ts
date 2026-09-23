@@ -31,7 +31,7 @@ function connectionGuideline(config: ImageConfig): string {
     ].filter(Boolean);
     return `${connection.id}${options.length ? ` (${options.join("; ")})` : ""}`;
   });
-  return `Default image connection: ${config.defaultConnection}. Configured image connections: ${descriptions.join("; ")}. Omit connection to use the default with automatic quota fallback; specify it only when the user requests a particular connection. Omit unsupported or undeclared options.`;
+  return `Configured image connections: ${descriptions.join("; ")}. Omit connection so the user's default connection from Settings is used, with automatic quota fallback. Set connection only when the user names one in this request. Omit size, resolution, and quality unless the user asks for them.`;
 }
 
 export interface ImageGenerationExtensionOptions {

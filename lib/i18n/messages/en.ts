@@ -381,6 +381,8 @@ export const enLocale: LocalePlugin = {
     "image.title": "Generate image",
     "image.editTitle": "Edit image",
     "image.editPromptPlaceholder": "Describe the change",
+    "image.addSource": "Add source image",
+    "image.removeSource": "Remove source image",
     "image.editSource": "Original",
     "image.prompt": "Prompt",
     "image.promptPlaceholder": "Describe the image to generate",

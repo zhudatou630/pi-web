@@ -381,6 +381,8 @@ export const zhTWLocale: LocalePlugin = {
     "image.title": "生成圖片",
     "image.editTitle": "修改圖片",
     "image.editPromptPlaceholder": "描述要改的地方",
+    "image.addSource": "新增原圖",
+    "image.removeSource": "移除原圖",
     "image.editSource": "原圖",
     "image.prompt": "提示詞",
     "image.promptPlaceholder": "描述要生成的圖片",

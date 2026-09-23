@@ -20,6 +20,7 @@ import {
   MAX_ATTACHED_IMAGES,
   isBase64ImageWithinLimits,
   type AttachedImage,
+  type Base64ImageAttachment,
 } from "@/lib/image-attachments";
 import {
   buildEntriesFromFiles, buildAtInsertText, buildAtMentionText, extractAtQuery, filterFileEntries,
@@ -39,7 +40,8 @@ import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
 
 interface Props {
   onSend: (message: string, images?: AttachedImage[]) => void;
-  onOpenImageGeneration?: () => void;
+  /** Opens the direct image dialog; a single attached image is offered as its source. */
+  onOpenImageGeneration?: (sourceImage?: Base64ImageAttachment) => void;
   onAbort: () => void;
   onSteer?: (message: string, images?: AttachedImage[]) => void;
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
@@ -99,6 +101,7 @@ export interface ChatInputHandle {
   rekeyDraft: (previousKey: string, nextKey: string) => void;
   restoreSubmission: (text: string, images?: ChatDraftImage[], targetDraftKey?: string) => void;
   mentionImage: (path: string) => void;
+  removeAttachedImage: (data: string) => void;
 }
 
 // "configured" sends no override, so the session follows settings.json defaultTools.
@@ -843,6 +846,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     mentionImage(path: string) {
       setMentionedImages((prev) => prev.includes(path) ? prev : [...prev, path]);
       requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    removeAttachedImage(data: string) {
+      const index = attachedImagesRef.current.findIndex((image) => image.data === data);
+      if (index >= 0) removeImage(index);
     },
   }));
 
@@ -2741,7 +2748,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     role="menuitem"
                     onClick={() => {
                       setImageMenuOpen(false);
-                      onOpenImageGeneration();
+                      const [only] = attachedImagesRef.current.length === 1 ? attachedImagesRef.current : [];
+                      onOpenImageGeneration(only ? imageToDraftImage(only) : undefined);
                     }}
                     style={{
                       display: "flex", alignItems: "center", gap: 8,

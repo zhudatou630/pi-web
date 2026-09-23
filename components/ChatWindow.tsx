@@ -3,7 +3,7 @@ import { GeneratedImageResult, PendingGeneratedImage } from "./GeneratedImageRes
 import { ImageGenerationDialog } from "./ImageGenerationDialog";
 import { encodeFilePathForApi, joinFilePath } from "@/lib/file-paths";
 import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
-import type { AttachedImage } from "@/lib/image-attachments";
+import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
@@ -934,6 +934,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [imageConfig, setImageConfig] = useState<ImageConfigView | null>(null);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [imageEdit, setImageEdit] = useState<ImageGenerationResult | null>(null);
+  const [imageSourceSeed, setImageSourceSeed] = useState<Base64ImageAttachment | undefined>(undefined);
   const [imageConfigRefreshKey, setImageConfigRefreshKey] = useState(0);
   const [quotedSelection, setQuotedSelection] = useState<{
     text: string;
@@ -966,7 +967,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return () => controller.abort();
   }, [imageConfigRefreshKey, modelsRefreshKey]);
 
-  const submitDirectImage = useCallback(async (request: ImageGenerationRequest) => {
+  const submitDirectImage = useCallback(async (request: ImageGenerationRequest, sourceImage?: Base64ImageAttachment) => {
     keepTabOpen();
     let source: ImageGenerationResult | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -979,12 +980,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     setPendingImage({
       prompt: request.prompt,
       size: request.size,
-      width: source?.width,
-      height: source?.height,
-      previewUrl: absoluteTarget ? `/api/files/${encodeFilePathForApi(absoluteTarget)}?type=read` : undefined,
+      width: sourceImage ? undefined : source?.width,
+      height: sourceImage ? undefined : source?.height,
+      previewUrl: sourceImage
+        ? `data:${sourceImage.mimeType};base64,${sourceImage.data}`
+        : absoluteTarget ? `/api/files/${encodeFilePathForApi(absoluteTarget)}?type=read` : undefined,
     });
     try {
-      await handleDirectImageGeneration(request);
+      await handleDirectImageGeneration(request, sourceImage);
+      // The source image may have been carried over from the composer; it has been used now.
+      if (sourceImage) ownChatInputRef.current?.removeAttachedImage(sourceImage.data);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
@@ -1763,7 +1768,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     <ChatInput
       ref={setChatInputElement}
       onSend={handleChatSend}
-      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? () => { setImageEdit(null); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
+      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImage) => { setImageEdit(null); setImageSourceSeed(sourceImage); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
       onAbort={handleActiveAbort}
       onSteer={agentRunning ? handleSteerWithSubmit : undefined}
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
@@ -1899,6 +1904,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           <ImageGenerationDialog
             config={imageConfig}
             edit={imageEdit}
+            initialSourceImage={imageSourceSeed}
             editPreviewUrl={imageEdit ? `/api/files/${encodeFilePathForApi(imageEdit.path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(imageEdit.path) ? imageEdit.path : messageCwd ? joinFilePath(messageCwd, imageEdit.path) : imageEdit.path)}?type=read` : undefined}
             onClose={() => { setImageDialogOpen(false); setImageEdit(null); }}
             onSubmit={submitDirectImage}
