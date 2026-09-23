@@ -52,10 +52,19 @@ test("a definition that does not resolve is marked, not hidden", () => {
   assert.match(source, /t\("models\.notUsable"\)/);
 });
 
-test("a custom endpoint row is distinguishable from an authenticated provider row", () => {
-  // The two rows come from different sources (models.json vs the auth provider
-  // list) and only the first one's label is editable on this page.
-  assert.match(source, /t\("models\.customEndpoint"\)/);
+test("custom providers use a single-line name without a redundant endpoint subtitle", () => {
+  assert.match(source, /<ConfigSidebarText className="is-grow">\{config\.providers\?\.\[pName\]\?\.name \?\? pName\}<\/ConfigSidebarText>/);
+  assert.doesNotMatch(source, /t\("models\.customEndpoint"\)/);
+});
+
+test("model and provider creation have separate reachable actions", () => {
+  assert.match(source, /<ConfigListAction onClick=\{\(\) => openAdd\(\)\} disabled=\{!cwd \|\| !scopeDoc\}>\{t\("models\.addModel"\)\}/);
+  assert.match(source, /<ConfigListAction className="models-add-provider" onClick=\{\(\) => setPickerOpen\(true\)\}>\{t\("models\.addProvider"\)\}/);
+  assert.match(cssSource, /\.models-add-actions \.models-add-provider \{\s*justify-content: flex-end/);
+  assert.match(cssSource, /\.models-add-provider svg \{\s*order: 1/);
+  assert.match(source, /existingIds=\{new Set\(\[/);
+  assert.match(source, /if \(!\/\^\[a-z0-9\]/);
+  assert.doesNotMatch(source, /let finalName = "new-provider"/);
 });
 
 test("connected providers can add local models without opening the endpoint editor", () => {

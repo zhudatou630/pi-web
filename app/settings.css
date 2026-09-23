@@ -691,6 +691,33 @@
   border-top: 1px solid var(--border);
 }
 
+.models-add-actions {
+  display: flex;
+  border-top: 1px solid var(--border);
+}
+
+.models-add-actions .config-list-action {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px;
+  border-top: 0;
+}
+
+.models-add-actions .config-list-action-button {
+  gap: 4px;
+  padding: 0 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.models-add-actions .models-add-provider {
+  justify-content: flex-end;
+}
+
+.models-add-provider svg {
+  order: 1;
+}
+
 .config-list-action-button {
   display: flex;
   align-items: center;

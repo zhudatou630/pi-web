@@ -1828,17 +1828,20 @@ function ApiKeyDetail({
 interface AddProviderPickerProps {
   oauthProviders: OAuthProvider[];
   apiKeyProviders: ApiKeyProvider[];
+  existingIds: ReadonlySet<string>;
   onSelectOAuth: (id: string) => void;
   onSelectApiKey: (id: string) => void;
-  onAddCustom: () => void;
+  onAddCustom: (id: string) => void;
   onClose: () => void;
 }
 
 function AddProviderPicker({
-  oauthProviders, apiKeyProviders,
+  oauthProviders, apiKeyProviders, existingIds,
   onSelectOAuth, onSelectApiKey, onAddCustom, onClose,
 }: AddProviderPickerProps) {
   const [search, setSearch] = useState("");
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customId, setCustomId] = useState("");
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -1903,9 +1906,9 @@ function AddProviderPicker({
               {showCustom && (
                  <div style={{ gridColumn: "1 / -1", fontSize: 10, fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{t("i18n.custom")}</div>
               )}
-              {showCustom && (
+              {showCustom && !customOpen && (
                 <button
-                  onClick={() => { onAddCustom(); onClose(); }}
+                  onClick={() => setCustomOpen(true)}
                   style={cardStyle}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--bg-panel)"; }}
@@ -1920,6 +1923,38 @@ function AddProviderPicker({
                     </svg>
                   </span>
                 </button>
+              )}
+              {showCustom && customOpen && (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const id = customId.trim();
+                    if (!/^[a-z0-9][a-z0-9._-]*$/.test(id) || existingIds.has(id)) return;
+                    onAddCustom(id);
+                    onClose();
+                  }}
+                  style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 8, padding: 12, border: "1px solid var(--border)", borderRadius: 6 }}
+                >
+                  <label htmlFor="custom-provider-id" style={{ fontSize: 12 }}>{t("models.providerId")}</label>
+                  <input
+                    id="custom-provider-id"
+                    autoFocus
+                    value={customId}
+                    onChange={(event) => setCustomId(event.target.value)}
+                    placeholder="my-provider"
+                    aria-describedby="custom-provider-id-hint"
+                    style={{ ...inputStyle, width: "100%", boxSizing: "border-box" }}
+                  />
+                  <span id="custom-provider-id-hint" style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                    {existingIds.has(customId.trim()) ? t("models.providerIdTaken") : t("models.providerIdFormat")}
+                  </span>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <ConfigButton type="button" onClick={() => setCustomOpen(false)}>{t("i18n.cancel")}</ConfigButton>
+                    <ConfigButton type="submit" variant="primary" disabled={!/^[a-z0-9][a-z0-9._-]*$/.test(customId.trim()) || existingIds.has(customId.trim())}>
+                      {t("models.createProvider")}
+                    </ConfigButton>
+                  </div>
+                </form>
               )}
 
               {availableOAuth.length > 0 && (
@@ -2268,13 +2303,10 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     if (selection) setLastSettingsSelection("models", JSON.stringify(selection));
   }, [selection]);
 
-  const addCustomProvider = useCallback(() => {
-    let finalName = "new-provider";
-    let n = 1;
-    while (config.providers?.[finalName]) finalName = `new-provider-${n++}`;
-    setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [finalName]: { api: "openai-completions" } } }));
-    setSelection({ type: "provider", name: finalName });
-  }, [config.providers]);
+  const addCustomProvider = useCallback((id: string) => {
+    setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [id]: { api: "openai-completions" } } }));
+    setSelection({ type: "provider", name: id });
+  }, []);
 
   const updateProvider = useCallback((name: string, p: ProviderEntry) => {
     setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [name]: p } }));
@@ -2758,12 +2790,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                         <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
                         <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
                       </svg>
-                      <ConfigSidebarText className="is-grow">
-                        {config.providers?.[pName]?.name ?? pName}
-                        <span style={{ display: "block", color: "var(--text-dim)", fontSize: 10 }}>
-                          {t("models.customEndpoint")}
-                        </span>
-                      </ConfigSidebarText>
+                      <ConfigSidebarText className="is-grow">{config.providers?.[pName]?.name ?? pName}</ConfigSidebarText>
                     </ConfigSidebarItem>
                     {renderOwnedRows(pName)}
                   </div>
@@ -2800,7 +2827,10 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
               />
             )}
 
-            <ConfigListAction onClick={() => openAdd()}>{t("models.add")}</ConfigListAction>
+            <div className="models-add-actions">
+              <ConfigListAction onClick={() => openAdd()} disabled={!cwd || !scopeDoc}>{t("models.addModel")}</ConfigListAction>
+              <ConfigListAction className="models-add-provider" onClick={() => setPickerOpen(true)}>{t("models.addProvider")}</ConfigListAction>
+            </div>
           </ConfigSidebar>
 
           {/* Right: detail */}
@@ -2840,6 +2870,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       <AddProviderPicker
         oauthProviders={oauthProviders}
         apiKeyProviders={apiKeyProviders}
+        existingIds={new Set([...Object.keys(config.providers ?? {}), ...oauthProviders.map((p) => p.id), ...apiKeyProviders.map((p) => p.id), ...catalog.map((model) => model.provider)])}
         onSelectOAuth={(id) => setSelection({ type: "oauth", providerId: id })}
         onSelectApiKey={(id) => setSelection({ type: "apikey", providerId: id })}
         onAddCustom={addCustomProvider}
