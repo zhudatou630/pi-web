@@ -227,7 +227,7 @@ export function ChatTabBar({
                 height: "100%",
                 paddingLeft: isMobile ? 8 : 10,
                 paddingRight: isMobile ? (isVisible ? 4 : 8) : 4,
-                borderRight: "1px solid var(--border)",
+                borderRight: isMobile && index === tabs.length - 1 ? "none" : "1px solid var(--border)",
                 background: isVisible ? "var(--bg)" : "var(--bg-panel)",
                 cursor: "pointer",
                 fontSize: 12,
@@ -335,9 +335,6 @@ export function ChatTabBar({
           alignItems: "center",
           flexShrink: 0,
           background: unifiedHeader ? "transparent" : "var(--bg-panel)",
-          boxShadow: isMobile ? "-4px 0 10px -2px rgba(0,0,0,0.18)" : undefined,
-          zIndex: 2,
-          position: "relative",
         }}
       >
         {/* All-tabs overflow menu — desktop only; the mobile strip swipes */}

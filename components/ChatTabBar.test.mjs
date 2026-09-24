@@ -199,5 +199,8 @@ test("mobile mode hides split toggle and only shows close button on active tab",
   // Tab bar scroll container must enable touch panning
   assert.match(html, /touch-action:\s*pan-x/i);
   assert.match(html, /width:\s*100%/i);
+  assert.match(renderedTabs[0], /border-right:1px solid var\(--border\)/);
+  assert.doesNotMatch(renderedTabs[1], /border-right:1px solid var\(--border\)/);
+  assert.doesNotMatch(html, /box-shadow:-4px 0 10px/);
 });
 
