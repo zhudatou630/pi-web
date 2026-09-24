@@ -1997,11 +1997,40 @@ span.token.table {
   opacity: 0 !important;
 }
 
+/* Project row actions take no width until revealed, so the branch label can sit
+   flush right. Revealing grows max-width (20px = tight spacing) and fades in, which
+   slides the branch left instead of popping. Same rules for both project layouts. */
 .workspace-row-action {
   display: flex;
   align-items: center;
-  opacity: 0;
+  flex-shrink: 0;
+}
+
+/* ToolbarIconButton sets opacity (disabled = 0.6) and transition inline: fade with
+   filter so the disabled dimming still composes, and force the transition. */
+.workspace-row-action > button {
+  max-width: 0;
+  filter: opacity(0);
+  overflow: hidden;
   pointer-events: none;
+  transition: max-width 0.16s ease-out, filter 0.12s ease-out, color 0.3s, background 0.3s !important;
+}
+
+@media (hover: hover) {
+  .workspace-list-row:hover .workspace-row-action > button {
+    max-width: 20px;
+    filter: none;
+    pointer-events: auto;
+    /* Hover intent: sweeping the pointer across rows should not ripple them open. */
+    transition: max-width 0.16s ease-out 60ms, filter 0.12s ease-out 60ms, color 0.3s, background 0.3s !important;
+  }
+}
+
+.workspace-list-row:has(:focus-visible) .workspace-row-action > button,
+.workspace-list-row.is-actions-revealed .workspace-row-action > button {
+  max-width: 20px;
+  filter: none;
+  pointer-events: auto;
 }
 
 .workspace-list-row {
@@ -2038,12 +2067,6 @@ span.token.table {
   width: 2px;
   border-radius: 1px;
   background: #ef4444;
-}
-
-.workspace-list-row:hover .workspace-row-action,
-.workspace-list-row:has(:focus-visible) .workspace-row-action {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 /* Show more: label aligned with project/session names, count flush right
@@ -2090,36 +2113,21 @@ span.token.table {
   }
 
   /* Row actions stay hidden until a long press, except "new session in this
-     project": phones have no hover, so it is the only reachable affordance. */
-  .workspace-list-row .workspace-row-action {
-    opacity: 1 !important;
-    pointer-events: none !important;
-  }
-
-  .workspace-list-row .workspace-row-action > button {
-    visibility: hidden;
-  }
-
+     project": phones have no hover, so it is the only reachable affordance.
+     A 28px row cannot host a 44px target; give it the full row height instead.
+     ToolbarIconButton sizes itself inline, so this needs !important. */
   .workspace-list-row .workspace-row-action > .workspace-new-session {
-    visibility: visible;
+    max-width: 26px !important;
+    filter: none;
     pointer-events: auto;
-  }
-
-  .workspace-list-row.is-actions-revealed .workspace-row-action {
-    pointer-events: auto !important;
-  }
-
-  .workspace-list-row.is-actions-revealed .workspace-row-action > button {
-    visibility: visible;
-    pointer-events: auto;
-  }
-
-  /* A 28px row cannot host a 44px target; give the one always-visible action
-     the full row height instead. ToolbarIconButton sizes itself inline, so
-     this needs !important. */
-  .workspace-list-row .workspace-row-action > .workspace-new-session {
     width: 26px !important;
     height: 28px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-row-action > button {
+    transition: none !important;
   }
 }
 

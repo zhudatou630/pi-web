@@ -1151,7 +1151,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 ? (currentWorktree.branch ?? displayCwd(currentWorktree.path, homeDir))
                 : "…";
               return (
-                  <div ref={wtDropdownRef} className="workspace-worktree-switcher" style={{ minWidth: 0, flex: "0 1 auto" }}>
+                  // The project name outranks the branch: the branch absorbs (virtually) all shrinkage
+                  // until its icon + a few chars; 100 still leaked ~1px into the name and ellipsized it.
+                  <div ref={wtDropdownRef} className="workspace-worktree-switcher" style={{ minWidth: 48, maxWidth: "60%", flex: "0 10000 auto" }}>
                     <button
                       type="button"
                       onClick={(event) => {
@@ -1168,7 +1170,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         alignItems: "center",
                         gap: 4,
                         height: 22,
-                        maxWidth: 96,
+                        maxWidth: "100%",
                         minWidth: 0,
                         padding: "0 4px",
                         background: wtDropdownOpen ? "var(--bg-hover)" : "none",
@@ -1819,7 +1821,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         });
                       }}
                       title={row.project.root}
-                      style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0, height: "100%", padding: "0 4px 0 0", border: "none", background: "none", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12, fontWeight: 500 }}
+                      style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 0", border: "none", background: "none", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12, fontWeight: 500 }}
                     >
                       <SidebarChevron open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{getFileName(row.project.root)}</span>

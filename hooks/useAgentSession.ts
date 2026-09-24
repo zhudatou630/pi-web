@@ -1213,9 +1213,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", reconnectView);
+    window.addEventListener("pageshow", reconnectView);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", reconnectView);
+      window.removeEventListener("pageshow", reconnectView);
     };
   }, [maintainEventsConnected, refreshEventStream]);
 
@@ -1227,6 +1229,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (event.type !== "message_update") flushStreamDeltas();
     switch (event.type) {
       case "connected": {
+        // SSE only snapshots the current message; completed steps missed while
+        // disconnected must be recovered from persisted history on every handshake.
+        const sid = sessionIdRef.current;
+        if (sid) void loadSession(sid);
         dispatch({ type: event.isStreaming === true ? "resume" : "end" });
         if (event.isStreaming === true) {
           cancelEventStreamGrace();

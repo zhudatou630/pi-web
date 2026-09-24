@@ -61,6 +61,64 @@ test("keeps the session event stream open through the idle grace window", () => 
   );
 });
 
+test("every SSE handshake reloads missed history, whether the agent is busy or idle", () => {
+  const connectedSource = source.slice(
+    source.indexOf('case "connected":'),
+    source.indexOf('case "agent_start":'),
+  );
+  const loads = [];
+  const ref = { current: "session-a" };
+  const handle = new Function(
+    "event", "sessionIdRef", "loadSession", "dispatch", "cancelEventStreamGrace",
+    "sdkAgentActiveRef", "agentRunningRef", "setAgentRunning", "setAgentPhase",
+    `switch (event.type) { ${connectedSource} }`,
+  );
+  const noop = () => {};
+  for (const isStreaming of [true, true, false]) {
+    handle({ type: "connected", isStreaming }, ref, (sid) => loads.push(sid),
+      noop, noop, {}, {}, noop, noop);
+  }
+  assert.deepEqual(loads, ["session-a", "session-a", "session-a"]);
+  ref.current = null;
+  handle({ type: "connected", isStreaming: false }, ref, (sid) => loads.push(sid),
+    noop, noop, {}, {}, noop, noop);
+  assert.equal(loads.length, 3);
+});
+
+test("page restoration replaces a half-open visible stream and removes its listeners on cleanup", () => {
+  const effectSource = source.slice(
+    source.lastIndexOf("  useEffect(() => {", source.indexOf("    const reconnectView =")),
+    source.indexOf("  }, [maintainEventsConnected, refreshEventStream]);")
+      + "  }, [maintainEventsConnected, refreshEventStream]);".length,
+  );
+  const document = new EventTarget();
+  document.visibilityState = "visible";
+  const window = new EventTarget();
+  const refreshed = [];
+  let cleanup;
+  new Function("useEffect", "document", "window", "sessionIdRef", "visiblePaneRef",
+    "agentRunningRef", "eventStreamGraceActiveRef", "sessionPropIdRef", "sessionRunningRef",
+    "maintainEventsConnected", "refreshEventStream", effectSource)(
+    (effect) => { cleanup = effect(); }, document, window,
+    { current: "session-a" }, { current: true }, {}, {}, {}, {},
+    () => assert.fail("visible recovery must replace the old connection"),
+    (sid) => refreshed.push(sid),
+  );
+  window.dispatchEvent(new Event("pageshow"));
+  document.dispatchEvent(new Event("visibilitychange"));
+  window.dispatchEvent(new Event("online"));
+  assert.deepEqual(refreshed, ["session-a", "session-a", "session-a"]);
+  document.visibilityState = "hidden";
+  window.dispatchEvent(new Event("pageshow"));
+  assert.equal(refreshed.length, 3);
+  cleanup();
+  document.visibilityState = "visible";
+  window.dispatchEvent(new Event("pageshow"));
+  document.dispatchEvent(new Event("visibilitychange"));
+  window.dispatchEvent(new Event("online"));
+  assert.equal(refreshed.length, 3);
+});
+
 test("a rejected submission preserves a different run reported by the server", () => {
   const reconcileSource = source.slice(
     source.indexOf("  const reconcileAgentState = useCallback"),

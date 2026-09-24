@@ -230,7 +230,9 @@ test("workspace actions stay quiet on touch until a long press reveals them", as
   assert.match(globalCss, /\.workspace-list-row\[data-active="true"\]::before[\s\S]*?background: var\(--accent\)/);
   assert.doesNotMatch(globalCss, /\.workspace-list-row\[data-active="true"\][\s\S]{0,80}?background: var\(--bg-selected\)/);
   // New session is the one action phones can reach without a long press.
-  assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-new-session[\s\S]*?visibility: visible/);
+  assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-new-session[\s\S]*?max-width: 26px !important;/);
+  // Hidden actions take no width, so the branch label sits flush right.
+  assert.match(globalCss, /\.workspace-row-action > button \{\s*max-width: 0;/);
   assert.match(source, /className="workspace-new-session"/);
 });
 
