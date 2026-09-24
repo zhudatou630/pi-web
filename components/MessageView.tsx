@@ -11,6 +11,7 @@ import { ToolIcon } from "./ToolIcon";
 import { SubagentIcon } from "./SubagentIcon";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
+import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
@@ -158,6 +159,8 @@ interface Props {
    */
   writtenFiles?: WrittenFile[];
   isProcess?: boolean;
+  /** Tool calls still executing (from `tool_execution_start/end`); their cards tick live. */
+  runningToolIds?: ReadonlySet<string>;
 }
 
 export function getModelDisplayName(
@@ -231,12 +234,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, sessionId, writtenFiles, isProcess }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, sessionId, writtenFiles, isProcess, runningToolIds }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} isProcess={isProcess} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} isProcess={isProcess} runningToolIds={runningToolIds} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -560,6 +563,7 @@ function AssistantMessageView({
   searchBlock,
   writtenFiles,
   isProcess,
+  runningToolIds,
 }: {
   message: AssistantMessage;
   modelName?: string;
@@ -574,6 +578,7 @@ function AssistantMessageView({
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
   isProcess?: boolean;
+  runningToolIds?: ReadonlySet<string>;
 }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -581,6 +586,9 @@ function AssistantMessageView({
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
+  // ponytail: parallel tools start when the assistant message ends and their results share
+  // the batch-end timestamp, so history shows the batch duration per card. Persist
+  // tool_execution_start/end times if per-tool history accuracy ever matters.
   const toolStartedAt = message.completedAt ?? message.timestamp;
   const toolCallDurations = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>();
@@ -641,7 +649,8 @@ function AssistantMessageView({
               toolResults={toolResults}
               isStreaming={isStreaming}
               streamingDuration={thinkingDuration}
-              startTime={isLiveThinking ? thinkingStart : undefined}
+              startTime={block.type === "toolCall" ? toolStartedAt : thinkingStart}
+              live={isLiveThinking || (block.type === "toolCall" && Boolean(runningToolIds?.has(block.toolCallId)))}
               toolCallDurations={toolCallDurations}
               cwd={cwd}
               onOpenFile={onOpenFile}
@@ -827,22 +836,28 @@ function ProcessErrorCard({ error }: { error: string }) {
   );
 }
 
-function LiveDuration({ startTime }: { startTime: number }) {
-  const [elapsed, setElapsed] = useState(() => Math.max(0, Math.round((Date.now() - startTime) / 1000)));
+/** The one time slot on a step card: frozen duration when done, ticking while live, start time on hover. */
+function StepDuration({ seconds, startTime, live }: { seconds?: number; startTime?: number; live?: boolean }) {
+  const { t } = useI18n();
+  const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    const id = setInterval(() => {
-      setElapsed(Math.max(0, Math.round((Date.now() - startTime) / 1000)));
-    }, 500);
+    if (!live) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(id);
-  }, [startTime]);
+  }, [live]);
+  const value = live && startTime !== undefined ? Math.max(0, Math.round((now - startTime) / 1000)) : seconds;
+  if (value === undefined) return null;
+  const title = startTime !== undefined
+    ? t("chat.stepStartedAt", { time: new Date(startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
+    : undefined;
   return (
-    <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
-      {elapsed}s
+    <span title={title} style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>
+      {formatDuration(value, t)}
     </span>
   );
 }
 
-function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, startTime, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, startTime, live, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     const text = (block as TextContent).text;
     if (!isStreaming && (!text || text.trim() === "")) return null;
@@ -865,13 +880,13 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
     );
   }
   if (block.type === "thinking") {
-    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} startTime={startTime} isStreaming={isStreaming} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
+    return <ThinkingBlock block={block as ThinkingContent} duration={streamingDuration} startTime={startTime} live={live} sessionId={sessionId} entryId={entryId} blockIndex={blockIndex} />;
   }
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} onOpenSession={onOpenSession} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} startTime={startTime} live={live} onOpenSession={onOpenSession} />;
   }
   return null;
 }
@@ -880,11 +895,11 @@ function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent
   return <SafeMarkdownBody className="markdown-assistant-message" isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
 }
 
-export function ThinkingBlock({ block, duration, startTime, isStreaming, sessionId, entryId, blockIndex }: {
+export function ThinkingBlock({ block, duration, startTime, live, sessionId, entryId, blockIndex }: {
   block: ThinkingContent;
   duration?: number;
   startTime?: number;
-  isStreaming?: boolean;
+  live?: boolean;
   sessionId?: string;
   entryId?: string;
   blockIndex: number;
@@ -982,11 +997,7 @@ export function ThinkingBlock({ block, duration, startTime, isStreaming, session
             </span>
           )}
           {expanded && <div style={{ flex: 1 }} />}
-          {duration !== undefined ? (
-            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>{duration}s</span>
-          ) : isStreaming && startTime ? (
-            <LiveDuration startTime={startTime} />
-          ) : null}
+          <StepDuration seconds={duration} startTime={startTime} live={live} />
           <svg
             data-step-chevron=""
             width="9"
@@ -1031,7 +1042,7 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
-function ToolCallBlock({ block, result, duration, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; onOpenSession?: (sessionId: string) => void }) {
+function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; onOpenSession?: (sessionId: string) => void }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const inputStr = getToolCallInputText(block);
@@ -1105,9 +1116,7 @@ function ToolCallBlock({ block, result, duration, onOpenSession }: { block: Tool
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1.35 }}>
             {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}
           </span>
-          {duration !== undefined && (
-            <span style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>{duration}s</span>
-          )}
+          <StepDuration seconds={duration} startTime={startTime} live={live} />
           <svg data-step-chevron="" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>

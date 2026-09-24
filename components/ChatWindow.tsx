@@ -32,6 +32,7 @@ import { MobileChatNav } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
+import { formatDuration } from "@/lib/i18n/format";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -625,15 +626,6 @@ function elapsedProcessSeconds(start?: number, end?: number): number | undefined
   return Math.max(1, Math.round((end - start) / 1000));
 }
 
-function formatProcessDuration(seconds: number, t: (key: string, params?: Record<string, string | number>) => string): string {
-  if (seconds < 60) {
-    return t("chat.decodeSeconds", { seconds });
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return t("chat.decodeMinutes", { minutes, seconds: remainingSeconds });
-}
-
 function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: string, params?: Record<string, string | number>) => string }) {
   const [elapsed, setElapsed] = useState(() => Math.max(0, Math.round((Date.now() - startTime) / 1000)));
   useEffect(() => {
@@ -645,7 +637,7 @@ function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: str
 
   return (
     <span style={{ fontSize: 11.5, color: "var(--accent)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-      {formatProcessDuration(elapsed, t)}
+      {formatDuration(elapsed, t)}
     </span>
   );
 }
@@ -686,23 +678,14 @@ function ProcessDetailsGroup({
   }, [defaultExpanded]);
 
   const isPanelOpen = expanded || reveal;
-  const totalSteps = toolCallCount > 0 ? toolCallCount : messageCount;
-  const stepsUnit = t(totalSteps === 1 ? "chat.step" : "chat.steps");
-  let stepsLabel: string;
-  if (durationSeconds !== undefined && durationSeconds > 0) {
-    const formattedDuration = formatProcessDuration(durationSeconds, t);
-    if (toolCallCount > 0) {
-      stepsLabel = t("chat.workedForSteps", {
-        duration: formattedDuration,
-        count: totalSteps,
-        steps: stepsUnit,
-      });
-    } else {
-      stepsLabel = t("chat.workedFor", { duration: formattedDuration });
-    }
-  } else {
-    stepsLabel = `${totalSteps} ${stepsUnit}`;
-  }
+  // A step is a tool call; thinking and notes are shown but not counted.
+  const stepsUnit = t(toolCallCount === 1 ? "chat.step" : "chat.steps");
+  const formattedDuration = durationSeconds !== undefined && durationSeconds > 0 ? formatDuration(durationSeconds, t) : null;
+  const stepsLabel = formattedDuration
+    ? (toolCallCount > 0
+      ? t("chat.workedForSteps", { duration: formattedDuration, count: toolCallCount, steps: stepsUnit })
+      : t("chat.workedFor", { duration: formattedDuration }))
+    : (toolCallCount > 0 ? `${toolCallCount} ${stepsUnit}` : t("chat.processDetails"));
 
   // Automatically keep scrolled to the latest step on mount/update unless user scrolled up
   useLayoutEffect(() => {
@@ -1586,6 +1569,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     return map;
   }, [activeToolResults, messages]);
+  const runningToolIds = useMemo<ReadonlySet<string>>(
+    () => new Set(agentPhase?.kind === "running_tools" ? agentPhase.tools.map((tool) => tool.id) : []),
+    [agentPhase],
+  );
   const completedAssistantParts = useMemo(() => messages.map((message) => (
     message.role === "assistant" ? partitionAssistantMessage(message) : null
   )), [messages]);
@@ -1998,6 +1985,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
                     isProcess={options.isProcess}
+                    runningToolIds={msg.role === "assistant" && msg.content.some((block) => block.type === "toolCall" && runningToolIds.has(block.toolCallId)) ? runningToolIds : undefined}
                   />
                 );
                 if (!isVisible) return view;
@@ -2164,6 +2152,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
 
                 if (isLiveTail && streamingParts.processMessage) {
+                  processToolCount += countToolCallBlocks(streamingParts.processMessage.content ?? []);
                   processViews.push(
                     <MessageView
                       key="streaming-process-view"

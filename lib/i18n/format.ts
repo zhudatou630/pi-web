@@ -70,3 +70,15 @@ export function formatRelativeTime(date: Date | string, locale: Locale, now = ne
   const value = Math.round(diffMs / divisor);
   return new Intl.RelativeTimeFormat(locale, { numeric: "always" }).format(value, unit as Intl.RelativeTimeFormatUnit);
 }
+
+/**
+ * Step/turn duration shared by the process header and every step card.
+ * @param seconds Whole elapsed seconds
+ * @param t Translator providing chat.decodeSeconds / decodeMinutes / decodeHours
+ */
+export function formatDuration(seconds: number, t: (key: string, params?: TranslationParams) => string): string {
+  if (seconds < 60) return t("chat.decodeSeconds", { seconds });
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return t("chat.decodeMinutes", { minutes, seconds: seconds % 60 });
+  return t("chat.decodeHours", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
+}
