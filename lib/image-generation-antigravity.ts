@@ -11,6 +11,8 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 const MAX_ERROR_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 180_000;
+// ponytail: unmeasured guess; lower it once we know how fast the upstream sends headers.
+const CONNECT_TIMEOUT_MS = 60_000;
 const RETRY_STATUSES = new Set([403, 404, 429, 500, 502, 503, 504]);
 
 const ASPECT_RATIOS = new Set(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]);
@@ -190,24 +192,54 @@ export async function requestAntigravityImage(
   signal?: AbortSignal,
 ): Promise<Buffer> {
   const { token, projectId } = await antigravityCredentials(ctx.modelRegistry.getProviderAuth);
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const body = JSON.stringify(buildAntigravityImageBody(connection.model, projectId, prompt, size, resolution, input));
-  const headers = antigravityHeaders(token);
+  return requestImageFromEndpoints(
+    endpointCandidates(ctx.modelRegistry.getProvider(connection.provider)?.baseUrl),
+    antigravityHeaders(token),
+    body,
+    signal,
+  );
+}
+
+/**
+ * Each endpoint gets its own header timeout so a hung endpoint yields to the next one;
+ * once headers arrive, the image stream shares one total budget and is never re-sent.
+ */
+export async function requestImageFromEndpoints(
+  endpoints: string[],
+  headers: Record<string, string>,
+  body: string,
+  signal?: AbortSignal,
+  { connectMs = CONNECT_TIMEOUT_MS, totalMs = REQUEST_TIMEOUT_MS } = {},
+): Promise<Buffer> {
+  const total = AbortSignal.timeout(totalMs);
+  const requestSignal = signal ? AbortSignal.any([signal, total]) : total;
+  const timedOut = (endpoint: string, phase: string) => {
+    signal?.throwIfAborted();
+    return total.aborted ? new Error(`Antigravity image request to ${endpoint} timed out after ${totalMs / 1000}s while ${phase}`) : undefined;
+  };
   let lastError = "no Antigravity image endpoint available";
-  for (const endpoint of endpointCandidates(ctx.modelRegistry.getProvider(connection.provider)?.baseUrl)) {
+  for (const endpoint of endpoints) {
     requestSignal.throwIfAborted();
+    const connect = new AbortController();
+    const timer = setTimeout(() => connect.abort(), connectMs);
     let response: Response;
     try {
       response = await fetch(`${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
         method: "POST",
         headers,
         body,
-        signal: requestSignal,
+        signal: AbortSignal.any([requestSignal, connect.signal]),
       });
     } catch (error) {
-      lastError = sanitized(error instanceof Error ? error.message : String(error), 400);
+      const fatal = timedOut(endpoint, "connecting");
+      if (fatal) throw fatal;
+      lastError = connect.signal.aborted
+        ? `Antigravity image endpoint ${endpoint} sent no response within ${connectMs / 1000}s`
+        : `${endpoint}: ${sanitized(error instanceof Error ? error.message : String(error), 400)}`;
       continue;
+    } finally {
+      clearTimeout(timer);
     }
     if (!response.ok) {
       const raw = await readImageResponseBytes(response, MAX_ERROR_BYTES, requestSignal, "Image API error response is too large").catch(() => Buffer.alloc(0));
@@ -215,7 +247,11 @@ export async function requestAntigravityImage(
       if (RETRY_STATUSES.has(response.status)) continue;
       throw new Error(lastError);
     }
-    return collectImageFromSse(response, requestSignal);
+    try {
+      return await collectImageFromSse(response, requestSignal);
+    } catch (error) {
+      throw timedOut(endpoint, "streaming the image") ?? error;
+    }
   }
   throw new Error(lastError);
 }
