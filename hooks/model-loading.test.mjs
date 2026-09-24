@@ -51,7 +51,7 @@ function setup(fetchImpl) {
     delay: async (ms) => { delays.push(ms); },
   };
   defaultModelResolverScript.runInNewContext(context);
-  for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelList", "NewSessionDefaultModel", "ThinkingLevel"]) {
+  for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelList", "NewSessionDefaultModel", "ThinkingLevel"]) {
     context[`set${name}`] = (value) => writes.push([name, value]);
   }
   context.loadModels = loadScript.runInNewContext(context);

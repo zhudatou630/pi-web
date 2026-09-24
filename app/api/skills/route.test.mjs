@@ -33,9 +33,11 @@ function patchRequest(body) {
 
 test("PATCH /api/skills authorizes by loaded-skill membership, not extra roots", async () => {
   const source = await readFile(new URL("./route.ts", import.meta.url), "utf8");
-  assert.match(source, /loadSkillsWithInstallInfo\(cwd\)/);
-  assert.match(source, /skill\.filePath === filePath/);
-  assert.doesNotMatch(source, /globalSkillsDir|getAgentDir\(/);
+  // DELETE may use the agent dir to locate removable entries; PATCH must not widen access with it.
+  const patch = source.slice(source.indexOf("export async function PATCH"));
+  assert.match(patch, /loadSkillsWithInstallInfo\(cwd\)/);
+  assert.match(patch, /skill\.filePath === filePath/);
+  assert.doesNotMatch(patch, /globalSkillsDir|getAgentDir\(/);
 });
 
 test("PATCH /api/skills requires cwd", async () => {

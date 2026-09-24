@@ -101,6 +101,9 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
     ["available built-in commands take priority", { altKey: true }, { slashMenuOpen: true, slashQuery: "copy", value: "/copy", displayedSlashCommands: [{ name: "copy", source: "builtin", availableWhileStreaming: true }] }, "send"],
     ["file completion takes priority", { altKey: true }, { atMenuOpen: true, atQuery: {} }, "file"],
     ["history selection takes priority", { altKey: true }, { historyMenuOpen: true }, "history"],
+    ["empty input opens history", { key: "ArrowUp" }, { isStreaming: false }, "history menu"],
+    ["typed input keeps native cursor movement", { key: "ArrowUp" }, { isStreaming: false, value: "draft" }, "native"],
+    ["multiline input keeps native cursor movement", { key: "ArrowUp" }, { isStreaming: false, value: "first\nsecond" }, "native"],
   ];
   for (const [name, keys, state, expected] of cases) {
     let action = "native";
@@ -111,8 +114,9 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
       isShiftEnterToSend() { return false; },
       isComposingRef: { current: false }, lastCompositionEndAtRef: { current: 0 },
       historyMenuOpen: false, inputHistory: ["previous"], historyActiveIndex: 0,
+      historyStashRef: { current: null }, setHistoryActiveIndex() {}, setHistoryMenuOpen() { action = "history menu"; },
       slashMenuOpen: false, slashQuery: null, displayedSlashCommands: [{}], slashActiveIndex: 0,
-      atMenuOpen: false, atQuery: null, atMatches: [{}], atActiveIndex: 0,
+      atMenuOpen: false, atQuery: null, atMatches: [{}], atActiveIndex: 0, setAtMenuOpen() {},
       onSteer() {}, onFollowUp() {},
       sendQueued(mode) { action = mode; }, handleSend() { action = "send"; },
       applySlashCommand() { action = "slash"; },

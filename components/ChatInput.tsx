@@ -1399,7 +1399,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
 
-      if (e.key === "ArrowUp" && !isComposing && !isStreaming && inputHistory.length > 0) {
+      if (e.key === "ArrowUp" && !value && !isComposing && !isStreaming && inputHistory.length > 0) {
         e.preventDefault();
         setSlashMenuOpen(false);
         setAtMenuOpen(false);
