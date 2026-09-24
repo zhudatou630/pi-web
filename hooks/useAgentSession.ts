@@ -13,6 +13,7 @@ import type {
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
+import { clampThinkingLevelTo } from "@/lib/thinking-level";
 import { rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
@@ -365,6 +366,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [modelScopeWarnings, setModelScopeWarnings] = useState<string[]>(() => initialModels?.modelScopeWarnings ?? []);
   const [modelThinkingLevels, setModelThinkingLevels] = useState<Record<string, string[]>>(() => initialModels?.thinkingLevels ?? {});
   const [modelThinkingLevelMaps, setModelThinkingLevelMaps] = useState<Record<string, Record<string, string | null>>>(() => initialModels?.thinkingLevelMaps ?? {});
+  const [modelThinkingLevelPins, setModelThinkingLevelPins] = useState<Record<string, string>>(() => initialModels?.thinkingLevelPins ?? {});
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(initialDefaultModel);
   const [toolPreset, setToolPreset] = useState<ToolPreset>(CONFIGURED_TOOL_PRESET);
@@ -1588,7 +1590,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (selectedModel) {
             setPendingModel(selectedModel);
             if (existingSid) {
-              await sendAgentCommand(sid, { type: "set_model", provider: selectedModel.provider, modelId: selectedModel.modelId });
+              const result = await sendAgentCommand<{ thinkingLevel?: string }>(sid, { type: "set_model", provider: selectedModel.provider, modelId: selectedModel.modelId });
+              if (result?.thinkingLevel && result.thinkingLevel !== "off") setThinkingLevel(result.thinkingLevel as ThinkingLevelOption);
               if (promptRunGateRef.current.isCancelled(promptRunId)) return null;
             }
           }
@@ -1856,9 +1859,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setNewSessionModel(selectedModel);
       setPendingModel(selectedModel);
       const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
-      if (!sid) return;
+      if (!sid) {
+        // No session yet — mirror what pi will resolve when the session is
+        // created: per-model pin first, else the displayed level clamped to
+        // the model's supported levels.
+        // thinkingLevels are keyed `provider:modelId` (models API), pins `provider/modelId`.
+        const pinned = modelThinkingLevelPins[`${provider}/${modelId}`];
+        if (pinned && thinkingLevelOverrideRef.current === null) {
+          setThinkingLevel(pinned as ThinkingLevelOption);
+        } else {
+          setThinkingLevel(clampThinkingLevelTo(modelThinkingLevels[`${provider}:${modelId}`], thinkingLevel) as ThinkingLevelOption);
+        }
+        return;
+      }
       try {
-        await sendAgentCommand(sid, { type: "set_model", provider, modelId });
+        const result = await sendAgentCommand<{ thinkingLevel?: string }>(sid, { type: "set_model", provider, modelId });
+        // setModel may reset the level (per-model pin or global default); keep the picker honest.
+        if (result?.thinkingLevel && result.thinkingLevel !== "off") {
+          setThinkingLevel(result.thinkingLevel as ThinkingLevelOption);
+        }
       } catch (e) {
         console.error("Failed to set model:", e);
       }
@@ -1892,7 +1911,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       modelSwitchPendingRef.current = false;
       setModelSwitching(false);
     }
-  }, [addNotice, currentModelOverride, isNew, loadSession, setNewSessionModel]);
+  }, [addNotice, currentModelOverride, isNew, loadSession, modelThinkingLevelPins, modelThinkingLevels, setNewSessionModel, thinkingLevel]);
 
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -1943,6 +1962,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setModelScopeWarnings(d.modelScopeWarnings ?? []);
     setModelThinkingLevels(d.thinkingLevels ?? {});
     setModelThinkingLevelMaps(d.thinkingLevelMaps ?? {});
+    setModelThinkingLevelPins(d.thinkingLevelPins ?? {});
     const nextModelList = d.modelList ?? [];
     setModelList(nextModelList);
     if (isNew && !sessionIdRef.current) {

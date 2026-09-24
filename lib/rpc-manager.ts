@@ -776,7 +776,9 @@ export class AgentSessionWrapper {
         await this.inner.setModel(model);
         invalidateModelsCache();
         invalidateSessionListCache();
-        return { id: model.id, provider: model.provider };
+        // setModel resets the thinking level (per-model pin or global default).
+        // Return the effective level so clients can re-sync their picker.
+        return { id: model.id, provider: model.provider, thinkingLevel: this.inner.thinkingLevel };
       }
 
       case "fork": {

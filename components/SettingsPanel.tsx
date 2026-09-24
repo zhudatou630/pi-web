@@ -81,12 +81,12 @@ export function SettingsSectionIcon({ section, size = 16, strokeWidth = 1.8 }: {
 
 function ThemeIcon({ preference }: { preference: ThemePreference }) {
   if (preference === "light") {
-    return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.41M17.66 6.34l1.41-1.41" /></svg>;
+    return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" className="settings-theme-icon"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.41M17.66 6.34l1.41-1.41" /></svg>;
   }
   if (preference === "dark") {
-    return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" /></svg>;
+    return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="settings-theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" /></svg>;
   }
-  return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>;
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="settings-theme-icon"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>;
 }
 
 function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange">) {
@@ -218,93 +218,74 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     }
   };
 
+  const resetIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
+    </svg>
+  );
+  const switchRow = (label: string, checked: boolean, onChange: (enabled: boolean) => void) => (
+    <div className="settings-row">
+      <span>{label}</span>
+      <ConfigSwitch checked={checked} label={label} onChange={onChange} />
+    </div>
+  );
+
   return (
     <div className="settings-general">
       <h2 className="settings-general-title">{t("settings.general")}</h2>
+      <div className="settings-card-grid">
 
-      <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("appUpdate.title")}</h3>
-        <AppUpdateNotice showCurrentVersion />
-      </section>
-
-      <div className="settings-general-columns">
-      <div>
-      <section className="settings-general-section">
+      <section className="settings-general-section settings-card">
         <h3 className="settings-general-heading">{t("settings.appearance")}</h3>
-        <div role="radiogroup" aria-label={t("settings.appearance")} className="settings-theme-options">
-          {themeOptions.map((option) => {
-            const selected = preference === option.id;
-            return (
+        <div className="settings-row">
+          <span>{t("settings.theme")}</span>
+          <div role="radiogroup" aria-label={t("settings.appearance")} className="settings-theme-options">
+            {themeOptions.map((option) => (
               <button
                 key={option.id}
                 type="button"
                 role="radio"
-                aria-checked={selected}
+                aria-checked={preference === option.id}
                 onClick={() => setThemePreference(option.id)}
                 className="settings-theme-option"
               >
                 <ThemeIcon preference={option.id} />
                 <span className="settings-theme-option-label">{option.label}</span>
               </button>
-            );
-          })}
+            ))}
+          </div>
         </div>
-      </section>
-
-      <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("settings.chat")}</h3>
-        <div className="settings-chat-options">
-          <div className="settings-chat-option settings-chat-switch-option">
-            <span>{t("settings.thinkingExpandedDefault")}</span>
-            <ConfigSwitch
-              checked={thinkingExpanded}
-              label={t("settings.thinkingExpandedDefault")}
-              onChange={(enabled) => {
-                setThinkingExpandedByDefault(enabled);
-                setThinkingExpanded(enabled);
-              }}
-            />
-          </div>
-          <div className="settings-chat-option settings-chat-switch-option">
-            <span>{t("settings.autoSessionTitle")}</span>
-            <ConfigSwitch
-              checked={autoSessionTitle}
-              label={t("settings.autoSessionTitle")}
-              onChange={(enabled) => {
-                setAutoSessionTitleEnabled(enabled);
-                setAutoSessionTitle(enabled);
-              }}
-            />
-          </div>
-          <div className="settings-chat-option settings-chat-switch-option">
-            <span>{t("settings.sidebarSingleProject")}</span>
-            <ConfigSwitch
-              checked={singleProject}
-              label={t("settings.sidebarSingleProject")}
-              onChange={(enabled) => {
-                setSidebarSingleProject(enabled);
-                setSingleProject(enabled);
-              }}
-            />
-          </div>
-          <div className="settings-chat-option settings-chat-range-option">
-            <div className="settings-chat-range-header">
-              <label htmlFor="settings-chat-content-width">{t("settings.chatContentWidth")}</label>
-              <output htmlFor="settings-chat-content-width">{chatContentWidth}px</output>
-              <ConfigButton
-                variant="ghost"
-                size="small"
-                className="settings-chat-reset"
-                title={t("settings.resetChatContentWidth")}
-                aria-label={t("settings.resetChatContentWidth")}
-                disabled={chatContentWidth === CHAT_CONTENT_WIDTH_DEFAULT}
-                onClick={() => setChatContentWidth(CHAT_CONTENT_WIDTH_DEFAULT)}
+        <div className="settings-row">
+          <span>{t("common.language")}</span>
+          <div role="radiogroup" aria-label={t("common.language")} className="settings-theme-options">
+            {supportedLocales.map((plugin) => (
+              <button
+                key={plugin.id}
+                type="button"
+                role="radio"
+                aria-checked={locale === plugin.id}
+                onClick={() => setLocale(plugin.id as typeof locale)}
+                className="settings-theme-option"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
-                </svg>
-              </ConfigButton>
-            </div>
+                <span className="settings-theme-option-label">{plugin.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="settings-row">
+          <span>{t("settings.typography")}</span>
+          {sarasaStatus === "cached" ? (
+            <span role="status" className="settings-chat-status">{t("settings.fontCached")}</span>
+          ) : (
+            <ConfigButton size="small" variant="secondary" disabled={sarasaStatus === "loading"} onClick={() => void downloadSarasaFont()}>
+              {sarasaStatus === "loading" ? t("settings.fontDownloadLoading") : t("settings.fontDownload")}
+            </ConfigButton>
+          )}
+        </div>
+        {sarasaStatus === "error" && <p role="alert" className="settings-general-error">{t("settings.fontDownloadFailed")} {sarasaError}</p>}
+        <div className="settings-row">
+          <label htmlFor="settings-chat-content-width">{t("settings.chatContentWidth")}</label>
+          <div className="settings-range">
             <input
               id="settings-chat-content-width"
               type="range"
@@ -314,25 +295,23 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
               value={chatContentWidth}
               onChange={(event) => setChatContentWidth(Number(event.target.value))}
             />
+            <output htmlFor="settings-chat-content-width">{chatContentWidth}px</output>
+            <ConfigButton
+              variant="ghost"
+              size="small"
+              className="settings-chat-reset"
+              title={t("settings.resetChatContentWidth")}
+              aria-label={t("settings.resetChatContentWidth")}
+              disabled={chatContentWidth === CHAT_CONTENT_WIDTH_DEFAULT}
+              onClick={() => setChatContentWidth(CHAT_CONTENT_WIDTH_DEFAULT)}
+            >
+              {resetIcon}
+            </ConfigButton>
           </div>
-          <div className="settings-chat-option settings-chat-range-option">
-            <div className="settings-chat-range-header">
-              <label htmlFor="settings-chat-content-font-size">{t("settings.chatContentFontSize")}</label>
-              <output htmlFor="settings-chat-content-font-size">{fontSize}px</output>
-              <ConfigButton
-                variant="ghost"
-                size="small"
-                className="settings-chat-reset"
-                title={t("settings.resetChatContentFontSize")}
-                aria-label={t("settings.resetChatContentFontSize")}
-                disabled={fontSize === CHAT_CONTENT_FONT_SIZE_DEFAULT}
-                onClick={() => setFontSize(CHAT_CONTENT_FONT_SIZE_DEFAULT)}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
-                </svg>
-              </ConfigButton>
-            </div>
+        </div>
+        <div className="settings-row">
+          <label htmlFor="settings-chat-content-font-size">{t("settings.chatContentFontSize")}</label>
+          <div className="settings-range">
             <input
               id="settings-chat-content-font-size"
               type="range"
@@ -342,158 +321,101 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
               value={fontSize}
               onChange={(event) => setFontSize(Number(event.target.value))}
             />
+            <output htmlFor="settings-chat-content-font-size">{fontSize}px</output>
+            <ConfigButton
+              variant="ghost"
+              size="small"
+              className="settings-chat-reset"
+              title={t("settings.resetChatContentFontSize")}
+              aria-label={t("settings.resetChatContentFontSize")}
+              disabled={fontSize === CHAT_CONTENT_FONT_SIZE_DEFAULT}
+              onClick={() => setFontSize(CHAT_CONTENT_FONT_SIZE_DEFAULT)}
+            >
+              {resetIcon}
+            </ConfigButton>
           </div>
-          <div className="settings-chat-option settings-chat-switch-option">
-            <span>{t("settings.shiftEnterToSend")}</span>
-            <ConfigSwitch
-              checked={shiftEnterToSend}
-              label={t("settings.shiftEnterToSend")}
-              onChange={(enabled) => {
-                setShiftEnterToSend(enabled);
-                setShiftEnterToSendState(enabled);
-              }}
-            />
-          </div>
-          <div className="settings-chat-option settings-chat-switch-option">
-            <span>{t("settings.quoteSelection")}</span>
-            <ConfigSwitch
-              checked={quoteSelectionEnabled}
-              label={t("settings.quoteSelection")}
-              onChange={onQuoteSelectionChange}
-            />
-          </div>
-          {notificationPermission && (
-            <div className="settings-chat-option settings-chat-switch-option">
-              <span>{t("settings.browserNotifications")}</span>
-              {notificationPermission === "granted" ? (
-                <span className="settings-chat-status">{t("settings.browserNotificationsOn")}</span>
-              ) : notificationPermission === "denied" ? (
-                <span className="settings-chat-status">{t("settings.browserNotificationsBlocked")}</span>
-              ) : (
-                <ConfigButton
-                  size="small"
-                  onClick={() => {
-                    void Notification.requestPermission().then(setNotificationPermission);
-                  }}
-                >
-                  {t("settings.browserNotificationsEnable")}
-                </ConfigButton>
-              )}
-            </div>
-          )}
         </div>
+        {switchRow(t("settings.thinkingExpandedDefault"), thinkingExpanded, (enabled) => {
+          setThinkingExpandedByDefault(enabled);
+          setThinkingExpanded(enabled);
+        })}
       </section>
 
-      {shellSettings?.isWindows && (
-        <section className="settings-general-section">
-          <h3 className="settings-general-heading">{t("settings.shellTool")}</h3>
-          <p className="settings-general-description">{t("settings.shellToolDescription")}</p>
-          <div className="settings-shell-option">
-            <span>{t("settings.usePowerShell")}</span>
-            <ConfigSwitch
-              checked={shellSettings.powerShellEnabled}
-              loading={shellSaving}
-              label={t("settings.usePowerShell")}
-              onChange={(enabled) => void togglePowerShell(enabled)}
-            />
-          </div>
-          {shellError && <p role="alert" className="settings-general-error">{shellError}</p>}
-        </section>
-      )}
-      </div>
-
-      <div>
-      <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("common.language")}</h3>
-        <div role="radiogroup" aria-label={t("common.language")} className="settings-language-options">
-          {supportedLocales.map((plugin) => {
-            const selected = locale === plugin.id;
-            return (
-              <button
-                key={plugin.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => setLocale(plugin.id as typeof locale)}
-                className="settings-language-option"
-              >
-                <span className="settings-language-radio">
-                  {selected && <span className="settings-language-radio-dot" />}
-                </span>
-                <span className="settings-language-label">{plugin.label}</span>
-                <span className="settings-language-code">{plugin.id}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {webAuthEnabled && (
-        <section className="settings-general-section">
-          <ConfigButton variant="secondary" disabled={loggingOut} onClick={() => void logOut()}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M10 17l5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
-            </svg>
-            {loggingOut ? t("auth.loggingOut") : t("auth.logOut")}
-          </ConfigButton>
-          {logoutError && <p role="alert" className="settings-general-error">{logoutError}</p>}
-        </section>
-      )}
-
-      <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("settings.typography")}</h3>
-        <p className="settings-general-description">{t("settings.typographyDescription")}</p>
-        {sarasaStatus === "cached" ? (
-          <div role="status" className="settings-font-status">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m5 12 4 4L19 6" />
-            </svg>
-            <span>{t("settings.fontCached")} · {t("settings.fontCachedDescription")}</span>
-          </div>
-        ) : (
+      <div className="settings-card-stack">
+      <section className="settings-general-section settings-card">
+        <h3 className="settings-general-heading">{t("settings.chat")}</h3>
+        {switchRow(t("settings.shiftEnterToSend"), shiftEnterToSend, (enabled) => {
+          setShiftEnterToSend(enabled);
+          setShiftEnterToSendState(enabled);
+        })}
+        {switchRow(t("settings.autoSessionTitle"), autoSessionTitle, (enabled) => {
+          setAutoSessionTitleEnabled(enabled);
+          setAutoSessionTitle(enabled);
+        })}
+        {switchRow(t("settings.quoteSelection"), quoteSelectionEnabled, onQuoteSelectionChange)}
+        {switchRow(t("settings.sidebarSingleProject"), singleProject, (enabled) => {
+          setSidebarSingleProject(enabled);
+          setSingleProject(enabled);
+        })}
+        {shellSettings?.isWindows && (
           <>
-            <div className="settings-font-link-row">
-              <ConfigButton
-                size="small"
-                variant="secondary"
-                disabled={sarasaStatus === "loading"}
-                onClick={() => void downloadSarasaFont()}
-              >
-                {sarasaStatus === "loading" ? t("settings.fontDownloadLoading") : t("settings.fontDownload")}
-              </ConfigButton>
+            <div className="settings-row" title={t("settings.shellToolDescription")}>
+              <span>{t("settings.usePowerShell")}</span>
+              <ConfigSwitch
+                checked={shellSettings.powerShellEnabled}
+                loading={shellSaving}
+                label={t("settings.usePowerShell")}
+                onChange={(enabled) => void togglePowerShell(enabled)}
+              />
             </div>
-            <p role="status" className={sarasaStatus === "error" ? "settings-general-error" : "settings-general-description"}>
-              {sarasaStatus === "error" ? `${t("settings.fontDownloadFailed")} ${sarasaError}` : t("settings.fontNotInstalled")}
-            </p>
+            {shellError && <p role="alert" className="settings-general-error">{shellError}</p>}
           </>
         )}
       </section>
 
-      <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t("settings.pushPermission")}</h3>
-        <p className="settings-general-description">{t("settings.pushPermissionDescription")}</p>
-        <div className="settings-font-link-row">
-          <ConfigButton
-            size="small"
-            variant="secondary"
-            disabled={pushRegistering}
-            onClick={() => void registerPush()}
-          >
+      <section className="settings-general-section settings-card">
+        <h3 className="settings-general-heading">{t("settings.notifications")}</h3>
+        {notificationPermission && (
+          <div className="settings-row">
+            <span>{t("settings.browserNotifications")}</span>
+            {notificationPermission === "granted" ? (
+              <span className="settings-chat-status">{t("settings.browserNotificationsOn")}</span>
+            ) : notificationPermission === "denied" ? (
+              <span className="settings-chat-status">{t("settings.browserNotificationsBlocked")}</span>
+            ) : (
+              <ConfigButton size="small" onClick={() => void Notification.requestPermission().then(setNotificationPermission)}>
+                {t("settings.browserNotificationsEnable")}
+              </ConfigButton>
+            )}
+          </div>
+        )}
+        <div className="settings-row" title={t("settings.pushPermissionDescription")}>
+          <span>{t("settings.pushPermission")}</span>
+          <ConfigButton size="small" variant="secondary" disabled={pushRegistering} onClick={() => void registerPush()}>
             {pushRegistering ? t("settings.pushRegisterLoading") : t("settings.pushRegister")}
           </ConfigButton>
         </div>
         {pushStatus && (
-          <p
-            role="status"
-            className="settings-general-error"
-            style={pushStatus.kind === "ok" ? { color: "var(--accent)" } : undefined}
-          >
+          <p role="status" className="settings-general-error" style={pushStatus.kind === "ok" ? { color: "var(--accent)" } : undefined}>
             {pushStatus.message}
           </p>
         )}
       </section>
+
       </div>
       </div>
+
+      <section className="settings-general-footer">
+        <AppUpdateNotice showCurrentVersion />
+        {webAuthEnabled && (
+          <div>
+            <ConfigButton variant="secondary" size="small" disabled={loggingOut} onClick={() => void logOut()}>
+              {loggingOut ? t("auth.loggingOut") : t("auth.logOut")}
+            </ConfigButton>
+          </div>
+        )}
+        {logoutError && <p role="alert" className="settings-general-error">{logoutError}</p>}
+      </section>
     </div>
   );
 }

@@ -297,6 +297,19 @@ function UserTextWithMentions({ text, cwd, onOpenFile }: { text: string; cwd?: s
   );
 }
 
+// pi SDK appends model-facing image hints to the user text when an attachment is
+// resized/converted (image-process.js / formatDimensionNote). Useful to the model,
+// noise to the human — strip from display only; session data stays untouched.
+const IMAGE_HINT_LINE =
+  /^\[Image(?:: original \d+x\d+, displayed at \d+x\d+\. Multiply coordinates by \d+\.\d{2} to map to original image\.| converted from \S+ to \S+\.)\]$/;
+
+function stripImageHints(text: string): string {
+  const lines = text.split("\n");
+  let end = lines.length;
+  while (end > 0 && (lines[end - 1].trim() === "" || IMAGE_HINT_LINE.test(lines[end - 1].trim()))) end -= 1;
+  return lines.slice(0, end).join("\n");
+}
+
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
   message: UserMessage;
   cwd?: string;
@@ -313,13 +326,14 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  const content =
+  const content = stripImageHints(
     typeof message.content === "string"
       ? message.content
       : message.content
           .filter((b): b is TextContent => b.type === "text")
           .map((b) => b.text)
-          .join("\n");
+          .join("\n"),
+  );
 
   const imageBlocks: ImageContent[] =
     typeof message.content === "string"

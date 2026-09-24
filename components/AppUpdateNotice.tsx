@@ -94,14 +94,14 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: showCurrentVersion ? "flex-start" : "center", gap: 6 }}>
       {showCurrentVersion && (
-        <>
-          <p style={{ fontSize: 12 }}>{t("appUpdate.currentVersion", { version: update?.currentVersion ?? process.env.NEXT_PUBLIC_APP_VERSION ?? "dev" })}</p>
+        <p style={{ fontSize: 12 }}>
+          {t("appUpdate.currentVersion", { version: update?.currentVersion ?? process.env.NEXT_PUBLIC_APP_VERSION ?? "dev" })}
           {!available && (
-            <p role="status" style={{ color: "var(--text-muted)", fontSize: 12 }}>
-              {t(checkFailed ? "appUpdate.checkFailed" : !update ? "appUpdate.checking" : !update.releaseUrl ? "appUpdate.checkDisabled" : "appUpdate.upToDate")}
-            </p>
+            <span role="status" style={{ color: "var(--text-muted)" }}>
+              {" · "}{t(checkFailed ? "appUpdate.checkFailed" : !update ? "appUpdate.checking" : !update.releaseUrl ? "appUpdate.checkDisabled" : "appUpdate.upToDate")}
+            </span>
           )}
-        </>
+        </p>
       )}
       {available && update && (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

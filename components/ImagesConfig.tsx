@@ -172,10 +172,9 @@ export function ImagesConfig({
   return (
     <div className="settings-general">
       <h2 className="settings-general-title">{t("settings.images")}</h2>
-      <section className="settings-general-section">
-        <p className="settings-general-description">{t("settings.imagesDescription")}</p>
-        <div className="settings-image-options">
-          <div className="settings-chat-option settings-chat-switch-option">
+      <div className="settings-card-grid">
+        <section className="settings-card settings-card-wide">
+          <div className="settings-row" title={t("settings.imagesDescription")}>
             <span>{t("settings.imagesEnabled")}</span>
             <div className="settings-image-actions">
               {reloadNeeded && sessionId && (
@@ -195,9 +194,10 @@ export function ImagesConfig({
           {settings?.enabled && (
             <>
             {settings.connections.some((connection) => connection.enabled) && (
-              <label className="settings-image-field">
+              <div className="settings-row">
                 <span>{t("settings.imagesDefault")}</span>
                 <select
+                  className="settings-select"
                   value={settings.defaultConnection}
                   disabled={loading || saving || reloading}
                   onChange={(event) => void save({ default: event.target.value })}
@@ -208,11 +208,17 @@ export function ImagesConfig({
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
             )}
-            <div className="settings-general-columns">
-              <div>
-              <h3 className="settings-image-group">{t("settings.imagesBuiltin")}</h3>
+            </>
+          )}
+          {reloadNeeded && <p role="status" className="settings-image-reload-notice">{t("agents.reloadRequired")}</p>}
+          {error && <p role="alert" className="settings-general-error">{error}</p>}
+        </section>
+          {settings?.enabled && (
+            <>
+              <section className="settings-card">
+              <h3 className="settings-general-heading">{t("settings.imagesBuiltin")}</h3>
               {builtin.map((connection) => (
                 <ConnectionSwitch
                   key={connection.id}
@@ -229,10 +235,10 @@ export function ImagesConfig({
                   editLabel={t("i18n.rename")}
                 />
               ))}
-              </div>
-              <div>
+              </section>
+              <section className="settings-card">
               <div className="settings-image-group-row">
-                <h3 className="settings-image-group">{t("settings.imagesCustom")}</h3>
+                <h3 className="settings-general-heading">{t("settings.imagesCustom")}</h3>
                 {providers.length > 0 && !draft && (
                   <ConfigButton
                     size="small"
@@ -332,14 +338,10 @@ export function ImagesConfig({
                   </div>
                 </form>
               )}
-              </div>
-            </div>
+              </section>
             </>
           )}
-          {reloadNeeded && <p role="status" className="settings-image-reload-notice">{t("agents.reloadRequired")}</p>}
-          {error && <p role="alert" className="settings-general-error">{error}</p>}
-        </div>
-      </section>
+      </div>
     </div>
   );
 }
