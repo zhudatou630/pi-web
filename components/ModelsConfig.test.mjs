@@ -143,11 +143,11 @@ test("an ambiguous entry is shown separately and cannot mask the unavailable lis
   assert.match(source, /\.filter\(\(pattern\) => !\(scopeDoc\.ambiguous \?\? \[\]\)\.includes\(pattern\)\)/);
 });
 
-test("chat scope lives in one bar above the provider list, not a separate tab", () => {
-  assert.match(source, /const renderScopeBar = \(\) =>/);
-  assert.match(source, /\{renderScopeBar\(\)\}\n\s*\{renderProvidersTab\(\)\}/);
+test("the chat list has no banner, only notices when something needs attention", () => {
+  assert.match(source, /const renderScopeNotices = \(\) =>/);
+  assert.match(source, /<ConfigDetailStack className="is-fill">\n\s*\{renderScopeNotices\(\)\}/);
   assert.doesNotMatch(source, /role="tab"/);
-  assert.doesNotMatch(source, /renderChatTab/);
+  assert.doesNotMatch(source, /renderScopeBar|renderChatTab/);
 });
 
 test("no action can write an empty list, because that would mean every model", () => {
@@ -157,9 +157,9 @@ test("no action can write an empty list, because that would mean every model", (
   assert.match(saveScope, /if \(current\.readOnly\) return false;/);
 });
 
-test("the all-models state offers a named way into picking a list", () => {
-  assert.match(source, /t\("models\.pickOnlyThese"\)/);
-  assert.match(source, /onClick=\{\(\) => openAdd\(\)\}/);
+test("picking chat models is a sidebar action next to adding a provider", () => {
+  assert.match(source, /<ConfigListAction onClick=\{\(\) => openAdd\(\)\} disabled=\{!cwd \|\| !scopeDoc \|\| scopeDoc\.readOnly\}>/);
+  assert.match(source, /t\("models\.pickChatModels"\)/);
 });
 
 test("each provider shows how many of its models are in chat", () => {

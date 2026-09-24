@@ -551,27 +551,17 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     );
   };
 
-  // ── Chat scope bar ──────────────────────────────────────────────────────────
+  // ── Chat list notices ───────────────────────────────────────────────────────
 
-  /** What chat offers, where that is saved, and list entries no provider page can show. */
-  const renderScopeBar = () => {
-    if (!cwd) return <div className="models-scope-bar"><span className="models-hint">{t("models.scopeNoCwd")}</span></div>;
-    if (!scopeDoc) return scopeError ? <div className="models-scope-bar"><Notice tone="danger">{scopeError}</Notice></div> : null;
-    const allMode = scopeDoc.source === "none";
-    const whereKey = scopeDoc.source === "project" ? "models.scopeWhereProject" : "models.scopeWhereGlobal";
+  /**
+   * The chat list only speaks up when something needs attention; the counts in
+   * the sidebar and the switches on each row already say what chat offers.
+   */
+  const renderScopeNotices = () => {
+    if (!cwd) return <Notice>{t("models.scopeNoCwd")}</Notice>;
+    if (!scopeDoc) return scopeError ? <Notice tone="danger">{scopeError}</Notice> : null;
     return (
-      <div className="models-scope-bar">
-        <div className="models-scope-line">
-          <span className="models-scope-text">
-            <strong>{allMode ? t("models.chatAllTitle", { count: chatRefs.length }) : t("models.chatListTitle", { count: chatRefs.length })}</strong>
-            <span className="models-hint">{t("models.chatScopeDesc", { where: t(whereKey) })}</span>
-          </span>
-          {!scopeDoc.readOnly && (
-            <ConfigButton size="small" onClick={() => openAdd()}>
-              {allMode ? t("models.pickOnlyThese") : t("models.addToChat")}
-            </ConfigButton>
-          )}
-        </div>
+      <>
         {scopeDoc.readOnly && <Notice tone="warning">{t("models.scopeReadOnly")}</Notice>}
         {scopeNotice && <Notice tone="info">{scopeNotice}</Notice>}
         {scopeError && <Notice tone="danger">{scopeError}</Notice>}
@@ -593,7 +583,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             onRemove={(pattern) => void saveScope((current) => removePattern(current.patterns, pattern))}
           />
         )}
-      </div>
+      </>
     );
   };
 
@@ -808,10 +798,16 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             {otherRows.length > 0 && <ConfigSidebarGroupLabel>{t("models.groupNotConnected")}</ConfigSidebarGroupLabel>}
             {otherRows.map(item)}
           </ConfigSidebarList>
-          <ConfigListAction onClick={() => setPickerOpen(true)}>{t("models.addProvider")}</ConfigListAction>
+          <div className="models-sidebar-actions">
+            <ConfigListAction onClick={() => openAdd()} disabled={!cwd || !scopeDoc || scopeDoc.readOnly}>
+              {t("models.pickChatModels")}
+            </ConfigListAction>
+            <ConfigListAction onClick={() => setPickerOpen(true)}>{t("models.addProvider")}</ConfigListAction>
+          </div>
         </ConfigSidebar>
         <ConfigDetail>
           <ConfigDetailStack className="is-fill">
+            {renderScopeNotices()}
             {loading ? null : !active ? (
               <ConfigEmptyState>{t("models.noProviders")}</ConfigEmptyState>
             ) : model ? (
@@ -828,7 +824,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   return (
     <>
     <ConfigPanelShell embedded={embedded} title={t("common.models")} closeLabel={t("i18n.close")} onClose={onClose}>
-      {renderScopeBar()}
       {renderProvidersTab()}
 
       {(configDirty || saving || savedOk || saveError || configFatalError) && (

@@ -1416,35 +1416,9 @@
   text-align: center;
 }
 
-/* Chat scope: one line above the provider list. */
-.models-scope-bar {
-  display: flex;
-  flex-shrink: 0;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.models-scope-line {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.models-scope-text {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  min-width: 0;
-}
-
-.models-scope-text strong {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 650;
+.models-sidebar-actions .config-list-action + .config-list-action {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .models-dirty-dot {
