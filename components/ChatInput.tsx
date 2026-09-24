@@ -292,8 +292,6 @@ function focusTextareaAt(textareaRef: React.RefObject<HTMLTextAreaElement | null
     if (!textarea) return;
     textarea.focus();
     textarea.setSelectionRange(position, position);
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
   });
 }
 
@@ -688,8 +686,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
-        ta.style.height = "auto";
-        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
     },
     replaceMessage(message: UserMessage) {
@@ -711,8 +707,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
-        ta.style.height = "auto";
-        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
     },
     prependText(text: string) {
@@ -729,8 +723,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         if (!ta) return;
         ta.focus();
         ta.setSelectionRange(combined.length, combined.length);
-        ta.style.height = "auto";
-        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
     },
     rekeyDraft(previousKey: string, nextKey: string) {
@@ -812,8 +804,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         if (!ta) return;
         ta.focus();
         ta.setSelectionRange(ta.value.length, ta.value.length);
-        ta.style.height = "auto";
-        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
     },
     insertText(text: string) {
@@ -836,8 +826,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         const pos = start + sep.length + text.length;
         ta.setSelectionRange(pos, pos);
         ta.focus();
-        ta.style.height = "auto";
-        ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
       });
     },
     addImages(files: File[]) {
@@ -918,9 +906,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     clearImages();
     mentionedImagesRef.current = [];
     setMentionedImages([]);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
   }, [clearImages, draftKey]);
 
   useEffect(() => {
@@ -964,8 +949,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const resizeTextarea = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
+    // Measure without a scrollbar: the global ::-webkit-scrollbar takes 4px of
+    // layout width (even on mobile), which would wrap a nearly-full last line
+    // during measurement and leave a phantom blank line afterwards.
+    ta.style.overflowY = "hidden";
     ta.style.height = "auto";
-    if (ta.value) ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+    if (!ta.value) return;
+    const height = ta.scrollHeight;
+    ta.style.height = `${Math.min(height, 200)}px`;
+    if (height > 200) ta.style.overflowY = "auto";
   }, []);
 
   useLayoutEffect(resizeTextarea, [value, fontSize, resizeTextarea]);
@@ -1433,13 +1425,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     },
     [isMobile, isStreaming, onSteer, onFollowUp, onAbort, imageMenuOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
   );
-
-  const handleInput = useCallback(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
-  }, []);
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData?.items ?? []);
@@ -2432,7 +2417,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               setCursorPosition(el.selectionStart);
               updateAtQuery(el.value, el.selectionStart);
             }}
-            onInput={handleInput}
             onPaste={handlePaste}
             rows={1}
             style={{
@@ -2450,7 +2434,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               fontFamily: bashMode ? "var(--font-mono)" : "var(--font-chat)",
               minHeight: compact ? 96 : 24,
               maxHeight: 200,
-              overflow: "auto",
             }}
           />
 
