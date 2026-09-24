@@ -453,6 +453,16 @@
   white-space: nowrap;
 }
 
+.skill-delete-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
 .skill-version-row {
   display: flex;
   flex-wrap: wrap;

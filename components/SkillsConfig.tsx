@@ -80,6 +80,9 @@ function SkillDetail({
   updateError,
   onCheckUpdate,
   onUpdate,
+  onDelete,
+  deleting,
+  deleteError,
 }: {
   skill: Skill;
   cwd: string;
@@ -92,6 +95,9 @@ function SkillDetail({
   updateError: string | null;
   onCheckUpdate: () => void;
   onUpdate: () => void;
+  onDelete: () => void;
+  deleting: boolean;
+  deleteError: string | null;
 }) {
   const { t } = useI18n();
   const label = sourceLabel(skill);
@@ -225,6 +231,19 @@ function SkillDetail({
           {skill.description}
         </span>
       </ConfigField>
+
+      <div className="skill-delete-row">
+        {skill.removable ? (
+          <ConfigButton variant="danger" size="small" onClick={onDelete} disabled={deleting}>
+            {t("i18n.delete")}
+          </ConfigButton>
+        ) : (
+          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("skills.notRemovable")}</span>
+        )}
+        {deleteError && (
+          <span style={{ fontSize: 12, color: "#ef4444", overflowWrap: "anywhere" }}>{deleteError}</span>
+        )}
+      </div>
     </ConfigDetailStack>
   );
 }
@@ -574,6 +593,8 @@ export function SkillsConfig({
   const [updatingSkill, setUpdatingSkill] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [projectResourcesLoaded, setProjectResourcesLoaded] = useState(true);
+  const [deletingSkill, setDeletingSkill] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadSkills = useCallback(async () => {
     setLoading(true);
@@ -734,6 +755,32 @@ export function SkillsConfig({
     }
   }, [cwd]);
 
+  const deleteSkill = useCallback(async (skill: Skill) => {
+    const message = [
+      t("skills.deleteConfirm", { path: shortenPath(skill.filePath) }),
+      skill.install ? t("skills.deleteViaSkillsSh") : null,
+      t("skills.deleteReloadHint"),
+    ].filter(Boolean).join("\n\n");
+    if (!window.confirm(message)) return;
+    setDeletingSkill(skill.filePath);
+    setDeleteError(null);
+    try {
+      const res = await fetch("/api/skills", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, filePath: skill.filePath }),
+      });
+      const d = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !d.success) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setSelected(null);
+      await loadSkills();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingSkill(null);
+    }
+  }, [cwd, loadSkills, t]);
+
   const selectedSkill = skills.find((s) => s.filePath === selected) ?? null;
 
   return (
@@ -816,6 +863,7 @@ export function SkillsConfig({
                         onClick={() => {
                           setSelected(skill.filePath);
                           setAddMode(false);
+                          setDeleteError(null);
                         }}
                       >
                         <ConfigStatusDot active={!disabled} />
@@ -904,6 +952,9 @@ export function SkillsConfig({
                 updateError={updateError}
                 onCheckUpdate={() => void checkForUpdates(selectedSkill)}
                 onUpdate={() => void updateInstalledSkill(selectedSkill)}
+                onDelete={() => void deleteSkill(selectedSkill)}
+                deleting={deletingSkill === selectedSkill.filePath}
+                deleteError={deleteError}
               />
               ) : (
                 <ConfigEmptyState>{t("i18n.selectSkill")}</ConfigEmptyState>

@@ -84,6 +84,8 @@ export interface SkillInfo {
     scope?: string;
   };
   install?: SkillInstallInfo;
+  /** Lives directly in an auto-discovered skills directory, so the Skills panel may delete it. */
+  removable?: boolean;
 }
 
 export interface SkillsResponse {
