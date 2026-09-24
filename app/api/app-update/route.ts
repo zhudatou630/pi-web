@@ -11,8 +11,18 @@ const FETCH_TIMEOUT_MS = 5_000;
 const SKIP_VERSION_CHECK = process.env.PI_WEB_SKIP_VERSION_CHECK === "1";
 const CAN_UPDATE = process.env.PI_WEB_CAN_UPDATE === "1" && typeof process.send === "function";
 
+// Mirror of the launcher's PI_WEB_UPDATE_BLOCKED reasons (bin/app-update.js).
+const MANUAL_COMMANDS: Record<string, string> = {
+  readonly: "sudo npm install -g @calmabacus/pi-web@latest",
+};
+
 function updateResponse(value: AppUpdateResponse) {
-  return NextResponse.json({ ...value, canUpdate: CAN_UPDATE }, {
+  const manualCommand = MANUAL_COMMANDS[process.env.PI_WEB_UPDATE_BLOCKED ?? ""];
+  return NextResponse.json({
+    ...value,
+    canUpdate: CAN_UPDATE,
+    ...(manualCommand ? { manualCommand } : {}),
+  }, {
     headers: { "Cache-Control": "no-store" },
   });
 }

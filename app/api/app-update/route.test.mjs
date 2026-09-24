@@ -11,14 +11,14 @@ const source = ts.transpileModule(readFileSync(new URL("./route.ts", import.meta
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-function route({ enabled = true, sessions = false, terminals = false } = {}) {
+function route({ enabled = true, sessions = false, terminals = false, blocked = "" } = {}) {
   const deferred = [];
   const messages = [];
   const exports = {};
   const context = vm.createContext({
     exports, console, AbortSignal, URL,
     process: {
-      env: { PI_WEB_CAN_UPDATE: enabled ? "1" : "0", NEXT_PUBLIC_APP_VERSION: "1.0.0" },
+      env: { PI_WEB_CAN_UPDATE: enabled ? "1" : "0", NEXT_PUBLIC_APP_VERSION: "1.0.0", ...(blocked ? { PI_WEB_UPDATE_BLOCKED: blocked } : {}) },
       connected: true,
       send: (message, callback) => { messages.push(message); callback(null); },
     },
@@ -71,6 +71,13 @@ test("accepts only one update and defers shutdown until the response has been se
   assert.equal(api.deferred.length, 1);
   api.deferred[0]();
   assert.equal(api.messages[0].type, "pi-web:update");
+});
+
+test("read-only installs expose the manual update command", async () => {
+  const response = await route({ enabled: false, blocked: "readonly" }).GET(new Request("http://localhost/api/app-update"));
+  const data = await response.json();
+  assert.equal(data.canUpdate, false);
+  assert.equal(data.manualCommand, "sudo npm install -g @calmabacus/pi-web@latest");
 });
 
 test("a disconnected launcher refuses updates", async () => {

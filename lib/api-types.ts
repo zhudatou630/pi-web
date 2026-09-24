@@ -105,6 +105,7 @@ export interface AppUpdateResponse {
   updateAvailable: boolean;
   releaseUrl: string;
   canUpdate?: boolean;
+  manualCommand?: string;
 }
 
 export interface PushConfigResponse {

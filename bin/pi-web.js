@@ -81,7 +81,8 @@ if (!loopbackHostnames.has(hostname)) {
 const nextArgs = ["start", "-p", port];
 nextArgs.push("-H", hostname);
 
-const npmCli = getGlobalNpmCli(pkgDir);
+const npmUpdate = getGlobalNpmCli(pkgDir);
+const npmCli = npmUpdate?.npmCli;
 
 function installUpdate() {
   console.log("[pi-web] Installing the latest version…");
@@ -95,8 +96,13 @@ function installUpdate() {
     if (code === 0 && !signal) {
       startServer(false);
     } else {
-      console.error("[pi-web] Update failed. Run: npm install -g @calmabacus/pi-web@latest && pi-web");
-      process.exitCode = 1;
+      // npm usually fails before touching the installed files (network), so
+      // the old version is still intact — keep serving it instead of leaving
+      // a silently dead port under a process supervisor.
+      // ponytail: a half-written package would crash this restart and let the
+      // supervisor loop; rare and visible in logs, real fix = tarball rollback.
+      console.error("[pi-web] Update failed; still running the previous version. To retry: npm install -g @calmabacus/pi-web@latest && pi-web");
+      startServer(false);
     }
     return true;
   });
@@ -110,7 +116,12 @@ function startServer(shouldOpenBrowser) {
   const child = spawn(process.execPath, [nextBin, ...nextArgs], {
     cwd: pkgDir,
     stdio: ["inherit", "pipe", "inherit", "ipc"],
-    env: { ...process.env, PI_WEB_HOSTNAME: hostname, PI_WEB_CAN_UPDATE: npmCli ? "1" : "0" },
+    env: {
+      ...process.env,
+      PI_WEB_HOSTNAME: hostname,
+      PI_WEB_CAN_UPDATE: npmCli ? "1" : "0",
+      ...(npmUpdate?.reason ? { PI_WEB_UPDATE_BLOCKED: npmUpdate.reason } : {}),
+    },
   });
   wireChildProcessLifecycle(child, process, 5000, console.error, (_code, _signal, shuttingDown) => {
     clearTimeout(stopTimer);

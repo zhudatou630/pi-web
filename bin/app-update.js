@@ -6,8 +6,15 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 // Only offer updates when npm's global package is exactly this installation.
+// systemd (INVOCATION_ID) is allowed: the launcher survives an update in place
+// (it respawns the next child itself, so the unit's main process never exits
+// and the supervisor stays out of the loop). pm2 still opts out.
+// Returns { npmCli } when in-app updates are possible, { reason: "readonly" }
+// when the matching install exists but npm's folders are not writable, or
+// undefined for installs npm cannot update at all (git checkout, pm2).
 function getGlobalNpmCli(pkgDir, env = process.env) {
-  if (env.INVOCATION_ID || env.pm_id || env.PM2_HOME || fs.existsSync(path.join(pkgDir, ".git"))) return undefined;
+  if (env.pm_id || env.PM2_HOME || fs.existsSync(path.join(pkgDir, ".git"))) return undefined;
+  let sawReadonly = false;
   for (const dir of (env.PATH || "").split(path.delimiter)) {
     try {
       const npmCli = process.platform === "win32"
@@ -24,10 +31,12 @@ function getGlobalNpmCli(pkgDir, env = process.env) {
       fs.accessSync(root, fs.constants.W_OK);
       fs.accessSync(path.dirname(installed), fs.constants.W_OK);
       fs.accessSync(installed, fs.constants.W_OK);
-      return npmCli;
-    } catch { /* A missing npm or read-only install uses manual updates. */ }
+      return { npmCli };
+    } catch (error) {
+      if (error?.code === "EACCES" || error?.code === "EPERM") sawReadonly = true;
+    }
   }
-  return undefined;
+  return sawReadonly ? { reason: "readonly" } : undefined;
 }
 
 module.exports = { getGlobalNpmCli };

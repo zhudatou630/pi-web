@@ -157,6 +157,7 @@ export const zhTWLocale: LocalePlugin = {
     "appUpdate.checkFailed": "檢查更新失敗，請稍後重新開啟設定。",
     "appUpdate.checkDisabled": "版本檢查已關閉",
     "appUpdate.manualUpdate": "目前安裝方式不支援一鍵更新，請依安裝說明手動更新。",
+    "appUpdate.manualCommand": "npm 全域目錄沒有寫入權限，請用以下命令手動更新：",
     "appUpdate.releaseNotes": "Pi Web v{version} 已推出，查看版本資訊",
     "appUpdate.updateAndRestart": "更新並重新啟動",
     "appUpdate.confirm": "更新 Pi Web 並重新啟動服務？連線會短暫中斷，請先完成正在執行的工作。更新完成後頁面將自動重新整理。",

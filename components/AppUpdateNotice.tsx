@@ -151,7 +151,15 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
         </div>
       )}
       {showCurrentVersion && available && !update?.canUpdate && (
-        <p style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("appUpdate.manualUpdate")}</p>
+        update?.manualCommand ? (
+          <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
+            {t("appUpdate.manualCommand")}
+            <br />
+            <code>{update.manualCommand}</code>
+          </p>
+        ) : (
+          <p style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("appUpdate.manualUpdate")}</p>
+        )
       )}
       {(status === "requesting" || status === "waiting") && (
         <p role="status" style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("appUpdate.waiting")}</p>

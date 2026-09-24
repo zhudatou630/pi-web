@@ -3,12 +3,14 @@
 ## Quick Start
 
 ```bash
-npm run dev   # port 30141
+npm run dev   # port 30143 (remote: https://nuc.tailb8ef79.ts.net:10446)
 ```
+
+Port 30141 is the stable npm-installed service (`~/.npm-global/.../@calmabacus/pi-web`, remote via tailscale :10443) — this checkout is for development only. Do not run `npm run start` from this checkout; it would collide with that service.
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
 Lint: `npm run lint`  
-**Never run `next build` during dev** — pollutes `.next/` and breaks `npm run dev`.
+`next build` coexists with the dev server: production output goes to `.next/` root while Turbopack dev uses `.next/dev/`. A running dev server survives a build, and `npm run dev` restarts cleanly afterward (verified on Next 16).
 
 ### Testing policy
 
@@ -19,7 +21,8 @@ Lint: `npm run lint`
 
 ### Dev server troubleshooting
 
-- Before starting a server, run `lsof -nP -iTCP:30141 -sTCP:LISTEN` and reuse the existing Pi Web process when it is healthy. A second `next dev` for the same checkout cannot use a different port as a workaround because both processes contend for `.next/dev/lock`.
+- Before starting a dev server, run `lsof -nP -iTCP:30143 -sTCP:LISTEN` and reuse the existing healthy dev process. A second `next dev` for the same checkout cannot use a different port as a workaround because both processes contend for `.next/dev/lock`.
+- Port 30141 belongs to the stable npm service, not this checkout. Never bind dev to 30141 and never kill that process to free it.
 - A browser-only `Module ... factory is not available` overlay usually means that tab has a stale Turbopack/HMR graph; it does not prove the server or source is broken. First call the browser's explicit reload action, then compare the current server log and a direct HTTP/API request.
 - Restart only after the failure reproduces from a fresh page and the server-side checks also fail. Stop the exact dev process gracefully, move `.next` into a `mktemp -d` backup, and restart with the standard `npm run dev` command.
 - Do not use `next dev --webpack` as a fallback. This repository's development graph can fail on `undici` imports such as `node:console`; development is expected to use Turbopack.
@@ -27,11 +30,11 @@ Lint: `npm run lint`
 
 ### Production & Service Runtime Protection
 
-When running Pi Web as a persistent service (e.g. systemd, pm2, or `scripts/pi-web-switch.sh` on a host machine):
-- Live service processes execute `next start` directly against `.next/`.
-- **Agents must not run `next build` / `npm run build` / `npm run start` / `npm run dev` or stop/restart services without explicit user confirmation**, because rebuilding rewrites `.next/` and can terminate or corrupt the active server instance.
-- Before starting a dev process on an unmanaged machine, check port availability (`lsof -nP -iTCP:30141 -sTCP:LISTEN`) and reuse an existing healthy process.
-- When code changes require a rebuild on a machine with a running service, output the exact command and let the user execute it.
+Topology on this machine: the stable service is the global npm install on 127.0.0.1:30141 (tailscale :10443); this checkout's dev server runs on 30143 (tailscale :10446). Repo builds/dev runs cannot corrupt the service because it executes the packaged `.next` under `~/.npm-global`, not this checkout's `.next/`.
+
+- **Never stop/restart the 30141 service or bind anything to 30141 without explicit user confirmation.**
+- Dev and the stable service share `~/.pi/agent` (sessions, auth, models.json, skills, plugins). Destructive actions in dev — deleting sessions, editing models/skills, installing plugins — hit the user's real data.
+- Upgrades ship through npm release: verify in dev, publish, update the global package, then output the exact restart command and let the user execute it.
 
 ---
 
