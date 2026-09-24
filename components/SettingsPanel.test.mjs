@@ -55,7 +55,10 @@ test("keeps visited settings sections mounted and contains nested Escape handlin
   assert.match(panelSource, /mountedSections\.has\(id\)/);
   assert.match(panelSource, /hidden=\{section !== id\}/);
   assert.match(panelSource, /event\.defaultPrevented/);
-  assert.match(modelsSource, /e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*onClose\(\);/);
+  const dialogSource = await readFile(new URL("./models/fields.tsx", import.meta.url), "utf8");
+  assert.match(modelsSource, /<ModelPickerDialog/);
+  assert.match(dialogSource, /e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*onClose\(\);/);
+  assert.match(panelSource, /modelsDirtyRef\.current && !window\.confirm\(t\("models\.discardConfirm"\)\)/);
 });
 
 test("offers direct light, dark, and system theme selection", () => {

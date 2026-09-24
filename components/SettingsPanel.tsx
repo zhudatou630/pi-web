@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme, type ThemePreference } from "@/hooks/useTheme";
 import { SubagentIcon } from "./SubagentIcon";
@@ -507,6 +507,14 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     { id: "plugins", label: t("common.plugins"), requiresProject: true },
   ];
 
+  // Unsaved models.json edits live only in the Models section; closing drops them.
+  const modelsDirtyRef = useRef(false);
+  const handleModelsDirty = useCallback((dirty: boolean) => { modelsDirtyRef.current = dirty; }, []);
+  const requestClose = useCallback(() => {
+    if (modelsDirtyRef.current && !window.confirm(t("models.discardConfirm"))) return;
+    onClose();
+  }, [onClose, t]);
+
   useEffect(() => setLastSettingsSection(initialSection), [initialSection]);
 
   useEffect(() => {
@@ -514,11 +522,11 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
       event.stopPropagation();
-      onClose();
+      requestClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     if (cwd || (section !== "skills" && section !== "agents" && section !== "plugins")) return;
@@ -548,7 +556,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
       role="dialog"
       aria-modal="true"
       aria-label={t("settings.title")}
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}
       className="settings-dialog-backdrop"
     >
       <div className="settings-dialog-surface">
@@ -586,12 +594,12 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
               );
             })}
           </nav>
-          <button type="button" onClick={onClose} title={t("i18n.close")} aria-label={t("i18n.close")} className="config-close-button settings-dialog-close">×</button>
+          <button type="button" onClick={requestClose} title={t("i18n.close")} aria-label={t("i18n.close")} className="config-close-button settings-dialog-close">×</button>
         </div>
 
         <main className="settings-dialog-main">
           {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
-          {sectionHost("models", <ModelsConfig embedded onClose={onClose} cwd={cwd} onModelsChanged={onModelsChanged} />)}
+          {sectionHost("models", <ModelsConfig embedded onClose={requestClose} cwd={cwd} onModelsChanged={onModelsChanged} onDirtyChange={handleModelsDirty} />)}
           {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}
           {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}

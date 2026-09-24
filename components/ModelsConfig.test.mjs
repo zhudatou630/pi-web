@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
 
@@ -15,13 +15,18 @@ const {
   updateHeaderRow,
 } = await jiti.import("./models-config-helpers.ts");
 
-const source = await readFile(new URL("./ModelsConfig.tsx", import.meta.url), "utf8");
+// The panel is split across ModelsConfig.tsx and components/models/; the
+// structural checks below read them as one source.
+const source = (await Promise.all(
+  ["./ModelsConfig.tsx", ...(await readdir(new URL("./models/", import.meta.url))).map((name) => `./models/${name}`)]
+    .map((path) => readFile(new URL(path, import.meta.url), "utf8")),
+)).join("\n");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
 
 test("the provider name field edits the display name, never the provider id", () => {
   // The id keys models.json, auth.json, and enabledModels, so renaming it here
   // silently orphaned the credentials, the chat list, and defaultProvider.
-  assert.match(source, /<Field label=\{t\("models\.displayName"\)\}>/);
+  assert.match(source, /<ConfigField label=\{t\("models\.displayName"\)\}>/);
   assert.match(source, /value=\{provider\.name \?\? ""\}/);
   assert.match(source, /onChange=\{\(v\) => set\("name", v\.trim\(\) \|\| undefined\)\}/);
   assert.doesNotMatch(source, /onRename/);
@@ -31,54 +36,55 @@ test("the provider name field edits the display name, never the provider id", ()
 });
 
 test("the provider header and sidebar row show the display name", () => {
-  assert.match(source, /<SectionTitle>\{provider\.name \?\? providerId\}<\/SectionTitle>/);
-  assert.match(source, /\{config\.providers\?\.\[pName\]\?\.name \?\? pName\}/);
+  assert.match(source, /label: json\?\.name \?\? oauth\?\.name \?\? apiKey\?\.displayName \?\? id/);
+  assert.match(source, /<strong className="models-title">\{row\.label\}<\/strong>/);
+  assert.match(source, /<ConfigSidebarText className=\{`is-grow\$\{row\.connected \? "" : " is-muted"\}`\}>\{row\.label\}<\/ConfigSidebarText>/);
 });
+
 test("every model definition is reachable from its provider, connected or not", () => {
   // Editing a definition writes models.json and has nothing to do with the chat
   // list, so a definition must not become unreachable just because the provider
   // is signed out or the model is not in chat.
-  assert.match(source, /t\("models\.definitions"\)/);
-  assert.match(source, /\(provider\.models \?\? \[\]\)\.map\(\(model, index\) => \(/);
-  assert.match(source, /onClick=\{\(\) => onSelectModel\(index\)\}/);
-  assert.match(source, /onSelectModel=\{\(index\) => setSelection\(\{ type: "model", providerName: providerId, index \}\)\}/);
-  // The list is not gated on the provider being connected.
-  assert.match(source, /const jsonModels = config\.providers\?\.\[providerId\]\?\.models \?\? \[\];/);
+  assert.match(source, /const definitions = json\?\.models \?\? \[\]/);
+  assert.match(source, /\.filter\(\(\{ model \}\) => !usableRefs\.has\(`\$\{row\.id\}\/\$\{model\.id\}`\)\)/);
+  assert.match(source, /onClick=\{\(\) => openProvider\(row\.id, model\.ref\)\}/);
+  // Every models.json provider gets a sidebar row, connected or not.
+  assert.match(source, /Object\.keys\(config\.providers \?\? \{\}\)\.forEach\(addId\)/);
 });
 
 test("a definition that does not resolve is marked, not hidden", () => {
-  assert.match(source, /usableRefs: ReadonlySet<string>/);
-  assert.match(source, /!usableRefs\.has\(`\$\{providerId\}\/\$\{model\.id\}`\)/);
-  assert.match(source, /t\("models\.notUsable"\)/);
+  assert.match(source, /usable: false,\n\s*definition: true/);
+  assert.match(source, /\{!model\.usable && <span className="models-tag is-warning">\{t\("models\.notUsable"\)\}<\/span>\}/);
 });
 
-test("custom providers use a single-line name without a redundant endpoint subtitle", () => {
-  assert.match(source, /<ConfigSidebarText className="is-grow">\{config\.providers\?\.\[pName\]\?\.name \?\? pName\}<\/ConfigSidebarText>/);
+test("built-in providers edit an override, custom providers a full endpoint", () => {
+  // An override must not silently gain a protocol just by being viewed.
+  assert.match(source, /if \(!builtIn && !provider\.api\) onChange/);
+  assert.match(source, /const builtIn = Boolean\(row\.oauth \|\| row\.apiKey\)/);
   assert.doesNotMatch(source, /t\("models\.customEndpoint"\)/);
 });
 
 test("model and provider creation have separate reachable actions", () => {
-  assert.match(source, /<ConfigListAction onClick=\{\(\) => openAdd\(\)\} disabled=\{!cwd \|\| !scopeDoc\}>\{t\("models\.addModel"\)\}/);
-  assert.match(source, /<ConfigListAction className="models-add-provider" onClick=\{\(\) => setPickerOpen\(true\)\}>\{t\("models\.addProvider"\)\}/);
-  assert.match(cssSource, /\.models-add-actions \.models-add-provider \{\s*justify-content: flex-end/);
-  assert.match(cssSource, /\.models-add-provider svg \{\s*order: 1/);
+  assert.match(source, /<ConfigListAction onClick=\{\(\) => setPickerOpen\(true\)\}>\{t\("models\.addProvider"\)\}/);
+  assert.match(source, /onClick=\{\(\) => addModel\(row\.id\)\}>\{t\("models\.newModel"\)\}/);
+  assert.match(source, /onClick=\{\(\) => openAdd\(\)\}/);
   assert.match(source, /existingIds=\{new Set\(\[/);
-  assert.match(source, /if \(!\/\^\[a-z0-9\]/);
+  assert.match(source, /const PROVIDER_ID_PATTERN = \/\^\[a-z0-9\]/);
   assert.doesNotMatch(source, /let finalName = "new-provider"/);
 });
 
-test("connected providers can add local models without opening the endpoint editor", () => {
-  assert.match(source, /const rows = chatRefs\.filter/);
-  assert.doesNotMatch(source, /connectedIds\.has\(providerId\) return false/);
-  assert.match(source, /onAddModel=\{/);
-  assert.match(source, /className="models-sidebar-indented-item"/);
-  assert.match(cssSource, /\.models-sidebar-indented-item \{[\s\S]*?padding-left: 26px/);
+test("each model row carries its own chat switch", () => {
+  // The provider page and the chat list edit the same enabledModels document.
+  assert.match(source, /if \(next\) void saveScope\(\(current\) => appendExactRef\(current\.patterns, ref\)\)/);
+  assert.match(source, /else void removeFromChat\(ref\)/);
+  // "Every model" has no per-model state to flip, so the switch is locked there.
+  assert.match(source, /disabled=\{allMode \|\| scopeDoc\.readOnly/);
 });
 
-test("the sidebar lists the models chat shows, not the rules behind them", () => {
+test("the chat tab lists the models chat shows, not the rules behind them", () => {
   // No key means every model: the list still has to be populated from the resolved set.
   assert.match(source, /const chatRefs = scopeDoc\?\.visible \?\? \[\]/);
-  assert.match(source, /const rows = chatRefs\.filter\(\(model\) => model\.provider === providerId\)/);
+  assert.match(source, /for \(const model of chatRefs\)/);
   // A glob or bare id never becomes a row, and the file's two notations stay hidden.
   assert.doesNotMatch(source, /models\.rules/);
   assert.doesNotMatch(source, /scopeInactive/);
@@ -134,7 +140,7 @@ test("a list entry that no longer resolves stays visible and removable", () => {
 });
 
 test("an ambiguous entry is shown separately and cannot mask the unavailable list", () => {
-  assert.match(source, /t\("models\.ambiguous", \{ count: scopeDoc\?\.ambiguous\?\.length \?\? 0 \}\)/);
+  assert.match(source, /t\("models\.ambiguous", \{ count: scopeDoc\.ambiguous\?\.length \?\? 0 \}\)/);
   assert.match(source, /\.filter\(\(pattern\) => !\(scopeDoc\.ambiguous \?\? \[\]\)\.includes\(pattern\)\)/);
 });
 
@@ -183,13 +189,13 @@ test("ignores malformed auth provider responses", () => {
 });
 
 test("custom model config exposes provider-level request headers", () => {
-  const providerDetail = source.slice(
-    source.indexOf("function ProviderDetail"),
-    source.indexOf("// ── ThinkingLevelMap editor"),
+  const endpointForm = source.slice(
+    source.indexOf("export function EndpointForm"),
+    source.indexOf("export function ModelDiscovery"),
   );
-  assert.match(providerDetail, /<HeaderListEditor/);
-  assert.match(providerDetail, /headers=\{provider\.headers\}/);
-  assert.match(providerDetail, /set\("headers", headers\)/);
+  assert.match(endpointForm, /<HeaderListEditor/);
+  assert.match(endpointForm, /headers=\{provider\.headers\}/);
+  assert.match(endpointForm, /set\("headers", headers\)/);
 });
 
 test("custom model config exposes model headers and supportsDeveloperRole compat flag", () => {
@@ -302,8 +308,8 @@ test("model cost drafts default blank prices to zero unless all are blank", () =
 
 test("manual price editing commits completed costs and removes only an all-blank group", () => {
   const modelDetail = source.slice(
-    source.indexOf("function ModelDetail"),
-    source.indexOf("// ── OAuth detail"),
+    source.indexOf("export function ModelDetail"),
+    source.indexOf("export function ModelDetail") + 40000,
   );
 
   assert.match(modelDetail, /const completeCost = parseCompleteModelCost\(nextDraft\)/);
@@ -317,8 +323,8 @@ test("manual price editing commits completed costs and removes only an all-blank
 
 test("model specs keep catalog-filled prices visible outside advanced settings", () => {
   const modelDetail = source.slice(
-    source.indexOf("function ModelDetail"),
-    source.indexOf("// ── OAuth detail"),
+    source.indexOf("export function ModelDetail"),
+    source.indexOf("export function ModelDetail") + 40000,
   );
   const specsIndex = modelDetail.indexOf('t("models.modelSpecs")');
   const costIndex = modelDetail.indexOf('t("models.costPerMillion")');
@@ -331,29 +337,23 @@ test("model specs keep catalog-filled prices visible outside advanced settings",
   assert.match(modelDetail, /formatCost\(key\)/);
 });
 
-test("per-model settings use one primary divider before advanced settings", () => {
-  const modelDetail = source.slice(
-    source.indexOf("function ModelDetail"),
-    source.indexOf("// ── OAuth detail"),
-  );
-
-  assert.equal(
-    (modelDetail.match(/borderTop: "1px solid var\(--border\)"/g) ?? []).length,
-    1,
-  );
-  assert.doesNotMatch(modelDetail, /borderBottom: "1px solid var\(--border\)"/);
+test("model detail sections share one divider style", async () => {
+  const modelDetail = await readFile(new URL("./models/ModelDetail.tsx", import.meta.url), "utf8");
+  assert.match(modelDetail, /className="models-section"/);
+  assert.match(cssSource, /\.models-section \{[\s\S]*?border-top: 1px solid var\(--border\)/);
+  assert.doesNotMatch(modelDetail, /style=\{\{/);
 });
 
 test("thinking level overrides keep explicit default, disabled, and custom controls", () => {
   const editor = source.slice(
-    source.indexOf("function ThinkingLevelMapEditor"),
-    source.indexOf("// ── Model detail"),
+    source.indexOf("export function ThinkingLevelMapEditor"),
+    source.indexOf("// ── Dialog shell"),
   );
 
   assert.match(editor, /THINKING_LEVELS\.map/);
-  assert.match(editor, />\s*Default\s*</);
-  assert.match(editor, />\s*Disabled\s*</);
-  assert.match(editor, />\s*Custom\s*</);
+  assert.match(editor, /t\("models\.levelDefault"\)/);
+  assert.match(editor, /t\("models\.levelDisabled"\)/);
+  assert.match(editor, /t\("models\.levelCustom"\)/);
   assert.match(editor, /state === "omit"/);
   assert.match(editor, /state === "null"/);
   assert.match(editor, /state === "string"/);
@@ -376,4 +376,12 @@ test("runtime override diffs never write SDK-ignored keys", () => {
 test("the api protocol field is only editable for model definitions", () => {
   assert.match(source, /const canEditApi = !lockId;/);
   assert.match(source, /\{canEditApi && \(/);
+});
+
+test("unsaved models.json edits are visible and guarded", () => {
+  assert.match(source, /const providerDirty = \(id: string\) =>/);
+  assert.match(source, /t\("models\.unsavedChanges"\)/);
+  assert.match(source, /onClick=\{discardChanges\}/);
+  assert.match(source, /onDirtyChange\?\.\(configDirty\)/);
+  assert.match(source, /window\.addEventListener\("beforeunload", warn\)/);
 });
