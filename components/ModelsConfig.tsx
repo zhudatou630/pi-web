@@ -135,7 +135,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
 
   const refreshAuthProviders = useCallback(() => {
-    fetch(`/api/auth/providers${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`)
+    return fetch(`/api/auth/providers${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`)
       .then((r) => r.json())
       .then((d: { oauthProviders?: OAuthProvider[]; apiKeyProviders?: ApiKeyProvider[] }) => {
         if (Array.isArray(d.oauthProviders)) setOauthProviders(d.oauthProviders);
@@ -150,7 +150,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       return;
     }
     const params = new URLSearchParams({ cwd });
-    fetch(`/api/models-config/runtime?${params}`)
+    return fetch(`/api/models-config/runtime?${params}`)
       .then((r) => r.json())
       .then((d: { catalog?: RuntimeCatalogModel[]; builtIn?: string[]; modelError?: string }) => {
         if (Array.isArray(d.catalog)) setCatalog(d.catalog);
@@ -165,7 +165,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       setScopeDoc(null);
       return;
     }
-    fetch(`/api/models-config/picker?cwd=${encodeURIComponent(cwd)}`)
+    return fetch(`/api/models-config/picker?cwd=${encodeURIComponent(cwd)}`)
       .then(async (res) => {
         const d = await res.json() as EnabledModelsPanelState & { error?: string };
         if (!res.ok || d.error || !d.source) {
@@ -192,7 +192,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   }, [refreshAuthProviders, refreshRuntime, refreshScope]);
 
   useEffect(() => {
-    fetch("/api/models-config")
+    let cancelled = false;
+    setLoading(true);
+    const configRequest = fetch("/api/models-config")
       .then((r) => r.json())
       .then((d: ModelsJson) => {
         const normalized = d.providers ? d : { ...d, providers: {} };
@@ -200,15 +202,13 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         setConfig(normalized);
         setSavedConfig(normalized);
       })
-      .catch(() => setConfig({ providers: {} }))
-      .finally(() => setLoading(false));
-    refreshAuthProviders();
-  }, [refreshAuthProviders]);
-
-  useEffect(() => {
-    refreshRuntime();
-    refreshScope();
-  }, [refreshRuntime, refreshScope]);
+      .catch((error) => setLoadError(String(error)));
+    // No provider forms mount until all four inputs have settled. Otherwise
+    // built-ins briefly look like disconnected custom endpoints.
+    void Promise.all([configRequest, refreshAuthProviders(), refreshRuntime(), refreshScope()])
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [refreshAuthProviders, refreshRuntime, refreshScope]);
 
   useEffect(() => {
     setLastSettingsSelection("models", JSON.stringify({ provider: view.provider }));
@@ -833,7 +833,13 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   return (
     <>
     <ConfigPanelShell embedded={embedded} title={t("common.models")} closeLabel={t("i18n.close")} onClose={onClose}>
-      {renderProvidersTab()}
+      {loading ? (
+        <div className="models-loading" role="status" aria-busy="true">
+          <span>{t("i18n.loading")}</span>
+        </div>
+      ) : (
+        <div className="models-ready">{renderProvidersTab()}</div>
+      )}
 
       {(configDirty || saving || savedOk || saveError || configFatalError) && (
         <ConfigFooter status={(saveError || configFatalError) ? (

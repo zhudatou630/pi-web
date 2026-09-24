@@ -29,12 +29,6 @@ export function EndpointForm({ providerId, provider, builtIn, namePlaceholder, o
   const { t } = useI18n();
   const set = <K extends keyof ProviderEntry>(k: K, v: ProviderEntry[K]) => onChange({ ...provider, [k]: v });
 
-  // A custom provider needs a protocol; an override must not gain one silently.
-  useEffect(() => {
-    if (!builtIn && !provider.api) onChange({ ...provider, api: "openai-completions" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider.api, builtIn]);
-
   return (
     <div className="models-form">
       <div className="models-form-grid">

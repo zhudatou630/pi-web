@@ -59,7 +59,7 @@ test("a definition that does not resolve is marked, not hidden", () => {
 
 test("built-in providers edit an override, custom providers a full endpoint", () => {
   // An override must not silently gain a protocol just by being viewed.
-  assert.match(source, /if \(!builtIn && !provider\.api\) onChange/);
+  assert.doesNotMatch(source, /if \(!builtIn && !provider\.api\) onChange/);
   assert.match(source, /const builtIn = Boolean\(row\.oauth \|\| row\.apiKey\)/);
   assert.doesNotMatch(source, /t\("models\.customEndpoint"\)/);
 });
