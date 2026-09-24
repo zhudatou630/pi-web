@@ -136,7 +136,6 @@ export function ModelPickerDialog({
   catalog,
   listedRefs,
   mode,
-  providerFilter,
   providerLabel,
   saving,
   error,
@@ -147,7 +146,6 @@ export function ModelPickerDialog({
   /** Models already in chat. Empty when picking a list from scratch. */
   listedRefs: ReadonlySet<string>;
   mode: "replace" | "add";
-  providerFilter?: string;
   providerLabel: (providerId: string) => string;
   saving: boolean;
   error: string | null;
@@ -162,12 +160,9 @@ export function ModelPickerDialog({
   const normalizedQuery = query.trim().toLocaleLowerCase();
   // Models already in chat stay listed, checked and locked, so the provider's
   // full set is visible and a missing model is not mistaken for an outage.
-  const shown = catalog.filter((model) => (
-    (!providerFilter || model.provider === providerFilter)
-    && (!normalizedQuery
-      || model.id.toLocaleLowerCase().includes(normalizedQuery)
-      || model.name?.toLocaleLowerCase().includes(normalizedQuery))
-  ));
+  const shown = catalog.filter((model) => !normalizedQuery
+    || model.id.toLocaleLowerCase().includes(normalizedQuery)
+    || model.name?.toLocaleLowerCase().includes(normalizedQuery));
   const isListed = (model: RuntimeCatalogModel) => listedRefs.has(modelPickerRef(model.provider, model.id));
   const grouped = new Map<string, RuntimeCatalogModel[]>();
   for (const model of shown) {

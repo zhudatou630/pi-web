@@ -67,29 +67,26 @@ type ModelRef =
   | { kind: "runtime"; id: string };
 
 /**
- * The panel has two views over three stores. "chat" edits which models chat
- * offers (settings `enabledModels`, saved instantly). "providers" edits
- * credentials (auth.json, instant) and endpoints/definitions (models.json,
- * a draft saved from the footer).
+ * One view over three stores: which models chat offers (settings
+ * `enabledModels`, saved instantly), credentials (auth.json, instant), and
+ * endpoints/definitions (models.json, a draft saved from the footer).
  */
-type View =
-  | { tab: "chat" }
-  | { tab: "providers"; provider: string | null; model?: ModelRef };
+interface View {
+  provider: string | null;
+  model?: ModelRef;
+}
 
 function readRememberedView(): View {
   const raw = getLastSettingsSelection("models");
   try {
     const value: unknown = raw ? JSON.parse(raw) : null;
-    if (value && typeof value === "object") {
-      const view = value as Record<string, unknown>;
-      if (view.tab === "providers" && (typeof view.provider === "string" || view.provider === null)) {
-        return { tab: "providers", provider: view.provider as string | null };
-      }
+    if (value && typeof value === "object" && typeof (value as { provider?: unknown }).provider === "string") {
+      return { provider: (value as { provider: string }).provider };
     }
   } catch {
     // Ignore malformed browser state.
   }
-  return { tab: "chat" };
+  return { provider: null };
 }
 
 interface ProviderRow {
@@ -127,7 +124,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [pickerOpen, setPickerOpen] = useState(false);
   const [discoveryFor, setDiscoveryFor] = useState<string | null>(null);
   /** Model picker: first-time setup replaces the list, adding appends to it. */
-  const [modelPick, setModelPick] = useState<{ mode: "replace" | "add"; providerFilter?: string } | null>(null);
+  const [modelPick, setModelPick] = useState<"replace" | "add" | null>(null);
   const [catalog, setCatalog] = useState<RuntimeCatalogModel[]>([]);
   const [scopeDoc, setScopeDoc] = useState<EnabledModelsPanelState | null>(null);
   const [scopeSaving, setScopeSaving] = useState(false);
@@ -211,9 +208,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   }, [refreshRuntime, refreshScope]);
 
   useEffect(() => {
-    setLastSettingsSelection("models", JSON.stringify(view.tab === "providers"
-      ? { tab: "providers", provider: view.provider }
-      : { tab: "chat" }));
+    setLastSettingsSelection("models", JSON.stringify({ provider: view.provider }));
   }, [view]);
 
   const configDirty = JSON.stringify(config) !== JSON.stringify(savedConfig);
@@ -226,7 +221,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   }, [configDirty]);
 
   const openProvider = useCallback((provider: string | null, model?: ModelRef) => {
-    setView({ tab: "providers", provider, ...(model ? { model } : {}) });
+    setView({ provider, ...(model ? { model } : {}) });
   }, []);
 
   const addCustomProvider = useCallback((id: string) => {
@@ -380,13 +375,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     return run;
   }, [cwd, fetchScopeDocument, onModelsChanged, t]);
 
-  const openAdd = useCallback((providerFilter?: string) => {
+  const openAdd = useCallback(() => {
     // Without a loaded document there is no basis for choosing a mode, and a
     // wrong guess replaces the whole list. Refuse rather than guess.
     if (!cwd || !scopeDoc) return;
-    setModelPick(scopeDoc.source === "none"
-      ? { mode: "replace", ...(providerFilter ? { providerFilter } : {}) }
-      : { mode: "add", ...(providerFilter ? { providerFilter } : {}) });
+    setModelPick(scopeDoc.source === "none" ? "replace" : "add");
   }, [cwd, scopeDoc]);
 
   /**
@@ -456,10 +449,10 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const discardChanges = () => {
     setConfig(savedConfig);
     setSaveError(null);
-    if (view.tab === "providers" && view.provider && !savedConfig.providers?.[view.provider]
+    if (view.provider && !savedConfig.providers?.[view.provider]
       && !catalog.some((model) => model.provider === view.provider)) {
       openProvider(null);
-    } else if (view.tab === "providers" && view.provider) {
+    } else if (view.provider) {
       openProvider(view.provider);
     }
   };
@@ -476,8 +469,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const chatRefs = scopeDoc?.visible ?? [];
   const listedRefs = new Set(chatRefs.map((model) => modelPickerRef(model.provider, model.id)));
   const usableRefs = new Set(catalog.map((entry) => modelPickerRef(entry.provider, entry.id)));
-  // An explicit list is the only state where one model can be removed from it.
-  const hasExplicitList = scopeDoc ? scopeDoc.source !== "none" && !scopeDoc.readOnly : false;
   // List entries that no longer resolve. Chat ignores them, but they still hold
   // the list back, so they must stay visible and removable.
   const unresolved = scopeDoc
@@ -486,15 +477,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       // and needs the qualified form instead. It gets its own notice.
       .filter((pattern) => !(scopeDoc.ambiguous ?? []).includes(pattern))
     : [];
-  const availableByProvider = (providerId: string) => catalog
-    .filter((model) => model.provider === providerId && !listedRefs.has(modelPickerRef(model.provider, model.id)))
-    .length;
 
   const connectedIds = new Set([
     ...oauthProviders.filter((p) => p.loggedIn).map((p) => p.id),
     ...apiKeyProviders.filter((p) => p.configured).map((p) => p.id),
   ]);
-  const selectedProviderId = view.tab === "providers" ? view.provider : null;
+  const selectedProviderId = view.provider;
   const providerIds: string[] = [];
   const addId = (id: string | null | undefined) => {
     if (id && !providerIds.includes(id)) providerIds.push(id);
@@ -522,16 +510,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     };
   });
   const providerLabel = (id: string) => providerRows.find((row) => row.id === id)?.label ?? id;
+  const inChatCount = (id: string) => chatRefs.filter((model) => model.provider === id).length;
   const providerDirty = (id: string) =>
     JSON.stringify(config.providers?.[id] ?? null) !== JSON.stringify(savedConfig.providers?.[id] ?? null);
-  const catalogName = (providerId: string, id: string) =>
-    catalog.find((model) => model.provider === providerId && model.id === id)?.name;
-
-  /** Opens the editor for a model: its definition when models.json has one, else an override. */
-  const modelRefFor = (providerId: string, modelId: string): ModelRef => {
-    const index = (config.providers?.[providerId]?.models ?? []).findIndex((entry) => entry.id === modelId);
-    return index >= 0 ? { kind: "definition", index } : { kind: "runtime", id: modelId };
-  };
 
   // ── Shared pieces ───────────────────────────────────────────────────────────
 
@@ -553,13 +534,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   const chatSwitch = (ref: string, usable: boolean) => {
     if (!cwd || !scopeDoc) return null;
-    const allMode = scopeDoc.source === "none";
     const inChat = listedRefs.has(ref);
     return (
-      <span className="models-row-switch" title={allMode ? t("models.chatAllSwitchHint") : undefined}>
+      <span className="models-row-switch">
         <ConfigSwitch
           checked={inChat}
-          disabled={allMode || scopeDoc.readOnly || (!usable && !inChat)}
+          disabled={scopeDoc.readOnly || (!usable && !inChat)}
           loading={scopeSaving}
           label={t("models.showInChat")}
           onChange={(next) => {
@@ -571,43 +551,30 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     );
   };
 
-  const scopeMessages = (
-    <>
-      {scopeDoc?.readOnly && <Notice tone="warning">{t("models.scopeReadOnly")}</Notice>}
-      {scopeNotice && <Notice tone="info">{scopeNotice}</Notice>}
-      {scopeError && <Notice tone="danger">{scopeError}</Notice>}
-    </>
-  );
+  // ── Chat scope bar ──────────────────────────────────────────────────────────
 
-  // ── Chat tab ────────────────────────────────────────────────────────────────
-
-  const renderChatTab = () => {
-    if (!cwd) return <ConfigEmptyState>{t("models.scopeNoCwd")}</ConfigEmptyState>;
-    if (!scopeDoc) return <ConfigEmptyState>{scopeError ?? t("i18n.loading")}</ConfigEmptyState>;
+  /** What chat offers, where that is saved, and list entries no provider page can show. */
+  const renderScopeBar = () => {
+    if (!cwd) return <div className="models-scope-bar"><span className="models-hint">{t("models.scopeNoCwd")}</span></div>;
+    if (!scopeDoc) return scopeError ? <div className="models-scope-bar"><Notice tone="danger">{scopeError}</Notice></div> : null;
     const allMode = scopeDoc.source === "none";
-    const groups = new Map<string, typeof chatRefs>();
-    for (const model of chatRefs) {
-      const list = groups.get(model.provider) ?? [];
-      list.push(model);
-      groups.set(model.provider, list);
-    }
     const whereKey = scopeDoc.source === "project" ? "models.scopeWhereProject" : "models.scopeWhereGlobal";
-
     return (
-      <div className="models-page">
-        <div className="models-page-header">
-          <div className="models-page-heading">
-            <h2 className="models-page-title">{allMode ? t("models.chatAllTitle", { count: chatRefs.length }) : t("models.chatListTitle", { count: chatRefs.length })}</h2>
-            <p className="settings-general-description">{t("models.chatScopeDesc", { where: t(whereKey) })}</p>
-          </div>
+      <div className="models-scope-bar">
+        <div className="models-scope-line">
+          <span className="models-scope-text">
+            <strong>{allMode ? t("models.chatAllTitle", { count: chatRefs.length }) : t("models.chatListTitle", { count: chatRefs.length })}</strong>
+            <span className="models-hint">{t("models.chatScopeDesc", { where: t(whereKey) })}</span>
+          </span>
           {!scopeDoc.readOnly && (
             <ConfigButton size="small" onClick={() => openAdd()}>
               {allMode ? t("models.pickOnlyThese") : t("models.addToChat")}
             </ConfigButton>
           )}
         </div>
-        {scopeMessages}
-
+        {scopeDoc.readOnly && <Notice tone="warning">{t("models.scopeReadOnly")}</Notice>}
+        {scopeNotice && <Notice tone="info">{scopeNotice}</Notice>}
+        {scopeError && <Notice tone="danger">{scopeError}</Notice>}
         {unresolved.length > 0 && (
           <RemovableEntries
             title={t("models.unavailable", { count: unresolved.length })}
@@ -626,55 +593,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             onRemove={(pattern) => void saveScope((current) => removePattern(current.patterns, pattern))}
           />
         )}
-
-        {groups.size === 0 && <p className="models-empty">{t("models.chatEmpty")}</p>}
-        {[...groups.entries()].map(([providerId, models]) => {
-          const availableCount = availableByProvider(providerId);
-          return (
-            <section key={providerId} className="models-group">
-              <div className="models-group-header">
-                <ProviderIcon id={providerId} size={16} />
-                <span className="models-group-title">{providerLabel(providerId)}</span>
-                <span className="models-count">{models.length}</span>
-                <ConfigButton size="small" variant="ghost" className="models-push-right" onClick={() => openProvider(providerId)}>
-                  {t("models.manageProvider")}
-                </ConfigButton>
-              </div>
-              <div className="models-list">
-                {models.map((model) => {
-                  const ref = modelPickerRef(model.provider, model.id);
-                  const pin = scopeDoc.pins[ref];
-                  const name = catalogName(model.provider, model.id);
-                  return (
-                    <div key={ref} className="models-row">
-                      {rowButton(
-                        name || model.id,
-                        name && name !== model.id ? model.id : undefined,
-                        pin && <span className="models-tag">{t("models.thinkingPin", { level: pin })}</span>,
-                        () => openProvider(providerId, modelRefFor(providerId, model.id)),
-                      )}
-                      {hasExplicitList && (
-                        <ConfigButton size="small" variant="ghost" className="models-remove" onClick={() => void removeFromChat(ref)}>
-                          {t("models.removeFromChat")}
-                        </ConfigButton>
-                      )}
-                    </div>
-                  );
-                })}
-                {availableCount > 0 && (
-                  <button type="button" className="models-row-more" onClick={() => openAdd(providerId)}>
-                    {t("models.availableMore", { count: availableCount })}
-                  </button>
-                )}
-              </div>
-            </section>
-          );
-        })}
       </div>
     );
   };
 
-  // ── Providers tab ───────────────────────────────────────────────────────────
+  // ── Providers ───────────────────────────────────────────────────────────────
 
   const renderProviderPage = (row: ProviderRow) => {
     const json = row.json;
@@ -706,7 +629,22 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           definition: true,
         })),
     ];
-    const allMode = scopeDoc?.source === "none";
+    const endpointSection = json && (
+      <section className="models-section">
+        <SectionHeading
+          title={builtIn ? t("models.sectionEndpointOverride") : t("models.sectionEndpoint")}
+          hint={builtIn ? t("models.sectionOverrideHint") : t("models.sectionDraftHint")}
+        />
+        <EndpointForm
+          key={row.id}
+          providerId={row.id}
+          provider={json}
+          builtIn={builtIn}
+          namePlaceholder={row.oauth?.name ?? row.apiKey?.displayName ?? row.id}
+          onChange={(next) => updateProvider(row.id, next)}
+        />
+      </section>
+    );
 
     return (
       <div className="models-form">
@@ -740,27 +678,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           </section>
         )}
 
-        {json && (
-          <section className="models-section">
-            <SectionHeading
-              title={builtIn ? t("models.sectionEndpointOverride") : t("models.sectionEndpoint")}
-              hint={builtIn ? t("models.sectionOverrideHint") : t("models.sectionDraftHint")}
-            />
-            <EndpointForm
-              key={row.id}
-              providerId={row.id}
-              provider={json}
-              builtIn={builtIn}
-              namePlaceholder={row.oauth?.name ?? row.apiKey?.displayName ?? row.id}
-              onChange={(next) => updateProvider(row.id, next)}
-            />
-          </section>
-        )}
-
+        {/* A custom provider is set up from its endpoint; a built-in one rarely needs its override. */}
+        {!builtIn && endpointSection}
         <section className="models-section">
           <SectionHeading
             title={t("models.sectionModels", { count: modelRows.length })}
-            hint={cwd && scopeDoc ? (allMode ? t("models.chatAllSwitchHint") : t("models.chatSwitchHint")) : undefined}
+            hint={cwd && scopeDoc ? t("models.chatSwitchHint") : undefined}
             actions={json && (
               <>
                 <ConfigButton size="small" disabled={!json.baseUrl?.trim()} title={json.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
@@ -770,7 +693,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
               </>
             )}
           />
-          {scopeMessages}
           {json && discoveryFor === row.id && (
             <ModelDiscovery
               providerId={row.id}
@@ -791,7 +713,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                       model.name && model.name !== model.id ? model.name : (model.id || t("models.untitledModel")),
                       model.name && model.name !== model.id ? model.id : undefined,
                       <>
-                        {model.definition && <span className="models-tag">{t("models.kindDefinition")}</span>}
+                        {/* Every model of a custom provider is a definition; only mark the ones added to a built-in provider. */}
+                        {builtIn && model.definition && <span className="models-tag">{t("models.kindDefinition")}</span>}
                         {!model.usable && <span className="models-tag is-warning">{t("models.notUsable")}</span>}
                         {scopeDoc?.pins[ref] && <span className="models-tag">{t("models.thinkingPin", { level: scopeDoc.pins[ref] })}</span>}
                       </>,
@@ -804,6 +727,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             </div>
           )}
         </section>
+        {builtIn && endpointSection}
       </div>
     );
   };
@@ -859,7 +783,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const renderProvidersTab = () => {
     const activeId = selectedProviderId ?? providerRows[0]?.id ?? null;
     const active = providerRows.find((row) => row.id === activeId);
-    const model = view.tab === "providers" && view.provider === activeId ? view.model : undefined;
+    const model = view.provider === activeId ? view.model : undefined;
     const connectedRows = providerRows.filter((row) => row.connected);
     const otherRows = providerRows.filter((row) => !row.connected);
     const item = (row: ProviderRow) => (
@@ -867,6 +791,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         <ProviderIcon id={row.id} size={16} />
         <ConfigSidebarText className={`is-grow${row.connected ? "" : " is-muted"}`}>{row.label}</ConfigSidebarText>
         {providerDirty(row.id) && <span className="models-dirty-dot" title={t("models.unsavedProvider")} />}
+        {scopeDoc && row.models.length > 0 && (
+          <span className="models-count" title={t("models.inChatCount", { count: inChatCount(row.id), total: row.models.length })}>
+            {inChatCount(row.id)}/{row.models.length}
+          </span>
+        )}
       </ConfigSidebarItem>
     );
     return (
@@ -896,29 +825,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     );
   };
 
-  const anyDirty = configDirty;
-  const tab = (id: View["tab"], label: string, extra?: ReactNode) => (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={view.tab === id}
-      className="models-tab"
-      onClick={() => setView(id === "chat" ? { tab: "chat" } : { tab: "providers", provider: selectedProviderId })}
-    >
-      {label}
-      {extra}
-    </button>
-  );
-
   return (
     <>
     <ConfigPanelShell embedded={embedded} title={t("common.models")} closeLabel={t("i18n.close")} onClose={onClose}>
-      <div className="models-tabs" role="tablist" aria-label={t("common.models")}>
-        {tab("chat", t("models.tabChat"), cwd && scopeDoc ? <span className="models-tab-count">{chatRefs.length}</span> : null)}
-        {tab("providers", t("models.tabProviders"), anyDirty ? <span className="models-dirty-dot" title={t("models.unsavedChanges")} /> : null)}
-      </div>
-
-      {view.tab === "chat" ? <div className="models-scroll">{renderChatTab()}</div> : renderProvidersTab()}
+      {renderScopeBar()}
+      {renderProvidersTab()}
 
       {(configDirty || saving || savedOk || saveError || configFatalError) && (
         <ConfigFooter status={(saveError || configFatalError) ? (
@@ -963,15 +874,14 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     {modelPick && (
       <ModelPickerDialog
         catalog={catalog}
-        listedRefs={modelPick.mode === "replace" ? new Set() : listedRefs}
-        mode={modelPick.mode}
-        {...(modelPick.providerFilter ? { providerFilter: modelPick.providerFilter } : {})}
+        listedRefs={modelPick === "replace" ? new Set() : listedRefs}
+        mode={modelPick}
         providerLabel={providerLabel}
         saving={scopeSaving}
         error={scopeError}
         onClose={() => setModelPick(null)}
         onApply={(refs) => {
-          const { mode } = modelPick;
+          const mode = modelPick;
           setModelPick(null);
           void saveScope((current) => mode === "replace"
             ? refs

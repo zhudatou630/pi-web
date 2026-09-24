@@ -74,18 +74,17 @@ test("model and provider creation have separate reachable actions", () => {
 });
 
 test("each model row carries its own chat switch", () => {
-  // The provider page and the chat list edit the same enabledModels document.
+  // The provider page is the only place that edits one model's chat membership.
   assert.match(source, /if \(next\) void saveScope\(\(current\) => appendExactRef\(current\.patterns, ref\)\)/);
   assert.match(source, /else void removeFromChat\(ref\)/);
-  // "Every model" has no per-model state to flip, so the switch is locked there.
-  assert.match(source, /disabled=\{allMode \|\| scopeDoc\.readOnly/);
+  // In "every model" mode, turning one off writes the rest out as a list.
+  assert.match(source, /disabled=\{scopeDoc\.readOnly \|\| \(!usable && !inChat\)\}/);
 });
 
-test("the chat tab lists the models chat shows, not the rules behind them", () => {
-  // No key means every model: the list still has to be populated from the resolved set.
+test("chat membership comes from the resolved list, not the rules behind it", () => {
+  // No key means every model: membership still comes from the resolved set.
   assert.match(source, /const chatRefs = scopeDoc\?\.visible \?\? \[\]/);
-  assert.match(source, /for \(const model of chatRefs\)/);
-  // A glob or bare id never becomes a row, and the file's two notations stay hidden.
+  assert.match(source, /const listedRefs = new Set\(chatRefs\.map/);
   assert.doesNotMatch(source, /models\.rules/);
   assert.doesNotMatch(source, /scopeInactive/);
 });
@@ -127,7 +126,7 @@ test("one picker dialog serves first-time setup and later additions", () => {
   assert.match(source, /function ModelPickerDialog\(/);
   assert.match(source, /mode: "replace" \| "add"/);
   // The mode decides whether the write replaces the list or appends to it.
-  assert.match(source, /modelPick\.mode === "replace"/);
+  assert.match(source, /mode === "replace"\n\s*\? refs/);
   assert.doesNotMatch(source, /function AddChatModelsDialog/);
 });
 
@@ -144,9 +143,11 @@ test("an ambiguous entry is shown separately and cannot mask the unavailable lis
   assert.match(source, /\.filter\(\(pattern\) => !\(scopeDoc\.ambiguous \?\? \[\]\)\.includes\(pattern\)\)/);
 });
 
-test("removing one model only appears once an explicit list exists", () => {
-  assert.match(source, /const hasExplicitList = scopeDoc \? scopeDoc\.source !== "none" && !scopeDoc\.readOnly : false/);
-  assert.match(source, /\{hasExplicitList && \(/);
+test("chat scope lives in one bar above the provider list, not a separate tab", () => {
+  assert.match(source, /const renderScopeBar = \(\) =>/);
+  assert.match(source, /\{renderScopeBar\(\)\}\n\s*\{renderProvidersTab\(\)\}/);
+  assert.doesNotMatch(source, /role="tab"/);
+  assert.doesNotMatch(source, /renderChatTab/);
 });
 
 test("no action can write an empty list, because that would mean every model", () => {
@@ -161,10 +162,9 @@ test("the all-models state offers a named way into picking a list", () => {
   assert.match(source, /onClick=\{\(\) => openAdd\(\)\}/);
 });
 
-test("a provider row points at the models it still has to offer", () => {
-  assert.match(source, /const availableByProvider = \(providerId: string\) => catalog/);
-  assert.match(source, /t\("models\.availableMore", \{ count: availableCount \}\)/);
-  assert.match(source, /onClick=\{\(\) => openAdd\(providerId\)\}/);
+test("each provider shows how many of its models are in chat", () => {
+  assert.match(source, /const inChatCount = \(id: string\) => chatRefs\.filter\(\(model\) => model\.provider === id\)\.length/);
+  assert.match(source, /\{inChatCount\(row\.id\)\}\/\{row\.models\.length\}/);
 });
 
 test("saving models.json drops only definitions that save removed, not outages", () => {
@@ -392,7 +392,7 @@ test("the picker keeps listed models visible but locked", () => {
   assert.match(source, /t\("models\.alreadyInChat"\)/);
 });
 
-test("secondary row actions reveal on hover but stay visible on touch", () => {
-  assert.match(cssSource, /\.models-row:hover \.models-remove/);
-  assert.match(cssSource, /@media \(hover: none\) \{\s*\.models-remove/);
+test("the drill-down chevron reveals on hover but stays visible on touch", () => {
+  assert.match(cssSource, /\.models-row:hover \.models-row-chevron/);
+  assert.match(cssSource, /@media \(hover: none\) \{\s*\.models-row-chevron/);
 });
