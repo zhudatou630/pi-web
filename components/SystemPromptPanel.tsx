@@ -50,7 +50,6 @@ export function SystemPromptPanel({ loading, prompt, translate }: Props) {
           padding: 10px 0;
           color: var(--text-muted);
           font-size: 12px;
-          font-style: italic;
         }
       `}</style>
     </section>

@@ -80,7 +80,7 @@ export function ProviderIcon({ id, size }: { id: string; size: number }) {
         justifyContent: "center",
         flexShrink: 0,
         fontSize: Math.max(8, Math.floor(size * 0.42)),
-        fontWeight: 700,
+        fontWeight: 600,
         lineHeight: 1,
       }}
     >

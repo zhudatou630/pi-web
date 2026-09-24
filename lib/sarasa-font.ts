@@ -1,4 +1,7 @@
-export const SARASA_FONT_URL = "/fonts/SarasaTermSC-Regular.woff2?v=1";
+const SARASA_FONT_URLS = [
+  "/fonts/SarasaTermSC-Regular.woff2?v=1",
+  "/fonts/SarasaTermSC-SemiBold.woff2?v=1",
+];
 const SARASA_ENABLED = "pi-web-sarasa-enabled";
 
 export function enableSarasaWebFont(): void {
@@ -11,8 +14,13 @@ export function hasDownloadedSarasa(): boolean {
 }
 
 export async function downloadSarasa(): Promise<void> {
-  const response = await fetch(SARASA_FONT_URL, { cache: "force-cache" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  await Promise.all(SARASA_FONT_URLS.map(async (url) => {
+    const response = await fetch(url, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  }));
   enableSarasaWebFont();
-  await document.fonts.load('14px "Sarasa Term SC Web"');
+  await Promise.all([
+    document.fonts.load('400 14px "Sarasa Term SC Web"'),
+    document.fonts.load('600 14px "Sarasa Term SC Web"'),
+  ]);
 }

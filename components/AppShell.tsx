@@ -2086,7 +2086,7 @@ export function AppShell() {
                 position: "absolute", top: 2, right: 2,
                 minWidth: 13, height: 13, padding: "0 3px", display: "grid", placeItems: "center",
                 borderRadius: 4, background: "var(--bg-selected)", color: "var(--accent)",
-                fontSize: 9, lineHeight: 1, fontVariantNumeric: "tabular-nums",
+                fontSize: 10, lineHeight: 1, fontVariantNumeric: "tabular-nums",
               }}
             >
               {activeSessionFamily!.subagents.length}
@@ -2291,7 +2291,6 @@ export function AppShell() {
           color: "var(--text)",
           cursor: "pointer",
           fontSize: 12,
-          fontWeight: 500,
           textAlign: "left",
         }}
       >
@@ -2778,10 +2777,10 @@ export function AppShell() {
 
                     const activeContextBlock = ctx?.contextWindow ? (
                       <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                           <span>{translate("session.activeContext")}</span>
                           {pct !== null && (
-                            <span style={{ fontSize: 11, fontWeight: 650, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--accent)" }}>
+                            <span style={{ fontSize: 11, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--accent)" }}>
                               {pct.toFixed(1)}%
                             </span>
                           )}
@@ -2795,7 +2794,7 @@ export function AppShell() {
                           columnGap: 14,
                           rowGap: 4,
                           justifyContent: "start",
-                          fontSize: 11.5,
+                          fontSize: 11,
                         }}>
                           {ctx.tokens !== null && (
                             <>
@@ -2829,10 +2828,10 @@ export function AppShell() {
 
                     const cumulativeBlock = (
                       <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                           <span>{translate("session.cumulativeTokens")}</span>
                           {sessionStats.cost > 0 && (
-                            <span style={{ fontSize: 11, fontWeight: 650, color: "var(--text)" }}>
+                            <span style={{ fontSize: 11, color: "var(--text)" }}>
                               ${sessionStats.cost.toFixed(4)}
                             </span>
                           )}
@@ -2843,7 +2842,7 @@ export function AppShell() {
                           columnGap: 14,
                           rowGap: 4,
                           justifyContent: "start",
-                          fontSize: 11.5,
+                          fontSize: 11,
                         }}>
                           <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.total")}</div>
                           <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.total, locale)}</div>
@@ -2872,14 +2871,14 @@ export function AppShell() {
                     // 3. Session & Activity (Refined & De-duplicated)
                     const sessionBlock = (
                       <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
                           {translate("session.infoSection")}
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 11.5 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 11 }}>
                           {sessionStats.sessionName && (
                             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                               <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.name")}:</span>
-                              <span style={{ color: "var(--text)", fontWeight: 550, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {sessionStats.sessionName}
                               </span>
                             </div>
@@ -2963,7 +2962,7 @@ export function AppShell() {
                       </div>
                     );
                   })() : (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                        {translate("session.load")}
                     </div>
                   )}

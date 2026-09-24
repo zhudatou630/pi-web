@@ -600,7 +600,7 @@ export function AgentsConfig({
                             type="button"
                             onClick={() => setTargetScope(scope)}
                             disabled={saving}
-                            style={{ height: 28, border: "none", borderRadius: 4, background: targetScope === scope ? "var(--bg-selected)" : "transparent", color: targetScope === scope ? "var(--text)" : "var(--text-muted)", cursor: saving ? "default" : "pointer", fontSize: 11, fontWeight: targetScope === scope ? 600 : 400 }}
+                            style={{ height: 28, border: "none", borderRadius: 4, background: targetScope === scope ? "var(--bg-selected)" : "transparent", color: targetScope === scope ? "var(--text)" : "var(--text-muted)", cursor: saving ? "default" : "pointer", fontSize: 11 }}
                           >
                             {t(`agents.scope.${scope}`)}
                           </button>
@@ -660,7 +660,7 @@ export function AgentsConfig({
                           variant="field"
                           placement="auto"
                         />
-                        {modelsError && <span style={{ color: "#ef4444", fontSize: 10 }}>{modelsError}</span>}
+                        {modelsError && <span style={{ color: "#ef4444", fontSize: 11 }}>{modelsError}</span>}
                       </div>
                     </Field>
                     <Field label={t("agents.thinking")}>

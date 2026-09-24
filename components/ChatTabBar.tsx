@@ -272,8 +272,9 @@ export function ChatTabBar({
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   flex: 1,
-                  fontWeight: isVisible ? 500 : 400,
-                  fontStyle: tab.preview ? "italic" : "normal",
+                  // Preview (unpinned) tab. Not italic: CJK has no italic and color already means visibility.
+                  textDecoration: tab.preview ? "underline dotted" : undefined,
+                  textUnderlineOffset: 3,
                 }}
               >
                 {tab.title}

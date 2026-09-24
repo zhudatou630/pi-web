@@ -51,7 +51,7 @@ export const zhTWLocale: LocalePlugin = {
     "auth.loggingOut": "正在登出...",
     "auth.logoutFailed": "登出失敗，請再試一次。",
     "settings.typography": "等寬字型與幾何對齊",
-    "settings.typographyDescription": "優先使用瀏覽器已安裝的 Sarasa Term SC。未安裝時不會自動下載，可按需快取 Regular 網頁字型。",
+    "settings.typographyDescription": "優先使用瀏覽器已安裝的 Sarasa Term SC。未安裝時不會自動下載，可按需快取 Regular 與 SemiBold 網頁字型（約 17 MB）。",
     "settings.fontDownload": "下載 Sarasa 字型",
     "settings.fontDownloadLoading": "下載中...",
     "settings.fontCached": "已快取",

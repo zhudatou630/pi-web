@@ -51,7 +51,7 @@ export const enLocale: LocalePlugin = {
     "auth.loggingOut": "Logging out...",
     "auth.logoutFailed": "Could not log out. Try again.",
     "settings.typography": "Monospace & Geometric Alignment",
-    "settings.typographyDescription": "Prefer Sarasa Term SC when it is installed locally. The Regular web font is not downloaded automatically; cache it on demand.",
+    "settings.typographyDescription": "Prefer Sarasa Term SC when it is installed locally. The Regular and SemiBold web fonts (about 17 MB) are not downloaded automatically; cache them on demand.",
     "settings.fontDownload": "Download Sarasa font",
     "settings.fontDownloadLoading": "Downloading...",
     "settings.fontCached": "Cached",

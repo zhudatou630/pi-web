@@ -161,7 +161,6 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
               borderRadius: 4,
               color: "var(--accent)",
               fontSize: 12,
-              fontWeight: 600,
               lineHeight: 1.2,
               textDecoration: "none",
               transition: "background 0.12s",

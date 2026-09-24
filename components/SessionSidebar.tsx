@@ -1302,7 +1302,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                             <button
                               onClick={() => void handleRemoveWorktree(wt.path, true)}
                               disabled={wtBusy}
-                              style={{ padding: "3px 9px", background: "#ef4444", border: "none", borderRadius: 4, color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+                              style={{ padding: "3px 9px", background: "#ef4444", border: "none", borderRadius: 4, color: "#fff", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
                             >
                               {t("sidebar.force")}
                             </button>
@@ -1465,7 +1465,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                             borderRadius: 4,
                             color: "#fff",
                             fontSize: 11,
-                            fontWeight: 600,
                             cursor: wtBusy || !wtNewBranch.trim() ? "not-allowed" : "pointer",
                             opacity: wtBusy || !wtNewBranch.trim() ? 0.65 : 1,
                           }}
@@ -1722,19 +1721,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             <div id="delete-project-detail" style={{ marginTop: 4, color: "var(--text-muted)" }}>
               {t("sidebar.deleteProjectSessionsDetail", { name, count })}
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
+            {/* Buttons never wrap their label; a narrow sidebar wraps the row instead. */}
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
               <button
                 type="button"
                 autoFocus
                 onClick={() => setConfirmDeleteProjectKey(null)}
-                style={{ height: 24, padding: "0 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-muted)", cursor: "pointer", fontSize: 12 }}
+                style={{ height: 24, padding: "0 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-muted)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}
               >
                 {t("sidebar.cancel")}
               </button>
               <button
                 type="button"
                 onClick={() => void deleteProject(project)}
-                style={{ height: 24, padding: "0 10px", background: "#ef4444", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+                style={{ height: 24, padding: "0 10px", background: "#ef4444", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}
               >
                 {t("sidebar.deleteProjectSessionsAction", { count })}
               </button>
@@ -1821,7 +1821,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         });
                       }}
                       title={row.project.root}
-                      style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 0", border: "none", background: "none", color: "var(--text)", cursor: "pointer", textAlign: "left", fontSize: 12, fontWeight: 500 }}
+                      style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 0", border: "none", background: "none", color: "inherit", cursor: "pointer", textAlign: "left", fontSize: 12 }}
                     >
                       <SidebarChevron open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{getFileName(row.project.root)}</span>
@@ -2346,7 +2346,7 @@ export function SessionItem({
                 height: 24, padding: "0 8px",
                 background: "#ef4444", border: "none",
                 borderRadius: 4, color: "#fff",
-                cursor: "pointer", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontSize: 12,
                 whiteSpace: "nowrap",
               }}
             >
@@ -2365,8 +2365,7 @@ export function SessionItem({
                 height: 24, padding: "0 8px",
                 background: "var(--bg)", border: "1px solid var(--border)",
                 borderRadius: 4, color: "var(--text-muted)",
-                cursor: "pointer", fontSize: 12, fontWeight: 500,
-                whiteSpace: "nowrap",
+                cursor: "pointer", fontSize: 12, whiteSpace: "nowrap",
               }}
             >
               {t("sidebar.cancel")}
@@ -2389,8 +2388,7 @@ export function SessionItem({
           style={{
             flex: 1,
             minWidth: 0,
-            fontSize: 13,
-            fontWeight: isSelected ? 500 : 400,
+            fontSize: 12,
             fontFamily: "inherit",
             lineHeight: 1.4,
             padding: "1px 6px",
@@ -2431,10 +2429,9 @@ export function SessionItem({
                 alignItems: "center",
                 gap: 5,
                 minWidth: 0,
-                fontSize: 13,
-                fontWeight: isSelected ? 500 : 400,
+                fontSize: 12,
                 lineHeight: 1.4,
-                color: "var(--text)",
+                color: isSelected || hovered ? "var(--text)" : "var(--text-muted)",
               }}
               title={session.name || displayFirstMessage || session.id}
             >

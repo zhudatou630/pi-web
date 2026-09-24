@@ -351,7 +351,6 @@ export function ToolDefinitionsPanel({ loading, tools, translate }: Props) {
           padding: 14px 12px;
           color: var(--text-muted);
           font-size: 12px;
-          font-style: italic;
           overflow-wrap: anywhere;
         }
         @media (max-width: 640px) {

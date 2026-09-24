@@ -329,7 +329,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           language={lang || "text"}
           style={isDark ? vscDarkPlus : vs}
           showLineNumbers
-          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", opacity: 0.45, paddingRight: "0.8em", userSelect: "none" }}
+          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", paddingRight: "0.8em", userSelect: "none" }}
           customStyle={{
             margin: 0,
             padding: "6px 10px",

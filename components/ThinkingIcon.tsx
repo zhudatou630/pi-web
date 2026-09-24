@@ -15,7 +15,9 @@ export function ThinkingIcon({
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      // The brain spans 4..20 of the usual 24 grid; crop to 19.2 so it renders at
+      // the same optical size and stroke weight as the 2..22 tool icons.
+      viewBox="2.4 2.4 19.2 19.2"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"

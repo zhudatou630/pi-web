@@ -6,6 +6,8 @@
 npm run dev   # port 30143 (remote: https://nuc.tailb8ef79.ts.net:10446)
 ```
 
+Remote access through the tailscale hostname needs `PI_WEB_ALLOWED_HOSTS=nuc.tailb8ef79.ts.net`; otherwise `proxy.ts` answers `403 Untrusted host "..."` (DNS-rebinding guard). It is exported in `~/.zshenv` (covers every checkout/worktree started from zsh) and in this checkout's git-ignored `.env.development.local` (covers bash-launched dev servers). The systemd services set it themselves.
+
 Port 30141 is the stable npm-installed service (`~/.npm-global/.../@calmabacus/pi-web`, remote via tailscale :10443) — this checkout is for development only. Do not run `npm run start` from this checkout; it would collide with that service.
 
 Typecheck: `node_modules/.bin/tsc --noEmit`  
@@ -243,6 +245,15 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 
 ### Exported session HTML
 - `/api/sessions/[id]/export` delegates to pi's export helper, then patches recursive tree helpers in the generated HTML to iterative versions so very deep linear sessions do not overflow the browser call stack.
+
+### Typography
+- One face everywhere: Sarasa Term SC, local install first, else the opt-in downloaded web font (`lib/sarasa-font.ts`). Do not add other families to `--font-sarasa-local`; mixed cuts made the UI differ per machine.
+- Exactly two weights: 400 and 600. Only these have real faces, and `font-synthesis: none` is on, so any other weight either collapses to Regular or differs per machine.
+- 600 is for headings only (dialog/panel/section titles including the sidebar's Projects/Explorer, markdown headings/`strong`/`th`). Never express selected, active, pressed, or clickable state with weight; use background, color, border, or an indicator bar. Buttons, inputs, list-item names, counts, badges, and small dim group labels stay 400.
+- No italic in UI chrome: there is no italic face and synthesis is off, so CJK would stay upright anyway; mark states another way. Markdown `em` keeps `italic` and is upright unless a real italic face is installed.
+- Three text tiers with the same contrast targets in both themes (on `--bg-panel`): `--text` >= 12:1 for content, `--text-muted` ~9:1 for headings/sidebar items/labels, `--text-dim` ~6:1 for metadata. Choose shades by these numbers; do not add ad-hoc grays, and do not permanently fade a tier with `opacity` (that is an unmeasured fourth gray). Opacity that toggles back to 1 for a state such as disabled/streaming is fine.
+- Font sizes come from one scale. UI chrome uses four: 10 badges/tags/uppercase labels, 11 metadata (times, paths, process steps), 12 UI body and section headings (headings add 600, like the sidebar's Projects), 14 dialog/panel/detail titles. Reading content: 14 chat body, 13 dense content only (code blocks, file viewer, terminal, Mermaid source, markdown tables/file preview). Exceptions: 16 login input (iOS focus zoom) and device code, 20 glyphs (close ×, login brand). Chat-relative sizes use `calc(<11..14>px + var(--chat-font-size-offset, 0px))`. No half sizes; pick the tier by role.
+- Enforced by `components/Typography.test.mjs`.
 
 ## Pi Session File Format
 

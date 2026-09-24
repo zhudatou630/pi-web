@@ -58,7 +58,7 @@ test("markdown hierarchy uses spacing and neutral emphasis without changing link
   assert.equal(declaration(".markdown-body > :is(h1, h2, h3, h4, h5, h6):first-child", "margin-top"), "0");
   assert.equal(declaration(".markdown-body li::marker", "color"), "var(--text-muted)");
   assert.equal(declaration(".markdown-body strong", "color"), "var(--text)");
-  assert.equal(declaration(".markdown-body strong", "font-weight"), "700");
+  assert.equal(declaration(".markdown-body strong", "font-weight"), "600");
   assert.equal(declaration(".markdown-body a", "color"), "var(--accent)");
   assert.equal(declaration(".markdown-body a", "text-decoration"), "underline");
 });

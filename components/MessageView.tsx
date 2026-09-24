@@ -431,7 +431,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     cursor: "pointer",
                     color: "var(--accent)",
                     fontFamily: "var(--font-mono)",
-                    fontSize: "calc(13px + var(--chat-font-size-offset, 0px))",
+                    fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
                     textAlign: "left",
                   }}
                 >
@@ -556,7 +556,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               )}
             </div>
           )}
-          {time && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
+          {time && <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
         </div>
       )}
     </div>
@@ -756,7 +756,7 @@ function AssistantMessageView({
                 )}
               </button>
             )}
-            {time && <span style={{ color: "var(--text-dim)", fontSize: 10, fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
+            {time && <span style={{ color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
           </div>
           )}
         </div>
@@ -781,7 +781,7 @@ function ProcessErrorCard({ error }: { error: string }) {
       style={{
         borderRadius: 6,
         overflow: "hidden",
-        fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+        fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
         border: "1px solid rgba(248,113,113,0.35)",
         background: "rgba(248,113,113,0.05)",
       }}
@@ -810,17 +810,17 @@ function ProcessErrorCard({ error }: { error: string }) {
             textAlign: "left",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85, transform: "translateY(0.5px)" }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <span style={{ color: "#f87171", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: "#f87171", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {t("chat.modelError")}
           </span>
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1.35 }}>
+          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
             {preview}
           </span>
           <svg data-step-chevron="" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
@@ -865,7 +865,7 @@ function StepDuration({ seconds, startTime, live }: { seconds?: number; startTim
     ? t("chat.stepStartedAt", { time: new Date(startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
     : undefined;
   return (
-    <span title={title} style={{ fontSize: 10, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>
+    <span title={title} style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>
       {formatDuration(value, t)}
     </span>
   );
@@ -999,14 +999,14 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
             textAlign: "left",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85, transform: "translateY(0.5px)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85 }}>
             <ThinkingIcon active={expanded} size={12} />
           </div>
-          <span style={{ color: "var(--text)", fontFamily: "var(--font-ui)", fontWeight: 500, fontSize: 11.5, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {t("i18n.thinking")}
           </span>
           {!expanded && (
-            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-ui)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1.35 }}>
+            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-ui)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
               {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
             </span>
           )}
@@ -1092,7 +1092,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
       style={{
         borderRadius: 6,
         overflow: "hidden",
-        fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+        fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
         border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid var(--border)",
         background: isError ? "rgba(248,113,113,0.05)" : "var(--bg-subtle)",
         transition: "border-color 0.15s ease",
@@ -1121,13 +1121,13 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
             textAlign: "left",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85, transform: "translateY(0.5px)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, opacity: 0.85 }}>
             <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
-          <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontWeight: 500, fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {toolLabel}
           </span>
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, opacity: 0.85, lineHeight: 1.35 }}>
+          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
             {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}
           </span>
           <StepDuration seconds={duration} startTime={startTime} live={live} />
@@ -1155,7 +1155,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
             margin: 0,
             padding: "8px 10px",
             color: "var(--text-muted)",
-            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+            fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
             background: "var(--bg)",
@@ -1180,7 +1180,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
             margin: 0,
             padding: "8px 10px",
             color: "var(--text-muted)",
-            fontSize: "calc(11.5px + var(--chat-font-size-offset, 0px))",
+            fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
             background: "var(--bg)",
@@ -1442,7 +1442,6 @@ function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" |
           padding: "0 5px",
           color: markerColor,
           userSelect: "none",
-          fontWeight: cell.type === "context" || cell.type === "empty" ? 400 : 700,
           flexShrink: 0,
         }}
       >
@@ -1575,8 +1574,6 @@ function PairedResult({ text, images, isEmpty, isError }: {
             background: "var(--bg)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
-            fontStyle: isEmpty ? "italic" : "normal",
-            opacity: isEmpty ? 0.6 : 1,
           }}
         >
            {isEmpty ? t("i18n.noOutput") : text}
@@ -1613,14 +1610,14 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
             color: "var(--text-muted)",
           }}
         >
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
             compaction
           </span>
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
+          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 11 }}>{time}</span>}
         </div>
 
         <div style={{ padding: "11px 13px 12px" }}>
-          <div style={{ color: "var(--text)", fontSize: "calc(15px + var(--chat-font-size-offset, 0px))", fontWeight: 700, lineHeight: 1.35 }}>
+          <div style={{ color: "var(--text)", fontSize: "calc(14px + var(--chat-font-size-offset, 0px))", fontWeight: 600, lineHeight: 1.35 }}>
              {t("i18n.conversationCompacted")}
           </div>
           <div style={{ marginTop: 3, marginBottom: 10, color: "var(--text)", fontSize: "calc(14px + var(--chat-font-size-offset, 0px))", lineHeight: 1.5 }}>
@@ -1708,7 +1705,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
         <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", flexShrink: 0 }}>
           <SubagentIcon size={12} strokeWidth={2} />
         </span>
-        <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 500 }}>
+        <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
           {label}
         </span>
         <svg data-step-chevron="" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} aria-hidden="true">
@@ -1752,7 +1749,6 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
           borderRadius: 8,
           overflow: "hidden",
           background: isHiddenDisplay ? "var(--bg-subtle)" : "var(--bg)",
-          opacity: isHiddenDisplay && !contentExpanded ? 0.82 : 1,
         }}
       >
         <div
@@ -1767,11 +1763,11 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
             fontSize: 12,
           }}
         >
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 650 }}>
+          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
             {title}
           </span>
            {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{t("i18n.hiddenExtensionMessage")}</span>}
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 10 }}>{time}</span>}
+          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 11 }}>{time}</span>}
         </div>
 
         {contentExpanded ? (

@@ -174,7 +174,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
           <div className="h-1 w-10 rounded-full bg-border" />
         </div>
         <header className="flex h-10 shrink-0 items-center px-4 sm:h-11">
-          <h2 id="image-generation-title" className="text-[14px] font-medium text-text">{editing ? t("image.editTitle") : t("image.title")}</h2>
+          <h2 id="image-generation-title" className="text-[14px] font-semibold text-text">{editing ? t("image.editTitle") : t("image.title")}</h2>
           <button type="button" onClick={onClose} className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-text-muted hover:bg-bg-hover hover:text-text" title={t("trust.cancel")} aria-label={t("trust.cancel")}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
@@ -240,7 +240,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
               </CompactSelect>
             ) : null}
           </div>
-          <button type="button" disabled={!prompt.trim()} onClick={submit} className="h-8 shrink-0 rounded-md border-0 bg-accent px-3 text-[12.5px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{editing ? t("image.edit") : t("image.generate")}</button>
+          <button type="button" disabled={!prompt.trim()} onClick={submit} className="h-8 shrink-0 rounded-md border-0 bg-accent px-3 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-50">{editing ? t("image.edit") : t("image.generate")}</button>
         </footer>
       </div>
     </div>

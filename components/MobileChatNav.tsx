@@ -85,7 +85,7 @@ export function MobileChatNav({
                 type="button"
                 className={`relative flex w-full items-start gap-2.5 rounded-[4px] py-2 pl-2.5 pr-2 text-left transition-colors [-webkit-tap-highlight-color:transparent] ${
                   isActive
-                    ? "bg-[var(--bg-selected)] font-medium text-[var(--text)] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2.5px] before:rounded-r-[1.5px] before:bg-[var(--accent)]"
+                    ? "bg-[var(--bg-selected)] text-[var(--text)] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2.5px] before:rounded-r-[1.5px] before:bg-[var(--accent)]"
                     : "text-[var(--text)] hover:bg-[var(--bg-hover)] active:bg-[var(--bg-hover)]"
                 }`}
                 aria-current={isActive ? "location" : undefined}
@@ -95,14 +95,14 @@ export function MobileChatNav({
                 }}
               >
                 <span
-                  className={`w-5 shrink-0 text-right tabular-nums text-[13px] leading-5 select-none ${
-                    isActive ? "font-semibold text-[var(--accent)]" : "text-[var(--text-dim)]"
+                  className={`w-5 shrink-0 text-right tabular-nums text-[12px] leading-5 select-none ${
+                    isActive ? "text-[var(--accent)]" : "text-[var(--text-dim)]"
                   }`}
                   aria-hidden="true"
                 >
                   {index + 1}
                 </span>
-                <span className="flex-1 min-w-0 line-clamp-2 text-[13px] leading-5" style={{ hangingPunctuation: "first" }}>
+                <span className="flex-1 min-w-0 line-clamp-2 text-[12px] leading-5" style={{ hangingPunctuation: "first" }}>
                   {item.preview}
                 </span>
               </button>

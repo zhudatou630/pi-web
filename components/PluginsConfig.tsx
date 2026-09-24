@@ -139,7 +139,6 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
           <div
             style={{
               fontSize: 10,
-              fontWeight: 700,
               color: "var(--text-dim)",
               textTransform: "uppercase",
               marginBottom: 6,
@@ -165,7 +164,7 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
                 </div>
                 <div
                   style={{
-                    fontSize: 10,
+                    fontSize: 11,
                     color: "var(--text-dim)",
                     fontFamily: "var(--font-mono)",
                     overflow: "hidden",
@@ -367,7 +366,7 @@ function AddPluginPanel({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
           Examples
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

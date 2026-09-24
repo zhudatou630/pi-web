@@ -112,7 +112,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               transition: "background 0.1s, color 0.1s",
             }}
           >
-            <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7, display: "inline-flex", alignItems: "center", transform: "translateY(0.5px)" }}>
+            <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.7, display: "inline-flex", alignItems: "center" }}>
               {tab.kind === "terminal" ? (
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }} aria-hidden="true">
                   <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
@@ -125,7 +125,6 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 textOverflow: "ellipsis",
                 flex: 1,
                 lineHeight: 1,
-                fontWeight: isActive ? 500 : 400,
               }}
               title={tab.filePath}
             >

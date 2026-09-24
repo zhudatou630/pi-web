@@ -299,7 +299,7 @@ function renderSlashCommandName(name: string, query: string | null): React.React
   if (!query) return `/${name}`;
   const matchStart = name.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
   if (matchStart < 0) return `/${name}`;
-  return <>{`/${name.slice(0, matchStart)}`}<span style={{ color: "var(--accent)", fontWeight: 600 }}>{name.slice(matchStart, matchStart + query.length)}</span>{name.slice(matchStart + query.length)}</>;
+  return <>{`/${name.slice(0, matchStart)}`}<span style={{ color: "var(--accent)" }}>{name.slice(matchStart, matchStart + query.length)}</span>{name.slice(matchStart + query.length)}</>;
 }
 
 const BUILTIN_SIGNATURES: Record<string, string> = {
@@ -312,7 +312,7 @@ function highlightText(text: string, query: string | null): React.ReactNode {
   if (!query) return text;
   const start = text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
   if (start < 0) return text;
-  return <>{text.slice(0, start)}<mark style={{ padding: 0, color: "var(--accent)", background: "transparent", fontWeight: 700 }}>{text.slice(start, start + query.length)}</mark>{text.slice(start + query.length)}</>;
+  return <>{text.slice(0, start)}<mark style={{ padding: 0, color: "var(--accent)", background: "transparent" }}>{text.slice(start, start + query.length)}</mark>{text.slice(start + query.length)}</>;
 }
 
 // Skill slash commands are named "skill:<skillName>"; look the skill up in the
@@ -540,7 +540,7 @@ function ModelNoticeBanner({ tone, title, body, onClose }: { tone: "error" | "wa
             cursor: "pointer",
             color: "inherit",
             opacity: 0.7,
-            fontSize: 13,
+            fontSize: 12,
             lineHeight: 1,
           }}
         >
@@ -1704,7 +1704,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             style={{ transition: "stroke-dasharray 0.3s ease" }}
           />
         </svg>
-        <span style={{ fontWeight: isHigh ? 600 : 400, letterSpacing: "-0.01em", lineHeight: 1 }}>
+        <span style={{ letterSpacing: "-0.01em", lineHeight: 1 }}>
           {label}
         </span>
         {cacheHitRate !== null && cacheHitRate !== undefined && (
@@ -1964,14 +1964,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 borderRadius: 4,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
                 fontFamily: "var(--font-mono)",
-                fontSize: 11.5,
+                fontSize: 11,
                 lineHeight: 1,
                 color: "var(--text-dim)",
-                opacity: slashUsage.hasArgument ? 0.45 : 0.85,
+                opacity: slashUsage.hasArgument ? 0.45 : 1,
                 pointerEvents: "none",
               }}
             >
-              <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>Usage:</span>
+              <span style={{ color: "var(--text-muted)" }}>Usage:</span>
               <span style={{ color: "var(--text)" }}>/{slashUsage.command}</span>
               <span>{slashUsage.signature}</span>
             </div>
@@ -2051,7 +2051,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         color: "var(--text)",
                         cursor: "pointer",
                         textAlign: "left",
-                        fontSize: 12.5,
+                        fontSize: 12,
                         lineHeight: 1.45,
                       }}
                     >
@@ -2126,13 +2126,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           background: "var(--bg)",
                           color: "var(--text-dim)",
                           fontSize: 10,
-                          fontWeight: 600,
                           letterSpacing: "0.04em",
                           textTransform: "uppercase",
                         }}
                       >
                         <span>{t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}</span>
-                        <span style={{ fontFamily: "var(--font-mono)", fontWeight: 500 }}>{group.items.length}</span>
+                        <span style={{ fontFamily: "var(--font-mono)" }}>{group.items.length}</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                         {group.items.map(({ command, index }) => {
@@ -2173,11 +2172,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             >
                               <span style={{
                                 flexShrink: 0,
-                                fontSize: 12.5,
+                                fontSize: 12,
                                 fontFamily: "var(--font-mono)",
                                 whiteSpace: "nowrap",
                                 color: active ? "var(--text)" : (dormant ? "var(--text-dim)" : "var(--text)"),
-                                fontWeight: 500,
                               }}>
                                 {renderSlashCommandName(command.name, slashQuery)}
                                 {command.source === "builtin" && BUILTIN_SIGNATURES[command.name] && (
@@ -2191,7 +2189,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                     padding: "0 4px",
                                     border: "1px solid var(--border)",
                                     borderRadius: 3,
-                                    fontSize: 9,
+                                    fontSize: 11,
                                     color: "var(--text-dim)",
                                     whiteSpace: "nowrap",
                                   }}>
@@ -2311,7 +2309,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             color: "var(--text)",
                             cursor: "pointer",
                             textAlign: "left",
-                            fontSize: 12.5,
+                            fontSize: 12,
                             fontFamily: "var(--font-mono)",
                             transition: "background 0.08s ease",
                           }}
@@ -2319,12 +2317,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", color: "var(--text-muted)" }}>
                             {entry.isDir ? <FolderIcon size={14} /> : getFileIcon(name, 14)}
                           </span>
-                          <span style={{ flexShrink: 0, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap" }}>
+                          <span style={{ flexShrink: 0, color: "var(--text)", whiteSpace: "nowrap" }}>
                             {highlightText(name, atQuery?.query ?? null)}
                             {entry.isDir && <span style={{ color: "var(--text-dim)" }}>/</span>}
                           </span>
                           {dirPrefix && (
-                            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", fontSize: 11.5 }}>
+                            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", fontSize: 11 }}>
                               {dirPrefix}
                             </span>
                           )}
@@ -2368,12 +2366,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 color: bashExcluded ? "var(--text-muted)" : "var(--accent)",
                 fontFamily: "var(--font-mono)",
                 fontSize: 11,
-                fontWeight: 600,
                 flexShrink: 0,
                 userSelect: "none",
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", transform: "translateY(0.5px)" }} aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }} aria-hidden="true">
                 <polyline points="4 17 10 11 4 5" />
                 <line x1="12" y1="19" x2="20" y2="19" />
               </svg>
@@ -2486,7 +2483,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       borderRadius: 5,
                       color: "var(--accent)",
                       cursor: "pointer",
-                      fontSize: 12.5, fontWeight: 600, letterSpacing: "-0.01em",
+                      fontSize: 12, letterSpacing: "-0.01em",
                       lineHeight: 1,
                       transition: "background 0.12s, color 0.12s, border-color 0.12s",
                     }}
@@ -2520,7 +2517,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       borderRadius: 5,
                       color: "#ffffff",
                       cursor: "pointer",
-                      fontSize: 12.5, fontWeight: 600, letterSpacing: "-0.01em",
+                      fontSize: 12, letterSpacing: "-0.01em",
                       lineHeight: 1,
                       transition: "background 0.12s, filter 0.12s",
                     }}
@@ -2555,8 +2552,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   borderRadius: 5,
                   color: "#ef4444",
                   cursor: "pointer",
-                  fontSize: 12.5,
-                  fontWeight: 600,
+                  fontSize: 12,
                   letterSpacing: "-0.01em",
                   lineHeight: 1,
                   transition: "background 0.15s, border-color 0.15s",
@@ -2595,8 +2591,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 color: canSendMessage ? "var(--accent-contrast)" : "var(--text-dim)",
                 opacity: canSendMessage ? 1 : 0.45,
                 cursor: canSendMessage ? "pointer" : "not-allowed",
-                fontSize: 12.5,
-                fontWeight: 600,
+                fontSize: 12,
                 letterSpacing: "-0.01em",
                 lineHeight: 1,
                 transition: "background 0.15s, color 0.15s, opacity 0.15s, filter 0.15s",
@@ -2947,7 +2942,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             border: "none",
                             color: isActive ? "var(--text)" : "var(--text-muted)",
                             cursor: "pointer", fontSize: 12, textAlign: "left",
-                            fontWeight: isActive ? 600 : 400,
                             whiteSpace: "nowrap",
                           }}
                           onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}
@@ -2958,7 +2952,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             : <span style={{ width: 10, flexShrink: 0 }} />}
                           <span style={{ flex: 1 }}>
                             {displayLabel}
-                            {showOriginal && <span style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginLeft: 5 }}>({lvl})</span>}
+                            {showOriginal && <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginLeft: 5 }}>({lvl})</span>}
                           </span>
                           <span style={{ fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}>{desc}</span>
                         </button>
@@ -3042,7 +3036,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             border: "none",
                             color: isActive ? "var(--text)" : "var(--text-muted)",
                             cursor: "pointer", fontSize: 12, textAlign: "left",
-                            fontWeight: isActive ? 600 : 400,
                             whiteSpace: "nowrap",
                           }}
                           onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "var(--bg-hover)"; }}

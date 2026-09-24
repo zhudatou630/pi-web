@@ -572,7 +572,7 @@ function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: str
   }, [startTime]);
 
   return (
-    <span style={{ fontSize: 11.5, color: "var(--accent)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+    <span style={{ fontSize: 11, color: "var(--accent)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
       {formatDuration(elapsed, t)}
     </span>
   );
@@ -663,7 +663,7 @@ function ProcessDetailsGroup({
           background: "none",
           color: "var(--text-dim)",
           cursor: "pointer",
-          fontSize: 11.5,
+          fontSize: 11,
           fontFamily: "var(--font-ui)",
           fontWeight: 400,
           textAlign: "left",
@@ -681,14 +681,14 @@ function ProcessDetailsGroup({
                 alignItems: "center",
                 gap: 5,
                 minWidth: 0,
-                fontSize: 11.5,
+                fontSize: 11,
                 color: "var(--accent)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}
             >
-              {startTime && <span style={{ opacity: 0.5, color: "var(--text-dim)" }}>·</span>}
+              {startTime && <span style={{ color: "var(--text-dim)" }}>·</span>}
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {activeStepSummary || t("chat.thinking")}
               </span>
@@ -2328,7 +2328,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           ) : <>
           <button
             type="button"
-            className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
             title={t("chat.askInCurrent")}
             aria-label={t("chat.askInCurrent")}
             onPointerDown={(event) => event.preventDefault()}
@@ -2340,7 +2340,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           {onAskInNewChat && quotedSelection.sourceEntryId && !sessionBusy && (
             <button
               type="button"
-              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
               title={t("chat.askInNewChat")}
               aria-label={t("chat.askInNewChat")}
               onPointerDown={(event) => event.preventDefault()}
@@ -2471,7 +2471,7 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
             boxShadow: floating
               ? "0 4px 16px -2px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.06)"
               : "0 2px 8px -2px rgba(0, 0, 0, 0.08)",
-            fontSize: 13,
+            fontSize: 12,
             lineHeight: 1.45,
             transformOrigin: "top right",
             animation: notice.exiting
@@ -2583,10 +2583,10 @@ function ExtensionDialog({
             textAlign: "left",
           }}
         >
-          <span style={{ fontSize: 11, fontWeight: 650, color: "var(--accent)", flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>
             {t("chat.extensionPending")}
           </span>
-          <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
             {request.title}
           </span>
           {summary && (
@@ -2618,7 +2618,7 @@ function ExtensionDialog({
       >
         <div style={{ flexShrink: 0, display: "flex", alignItems: "flex-start", gap: 8, padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 650 }}>{request.title}</div>
+            <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 600 }}>{request.title}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 3, color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
               <span>{t("chat.extensionRequest")}</span>
               {countdown}
@@ -2697,7 +2697,7 @@ function ExtensionDialog({
                     color: "var(--text)",
                     cursor: "pointer",
                     textAlign: "left",
-                    fontSize: 13,
+                    fontSize: 12,
                     overflowWrap: "anywhere",
                   }}
                 >
@@ -2725,7 +2725,7 @@ function ExtensionDialog({
                 background: "var(--bg-panel)",
                 color: "var(--text)",
                 outline: "none",
-                fontSize: 13,
+                fontSize: 12,
               }}
             />
           )}
@@ -2861,10 +2861,10 @@ function ExtensionCustomPanel({
             textAlign: "left",
           }}
         >
-          <span style={{ fontSize: 11, fontWeight: 650, color: "var(--accent)", flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>
             {t("chat.extensionPending")}
           </span>
-          <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
             {t("chat.extensionPanel")}
           </span>
           {summary && (
@@ -2946,7 +2946,7 @@ function ExtensionCustomPanel({
           }}
         />
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
-           <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 650 }}>{t("chat.extensionPanel")}</div>
+           <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 600 }}>{t("chat.extensionPanel")}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
               type="button"

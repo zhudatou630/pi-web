@@ -153,7 +153,6 @@
 .row[aria-current="location"] {
   background: var(--bg-selected);
   color: var(--text);
-  font-weight: 500;
 }
 
 .row:focus-visible {

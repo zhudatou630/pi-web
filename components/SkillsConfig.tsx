@@ -408,7 +408,6 @@ function AddSkillPanel({
                   cursor: s === "project" && !projectResourcesLoaded ? "not-allowed" : "pointer",
                   background: scope === s ? "var(--bg-selected)" : "none",
                   color: scope === s ? "var(--text)" : "var(--text-dim)",
-                  fontWeight: scope === s ? 600 : 400,
                   opacity: s === "project" && !projectResourcesLoaded ? 0.45 : 1,
                   borderRight:
                     s === "global" ? "1px solid var(--border)" : "none",
@@ -472,8 +471,7 @@ function AddSkillPanel({
                   {/* skill name prominent */}
                   <div
                     style={{
-                      fontSize: 13,
-                      fontWeight: 600,
+                      fontSize: 12,
                       color: "var(--text)",
                       marginBottom: 3,
                     }}
@@ -502,7 +500,6 @@ function AddSkillPanel({
                       style={{
                         fontSize: 12,
                         color: "var(--text-muted)",
-                        fontWeight: 500,
                       }}
                     >
                       {r.installs}
@@ -553,7 +550,7 @@ function AddSkillPanel({
         !searchError &&
         !searching && (
           <div
-            style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.8 }}
+            style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.8 }}
           >
             Search{" "}
             <a

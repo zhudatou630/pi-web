@@ -106,7 +106,7 @@ export function ProjectTrustDialog({
             <path d="m9 12 2 2 4-4" />
           </svg>
           <div style={{ minWidth: 0 }}>
-            <div id="project-trust-title" style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+            <div id="project-trust-title" style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>
               {t("trust.dialogTitle")}
             </div>
             <div style={{ marginTop: 7, fontSize: 12, lineHeight: 1.6, color: "var(--text-muted)" }}>
@@ -176,7 +176,6 @@ export function ProjectTrustDialog({
               cursor: busy ? "wait" : "pointer",
               opacity: busy ? 0.7 : 1,
               fontSize: 12,
-              fontWeight: 600,
             }}
           >
             {busy ? t("trust.trusting") : t("trust.trustProject")}

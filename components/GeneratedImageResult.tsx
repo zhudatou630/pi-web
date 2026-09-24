@@ -120,7 +120,7 @@ export function GeneratedImageResult({ value, cwd, onEdit, onMention, showPrompt
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-end p-2">
           <div className="pointer-events-auto flex items-center rounded-full bg-black/50 p-0.5 text-white backdrop-blur-sm">
             {onEdit ? (
-              <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(details); }} title={t("image.edit")} className="h-7 rounded-full px-2.5 text-[11px] font-medium tracking-wide text-white/95 hover:bg-white/15">
+              <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(details); }} title={t("image.edit")} className="h-7 rounded-full px-2.5 text-[11px] tracking-wide text-white/95 hover:bg-white/15">
                 {t("image.edit")}
               </button>
             ) : null}

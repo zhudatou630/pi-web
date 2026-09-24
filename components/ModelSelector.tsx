@@ -335,7 +335,7 @@ export function ModelSelector({
               ) : modelsByProvider.map((group, index) => (
                 <div key={group.provider}>
                   {modelsByProvider.length > 1 && (
-                    <div style={{ padding: "6px 12px 4px", borderTop: index > 0 || onClear ? "1px solid var(--border)" : "none", color: "var(--text-dim)", fontSize: 10, fontWeight: 600, letterSpacing: 0, textTransform: "uppercase" }}>
+                    <div style={{ padding: "6px 12px 4px", borderTop: index > 0 || onClear ? "1px solid var(--border)" : "none", color: "var(--text-dim)", fontSize: 10, letterSpacing: 0, textTransform: "uppercase" }}>
                       {group.provider}
                     </div>
                   )}
@@ -369,7 +369,7 @@ function ModelOptionButton({ id, active, highlighted, label, onActive, onClick }
       aria-selected={active}
       data-active={highlighted || undefined}
       onClick={onClick}
-      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", border: "none", background: active ? "var(--bg-selected)" : highlighted ? "var(--bg-hover)" : "none", color: active ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, fontWeight: active ? 600 : 400, textAlign: "left", whiteSpace: "nowrap" }}
+      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", border: "none", background: active ? "var(--bg-selected)" : highlighted ? "var(--bg-hover)" : "none", color: active ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", whiteSpace: "nowrap" }}
       onMouseEnter={(event) => { onActive?.(); if (!active) event.currentTarget.style.background = "var(--bg-hover)"; }}
       onMouseLeave={(event) => { if (!active) event.currentTarget.style.background = "none"; }}
     >
