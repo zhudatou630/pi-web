@@ -86,3 +86,15 @@ test("a disconnected launcher refuses updates", async () => {
   assert.equal((await api.POST()).status, 409);
   assert.equal(api.deferred.length, 0);
 });
+
+test("force bypasses the cache and reports failures instead of stale data", async () => {
+  const api = route();
+  const get = (query = "") => api.GET(new Request(`http://localhost/api/app-update${query}`));
+  await get();
+  api.context.fetch = async () => Response.json({ version: "1.2.0" });
+  assert.equal((await (await get()).json()).latestVersion, "1.1.0");
+  assert.equal((await (await get("?force=1")).json()).latestVersion, "1.2.0");
+  assert.equal((await (await get()).json()).latestVersion, "1.2.0");
+  api.context.fetch = async () => new Response("", { status: 503 });
+  assert.equal((await get("?force=1")).status, 502);
+});

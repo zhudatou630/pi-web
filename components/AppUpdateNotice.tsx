@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { AppUpdateResponse } from "@/lib/api-types";
 
@@ -8,12 +8,14 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
   const { t } = useI18n();
   const [update, setUpdate] = useState<AppUpdateResponse | null>(null);
   const [checkFailed, setCheckFailed] = useState(false);
+  const [manualChecking, setManualChecking] = useState(false);
   const [status, setStatus] = useState<"idle" | "requesting" | "waiting" | "timeout">("idle");
   const [error, setError] = useState<string | null>(null);
   const requesting = useRef(false);
+  const currentVersion = update?.currentVersion;
 
   useEffect(() => {
-    if (status !== "waiting" || !update) return;
+    if (status !== "waiting" || !currentVersion) return;
     const controller = new AbortController();
     let stopped = false;
     let pollTimer: ReturnType<typeof setTimeout>;
@@ -31,7 +33,7 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
         });
         if (response.ok) {
           const result = await response.json() as AppUpdateResponse;
-          if (!stopped && result.currentVersion && result.currentVersion !== update.currentVersion) {
+          if (!stopped && result.currentVersion && result.currentVersion !== currentVersion) {
             stopped = true;
             clearTimeout(deadline);
             window.location.reload();
@@ -50,7 +52,7 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
       clearTimeout(deadline);
       clearTimeout(pollTimer);
     };
-  }, [status, update]);
+  }, [status, currentVersion]);
 
   const startUpdate = async () => {
     if (requesting.current || !window.confirm(t("appUpdate.confirm"))) return;
@@ -71,21 +73,37 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
     }
   };
 
+  const checkForUpdate = useCallback(async (force: boolean, signal?: AbortSignal) => {
+    try {
+      const response = await fetch(force ? "/api/app-update?force=1" : "/api/app-update", { cache: "no-store", signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setUpdate(await response.json() as AppUpdateResponse);
+      setCheckFailed(false);
+    } catch {
+      if (!signal?.aborted) setCheckFailed(true);
+    }
+  }, []);
+
+  // Long-lived tabs re-check when shown again; the server cache keeps this cheap.
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/app-update", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json() as Promise<AppUpdateResponse>;
-      })
-      .then((result) => {
-        setUpdate(result);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setCheckFailed(true);
-      });
-    return () => controller.abort();
-  }, []);
+    void checkForUpdate(false, controller.signal);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void checkForUpdate(false, controller.signal);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      controller.abort();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [checkForUpdate]);
+
+  const checkNow = async () => {
+    setManualChecking(true);
+    setCheckFailed(false);
+    await checkForUpdate(true);
+    setManualChecking(false);
+  };
 
   const available = update?.updateAvailable && update.latestVersion && update.releaseUrl;
   if (!showCurrentVersion && !available) return null;
@@ -98,8 +116,26 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
           {t("appUpdate.currentVersion", { version: update?.currentVersion ?? process.env.NEXT_PUBLIC_APP_VERSION ?? "dev" })}
           {!available && (
             <span role="status" style={{ color: "var(--text-muted)" }}>
-              {" · "}{t(checkFailed ? "appUpdate.checkFailed" : !update ? "appUpdate.checking" : !update.releaseUrl ? "appUpdate.checkDisabled" : "appUpdate.upToDate")}
+              {" · "}{t(manualChecking || (!update && !checkFailed) ? "appUpdate.checking" : checkFailed ? "appUpdate.checkFailed" : !update?.releaseUrl ? "appUpdate.checkDisabled" : "appUpdate.upToDate")}
             </span>
+          )}
+          {(checkFailed || update?.releaseUrl) && (
+            <>
+              {" "}
+              <button
+                type="button"
+                disabled={manualChecking || status !== "idle"}
+                onClick={() => { void checkNow(); }}
+                title={t("appUpdate.checkNow")}
+                aria-label={t("appUpdate.checkNow")}
+                style={{ color: "var(--accent)", verticalAlign: "middle", cursor: manualChecking ? "default" : "pointer" }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+              </button>
+            </>
           )}
         </p>
       )}

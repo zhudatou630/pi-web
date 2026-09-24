@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 const CURRENT_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
 const NPM_LATEST_URL = "https://registry.npmjs.org/@calmabacus%2Fpi-web/latest";
-const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const CACHE_TTL_MS = 30 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
 const SKIP_VERSION_CHECK = process.env.PI_WEB_SKIP_VERSION_CHECK === "1";
 const CAN_UPDATE = process.env.PI_WEB_CAN_UPDATE === "1" && typeof process.send === "function";
@@ -62,9 +62,10 @@ async function fetchLatestVersion(): Promise<AppUpdateResponse> {
   };
 }
 
-async function loadUpdateStatus(): Promise<AppUpdateResponse> {
+// force: manual check — bypass the cache and surface failures instead of stale data.
+async function loadUpdateStatus(force: boolean): Promise<AppUpdateResponse> {
   const cache = getCache();
-  if (cache.value && cache.expiresAt > Date.now()) return cache.value;
+  if (!force && cache.value && cache.expiresAt > Date.now()) return cache.value;
   if (!cache.inFlight) {
     cache.inFlight = fetchLatestVersion().then((value) => {
       cache.value = value;
@@ -78,13 +79,14 @@ async function loadUpdateStatus(): Promise<AppUpdateResponse> {
   try {
     return await cache.inFlight;
   } catch (error) {
-    if (cache.value) return cache.value;
+    if (!force && cache.value) return cache.value;
     throw error;
   }
 }
 
 export async function GET(request: Request) {
-  if (SKIP_VERSION_CHECK || new URL(request.url).searchParams.get("status") === "1") {
+  const params = new URL(request.url).searchParams;
+  if (SKIP_VERSION_CHECK || params.get("status") === "1") {
     return updateResponse({
       currentVersion: CURRENT_VERSION,
       latestVersion: CURRENT_VERSION,
@@ -93,7 +95,7 @@ export async function GET(request: Request) {
     } satisfies AppUpdateResponse);
   }
   try {
-    return updateResponse(await loadUpdateStatus());
+    return updateResponse(await loadUpdateStatus(params.get("force") === "1"));
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },
