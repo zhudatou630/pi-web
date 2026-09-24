@@ -19,7 +19,11 @@ export function proxy(request: NextRequest) {
 
   if (!isTrustedRequest) {
     if (!isApiRequest) {
-      return new NextResponse("Untrusted request", { status: 403 });
+      const host = request.headers.get("host") ?? "";
+      return new NextResponse(
+        `Untrusted host "${host}". If you reach Pi Web through this name, add its hostname to PI_WEB_ALLOWED_HOSTS and restart.`,
+        { status: 403, headers: { "content-type": "text/plain; charset=utf-8" } },
+      );
     }
     return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
   }
