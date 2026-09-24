@@ -43,10 +43,14 @@ function registry(): Map<string, TerminalRecord> {
   return globalThis.__piWebTerminals;
 }
 
-function shellEnvironment(): Record<string, string> {
+// Launcher/Next internals of *this* server. A pi-web started from the terminal
+// (e.g. `npm run dev`) must not inherit them, or it claims in-app update rights.
+const SERVER_ONLY_ENV = /^(PI_WEB_CAN_UPDATE|PI_WEB_UPDATE_BLOCKED|__NEXT_PRIVATE_.*)$/;
+
+export function shellEnvironment(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) env[key] = value;
+    if (value !== undefined && !SERVER_ONLY_ENV.test(key)) env[key] = value;
   }
   env.TERM = "xterm-256color";
   env.COLORTERM = "truecolor";
