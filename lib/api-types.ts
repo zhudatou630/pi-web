@@ -104,6 +104,7 @@ export interface AppUpdateResponse {
   latestVersion: string;
   updateAvailable: boolean;
   releaseUrl: string;
+  canUpdate?: boolean;
 }
 
 export interface PushConfigResponse {

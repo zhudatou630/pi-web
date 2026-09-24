@@ -33,11 +33,18 @@ nohup npm start > pi-web.log 2>&1 &
 
 ## 更新
 
-npm：
+npm 全局安装并通过 `pi-web` 启动时，可从 **设置 → 常规 → 版本与更新** 查看当前版本和更新状态；新会话页面也会提示新版本。点击“更新并重启”后，页面会等待服务恢复并自动刷新。请先结束 Agent / 子代理任务并关闭内置终端；更新期间服务会短暂不可用，配置和会话仍保存在 `~/.pi/agent`。
+
+Git 安装、systemd / PM2 托管，以及没有安装目录写入权限的实例使用手动更新。可设置 `PI_WEB_SKIP_VERSION_CHECK=1` 关闭版本检查。
+
+npm 手动更新（先停止正在运行的 Pi Web）：
 
 ```bash
-npm update -g @calmabacus/pi-web
+npm install -g @calmabacus/pi-web@latest
+pi-web
 ```
+
+如果页面更新超时，请查看启动 Pi Web 的终端输出，并使用以上命令恢复。
 
 Git，在项目根目录下执行：
 

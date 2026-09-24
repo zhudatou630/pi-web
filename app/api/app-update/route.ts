@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import type { AppUpdateResponse } from "@/lib/api-types";
 import { getPiWebReleaseUrl, isNewerStableVersion } from "@/lib/app-update";
 
@@ -8,7 +8,14 @@ const CURRENT_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0";
 const NPM_LATEST_URL = "https://registry.npmjs.org/@calmabacus%2Fpi-web/latest";
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 5_000;
-const SKIP_VERSION_CHECK = process.env.PI_WEB_SKIP_VERSION_CHECK !== "0";
+const SKIP_VERSION_CHECK = process.env.PI_WEB_SKIP_VERSION_CHECK === "1";
+const CAN_UPDATE = process.env.PI_WEB_CAN_UPDATE === "1" && typeof process.send === "function";
+
+function updateResponse(value: AppUpdateResponse) {
+  return NextResponse.json({ ...value, canUpdate: CAN_UPDATE }, {
+    headers: { "Cache-Control": "no-store" },
+  });
+}
 
 interface AppUpdateCache {
   value?: AppUpdateResponse;
@@ -66,9 +73,9 @@ async function loadUpdateStatus(): Promise<AppUpdateResponse> {
   }
 }
 
-export async function GET() {
-  if (SKIP_VERSION_CHECK) {
-    return NextResponse.json({
+export async function GET(request: Request) {
+  if (SKIP_VERSION_CHECK || new URL(request.url).searchParams.get("status") === "1") {
+    return updateResponse({
       currentVersion: CURRENT_VERSION,
       latestVersion: CURRENT_VERSION,
       updateAvailable: false,
@@ -76,11 +83,38 @@ export async function GET() {
     } satisfies AppUpdateResponse);
   }
   try {
-    return NextResponse.json(await loadUpdateStatus());
+    return updateResponse(await loadUpdateStatus());
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },
       { status: 502 },
     );
   }
+}
+
+export async function POST() {
+  if (!CAN_UPDATE || !process.connected) {
+    return NextResponse.json({ error: "Use a writable npm global installation started with pi-web to update here." }, { status: 409 });
+  }
+  const [{ hasAppUpdateBlockingSessions }, { hasAppUpdateBlockingTerminals }] = await Promise.all([
+    import("@/lib/rpc-manager"),
+    import("@/lib/terminal-manager"),
+  ]);
+  if (globalThis.__piWebUpdating) {
+    return NextResponse.json({ error: "Pi Web is already updating." }, { status: 409 });
+  }
+  if (hasAppUpdateBlockingSessions() || hasAppUpdateBlockingTerminals()) {
+    return NextResponse.json({ error: "Finish running Agent tasks and close terminal sessions before updating." }, { status: 409 });
+  }
+  // No await between checking active work and blocking new work.
+  globalThis.__piWebUpdating = true;
+  after(() => {
+    process.send!({ type: "pi-web:update" }, (error: Error | null) => {
+      if (error) {
+        globalThis.__piWebUpdating = false;
+        console.error("[pi-web] Could not request update:", error);
+      }
+    });
+  });
+  return NextResponse.json({ updating: true }, { status: 202 });
 }

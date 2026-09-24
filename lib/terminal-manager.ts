@@ -1,3 +1,4 @@
+import { assertAppNotUpdating } from "./app-update-state";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
 import type { IPty } from "node-pty";
@@ -69,7 +70,12 @@ function dimension(value: number, fallback: number): number {
   return Math.min(1000, Math.max(2, Number.isFinite(value) ? Math.floor(value) : fallback));
 }
 
+export function hasAppUpdateBlockingTerminals(): boolean {
+  return [...registry().values()].some((terminal) => !terminal.exited);
+}
+
 export function createTerminal(cwd: string, cols: number, rows: number, id: string = randomUUID()): string {
+  assertAppNotUpdating();
   const existing = registry().get(id);
   if (existing) {
     if (!samePath(existing.cwd, cwd)) throw new Error("Terminal belongs to a different workspace");

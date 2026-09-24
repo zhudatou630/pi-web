@@ -43,6 +43,7 @@ import { ImagesConfig } from "./ImagesConfig";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
 import { downloadSarasa, hasDownloadedSarasa } from "@/lib/sarasa-font";
+import { AppUpdateNotice } from "./AppUpdateNotice";
 import { ConfigButton, ConfigSwitch } from "./SettingsUi";
 
 interface Props {
@@ -220,6 +221,11 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   return (
     <div className="settings-general">
       <h2 className="settings-general-title">{t("settings.general")}</h2>
+
+      <section className="settings-general-section">
+        <h3 className="settings-general-heading">{t("appUpdate.title")}</h3>
+        <AppUpdateNotice showCurrentVersion />
+      </section>
 
       <div className="settings-general-columns">
       <div>

@@ -1,3 +1,4 @@
+import { assertAppNotUpdating } from "./app-update-state";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
@@ -600,6 +601,7 @@ export class AgentSessionWrapper {
   }
 
   async send(command: Record<string, unknown>): Promise<unknown> {
+    assertAppNotUpdating();
     const type = command.type as string;
     const allowedDuringReplacement = COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT.has(type);
     if (this.sessionReplacement && !allowedDuringReplacement) {
@@ -1679,6 +1681,13 @@ function trackStartingSession(cwd: string): () => void {
   };
 }
 
+export function hasAppUpdateBlockingSessions(): boolean {
+  return getLocks().size > 0
+    || getSessionFileMutations().size > 0
+    || getActiveSubagentRuns().length > 0
+    || [...getRegistry().values()].some((session) => session.isBusyForFileMutation());
+}
+
 export function getRpcSession(sessionId: string): AgentSessionWrapper | undefined {
   return getRegistry().get(sessionId);
 }
@@ -2073,6 +2082,7 @@ export async function startRpcSession(
   cwd: string | undefined,
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
+  assertAppNotUpdating();
   const { initialModel, allowInitialModelFallback, thinkingLevel, cwdOverride } = options;
   if (getSessionFileMutations().has(sessionId)) {
     throw new Error("Session file is being modified");

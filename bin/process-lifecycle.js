@@ -16,6 +16,7 @@ function wireChildProcessLifecycle(
   parentProcess = process,
   timeoutMs = shutdownTimeoutMs,
   log = console.error,
+  onExit,
 ) {
   const signalHandlers = new Map();
   let shutdownTimer;
@@ -65,6 +66,7 @@ function wireChildProcessLifecycle(
 
   child.once("exit", (code, signal) => {
     unwire();
+    if (onExit?.(code, signal, shuttingDown)) return;
 
     // A shutdown the user asked for needs no explanation; anything else left
     // the window closing with no stated reason.

@@ -37,7 +37,7 @@ import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAg
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
-import type { AppUpdateResponse } from "@/lib/api-types";
+import { AppUpdateNotice } from "./AppUpdateNotice";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { findChatScrollAnchor, type ChatScrollPosition } from "@/lib/chat-scroll-position";
 import {
@@ -460,70 +460,6 @@ function NewSessionCwdControl({
   );
 }
 
-function NewSessionUpdateLink({
-  label,
-}: {
-  label: (version: string) => string;
-}) {
-  const [update, setUpdate] = useState<AppUpdateResponse | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/app-update", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        return response.json() as Promise<AppUpdateResponse>;
-      })
-      .then((result) => {
-        if (result?.updateAvailable && result.latestVersion && result.releaseUrl) {
-          setUpdate(result);
-        }
-      })
-      .catch(() => {
-        // Update checks are best-effort and must not interrupt a new session.
-      });
-    return () => controller.abort();
-  }, []);
-
-  if (!update) return null;
-  const accessibleLabel = label(update.latestVersion);
-
-  return (
-    <a
-      href={update.releaseUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={accessibleLabel}
-      aria-label={accessibleLabel}
-      onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-      onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        alignSelf: "center",
-        gap: 3,
-        minHeight: 32,
-        minWidth: 0,
-        padding: "0 4px",
-        background: "transparent",
-        borderRadius: 4,
-        color: "var(--accent)",
-        fontSize: 12,
-        fontWeight: 600,
-        lineHeight: 1.2,
-        textDecoration: "none",
-        transition: "background 0.12s",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>v{update.latestVersion}</span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-        <path d="M7 17 17 7" />
-        <path d="M7 7h10v10" />
-      </svg>
-    </a>
-  );
-}
 
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
@@ -2428,7 +2364,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 32" width="82" height="32" fill="currentColor" role="img" aria-label="Pi Web" style={{ color: "var(--text)", flexShrink: 0, display: "block" }}>
                 <path d="M0 0H24V16H16V8H0ZM0 8H8V16H16V24H8V32H0ZM24 16H32V32H24ZM44 16H46V26H44ZM46 26H48V32H46ZM48 22H50V26H48ZM50 26H52V32H50ZM52 16H54V26H52ZM60 16H68V18H60ZM58 18H60V30H58ZM60 22H66V24H60ZM60 30H68V32H60ZM72 16H80V18H74V22H80V24H74V30H80V32H72ZM80 18H82V22H80ZM80 24H82V30H80Z" />
               </svg>
-              <NewSessionUpdateLink label={(version) => t("appUpdate.releaseNotes", { version })} />
+              <AppUpdateNotice />
             </div>
             {newSessionCwd && onNewSessionCwdChange && (
               <NewSessionCwdControl
