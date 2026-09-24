@@ -36,7 +36,6 @@ import {
   ConfigFooter,
   ConfigListAction,
   ConfigPanelShell,
-  ConfigSectionTitle,
   ConfigSidebar,
   ConfigSidebarGroupLabel,
   ConfigSidebarItem,
@@ -49,7 +48,7 @@ import { ProviderIcon } from "./ProviderIcon";
 import { ApiKeyDetail, OAuthDetail } from "./models/AuthDetail";
 import { AddProviderPicker, ModelPickerDialog } from "./models/dialogs";
 import { EndpointForm, ModelDiscovery } from "./models/EndpointSections";
-import { Notice } from "./models/fields";
+import { Notice, SectionHeading } from "./models/fields";
 import { ModelDetail } from "./models/ModelDetail";
 import {
   runtimeToEntry,
@@ -536,6 +535,22 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   // ── Shared pieces ───────────────────────────────────────────────────────────
 
+  /** A model row's main area: opens the model editor, with a chevron that says so. */
+  const rowButton = (title: string, sub: string | undefined, tags: ReactNode, onClick: () => void) => (
+    <button type="button" className="models-row-main models-row-button" title={t("models.editParams")} onClick={onClick}>
+      <span className="models-row-text">
+        <span className="models-row-title-line">
+          <span className="models-row-title">{title}</span>
+          {tags}
+        </span>
+        {sub && <code className="models-row-sub">{sub}</code>}
+      </span>
+      <svg className="models-row-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="m9 18 6-6-6-6" />
+      </svg>
+    </button>
+  );
+
   const chatSwitch = (ref: string, usable: boolean) => {
     if (!cwd || !scopeDoc) return null;
     const allMode = scopeDoc.source === "none";
@@ -580,13 +595,13 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
     return (
       <div className="models-page">
-        <div className="models-scope-card">
-          <div className="models-scope-copy">
-            <strong>{allMode ? t("models.chatAllTitle", { count: chatRefs.length }) : t("models.chatListTitle", { count: chatRefs.length })}</strong>
-            <span>{t("models.chatScopeDesc", { where: t(whereKey) })}</span>
+        <div className="models-page-header">
+          <div className="models-page-heading">
+            <h2 className="models-page-title">{allMode ? t("models.chatAllTitle", { count: chatRefs.length }) : t("models.chatListTitle", { count: chatRefs.length })}</h2>
+            <p className="settings-general-description">{t("models.chatScopeDesc", { where: t(whereKey) })}</p>
           </div>
           {!scopeDoc.readOnly && (
-            <ConfigButton variant={allMode ? "secondary" : "primary"} onClick={() => openAdd()}>
+            <ConfigButton size="small" onClick={() => openAdd()}>
               {allMode ? t("models.pickOnlyThese") : t("models.addToChat")}
             </ConfigButton>
           )}
@@ -620,7 +635,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
               <div className="models-group-header">
                 <ProviderIcon id={providerId} size={16} />
                 <span className="models-group-title">{providerLabel(providerId)}</span>
-                <span className="models-hint">{models.length}</span>
+                <span className="models-count">{models.length}</span>
                 <ConfigButton size="small" variant="ghost" className="models-push-right" onClick={() => openProvider(providerId)}>
                   {t("models.manageProvider")}
                 </ConfigButton>
@@ -632,16 +647,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                   const name = catalogName(model.provider, model.id);
                   return (
                     <div key={ref} className="models-row">
-                      <button
-                        type="button"
-                        className="models-row-main models-row-button"
-                        title={t("models.editParams")}
-                        onClick={() => openProvider(providerId, modelRefFor(providerId, model.id))}
-                      >
-                        <span className="models-row-title">{name || model.id}</span>
-                        {name && name !== model.id && <code className="models-row-sub">{model.id}</code>}
-                      </button>
-                      {pin && <span className="models-tag">{t("models.thinkingPin", { level: pin })}</span>}
+                      {rowButton(
+                        name || model.id,
+                        name && name !== model.id ? model.id : undefined,
+                        pin && <span className="models-tag">{t("models.thinkingPin", { level: pin })}</span>,
+                        () => openProvider(providerId, modelRefFor(providerId, model.id)),
+                      )}
                       {hasExplicitList && (
                         <ConfigButton size="small" variant="ghost" className="models-remove" onClick={() => void removeFromChat(ref)}>
                           {t("models.removeFromChat")}
@@ -708,13 +719,13 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                 <code>{row.id}</code>
                 {row.oauth && <span className="models-tag">{t("models.kindOAuth")}</span>}
                 {row.apiKey && <span className="models-tag">{t("models.kindApiKey")}</span>}
-                {json && <span className="models-tag is-accent">{builtIn ? t("models.kindOverridden") : t("models.kindCustom")}</span>}
+                {json && <span className="models-tag">{builtIn ? t("models.kindOverridden") : t("models.kindCustom")}</span>}
               </span>
             </div>
           </ConfigDetailHeaderInfo>
           {json && (
             <ConfigDetailActions>
-              <ConfigButton size="small" variant="danger" onClick={() => { deleteProvider(row.id); if (builtIn) openProvider(row.id); }}>
+              <ConfigButton size="small" variant="ghost" className="models-danger-ghost" onClick={() => { deleteProvider(row.id); if (builtIn) openProvider(row.id); }}>
                 {builtIn ? t("models.deleteOverride") : t("models.deleteEndpoint")}
               </ConfigButton>
             </ConfigDetailActions>
@@ -723,10 +734,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
         {(row.oauth || showApiKey) && (
           <section className="models-section">
-            <div className="models-section-heading">
-              <ConfigSectionTitle>{t("models.sectionConnection")}</ConfigSectionTitle>
-              <span className="models-hint">{t("models.sectionConnectionHint")}</span>
-            </div>
+            <SectionHeading title={t("models.sectionConnection")} hint={t("models.sectionConnectionHint")} />
             {row.oauth && <OAuthDetail key={row.oauth.id} provider={row.oauth} onRefresh={refreshAuthAndRuntime} cwd={cwd} />}
             {showApiKey && row.apiKey && <ApiKeyDetail key={`${row.apiKey.id}-key`} provider={row.apiKey} onRefresh={refreshAuthAndRuntime} cwd={cwd} />}
           </section>
@@ -734,10 +742,10 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
         {json && (
           <section className="models-section">
-            <div className="models-section-heading">
-              <ConfigSectionTitle>{builtIn ? t("models.sectionEndpointOverride") : t("models.sectionEndpoint")}</ConfigSectionTitle>
-              <span className="models-hint">{builtIn ? t("models.sectionOverrideHint") : t("models.sectionDraftHint")}</span>
-            </div>
+            <SectionHeading
+              title={builtIn ? t("models.sectionEndpointOverride") : t("models.sectionEndpoint")}
+              hint={builtIn ? t("models.sectionOverrideHint") : t("models.sectionDraftHint")}
+            />
             <EndpointForm
               key={row.id}
               providerId={row.id}
@@ -750,22 +758,18 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         )}
 
         <section className="models-section">
-          <div className="models-section-header">
-            <div className="models-section-heading">
-              <ConfigSectionTitle>{t("models.sectionModels", { count: modelRows.length })}</ConfigSectionTitle>
-              {cwd && scopeDoc && (
-                <span className="models-hint">{allMode ? t("models.chatAllSwitchHint") : t("models.chatSwitchHint")}</span>
-              )}
-            </div>
-            {json && (
-              <span className="models-form-actions">
+          <SectionHeading
+            title={t("models.sectionModels", { count: modelRows.length })}
+            hint={cwd && scopeDoc ? (allMode ? t("models.chatAllSwitchHint") : t("models.chatSwitchHint")) : undefined}
+            actions={json && (
+              <>
                 <ConfigButton size="small" disabled={!json.baseUrl?.trim()} title={json.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
                   {t("models.discoveryFetch")}
                 </ConfigButton>
                 <ConfigButton size="small" onClick={() => addModel(row.id)}>{t("models.newModel")}</ConfigButton>
-              </span>
+              </>
             )}
-          </div>
+          />
           {scopeMessages}
           {json && discoveryFor === row.id && (
             <ModelDiscovery
@@ -783,13 +787,16 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                 const ref = modelPickerRef(row.id, model.id);
                 return (
                   <div key={`${model.ref.kind}:${model.id}:${model.ref.kind === "definition" ? model.ref.index : ""}`} className="models-row">
-                    <button type="button" className="models-row-main models-row-button" onClick={() => openProvider(row.id, model.ref)}>
-                      <span className="models-row-title">{model.name && model.name !== model.id ? model.name : (model.id || t("models.untitledModel"))}</span>
-                      {model.name && model.name !== model.id && <code className="models-row-sub">{model.id}</code>}
-                    </button>
-                    {model.definition && <span className="models-tag is-accent">{t("models.kindDefinition")}</span>}
-                    {!model.usable && <span className="models-tag is-warning">{t("models.notUsable")}</span>}
-                    {scopeDoc?.pins[ref] && <span className="models-tag">{t("models.thinkingPin", { level: scopeDoc.pins[ref] })}</span>}
+                    {rowButton(
+                      model.name && model.name !== model.id ? model.name : (model.id || t("models.untitledModel")),
+                      model.name && model.name !== model.id ? model.id : undefined,
+                      <>
+                        {model.definition && <span className="models-tag">{t("models.kindDefinition")}</span>}
+                        {!model.usable && <span className="models-tag is-warning">{t("models.notUsable")}</span>}
+                        {scopeDoc?.pins[ref] && <span className="models-tag">{t("models.thinkingPin", { level: scopeDoc.pins[ref] })}</span>}
+                      </>,
+                      () => openProvider(row.id, model.ref),
+                    )}
                     {model.id && chatSwitch(ref, model.usable)}
                   </div>
                 );

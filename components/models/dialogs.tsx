@@ -160,15 +160,17 @@ export function ModelPickerDialog({
   const inputRef = useAutofocus<HTMLInputElement>();
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const selectable = catalog.filter((model) => (
+  // Models already in chat stay listed, checked and locked, so the provider's
+  // full set is visible and a missing model is not mistaken for an outage.
+  const shown = catalog.filter((model) => (
     (!providerFilter || model.provider === providerFilter)
-    && !listedRefs.has(modelPickerRef(model.provider, model.id))
     && (!normalizedQuery
       || model.id.toLocaleLowerCase().includes(normalizedQuery)
       || model.name?.toLocaleLowerCase().includes(normalizedQuery))
   ));
+  const isListed = (model: RuntimeCatalogModel) => listedRefs.has(modelPickerRef(model.provider, model.id));
   const grouped = new Map<string, RuntimeCatalogModel[]>();
-  for (const model of selectable) {
+  for (const model of shown) {
     const list = grouped.get(model.provider) ?? [];
     list.push(model);
     grouped.set(model.provider, list);
@@ -206,47 +208,47 @@ export function ModelPickerDialog({
         placeholder={t("models.pickFilterPlaceholder")}
         aria-label={t("models.pickFilter")}
       />
-      {selectable.length === 0 ? (
-        <p className="models-empty">{t("models.noExtraModels")}</p>
-      ) : (
-        [...grouped.entries()].map(([providerId, models]) => {
-          const refs = models.map((model) => modelPickerRef(model.provider, model.id));
-          const allSelected = refs.every((ref) => selected.has(ref));
-          return (
-            <div key={providerId} className="models-list">
-              <label className="models-row models-list-head">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={() => setSelected((current) => {
-                    const next = new Set(current);
-                    for (const ref of refs) {
-                      if (allSelected) next.delete(ref);
-                      else next.add(ref);
-                    }
-                    return next;
-                  })}
-                />
-                <ProviderIcon id={providerId} size={14} />
-                <span className="models-row-title">{providerLabel(providerId)}</span>
-                <span className="models-hint">{models.length}</span>
-              </label>
-              {models.map((model) => {
-                const ref = modelPickerRef(model.provider, model.id);
-                return (
-                  <label key={ref} className="models-row">
-                    <input type="checkbox" checked={selected.has(ref)} onChange={() => toggle(ref)} />
-                    <span className="models-row-main">
-                      <span className="models-row-title">{model.name || model.id}</span>
-                      {model.name && model.name !== model.id && <code className="models-row-sub">{model.id}</code>}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          );
-        })
-      )}
+      {!shown.some((model) => !isListed(model)) && <p className="models-empty">{t("models.noExtraModels")}</p>}
+      {[...grouped.entries()].map(([providerId, models]) => {
+        const refs = models.filter((model) => !isListed(model)).map((model) => modelPickerRef(model.provider, model.id));
+        const allSelected = refs.length > 0 && refs.every((ref) => selected.has(ref));
+        return (
+          <section key={providerId} className="models-picker-group">
+            <label className="models-picker-head">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                disabled={refs.length === 0}
+                onChange={() => setSelected((current) => {
+                  const next = new Set(current);
+                  for (const ref of refs) {
+                    if (allSelected) next.delete(ref);
+                    else next.add(ref);
+                  }
+                  return next;
+                })}
+              />
+              <ProviderIcon id={providerId} size={14} />
+              <span>{providerLabel(providerId)}</span>
+              <span className="models-count">{models.length}</span>
+            </label>
+            {models.map((model) => {
+              const ref = modelPickerRef(model.provider, model.id);
+              const listed = isListed(model);
+              return (
+                <label key={ref} className={`models-row${listed ? " is-disabled" : ""}`}>
+                  <input type="checkbox" checked={listed || selected.has(ref)} disabled={listed} onChange={() => toggle(ref)} />
+                  <span className="models-row-text">
+                    <span className="models-row-title">{model.name || model.id}</span>
+                    {model.name && model.name !== model.id && <code className="models-row-sub">{model.id}</code>}
+                  </span>
+                  {listed && <span className="models-tag">{t("models.alreadyInChat")}</span>}
+                </label>
+              );
+            })}
+          </section>
+        );
+      })}
       {error && <Notice tone="danger">{error}</Notice>}
     </ModelsDialog>
   );

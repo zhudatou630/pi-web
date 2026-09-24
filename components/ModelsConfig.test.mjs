@@ -47,7 +47,7 @@ test("every model definition is reachable from its provider, connected or not", 
   // is signed out or the model is not in chat.
   assert.match(source, /const definitions = json\?\.models \?\? \[\]/);
   assert.match(source, /\.filter\(\(\{ model \}\) => !usableRefs\.has\(`\$\{row\.id\}\/\$\{model\.id\}`\)\)/);
-  assert.match(source, /onClick=\{\(\) => openProvider\(row\.id, model\.ref\)\}/);
+  assert.match(source, /\(\) => openProvider\(row\.id, model\.ref\),/);
   // Every models.json provider gets a sidebar row, connected or not.
   assert.match(source, /Object\.keys\(config\.providers \?\? \{\}\)\.forEach\(addId\)/);
 });
@@ -337,10 +337,10 @@ test("model specs keep catalog-filled prices visible outside advanced settings",
   assert.match(modelDetail, /formatCost\(key\)/);
 });
 
-test("model detail sections share one divider style", async () => {
+test("model detail sections share the General page heading style", async () => {
   const modelDetail = await readFile(new URL("./models/ModelDetail.tsx", import.meta.url), "utf8");
   assert.match(modelDetail, /className="models-section"/);
-  assert.match(cssSource, /\.models-section \{[\s\S]*?border-top: 1px solid var\(--border\)/);
+  assert.match(modelDetail, /<SectionHeading title=\{t\("models\.capabilities"\)\} \/>/);
   assert.doesNotMatch(modelDetail, /style=\{\{/);
 });
 
@@ -384,4 +384,15 @@ test("unsaved models.json edits are visible and guarded", () => {
   assert.match(source, /onClick=\{discardChanges\}/);
   assert.match(source, /onDirtyChange\?\.\(configDirty\)/);
   assert.match(source, /window\.addEventListener\("beforeunload", warn\)/);
+});
+
+test("the picker keeps listed models visible but locked", () => {
+  assert.match(source, /const listed = isListed\(model\)/);
+  assert.match(source, /checked=\{listed \|\| selected\.has\(ref\)\} disabled=\{listed\}/);
+  assert.match(source, /t\("models\.alreadyInChat"\)/);
+});
+
+test("secondary row actions reveal on hover but stay visible on touch", () => {
+  assert.match(cssSource, /\.models-row:hover \.models-remove/);
+  assert.match(cssSource, /@media \(hover: none\) \{\s*\.models-remove/);
 });

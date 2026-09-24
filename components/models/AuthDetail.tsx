@@ -176,7 +176,7 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
           ) : (
             <>
               {provider.loggedIn && (
-                <ConfigButton size="small" variant="danger" onClick={handleLogout}>{t("i18n.disconnect")}</ConfigButton>
+                <ConfigButton size="small" variant="ghost" className="models-danger-ghost" onClick={handleLogout}>{t("i18n.disconnect")}</ConfigButton>
               )}
               <ConfigButton size="small" variant={provider.loggedIn ? "secondary" : "primary"} onClick={handleLogin}>
                 {provider.loggedIn ? t("i18n.relogin") : t("i18n.login")}
@@ -332,7 +332,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
         </div>
         {provider.configured && (
           <div className="models-auth-actions">
-            <ConfigButton size="small" variant="danger" onClick={handleRemove} disabled={removing}>
+            <ConfigButton size="small" variant="ghost" className="models-danger-ghost" onClick={handleRemove} disabled={removing}>
               {removing ? t("i18n.removing") : t("i18n.disconnect")}
             </ConfigButton>
           </div>

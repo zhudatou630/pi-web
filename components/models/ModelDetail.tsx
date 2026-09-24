@@ -17,9 +17,8 @@ import {
   ConfigDetailHeader,
   ConfigDetailHeaderInfo,
   ConfigField,
-  ConfigSectionTitle,
 } from "../SettingsUi";
-import { Check, HeaderListEditor, Hint, Notice, NumInput, Select, TextInput, ThinkingLevelMapEditor } from "./fields";
+import { HeaderListEditor, Hint, Notice, NumInput, SectionHeading, Select, SwitchRow, TextInput, ThinkingLevelMapEditor } from "./fields";
 import { API_OPTIONS, type ModelEntry, type ProviderEntry } from "./types";
 
 type ModelTestState =
@@ -338,7 +337,7 @@ export function ModelDetail({
           <div className="models-title-block">
             <strong className="models-title">{model.name || model.id || t("models.untitledModel")}</strong>
             <span className="models-subtitle">
-              <span className={`models-tag${lockId ? "" : " is-accent"}`}>{lockId ? t("models.kindOverride") : t("models.kindDefinition")}</span>
+              <span className="models-tag">{lockId ? t("models.kindOverride") : t("models.kindDefinition")}</span>
               {lockId ? t("models.overrideHint") : t("models.definitionHint")}
             </span>
           </div>
@@ -353,7 +352,7 @@ export function ModelDetail({
             {testState.phase === "testing" ? t("i18n.checking") : t("i18n.testConnection")}
           </ConfigButton>
           {onDelete && (
-            <ConfigButton size="small" variant="danger" onClick={onDelete}>{t("models.deleteDefinition")}</ConfigButton>
+            <ConfigButton size="small" variant="ghost" className="models-danger-ghost" onClick={onDelete}>{t("models.deleteDefinition")}</ConfigButton>
           )}
         </ConfigDetailActions>
       </ConfigDetailHeader>
@@ -393,16 +392,16 @@ export function ModelDetail({
       )}
 
       <section className="models-section">
-        <ConfigSectionTitle>{t("models.capabilities")}</ConfigSectionTitle>
-        <div className="models-check-row">
-          <Check label={t("models.reasoning")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
-          <Check label={t("models.imageInput")} checked={model.input?.includes("image") ?? false}
+        <SectionHeading title={t("models.capabilities")} />
+        <div className="models-switch-list">
+          <SwitchRow label={t("models.reasoning")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
+          <SwitchRow label={t("models.imageInput")} checked={model.input?.includes("image") ?? false}
             onChange={(v) => set("input", v ? ["text", "image"] : undefined)} />
         </div>
       </section>
 
       <section className="models-section">
-        <ConfigSectionTitle>{t("models.modelSpecs")}</ConfigSectionTitle>
+        <SectionHeading title={t("models.modelSpecs")} />
         <div className="models-form-grid">
           <ConfigField label={t("models.contextWindow")}>
             <NumInput value={model.contextWindow !== undefined ? String(model.contextWindow) : ""}
@@ -480,25 +479,27 @@ export function ModelDetail({
 
             {model.reasoning && (
               <>
-                <ConfigSectionTitle>{t("models.compatibility")}</ConfigSectionTitle>
-                <Check
-                  label={t("models.deepSeekThinkingCompat")}
-                  checked={hasDeepseekCompat(model)}
-                  onChange={(v) => onChange(setDeepseekCompat(model, v))}
-                />
-                <Check
-                  label={t("models.developerRole")}
-                  checked={effectiveCompat(provider, model)["supportsDeveloperRole"] !== false}
-                  onChange={(v) => onChange(setCompatBool(model, "supportsDeveloperRole", v))}
-                />
-                <div className="models-section-header">
-                  <ConfigSectionTitle>{t("models.thinkingLevelMap")}</ConfigSectionTitle>
-                  {model.thinkingLevelMap && (
+                <SectionHeading title={t("models.compatibility")} />
+                <div className="models-switch-list">
+                  <SwitchRow
+                    label={t("models.deepSeekThinkingCompat")}
+                    checked={hasDeepseekCompat(model)}
+                    onChange={(v) => onChange(setDeepseekCompat(model, v))}
+                  />
+                  <SwitchRow
+                    label={t("models.developerRole")}
+                    checked={effectiveCompat(provider, model)["supportsDeveloperRole"] !== false}
+                    onChange={(v) => onChange(setCompatBool(model, "supportsDeveloperRole", v))}
+                  />
+                </div>
+                <SectionHeading
+                  title={t("models.thinkingLevelMap")}
+                  actions={model.thinkingLevelMap && (
                     <ConfigButton size="small" variant="ghost" onClick={() => set("thinkingLevelMap", undefined)}>
                       {t("models.clearAll")}
                     </ConfigButton>
                   )}
-                </div>
+                />
                 <ThinkingLevelMapEditor
                   value={model.thinkingLevelMap}
                   onChange={(v) => set("thinkingLevelMap", v)}

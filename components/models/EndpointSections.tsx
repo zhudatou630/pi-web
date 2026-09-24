@@ -210,7 +210,7 @@ export function ModelDiscovery({ providerId, provider, onAddModels, onClose }: {
                     disabled={alreadyAdded}
                     onChange={() => toggleDiscoveredModel(model.id)}
                   />
-                  <span className="models-row-main">
+                  <span className="models-row-text">
                     <span className="models-row-title">{model.name ?? model.id}</span>
                     {model.name && <code className="models-row-sub">{model.id}</code>}
                   </span>
