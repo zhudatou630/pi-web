@@ -133,6 +133,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [scopeError, setScopeError] = useState<string | null>(null);
   const [scopeNotice, setScopeNotice] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [expandedOverrides, setExpandedOverrides] = useState<Record<string, boolean>>({});
 
   const refreshAuthProviders = useCallback(() => {
     return fetch(`/api/auth/providers${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`)
@@ -598,6 +599,16 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const builtIn = Boolean(row.oauth || row.apiKey);
     const showApiKey = row.apiKey && (!row.oauth || row.apiKey.configured || !row.oauth.loggedIn);
     const definitions = json?.models ?? [];
+    const hasEndpointOverrides = Boolean(
+      json && (
+        (json.name && json.name.trim() !== "") ||
+        Boolean(json.api) ||
+        (json.baseUrl && json.baseUrl.trim() !== "") ||
+        (json.apiKey && json.apiKey.trim() !== "") ||
+        (json.headers && Object.keys(json.headers).length > 0)
+      )
+    );
+    const isOverrideExpanded = expandedOverrides[row.id] ?? hasEndpointOverrides;
     // Catalog models plus definitions that do not resolve yet, so every
     // definition stays reachable whether or not the provider is connected.
     const modelRows: { id: string; name?: string; ref: ModelRef; usable: boolean; definition: boolean }[] = [
@@ -627,31 +638,51 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         <SectionHeading
           title={builtIn ? t("models.sectionEndpointOverride") : t("models.sectionEndpoint")}
           hint={builtIn ? t("models.sectionOverrideHint") : t("models.sectionDraftHint")}
+          actions={builtIn ? (
+            <ConfigButton
+              size="small"
+              variant="ghost"
+              onClick={() => setExpandedOverrides((prev) => ({ ...prev, [row.id]: !isOverrideExpanded }))}
+            >
+              {isOverrideExpanded ? t("i18n.collapse") : t("i18n.expand")}
+            </ConfigButton>
+          ) : undefined}
         />
-        <EndpointForm
-          key={row.id}
-          providerId={row.id}
-          provider={json}
-          builtIn={builtIn}
-          namePlaceholder={row.oauth?.name ?? row.apiKey?.displayName ?? row.id}
-          onChange={(next) => updateProvider(row.id, next)}
-        />
+        {(!builtIn || isOverrideExpanded) && (
+          <EndpointForm
+            key={row.id}
+            providerId={row.id}
+            provider={json}
+            builtIn={builtIn}
+            namePlaceholder={row.oauth?.name ?? row.apiKey?.displayName ?? row.id}
+            onChange={(next) => updateProvider(row.id, next)}
+          />
+        )}
       </section>
     );
+
+    const activeAuthLabel = row.oauth?.loggedIn
+      ? t("models.kindOAuth")
+      : row.apiKey?.configured
+        ? t("models.kindApiKey")
+        : null;
 
     return (
       <div className="models-form">
         <ConfigDetailHeader>
           <ConfigDetailHeaderInfo>
             <ProviderIcon id={row.id} size={28} />
-            <div className="models-title-block">
+            <div className="models-title-row">
               <strong className="models-title">{row.label}</strong>
-              <span className="models-subtitle">
-                <code>{row.id}</code>
-                {row.oauth && <span className="models-tag">{t("models.kindOAuth")}</span>}
-                {row.apiKey && <span className="models-tag">{t("models.kindApiKey")}</span>}
-                {json && <span className="models-tag">{builtIn ? t("models.kindOverridden") : t("models.kindCustom")}</span>}
-              </span>
+              {activeAuthLabel && <span className="models-tag is-success">{activeAuthLabel}</span>}
+              {row.oauth && !row.apiKey && !row.oauth.loggedIn && (
+                <span className="models-tag">{t("models.kindOAuth")}</span>
+              )}
+              {json && (
+                <span className={`models-tag ${builtIn ? "is-override" : "is-custom"}`}>
+                  {builtIn ? t("models.kindOverridden") : t("models.kindCustom")}
+                </span>
+              )}
             </div>
           </ConfigDetailHeaderInfo>
           {json && (

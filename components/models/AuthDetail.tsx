@@ -357,7 +357,6 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
           {savedOk ? t("i18n.saved") : saving ? t("i18n.saving") : provider.configured ? t("models.updateKey") : t("models.saveKey")}
         </ConfigButton>
       </div>
-      <p className="models-hint">{t("models.apiKeyStoredHint")}</p>
 
       {error && <Notice tone="danger">{error}</Notice>}
     </div>

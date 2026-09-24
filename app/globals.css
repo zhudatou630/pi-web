@@ -2319,11 +2319,11 @@ span.token.table {
     min-width: 300px;
     overflow: hidden;
     contain: layout paint;
-    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);
     transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .right-panel-container.right-panel-open {
     transform: translateX(0);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);
   }
   .right-panel-container.right-panel-closed {
     transform: translateX(100%);

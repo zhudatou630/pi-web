@@ -1586,7 +1586,7 @@ label.models-row {
 .models-row-chevron {
   flex-shrink: 0;
   color: var(--text-dim);
-  opacity: 0;
+  opacity: 0.25;
   transition: opacity 0.12s ease;
 }
 
@@ -1627,6 +1627,27 @@ label.models-row {
 .models-tag.is-warning {
   background: color-mix(in srgb, var(--warning) 13%, transparent);
   color: var(--warning);
+}
+
+.models-tag.is-success {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.models-tag.is-override {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.models-tag.is-custom {
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+  color: var(--text-muted);
+}
+
+.models-id-badge {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .models-hint {
@@ -1764,6 +1785,14 @@ a.models-hint:hover {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
+}
+
+.models-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
