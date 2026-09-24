@@ -69,27 +69,31 @@ test("offers direct light, dark, and system theme selection", () => {
   assert.match(themeSource, /const setThemePreference = useCallback/);
 });
 
-test("groups chat display controls together without row backgrounds", () => {
-  const appearanceSection = panelSource.slice(
-    panelSource.indexOf('{t("settings.appearance")}'),
-    panelSource.indexOf('{t("settings.chat")}'),
-  );
-  const chatSection = panelSource.slice(
-    panelSource.indexOf('{t("settings.chat")}'),
-    panelSource.indexOf("{shellSettings?.isWindows"),
-  );
+test("groups display controls under Appearance and behavior under Chat, as flat groups", () => {
+  const section = (from, to) => panelSource.slice(panelSource.indexOf(from), panelSource.indexOf(to));
+  const appearance = section('{t("settings.appearance")}', '{t("settings.chat")}');
+  const chat = section('{t("settings.chat")}', "{shellSettings?.isWindows");
+  const notifications = section('{t("settings.notifications")}', "settings-general-footer");
 
-  assert.doesNotMatch(appearanceSection, /settings-chat-content/);
-  assert.match(chatSection, /className="settings-chat-options"/);
-  assert.equal((chatSection.match(/className="settings-chat-option(?: |")/g) ?? []).length, 8);
-  assert.equal((chatSection.match(/<ConfigSwitch/g) ?? []).length, 5);
-  for (const key of ["thinkingExpandedDefault", "autoSessionTitle", "sidebarSingleProject", "chatContentWidth", "chatContentFontSize", "shiftEnterToSend", "quoteSelection", "browserNotifications"]) {
-    assert.match(chatSection, new RegExp(`t\\("settings\\.${key}"\\)`));
+  for (const key of ["theme", "typography", "chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault"]) {
+    assert.match(appearance, new RegExp(`t\\("settings\\.${key}"\\)`));
   }
-  assert.doesNotMatch(panelSource, /ThinkingIcon|settings-thinking-/);
-  const chatOptionStyles = cssSource.match(/\.settings-chat-option \{[\s\S]*?\}/)?.[0] ?? "";
-  assert.match(chatOptionStyles, /font-size: 12px/);
-  assert.doesNotMatch(chatOptionStyles, /background/);
+  for (const key of ["shiftEnterToSend", "autoSessionTitle", "quoteSelection", "sidebarSingleProject"]) {
+    assert.match(chat, new RegExp(`t\\("settings\\.${key}"\\)`));
+  }
+  assert.match(notifications, /t\("settings\.browserNotifications"\)/);
+  assert.doesNotMatch(panelSource, /ThinkingIcon|settings-thinking-|settings-general-title/);
+
+  // Same flat language as Models: no boxed or tinted groups.
+  const cardStyles = cssSource.match(/\.settings-card-grid \.settings-card \{[\s\S]*?\}/)?.[0] ?? "";
+  assert.doesNotMatch(cardStyles, /background|border/);
+});
+
+test("a tapped select or text field does not keep the UA focus ring", () => {
+  assert.match(globalCssSource, /select:focus-visible,\ntextarea:focus-visible,\ninput:not\(\[type="checkbox"\], \[type="radio"\], \[type="range"\]\):focus-visible \{\n  outline: none;\n\}/);
+  // A select marks focus with nothing; only text fields get the accent border.
+  assert.doesNotMatch(globalCssSource, /select:focus-visible \{/);
+  assert.match(globalCssSource, /textarea:focus-visible,\ninput:not\([^)]*\):focus-visible \{\n  border-color: var\(--accent\);/);
 });
 
 test("requests notification permission from settings, not on task completion", () => {

@@ -24,6 +24,8 @@ import {
   ConfigField,
   ConfigFooter,
   ConfigListAction,
+  ConfigMobileBack,
+  type ConfigPane,
   ConfigPanelShell,
   ConfigSidebar,
   ConfigSidebarItem,
@@ -151,6 +153,7 @@ export function AgentsConfig({
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<ConfigPane>("list");
   const [draft, setDraft] = useState<EditableProfile>(EMPTY_PROFILE);
   const [mode, setMode] = useState<EditorMode>("view");
   const [targetScope, setTargetScope] = useState<SubagentWritableScope>("project");
@@ -363,6 +366,7 @@ export function AgentsConfig({
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
       await afterChange(fallback ? effective.name : undefined);
+      if (!fallback) setMobilePane("list");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -521,7 +525,7 @@ export function AgentsConfig({
           style={{ ...inputStyle, width: 76 }}
         />
       </div>
-      <ConfigSplitView>
+      <ConfigSplitView pane={mobilePane}>
         <ConfigSidebar>
           <ConfigSidebarList>
               {loading ? (
@@ -530,7 +534,7 @@ export function AgentsConfig({
                 <ConfigSidebarItem
                   key={name}
                   active={selectedName === name && mode !== "create"}
-                  onClick={() => showAgent(profiles, name)}
+                  onClick={() => { showAgent(profiles, name); setMobilePane("detail"); }}
                 >
                   <ConfigStatusDot active={top.enabled} />
                   <ConfigSidebarText className={`is-grow${top.enabled ? "" : " is-muted"}`}>{label}</ConfigSidebarText>
@@ -540,7 +544,7 @@ export function AgentsConfig({
           </ConfigSidebarList>
           <ConfigListAction
                 active={mode === "create"}
-                onClick={beginCreate}
+                onClick={() => { beginCreate(); setMobilePane("detail"); }}
               >
                 {t("agents.new")}
           </ConfigListAction>
@@ -548,6 +552,7 @@ export function AgentsConfig({
 
         <ConfigDetail>
           <ConfigDetailStack className="is-fill">
+              <ConfigMobileBack label={t("common.agents")} onClick={() => setMobilePane("list")} />
               {!effective && mode !== "create" ? (
                 <ConfigEmptyState>{t("agents.empty")}</ConfigEmptyState>
               ) : (

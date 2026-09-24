@@ -25,6 +25,8 @@ import {
   ConfigField,
   ConfigFooter,
   ConfigListAction,
+  ConfigMobileBack,
+  type ConfigPane,
   ConfigPanelShell,
   ConfigSidebar,
   ConfigSidebarGroupLabel,
@@ -587,6 +589,7 @@ export function SkillsConfig({
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
   const [addMode, setAddMode] = useState(false);
+  const [mobilePane, setMobilePane] = useState<ConfigPane>("list");
   const [updateStatuses, setUpdateStatuses] = useState<Record<string, SkillUpdateResult>>({});
   const [checkingUpdates, setCheckingUpdates] = useState<Set<string>>(new Set());
   const [checkingAll, setCheckingAll] = useState(false);
@@ -773,6 +776,7 @@ export function SkillsConfig({
       const d = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || !d.success) throw new Error(d.error ?? `HTTP ${res.status}`);
       setSelected(null);
+      setMobilePane("list");
       await loadSkills();
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : String(e));
@@ -793,7 +797,7 @@ export function SkillsConfig({
         )}
 
         {/* Body */}
-        <ConfigSplitView>
+        <ConfigSplitView pane={mobilePane}>
           {/* Left: skill list */}
           <ConfigSidebar>
             <ConfigSidebarList>
@@ -864,6 +868,7 @@ export function SkillsConfig({
                           setSelected(skill.filePath);
                           setAddMode(false);
                           setDeleteError(null);
+                          setMobilePane("detail");
                         }}
                       >
                         <ConfigStatusDot active={!disabled} />
@@ -900,7 +905,7 @@ export function SkillsConfig({
             </ConfigSidebarList>
             {/* Add skill button */}
             <ConfigListAction
-                onClick={() => setAddMode(true)}
+                onClick={() => { setAddMode(true); setMobilePane("detail"); }}
                 active={addMode}
               >
                  {t("i18n.addSkill")}
@@ -910,6 +915,7 @@ export function SkillsConfig({
           {/* Right: detail or add panel */}
           <ConfigDetail>
             <ConfigDetailStack className="is-fill">
+              <ConfigMobileBack label={t("common.skills")} onClick={() => setMobilePane("list")} />
               {addMode ? (
               <AddSkillPanel
                 cwd={cwd}

@@ -232,7 +232,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
   return (
     <div className="settings-general">
-      <h2 className="settings-general-title">{t("settings.general")}</h2>
       <div className="settings-card-grid">
 
       <section className="settings-general-section settings-card">

@@ -94,7 +94,7 @@ test("customizes built-ins and creates new agents in a chosen writable scope", (
   assert.match(source, /JSON\.stringify\(\{ cwd, scope: targetScope, profile: draft \}\)/);
   assert.match(source, /mode === "create" \? \(\s*<input aria-label=\{t\("agents\.name"\)\}/);
   assert.match(source, /t\("agents\.nameExists"/);
-  assert.match(source, /<ConfigListAction[\s\S]*?active=\{mode === "create"\}[\s\S]*?onClick=\{beginCreate\}/);
+  assert.match(source, /<ConfigListAction[\s\S]*?active=\{mode === "create"\}[\s\S]*?onClick=\{\(\) => \{ beginCreate\(\); setMobilePane\("detail"\); \}\}/);
 });
 
 test("duplicates the shown definition into a new project agent", () => {

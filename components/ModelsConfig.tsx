@@ -35,7 +35,9 @@ import {
   ConfigEmptyState,
   ConfigFooter,
   ConfigListAction,
+  ConfigMobileBack,
   ConfigPanelShell,
+  type ConfigPane,
   ConfigSidebar,
   ConfigSidebarGroupLabel,
   ConfigSidebarItem,
@@ -119,6 +121,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedOk, setSavedOk] = useState(false);
   const [view, setView] = useState<View>(readRememberedView);
+  /** Narrow screens show the provider list or one provider, never both. */
+  const [mobilePane, setMobilePane] = useState<ConfigPane>("list");
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -226,6 +230,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   const openProvider = useCallback((provider: string | null, model?: ModelRef) => {
     setView({ provider, ...(model ? { model } : {}) });
+    setMobilePane(provider ? "detail" : "list");
   }, []);
 
   const addCustomProvider = useCallback((id: string) => {
@@ -829,7 +834,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       </ConfigSidebarItem>
     );
     return (
-      <ConfigSplitView>
+      <ConfigSplitView pane={mobilePane}>
         <ConfigSidebar>
           <ConfigSidebarList>
             {loading && <div className="config-sidebar-message">{t("i18n.loading")}</div>}
@@ -847,6 +852,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         </ConfigSidebar>
         <ConfigDetail>
           <ConfigDetailStack className="is-fill">
+            {!model && <ConfigMobileBack label={t("common.models")} onClick={() => setMobilePane("list")} />}
             {renderScopeNotices()}
             {loading ? null : !active ? (
               <ConfigEmptyState>{t("models.noProviders")}</ConfigEmptyState>

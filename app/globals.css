@@ -313,6 +313,22 @@ button, input, select, textarea {
   font-family: inherit;
 }
 
+/* Focused text fields and selects match :focus-visible even after a tap, so the
+   UA ring (a thick black box on Android) sticks until blur. Drop it: a text
+   field marks focus with the accent border while typing; a select shows none,
+   since its picker already shows the interaction. Checkboxes, radios, and
+   ranges keep the UA ring. */
+select:focus-visible,
+textarea:focus-visible,
+input:not([type="checkbox"], [type="radio"], [type="range"]):focus-visible {
+  outline: none;
+}
+
+textarea:focus-visible,
+input:not([type="checkbox"], [type="radio"], [type="range"]):focus-visible {
+  border-color: var(--accent);
+}
+
 body {
   display: flex;
   flex-direction: column;

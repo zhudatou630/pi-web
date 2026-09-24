@@ -20,6 +20,8 @@ import {
   ConfigField,
   ConfigFooter,
   ConfigListAction,
+  ConfigMobileBack,
+  type ConfigPane,
   ConfigPanelShell,
   ConfigSidebar,
   ConfigSidebarGroupLabel,
@@ -669,6 +671,7 @@ export function PluginsConfig({
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(() => getLastSettingsSelection("plugins", cwd));
   const [addMode, setAddMode] = useState(false);
+  const [mobilePane, setMobilePane] = useState<ConfigPane>("list");
   const [installSource, setInstallSource] = useState("");
   const [installScope, setInstallScope] = useState<PluginScope>("global");
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -818,6 +821,7 @@ export function PluginsConfig({
             ? extensionKey(next.standaloneExtensions[0])
             : null);
         if (next.packages.length === 0 && next.standaloneExtensions.length === 0) setAddMode(true);
+        setMobilePane("list");
         setActionMessage("Package removed.");
         setUpdateStatuses((current) => {
           const nextStatuses = { ...current };
@@ -909,7 +913,7 @@ export function PluginsConfig({
           </div>
         )}
 
-        <ConfigSplitView>
+        <ConfigSplitView pane={mobilePane}>
           <ConfigSidebar>
             <ConfigSidebarList>
               {loading ? (
@@ -941,6 +945,7 @@ export function PluginsConfig({
                               setAddMode(false);
                               setActionError(null);
                               setActionMessage(null);
+                              setMobilePane("detail");
                             }}
                           >
                             <ConfigStatusDot active={extension.enabled} />
@@ -969,6 +974,7 @@ export function PluginsConfig({
                               setAddMode(false);
                               setActionError(null);
                               setActionMessage(null);
+                              setMobilePane("detail");
                             }}
                           >
                             <ConfigStatusDot active={!pkg.disabled} color={statusColor(pkg.status)} />
@@ -994,6 +1000,7 @@ export function PluginsConfig({
                   setAddMode(true);
                   setActionError(null);
                   setActionMessage(null);
+                  setMobilePane("detail");
                 }}
               >
                  {t("i18n.addPlugin")}
@@ -1002,6 +1009,7 @@ export function PluginsConfig({
 
           <ConfigDetail>
             <ConfigDetailStack className="is-fill">
+              <ConfigMobileBack label={t("common.plugins")} onClick={() => setMobilePane("list")} />
               {addMode ? (
               <AddPluginPanel
                 cwd={cwd}

@@ -171,7 +171,6 @@ export function ImagesConfig({
 
   return (
     <div className="settings-general">
-      <h2 className="settings-general-title">{t("settings.images")}</h2>
       <div className="settings-card-grid">
         <section className="settings-card settings-card-wide">
           <div className="settings-row" title={t("settings.imagesDescription")}>
@@ -429,12 +428,12 @@ function ConnectionSwitch({
       </div>
       <div className="settings-image-actions">
         {onEdit && !renaming ? (
-          <ConfigButton size="small" disabled={disabled} onClick={onEdit}>
+          <ConfigButton size="small" variant="ghost" disabled={disabled} onClick={onEdit}>
             {editLabel}
           </ConfigButton>
         ) : null}
         {onDelete ? (
-          <ConfigButton size="small" disabled={disabled} onClick={onDelete}>
+          <ConfigButton size="small" variant="ghost" className="models-danger-ghost" disabled={disabled} onClick={onDelete}>
             {deleteLabel}
           </ConfigButton>
         ) : null}

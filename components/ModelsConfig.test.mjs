@@ -145,9 +145,15 @@ test("an ambiguous entry is shown separately and cannot mask the unavailable lis
 
 test("the chat list has no banner, only notices when something needs attention", () => {
   assert.match(source, /const renderScopeNotices = \(\) =>/);
-  assert.match(source, /<ConfigDetailStack className="is-fill">\n\s*\{renderScopeNotices\(\)\}/);
+  assert.match(source, /<ConfigDetailStack className="is-fill">[\s\S]*?\{renderScopeNotices\(\)\}/);
   assert.doesNotMatch(source, /role="tab"/);
   assert.doesNotMatch(source, /renderScopeBar|renderChatTab/);
+});
+
+test("narrow screens drill from the provider list into one provider", () => {
+  assert.match(source, /<ConfigSplitView pane=\{mobilePane\}>/);
+  assert.match(source, /setMobilePane\(provider \? "detail" : "list"\)/);
+  assert.match(source, /<ConfigMobileBack label=\{t\("common\.models"\)\} onClick=\{\(\) => setMobilePane\("list"\)\} \/>/);
 });
 
 test("no action can write an empty list, because that would mean every model", () => {

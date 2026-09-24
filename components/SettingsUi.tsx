@@ -69,8 +69,21 @@ export function ConfigPanelShell({
   );
 }
 
-export function ConfigSplitView({ children }: { children: ReactNode }) {
-  return <div className="config-split-view">{children}</div>;
+/** Which half a narrow screen shows; wide screens always show both. */
+export type ConfigPane = "list" | "detail";
+
+export function ConfigSplitView({ pane, children }: { pane: ConfigPane; children: ReactNode }) {
+  return <div className="config-split-view" data-pane={pane}>{children}</div>;
+}
+
+/** Narrow screens only: returns from a detail page to its list. */
+export function ConfigMobileBack({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="config-mobile-back" onClick={onClick}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+      {label}
+    </button>
+  );
 }
 
 export function ConfigSidebar({ children }: { children: ReactNode }) {
