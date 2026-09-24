@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { createModelsConfigServices, resolveAllowedCwd } from "@/lib/model-config-services";
+import { builtInModelRefs, createModelsConfigServices, resolveAllowedCwd } from "@/lib/model-config-services";
 import type { RuntimeCatalogModel } from "@/lib/model-picker";
 import { readModelsConfigResult } from "@/lib/models-config-store";
 
@@ -41,13 +41,17 @@ export async function GET(req: Request) {
   try {
     const configRead = readModelsConfigResult();
     const services = await createModelsConfigServices(resolved.cwd);
-    const available = await services.modelRuntime.getAvailable();
+    const [available, shipped] = await Promise.all([services.modelRuntime.getAvailable(), builtInModelRefs()]);
+    // Only providers models.json touches can have a definition replace a shipped model.
+    const configured = Object.keys((configRead.config.providers ?? {}) as Record<string, unknown>);
+    const builtIn = shipped.filter((ref) => configured.includes(ref.slice(0, ref.indexOf("/"))));
     const catalog = available.map((model) => serializeRuntimeModel(model));
     // A models.json that the SDK cannot load disables every provider defined in
     // it without any other visible symptom, so surface both layers' errors.
     const modelError = [configRead.error, services.modelRuntime.getError()].filter(Boolean).join("\n\n");
     return NextResponse.json({
       catalog,
+      builtIn,
       ...(modelError ? { modelError } : {}),
     });
   } catch (error) {

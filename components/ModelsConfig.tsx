@@ -126,6 +126,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   /** Model picker: first-time setup replaces the list, adding appends to it. */
   const [modelPick, setModelPick] = useState<"replace" | "add" | null>(null);
   const [catalog, setCatalog] = useState<RuntimeCatalogModel[]>([]);
+  /** `provider/id` of shipped models on providers models.json touches. */
+  const [builtInRefs, setBuiltInRefs] = useState<ReadonlySet<string>>(new Set());
   const [scopeDoc, setScopeDoc] = useState<EnabledModelsPanelState | null>(null);
   const [scopeSaving, setScopeSaving] = useState(false);
   const [scopeError, setScopeError] = useState<string | null>(null);
@@ -150,8 +152,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const params = new URLSearchParams({ cwd });
     fetch(`/api/models-config/runtime?${params}`)
       .then((r) => r.json())
-      .then((d: { catalog?: RuntimeCatalogModel[]; modelError?: string }) => {
+      .then((d: { catalog?: RuntimeCatalogModel[]; builtIn?: string[]; modelError?: string }) => {
         if (Array.isArray(d.catalog)) setCatalog(d.catalog);
+        if (Array.isArray(d.builtIn)) setBuiltInRefs(new Set(d.builtIn));
         setRuntimeError(d.modelError ?? null);
       })
       .catch(() => {});
@@ -703,8 +706,13 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                       model.name && model.name !== model.id ? model.name : (model.id || t("models.untitledModel")),
                       model.name && model.name !== model.id ? model.id : undefined,
                       <>
-                        {/* Every model of a custom provider is a definition; only mark the ones added to a built-in provider. */}
-                        {builtIn && model.definition && <span className="models-tag">{t("models.kindDefinition")}</span>}
+                        {/* A definition with a shipped id replaces that model whole; say so. */}
+                        {model.definition && builtInRefs.has(ref) ? (
+                          <span className="models-tag is-warning" title={t("models.replacesBuiltInHint")}>{t("models.replacesBuiltIn")}</span>
+                        ) : builtIn && model.definition && (
+                          // Every model of a custom provider is a definition; only mark those added to a built-in provider.
+                          <span className="models-tag">{t("models.kindDefinition")}</span>
+                        )}
                         {!model.usable && <span className="models-tag is-warning">{t("models.notUsable")}</span>}
                         {scopeDoc?.pins[ref] && <span className="models-tag">{t("models.thinkingPin", { level: scopeDoc.pins[ref] })}</span>}
                       </>,
@@ -765,6 +773,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           cwd={cwd}
           onChange={(m) => updateModel(row.id, ref.index, m)}
           onDelete={() => removeModel(row.id, ref.index)}
+          shadowsBuiltIn={builtInRefs.has(`${row.id}/${model.id}`)}
         />
       </>
     );

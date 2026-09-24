@@ -396,3 +396,16 @@ test("the drill-down chevron reveals on hover but stays visible on touch", () =>
   assert.match(cssSource, /\.models-row:hover \.models-row-chevron/);
   assert.match(cssSource, /@media \(hover: none\) \{\s*\.models-row-chevron/);
 });
+
+test("a definition that shadows a shipped model says so and offers the built-in back", async () => {
+  const route = await readFile(new URL("../app/api/models-config/runtime/route.ts", import.meta.url), "utf8");
+  const services = await readFile(new URL("../lib/model-config-services.ts", import.meta.url), "utf8");
+  // The base list is the shipped catalog plus the cached overlay, without models.json.
+  assert.match(services, /modelsPath: join\(agentDir, "\.pi-web-no-models\.json"\)/);
+  assert.match(services, /modelsStorePath: join\(agentDir, "models-store\.json"\)/);
+  assert.match(services, /allowModelNetwork: false/);
+  assert.match(route, /builtIn,/);
+  assert.match(source, /model\.definition && builtInRefs\.has\(ref\)/);
+  assert.match(source, /shadowsBuiltIn=\{builtInRefs\.has\(`\$\{row\.id\}\/\$\{model\.id\}`\)\}/);
+  assert.match(source, /t\("models\.restoreBuiltIn"\)/);
+});

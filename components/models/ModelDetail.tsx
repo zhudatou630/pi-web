@@ -114,6 +114,7 @@ export function ModelDetail({
   onDelete,
   lockId = false,
   cwd = null,
+  shadowsBuiltIn = false,
 }: {
   providerName: string;
   provider: ProviderEntry;
@@ -122,6 +123,8 @@ export function ModelDetail({
   onDelete?: () => void;
   lockId?: boolean;
   cwd?: string | null;
+  /** This definition's id is a shipped model, which it replaces whole. */
+  shadowsBuiltIn?: boolean;
 }) {
   const [testState, setTestState] = useState<ModelTestState>({ phase: "idle" });
   const { t } = useI18n();
@@ -356,6 +359,15 @@ export function ModelDetail({
           )}
         </ConfigDetailActions>
       </ConfigDetailHeader>
+
+      {shadowsBuiltIn && onDelete && (
+        <Notice
+          tone="warning"
+          action={<ConfigButton size="small" onClick={onDelete}>{t("models.restoreBuiltIn")}</ConfigButton>}
+        >
+          {t("models.replacesBuiltInHint")}
+        </Notice>
+      )}
 
       {testSummary && (
         <Notice tone={testState.phase === "success" ? "success" : "danger"}>
