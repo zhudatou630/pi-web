@@ -740,7 +740,9 @@ function ProcessDetailsGroup({
             display: "flex",
             flexDirection: "column",
             gap: 1,
-            padding: "2px 0 4px 0",
+            // Bleed gutter so step hover fills can extend past the content column without being clipped.
+            margin: "0 -8px",
+            padding: "2px 8px 4px",
             maxHeight: isMobile ? 220 : 280,
             overflowY: "auto",
             overflowX: "hidden",
