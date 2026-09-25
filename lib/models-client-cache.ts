@@ -32,8 +32,31 @@ const MAX_MODELS_CLIENT_CACHE_ENTRIES = 32;
 const entries = new Map<string, CacheEntry>();
 const inFlight = new Map<string, PendingLoad>();
 
+// The last good response also survives a page load, so a reopened session paints model
+// names at once instead of flashing raw ids until /api/models answers. It only seeds the
+// first render; the TTL check below still fetches fresh data.
+// ponytail: one localStorage key per cwd with no eviction; add an LRU if cwds pile up.
+const STORAGE_PREFIX = "pi-web:models:";
+
+function readStored(key: string): ModelsResponse | undefined {
+  try {
+    const raw = localStorage.getItem(STORAGE_PREFIX + key);
+    return raw ? JSON.parse(raw) as ModelsResponse : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStored(key: string, data: ModelsResponse): void {
+  try {
+    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data));
+  } catch {
+    // Storage full or unavailable: the in-memory cache still works.
+  }
+}
+
 export function peekModelsClientCache(key: string): ModelsResponse | undefined {
-  return entries.get(key)?.data;
+  return entries.get(key)?.data ?? (typeof localStorage === "undefined" ? undefined : readStored(key));
 }
 
 export function loadModelsWithClientCache(
@@ -66,6 +89,7 @@ export function loadModelsWithClientCache(
       }
       entries.delete(key);
       entries.set(key, { data, loadedAt: Date.now() });
+      if (typeof localStorage !== "undefined") writeStored(key, data);
       while (entries.size > MAX_MODELS_CLIENT_CACHE_ENTRIES) {
         const oldestKey = entries.keys().next().value;
         if (oldestKey === undefined) break;
