@@ -274,7 +274,9 @@ export function ChatTabBar({
                   flex: 1,
                   // Preview (unpinned) tab. Not italic: CJK has no italic and color already means visibility.
                   textDecoration: tab.preview ? "underline dotted" : undefined,
-                  textUnderlineOffset: 3,
+                  textDecorationColor: "var(--text-dim)",
+                  textUnderlineOffset: 5,
+                  paddingBlock: 5, // room for the offset underline; overflow:hidden would clip it
                 }}
               >
                 {tab.title}
