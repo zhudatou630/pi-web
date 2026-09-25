@@ -295,13 +295,20 @@ export function ChatTabBar({
                 <button
                   type="button"
                   tabIndex={-1}
+                  className="file-tab-close"
+                  onMouseDown={(e) => {
+                    // Pointer press focuses the button; the UA ring then sticks until blur.
+                    if (e.button === 0) e.preventDefault();
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setHoveredClose(null);
                     onCloseTab(tab.id);
                   }}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onMouseEnter={() => setHoveredClose(tab.id)}
                   onMouseLeave={() => setHoveredClose(null)}
+                  onBlur={() => setHoveredClose(null)}
                   style={{
                     display: "flex",
                     alignItems: "center",

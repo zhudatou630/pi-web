@@ -140,6 +140,8 @@ test("keeps close controls out of the tab order and supports Delete on the tab",
   assert.match(source, /data-chat-tab="true"/);
   assert.match(source, /exactTab \?\? activeTab \?\? composer/);
   assert.match(source, /<button\s*type="button"\s*tabIndex=\{-1\}/);
+  assert.match(source, /className="file-tab-close"/);
+  assert.match(source, /if \(e\.button === 0\) e\.preventDefault\(\);/);
 });
 
 test("keeps new-tab actions beside the last tab instead of the pane edge", async () => {
