@@ -27,7 +27,7 @@ export function ImageMentionChip({ path, cwd, onRemove }: {
       <img src={src} alt="" className="block h-full w-full object-cover" />
       {onRemove ? (
         <button type="button" onClick={onRemove} className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-0 bg-black/55 text-white" aria-label={t("i18n.close")}>
-          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       ) : null}
     </span>

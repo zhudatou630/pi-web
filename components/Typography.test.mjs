@@ -116,3 +116,29 @@ test("UI never uses italic; only markdown emphasis may request it", () => {
     .map(({ where, line }) => `${where} ${line.trim()}`);
   assert.deepEqual(violations, []);
 });
+
+// Icon scale (components/iconStroke.ts): an icon's box is its text size + 1
+// (11->12, 12->13, 13->14; icon-only buttons take their bar's text tier), and
+// its stroke stays ~1.1px on screen: strokeWidth = round(1.1 * grid / size, 1).
+// 10px micro glyphs (chevrons, close ×) use 3 on the 24 grid or 1.3 on a 10
+// grid. Filled marks and illustrations (>= 20px) are exempt.
+test("static SVG icons stay on the icon scale", async () => {
+  const violations = [];
+  for (const dir of ["components", "app"]) {
+    const entries = await readdir(join(root, dir), { recursive: true, withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isFile() || e.name.includes(".test.") || !e.name.endsWith(".tsx")) continue;
+      const file = join(e.parentPath, e.name);
+      const text = await readFile(file, "utf8");
+      for (const m of text.matchAll(/<svg\b[^>]*?>/gs)) {
+        const width = Number(m[0].match(/\bwidth="(\d+)"/)?.[1]);
+        const grid = Number(m[0].match(/viewBox="0 0 (\d+) \d+"/)?.[1]);
+        const stroke = Number(m[0].match(/strokeWidth="([\d.]+)"/)?.[1]);
+        if (!width || !stroke || width >= 20) continue;
+        const expected = width === 10 ? { 24: 3, 10: 1.3 }[grid] : [12, 13, 14, 16].includes(width) ? Math.round(11 * grid / width) / 10 : NaN;
+        if (stroke !== expected) violations.push(`${file.slice(root.length)}:${text.slice(0, m.index).split("\n").length} ${width}px grid ${grid} stroke ${stroke}`);
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
+});

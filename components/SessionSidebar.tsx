@@ -72,7 +72,7 @@ function ToolbarIconButton({
 }) {
   const enter = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled || skipHover) return;
-    e.currentTarget.style.color = "var(--text-muted)";
+    e.currentTarget.style.color = "var(--text)";
     e.currentTarget.style.background = "var(--bg-hover)";
   };
   const leave = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -1193,7 +1193,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         e.currentTarget.style.color = "var(--text-dim)";
                       }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
                         <line x1="6" y1="3" x2="6" y2="15" />
                         <circle cx="18" cy="6" r="3" />
                         <circle cx="6" cy="18" r="3" />
@@ -1236,7 +1236,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       borderBottom: "1px solid var(--border)",
                       background: "var(--bg-subtle)",
                     }}>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
                         <circle cx="11" cy="11" r="8" />
                         <line x1="21" y1="21" x2="16.65" y2="16.65" />
                       </svg>
@@ -1282,7 +1282,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                           }}
                           title={t("chat.clear")}
                         >
-                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="18" y1="6" x2="6" y2="18" />
                             <line x1="6" y1="6" x2="18" y2="18" />
                           </svg>
@@ -1346,7 +1346,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                             }}
                           >
                             {isCurrent ? (
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                                 <polyline points="1.5 5 4 7.5 8.5 2.5" />
                               </svg>
                             ) : (
@@ -1366,14 +1366,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                                 display: "flex", alignItems: "center", justifyContent: "center",
                                 width: 34, height: 28, padding: 0, marginRight: 4,
                                 background: "none", border: "none",
-                                color: "var(--text-dim)", cursor: "pointer",
+                                color: "var(--text-muted)", cursor: "pointer",
                                 borderRadius: 4, flexShrink: 0,
                                 transition: "color 0.12s, background 0.12s",
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "none"; }}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="3 6 5 6 21 6" />
                                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                                 <path d="M10 11v6M14 11v6" />
@@ -1412,7 +1412,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         fontSize: 11,
                       }}
                     >
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" style={{ flexShrink: 0 }}>
                         <line x1="5" y1="1" x2="5" y2="9" />
                         <line x1="1" y1="5" x2="9" y2="5" />
                       </svg>
@@ -1551,7 +1551,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               }}
               title={t(singleProject ? "sidebar.switchProject" : "sidebar.addProject")}
               ariaPressed={dropdownOpen}
-              color={dropdownOpen ? "var(--accent)" : "var(--text-dim)"}
+              color={dropdownOpen ? "var(--accent)" : "var(--text-muted)"}
               background={dropdownOpen ? "var(--bg-selected)" : "none"}
             >
               {singleProject ? (
@@ -1577,7 +1577,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             }}
             title={t("sidebar.toggleSessionSearch")}
             ariaPressed={sessionSearchOpen}
-            color={sessionSearchOpen ? "var(--accent)" : "var(--text-dim)"}
+            color={sessionSearchOpen ? "var(--accent)" : "var(--text-muted)"}
             background={sessionSearchOpen ? "var(--bg-selected)" : "none"}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1634,19 +1634,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         }}
                         disabled={Boolean(activity?.running) || deletingProjectKey === project.key}
                         title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
-                        color="var(--text-dim)"
+                        color="var(--text-muted)"
                       >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
                       </ToolbarIconButton>
                     )}
                     <ToolbarIconButton
                       onClick={() => onTogglePinnedCwd(project.root)}
                       title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
                       ariaPressed={pinned}
-                      color={pinned ? "var(--text-muted)" : "var(--text-dim)"}
+                      color={pinned ? "var(--text)" : "var(--text-muted)"}
                       marginRight={4}
                     >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
                     </ToolbarIconButton>
                   </div>
                 );
@@ -1662,7 +1662,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               cursor: "pointer", textAlign: "left", fontSize: 11,
             }}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M1 3A1 1 0 0 1 2 2H4L5 3.5H8.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 1 8V3Z" /></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M1 3A1 1 0 0 1 2 2H4L5 3.5H8.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 1 8V3Z" /></svg>
             <span>{t("sidebar.useDefaultDirectory")}</span>
           </button>
           <button
@@ -1673,7 +1673,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11,
             }}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0 }}><line x1="5" y1="1" x2="5" y2="9" /><line x1="1" y1="5" x2="9" y2="5" /></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0 }}><line x1="5" y1="1" x2="5" y2="9" /><line x1="1" y1="5" x2="9" y2="5" /></svg>
             <span>{t("sidebar.customPath")}</span>
           </button>
         </AnimatedDropdown>
@@ -1843,9 +1843,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         }}
                         disabled={Boolean(activity?.running) || deletingProjectKey === row.project.key}
                         title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
-                        color="var(--text-dim)"
+                        color="var(--text-muted)"
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
                       </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => {
@@ -1855,9 +1855,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                           saveExplorerOpen(true);
                         }}
                         title={t("sidebar.openProjectExplorer", { path: workspaceCwd })}
-                        color="var(--text-dim)"
+                        color="var(--text-muted)"
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h4" /><path d="M10 5h10" /><path d="M4 12h4" /><path d="M10 12h10" /><path d="M4 19h4" /><path d="M10 19h10" /></svg>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h4" /><path d="M10 5h10" /><path d="M4 12h4" /><path d="M10 12h10" /><path d="M4 19h4" /><path d="M10 19h10" /></svg>
                       </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => {
@@ -1866,9 +1866,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         }}
                         title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
                         ariaPressed={pinned}
-                        color={pinned ? "var(--text-muted)" : "var(--text-dim)"}
+                        color={pinned ? "var(--text)" : "var(--text-muted)"}
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
                       </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => {
@@ -1879,11 +1879,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                           createSessionForCwd(workspaceCwd);
                         }}
                         title={t("sidebar.newSessionTitle", { path: workspaceCwd })}
-                        color="var(--text-dim)"
+                        color="var(--text-muted)"
                         className="workspace-new-session"
                         marginRight={6}
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                       </ToolbarIconButton>
                     </span>
                   </div>
@@ -1969,7 +1969,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               <ToolbarIconButton
                 onClick={() => onOpenTerminal(selectedCwd ?? selectedCwdProp!)}
                 title={t("terminal.open")}
-                color="var(--text-dim)"
+                color="var(--text-muted)"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
@@ -1981,7 +1981,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 onClick={() => setChangesCollapsed((v) => !v)}
                 title={t("sidebar.changedFiles", { count: changesCount })}
                 ariaPressed={!changesCollapsed}
-                color={changesCollapsed ? "var(--text-dim)" : "var(--accent)"}
+                color={changesCollapsed ? "var(--text-muted)" : "var(--accent)"}
                 background={changesCollapsed ? "none" : "var(--bg-selected)"}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1998,7 +1998,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 }}
                 title={t("sidebar.searchFiles")}
                 ariaPressed={fileSearchOpen}
-                color={fileSearchOpen ? "var(--accent)" : "var(--text-dim)"}
+                color={fileSearchOpen ? "var(--accent)" : "var(--text-muted)"}
                 background={fileSearchOpen ? "var(--bg-selected)" : "none"}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -2011,7 +2011,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 onClick={() => fileExplorerRef.current?.openUploadPicker()}
                 disabled={explorerUploadBusy}
                 title={t("sidebar.uploadFilesTitle")}
-                color="var(--text-dim)"
+                color="var(--text-muted)"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -2026,7 +2026,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 else setExplorerKey((k) => k + 1);
               }}
               title={t("sidebar.refreshExplorer")}
-              color="var(--text-dim)"
+              color="var(--text-muted)"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -2350,7 +2350,7 @@ export function SessionItem({
                 whiteSpace: "nowrap",
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                 <path d="M10 11v6M14 11v6" />
@@ -2406,7 +2406,7 @@ export function SessionItem({
         <>
           {/* Subagent indicator for child sessions */}
           {depth > 0 && (
-            <SubagentIcon size={11} strokeWidth={2} style={{ color: "var(--accent)" }} />
+            <SubagentIcon size={13} style={{ color: "var(--accent)" }} />
           )}
           <button
             type="button"
@@ -2445,7 +2445,7 @@ export function SessionItem({
               title={`Worktree: ${session.branch}\n${session.cwd}`}
               style={{ display: "flex", alignItems: "center", gap: 3, maxWidth: 82, color: "var(--text-dim)", flexShrink: 1, fontSize: 10, fontFamily: "var(--font-mono)", lineHeight: 1 }}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
                 <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
               </svg>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{session.branch}</span>
@@ -2467,7 +2467,7 @@ export function SessionItem({
                 transition: "transform 0.15s",
               }}
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="2 3.5 5 6.5 8 3.5" />
               </svg>
             </button>
@@ -2509,7 +2509,7 @@ export function SessionItem({
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
@@ -2544,7 +2544,7 @@ export function SessionItem({
                     e.currentTarget.style.color = "var(--text-muted)";
                   }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <line x1="12" y1="17" x2="12" y2="22" />
                     <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
                   </svg>
@@ -2573,7 +2573,7 @@ export function SessionItem({
                   e.currentTarget.style.color = "var(--text-muted)";
                 }}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
                 </svg>
               </button>
@@ -2600,7 +2600,7 @@ export function SessionItem({
                   e.currentTarget.style.color = "var(--text-muted)";
                 }}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                   <path d="M10 11v6M14 11v6" />

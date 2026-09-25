@@ -535,7 +535,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         </span>
         {sub && <code className="models-row-sub">{sub}</code>}
       </span>
-      <svg className="models-row-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg className="models-row-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="m9 18 6-6-6-6" />
       </svg>
     </button>
@@ -769,8 +769,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const renderModelPage = (row: ProviderRow, ref: ModelRef) => {
     const back = (
       <button type="button" className="models-breadcrumb" onClick={() => openProvider(row.id)}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
-        <ProviderIcon id={row.id} size={14} />
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        <ProviderIcon id={row.id} size={13} />
         {row.label}
       </button>
     );
@@ -823,7 +823,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const otherRows = providerRows.filter((row) => !row.connected);
     const item = (row: ProviderRow) => (
       <ConfigSidebarItem key={row.id} active={row.id === activeId} onClick={() => openProvider(row.id)}>
-        <ProviderIcon id={row.id} size={16} />
+        <ProviderIcon id={row.id} size={13} />
         <ConfigSidebarText className={`is-grow${row.connected ? "" : " is-muted"}`}>{row.label}</ConfigSidebarText>
         {providerDirty(row.id) && <span className="models-dirty-dot" title={t("models.unsavedProvider")} />}
         {scopeDoc && row.models.length > 0 && (
@@ -896,7 +896,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
               className={savedOk ? "is-success" : undefined}
             >
               {savedOk && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                   className="config-button-success-icon">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>

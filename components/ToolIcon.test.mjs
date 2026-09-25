@@ -15,7 +15,8 @@ test("renders specific icons for bash, read, and error states", () => {
   assert.ok(bashHtml.includes("<svg"));
 
   const errorHtml = renderToStaticMarkup(React.createElement(ToolIcon, { toolName: "bash", isError: true }));
-  assert.ok(errorHtml.includes("#ef4444"));
+  // Error color comes from the step row (icon follows its label); the glyph is the alert circle.
+  assert.ok(errorHtml.includes('<circle cx="12" cy="12" r="10"'));
 
   const readHtml = renderToStaticMarkup(React.createElement(ToolIcon, { toolName: "read" }));
   assert.ok(readHtml.includes("<svg"));

@@ -263,10 +263,10 @@ test("keeps empty Send quiet and highlights text or image submissions", () => {
       assert.equal(send.includes('disabled=""'), empty);
       assert.ok(send.includes(empty ? "background:none" : "background:var(--accent)"));
       assert.doesNotMatch(send, /box-shadow|background:var\(--bg-panel\)/);
-      assert.match(send, /<svg width="16" height="16" viewBox="0 0 24 24"[^>]*stroke-width="1\.8"/);
+      assert.match(send, /<svg width="13" height="13" viewBox="0 0 24 24"[^>]*stroke-width="2"/);
       assert.match(html, /class="chat-input-toolbar"[^>]*margin-top:4px/);
       const attach = html.match(/<button[^>]*aria-label="Attach image"[\s\S]*?<\/button>/)?.[0];
-      assert.match(attach ?? "", /<svg width="14" height="14"[^>]*stroke-width="1\.8"/);
+      assert.match(attach ?? "", /<svg width="13" height="13"[^>]*stroke-width="2"/);
     }
   } finally {
     clearDraft(draftKey);
@@ -309,7 +309,7 @@ test("shows the live mobile contract on the overflow chip instead of a generic O
   assert.ok(start >= 0);
   const options = source.slice(start, source.indexOf("</button>", start));
   assert.match(options, /aria-label=\{t\("chat.moreControls"\)\}/);
-  assert.match(options, /<ThinkingIcon size=\{14\}/);
+  assert.match(options, /<ThinkingIcon size=\{13\}/);
   assert.match(options, /\{mobileContractLabel\}/);
   assert.doesNotMatch(options, /chat\.inputOptions/);
   assert.doesNotMatch(options, /aria-hidden/);
@@ -459,7 +459,7 @@ test("renders the read-only tool preset as the active selection", () => {
   assert.match(html, />read-only<\/span>/);
 });
 
-test("renders the empty tool preset as Chat only", () => {
+test("renders the empty tool preset as chat-only in the toolbar", () => {
   const html = renderToStaticMarkup(
     React.createElement(
       I18nProvider,
@@ -475,7 +475,7 @@ test("renders the empty tool preset as Chat only", () => {
   );
 
   assert.match(html, /title="Change tool preset: Chat only"/);
-  assert.match(html, />Chat only<\/span>/);
+  assert.match(html, />chat-only<\/span>/);
 });
 
 test("renders the compact composer with the standard Send button and no session controls", () => {

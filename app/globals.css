@@ -170,6 +170,11 @@ html.dark {
   color: var(--text-dim);
 }
 
+/* An icon that labels text takes the label's color (the gutter's dim is for chevrons). */
+.sidebar-footer-item .sidebar-section-gutter {
+  color: inherit;
+}
+
 .sidebar-section-gutter svg,
 .sidebar-header-actions svg {
   display: block;
@@ -293,10 +298,11 @@ html.dark {
 }
 
 /* Use the SVG alpha channel as a mask so file icons follow the app's
-   restrained text palette instead of Catppuccin's language-specific colors. */
+   restrained text palette instead of Catppuccin's language-specific colors;
+   currentColor makes the icon match the file name beside it. */
 @supports (mask-image: url("mask.svg")) or (-webkit-mask-image: url("mask.svg")) {
   .catppuccin-file-icon {
-    background: var(--text-dim);
+    background: currentColor;
     mask: center / contain no-repeat var(--catppuccin-icon);
     -webkit-mask: center / contain no-repeat var(--catppuccin-icon);
   }

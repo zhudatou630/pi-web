@@ -115,15 +115,15 @@ function parkedNewSessionDraftKey(cwd: string): string {
   return `parked-new:${cwd}`;
 }
 
-function SettingsGearIcon({ size = 14 }: { size?: number }) {
+function SettingsGearIcon() {
   return (
     <svg
-      width={size}
-      height={size}
+      width="13"
+      height="13"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -1960,7 +1960,7 @@ export function AppShell() {
           className="sidebar-footer-item"
         >
           <span className="sidebar-section-gutter">
-            <SettingsGearIcon size={13} />
+            <SettingsGearIcon />
           </span>
           <span>{translate("common.settings")}</span>
         </button>
@@ -2003,12 +2003,12 @@ export function AppShell() {
         data-mobile-trust-banner={mobileBanner ? "true" : undefined}
       >
         <svg
-          width="13"
-          height="13"
+          width="12"
+          height="12"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden="true"
@@ -2079,7 +2079,7 @@ export function AppShell() {
             className="workspace-header-action"
             data-mobile-toolbar-action={mobile ? "agents" : undefined}
           >
-            <SubagentIcon size={13} strokeWidth={1.9} />
+            <SubagentIcon size={13} />
             <span
               aria-hidden="true"
               style={{
@@ -2111,7 +2111,7 @@ export function AppShell() {
             className="workspace-header-action"
             data-mobile-toolbar-action="branches"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: branchTree.length > 0 ? "var(--accent)" : "var(--text-dim)" }} aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="6" y1="3" x2="6" y2="15" />
               <circle cx="18" cy="6" r="3" />
               <circle cx="6" cy="18" r="3" />
@@ -2188,7 +2188,7 @@ export function AppShell() {
           className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "system" : undefined}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
             <line x1="8" y1="13" x2="16" y2="13" />
@@ -2226,7 +2226,7 @@ export function AppShell() {
           className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "tools" : undefined}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
           </svg>
         </button>
@@ -2247,7 +2247,7 @@ export function AppShell() {
             className="workspace-header-action"
             data-mobile-toolbar-action="outline"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="4" y1="6" x2="20" y2="6" />
               <line x1="4" y1="12" x2="14" y2="12" />
               <line x1="4" y1="18" x2="17" y2="18" />
@@ -2406,11 +2406,11 @@ export function AppShell() {
         onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
       >
         {rightPanelOpen ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
           </svg>
         ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
             <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         )}
@@ -2532,11 +2532,11 @@ export function AppShell() {
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
           >
             {sidebarOpen ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
               </svg>
             ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             )}
@@ -2680,7 +2680,7 @@ export function AppShell() {
                         background: "transparent",
                         border: "none",
                         borderRadius: 4,
-                        color: "var(--text-dim)",
+                        color: "var(--text-muted)",
                         cursor: "pointer",
                         transition: "color 0.12s, background 0.12s",
                       }}
@@ -2689,7 +2689,7 @@ export function AppShell() {
                         e.currentTarget.style.background = "var(--bg-hover)";
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.color = "var(--text-dim)";
+                        e.currentTarget.style.color = "var(--text-muted)";
                         e.currentTarget.style.background = "transparent";
                       }}
                     >
@@ -2733,7 +2733,7 @@ export function AppShell() {
                             justifyContent: "center",
                             width: 20,
                             height: 20,
-                            color: copied ? "var(--accent)" : "var(--text-dim)",
+                            color: copied ? "var(--accent)" : "var(--text-muted)",
                             background: "transparent",
                             border: "1px solid var(--border)",
                             borderRadius: 4,
@@ -2747,17 +2747,17 @@ export function AppShell() {
                             e.currentTarget.style.background = "var(--bg-hover)";
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.color = copied ? "var(--accent)" : "var(--text-dim)";
+                            e.currentTarget.style.color = copied ? "var(--accent)" : "var(--text-muted)";
                             e.currentTarget.style.borderColor = "var(--border)";
                             e.currentTarget.style.background = "transparent";
                           }}
                         >
                           {copied ? (
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                               <polyline points="20 6 9 17 4 12" />
                             </svg>
                           ) : (
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                             </svg>
@@ -3206,7 +3206,7 @@ export function AppShell() {
             onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
             onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
             </svg>
           </button>

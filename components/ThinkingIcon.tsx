@@ -1,8 +1,9 @@
 import type { CSSProperties } from "react";
+import { iconStroke } from "./iconStroke";
 
 export function ThinkingIcon({
   active,
-  size = 14,
+  size = 13,
   className,
   style,
 }: {
@@ -20,7 +21,7 @@ export function ThinkingIcon({
       viewBox="2.4 2.4 19.2 19.2"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth={iconStroke(size) * 0.8} // 24-unit stroke rescaled to the 19.2 crop
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

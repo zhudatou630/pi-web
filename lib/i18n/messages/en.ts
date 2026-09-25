@@ -476,7 +476,7 @@ export const enLocale: LocalePlugin = {
     "chat.stopCompaction": "Stop compaction",
     "chat.compactContext": "Compact context",
     "chat.compacting": "Compacting…",
-    "chat.compact": "Compact",
+    "chat.compact": "compact", // toolbar state labels are lowercase like medium/configured
     "chat.contextUsage": "Context usage",
     "chat.contextRemaining": "Remaining",
     "chat.contextHighWarning": "Context near limit, compaction recommended",

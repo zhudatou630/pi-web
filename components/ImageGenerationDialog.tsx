@@ -52,7 +52,7 @@ function CompactSelect({ value, label, onChange, children }: {
       >
         {children}
       </select>
-      <svg className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-text-dim" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+      <svg className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-text-dim" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
         <path d="m6 9 6 6 6-6" />
       </svg>
     </label>
@@ -176,7 +176,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
         <header className="flex h-10 shrink-0 items-center px-4 sm:h-11">
           <h2 id="image-generation-title" className="text-[14px] font-semibold text-text">{editing ? t("image.editTitle") : t("image.title")}</h2>
           <button type="button" onClick={onClose} className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-text-muted hover:bg-bg-hover hover:text-text" title={t("trust.cancel")} aria-label={t("trust.cancel")}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </header>
 
@@ -188,7 +188,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
                 <img src={previewUrl} alt={edit?.prompt ?? t("image.editSource")} className="block h-auto w-full sm:h-28 sm:w-auto sm:max-w-[7.5rem]" />
                 {!edit ? (
                   <button type="button" onClick={() => setSourceImage(undefined)} className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full border-0 bg-black/60 text-white hover:bg-black/80" title={t("image.removeSource")} aria-label={t("image.removeSource")}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
                   </button>
                 ) : null}
               </div>
@@ -214,7 +214,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
             {canAttachSource && !sourceImage ? (
               <>
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex h-7 w-7 flex-none items-center justify-center rounded-md border-0 bg-transparent text-text-muted hover:bg-bg-hover hover:text-text" title={t("image.addSource")} aria-label={t("image.addSource")}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => { attachSource(event.target.files ?? []); event.target.value = ""; }} />
               </>

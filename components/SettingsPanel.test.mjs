@@ -152,11 +152,10 @@ test("labels agent profiles as sub-agents", () => {
 
 test("uses the unified SubagentIcon for sub-agents across settings and sidebar", async () => {
   const subagentIconSource = await readFile(new URL("./SubagentIcon.tsx", import.meta.url), "utf8");
-  const subagentGlyph = /<rect x="3" y="7" width="13" height="13" rx="2" \/>\s*<path d="M8 3h10a2 2 0 0 1 2 2v10" \/>/;
+  const subagentGlyph = /<rect x="2" y="8" width="14" height="14" rx="2" \/>\s*<path d="M8 2h12a2 2 0 0 1 2 2v12" \/>/;
   assert.match(subagentIconSource, subagentGlyph);
-  assert.match(panelSource, /<SubagentIcon[^>]*className="settings-section-icon is-agent"/);
+  assert.match(panelSource, /<SubagentIcon[^>]*className="settings-section-icon"/);
   assert.match(sidebarSource, /<SubagentIcon/);
-  assert.match(cssSource, /\.settings-section-icon\.is-agent \{[\s\S]*?transform: scale\(1\.25\)/);
 });
 
 test("uses the compact controls glyph for General", () => {

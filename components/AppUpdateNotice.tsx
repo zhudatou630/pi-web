@@ -128,9 +128,10 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
                 onClick={() => { void checkNow(); }}
                 title={t("appUpdate.checkNow")}
                 aria-label={t("appUpdate.checkNow")}
-                style={{ color: "var(--accent)", verticalAlign: "middle", cursor: manualChecking ? "default" : "pointer" }}
+                // One line-box tall and centered: verticalAlign "middle" sits on the x-height and drops the icon ~1px.
+                style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", height: "1lh", verticalAlign: "top", cursor: manualChecking ? "default" : "pointer" }}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
                   <path d="M21 3v5h-5" />
                 </svg>
@@ -168,7 +169,7 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
             }}
           >
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>v{update.latestVersion}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
               <path d="M7 17 17 7" />
               <path d="M7 7h10v10" />
             </svg>

@@ -187,7 +187,8 @@
   flex: 1;
 }
 
-.config-sidebar-text.is-muted {
+.config-sidebar-text.is-muted,
+.config-sidebar-item:has(> .config-sidebar-text.is-muted) {
   color: var(--text-dim);
 }
 
@@ -897,10 +898,6 @@
 
 .settings-section-icon {
   flex-shrink: 0;
-}
-
-.settings-section-icon.is-agent {
-  transform: scale(1.25);
 }
 
 .settings-mobile-section-picker {
@@ -1903,7 +1900,7 @@ a.models-hint:hover {
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
   transform: translateY(-50%);
 }

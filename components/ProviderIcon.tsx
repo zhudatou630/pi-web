@@ -52,7 +52,7 @@ export function ProviderIcon({ id, size }: { id: string; size: number }) {
         height={size}
         viewBox="0 0 24 24"
         fill={icon.color ? undefined : "currentColor"}
-        style={{ color: "var(--text-muted)", flexShrink: 0 }}
+        style={{ flexShrink: 0 }}
       >
         <use href={`/provider-icons.svg#${icon.symbol}`} />
       </svg>
