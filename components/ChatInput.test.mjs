@@ -148,6 +148,12 @@ test("keeps the main composer compact in idle and streaming states", () => {
     assert.match(html, /class="chat-input-composer"[\s\S]*class="chat-input-dock"/);
     assert.equal((html.match(/class="composer-send"/g) ?? []).length, 1);
     assert.match(html, new RegExp(`class="composer-send" aria-label="${isStreaming ? "Stop" : "Send"}"`));
+    if (isStreaming) {
+      assert.doesNotMatch(html, /chat-input-actions is-queueing/);
+      assert.match(html, /chat-input-queue-action/);
+    } else {
+      assert.doesNotMatch(html, /chat-input-queue-action/);
+    }
   }
 
   const draftKey = "test:composer-streaming-intervene";
@@ -161,9 +167,9 @@ test("keeps the main composer compact in idle and streaming states", () => {
       }),
     ));
     // A live run with a draft: quiet Stop and Follow-up, and the filled slot steers like Enter.
-    assert.match(html, /class="chat-input-field-row"><textarea[\s\S]*?<\/textarea><div class="chat-input-actions">/);
-    assert.match(html, /class="composer-btn is-icon" aria-label="Stop"/);
-    assert.match(html, /class="composer-btn is-icon" aria-label="Follow-up"/);
+    assert.match(html, /class="chat-input-field-row"><textarea[\s\S]*?<\/textarea><div class="chat-input-actions is-queueing">/);
+    assert.match(html, /class="composer-btn is-icon chat-input-queue-action" aria-label="Stop"/);
+    assert.match(html, /class="composer-btn is-icon chat-input-queue-action" aria-label="Follow-up"/);
     assert.match(html, /class="composer-send" aria-label="Steer"/);
     assert.doesNotMatch(html, /composer-btn-label/);
     assert.doesNotMatch(html, /#ef4444/);

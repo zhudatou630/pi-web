@@ -2747,8 +2747,33 @@ span.token.table {
 .chat-input-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   flex-shrink: 0;
+}
+
+/* Extra Stop / Follow-up sit at width 0 until a draft is ready, then widen.
+   Spacing lives on the extras so collapsed buttons do not leave a phantom gap. */
+.composer-btn.is-icon.chat-input-queue-action {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin-inline-end: 0;
+  transition: max-width 0.2s ease, opacity 0.16s ease, margin-inline-end 0.2s ease;
+}
+
+.chat-input-actions.is-queueing .composer-btn.is-icon.chat-input-queue-action {
+  max-width: 24px;
+  opacity: 1;
+  overflow: visible;
+  pointer-events: auto;
+  margin-inline-end: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-btn.is-icon.chat-input-queue-action {
+    transition: none;
+  }
 }
 
 .composer-send {
@@ -3073,8 +3098,8 @@ span.token.table {
   }
 
   /* Wide enough that the 32px touch rings of neighbouring run controls do not overlap. */
-  .chat-input-actions {
-    gap: 8px;
+  .chat-input-actions.is-queueing .composer-btn.is-icon.chat-input-queue-action {
+    margin-inline-end: 8px;
   }
 
   .chat-input-context-cache {

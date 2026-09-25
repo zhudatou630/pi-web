@@ -1687,10 +1687,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
     </svg>
   );
+  const steerIcon = (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12h14m-6-6 6 6-6 6" />
+    </svg>
+  );
   const followUpShortcut = isMobile ? "Control+Alt+Enter Meta+Alt+Enter" : "Alt+Enter";
   // One filled slot carries the Enter verb: Send, Stop, or Steer. While a run is live and a
   // draft is ready, a quiet Stop and the Alt+Enter follow-up queue join it. Icons only; the
-  // titles carry the words and shortcuts.
+  // titles carry the words and shortcuts. Keep those extra buttons mounted during a run so
+  // they can widen instead of remounting the whole cluster.
+  const queueStreamingActions = isStreaming && canQueueStreamingMessage;
   const actionButtons = !isStreaming ? (
     <button
       type="button"
@@ -1702,13 +1709,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     >
       {arrowUpIcon}
     </button>
-  ) : !canQueueStreamingMessage ? (
-    <button type="button" className="composer-send" aria-label={t("chat.stop")} title={t("chat.stopAgent")} onClick={onAbort}>
-      {stopIcon}
-    </button>
   ) : (
     <>
-      <button type="button" className="composer-btn is-icon" aria-label={t("chat.stop")} title={t("chat.stopAgent")} onClick={onAbort}>
+      <button
+        type="button"
+        className="composer-btn is-icon chat-input-queue-action"
+        aria-label={t("chat.stop")}
+        title={t("chat.stopAgent")}
+        inert={!queueStreamingActions ? true : undefined}
+        onClick={onAbort}
+      >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.9" />
           <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" />
@@ -1717,10 +1727,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       {onSteer && onFollowUp && (
         <button
           type="button"
-          className="composer-btn is-icon"
+          className="composer-btn is-icon chat-input-queue-action"
           aria-label={t("chat.followUp")}
           title={`${t("chat.followUpHint")} (${isMobile ? "Ctrl/Cmd+" : ""}Alt/Option+Enter)`}
           aria-keyshortcuts={followUpShortcut}
+          inert={!queueStreamingActions ? true : undefined}
           onClick={() => sendQueued("followup")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1731,13 +1742,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       <button
         type="button"
         className="composer-send"
-        aria-label={onSteer ? t("chat.steer") : t("chat.followUp")}
-        title={onSteer ? t("chat.steerHint") : t("chat.followUpHint")}
-        onClick={() => sendQueued(onSteer ? "steer" : "followup")}
+        aria-label={queueStreamingActions ? (onSteer ? t("chat.steer") : t("chat.followUp")) : t("chat.stop")}
+        title={queueStreamingActions ? (onSteer ? t("chat.steerHint") : t("chat.followUpHint")) : t("chat.stopAgent")}
+        onClick={queueStreamingActions ? () => sendQueued(onSteer ? "steer" : "followup") : onAbort}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M5 12h14m-6-6 6 6-6 6" />
-        </svg>
+        {queueStreamingActions ? steerIcon : stopIcon}
       </button>
     </>
   );
@@ -2411,7 +2420,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               maxHeight: 200,
             }}
           />
-          <div className="chat-input-actions">{actionButtons}</div>
+          <div className={`chat-input-actions${queueStreamingActions ? " is-queueing" : ""}`}>{actionButtons}</div>
           </div>
 
           {!compact && (
