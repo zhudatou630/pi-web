@@ -169,10 +169,10 @@ export function ProjectTrustDialog({
             style={{
               height: 32,
               padding: "0 12px",
-              border: "1px solid var(--accent)",
+              border: "1px solid var(--primary)",
               borderRadius: 5,
-              background: "var(--accent)",
-              color: "white",
+              background: "var(--primary)",
+              color: "var(--primary-contrast)",
               cursor: busy ? "wait" : "pointer",
               opacity: busy ? 0.7 : 1,
               fontSize: 12,

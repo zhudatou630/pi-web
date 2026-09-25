@@ -5,7 +5,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { useI18n } from "@/hooks/useI18n";
 import { THINKING_LEVELS } from "@/lib/thinking-levels";
 import { serializeHeaderRows, updateHeaderRow, type HeaderRow } from "../models-config-helpers";
-import { ConfigButton, ConfigSwitch } from "../SettingsUi";
+import { ConfigButton, ConfigSwitch, SettingsRow } from "../SettingsUi";
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
 
@@ -97,23 +97,19 @@ export function SwitchRow({ label, description, checked, onChange }: {
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="models-switch-row">
-      <span className="models-switch-copy">
-        <span>{label}</span>
-        {description && <span className="models-hint">{description}</span>}
-      </span>
+    <SettingsRow label={label} description={description}>
       <ConfigSwitch checked={checked} label={label} onChange={onChange} />
-    </div>
+    </SettingsRow>
   );
 }
 
 /** Section heading in the style of the General settings page. */
-export function SectionHeading({ title, hint, actions }: { title: string; hint?: string; actions?: ReactNode }) {
+export function SectionHeading({ title, hint, actions }: { title: ReactNode; hint?: string; actions?: ReactNode }) {
   return (
     <div className="models-section-header">
       <div className="models-section-heading">
-        <h3 className="settings-general-heading">{title}</h3>
-        {hint && <p className="settings-general-description">{hint}</p>}
+        <h3 className="settings-group-title">{title}</h3>
+        {hint && <p className="settings-row-description">{hint}</p>}
       </div>
       {actions && <span className="models-form-actions">{actions}</span>}
     </div>

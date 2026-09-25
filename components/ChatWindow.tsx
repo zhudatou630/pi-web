@@ -2777,9 +2777,9 @@ function ExtensionDialog({
               style={{
                 padding: "6px 10px",
                 borderRadius: 4,
-                border: "1px solid var(--accent)",
-                background: "var(--accent)",
-                color: "#fff",
+                border: "1px solid var(--primary)",
+                background: "var(--primary)",
+                color: "var(--primary-contrast)",
                 cursor: "pointer",
               }}
             >
@@ -2791,9 +2791,9 @@ function ExtensionDialog({
               style={{
                 padding: "6px 10px",
                 borderRadius: 4,
-                border: "1px solid var(--accent)",
-                background: "var(--accent)",
-                color: "#fff",
+                border: "1px solid var(--primary)",
+                background: "var(--primary)",
+                color: "var(--primary-contrast)",
                 cursor: "pointer",
               }}
             >

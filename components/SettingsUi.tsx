@@ -69,71 +69,6 @@ export function ConfigPanelShell({
   );
 }
 
-/** Which half a narrow screen shows; wide screens always show both. */
-export type ConfigPane = "list" | "detail";
-
-export function ConfigSplitView({ pane, children }: { pane: ConfigPane; children: ReactNode }) {
-  return <div className="config-split-view" data-pane={pane}>{children}</div>;
-}
-
-/** Narrow screens only: returns from a detail page to its list. */
-export function ConfigMobileBack({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button type="button" className="config-mobile-back" onClick={onClick}>
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
-      {label}
-    </button>
-  );
-}
-
-export function ConfigSidebar({ children }: { children: ReactNode }) {
-  return <aside className="config-sidebar">{children}</aside>;
-}
-
-export function ConfigSidebarList({ children }: { children: ReactNode }) {
-  return <div className="config-sidebar-list">{children}</div>;
-}
-
-export function ConfigSidebarGroupLabel({ children }: { children: ReactNode }) {
-  return <div className="config-sidebar-group-label">{children}</div>;
-}
-
-export function ConfigSidebarItem({
-  active = false,
-  className,
-  children,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
-  return (
-    <button
-      type="button"
-      {...props}
-      aria-current={active ? "page" : undefined}
-      className={["config-sidebar-item", className].filter(Boolean).join(" ")}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function ConfigSidebarText({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
-  return (
-    <span
-      {...props}
-      className={["config-sidebar-text", className].filter(Boolean).join(" ")}
-    />
-  );
-}
-
-export function ConfigDetailStack({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      {...props}
-      className={["config-detail-stack", className].filter(Boolean).join(" ")}
-    />
-  );
-}
-
 export function ConfigDetailHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -161,14 +96,6 @@ export function ConfigDetailActions({ className, ...props }: HTMLAttributes<HTML
   );
 }
 
-export function ConfigDetailTitle({ children }: { children: ReactNode }) {
-  return <div className="config-detail-title">{children}</div>;
-}
-
-export function ConfigSectionTitle({ children }: { children: ReactNode }) {
-  return <div className="config-section-title">{children}</div>;
-}
-
 export function ConfigField({ label, children, style }: { label: ReactNode; children: ReactNode; style?: CSSProperties }) {
   return (
     <div className="config-field" style={style}>
@@ -182,20 +109,161 @@ export function ConfigEmptyState({ children }: { children: ReactNode }) {
   return <div className="config-empty-state">{children}</div>;
 }
 
-export function ConfigDetail({ children, style }: { children: ReactNode; style?: CSSProperties }) {
-  return (
-    <div className="config-detail" style={style}>
-      {children}
-    </div>
-  );
-}
-
 export function ConfigFooter({ status, children }: { status?: ReactNode; children?: ReactNode }) {
   return (
     <footer className="config-footer">
       <div className="config-footer-status">{status}</div>
       <div className="config-footer-actions">{children}</div>
     </footer>
+  );
+}
+
+/** A titled group of setting rows; the page template every settings section follows. */
+export function SettingsGroup({ title, action, children }: { title?: ReactNode; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="settings-group">
+      {(title || action) && (
+        <div className="settings-group-header">
+          {title && <h3 className="settings-group-title">{title}</h3>}
+          {action}
+        </div>
+      )}
+      <div className="settings-group-rows">{children}</div>
+    </section>
+  );
+}
+
+/** Label and one-line explanation on the left, the control on the right.
+    `stacked` puts a wide control (segmented, slider) under the copy on narrow screens. */
+export function SettingsRow({ label, description, htmlFor, stacked = false, title, children }: {
+  label: ReactNode;
+  description?: ReactNode;
+  htmlFor?: string;
+  stacked?: boolean;
+  title?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={`settings-row${stacked ? " is-stacked" : ""}`} title={title}>
+      <div className="settings-row-copy">
+        {htmlFor ? <label htmlFor={htmlFor} className="settings-row-label">{label}</label> : <span className="settings-row-label">{label}</span>}
+        {description && <p className="settings-row-description">{description}</p>}
+      </div>
+      {children && <div className="settings-row-control">{children}</div>}
+    </div>
+  );
+}
+
+/** A list row that opens its item: the copy is the button, controls stay on the right. */
+export function SettingsLinkRow({ label, description, muted = false, title, onOpen, children }: {
+  label: ReactNode;
+  description?: ReactNode;
+  muted?: boolean;
+  title?: string;
+  onOpen: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="settings-row is-link">
+      <button type="button" className="settings-row-copy settings-row-open" title={title} onClick={onOpen}>
+        <span className={`settings-row-label${muted ? " is-dim" : ""}`}>{label}</span>
+        {description && <span className="settings-row-description is-clamped">{description}</span>}
+      </button>
+      {children && <div className="settings-row-control">{children}</div>}
+    </div>
+  );
+}
+
+/** Returns from an item page to its list. The phone sheet header drives it instead. */
+export function SettingsBackLink({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" data-settings-back className="settings-back-link" onClick={onClick}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+      {label}
+    </button>
+  );
+}
+
+/** Filters a list page. */
+export function SettingsSearch({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  return (
+    <label className="settings-search-field">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input type="search" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} aria-label={placeholder} />
+    </label>
+  );
+}
+
+/** Group title with a quiet count, e.g. "Global 14". */
+export function CountedTitle({ label, count }: { label: ReactNode; count: number }) {
+  return <>{label}<span className="settings-group-count">{count}</span></>;
+}
+
+/** Detail page for one list item: title, a meta line (scope, path), then groups. */
+export function SettingsDetailPage({ title, meta, description, children }: {
+  title: ReactNode;
+  meta?: ReactNode;
+  description?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-detail-page">
+      <header className="settings-detail-header">
+        <h2 className="settings-detail-title">{title}</h2>
+        {meta && <div className="settings-detail-meta">{meta}</div>}
+        {description && <p className="settings-detail-description">{description}</p>}
+      </header>
+      {children}
+    </div>
+  );
+}
+
+export interface SegmentedOption<T extends string> {
+  value: T;
+  label: ReactNode;
+  disabled?: boolean;
+  title?: string;
+}
+
+/** A small single-choice switcher (scope, theme-like choices). */
+export function SettingsSegmented<T extends string>({ label, options, value, onChange, disabled = false }: {
+  label: string;
+  options: readonly SegmentedOption<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="settings-segmented">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          className="settings-segmented-option"
+          disabled={disabled || option.disabled}
+          title={option.title}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Read-only facts as label/value pairs. */
+export function SettingsProperties({ children }: { children: ReactNode }) {
+  return <dl className="settings-properties">{children}</dl>;
+}
+
+export function SettingsProperty({ label, mono = false, children }: { label: ReactNode; mono?: boolean; children: ReactNode }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd className={mono ? "is-mono" : undefined}>{children}</dd>
+    </>
   );
 }
 
@@ -241,30 +309,7 @@ export function ConfigSwitch({ checked, disabled = false, loading = false, label
   );
 }
 
-export function ConfigListAction({ active = false, children, className, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
-  return (
-    <div className="config-list-action">
-      <button
-        type="button"
-        {...props}
-        aria-current={active ? "page" : undefined}
-        className={["config-list-action-button", className].filter(Boolean).join(" ")}
-      >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        {children}
-      </button>
-    </div>
-  );
-}
-
-export function ConfigStatusDot({ active, color }: { active?: boolean; color?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`config-status-dot${active ? " is-active" : active === false ? " is-inactive" : ""}`}
-      style={color ? { backgroundColor: color } : undefined}
-    />
-  );
+/** Marks a list item that needs attention. Enabled/disabled is shown by text tone, not a dot. */
+export function ConfigStatusDot({ tone, title }: { tone: "warning" | "danger"; title?: string }) {
+  return <span role="img" aria-label={title} title={title} className={`config-status-dot is-${tone}`} />;
 }

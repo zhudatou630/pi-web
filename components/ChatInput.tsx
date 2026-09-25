@@ -2478,22 +2478,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       display: "flex", alignItems: "center", gap: 5,
                       height: isMobile ? 32 : 28,
                       padding: "0 10px",
-                      background: "color-mix(in srgb, var(--accent) 10%, transparent)",
-                      border: "1px solid color-mix(in srgb, var(--accent) 26%, transparent)",
+                      background: "var(--bg)",
+                      border: "1px solid var(--border)",
                       borderRadius: 5,
-                      color: "var(--accent)",
+                      color: "var(--text)",
                       cursor: "pointer",
                       fontSize: 12, letterSpacing: "-0.01em",
                       lineHeight: 1,
                       transition: "background 0.12s, color 0.12s, border-color 0.12s",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 16%, transparent)";
-                      e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 40%, transparent)";
+                      e.currentTarget.style.background = "var(--bg-hover)";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "color-mix(in srgb, var(--accent) 10%, transparent)";
-                      e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 26%, transparent)";
+                      e.currentTarget.style.background = "var(--bg)";
                     }}
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block", flexShrink: 0 }} aria-hidden="true">
@@ -2512,10 +2510,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       display: "flex", alignItems: "center", gap: 5,
                       height: isMobile ? 32 : 28,
                       padding: "0 10px",
-                      background: "var(--accent)",
+                      background: "var(--primary)",
                       border: "none",
                       borderRadius: 5,
-                      color: "#ffffff",
+                      color: "var(--primary-contrast)",
                       cursor: "pointer",
                       fontSize: 12, letterSpacing: "-0.01em",
                       lineHeight: 1,
@@ -2585,10 +2583,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 display: "flex", alignItems: "center", gap: 5,
                 height: isMobile ? 32 : 28,
                 padding: "0 10px",
-                background: canSendMessage ? "var(--accent)" : "none",
+                background: canSendMessage ? "var(--primary)" : "none",
                 border: "none",
                 borderRadius: 5,
-                color: canSendMessage ? "var(--accent-contrast)" : "var(--text-dim)",
+                color: canSendMessage ? "var(--primary-contrast)" : "var(--text-dim)",
                 opacity: canSendMessage ? 1 : 0.45,
                 cursor: canSendMessage ? "pointer" : "not-allowed",
                 fontSize: 12,

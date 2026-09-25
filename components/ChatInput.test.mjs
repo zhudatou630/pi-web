@@ -261,7 +261,7 @@ test("keeps empty Send quiet and highlights text or image submissions", () => {
       assert.ok(send);
       const empty = !draft.value && draft.images.length === 0;
       assert.equal(send.includes('disabled=""'), empty);
-      assert.ok(send.includes(empty ? "background:none" : "background:var(--accent)"));
+      assert.ok(send.includes(empty ? "background:none" : "background:var(--primary)"));
       assert.doesNotMatch(send, /box-shadow|background:var\(--bg-panel\)/);
       assert.match(send, /<svg width="13" height="13" viewBox="0 0 24 24"[^>]*stroke-width="2"/);
       assert.match(html, /class="chat-input-toolbar"[^>]*margin-top:4px/);

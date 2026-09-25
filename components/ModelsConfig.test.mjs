@@ -37,8 +37,10 @@ test("the provider name field edits the display name, never the provider id", ()
 
 test("the provider header and sidebar row show the display name", () => {
   assert.match(source, /label: json\?\.name \?\? oauth\?\.name \?\? apiKey\?\.displayName \?\? id/);
-  assert.match(source, /<strong className="models-title">\{row\.label\}<\/strong>/);
-  assert.match(source, /<ConfigSidebarText className=\{`is-grow\$\{row\.connected \? "" : " is-muted"\}`\}>\{row\.label\}<\/ConfigSidebarText>/);
+  // Same header as every other item page: title, then a quiet meta line of tags.
+  assert.match(source, /<h2 className="settings-detail-title models-provider-label"><ProviderIcon id=\{row\.id\} size=\{16\} \/>\{row\.label\}<\/h2>/);
+  assert.match(source, /<ProviderIcon id=\{row\.id\} size=\{13\} \/>\{row\.label\}/);
+  assert.match(source, /muted=\{!row\.connected\}/);
 });
 
 test("every model definition is reachable from its provider, connected or not", () => {
@@ -65,7 +67,7 @@ test("built-in providers edit an override, custom providers a full endpoint", ()
 });
 
 test("model and provider creation have separate reachable actions", () => {
-  assert.match(source, /<ConfigListAction onClick=\{\(\) => setPickerOpen\(true\)\}>\{t\("models\.addProvider"\)\}/);
+  assert.match(source, /<ConfigButton size="small" onClick=\{\(\) => setPickerOpen\(true\)\}>\{t\("models\.addProvider"\)\}/);
   assert.match(source, /onClick=\{\(\) => addModel\(row\.id\)\}>\{t\("models\.newModel"\)\}/);
   assert.match(source, /onClick=\{\(\) => openAdd\(\)\}/);
   assert.match(source, /existingIds=\{new Set\(\[/);
@@ -145,15 +147,17 @@ test("an ambiguous entry is shown separately and cannot mask the unavailable lis
 
 test("the chat list has no banner, only notices when something needs attention", () => {
   assert.match(source, /const renderScopeNotices = \(\) =>/);
-  assert.match(source, /<ConfigDetailStack className="is-fill">[\s\S]*?\{renderScopeNotices\(\)\}/);
+  // Notices follow the reader: above the provider list and above a provider's page.
+  assert.equal(source.match(/\{renderScopeNotices\(\)\}/g)?.length, 2);
   assert.doesNotMatch(source, /role="tab"/);
   assert.doesNotMatch(source, /renderScopeBar|renderChatTab/);
 });
 
-test("narrow screens drill from the provider list into one provider", () => {
-  assert.match(source, /<ConfigSplitView pane=\{mobilePane\}>/);
-  assert.match(source, /setMobilePane\(provider \? "detail" : "list"\)/);
-  assert.match(source, /<ConfigMobileBack label=\{t\("common\.models"\)\} onClick=\{\(\) => setMobilePane\("list"\)\} \/>/);
+test("the provider list is a page; a provider opens as its own page with a way back", () => {
+  assert.match(source, /const \[view, setView\] = useState<View>\(\{ provider: null \}\);/);
+  assert.match(source, /<SettingsLinkRow[\s\S]*?onOpen=\{\(\) => openProvider\(row\.id\)\}/);
+  assert.match(source, /<SettingsBackLink label=\{t\("common\.models"\)\} onClick=\{\(\) => openProvider\(null\)\} \/>/);
+  assert.match(source, /data-settings-back className="models-breadcrumb"/);
 });
 
 test("no action can write an empty list, because that would mean every model", () => {
@@ -163,14 +167,14 @@ test("no action can write an empty list, because that would mean every model", (
   assert.match(saveScope, /if \(current\.readOnly\) return false;/);
 });
 
-test("picking chat models is a sidebar action next to adding a provider", () => {
-  assert.match(source, /<ConfigListAction onClick=\{\(\) => openAdd\(\)\} disabled=\{!cwd \|\| !scopeDoc \|\| scopeDoc\.readOnly\}>/);
+test("picking chat models is a toolbar action next to adding a provider", () => {
+  assert.match(source, /className="settings-toolbar"[\s\S]*?onClick=\{\(\) => openAdd\(\)\} disabled=\{!cwd \|\| !scopeDoc \|\| scopeDoc\.readOnly\}>/);
   assert.match(source, /t\("models\.pickChatModels"\)/);
 });
 
 test("each provider shows how many of its models are in chat", () => {
   assert.match(source, /const inChatCount = \(id: string\) => chatRefs\.filter\(\(model\) => model\.provider === id\)\.length/);
-  assert.match(source, /\{inChatCount\(row\.id\)\}\/\{row\.models\.length\}/);
+  assert.match(source, /t\("models\.inChatShort", \{ count: inChatCount\(row\.id\), total: row\.models\.length \}\)/);
 });
 
 test("saving models.json drops only definitions that save removed, not outages", () => {

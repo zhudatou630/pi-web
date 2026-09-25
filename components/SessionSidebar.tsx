@@ -1460,10 +1460,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                           style={{
                             flex: 1,
                             padding: "4px 0",
-                            background: "var(--accent)",
+                            background: "var(--primary)",
                             border: "none",
                             borderRadius: 4,
-                            color: "#fff",
+                            color: "var(--primary-contrast)",
                             fontSize: 11,
                             cursor: wtBusy || !wtNewBranch.trim() ? "not-allowed" : "pointer",
                             opacity: wtBusy || !wtNewBranch.trim() ? 0.65 : 1,

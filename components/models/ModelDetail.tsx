@@ -13,10 +13,9 @@ import {
 } from "../models-config-helpers";
 import {
   ConfigButton,
-  ConfigDetailActions,
-  ConfigDetailHeader,
-  ConfigDetailHeaderInfo,
   ConfigField,
+  SettingsGroup,
+  SettingsRow,
 } from "../SettingsUi";
 import { HeaderListEditor, Hint, Notice, NumInput, SectionHeading, Select, SwitchRow, TextInput, ThinkingLevelMapEditor } from "./fields";
 import { API_OPTIONS, type ModelEntry, type ProviderEntry } from "./types";
@@ -335,30 +334,12 @@ export function ModelDetail({
 
   return (
     <div className="models-form">
-      <ConfigDetailHeader>
-        <ConfigDetailHeaderInfo>
-          <div className="models-title-block">
-            <strong className="models-title">{model.name || model.id || t("models.untitledModel")}</strong>
-            <span className="models-subtitle">
-              <span className="models-tag">{lockId ? t("models.kindOverride") : t("models.kindDefinition")}</span>
-              {lockId ? t("models.overrideHint") : t("models.definitionHint")}
-            </span>
-          </div>
-        </ConfigDetailHeaderInfo>
-        <ConfigDetailActions>
-          <ConfigButton
-            size="small"
-            onClick={handleTest}
-            disabled={!model.id.trim() || testState.phase === "testing"}
-            title={t("i18n.testConnection")}
-          >
-            {testState.phase === "testing" ? t("i18n.checking") : t("i18n.testConnection")}
-          </ConfigButton>
-          {onDelete && (
-            <ConfigButton size="small" variant="ghost" className="models-danger-ghost" onClick={onDelete}>{t("models.deleteDefinition")}</ConfigButton>
-          )}
-        </ConfigDetailActions>
-      </ConfigDetailHeader>
+      <header className="settings-detail-header">
+        <h2 className="settings-detail-title">{model.name || model.id || t("models.untitledModel")}</h2>
+        <div className="settings-detail-meta">
+          <span className="config-scope-tag">{lockId ? t("models.kindOverride") : t("models.kindDefinition")}</span>
+        </div>
+      </header>
 
       {shadowsBuiltIn && onDelete && (
         <Notice
@@ -380,17 +361,33 @@ export function ModelDetail({
         <ConfigField label={t("models.displayName")}><TextInput value={model.name ?? ""} onChange={(v) => set("name", v || undefined)} placeholder={model.id || t("models.displayName")} /></ConfigField>
       </div>
 
-      <div className="models-catalog-row">
-        <ConfigButton
-          size="small"
-          onClick={() => void handleCatalogFill()}
-          disabled={!model.id.trim() || catalogState.phase === "loading"}
+      <div className="models-switch-list">
+        <SettingsRow
+          label={t("models.catalogFill")}
+          description={(
+            <>
+              {t("models.catalogFillDescription")}{" "}
+              <a href="https://github.com/anomalyco/models.dev" target="_blank" rel="noreferrer" className="settings-link">models.dev ↗</a>
+            </>
+          )}
         >
-          {catalogState.phase === "loading" ? t("models.catalogFilling") : t("models.catalogFill")}
-        </ConfigButton>
-        <a href="https://github.com/anomalyco/models.dev" target="_blank" rel="noreferrer" className="models-hint models-push-right">
-          {t("models.catalogSource")}
-        </a>
+          <ConfigButton
+            size="small"
+            onClick={() => void handleCatalogFill()}
+            disabled={!model.id.trim() || catalogState.phase === "loading"}
+          >
+            {catalogState.phase === "loading" ? t("models.catalogFilling") : t("models.catalogFillAction")}
+          </ConfigButton>
+        </SettingsRow>
+        <SettingsRow label={t("i18n.testConnection")} description={t("models.testDescription")}>
+          <ConfigButton
+            size="small"
+            onClick={handleTest}
+            disabled={!model.id.trim() || testState.phase === "testing"}
+          >
+            {testState.phase === "testing" ? t("i18n.checking") : t("models.testAction")}
+          </ConfigButton>
+        </SettingsRow>
       </div>
       {catalogStatusText && (
         <Notice
@@ -406,8 +403,8 @@ export function ModelDetail({
       <section className="models-section">
         <SectionHeading title={t("models.capabilities")} />
         <div className="models-switch-list">
-          <SwitchRow label={t("models.reasoning")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
-          <SwitchRow label={t("models.imageInput")} checked={model.input?.includes("image") ?? false}
+          <SwitchRow label={t("models.reasoning")} description={t("models.reasoningDescription")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
+          <SwitchRow label={t("models.imageInput")} description={t("models.imageInputDescription")} checked={model.input?.includes("image") ?? false}
             onChange={(v) => set("input", v ? ["text", "image"] : undefined)} />
         </div>
       </section>
@@ -521,6 +518,13 @@ export function ModelDetail({
           </div>
         )}
       </section>
+      {onDelete && (
+        <SettingsGroup>
+          <SettingsRow label={t("models.deleteDefinition")} description={t("models.deleteDefinitionDescription")}>
+            <ConfigButton size="small" variant="danger" onClick={onDelete}>{t("i18n.delete")}</ConfigButton>
+          </SettingsRow>
+        </SettingsGroup>
+      )}
     </div>
   );
 }

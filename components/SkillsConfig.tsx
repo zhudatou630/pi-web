@@ -10,32 +10,17 @@ import type {
   SkillUpdateResult,
 } from "@/lib/api-types";
 import {
-  getLastSettingsSelection,
-  setLastSettingsSelection,
-} from "@/lib/settings-navigation";
-import {
   ConfigButton,
-  ConfigDetail,
-  ConfigDetailActions,
-  ConfigDetailHeader,
-  ConfigDetailHeaderInfo,
-  ConfigDetailStack,
-  ConfigDetailTitle,
-  ConfigEmptyState,
-  ConfigField,
-  ConfigFooter,
-  ConfigListAction,
-  ConfigMobileBack,
-  type ConfigPane,
   ConfigPanelShell,
-  ConfigSidebar,
-  ConfigSidebarGroupLabel,
-  ConfigSidebarItem,
-  ConfigSidebarList,
-  ConfigSidebarText,
-  ConfigSplitView,
-  ConfigStatusDot,
   ConfigSwitch,
+  CountedTitle,
+  SettingsBackLink,
+  SettingsDetailPage,
+  SettingsGroup,
+  SettingsLinkRow,
+  SettingsRow,
+  SettingsSearch,
+  SettingsSegmented,
 } from "./SettingsUi";
 
 function shortenPath(p: string): string {
@@ -113,140 +98,87 @@ function SkillDetail({
     return shortenPath(p);
   }
 
+  const updateAvailable = updateStatus?.state === "update-available";
+  const statusText = checkingUpdate
+    ? t("i18n.checking")
+    : updateStatus && !updateAvailable
+      ? updateStatus.state === "up-to-date"
+        ? t("i18n.upToDate")
+        : updateStatus.state === "unsupported"
+          ? t("i18n.automaticChecksUnavailable")
+          : updateStatus.message || t("i18n.checkFailed")
+      : null;
+
   return (
-    <ConfigDetailStack>
-      {/* Path + tag + toggle, with a stable status row below. */}
-      <div className="skill-detail-heading">
-        <ConfigDetailHeader>
-          <ConfigDetailHeaderInfo>
-            <span className={`config-scope-tag${label === "project" ? " is-project" : ""}`}>
-              {label}
-            </span>
-            <span className="config-detail-path">
-              {displayPath(skill.filePath)}
-            </span>
-          </ConfigDetailHeaderInfo>
-          <ConfigDetailActions>
-            <ConfigSwitch
-              checked={enabled}
-              loading={toggling}
-              label={enabled ? t("i18n.visibleInPrompt") : t("i18n.hiddenFromPrompt")}
-              onChange={() => onToggle(skill)}
-            />
-          </ConfigDetailActions>
-        </ConfigDetailHeader>
-        <div className="skill-detail-status-row">
-          {!enabled && (
-            <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-              {t("i18n.hiddenButInvocable")}
-            </span>
-          )}
-          {saveError && (
-            <span style={{ fontSize: 12, color: "#f87171", overflowWrap: "anywhere" }}>
-              {saveError}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {skill.install?.skillsShUrl && (
-        <ConfigField label="Source">
-          <a
-            href={skill.install.skillsShUrl}
-            target="_blank"
-            rel="noreferrer"
-            title={skill.install.skillsShUrl}
-            className="skill-source-link"
+    <SettingsDetailPage
+      title={skill.name}
+      meta={(
+        <>
+          <span className={`config-scope-tag${label === "project" ? " is-project" : ""}`}>{label}</span>
+          <span className="config-detail-path" title={skill.filePath}>{displayPath(skill.filePath)}</span>
+        </>
+      )}
+      description={skill.description}
+    >
+      <SettingsGroup>
+        <SettingsRow
+          label={t("skills.modelInvocation")}
+          description={enabled ? t("skills.modelInvocationOn") : t("i18n.hiddenButInvocable")}
+        >
+          <ConfigSwitch
+            checked={enabled}
+            loading={toggling}
+            label={t("skills.modelInvocation")}
+            onChange={() => onToggle(skill)}
+          />
+        </SettingsRow>
+        {saveError && <p role="alert" className="settings-row-message is-error">{saveError}</p>}
+        {skill.install && (
+          <SettingsRow
+            label={t("i18n.version")}
+            description={(
+              <>
+                <span className="is-mono">{shortVersion(updateStatus?.currentVersion ?? skill.install.versionHash)}</span>
+                {updateAvailable && <> → <span className="is-mono is-accent">{shortVersion(updateStatus.latestVersion)}</span></>}
+                {statusText && <> · <span className={updateStatus?.state === "error" ? "is-error" : undefined}>{statusText}</span></>}
+              </>
+            )}
           >
-            <span className="skill-source-link-text">
+            {updateAvailable ? (
+              <ConfigButton variant="primary" size="small" onClick={onUpdate} disabled={updating || checkingUpdate}>
+                {updating ? t("i18n.updating") : t("i18n.update")}
+              </ConfigButton>
+            ) : skill.install.canCheckForUpdates && (
+              <ConfigButton size="small" onClick={onCheckUpdate} disabled={checkingUpdate || updating}>
+                {t("i18n.check")}
+              </ConfigButton>
+            )}
+          </SettingsRow>
+        )}
+        {updateError && <p role="alert" className="settings-row-message is-error">{updateError}</p>}
+        {skill.install?.skillsShUrl && (
+          <SettingsRow label={t("skills.source")}>
+            <a href={skill.install.skillsShUrl} target="_blank" rel="noreferrer" title={skill.install.skillsShUrl} className="settings-link">
               {skill.install.skillsShUrl.replace(/^https?:\/\//, "")} ↗
-            </span>
-          </a>
-        </ConfigField>
-      )}
+            </a>
+          </SettingsRow>
+        )}
+      </SettingsGroup>
 
-      {skill.install && (
-        <ConfigField label="Version">
-          <div className="skill-version-row">
-            <span className="skill-version-value">
-              {shortVersion(updateStatus?.currentVersion ?? skill.install.versionHash)}
-            </span>
-            {skill.install.canCheckForUpdates && (
-              <ConfigButton
-                size="small"
-                onClick={onCheckUpdate}
-                disabled={checkingUpdate || updating}
-              >
-                 {t("i18n.check")}
-              </ConfigButton>
-            )}
-            {updateStatus?.state === "update-available" && (
-              <span className="skill-version-value is-update">
-                {shortVersion(updateStatus.latestVersion)}
-              </span>
-            )}
-            {(checkingUpdate ||
-              (updateStatus && updateStatus.state !== "update-available")) && (
-              <span
-                className={`skill-update-status ${checkingUpdate
-                  ? "is-checking"
-                  : updateStatus?.state === "up-to-date"
-                    ? "is-success"
-                    : updateStatus?.state === "error"
-                      ? "is-error"
-                      : "is-muted"}`}
-              >
-                {checkingUpdate
-                   ? t("i18n.checking")
-                  : updateStatus?.state === "up-to-date"
-                     ? t("i18n.upToDate")
-                    : updateStatus?.state === "unsupported"
-                         ? t("i18n.automaticChecksUnavailable")
-                         : updateStatus?.message || t("i18n.checkFailed")}
-              </span>
-            )}
-            {updateStatus?.state === "update-available" && (
-              <ConfigButton
-                variant="primary"
-                size="small"
-                onClick={onUpdate}
-                disabled={updating || checkingUpdate}
-              >
-                 {updating ? t("i18n.updating") : t("i18n.update")}
-              </ConfigButton>
-            )}
-          </div>
-          {updateError && (
-            <span style={{ fontSize: 12, color: "#ef4444" }}>{updateError}</span>
+      <SettingsGroup>
+        <SettingsRow
+          label={t("skills.deleteTitle")}
+          description={skill.removable ? t("skills.deleteDescription") : t("skills.notRemovable")}
+        >
+          {skill.removable && (
+            <ConfigButton variant="danger" size="small" onClick={onDelete} disabled={deleting}>
+              {t("i18n.delete")}
+            </ConfigButton>
           )}
-        </ConfigField>
-      )}
-
-      <ConfigField label="Name">
-        <span className="skill-name-value">
-          {skill.name}
-        </span>
-      </ConfigField>
-
-      <ConfigField label="Description">
-        <span className="skill-description">
-          {skill.description}
-        </span>
-      </ConfigField>
-
-      <div className="skill-delete-row">
-        {skill.removable ? (
-          <ConfigButton variant="danger" size="small" onClick={onDelete} disabled={deleting}>
-            {t("i18n.delete")}
-          </ConfigButton>
-        ) : (
-          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{t("skills.notRemovable")}</span>
-        )}
-        {deleteError && (
-          <span style={{ fontSize: 12, color: "#ef4444", overflowWrap: "anywhere" }}>{deleteError}</span>
-        )}
-      </div>
-    </ConfigDetailStack>
+        </SettingsRow>
+        {deleteError && <p role="alert" className="settings-row-message is-error">{deleteError}</p>}
+      </SettingsGroup>
+    </SettingsDetailPage>
   );
 }
 
@@ -298,13 +230,13 @@ function AddSkillPanel({
         return;
       }
       setResults(d.results ?? []);
-      if ((d.results ?? []).length === 0) setSearchError("No skills found");
+      if ((d.results ?? []).length === 0) setSearchError(t("skills.noResults"));
     } catch (e) {
       setSearchError(String(e));
     } finally {
       setSearching(false);
     }
-  }, []);
+  }, [t]);
 
   const install = useCallback(
     async (pkg: string) => {
@@ -340,232 +272,92 @@ function AddSkillPanel({
       : `${shortenPath(cwd)}/.pi/skills/`;
 
   return (
-    <ConfigDetailStack className="is-full-height">
-      {/* ── Header area ── */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        <ConfigDetailTitle>{t("i18n.addSkill")}</ConfigDetailTitle>
-
-        {/* Search row */}
-        <div style={{ display: "flex", gap: 8 }}>
+    <SettingsDetailPage
+      title={t("i18n.addSkill")}
+      description={(
+        <>
+          {t("skills.addDescription")}{" "}
+          <a href="https://skills.sh" target="_blank" rel="noreferrer" className="settings-link">skills.sh ↗</a>
+        </>
+      )}
+    >
+      <SettingsGroup>
+        <div className="settings-search">
           <input
             ref={inputRef}
+            className="settings-search-input"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") search(query);
             }}
-             placeholder={t("i18n.skillSearchPlaceholder")}
-            style={{
-              flex: 1,
-              padding: "7px 10px",
-              fontSize: 12,
-              background: "var(--bg-panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              color: "var(--text)",
-              outline: "none",
-            }}
+            placeholder={t("i18n.skillSearchPlaceholder")}
+            aria-label={t("i18n.skillSearchPlaceholder")}
           />
           <ConfigButton
             variant="primary"
             onClick={() => search(query)}
             disabled={searching || !query.trim()}
           >
-             {searching ? t("i18n.searching") : t("i18n.search")}
+            {searching ? t("i18n.searching") : t("i18n.search")}
           </ConfigButton>
         </div>
+        <SettingsRow label={t("skills.installTo")} description={<span className="is-mono">{installPath}</span>}>
+          <SettingsSegmented
+            label={t("skills.installTo")}
+            value={scope}
+            onChange={setScope}
+            options={[
+              { value: "global", label: t("skills.scope.global") },
+              {
+                value: "project",
+                label: t("skills.scope.project"),
+                disabled: !projectResourcesLoaded,
+                title: projectResourcesLoaded ? undefined : t("trust.projectScopeUnavailable"),
+              },
+            ]}
+          />
+        </SettingsRow>
+        {searchError && <p role="alert" className="settings-row-message is-error">{searchError}</p>}
+        {installError && <p role="alert" className="settings-row-message is-error">{installError}</p>}
+      </SettingsGroup>
 
-        {/* Scope + install path row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              display: "flex",
-              borderRadius: 5,
-              border: "1px solid var(--border)",
-              overflow: "hidden",
-              fontSize: 12,
-              flexShrink: 0,
-            }}
-          >
-            {(["global", "project"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  if (s === "global" || projectResourcesLoaded) setScope(s);
-                }}
-                disabled={s === "project" && !projectResourcesLoaded}
-                title={s === "project" && !projectResourcesLoaded ? t("trust.projectScopeUnavailable") : undefined}
-                style={{
-                  padding: "3px 10px",
-                  border: "none",
-                  cursor: s === "project" && !projectResourcesLoaded ? "not-allowed" : "pointer",
-                  background: scope === s ? "var(--bg-selected)" : "none",
-                  color: scope === s ? "var(--text)" : "var(--text-dim)",
-                  opacity: s === "project" && !projectResourcesLoaded ? 0.45 : 1,
-                  borderRight:
-                    s === "global" ? "1px solid var(--border)" : "none",
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--text-dim)",
-              fontFamily: "var(--font-mono)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            → {installPath}
-          </span>
-        </div>
-
-        {/* Errors */}
-        {searchError && (
-          <div style={{ fontSize: 12, color: "#f87171" }}>{searchError}</div>
-        )}
-        {installError && (
-          <div
-            style={{ fontSize: 12, color: "#f87171", wordBreak: "break-word" }}
-          >
-            {installError}
-          </div>
-        )}
-      </div>
-
-      {/* ── Results list ── */}
-      {results.length > 0 ? (
-        <div style={{ flex: 1, overflowY: "auto" }}>
+      {results.length > 0 && (
+        <SettingsGroup title={`${t("skills.results")} · ${results.length}`}>
           {results.map((r) => {
             const isInstalled =
               installedPackages[scope].has(r.package) ||
               newlyInstalledPkgs.has(`${scope}:${r.package}`);
             const isInstalling = installing === r.package;
-            // split "owner/repo@skill" for cleaner display
+            // "owner/repo@skill": the skill is the name, the repo is where it comes from.
             const atIdx = r.package.indexOf("@");
             const repopart = atIdx > -1 ? r.package.slice(0, atIdx) : r.package;
             const skillpart = atIdx > -1 ? r.package.slice(atIdx + 1) : null;
             return (
-              <div
+              <SettingsRow
                 key={r.package}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  padding: "12px 0",
-                  borderBottom: "1px solid var(--border)",
-                }}
+                label={skillpart ?? repopart}
+                description={(
+                  <>
+                    <span className="is-mono">{repopart}</span>
+                    {" · "}{r.installs}
+                    {r.url && <>{" · "}<a href={r.url} target="_blank" rel="noreferrer" className="settings-link">skills.sh ↗</a></>}
+                  </>
+                )}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* skill name prominent */}
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text)",
-                      marginBottom: 3,
-                    }}
-                  >
-                    {skillpart ?? repopart}
-                  </div>
-                  {/* repo + installs + link row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: 11,
-                        color: "var(--text-dim)",
-                      }}
-                    >
-                      {repopart}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {r.installs}
-                    </span>
-                    {r.url && (
-                      <a
-                        href={r.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          fontSize: 12,
-                          color: "var(--accent)",
-                          textDecoration: "none",
-                        }}
-                      >
-                        skills.sh ↗
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <ConfigButton
-                  size="small"
-                  onClick={() =>
-                    !isInstalled && !isInstalling && install(r.package)
-                  }
-                  disabled={isInstalled || isInstalling || installing !== null}
-                  style={{
-                    flexShrink: 0,
-                    background: isInstalled ? "rgba(34,197,94,0.1)" : "none",
-                    color: isInstalled
-                      ? "#16a34a"
-                      : isInstalling
-                        ? "var(--accent)"
-                        : "var(--text-muted)",
-                  }}
-                >
-                  {isInstalled
-                     ? `✓ ${t("i18n.installed")}`
-                    : isInstalling
-                       ? t("i18n.installing")
-                       : t("i18n.install")}
-                </ConfigButton>
-              </div>
+                {isInstalled ? (
+                  <span className="settings-row-status is-success">✓ {t("i18n.installed")}</span>
+                ) : (
+                  <ConfigButton size="small" onClick={() => void install(r.package)} disabled={installing !== null}>
+                    {isInstalling ? t("i18n.installing") : t("i18n.install")}
+                  </ConfigButton>
+                )}
+              </SettingsRow>
             );
           })}
-        </div>
-      ) : (
-        !searchError &&
-        !searching && (
-          <div
-            style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.8 }}
-          >
-            Search{" "}
-            <a
-              href="https://skills.sh"
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: "var(--accent)", textDecoration: "none" }}
-            >
-              skills.sh
-            </a>{" "}
-            to discover and install skills for your agent.
-          </div>
-        )
+        </SettingsGroup>
       )}
-    </ConfigDetailStack>
+    </SettingsDetailPage>
   );
 }
 
@@ -582,11 +374,11 @@ export function SkillsConfig({
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(() => getLastSettingsSelection("skills", cwd));
+  const [selected, setSelected] = useState<string | null>(null);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [addMode, setAddMode] = useState(false);
-  const [mobilePane, setMobilePane] = useState<ConfigPane>("list");
+  const [view, setView] = useState<"list" | "detail" | "add">("list");
+  const [filter, setFilter] = useState("");
   const [updateStatuses, setUpdateStatuses] = useState<Record<string, SkillUpdateResult>>({});
   const [checkingUpdates, setCheckingUpdates] = useState<Set<string>>(new Set());
   const [checkingAll, setCheckingAll] = useState(false);
@@ -606,11 +398,6 @@ export function SkillsConfig({
       const list = d.skills ?? [];
       setSkills(list);
       setProjectResourcesLoaded(d.projectResourcesLoaded ?? true);
-      setSelected((current) => {
-        if (current && list.some((skill) => skill.filePath === current)) return current;
-        const initialSkill = list.find((skill) => !skill.disableModelInvocation) ?? list[0];
-        return initialSkill?.filePath ?? null;
-      });
       return list;
     } catch (e) {
       setError(String(e));
@@ -625,10 +412,6 @@ export function SkillsConfig({
     setUpdateError(null);
     void loadSkills();
   }, [cwd]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (selected) setLastSettingsSelection("skills", selected, cwd);
-  }, [cwd, selected]);
 
   const checkForUpdates = useCallback(async (skill?: Skill) => {
     const targets = skill
@@ -773,7 +556,7 @@ export function SkillsConfig({
       const d = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || !d.success) throw new Error(d.error ?? `HTTP ${res.status}`);
       setSelected(null);
-      setMobilePane("list");
+      setView("list");
       await loadSkills();
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : String(e));
@@ -783,157 +566,38 @@ export function SkillsConfig({
   }, [cwd, loadSkills, t]);
 
   const selectedSkill = skills.find((s) => s.filePath === selected) ?? null;
+  const openList = () => { setView("list"); setDeleteError(null); };
+  const availableUpdates = Object.values(updateStatuses).filter((status) => status.state === "update-available").length;
+  const needle = filter.trim().toLowerCase();
+  const visibleSkills = needle
+    ? skills.filter((skill) => `${skill.name} ${skill.description}`.toLowerCase().includes(needle))
+    : skills;
+  // Where a skill lives is the grouping; where it was installed from is a per-row detail.
+  const groups = (["project", "global", "path"] as const)
+    .map((scope) => ({ label: t(`skills.group.${scope}`), matches: (skill: Skill) => sourceLabel(skill) === scope }))
+    .map(({ label, matches }) => ({ label, skills: orderSkillsByDormancy(visibleSkills.filter(matches)) }))
+    .filter((group) => group.skills.length > 0);
 
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.skills")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={onClose}>
-
-        {!projectResourcesLoaded && (
-          <div role="status" className="config-trust-notice">
-            {t("trust.skillsNotLoaded")}
-          </div>
-        )}
-
-        {/* Body */}
-        <ConfigSplitView pane={mobilePane}>
-          {/* Left: skill list */}
-          <ConfigSidebar>
-            <ConfigSidebarList>
-              {loading ? (
-                <div className="config-sidebar-message">
-                   {t("i18n.loading")}
-                </div>
-              ) : error ? (
-                <div className="config-sidebar-message is-error">
-                  {error}
-                </div>
-              ) : skills.length === 0 ? (
-                <div className="config-sidebar-message is-empty">
-                   {t("i18n.noSkills")}
-                </div>
-              ) : (
-                (() => {
-                  const groups: { label: string; skills: typeof skills }[] = [];
-                  const scopeLabels = {
-                    project: t("skills.scope.project"),
-                    global: t("skills.scope.global"),
-                    path: t("skills.scope.path"),
-                  };
-                  const groupDefinitions = [
-                    {
-                      label: `${scopeLabels.project} / skills.sh`,
-                      matches: (skill: Skill) =>
-                        sourceLabel(skill) === "project" &&
-                        Boolean(skill.install?.skillsShUrl),
-                    },
-                    {
-                      label: scopeLabels.project,
-                      matches: (skill: Skill) =>
-                        sourceLabel(skill) === "project" &&
-                        !skill.install?.skillsShUrl,
-                    },
-                    {
-                      label: `${scopeLabels.global} / skills.sh`,
-                      matches: (skill: Skill) =>
-                        sourceLabel(skill) === "global" &&
-                        Boolean(skill.install?.skillsShUrl),
-                    },
-                    {
-                      label: scopeLabels.global,
-                      matches: (skill: Skill) =>
-                        sourceLabel(skill) === "global" &&
-                        !skill.install?.skillsShUrl,
-                    },
-                    {
-                      label: scopeLabels.path,
-                      matches: (skill: Skill) => sourceLabel(skill) === "path",
-                    },
-                  ];
-                  for (const { label, matches } of groupDefinitions) {
-                    const grpSkills = skills.filter(matches);
-                    if (grpSkills.length > 0)
-                      groups.push({ label, skills: grpSkills });
-                  }
-                  const renderSkillRow = (skill: Skill) => {
-                    const isSelected =
-                      !addMode && selected === skill.filePath;
-                    const disabled = skill.disableModelInvocation;
-                    return (
-                      <ConfigSidebarItem
-                        key={skill.filePath}
-                        active={isSelected}
-                        onClick={() => {
-                          setSelected(skill.filePath);
-                          setAddMode(false);
-                          setDeleteError(null);
-                          setMobilePane("detail");
-                        }}
-                      >
-                        <ConfigStatusDot active={!disabled} />
-                        <ConfigSidebarText className={`is-grow${disabled ? " is-muted" : ""}`}>
-                          {skill.name}
-                        </ConfigSidebarText>
-                        {(() => {
-                          const key = updateKey(skill);
-                          const status = key ? updateStatuses[key] : undefined;
-                          if (status?.state !== "update-available") return null;
-                          return (
-                            <span title={t("i18n.updateAvailable")} className="skill-update-indicator">
-                              ↑
-                            </span>
-                          );
-                        })()}
-                      </ConfigSidebarItem>
-                    );
-                  };
-                  return groups.map(
-                    ({ label: grpLabel, skills: grpSkills }) => {
-                      return (
-                        <div key={grpLabel} className="config-sidebar-group">
-                          <ConfigSidebarGroupLabel>
-                            {grpLabel}
-                          </ConfigSidebarGroupLabel>
-                          {orderSkillsByDormancy(grpSkills).map(renderSkillRow)}
-                        </div>
-                      );
-                    },
-                  );
-                })()
-              )}
-            </ConfigSidebarList>
-            {/* Add skill button */}
-            <ConfigListAction
-                onClick={() => { setAddMode(true); setMobilePane("detail"); }}
-                active={addMode}
-              >
-                 {t("i18n.addSkill")}
-            </ConfigListAction>
-          </ConfigSidebar>
-
-          {/* Right: detail or add panel */}
-          <ConfigDetail>
-            <ConfigDetailStack className="is-fill">
-              <ConfigMobileBack label={t("common.skills")} onClick={() => setMobilePane("list")} />
-              {addMode ? (
+      <div className="settings-scroll">
+        <div className="settings-page">
+          {view === "add" ? (
+            <>
+              <SettingsBackLink label={t("common.skills")} onClick={openList} />
               <AddSkillPanel
                 cwd={cwd}
                 projectResourcesLoaded={projectResourcesLoaded}
                 installedPackages={{
-                  global: new Set(
-                    skills
-                      .filter((skill) => skill.install?.scope === "global")
-                      .map((skill) => skill.install!.package),
-                  ),
-                  project: new Set(
-                    skills
-                      .filter((skill) => skill.install?.scope === "project")
-                      .map((skill) => skill.install!.package),
-                  ),
+                  global: new Set(skills.filter((skill) => skill.install?.scope === "global").map((skill) => skill.install!.package)),
+                  project: new Set(skills.filter((skill) => skill.install?.scope === "project").map((skill) => skill.install!.package)),
                 }}
-                onInstalled={() => {
-                  void loadSkills();
-                }}
+                onInstalled={() => { void loadSkills(); }}
               />
-            ) : loading ? null : selectedSkill ? (
+            </>
+          ) : view === "detail" && selectedSkill ? (
+            <>
+              <SettingsBackLink label={t("common.skills")} onClick={openList} />
               <SkillDetail
                 key={selectedSkill.filePath}
                 skill={selectedSkill}
@@ -941,16 +605,8 @@ export function SkillsConfig({
                 onToggle={toggle}
                 toggling={toggling.has(selectedSkill.filePath)}
                 saveError={saveError}
-                updateStatus={
-                  updateKey(selectedSkill)
-                    ? updateStatuses[updateKey(selectedSkill)!]
-                    : undefined
-                }
-                checkingUpdate={
-                  updateKey(selectedSkill)
-                    ? checkingUpdates.has(updateKey(selectedSkill)!)
-                    : false
-                }
+                updateStatus={updateKey(selectedSkill) ? updateStatuses[updateKey(selectedSkill)!] : undefined}
+                checkingUpdate={updateKey(selectedSkill) ? checkingUpdates.has(updateKey(selectedSkill)!) : false}
                 updating={updatingSkill === updateKey(selectedSkill)}
                 updateError={updateError}
                 onCheckUpdate={() => void checkForUpdates(selectedSkill)}
@@ -959,39 +615,57 @@ export function SkillsConfig({
                 deleting={deletingSkill === selectedSkill.filePath}
                 deleteError={deleteError}
               />
-              ) : (
-                <ConfigEmptyState>{t("i18n.selectSkill")}</ConfigEmptyState>
-              )}
-            </ConfigDetailStack>
-          </ConfigDetail>
-        </ConfigSplitView>
-
-        {/* Footer */}
-        <ConfigFooter status={
-            Object.values(updateStatuses).filter(
-              (status) => status.state === "update-available",
-            ).length > 0 && (
-              <span style={{ fontSize: 12, color: "#d97706" }}>
-                {
-                  Object.values(updateStatuses).filter(
-                    (status) => status.state === "update-available",
-                  ).length
-                }{" "}
-                {Object.values(updateStatuses).filter(
-                  (status) => status.state === "update-available",
-                ).length === 1
-                   ? t("i18n.update")
-                   : t("i18n.updates")}
-              </span>
-            )}
-        >
-          {!embedded && <ConfigButton onClick={onClose}>{t("i18n.close")}</ConfigButton>}
-          {skills.some((skill) => Boolean(skill.install)) && (
-            <ConfigButton variant="secondary" onClick={() => void checkForUpdates()} disabled={checkingAll || updatingSkill !== null}>
-              {checkingAll ? t("i18n.checking") : t("i18n.checkUpdates")}
-            </ConfigButton>
+            </>
+          ) : (
+            <>
+              {!projectResourcesLoaded && <p role="status" className="settings-row-message is-warning">{t("trust.skillsNotLoaded")}</p>}
+              <div className="settings-toolbar">
+                <SettingsSearch value={filter} onChange={setFilter} placeholder={t("skills.filterPlaceholder")} />
+                <span className="settings-toolbar-spacer" />
+                {skills.some((skill) => Boolean(skill.install)) && (
+                  <ConfigButton size="small" variant="ghost" onClick={() => void checkForUpdates()} disabled={checkingAll || updatingSkill !== null}>
+                    {checkingAll ? t("i18n.checking") : availableUpdates > 0 ? `${t("i18n.checkUpdates")} · ${availableUpdates}` : t("i18n.checkUpdates")}
+                  </ConfigButton>
+                )}
+                <ConfigButton size="small" onClick={() => setView("add")}>{t("i18n.addSkill")}</ConfigButton>
+              </div>
+              {(saveError || updateError) && <p role="alert" className="settings-row-message is-error">{saveError || updateError}</p>}
+              {loading ? (
+                <p className="settings-row-message">{t("i18n.loading")}</p>
+              ) : error ? (
+                <p role="alert" className="settings-row-message is-error">{error}</p>
+              ) : groups.length === 0 ? (
+                <p className="settings-row-message">{needle ? t("skills.noResults") : t("i18n.noSkills")}</p>
+              ) : groups.map((group) => (
+                <SettingsGroup key={group.label} title={<CountedTitle label={group.label} count={group.skills.length} />}>
+                  {group.skills.map((skill) => {
+                    const key = updateKey(skill);
+                    const hasUpdate = key ? updateStatuses[key]?.state === "update-available" : false;
+                    return (
+                      <SettingsLinkRow
+                        key={skill.filePath}
+                        label={<>{skill.name}{skill.install?.skillsShUrl && <span className="settings-row-tag">skills.sh</span>}</>}
+                        description={skill.description}
+                        muted={skill.disableModelInvocation}
+                        title={skill.filePath}
+                        onOpen={() => { setSelected(skill.filePath); setDeleteError(null); setView("detail"); }}
+                      >
+                        {hasUpdate && <span className="settings-row-status is-accent">{t("i18n.updateAvailable")}</span>}
+                        <ConfigSwitch
+                          checked={!skill.disableModelInvocation}
+                          loading={toggling.has(skill.filePath)}
+                          label={t("skills.modelInvocation")}
+                          onChange={() => void toggle(skill)}
+                        />
+                      </SettingsLinkRow>
+                    );
+                  })}
+                </SettingsGroup>
+              ))}
+            </>
           )}
-        </ConfigFooter>
+        </div>
+      </div>
     </ConfigPanelShell>
   );
 }

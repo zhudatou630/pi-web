@@ -4,10 +4,6 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { useI18n } from "@/hooks/useI18n";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
-  getLastSettingsSelection,
-  setLastSettingsSelection,
-} from "@/lib/settings-navigation";
-import {
   assignRuntimeOverride,
   diffModelOverride,
   mergeRuntimeModel,
@@ -27,24 +23,15 @@ import {
 } from "@/lib/model-picker";
 import {
   ConfigButton,
-  ConfigDetail,
-  ConfigDetailActions,
-  ConfigDetailHeader,
-  ConfigDetailHeaderInfo,
-  ConfigDetailStack,
   ConfigEmptyState,
   ConfigFooter,
-  ConfigListAction,
-  ConfigMobileBack,
   ConfigPanelShell,
-  type ConfigPane,
-  ConfigSidebar,
-  ConfigSidebarGroupLabel,
-  ConfigSidebarItem,
-  ConfigSidebarList,
-  ConfigSidebarText,
-  ConfigSplitView,
   ConfigSwitch,
+  CountedTitle,
+  SettingsBackLink,
+  SettingsGroup,
+  SettingsLinkRow,
+  SettingsRow,
 } from "./SettingsUi";
 import { ProviderIcon } from "./ProviderIcon";
 import { ApiKeyDetail, OAuthDetail } from "./models/AuthDetail";
@@ -78,19 +65,6 @@ interface View {
   model?: ModelRef;
 }
 
-function readRememberedView(): View {
-  const raw = getLastSettingsSelection("models");
-  try {
-    const value: unknown = raw ? JSON.parse(raw) : null;
-    if (value && typeof value === "object" && typeof (value as { provider?: unknown }).provider === "string") {
-      return { provider: (value as { provider: string }).provider };
-    }
-  } catch {
-    // Ignore malformed browser state.
-  }
-  return { provider: null };
-}
-
 interface ProviderRow {
   id: string;
   label: string;
@@ -120,9 +94,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedOk, setSavedOk] = useState(false);
-  const [view, setView] = useState<View>(readRememberedView);
-  /** Narrow screens show the provider list or one provider, never both. */
-  const [mobilePane, setMobilePane] = useState<ConfigPane>("list");
+  /** No provider means the provider list; the page always opens there. */
+  const [view, setView] = useState<View>({ provider: null });
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -215,10 +188,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     return () => { cancelled = true; };
   }, [refreshAuthProviders, refreshRuntime, refreshScope]);
 
-  useEffect(() => {
-    setLastSettingsSelection("models", JSON.stringify({ provider: view.provider }));
-  }, [view]);
-
   const configDirty = JSON.stringify(config) !== JSON.stringify(savedConfig);
   useEffect(() => { onDirtyChange?.(configDirty); }, [configDirty, onDirtyChange]);
   useEffect(() => {
@@ -230,7 +199,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   const openProvider = useCallback((provider: string | null, model?: ModelRef) => {
     setView({ provider, ...(model ? { model } : {}) });
-    setMobilePane(provider ? "detail" : "list");
   }, []);
 
   const addCustomProvider = useCallback((id: string) => {
@@ -642,7 +610,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       <section className="models-section">
         <SectionHeading
           title={builtIn ? t("models.sectionEndpointOverride") : t("models.sectionEndpoint")}
-          hint={builtIn ? t("models.sectionOverrideHint") : t("models.sectionDraftHint")}
+          hint={builtIn ? t("models.sectionOverrideHint") : undefined}
           actions={builtIn ? (
             <ConfigButton
               size="small"
@@ -674,34 +642,20 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
     return (
       <div className="models-form">
-        <ConfigDetailHeader>
-          <ConfigDetailHeaderInfo>
-            <ProviderIcon id={row.id} size={28} />
-            <div className="models-title-row">
-              <strong className="models-title">{row.label}</strong>
-              {activeAuthLabel && <span className="models-tag is-success">{activeAuthLabel}</span>}
-              {row.oauth && !row.apiKey && !row.oauth.loggedIn && (
-                <span className="models-tag">{t("models.kindOAuth")}</span>
-              )}
-              {json && (
-                <span className={`models-tag ${builtIn ? "is-override" : "is-custom"}`}>
-                  {builtIn ? t("models.kindOverridden") : t("models.kindCustom")}
-                </span>
-              )}
-            </div>
-          </ConfigDetailHeaderInfo>
-          {json && (
-            <ConfigDetailActions>
-              <ConfigButton size="small" variant="ghost" className="models-danger-ghost" onClick={() => { deleteProvider(row.id); if (builtIn) openProvider(row.id); }}>
-                {builtIn ? t("models.deleteOverride") : t("models.deleteEndpoint")}
-              </ConfigButton>
-            </ConfigDetailActions>
-          )}
-        </ConfigDetailHeader>
+        <header className="settings-detail-header">
+          <h2 className="settings-detail-title models-provider-label"><ProviderIcon id={row.id} size={16} />{row.label}</h2>
+          <div className="settings-detail-meta">
+            {activeAuthLabel && <span className="config-scope-tag">{activeAuthLabel}</span>}
+            {row.oauth && !row.apiKey && !row.oauth.loggedIn && (
+              <span className="config-scope-tag">{t("models.kindOAuth")}</span>
+            )}
+            {json && <span className="config-scope-tag">{builtIn ? t("models.kindOverridden") : t("models.kindCustom")}</span>}
+          </div>
+        </header>
 
         {(row.oauth || showApiKey) && (
           <section className="models-section">
-            <SectionHeading title={t("models.sectionConnection")} hint={t("models.sectionConnectionHint")} />
+            <SectionHeading title={t("models.sectionConnection")} />
             {row.oauth && <OAuthDetail key={row.oauth.id} provider={row.oauth} onRefresh={refreshAuthAndRuntime} cwd={cwd} />}
             {showApiKey && row.apiKey && <ApiKeyDetail key={`${row.apiKey.id}-key`} provider={row.apiKey} onRefresh={refreshAuthAndRuntime} cwd={cwd} />}
           </section>
@@ -711,7 +665,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         {!builtIn && endpointSection}
         <section className="models-section">
           <SectionHeading
-            title={t("models.sectionModels", { count: modelRows.length })}
+            title={<CountedTitle label={t("models.sectionModelsTitle")} count={modelRows.length} />}
             hint={cwd && scopeDoc ? t("models.chatSwitchHint") : undefined}
             actions={json && (
               <>
@@ -762,13 +716,25 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           )}
         </section>
         {builtIn && endpointSection}
+        {json && (
+          <SettingsGroup>
+            <SettingsRow
+              label={builtIn ? t("models.deleteOverride") : t("models.deleteEndpoint")}
+              description={builtIn ? t("models.deleteOverrideDescription") : t("models.deleteEndpointDescription")}
+            >
+              <ConfigButton size="small" variant="danger" onClick={() => { deleteProvider(row.id); if (builtIn) openProvider(row.id); }}>
+                {builtIn ? t("i18n.remove") : t("i18n.delete")}
+              </ConfigButton>
+            </SettingsRow>
+          </SettingsGroup>
+        )}
       </div>
     );
   };
 
   const renderModelPage = (row: ProviderRow, ref: ModelRef) => {
     const back = (
-      <button type="button" className="models-breadcrumb" onClick={() => openProvider(row.id)}>
+      <button type="button" data-settings-back className="models-breadcrumb" onClick={() => openProvider(row.id)}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
         <ProviderIcon id={row.id} size={13} />
         {row.label}
@@ -816,54 +782,67 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   };
 
   const renderProvidersTab = () => {
-    const activeId = selectedProviderId ?? providerRows[0]?.id ?? null;
-    const active = providerRows.find((row) => row.id === activeId);
-    const model = view.provider === activeId ? view.model : undefined;
+    const active = providerRows.find((row) => row.id === selectedProviderId);
+    const model = active ? view.model : undefined;
+    if (active) {
+      return (
+        <>
+          {!model && <SettingsBackLink label={t("common.models")} onClick={() => openProvider(null)} />}
+          {renderScopeNotices()}
+          {model ? renderModelPage(active, model) ?? renderProviderPage(active) : renderProviderPage(active)}
+        </>
+      );
+    }
     const connectedRows = providerRows.filter((row) => row.connected);
     const otherRows = providerRows.filter((row) => !row.connected);
+    const authLabel = (row: ProviderRow) => row.oauth?.loggedIn
+      ? t("models.kindOAuth")
+      : row.apiKey?.configured
+        ? t("models.kindApiKey")
+        : row.json ? t("models.kindCustom") : t("models.notConnected");
     const item = (row: ProviderRow) => (
-      <ConfigSidebarItem key={row.id} active={row.id === activeId} onClick={() => openProvider(row.id)}>
-        <ProviderIcon id={row.id} size={13} />
-        <ConfigSidebarText className={`is-grow${row.connected ? "" : " is-muted"}`}>{row.label}</ConfigSidebarText>
-        {providerDirty(row.id) && <span className="models-dirty-dot" title={t("models.unsavedProvider")} />}
+      <SettingsLinkRow
+        key={row.id}
+        label={<span className="models-provider-label"><ProviderIcon id={row.id} size={13} />{row.label}{providerDirty(row.id) && <span className="models-dirty-dot" title={t("models.unsavedProvider")} />}</span>}
+        description={authLabel(row)}
+        muted={!row.connected}
+        onOpen={() => openProvider(row.id)}
+      >
         {scopeDoc && row.models.length > 0 && (
-          <span className="models-count" title={t("models.inChatCount", { count: inChatCount(row.id), total: row.models.length })}>
-            {inChatCount(row.id)}/{row.models.length}
+          <span className="settings-row-status" title={t("models.inChatCount", { count: inChatCount(row.id), total: row.models.length })}>
+            {t("models.inChatShort", { count: inChatCount(row.id), total: row.models.length })}
           </span>
         )}
-      </ConfigSidebarItem>
+      </SettingsLinkRow>
     );
     return (
-      <ConfigSplitView pane={mobilePane}>
-        <ConfigSidebar>
-          <ConfigSidebarList>
-            {loading && <div className="config-sidebar-message">{t("i18n.loading")}</div>}
-            {connectedRows.length > 0 && <ConfigSidebarGroupLabel>{t("models.groupConnected")}</ConfigSidebarGroupLabel>}
-            {connectedRows.map(item)}
-            {otherRows.length > 0 && <ConfigSidebarGroupLabel>{t("models.groupNotConnected")}</ConfigSidebarGroupLabel>}
-            {otherRows.map(item)}
-          </ConfigSidebarList>
-          <div className="models-sidebar-actions">
-            <ConfigListAction onClick={() => openAdd()} disabled={!cwd || !scopeDoc || scopeDoc.readOnly}>
-              {t("models.pickChatModels")}
-            </ConfigListAction>
-            <ConfigListAction onClick={() => setPickerOpen(true)}>{t("models.addProvider")}</ConfigListAction>
-          </div>
-        </ConfigSidebar>
-        <ConfigDetail>
-          <ConfigDetailStack className="is-fill">
-            {!model && <ConfigMobileBack label={t("common.models")} onClick={() => setMobilePane("list")} />}
-            {renderScopeNotices()}
-            {loading ? null : !active ? (
-              <ConfigEmptyState>{t("models.noProviders")}</ConfigEmptyState>
-            ) : model ? (
-              renderModelPage(active, model) ?? renderProviderPage(active)
-            ) : (
-              renderProviderPage(active)
+      <>
+        <div className="settings-toolbar">
+          <span className="settings-toolbar-summary">{t("models.summary", { count: chatRefs.length })}</span>
+          <span className="settings-toolbar-spacer" />
+          <ConfigButton size="small" variant="ghost" onClick={() => openAdd()} disabled={!cwd || !scopeDoc || scopeDoc.readOnly}>
+            {t("models.pickChatModels")}
+          </ConfigButton>
+          <ConfigButton size="small" onClick={() => setPickerOpen(true)}>{t("models.addProvider")}</ConfigButton>
+        </div>
+        {renderScopeNotices()}
+        {providerRows.length === 0 ? (
+          <ConfigEmptyState>{t("models.noProviders")}</ConfigEmptyState>
+        ) : (
+          <>
+            {connectedRows.length > 0 && (
+              <SettingsGroup title={<CountedTitle label={t("models.groupConnected")} count={connectedRows.length} />}>
+                {connectedRows.map(item)}
+              </SettingsGroup>
             )}
-          </ConfigDetailStack>
-        </ConfigDetail>
-      </ConfigSplitView>
+            {otherRows.length > 0 && (
+              <SettingsGroup title={<CountedTitle label={t("models.groupNotConnected")} count={otherRows.length} />}>
+                {otherRows.map(item)}
+              </SettingsGroup>
+            )}
+          </>
+        )}
+      </>
     );
   };
 
@@ -875,7 +854,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           <span>{t("i18n.loading")}</span>
         </div>
       ) : (
-        <div className="models-ready">{renderProvidersTab()}</div>
+        <div className="models-ready settings-scroll">
+          <div className="settings-page">{renderProvidersTab()}</div>
+        </div>
       )}
 
       {(configDirty || saving || savedOk || saveError || configFatalError) && (

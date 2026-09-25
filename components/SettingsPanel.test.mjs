@@ -7,7 +7,6 @@ const cssSource = await readFile(new URL("../app/settings.css", import.meta.url)
 const globalCssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 const loginSource = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 const shellSource = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
-const sidebarSource = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 const themeSource = await readFile(new URL("../hooks/useTheme.ts", import.meta.url), "utf8");
 const enSource = await readFile(new URL("../lib/i18n/messages/en.ts", import.meta.url), "utf8");
 const zhSource = await readFile(new URL("../lib/i18n/messages/zh-CN.ts", import.meta.url), "utf8");
@@ -38,12 +37,13 @@ test("keeps every requested configuration surface inside the settings panel", ()
   assert.match(panelSource, /<ImagesConfig /);
 });
 
-test("restores the settings section and each list detail selection", async () => {
+test("restores the settings section; item sections open on their list", async () => {
   assert.match(shellSource, /getLastSettingsSection\(projectTrustCwd\)/);
   assert.match(panelSource, /setLastSettingsSection\(initialSection\)/);
   assert.match(panelSource, /setLastSettingsSection\(nextSection\)/);
+  // Every item section opens on its list page, so none restores a remembered item.
   for (const name of ["ModelsConfig", "SkillsConfig", "AgentsConfig", "PluginsConfig"]) {
-    assert.match(
+    assert.doesNotMatch(
       await readFile(new URL(`./${name}.tsx`, import.meta.url), "utf8"),
       /getLastSettingsSelection/,
     );
@@ -73,7 +73,7 @@ test("groups display controls under Appearance and behavior under Chat, as flat 
   const section = (from, to) => panelSource.slice(panelSource.indexOf(from), panelSource.indexOf(to));
   const appearance = section('{t("settings.appearance")}', '{t("settings.chat")}');
   const chat = section('{t("settings.chat")}', "{shellSettings?.isWindows");
-  const notifications = section('{t("settings.notifications")}', "settings-general-footer");
+  const notifications = section('{t("settings.notifications")}', '{t("settings.about")}');
 
   for (const key of ["theme", "typography", "chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault"]) {
     assert.match(appearance, new RegExp(`t\\("settings\\.${key}"\\)`));
@@ -84,9 +84,10 @@ test("groups display controls under Appearance and behavior under Chat, as flat 
   assert.match(notifications, /t\("settings\.browserNotifications"\)/);
   assert.doesNotMatch(panelSource, /ThinkingIcon|settings-thinking-|settings-general-title/);
 
-  // Same flat language as Models: no boxed or tinted groups.
-  const cardStyles = cssSource.match(/\.settings-card-grid \.settings-card \{[\s\S]*?\}/)?.[0] ?? "";
-  assert.doesNotMatch(cardStyles, /background|border/);
+  // Flat groups: hierarchy from type and hairlines, no boxed or tinted groups.
+  const groupStyles = cssSource.match(/\.settings-group-rows > \.settings-row \+ \.settings-row \{[\s\S]*?\}/)?.[0] ?? "";
+  assert.match(groupStyles, /border-top: 1px solid var\(--border\)/);
+  assert.doesNotMatch(cssSource, /\.settings-group \{/);
 });
 
 test("a tapped select or text field does not keep the UA focus ring", () => {
@@ -105,28 +106,38 @@ test("requests notification permission from settings, not on task completion", (
 
 test("keeps General free of divider rows", () => {
   assert.match(panelSource, /className="settings-dialog-header"/);
-  assert.match(cssSource, /\.settings-dialog-header \{[\s\S]*?display: flex[\s\S]*?align-items: center[\s\S]*?min-height: 50px/);
-  assert.doesNotMatch(panelSource, /sections\.find\(\(item\) => item\.id === section\)/);
+  assert.match(panelSource, /<strong className="settings-dialog-title">\{sectionLabel\}<\/strong>/);
   assert.doesNotMatch(panelSource, /<section style=\{\{[^}]*borderBottom/);
   assert.doesNotMatch(panelSource, /borderLeft: index > 0/);
 });
 
-test("uses top navigation on desktop and one compact section picker on mobile", () => {
-  assert.match(panelSource, /className="settings-mobile-section-picker"/);
-  assert.match(panelSource, /className="settings-section-tabs"/);
-  assert.match(panelSource, /className="settings-section-tab"/);
-  assert.match(cssSource, /\.settings-section-tab \{[\s\S]*?width: 96px/);
-  assert.match(cssSource, /\.settings-section-icon \{[\s\S]*?flex-shrink: 0/);
-  assert.match(cssSource, /\.settings-section-tab::after \{[\s\S]*?width: 24px/);
-  assert.match(cssSource, /\.settings-section-tab\[aria-current="page"\]::after/);
-  assert.match(cssSource, /\.settings-section-tab:focus-visible:not\(\[aria-current="page"\]\)/);
-  assert.match(cssSource, /\.settings-section-tab:focus-visible\[aria-current="page"\][\s\S]*?outline: none/);
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.settings-section-tabs \{[\s\S]*?display: none/);
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.settings-mobile-section-picker \{[\s\S]*?display: block/);
-  assert.doesNotMatch(panelSource, /width: isMobile \? "100%" : 188/);
-  assert.match(panelSource, /<main className="settings-dialog-main">/);
+test("uses a left section nav on desktop and push navigation on mobile", () => {
+  assert.match(panelSource, /<nav aria-label=\{t\("settings\.title"\)\} className="settings-nav">/);
+  assert.match(panelSource, /className="settings-nav-item"/);
+  assert.match(panelSource, /data-pane=\{pane\}/);
+  assert.match(panelSource, /setPane\("section"\)/);
+  assert.match(panelSource, /className="settings-nav-back" onClick=\{goBack\}/);
+  // One back button: it steps out of a section's detail page before leaving the section.
+  assert.match(panelSource, /if \(innerBack\) innerBack\.click\(\);\s*else setPane\("nav"\);/);
+  assert.match(cssSource, /\.settings-dialog-main \[data-settings-back\] \{\n    display: none;/);
+  assert.match(panelSource, /\[data-settings-back\]/);
+  assert.doesNotMatch(panelSource, /settings-mobile-section-picker|<select/);
+  assert.match(cssSource, /\.settings-nav \{[\s\S]*?flex: 0 0 168px/);
+  assert.match(cssSource, /\.settings-nav-chevron,\n\.settings-nav-back \{\n  display: none;/);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.settings-dialog-surface\[data-pane="nav"\] > \.settings-dialog-content,\n  \.settings-dialog-surface\[data-pane="section"\] > \.settings-nav \{\n    display: none;/);
+  assert.match(panelSource, /<main ref=\{mainRef\} className="settings-dialog-main">/);
   assert.doesNotMatch(panelSource, /<style>/);
   assert.doesNotMatch(panelSource, /style=\{\{/);
+});
+
+test("every General row explains itself in place, not in a hover title", () => {
+  const general = panelSource.slice(panelSource.indexOf("function GeneralSettings"), panelSource.indexOf("export function SettingsPanel"));
+  assert.doesNotMatch(general, /title=\{t\("settings\.\w+Description"\)\}/);
+  for (const key of ["typography", "chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault", "shiftEnterToSend", "autoSessionTitle", "quoteSelection", "sidebarSingleProject", "browserNotifications", "pushPermission", "shellTool"]) {
+    assert.match(general, new RegExp(`t\\("settings\\.${key}Description"\\)`));
+    assert.match(enSource, new RegExp(`"settings\\.${key}Description":`));
+    assert.match(zhSource, new RegExp(`"settings\\.${key}Description":`));
+  }
 });
 
 test("keeps image generation on its own settings page", async () => {
@@ -150,16 +161,11 @@ test("labels agent profiles as sub-agents", () => {
   assert.match(zhSource, /"agents\.new": "新建子代理"/);
 });
 
-test("uses the unified SubagentIcon for sub-agents across settings and sidebar", async () => {
-  const subagentIconSource = await readFile(new URL("./SubagentIcon.tsx", import.meta.url), "utf8");
-  const subagentGlyph = /<rect x="2" y="8" width="14" height="14" rx="2" \/>\s*<path d="M8 2h12a2 2 0 0 1 2 2v12" \/>/;
-  assert.match(subagentIconSource, subagentGlyph);
-  assert.match(panelSource, /<SubagentIcon[^>]*className="settings-section-icon"/);
-  assert.match(sidebarSource, /<SubagentIcon/);
-});
-
-test("uses the compact controls glyph for General", () => {
-  assert.match(panelSource, /section === "general"[\s\S]*?<path d="M20 7h-9M14 17H5" \/>[\s\S]*?<circle cx="7" cy="7" r="3" \/>[\s\S]*?<circle cx="17" cy="17" r="3" \/>/);
+test("the section nav is one flat text list", () => {
+  assert.doesNotMatch(panelSource, /SettingsSectionIcon|SubagentIcon|settings-section-icon|settings-nav-group/);
+  // Matches the app sidebar's selected session row: a flat fill, no lifted card.
+  assert.match(cssSource, /\.settings-nav-item\[aria-current="page"\] \{\n  background: var\(--bg-selected\);\n  color: var\(--text\);\n\}/);
+  assert.doesNotMatch(panelSource, /settings-nav-footer/);
 });
 
 test("keeps password authentication to one login field and one settings action", () => {

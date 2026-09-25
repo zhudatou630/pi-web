@@ -26,9 +26,7 @@ test("General chat settings own the chat width preference", () => {
   assert.match(chatInput, /useChatAppearance\(\)/);
   assert.match(settingsPanel, /useChatAppearance\(\)/);
   assert.match(settingsPanel, /type="range"/);
-  assert.match(settingsPanel, /min=\{CHAT_CONTENT_WIDTH_MIN\}/);
-  assert.match(settingsPanel, /max=\{CHAT_CONTENT_WIDTH_MAX\}/);
-  assert.match(settingsPanel, /step=\{10\}/);
+  assert.match(settingsPanel, /rangeControl\("settings-chat-content-width", chatContentWidth, CHAT_CONTENT_WIDTH_MIN, CHAT_CONTENT_WIDTH_MAX, 10,/);
   assert.match(chatAppearanceHook, /pi-chat-content-width/);
   assert.match(chatAppearanceHook, /localStorage\.setItem/);
 });

@@ -39,7 +39,7 @@ for (const cancelled of [false, true]) {
 }
 
 test("initial loading prevents provider form mounting and honors reduced motion", async () => {
-  assert.match(source, /loading \? \([\s\S]*?className="models-loading"[\s\S]*?: \([\s\S]*?className="models-ready">\{renderProvidersTab\(\)\}/);
+  assert.match(source, /loading \? \([\s\S]*?className="models-loading"[\s\S]*?: \([\s\S]*?className="models-ready settings-scroll">[\s\S]*?\{renderProvidersTab\(\)\}/);
   const css = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.models-ready[\s\S]*?animation: none/);
 });

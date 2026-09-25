@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme, type ThemePreference } from "@/hooks/useTheme";
-import { SubagentIcon } from "./SubagentIcon";
-import { iconStroke } from "./iconStroke";
 import {
   CHAT_CONTENT_WIDTH_DEFAULT,
   CHAT_CONTENT_WIDTH_MAX,
@@ -45,7 +43,7 @@ import { subscribeNotificationPermission } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
 import { downloadSarasa, hasDownloadedSarasa } from "@/lib/sarasa-font";
 import { AppUpdateNotice } from "./AppUpdateNotice";
-import { ConfigButton, ConfigSwitch } from "./SettingsUi";
+import { ConfigButton, ConfigSwitch, SettingsGroup, SettingsRow } from "./SettingsUi";
 
 interface Props {
   cwd: string | null;
@@ -56,28 +54,6 @@ interface Props {
   onModelsChanged: () => void;
   quoteSelectionEnabled: boolean;
   onQuoteSelectionChange: (enabled: boolean) => void;
-}
-
-export function SettingsSectionIcon({ section, size = 13 }: { section: SettingsSection; size?: number }) {
-  const common = {
-    width: size,
-    height: size,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: iconStroke(size),
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    "aria-hidden": true,
-    className: "settings-section-icon",
-  };
-
-  if (section === "general") return <svg {...common}><path d="M20 7h-9M14 17H5" /><circle cx="7" cy="7" r="3" /><circle cx="17" cy="17" r="3" /></svg>;
-  if (section === "models") return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 2v2M15 2v2M9 20v2M15 20v2M20 9h2M20 15h2M2 9h2M2 15h2" /></svg>;
-  if (section === "images") return <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10.5" r="1.5" /><path d="m21 16-5-4-4 3-3-2-5 4" /></svg>;
-  if (section === "skills") return <svg {...common}><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z" /></svg>;
-  if (section === "agents") return <SubagentIcon size={size} className="settings-section-icon" />;
-  return <svg {...common}><path d="m16.5 9.4-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>;
 }
 
 function ThemeIcon({ preference }: { preference: ThemePreference }) {
@@ -224,22 +200,34 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
     </svg>
   );
-  const switchRow = (label: string, checked: boolean, onChange: (enabled: boolean) => void) => (
-    <div className="settings-row">
-      <span>{label}</span>
+  const switchRow = (label: string, description: string, checked: boolean, onChange: (enabled: boolean) => void) => (
+    <SettingsRow label={label} description={description}>
       <ConfigSwitch checked={checked} label={label} onChange={onChange} />
+    </SettingsRow>
+  );
+  const rangeControl = (id: string, value: number, min: number, max: number, step: number, fallback: number, resetLabel: string, onChange: (value: number) => void) => (
+    <div className="settings-range">
+      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+      <output htmlFor={id}>{value}px</output>
+      <ConfigButton
+        variant="ghost"
+        size="small"
+        className="settings-chat-reset"
+        title={resetLabel}
+        aria-label={resetLabel}
+        disabled={value === fallback}
+        onClick={() => onChange(fallback)}
+      >
+        {resetIcon}
+      </ConfigButton>
     </div>
   );
 
   return (
-    <div className="settings-general">
-      <div className="settings-card-grid">
-
-      <section className="settings-general-section settings-card">
-        <h3 className="settings-general-heading">{t("settings.appearance")}</h3>
-        <div className="settings-row">
-          <span>{t("settings.theme")}</span>
-          <div role="radiogroup" aria-label={t("settings.appearance")} className="settings-theme-options">
+    <div className="settings-page">
+      <SettingsGroup title={t("settings.appearance")}>
+        <SettingsRow label={t("settings.theme")} stacked>
+          <div role="radiogroup" aria-label={t("settings.theme")} className="settings-segmented">
             {themeOptions.map((option) => (
               <button
                 key={option.id}
@@ -247,17 +235,16 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
                 role="radio"
                 aria-checked={preference === option.id}
                 onClick={() => setThemePreference(option.id)}
-                className="settings-theme-option"
+                className="settings-segmented-option"
               >
                 <ThemeIcon preference={option.id} />
-                <span className="settings-theme-option-label">{option.label}</span>
+                <span className="settings-segmented-label">{option.label}</span>
               </button>
             ))}
           </div>
-        </div>
-        <div className="settings-row">
-          <span>{t("common.language")}</span>
-          <div role="radiogroup" aria-label={t("common.language")} className="settings-theme-options">
+        </SettingsRow>
+        <SettingsRow label={t("common.language")} stacked>
+          <div role="radiogroup" aria-label={t("common.language")} className="settings-segmented">
             {supportedLocales.map((plugin) => (
               <button
                 key={plugin.id}
@@ -265,157 +252,101 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
                 role="radio"
                 aria-checked={locale === plugin.id}
                 onClick={() => setLocale(plugin.id as typeof locale)}
-                className="settings-theme-option"
+                className="settings-segmented-option"
               >
-                <span className="settings-theme-option-label">{plugin.label}</span>
+                <span className="settings-segmented-label">{plugin.label}</span>
               </button>
             ))}
           </div>
-        </div>
-        <div className="settings-row">
-          <span>{t("settings.typography")}</span>
+        </SettingsRow>
+        <SettingsRow label={t("settings.typography")} description={t("settings.typographyDescription")}>
           {sarasaStatus === "cached" ? (
-            <span role="status" className="settings-chat-status">{t("settings.fontCached")}</span>
+            <span role="status" className="settings-row-status">{t("settings.fontCached")}</span>
           ) : (
-            <ConfigButton size="small" variant="secondary" disabled={sarasaStatus === "loading"} onClick={() => void downloadSarasaFont()}>
+            <ConfigButton size="small" disabled={sarasaStatus === "loading"} onClick={() => void downloadSarasaFont()}>
               {sarasaStatus === "loading" ? t("settings.fontDownloadLoading") : t("settings.fontDownload")}
             </ConfigButton>
           )}
-        </div>
-        {sarasaStatus === "error" && <p role="alert" className="settings-general-error">{t("settings.fontDownloadFailed")} {sarasaError}</p>}
-        <div className="settings-row">
-          <label htmlFor="settings-chat-content-width">{t("settings.chatContentWidth")}</label>
-          <div className="settings-range">
-            <input
-              id="settings-chat-content-width"
-              type="range"
-              min={CHAT_CONTENT_WIDTH_MIN}
-              max={CHAT_CONTENT_WIDTH_MAX}
-              step={10}
-              value={chatContentWidth}
-              onChange={(event) => setChatContentWidth(Number(event.target.value))}
-            />
-            <output htmlFor="settings-chat-content-width">{chatContentWidth}px</output>
-            <ConfigButton
-              variant="ghost"
-              size="small"
-              className="settings-chat-reset"
-              title={t("settings.resetChatContentWidth")}
-              aria-label={t("settings.resetChatContentWidth")}
-              disabled={chatContentWidth === CHAT_CONTENT_WIDTH_DEFAULT}
-              onClick={() => setChatContentWidth(CHAT_CONTENT_WIDTH_DEFAULT)}
-            >
-              {resetIcon}
-            </ConfigButton>
-          </div>
-        </div>
-        <div className="settings-row">
-          <label htmlFor="settings-chat-content-font-size">{t("settings.chatContentFontSize")}</label>
-          <div className="settings-range">
-            <input
-              id="settings-chat-content-font-size"
-              type="range"
-              min={CHAT_CONTENT_FONT_SIZE_MIN}
-              max={CHAT_CONTENT_FONT_SIZE_MAX}
-              step={1}
-              value={fontSize}
-              onChange={(event) => setFontSize(Number(event.target.value))}
-            />
-            <output htmlFor="settings-chat-content-font-size">{fontSize}px</output>
-            <ConfigButton
-              variant="ghost"
-              size="small"
-              className="settings-chat-reset"
-              title={t("settings.resetChatContentFontSize")}
-              aria-label={t("settings.resetChatContentFontSize")}
-              disabled={fontSize === CHAT_CONTENT_FONT_SIZE_DEFAULT}
-              onClick={() => setFontSize(CHAT_CONTENT_FONT_SIZE_DEFAULT)}
-            >
-              {resetIcon}
-            </ConfigButton>
-          </div>
-        </div>
-        {switchRow(t("settings.thinkingExpandedDefault"), thinkingExpanded, (enabled) => {
+        </SettingsRow>
+        {sarasaStatus === "error" && <p role="alert" className="settings-row-message is-error">{t("settings.fontDownloadFailed")} {sarasaError}</p>}
+        <SettingsRow label={t("settings.chatContentWidth")} description={t("settings.chatContentWidthDescription")} htmlFor="settings-chat-content-width" stacked>
+          {rangeControl("settings-chat-content-width", chatContentWidth, CHAT_CONTENT_WIDTH_MIN, CHAT_CONTENT_WIDTH_MAX, 10, CHAT_CONTENT_WIDTH_DEFAULT, t("settings.resetChatContentWidth"), setChatContentWidth)}
+        </SettingsRow>
+        <SettingsRow label={t("settings.chatContentFontSize")} description={t("settings.chatContentFontSizeDescription")} htmlFor="settings-chat-content-font-size" stacked>
+          {rangeControl("settings-chat-content-font-size", fontSize, CHAT_CONTENT_FONT_SIZE_MIN, CHAT_CONTENT_FONT_SIZE_MAX, 1, CHAT_CONTENT_FONT_SIZE_DEFAULT, t("settings.resetChatContentFontSize"), setFontSize)}
+        </SettingsRow>
+        {switchRow(t("settings.thinkingExpandedDefault"), t("settings.thinkingExpandedDefaultDescription"), thinkingExpanded, (enabled) => {
           setThinkingExpandedByDefault(enabled);
           setThinkingExpanded(enabled);
         })}
-      </section>
+      </SettingsGroup>
 
-      <div className="settings-card-stack">
-      <section className="settings-general-section settings-card">
-        <h3 className="settings-general-heading">{t("settings.chat")}</h3>
-        {switchRow(t("settings.shiftEnterToSend"), shiftEnterToSend, (enabled) => {
+      <SettingsGroup title={t("settings.chat")}>
+        {switchRow(t("settings.shiftEnterToSend"), t("settings.shiftEnterToSendDescription"), shiftEnterToSend, (enabled) => {
           setShiftEnterToSend(enabled);
           setShiftEnterToSendState(enabled);
         })}
-        {switchRow(t("settings.autoSessionTitle"), autoSessionTitle, (enabled) => {
+        {switchRow(t("settings.autoSessionTitle"), t("settings.autoSessionTitleDescription"), autoSessionTitle, (enabled) => {
           setAutoSessionTitleEnabled(enabled);
           setAutoSessionTitle(enabled);
         })}
-        {switchRow(t("settings.quoteSelection"), quoteSelectionEnabled, onQuoteSelectionChange)}
-        {switchRow(t("settings.sidebarSingleProject"), singleProject, (enabled) => {
+        {switchRow(t("settings.quoteSelection"), t("settings.quoteSelectionDescription"), quoteSelectionEnabled, onQuoteSelectionChange)}
+        {switchRow(t("settings.sidebarSingleProject"), t("settings.sidebarSingleProjectDescription"), singleProject, (enabled) => {
           setSidebarSingleProject(enabled);
           setSingleProject(enabled);
         })}
         {shellSettings?.isWindows && (
-          <>
-            <div className="settings-row" title={t("settings.shellToolDescription")}>
-              <span>{t("settings.usePowerShell")}</span>
-              <ConfigSwitch
-                checked={shellSettings.powerShellEnabled}
-                loading={shellSaving}
-                label={t("settings.usePowerShell")}
-                onChange={(enabled) => void togglePowerShell(enabled)}
-              />
-            </div>
-            {shellError && <p role="alert" className="settings-general-error">{shellError}</p>}
-          </>
+          <SettingsRow label={t("settings.usePowerShell")} description={t("settings.shellToolDescription")}>
+            <ConfigSwitch
+              checked={shellSettings.powerShellEnabled}
+              loading={shellSaving}
+              label={t("settings.usePowerShell")}
+              onChange={(enabled) => void togglePowerShell(enabled)}
+            />
+          </SettingsRow>
         )}
-      </section>
+        {shellError && <p role="alert" className="settings-row-message is-error">{shellError}</p>}
+      </SettingsGroup>
 
-      <section className="settings-general-section settings-card">
-        <h3 className="settings-general-heading">{t("settings.notifications")}</h3>
+      <SettingsGroup title={t("settings.notifications")}>
         {notificationPermission && (
-          <div className="settings-row">
-            <span>{t("settings.browserNotifications")}</span>
+          <SettingsRow label={t("settings.browserNotifications")} description={t("settings.browserNotificationsDescription")}>
             {notificationPermission === "granted" ? (
-              <span className="settings-chat-status">{t("settings.browserNotificationsOn")}</span>
+              <span className="settings-row-status">{t("settings.browserNotificationsOn")}</span>
             ) : notificationPermission === "denied" ? (
-              <span className="settings-chat-status">{t("settings.browserNotificationsBlocked")}</span>
+              <span className="settings-row-status">{t("settings.browserNotificationsBlocked")}</span>
             ) : (
               <ConfigButton size="small" onClick={() => void Notification.requestPermission().then(setNotificationPermission)}>
                 {t("settings.browserNotificationsEnable")}
               </ConfigButton>
             )}
-          </div>
+          </SettingsRow>
         )}
-        <div className="settings-row" title={t("settings.pushPermissionDescription")}>
-          <span>{t("settings.pushPermission")}</span>
-          <ConfigButton size="small" variant="secondary" disabled={pushRegistering} onClick={() => void registerPush()}>
+        <SettingsRow label={t("settings.pushPermission")} description={t("settings.pushPermissionDescription")}>
+          <ConfigButton size="small" disabled={pushRegistering} onClick={() => void registerPush()}>
             {pushRegistering ? t("settings.pushRegisterLoading") : t("settings.pushRegister")}
           </ConfigButton>
-        </div>
+        </SettingsRow>
         {pushStatus && (
-          <p role="status" className="settings-general-error" style={pushStatus.kind === "ok" ? { color: "var(--accent)" } : undefined}>
+          <p role="status" className={`settings-row-message ${pushStatus.kind === "ok" ? "is-success" : "is-error"}`}>
             {pushStatus.message}
           </p>
         )}
-      </section>
+      </SettingsGroup>
 
-      </div>
-      </div>
-
-      <section className="settings-general-footer">
-        <AppUpdateNotice showCurrentVersion />
+      <SettingsGroup title={t("settings.about")}>
+        <SettingsRow label={t("settings.version")}>
+          <AppUpdateNotice showCurrentVersion />
+        </SettingsRow>
         {webAuthEnabled && (
-          <div>
-            <ConfigButton variant="secondary" size="small" disabled={loggingOut} onClick={() => void logOut()}>
+          <SettingsRow label={t("auth.logOut")} description={t("settings.logOutDescription")}>
+            <ConfigButton size="small" variant="danger" disabled={loggingOut} onClick={() => void logOut()}>
               {loggingOut ? t("auth.loggingOut") : t("auth.logOut")}
             </ConfigButton>
-          </div>
+          </SettingsRow>
         )}
-        {logoutError && <p role="alert" className="settings-general-error">{logoutError}</p>}
-      </section>
+        {logoutError && <p role="alert" className="settings-row-message is-error">{logoutError}</p>}
+      </SettingsGroup>
     </div>
   );
 }
@@ -423,6 +354,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, onModelsChanged, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  // Narrow screens show one page at a time: the section list, then the section.
+  const [pane, setPane] = useState<"nav" | "section">("nav");
   const [mountedSections, setMountedSections] = useState<ReadonlySet<SettingsSection>>(
     () => new Set([section]),
   );
@@ -467,6 +400,18 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     setMountedSections((current) => new Set(current).add(nextSection));
     setSection(nextSection);
     setLastSettingsSection(nextSection);
+    setPane("section");
+  };
+  const sectionLabel = sections.find((item) => item.id === section)?.label;
+  const mainRef = useRef<HTMLElement>(null);
+  // One back button on phones: it leaves a section's detail page before the section itself.
+  // ponytail: reaches into the section's DOM for its own back link; lift page state up if sections grow more levels.
+  const goBack = () => {
+    const innerBack = mainRef.current?.querySelector<HTMLButtonElement>(
+      ".settings-section-host:not([hidden]) [data-settings-back]",
+    );
+    if (innerBack) innerBack.click();
+    else setPane("nav");
   };
 
   const sectionHost = (id: SettingsSection, content: ReactNode) => mountedSections.has(id) ? (
@@ -487,52 +432,48 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
       onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}
       className="settings-dialog-backdrop"
     >
-      <div className="settings-dialog-surface">
-        <div className="settings-dialog-header">
-          <strong className="settings-dialog-title">{t("settings.title")}</strong>
-          <select
-            aria-label={t("settings.title")}
-            value={section}
-            onChange={(event) => activateSection(event.target.value as SettingsSection)}
-            className="settings-mobile-section-picker"
-          >
-            {sections.map((item) => (
-              <option key={item.id} value={item.id} disabled={item.requiresProject && !cwd}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-          <nav aria-label={t("settings.title")} className="settings-section-tabs">
+      <div className="settings-dialog-surface" data-pane={pane}>
+        <nav aria-label={t("settings.title")} className="settings-nav">
+          <strong className="settings-nav-title">{t("settings.title")}</strong>
+          <div className="settings-nav-list">
             {sections.map((item) => {
-              const selected = section === item.id;
               const disabled = item.requiresProject && !cwd;
               return (
                 <button
                   key={item.id}
                   type="button"
-                  className="settings-section-tab"
+                  className="settings-nav-item"
                   disabled={disabled}
-                  title={disabled ? t("settings.projectRequired") : item.label}
-                  aria-current={selected ? "page" : undefined}
+                  title={disabled ? t("settings.projectRequired") : undefined}
+                  aria-current={section === item.id ? "page" : undefined}
                   onClick={() => activateSection(item.id)}
                 >
-                  <SettingsSectionIcon section={item.id} />
-                  <span>{item.label}</span>
+                  <span className="settings-nav-label">{item.label}</span>
+                  <svg className="settings-nav-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
                 </button>
               );
             })}
-          </nav>
-          <button type="button" onClick={requestClose} title={t("i18n.close")} aria-label={t("i18n.close")} className="config-close-button settings-dialog-close">×</button>
-        </div>
+          </div>
+        </nav>
 
-        <main className="settings-dialog-main">
-          {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
-          {sectionHost("models", <ModelsConfig embedded onClose={requestClose} cwd={cwd} onModelsChanged={onModelsChanged} onDirtyChange={handleModelsDirty} />)}
-          {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
-          {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}
-          {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
-          {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
-        </main>
+        <div className="settings-dialog-content">
+          <div className="settings-dialog-header">
+            <button type="button" className="settings-nav-back" onClick={goBack} aria-label={t("i18n.back")}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
+            <strong className="settings-dialog-title">{sectionLabel}</strong>
+          </div>
+
+          <main ref={mainRef} className="settings-dialog-main">
+            {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
+            {sectionHost("models", <ModelsConfig embedded onClose={requestClose} cwd={cwd} onModelsChanged={onModelsChanged} onDirtyChange={handleModelsDirty} />)}
+            {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
+            {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}
+            {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
+            {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
+          </main>
+        </div>
+        <button type="button" onClick={requestClose} title={t("i18n.close")} aria-label={t("i18n.close")} className="config-close-button settings-dialog-close">×</button>
       </div>
     </div>
   );

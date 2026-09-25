@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { IMAGE_CUSTOM_MODEL_PRESETS } from "@/lib/image-generation";
@@ -9,7 +9,7 @@ import type {
   ImageGenerationSettingsProvider,
   ImageGenerationSettingsResponse,
 } from "@/lib/api-types";
-import { ConfigButton, ConfigSwitch } from "./SettingsUi";
+import { ConfigButton, ConfigSwitch, CountedTitle, SettingsGroup, SettingsRow } from "./SettingsUi";
 
 type Draft =
   | { mode: "edit"; id: string; label: string; provider: string; model: string }
@@ -169,178 +169,179 @@ export function ImagesConfig({
   const custom = settings?.connections.filter((connection) => connection.kind === "custom") ?? [];
   const providers = settings?.providers ?? [];
 
-  return (
-    <div className="settings-general">
-      <div className="settings-card-grid">
-        <section className="settings-card settings-card-wide">
-          <div className="settings-row" title={t("settings.imagesDescription")}>
-            <span>{t("settings.imagesEnabled")}</span>
-            <div className="settings-image-actions">
-              {reloadNeeded && sessionId && (
-                <ConfigButton size="small" onClick={() => void reloadSession()} disabled={reloading || saving}>
-                  {reloading ? t("agents.reloading") : t("agents.reloadSession")}
-                </ConfigButton>
-              )}
-              <ConfigSwitch
-                checked={settings?.enabled === true}
-                disabled={loading || reloading || !settings}
-                loading={saving && !draft && !rename}
-                label={t("settings.imagesEnabled")}
-                onChange={(enabled) => void save({ enabled })}
-              />
-            </div>
-          </div>
-          {settings?.enabled && (
-            <>
-            {settings.connections.some((connection) => connection.enabled) && (
-              <div className="settings-row">
-                <span>{t("settings.imagesDefault")}</span>
-                <select
-                  className="settings-select"
-                  value={settings.defaultConnection}
-                  disabled={loading || saving || reloading}
-                  onChange={(event) => void save({ default: event.target.value })}
-                >
-                  {settings.connections.filter((connection) => connection.enabled).map((connection) => (
-                    <option key={connection.id} value={connection.id} disabled={!connection.signedIn}>
-                      {connection.label}{connection.signedIn ? "" : ` (${t("settings.imagesSignedOut")})`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            </>
-          )}
-          {reloadNeeded && <p role="status" className="settings-image-reload-notice">{t("agents.reloadRequired")}</p>}
-          {error && <p role="alert" className="settings-general-error">{error}</p>}
-        </section>
-          {settings?.enabled && (
-            <>
-              <section className="settings-card">
-              <h3 className="settings-general-heading">{t("settings.imagesBuiltin")}</h3>
-              {builtin.map((connection) => (
-                <ConnectionSwitch
-                  key={connection.id}
-                  connection={connection}
-                  disabled={loading || reloading || saving}
-                  unsignedLabel={t("settings.imagesSignedOut")}
-                  onChange={(enabled) => void save({ connections: { [connection.id]: { enabled } } })}
-                  renaming={rename?.id === connection.id}
-                  renameValue={rename?.id === connection.id ? rename.label : connection.label}
-                  onRenameChange={(label) => setRename({ id: connection.id, label })}
-                  onRenameSubmit={() => void saveRename()}
-                  onRenameCancel={() => setRename(null)}
-                  onEdit={() => { setDraft(null); setRename({ id: connection.id, label: connection.label }); }}
-                  editLabel={t("i18n.rename")}
-                />
-              ))}
-              </section>
-              <section className="settings-card">
-              <div className="settings-image-group-row">
-                <h3 className="settings-general-heading">{t("settings.imagesCustom")}</h3>
-                {providers.length > 0 && !draft && (
-                  <ConfigButton
-                    size="small"
-                    disabled={loading || reloading || saving}
-                    onClick={() => {
-                      setRename(null);
+  // The connection form opens in place: under "Custom" for a new one, in its own row when editing.
+  const editedConnection = draft?.mode === "edit" ? custom.find((connection) => connection.id === draft.id) : undefined;
+  const draftForm = draft && (
+              <form
+                className="settings-inline-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveDraft();
+                }}
+              >
+                <label className="settings-field">
+                  <span>{t("settings.imagesLabel")}</span>
+                  <input
+                    value={draft.label}
+                    onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+                    required
+                  />
+                </label>
+                <label className="settings-field">
+                  <span>{t("settings.imagesProvider")}</span>
+                  <select
+                    value={draft.provider}
+                    onChange={(event) => setDraft({ ...draft, provider: event.target.value })}
+                    required
+                  >
+                    {providers.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.name === provider.id ? provider.id : `${provider.name} (${provider.id})`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="settings-field">
+                  <span>{t("settings.imagesModel")}</span>
+                  <ModelPicker
+                    key={draft.mode === "edit" ? draft.id : "create"}
+                    value={draft.model}
+                    t={t}
+                    onChange={(model) => {
+                      const preset = IMAGE_CUSTOM_MODEL_PRESETS.find((item) => item.model === model);
                       setDraft({
-                        mode: "create",
-                        label: "",
-                        provider: preferredCustomProvider(providers),
-                        model: "",
+                        ...draft,
+                        model,
+                        ...(draft.mode === "create" && !draft.label.trim() && preset ? { label: preset.label } : {}),
                       });
                     }}
-                  >
-                    {t("settings.imagesAddConnection")}
+                  />
+                </label>
+                <div className="settings-inline-form-actions">
+                  {editedConnection && (
+                    <ConfigButton type="button" size="small" variant="ghost" className="is-danger-text is-pushed-left" disabled={saving} onClick={() => void removeCustom(editedConnection)}>
+                      {t("agents.delete")}
+                    </ConfigButton>
+                  )}
+                  <ConfigButton type="button" size="small" disabled={saving} onClick={() => setDraft(null)}>
+                    {t("trust.cancel")}
                   </ConfigButton>
-                )}
-              </div>
-              {providers.length === 0 && (
-                <p className="settings-general-description">{t("settings.imagesNoProviders")}</p>
-              )}
-              {custom.map((connection) => (
-                <ConnectionSwitch
-                  key={connection.id}
-                  connection={connection}
-                  disabled={loading || reloading || saving}
-                  unsignedLabel={t("settings.imagesNotConfigured")}
-                  onChange={(enabled) => void save({ connections: { [connection.id]: { enabled } } })}
-                  onEdit={() => {
-                    setRename(null);
-                    setDraft({
-                      mode: "edit",
-                      id: connection.id,
-                      label: connection.label,
-                      provider: connection.provider,
-                      model: connection.model,
-                    });
-                  }}
-                  onDelete={() => void removeCustom(connection)}
-                  editLabel={t("image.edit")}
-                  deleteLabel={t("agents.delete")}
-                />
-              ))}
-              {draft && (
-                <form
-                  className="settings-image-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void saveDraft();
-                  }}
-                >
-                  <label className="settings-image-field">
-                    <span>{t("settings.imagesLabel")}</span>
-                    <input
-                      value={draft.label}
-                      onChange={(event) => setDraft({ ...draft, label: event.target.value })}
-                      required
-                    />
-                  </label>
-                  <label className="settings-image-field">
-                    <span>{t("settings.imagesProvider")}</span>
-                    <select
-                      value={draft.provider}
-                      onChange={(event) => setDraft({ ...draft, provider: event.target.value })}
-                      required
-                    >
-                      {providers.map((provider) => (
-                        <option key={provider.id} value={provider.id}>
-                          {provider.name === provider.id ? provider.id : `${provider.name} (${provider.id})`}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="settings-image-field">
-                    <span>{t("settings.imagesModel")}</span>
-                    <ModelPicker
-                      key={draft.mode === "edit" ? draft.id : "create"}
-                      value={draft.model}
-                      t={t}
-                      onChange={(model) => {
-                        const preset = IMAGE_CUSTOM_MODEL_PRESETS.find((item) => item.model === model);
-                        setDraft({
-                          ...draft,
-                          model,
-                          ...(draft.mode === "create" && !draft.label.trim() && preset ? { label: preset.label } : {}),
-                        });
-                      }}
-                    />
-                  </label>
-                  <div className="settings-image-form-actions">
-                    <ConfigButton type="submit" variant="primary" size="small" disabled={saving || !draft.label.trim() || !draft.provider || !draft.model.trim()}>
-                      {saving ? t("agents.saving") : t("agents.save")}
-                    </ConfigButton>
-                    <ConfigButton type="button" size="small" disabled={saving} onClick={() => setDraft(null)}>
-                      {t("trust.cancel")}
-                    </ConfigButton>
-                  </div>
-                </form>
-              )}
-              </section>
-            </>
+                  <ConfigButton type="submit" variant="primary" size="small" disabled={saving || !draft.label.trim() || !draft.provider || !draft.model.trim()}>
+                    {saving ? t("agents.saving") : t("agents.save")}
+                  </ConfigButton>
+                </div>
+              </form>
+  );
+
+  return (
+    <div className="settings-page">
+      <SettingsGroup>
+        <SettingsRow label={t("settings.imagesEnabled")} description={t("settings.imagesDescription")}>
+          {reloadNeeded && sessionId && (
+            <ConfigButton size="small" onClick={() => void reloadSession()} disabled={reloading || saving}>
+              {reloading ? t("agents.reloading") : t("agents.reloadSession")}
+            </ConfigButton>
           )}
-      </div>
+          <ConfigSwitch
+            checked={settings?.enabled === true}
+            disabled={loading || reloading || !settings}
+            loading={saving && !draft && !rename}
+            label={t("settings.imagesEnabled")}
+            onChange={(enabled) => void save({ enabled })}
+          />
+        </SettingsRow>
+        {settings?.enabled && settings.connections.some((connection) => connection.enabled) && (
+          <SettingsRow label={t("settings.imagesDefault")} description={t("settings.imagesDefaultDescription")}>
+            <select
+              className="settings-select"
+              value={settings.defaultConnection}
+              disabled={loading || saving || reloading}
+              onChange={(event) => void save({ default: event.target.value })}
+            >
+              {settings.connections.filter((connection) => connection.enabled).map((connection) => (
+                <option key={connection.id} value={connection.id} disabled={!connection.signedIn}>
+                  {connection.label}{connection.signedIn ? "" : ` (${t("settings.imagesSignedOut")})`}
+                </option>
+              ))}
+            </select>
+          </SettingsRow>
+        )}
+        {reloadNeeded && <p role="status" className="settings-row-message is-warning">{t("agents.reloadRequired")}</p>}
+        {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
+      </SettingsGroup>
+
+      {settings?.enabled && (
+        <>
+          <SettingsGroup title={<CountedTitle label={t("settings.imagesBuiltin")} count={builtin.length} />}>
+            {builtin.map((connection) => (
+              <ConnectionSwitch
+                key={connection.id}
+                connection={connection}
+                disabled={loading || reloading || saving}
+                unsignedLabel={t("settings.imagesSignedOut")}
+                onChange={(enabled) => void save({ connections: { [connection.id]: { enabled } } })}
+                renaming={rename?.id === connection.id}
+                renameValue={rename?.id === connection.id ? rename.label : connection.label}
+                onRenameChange={(label) => setRename({ id: connection.id, label })}
+                onRenameSubmit={() => void saveRename()}
+                onRenameCancel={() => setRename(null)}
+                onEdit={() => { setDraft(null); setRename({ id: connection.id, label: connection.label }); }}
+                editLabel={t("i18n.rename")}
+              />
+            ))}
+          </SettingsGroup>
+
+          <SettingsGroup
+            title={<CountedTitle label={t("settings.imagesCustom")} count={custom.length} />}
+            action={providers.length > 0 && !draft && (
+              <ConfigButton
+                size="small"
+                disabled={loading || reloading || saving}
+                onClick={() => {
+                  setRename(null);
+                  setDraft({
+                    mode: "create",
+                    label: "",
+                    provider: preferredCustomProvider(providers),
+                    model: "",
+                  });
+                }}
+              >
+                {t("settings.imagesAddConnection")}
+              </ConfigButton>
+            )}
+          >
+            {providers.length === 0 && (
+              <p className="settings-row-message">{t("settings.imagesNoProviders")}</p>
+            )}
+            {custom.map((connection) => (
+              <Fragment key={connection.id}>
+                {draft?.mode === "edit" && draft.id === connection.id ? draftForm : (
+                  <ConnectionSwitch
+                    connection={connection}
+                    disabled={loading || reloading || saving}
+                    unsignedLabel={t("settings.imagesNotConfigured")}
+                    detail={connection.model}
+                    onChange={(enabled) => void save({ connections: { [connection.id]: { enabled } } })}
+                    onEdit={() => {
+                      setRename(null);
+                      setDraft({
+                        mode: "edit",
+                        id: connection.id,
+                        label: connection.label,
+                        provider: connection.provider,
+                        model: connection.model,
+                      });
+                    }}
+                    editLabel={t("image.edit")}
+                  />
+                )}
+              </Fragment>
+            ))}
+            {draft?.mode === "create" && draftForm}
+          </SettingsGroup>
+        </>
+      )}
     </div>
   );
 }
@@ -364,11 +365,10 @@ function ConnectionSwitch({
   connection,
   disabled,
   unsignedLabel,
+  detail,
   onChange,
   onEdit,
-  onDelete,
   editLabel,
-  deleteLabel,
   renaming = false,
   renameValue,
   onRenameChange,
@@ -378,11 +378,10 @@ function ConnectionSwitch({
   connection: ImageGenerationSettingsConnection;
   disabled: boolean;
   unsignedLabel: string;
+  detail?: string;
   onChange: (enabled: boolean) => void;
   onEdit?: () => void;
-  onDelete?: () => void;
   editLabel?: string;
-  deleteLabel?: string;
   renaming?: boolean;
   renameValue?: string;
   onRenameChange?: (value: string) => void;
@@ -391,60 +390,52 @@ function ConnectionSwitch({
 }) {
   const skipBlur = useRef(false);
   const lockedOff = !connection.signedIn && !connection.enabled;
+  const label = renaming ? (
+    <input
+      className="settings-inline-input"
+      value={renameValue}
+      autoFocus
+      aria-label={editLabel}
+      onChange={(event) => onRenameChange?.(event.target.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          skipBlur.current = true;
+          onRenameSubmit?.();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          skipBlur.current = true;
+          onRenameCancel?.();
+        }
+      }}
+      onBlur={() => {
+        if (skipBlur.current) {
+          skipBlur.current = false;
+          return;
+        }
+        onRenameSubmit?.();
+      }}
+    />
+  ) : (
+    <span className={connection.signedIn ? undefined : "is-dim"}>{connection.label}</span>
+  );
   return (
-    <div className={`settings-image-connection${connection.signedIn ? "" : " is-unsigned"}`}>
-      <div className="settings-image-connection-copy">
-        {renaming ? (
-          <input
-            className="settings-image-rename"
-            value={renameValue}
-            autoFocus
-            aria-label={editLabel}
-            onChange={(event) => onRenameChange?.(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                skipBlur.current = true;
-                onRenameSubmit?.();
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                skipBlur.current = true;
-                onRenameCancel?.();
-              }
-            }}
-            onBlur={() => {
-              if (skipBlur.current) {
-                skipBlur.current = false;
-                return;
-              }
-              onRenameSubmit?.();
-            }}
-          />
-        ) : (
-          <strong>{connection.label}</strong>
-        )}
-        {connection.signedIn ? null : <span>{unsignedLabel}</span>}
-      </div>
-      <div className="settings-image-actions">
+    <SettingsRow label={label} description={connection.signedIn ? detail : unsignedLabel}>
+      <span className="settings-row-hover-actions">
         {onEdit && !renaming ? (
           <ConfigButton size="small" variant="ghost" disabled={disabled} onClick={onEdit}>
             {editLabel}
           </ConfigButton>
         ) : null}
-        {onDelete ? (
-          <ConfigButton size="small" variant="ghost" className="models-danger-ghost" disabled={disabled} onClick={onDelete}>
-            {deleteLabel}
-          </ConfigButton>
-        ) : null}
-        <ConfigSwitch
-          checked={connection.enabled}
-          disabled={disabled || lockedOff}
-          label={connection.label}
-          onChange={onChange}
-        />
-      </div>
-    </div>
+      </span>
+      <ConfigSwitch
+        checked={connection.enabled}
+        disabled={disabled || lockedOff}
+        label={connection.label}
+        onChange={onChange}
+      />
+    </SettingsRow>
   );
 }
 

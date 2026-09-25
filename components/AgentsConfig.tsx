@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SubagentProfilesResponse, SubagentSettingsResponse } from "@/lib/api-types";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ModelsData } from "@/lib/models-cache";
@@ -10,30 +9,18 @@ import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
 import { THINKING_LEVELS as THINKING_LEVEL_VALUES } from "@/lib/thinking-levels";
 import type { SubagentProfile, SubagentScope, SubagentWritableScope } from "@/lib/subagents";
 import {
-  getLastSettingsSelection,
-  setLastSettingsSelection,
-} from "@/lib/settings-navigation";
-import {
   ConfigButton,
-  ConfigDetail,
-  ConfigDetailActions,
-  ConfigDetailHeader,
-  ConfigDetailHeaderInfo,
-  ConfigDetailStack,
   ConfigEmptyState,
   ConfigField,
   ConfigFooter,
-  ConfigListAction,
-  ConfigMobileBack,
-  type ConfigPane,
   ConfigPanelShell,
-  ConfigSidebar,
-  ConfigSidebarItem,
-  ConfigSidebarList,
-  ConfigSidebarText,
-  ConfigSplitView,
-  ConfigStatusDot,
   ConfigSwitch,
+  CountedTitle,
+  SettingsBackLink,
+  SettingsDetailPage,
+  SettingsGroup,
+  SettingsLinkRow,
+  SettingsRow,
 } from "./SettingsUi";
 import { ModelSelector } from "./ModelSelector";
 
@@ -55,25 +42,6 @@ const EMPTY_PROFILE: EditableProfile = {
   inheritContext: false,
   runInBackground: true,
   enabled: true,
-};
-
-const inputStyle: CSSProperties = {
-  width: "100%",
-  minWidth: 0,
-  height: 34,
-  padding: "0 9px",
-  border: "1px solid var(--border)",
-  borderRadius: 5,
-  background: "var(--bg)",
-  color: "var(--text)",
-  fontSize: 12,
-  outline: "none",
-};
-
-const disabledInputStyle: CSSProperties = {
-  background: "var(--bg-panel)",
-  color: "var(--text-dim)",
-  cursor: "default",
 };
 
 function editableProfile(profile: SubagentProfile): EditableProfile {
@@ -126,7 +94,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Toggle({ checked, disabled, label, onChange }: { checked: boolean; disabled: boolean; label: string; onChange: (checked: boolean) => void }) {
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 7, color: disabled ? "var(--text-dim)" : "var(--text-muted)", fontSize: 12, cursor: disabled ? "default" : "pointer" }}>
+    <label className="settings-checkbox">
       <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
@@ -146,14 +114,13 @@ export function AgentsConfig({
   onReloaded?: () => void;
   embedded?: boolean;
 }) {
-  const isMobile = useIsMobile();
   const { t } = useI18n();
   const [profiles, setProfiles] = useState<SubagentProfile[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelsData["modelList"]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [mobilePane, setMobilePane] = useState<ConfigPane>("list");
+  const [page, setPage] = useState<"list" | "detail">("list");
   const [draft, setDraft] = useState<EditableProfile>(EMPTY_PROFILE);
   const [mode, setMode] = useState<EditorMode>("view");
   const [targetScope, setTargetScope] = useState<SubagentWritableScope>("project");
@@ -182,7 +149,8 @@ export function AgentsConfig({
   const rows = useMemo(() => [...new Set(profiles.map((profile) => profile.name.toLowerCase()))]
     .map((name) => {
       const [top, below] = subagentProfileSources(profiles, name);
-      return { name, top, label: (top.disableStub ? below ?? top : top).displayName };
+      const shownProfile = top.disableStub ? below ?? top : top;
+      return { name, top, label: shownProfile.displayName, description: shownProfile.description };
     })
     .sort((a, b) => a.label.localeCompare(b.label)), [profiles]);
   const modelSelectorOptions = useMemo(() => modelOptions.map((model) => ({
@@ -218,15 +186,14 @@ export function AgentsConfig({
     setError(null);
     try {
       const next = await fetchProfiles();
-      const names = new Set(next.map((profile) => profile.name.toLowerCase()));
-      const remembered = (preferredName ?? getLastSettingsSelection("agents", cwd) ?? "").toLowerCase();
-      showAgent(next, names.has(remembered) ? remembered : names.has("general-purpose") ? "general-purpose" : [...names][0] ?? null);
+      // The page opens on the list; only a save or restore re-selects the item it touched.
+      if (preferredName) showAgent(next, preferredName.toLowerCase());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
     }
-  }, [cwd, fetchProfiles, showAgent]);
+  }, [fetchProfiles, showAgent]);
 
   useEffect(() => {
     void loadProfiles();
@@ -257,10 +224,6 @@ export function AgentsConfig({
     })();
     return () => controller.abort();
   }, []);
-
-  useEffect(() => {
-    if (selectedName) setLastSettingsSelection("agents", selectedName, cwd);
-  }, [cwd, selectedName]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -366,7 +329,7 @@ export function AgentsConfig({
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
       await afterChange(fallback ? effective.name : undefined);
-      if (!fallback) setMobilePane("list");
+      if (!fallback) setPage("list");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -394,37 +357,39 @@ export function AgentsConfig({
       ? { provider: "", modelId: draft.model }
       : { provider: draft.model.slice(0, separator), modelId: draft.model.slice(separator + 1) };
   })();
-  const controlStyle = disabled ? { ...inputStyle, ...disabledInputStyle } : inputStyle;
   const update = <K extends keyof EditableProfile>(key: K, value: EditableProfile[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
   /** The switch always means "can the model call this agent here"; the server picks which file to touch. */
-  const toggleEnabled = async (enabled: boolean) => {
-    if (writing) {
-      update("enabled", enabled);
-      return;
-    }
-    if (!effective) return;
+  const setAgentEnabled = async (name: string, enabled: boolean) => {
     setToggling(true);
     setError(null);
     try {
       const response = await fetch("/api/subagents/profiles", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd, name: effective.name, enabled }),
+        body: JSON.stringify({ cwd, name, enabled }),
       });
       const data = await response.json() as { error?: string };
       if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
       // Refresh the list but keep unsaved form edits.
       await fetchProfiles();
-      update("enabled", enabled);
+      if (name === selectedName) update("enabled", enabled);
       setReloadNeeded(Boolean(sessionId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setToggling(false);
     }
+  };
+
+  const toggleEnabled = async (enabled: boolean) => {
+    if (writing) {
+      update("enabled", enabled);
+      return;
+    }
+    if (effective) await setAgentEnabled(effective.name, enabled);
   };
 
   const toggleBuiltInSubagents = async (enabled: boolean) => {
@@ -483,207 +448,242 @@ export function AgentsConfig({
     }
   };
 
+  const profileTitle = mode === "create" ? t("agents.new") : draft.displayName || draft.name;
+  const sourceNotes = !writing && effective ? [
+    ...(effective.disableStub ? [t("agents.stubNote")] : []),
+    ...shadowed.map((source) => source.scope === "builtin"
+      ? t("agents.overridesBuiltin")
+      : t("agents.shadows", { scope: t(`agents.scope.${source.scope}`), path: displayProfilePath(source, cwd) ?? "" })),
+  ] : [];
+  const enabledChecked = writing ? draft.enabled : Boolean(effective?.enabled);
+  const removable = !writing && effective && isWritableScope(effective.scope) && !effective.disableStub;
+
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.agents")} subtitle={shortenPath(cwd)} closeLabel={t("agents.close")} onClose={onClose}>
       {reloadNeeded && sessionId && (
-        <div className="agents-feature-setting">
+        <div className="agents-feature-setting is-notice">
           <span role="status" className="agents-feature-reload-notice">{t("agents.reloadRequired")}</span>
           <ConfigButton size="small" onClick={() => void reloadSession()} disabled={reloading || settingsSaving}>
             {reloading ? t("agents.reloading") : t("agents.reloadSession")}
           </ConfigButton>
         </div>
       )}
-      <div className="agents-feature-setting">
-        <div className="agents-feature-copy">
-          <strong>{t("agents.builtInTitle")}</strong>
-          <span>{t("agents.builtInDescription")}</span>
-        </div>
-        <div className="agents-feature-actions">
-          <ConfigSwitch
-            checked={builtInEnabled}
-            disabled={settingsLoading || reloading}
-            loading={settingsSaving}
-            label={t("agents.builtInTitle")}
-            onChange={(enabled) => void toggleBuiltInSubagents(enabled)}
-          />
-        </div>
-      </div>
-      <div className="agents-feature-setting">
-        <div className="agents-feature-copy">
-          <strong>{t("agents.maxConcurrent")}</strong>
-          <span>{t("agents.maxConcurrentDescription")}</span>
-        </div>
-        <input
-          aria-label={t("agents.maxConcurrent")}
-          type="number"
-          min={1}
-          max={32}
-          value={maxConcurrent}
-          disabled={settingsLoading || settingsSaving}
-          onChange={(event) => setMaxConcurrent(Number(event.target.value))}
-          onBlur={() => void updateMaxConcurrent(maxConcurrent)}
-          style={{ ...inputStyle, width: 76 }}
-        />
-      </div>
-      <ConfigSplitView pane={mobilePane}>
-        <ConfigSidebar>
-          <ConfigSidebarList>
-              {loading ? (
-                <div style={{ padding: 10, color: "var(--text-dim)", fontSize: 12 }}>{t("agents.loading")}</div>
-              ) : rows.map(({ name, top, label }) => (
-                <ConfigSidebarItem
-                  key={name}
-                  active={selectedName === name && mode !== "create"}
-                  onClick={() => { showAgent(profiles, name); setMobilePane("detail"); }}
-                >
-                  <ConfigStatusDot active={top.enabled} />
-                  <ConfigSidebarText className={`is-grow${top.enabled ? "" : " is-muted"}`}>{label}</ConfigSidebarText>
-                  <span className="agents-scope-label">{t(`agents.scope.${top.scope}`)}</span>
-                </ConfigSidebarItem>
-              ))}
-          </ConfigSidebarList>
-          <ConfigListAction
-                active={mode === "create"}
-                onClick={() => { beginCreate(); setMobilePane("detail"); }}
-              >
-                {t("agents.new")}
-          </ConfigListAction>
-        </ConfigSidebar>
+      <div className="settings-scroll">
+        <div className="settings-page">
+          {page === "list" ? (
+            <>
+              <SettingsGroup>
+                <SettingsRow label={t("agents.builtInTitle")} description={t("agents.builtInDescription")}>
+                  <ConfigSwitch
+                    checked={builtInEnabled}
+                    disabled={settingsLoading || reloading}
+                    loading={settingsSaving}
+                    label={t("agents.builtInTitle")}
+                    onChange={(enabled) => void toggleBuiltInSubagents(enabled)}
+                  />
+                </SettingsRow>
+                <SettingsRow label={t("agents.maxConcurrent")} description={t("agents.maxConcurrentDescription")}>
+                  <input
+                    aria-label={t("agents.maxConcurrent")}
+                    className="settings-inline-input agents-number-input"
+                    type="number"
+                    min={1}
+                    max={32}
+                    value={maxConcurrent}
+                    disabled={settingsLoading || settingsSaving}
+                    onChange={(event) => setMaxConcurrent(Number(event.target.value))}
+                    onBlur={() => void updateMaxConcurrent(maxConcurrent)}
+                  />
+                </SettingsRow>
+                {settingsError && <p role="alert" className="settings-row-message is-error">{settingsError}</p>}
+              </SettingsGroup>
 
-        <ConfigDetail>
-          <ConfigDetailStack className="is-fill">
-              <ConfigMobileBack label={t("common.agents")} onClick={() => setMobilePane("list")} />
+              <SettingsGroup
+                title={<CountedTitle label={t("agents.profiles")} count={rows.length} />}
+                action={<ConfigButton size="small" onClick={() => { beginCreate(); setPage("detail"); }}>{t("agents.new")}</ConfigButton>}
+              >
+                {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
+                {loading ? (
+                  <p className="settings-row-message">{t("agents.loading")}</p>
+                ) : rows.map(({ name, top, label, description }) => (
+                  <SettingsLinkRow
+                    key={name}
+                    label={<>{label}<span className="settings-row-tag">{t(`agents.scope.${top.scope}`)}</span></>}
+                    description={description}
+                    muted={!top.enabled}
+                    title={top.filePath}
+                    onOpen={() => { showAgent(profiles, name); setPage("detail"); }}
+                  >
+                    <ConfigSwitch
+                      checked={top.enabled}
+                      disabled={toggling || Boolean(top.configurationError)}
+                      label={top.enabled ? t("agents.disable") : t("agents.enable")}
+                      onChange={(value) => void setAgentEnabled(top.name, value)}
+                    />
+                  </SettingsLinkRow>
+                ))}
+              </SettingsGroup>
+            </>
+          ) : (
+            <>
+              <SettingsBackLink label={t("common.agents")} onClick={() => { setPage("list"); setError(null); }} />
               {!effective && mode !== "create" ? (
                 <ConfigEmptyState>{t("agents.empty")}</ConfigEmptyState>
               ) : (
-                <ConfigDetailStack>
-                  <ConfigDetailHeader>
-                    <ConfigDetailHeaderInfo>
+                <SettingsDetailPage
+                  title={profileTitle}
+                  meta={(
+                    <>
                       {displayedScope && (
                         <span className={`config-scope-tag${displayedScope === "project" ? " is-project" : ""}`}>
                           {t(`agents.scope.${displayedScope}`)}
                         </span>
                       )}
-                      <span title={fullPath} className="config-detail-path">
-                        {displayedPath}
-                      </span>
-                    </ConfigDetailHeaderInfo>
-                    <ConfigDetailActions>
-                      {effective?.scope === "builtin" && mode === "view" && <ConfigButton size="small" onClick={beginCustomize} disabled={saving || toggling}>{t("agents.customize")}</ConfigButton>}
-                      {shown && !writing && <ConfigButton size="small" onClick={beginDuplicate} disabled={saving || toggling}>{t("agents.duplicate")}</ConfigButton>}
-                      {!writing && effective && isWritableScope(effective.scope) && !effective.disableStub && <ConfigButton variant="danger" size="small" onClick={() => void remove()} disabled={saving || toggling}>{shadowed[0] ? t("agents.restore", { scope: t(`agents.scope.${shadowed[0].scope}`) }) : t("agents.delete")}</ConfigButton>}
-                      {(() => {
-                        const checked = writing ? draft.enabled : Boolean(effective?.enabled);
-                        return <ConfigSwitch checked={checked} disabled={saving || toggling || (!writing && Boolean(effective?.configurationError))} label={checked ? t("agents.disable") : t("agents.enable")} onChange={(value) => void toggleEnabled(value)} />;
-                      })()}
-                    </ConfigDetailActions>
-                  </ConfigDetailHeader>
-
-                  {!writing && effective && (
-                    <div className="agents-source-note">
-                      {effective.disableStub && <span>{t("agents.stubNote")}</span>}
-                      {effective.scope === "global" && <span>{t("agents.globalNote")}</span>}
-                      {shadowed.map((source) => (
-                        <span key={source.scope} title={source.filePath}>
-                          {t("agents.shadows", { scope: t(`agents.scope.${source.scope}`), path: displayProfilePath(source, cwd) ?? t("agents.builtinPath") })}
-                        </span>
-                      ))}
-                    </div>
+                      {displayedScope !== "builtin" && <span title={fullPath} className="config-detail-path">{displayedPath}</span>}
+                    </>
                   )}
+                  description={sourceNotes.length > 0 && (
+                    <span className="agents-source-note">
+                      {sourceNotes.map((note) => <span key={note}>{note}</span>)}
+                    </span>
+                  )}
+                >
+                  <SettingsGroup>
+                    <SettingsRow label={t("agents.enabled")} description={t("agents.enabledDescription")}>
+                      <ConfigSwitch
+                        checked={enabledChecked}
+                        disabled={saving || toggling || (!writing && Boolean(effective?.configurationError))}
+                        label={enabledChecked ? t("agents.disable") : t("agents.enable")}
+                        onChange={(value) => void toggleEnabled(value)}
+                      />
+                    </SettingsRow>
+                    {effective?.scope === "builtin" && mode === "view" && (
+                      <SettingsRow label={t("agents.customize")} description={t("agents.customizeDescription")}>
+                        <ConfigButton size="small" onClick={beginCustomize} disabled={saving || toggling}>{t("agents.customize")}</ConfigButton>
+                      </SettingsRow>
+                    )}
+                    {writing && (
+                      <SettingsRow label={t("agents.saveScope")} description={t("agents.saveScopeDescription")}>
+                        <div role="radiogroup" aria-label={t("agents.saveScope")} className="settings-segmented">
+                          {(["global", "project"] as const).map((scope) => (
+                            <button
+                              key={scope}
+                              type="button"
+                              role="radio"
+                              aria-checked={targetScope === scope}
+                              className="settings-segmented-option"
+                              onClick={() => setTargetScope(scope)}
+                              disabled={saving}
+                            >
+                              {t(`agents.scope.${scope}`)}
+                            </button>
+                          ))}
+                        </div>
+                      </SettingsRow>
+                    )}
+                  </SettingsGroup>
 
-                  {writing && (
-                    <Field label={t("agents.saveScope")}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, padding: 3, border: "1px solid var(--border)", borderRadius: 5, background: "var(--bg-panel)" }}>
-                        {(["global", "project"] as const).map((scope) => (
-                          <button
-                            key={scope}
-                            type="button"
-                            onClick={() => setTargetScope(scope)}
-                            disabled={saving}
-                            style={{ height: 28, border: "none", borderRadius: 4, background: targetScope === scope ? "var(--bg-selected)" : "transparent", color: targetScope === scope ? "var(--text)" : "var(--text-muted)", cursor: saving ? "default" : "pointer", fontSize: 11 }}
-                          >
-                            {t(`agents.scope.${scope}`)}
-                          </button>
-                        ))}
+                  <SettingsGroup title={t("agents.profile")}>
+                    <div className="settings-form">
+                      <div className="settings-form-pair">
+                        <Field label={t("agents.name")}>
+                          {mode === "create" ? (
+                            <input aria-label={t("agents.name")} value={draft.name} disabled={disabled} onChange={(event) => update("name", event.target.value)} />
+                          ) : (
+                            <code className="settings-form-value">{draft.name}</code>
+                          )}
+                        </Field>
+                        <Field label={t("agents.displayName")}>
+                          <input aria-label={t("agents.displayName")} value={draft.displayName} disabled={disabled} onChange={(event) => update("displayName", event.target.value)} />
+                        </Field>
                       </div>
-                    </Field>
-                  )}
+                      <Field label={t("agents.description")}>
+                        <input aria-label={t("agents.description")} value={draft.description} disabled={disabled} onChange={(event) => update("description", event.target.value)} />
+                      </Field>
+                      <Field label={t("agents.prompt")}>
+                        <textarea className="agents-system-prompt" aria-label={t("agents.prompt")} value={draft.systemPrompt} disabled={disabled} onChange={(event) => update("systemPrompt", event.target.value)} />
+                      </Field>
+                    </div>
+                  </SettingsGroup>
 
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(0, 1fr)", gap: 12 }}>
-                    <Field label={t("agents.name")}>
-                      {mode === "create" ? (
-                        <input aria-label={t("agents.name")} value={draft.name} disabled={disabled} onChange={(event) => update("name", event.target.value)} style={inputStyle} />
-                      ) : (
-                        <code style={{ minHeight: 34, display: "flex", alignItems: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 12 }}>
-                          {draft.name}
-                        </code>
+                  <SettingsGroup title={t("agents.capabilities")}>
+                    <div className="settings-form">
+                      <Field label={t("agents.tools")}>
+                        <div className="settings-checkbox-grid">
+                          {TOOL_OPTIONS.map((tool) => (
+                            <Toggle key={tool} label={tool} disabled={disabled} checked={draft.tools.includes(tool)} onChange={(checked) => update("tools", checked ? [...draft.tools, tool] : draft.tools.filter((item) => item !== tool))} />
+                          ))}
+                        </div>
+                      </Field>
+                      <Field label={t("agents.resources")}>
+                        <div className="settings-checkbox-grid">
+                          <Toggle label={t("agents.loadSkills")} disabled={disabled} checked={draft.loadSkills} onChange={(checked) => update("loadSkills", checked)} />
+                          <Toggle label={t("agents.loadExtensions")} disabled={disabled} checked={draft.loadExtensions} onChange={(checked) => update("loadExtensions", checked)} />
+                        </div>
+                      </Field>
+                    </div>
+                  </SettingsGroup>
+
+                  <SettingsGroup title={t("agents.runtime")}>
+                    <div className="settings-form">
+                      <div className="settings-form-triple">
+                        <Field label={t("agents.model")}>
+                          <ModelSelector
+                            options={modelSelectorOptions}
+                            value={selectedModel}
+                            onChange={(provider, modelId) => update("model", `${provider}/${modelId}`)}
+                            onClear={() => update("model", undefined)}
+                            emptyLabel={modelsLoading ? t("agents.modelsLoading") : t("agents.inherit")}
+                            selectedLabel={draft.model && !selectedModelAvailable ? t("agents.modelUnavailable", { model: draft.model }) : undefined}
+                            disabled={disabled || modelsLoading || (modelOptions.length === 0 && !draft.model)}
+                            ariaLabel={t("agents.model")}
+                            variant="field"
+                            placement="auto"
+                          />
+                          {modelsError && <span className="settings-row-message is-error">{modelsError}</span>}
+                        </Field>
+                        <Field label={t("agents.thinking")}>
+                          <select aria-label={t("agents.thinking")} value={draft.thinking ?? ""} disabled={disabled} onChange={(event) => update("thinking", (event.target.value || undefined) as EditableProfile["thinking"])}>
+                            {THINKING_OPTIONS.map((value) => <option key={value || "default"} value={value}>{value || t("agents.inherit")}</option>)}
+                          </select>
+                        </Field>
+                        <Field label={t("agents.maxTurns")}>
+                          <input aria-label={t("agents.maxTurns")} type="number" min={1} value={draft.maxTurns ?? ""} disabled={disabled} onChange={(event) => update("maxTurns", event.target.value ? Number(event.target.value) : undefined)} />
+                        </Field>
+                      </div>
+                      <div className="settings-checkbox-grid">
+                        <Toggle label={t("agents.inheritContext")} disabled={disabled} checked={draft.inheritContext} onChange={(checked) => update("inheritContext", checked)} />
+                        <Toggle label={t("agents.background")} disabled={disabled} checked={draft.runInBackground} onChange={(checked) => update("runInBackground", checked)} />
+                      </div>
+                    </div>
+                  </SettingsGroup>
+
+                  {(shown && !writing) && (
+                    <SettingsGroup>
+                      <SettingsRow label={t("agents.duplicate")} description={t("agents.duplicateDescription")}>
+                        <ConfigButton size="small" onClick={beginDuplicate} disabled={saving || toggling}>{t("agents.duplicate")}</ConfigButton>
+                      </SettingsRow>
+                      {removable && (
+                        <SettingsRow
+                          label={shadowed[0] ? t("agents.restore", { scope: t(`agents.scope.${shadowed[0].scope}`) }) : t("agents.deleteTitle")}
+                          description={shadowed[0] ? t("agents.restoreDescription") : t("agents.deleteDescription")}
+                        >
+                          <ConfigButton variant="danger" size="small" onClick={() => void remove()} disabled={saving || toggling}>
+                            {shadowed[0] ? t("agents.restore", { scope: t(`agents.scope.${shadowed[0].scope}`) }) : t("agents.delete")}
+                          </ConfigButton>
+                        </SettingsRow>
                       )}
-                    </Field>
-                    <Field label={t("agents.displayName")}>
-                      <input aria-label={t("agents.displayName")} value={draft.displayName} disabled={disabled} onChange={(event) => update("displayName", event.target.value)} style={controlStyle} />
-                    </Field>
-                  </div>
-                  <Field label={t("agents.description")}>
-                    <input aria-label={t("agents.description")} value={draft.description} disabled={disabled} onChange={(event) => update("description", event.target.value)} style={controlStyle} />
-                  </Field>
-                  <Field label={t("agents.prompt")}>
-                    <textarea className="agents-system-prompt" aria-label={t("agents.prompt")} value={draft.systemPrompt} disabled={disabled} onChange={(event) => update("systemPrompt", event.target.value)} style={{ ...controlStyle, height: 195, minHeight: 195, maxHeight: "60vh", padding: 9, overflow: "auto", resize: disabled ? "none" : "vertical", lineHeight: 1.5 }} />
-                  </Field>
-
-                  <Field label={t("agents.tools")}>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px" }}>
-                      {TOOL_OPTIONS.map((tool) => (
-                        <Toggle key={tool} label={tool} disabled={disabled} checked={draft.tools.includes(tool)} onChange={(checked) => update("tools", checked ? [...draft.tools, tool] : draft.tools.filter((item) => item !== tool))} />
-                      ))}
-                    </div>
-                  </Field>
-
-                  <Field label={t("agents.resources")}>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 20px" }}>
-                      <Toggle label={t("agents.loadSkills")} disabled={disabled} checked={draft.loadSkills} onChange={(checked) => update("loadSkills", checked)} />
-                      <Toggle label={t("agents.loadExtensions")} disabled={disabled} checked={draft.loadExtensions} onChange={(checked) => update("loadExtensions", checked)} />
-                    </div>
-                  </Field>
-
-                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.5fr) minmax(120px, 0.75fr) minmax(100px, 0.5fr)", gap: 12 }}>
-                    <Field label={t("agents.model")}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <ModelSelector
-                          options={modelSelectorOptions}
-                          value={selectedModel}
-                          onChange={(provider, modelId) => update("model", `${provider}/${modelId}`)}
-                          onClear={() => update("model", undefined)}
-                          emptyLabel={modelsLoading ? t("agents.modelsLoading") : t("agents.inherit")}
-                          selectedLabel={draft.model && !selectedModelAvailable ? t("agents.modelUnavailable", { model: draft.model }) : undefined}
-                          disabled={disabled || modelsLoading || (modelOptions.length === 0 && !draft.model)}
-                          ariaLabel={t("agents.model")}
-                          variant="field"
-                          placement="auto"
-                        />
-                        {modelsError && <span style={{ color: "#ef4444", fontSize: 11 }}>{modelsError}</span>}
-                      </div>
-                    </Field>
-                    <Field label={t("agents.thinking")}>
-                      <select aria-label={t("agents.thinking")} value={draft.thinking ?? ""} disabled={disabled} onChange={(event) => update("thinking", (event.target.value || undefined) as EditableProfile["thinking"])} style={controlStyle}>
-                        {THINKING_OPTIONS.map((value) => <option key={value || "default"} value={value}>{value || t("agents.inherit")}</option>)}
-                      </select>
-                    </Field>
-                    <Field label={t("agents.maxTurns")}>
-                      <input aria-label={t("agents.maxTurns")} type="number" min={1} value={draft.maxTurns ?? ""} disabled={disabled} onChange={(event) => update("maxTurns", event.target.value ? Number(event.target.value) : undefined)} style={controlStyle} />
-                    </Field>
-                  </div>
-
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 20px" }}>
-                    <Toggle label={t("agents.inheritContext")} disabled={disabled} checked={draft.inheritContext} onChange={(checked) => update("inheritContext", checked)} />
-                    <Toggle label={t("agents.background")} disabled={disabled} checked={draft.runInBackground} onChange={(checked) => update("runInBackground", checked)} />
-                  </div>
-                </ConfigDetailStack>
+                    </SettingsGroup>
+                  )}
+                </SettingsDetailPage>
               )}
-          </ConfigDetailStack>
-        </ConfigDetail>
-      </ConfigSplitView>
-      <ConfigFooter status={(settingsError || error) && <span role="alert" style={{ color: "#ef4444" }}>{settingsError || error}</span>}>
-        {editing && (
+            </>
+          )}
+        </div>
+      </div>
+      {page === "detail" && editing && (
+      <ConfigFooter status={error && <span role="alert" className="settings-row-message is-error">{error}</span>}>
+        {(
           <ConfigButton
             variant="primary"
             onClick={() => void save()}
@@ -699,6 +699,7 @@ export function AgentsConfig({
           </ConfigButton>
         )}
       </ConfigFooter>
+      )}
     </ConfigPanelShell>
   );
 }

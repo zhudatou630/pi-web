@@ -26,5 +26,5 @@ test("lists active skills before dormant skills while preserving their order", (
 
 test("renders dormant skills directly without a collapsible section", () => {
   assert.doesNotMatch(source, /dormantGroupsOpen|i18n\.dormant/);
-  assert.match(source, /orderSkillsByDormancy\(grpSkills\)\.map\(renderSkillRow\)/);
+  assert.match(source, /skills: orderSkillsByDormancy\(visibleSkills\.filter\(matches\)\)/);
 });

@@ -240,7 +240,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
               </CompactSelect>
             ) : null}
           </div>
-          <button type="button" disabled={!prompt.trim()} onClick={submit} className="h-8 shrink-0 rounded-md border-0 bg-accent px-3 text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-50">{editing ? t("image.edit") : t("image.generate")}</button>
+          <button type="button" disabled={!prompt.trim()} onClick={submit} className="h-8 shrink-0 rounded-md border-0 bg-[var(--primary)] px-3 text-[12px] text-[var(--primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50">{editing ? t("image.edit") : t("image.generate")}</button>
         </footer>
       </div>
     </div>
