@@ -918,10 +918,32 @@ pre, code {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .process-details-list [data-step-card]:hover,
+  .process-details-list [data-step-card]:hover:not(:has([aria-expanded="true"])),
   .process-details-list [data-message-text]:hover {
     background: color-mix(in srgb, var(--bg-hover) 50%, transparent) !important;
   }
+}
+
+/* Open row: same flat wash as hover, on the header only. Body stays page-colored. */
+.process-details-list [data-step-card]:has([aria-expanded="true"]) > :first-child {
+  position: relative;
+  z-index: 0;
+}
+.process-details-list [data-step-card]:has([aria-expanded="true"]) > :first-child::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  /* Match the card's 8px gutter padding so the wash bleeds like a collapsed hover. */
+  inset: 0 -8px;
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
+  pointer-events: none;
+}
+.process-details-list [data-step-card] > pre,
+.process-details-list [data-step-card] > div:not(:first-child) {
+  background: transparent !important;
+  border-top: none !important;
+  box-shadow: none !important;
 }
 
 .process-details-list [data-step-chevron] {

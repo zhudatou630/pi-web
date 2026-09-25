@@ -126,6 +126,16 @@ test("removes the bottom extension status shelf from the chat window", () => {
   assert.doesNotMatch(source, /import\s*\{\s*ExtensionStatusBar\s*\}\s*from/);
 });
 
+test("expanded step bodies stay flat inside the process list", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\[data-step-card\]:hover:not\(:has\(\[aria-expanded="true"\]\)\)/);
+  assert.match(css, /\[aria-expanded="true"\]\) > :first-child::before[\s\S]*?inset: 0 -8px;/);
+  assert.match(
+    css,
+    /\.process-details-list \[data-step-card\] > pre,[\s\S]*?background: transparent !important;[\s\S]*?box-shadow: none !important;/,
+  );
+});
+
 test("matches process detail text paragraph font size to 11px to align with step items", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(
