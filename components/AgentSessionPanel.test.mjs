@@ -23,8 +23,7 @@ test("sorts active subagents first and enables search only for larger families",
 });
 
 test("renders as a floating popover card without a centered inner width", () => {
-  assert.match(source, /border: "1px solid var\(--border\)"/);
-  assert.match(source, /borderRadius: 8/);
+  assert.match(source, /className="popover-surface"/);
   assert.doesNotMatch(source, /maxWidth: 680/);
 });
 

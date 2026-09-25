@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
 const ICON_BUTTON_SIZE = 30;
 
@@ -126,20 +126,13 @@ export function SessionHistoryControl({
         <div
           role="menu"
           aria-label={labels.menu}
+          className="menu-surface"
           style={{
             position: "fixed",
             top: menuPos.top + 2,
             left: Math.max(8, Math.min(menuPos.left, (typeof window !== "undefined" ? window.innerWidth : 800) - 210)),
             minWidth: 195,
             zIndex: 520,
-            background: "var(--bg-panel)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
-            padding: 4,
-            display: "flex",
-            flexDirection: "column",
-            gap: 2,
           }}
         >
           <button
@@ -149,9 +142,6 @@ export function SessionHistoryControl({
               onMenuOpenChange(false);
               onViewFullHistory();
             }}
-            style={menuItemStyle}
-            onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-            onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true">
               <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
@@ -170,9 +160,6 @@ export function SessionHistoryControl({
             onClick={() => {
               onExportMarkdown();
             }}
-            style={{ ...menuItemStyle, opacity: exporting ? 0.6 : 1 }}
-            onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-            onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -199,22 +186,3 @@ export function SessionHistoryControl({
     </div>
   );
 }
-
-const menuItemStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  width: "100%",
-  height: 28,
-  padding: "0 8px",
-  border: "none",
-  borderRadius: 4,
-  background: "transparent",
-  color: "var(--text)",
-  cursor: "pointer",
-  textAlign: "left",
-  fontSize: 12,
-  fontFamily: "var(--font-ui)",
-  transition: "background 0.12s ease",
-  boxSizing: "border-box",
-};

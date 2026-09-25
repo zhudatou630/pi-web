@@ -252,6 +252,7 @@ function NewSessionCwdControl({
         <div
           role="listbox"
           aria-label={t("chat.changeWorkingDirectory")}
+          className="menu-surface"
           style={{
             position: "absolute",
             top: "calc(100% + 6px)",
@@ -261,78 +262,45 @@ function NewSessionCwdControl({
             minWidth: 200,
             maxWidth: "min(90vw, 260px)",
             zIndex: 50,
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
-            overflow: "hidden",
-            textAlign: "left",
           }}
         >
-          <div style={{ maxHeight: 280, overflowY: "auto" }}>
+          <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
             {cwdRows.map((path) => {
               const isSelected = path === cwd || Boolean(activeWorktree?.projectRoot && path === activeWorktree.projectRoot);
               return (
-                <div
+                <button
                   key={path}
-                  style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)" }}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  disabled={busy}
+                  onClick={() => choose(path)}
+                  title={path}
                 >
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    disabled={busy}
-                    onClick={() => choose(path)}
-                    title={path}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 7,
-                      flex: 1,
-                      minWidth: 0,
-                      padding: "8px 10px",
-                      background: "var(--bg)",
-                      border: "none",
-                      color: isSelected ? "var(--text)" : "var(--text-muted)",
-                      cursor: busy ? "default" : "pointer",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      textAlign: "left",
-                    }}
-                  >
-                    {isSelected ? (
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                        <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                      </svg>
-                    ) : (
-                      <span style={{ width: 10, flexShrink: 0 }} />
-                    )}
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {homeDir && path.startsWith(homeDir) ? `~${path.slice(homeDir.length)}` : path}
-                    </span>
-                  </button>
-                </div>
+                  {isSelected ? (
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                      <polyline points="1.5 5 4 7.5 8.5 2.5" />
+                    </svg>
+                  ) : (
+                    <span style={{ width: 10, flexShrink: 0 }} />
+                  )}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {homeDir && path.startsWith(homeDir) ? `~${path.slice(homeDir.length)}` : path}
+                  </span>
+                </button>
               );
             })}
           </div>
           <button
             type="button"
+            role="option"
+            aria-selected={false}
             onClick={() => {
               setMenuOpen(false);
               setPickerOpen(true);
               setError(null);
             }}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "8px 10px",
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 11,
-              textAlign: "left",
-            }}
+            style={{ marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: "0 0 4px 4px" }}
           >
             {t("sidebar.customPath")}
           </button>
@@ -342,6 +310,7 @@ function NewSessionCwdControl({
         <div
           role="listbox"
           aria-label={t("sidebar.switchWorktree")}
+          className="menu-surface"
           style={{
             position: "absolute",
             top: "calc(100% + 6px)",
@@ -351,15 +320,9 @@ function NewSessionCwdControl({
             minWidth: 180,
             maxWidth: "min(90vw, 260px)",
             zIndex: 50,
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
-            overflow: "hidden",
-            textAlign: "left",
           }}
         >
-          <div style={{ maxHeight: 280, overflowY: "auto" }}>
+          <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
             {worktrees.map((wt) => {
               const isCurrent = wt.path === cwd || wt.path === activeWorktree?.currentWorktreePath;
               return (
@@ -371,21 +334,6 @@ function NewSessionCwdControl({
                   disabled={busy}
                   onClick={() => choose(wt.path)}
                   title={wt.path}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    width: "100%",
-                    padding: "8px 10px",
-                    background: "var(--bg)",
-                    border: "none",
-                    borderBottom: "1px solid var(--border)",
-                    color: isCurrent ? "var(--text)" : "var(--text-muted)",
-                    cursor: busy ? "default" : "pointer",
-                    fontSize: 11,
-                    fontFamily: "var(--font-mono)",
-                    textAlign: "left",
-                  }}
                 >
                   {isCurrent ? (
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -2251,6 +2199,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           ref={quotePopoverRef}
           role={quoteInputOpen ? "dialog" : "toolbar"}
           aria-label={t(quoteInputOpen ? "chat.newQuoteChat" : "chat.askSelection")}
+          className="popover-surface"
           style={{
             position: "fixed",
             top: quotedSelection.top,
@@ -2264,9 +2213,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             maxHeight: "calc(var(--app-viewport-height, 100dvh) - 16px)",
             overflowY: "auto",
             padding: quoteInputOpen ? 12 : 2,
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            background: "var(--bg)",
           }}
         >
           {quoteInputOpen ? (

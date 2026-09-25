@@ -106,7 +106,7 @@ export function MarkdownOutlineMenu({
         </svg>
       </button>
       {open && (
-        <div className={`file-outline-menu${collapsible ? " is-collapsible" : ""}`} id={menuId} role="menu">
+        <div className={`popover-surface file-outline-menu${collapsible ? " is-collapsible" : ""}`} id={menuId} role="menu">
           {items.map((item, index) => {
             if (collapsible && item.level === 3) {
               const parent = outlineParentIndex(items, index);

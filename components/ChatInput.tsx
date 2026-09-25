@@ -1950,16 +1950,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {historyMenuOpen && inputHistory.length > 0 && (
             <div
               ref={historyMenuRef}
+              className="popover-surface"
               style={{
                 position: "absolute",
                 left: 0,
                 right: 0,
                 bottom: "calc(100% + 8px)",
                 zIndex: 120,
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
                 overflow: "hidden",
                 maxHeight: "min(44vh, 360px)",
               }}
@@ -2041,16 +2038,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {slashMenuOpen && slashQuery !== null && (
             <div
               ref={slashMenuRef}
+              className="popover-surface"
               style={{
                 position: "absolute",
                 left: 0,
                 right: 0,
                 bottom: "calc(100% + 8px)",
                 zIndex: 120,
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
                 overflow: "hidden",
                 boxSizing: "border-box",
                 display: "flex",
@@ -2202,16 +2196,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             return (
               <div
                 ref={atMenuRef}
+                className="popover-surface"
                 style={{
                   position: "absolute",
                   left: 0,
                   right: 0,
                   bottom: "calc(100% + 8px)",
                   zIndex: 120,
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 4,
-                  boxShadow: "0 -6px 20px rgba(0,0,0,0.12)",
                   overflow: "hidden",
                   boxSizing: "border-box",
                   display: "flex",
@@ -2546,7 +2537,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                     <div role="menu" className="chat-input-menu menu-surface" style={{ right: 0, minWidth: 180 }} onKeyDown={closeMenuOnEscape}>
                       {controlsView !== "root" ? (
                         <>
-                          <button type="button" className="chat-input-menu-back" onClick={() => setControlsView("root")}>
+                          <button type="button" role="menuitem" className="chat-input-menu-back" onClick={() => setControlsView("root")}>
                             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                               <path d="M6 2.5 3.5 5 6 7.5" />
                             </svg>

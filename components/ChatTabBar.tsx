@@ -498,20 +498,17 @@ export function ChatTabBar({
           ref={tabsMenuRef}
           role="dialog"
           aria-label={t("chatTabs.allTabs")}
+          className="popover-surface"
           style={{
             position: "fixed",
             top: tabsMenuPosition.top,
             left: tabsMenuPosition.left,
             width: tabsMenuPosition.width,
             zIndex: 700,
-            padding: 6,
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            background: "var(--bg-panel)",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+            padding: 4,
           }}
         >
-          <div style={{ maxHeight: "min(50vh, 360px)", overflowY: "auto" }}>
+          <div style={{ maxHeight: "min(50vh, 360px)", overflowY: "auto", scrollbarWidth: "none" }}>
             {tabs.map((tab, index) => {
               const selected = tab.id === activeTabId || tab.id === splitTabId;
               const running = tab.kind === "session" && Boolean(tab.session && runningSessionIds?.has(tab.session.id));
@@ -533,7 +530,7 @@ export function ChatTabBar({
                       gap: 7,
                       flex: 1,
                       minWidth: 0,
-                      height: 30,
+                      height: 28,
                       padding: "0 8px",
                       border: "none",
                       background: "transparent",

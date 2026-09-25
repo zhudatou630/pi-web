@@ -206,13 +206,8 @@ export function AgentSessionPanel({
     <div
       role="listbox"
       aria-label={t("agentSwitcher.title")}
-      style={{
-        background: "var(--bg-panel)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        boxShadow: "0 10px 30px rgba(0, 0, 0, 0.14)",
-        overflow: "hidden",
-      }}
+      className="popover-surface"
+      style={{ overflow: "hidden" }}
     >
       <div>
         <div style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", borderBottom: "1px solid var(--border)" }}>

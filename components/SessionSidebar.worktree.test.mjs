@@ -21,7 +21,7 @@ test("active project row owns the only worktree switcher and its full-width menu
   assert.match(source, /onTouchStart=\{\(event\) => event\.stopPropagation\(\)\}/);
   assert.match(
     source,
-    /open=\{wtDropdownOpen\}[\s\S]*?top: "calc\(100% \+ 4px\)"[\s\S]*?left: 2,[\s\S]*?right: 2,/,
+    /\{wtDropdownOpen && \([\s\S]*?className="menu-surface"[\s\S]*?top: "calc\(100% \+ 4px\)"[\s\S]*?left: 2,[\s\S]*?right: 2,/,
   );
 });
 
@@ -84,7 +84,7 @@ test("single-project mode lists only the current project and switches via the dr
 test("project rows delete all sessions behind an unskippable confirmation", () => {
   assert.match(source, /fetch\("\/api\/projects", \{\s*method: "DELETE"/);
   // Delete lives in the project context menu (right-click / long press), not the hover actions.
-  const menu = source.slice(source.indexOf('className="project-context-menu"'), source.indexOf("{/* Pinned sessions"));
+  const menu = source.slice(source.indexOf('className="project-context-menu'), source.indexOf("{/* Pinned sessions"));
   assert.match(menu, /disabled=\{running \|\| deletingProjectKey === projectMenu\.key\}/);
   assert.match(menu, /setDeleteConfirm\(\{ key: projectMenu\.key, x: projectMenu\.x, y: projectMenu\.y \}\)/);
   const rowActions = source.slice(source.indexOf('<span className="workspace-row-action">'), source.indexOf('if (row.kind === "showMore")'));

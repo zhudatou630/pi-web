@@ -295,51 +295,6 @@ function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
   );
 }
 
-const DROPDOWN_ANIMATION_MS = 140;
-
-function AnimatedDropdown({ open, children, style }: { open: boolean; children: ReactNode; style: CSSProperties }) {
-  const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(open);
-
-  useEffect(() => {
-    let frame: number | undefined;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-
-    if (open) {
-      setMounted(true);
-      setVisible(false);
-      frame = window.requestAnimationFrame(() => {
-        frame = window.requestAnimationFrame(() => setVisible(true));
-      });
-    } else {
-      setVisible(false);
-      timeout = setTimeout(() => setMounted(false), DROPDOWN_ANIMATION_MS);
-    }
-
-    return () => {
-      if (frame !== undefined) window.cancelAnimationFrame(frame);
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [open]);
-
-  if (!mounted) return null;
-
-  return (
-    <div
-      style={{
-        ...style,
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0) scale(1)" : "translateY(-8px) scale(0.96)",
-        transformOrigin: "top center",
-        transition: `opacity ${DROPDOWN_ANIMATION_MS}ms ease, transform ${DROPDOWN_ANIMATION_MS}ms ease`,
-        pointerEvents: open ? "auto" : "none",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
@@ -1258,19 +1213,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         {branchLabel}
                       </span>
                     </button>
-                    <AnimatedDropdown
-                      open={wtDropdownOpen}
+                    {wtDropdownOpen && (
+                    <div
+                      role="menu"
+                      className="menu-surface"
                       style={{
                         position: "absolute",
                         top: "calc(100% + 4px)",
                         left: 2,
                         right: 2,
                         zIndex: 100,
-                        background: "var(--bg)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 4,
-                        boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
-                        overflow: "hidden",
                       }}
                     >
                   {showWtFilter && (
@@ -1278,9 +1230,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
-                      padding: "5px 8px",
+                      height: 28,
+                      padding: "0 8px",
+                      marginBottom: 4,
                       borderBottom: "1px solid var(--border)",
-                      background: "var(--bg-subtle)",
                     }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
                         <circle cx="11" cy="11" r="8" />
@@ -1336,12 +1289,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       )}
                     </div>
                   )}
-                  <div style={{ maxHeight: "min(40vh, 300px)", overflowY: "auto" }}>
+                  <div style={{ maxHeight: "min(40vh, 300px)", overflowY: "auto", scrollbarWidth: "none" }}>
                     {visibleWorktrees.map((wt) => {
                       const isCurrent = wt.path === currentWorktreePath;
                       if (wtConfirmRemove === wt.path) {
                         return (
-                          <div key={wt.path} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: "1px solid var(--border)", background: "rgba(239,68,68,0.06)" }}>
+                          <div key={wt.path} style={{ display: "flex", alignItems: "center", gap: 6, height: 28, padding: "0 4px 0 8px", borderRadius: 4, background: "color-mix(in srgb, var(--danger) 7%, transparent)" }}>
                             <span style={{ flex: 1, fontSize: 11, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {t("sidebar.forceRemoveCheckout")}
                             </span>
@@ -1365,9 +1318,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         <div
                           key={wt.path}
                           className="wt-row"
-                          style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)" }}
+                          style={{ display: "flex", alignItems: "center" }}
                         >
                           <button
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={isCurrent}
                             onClick={() => {
                               setSelectedCwd(wt.path);
                               setWtDropdownOpen(false);
@@ -1375,21 +1331,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                               setWtFilter("");
                             }}
                             title={wt.path}
-                            style={{
-                              flex: 1,
-                              minWidth: 0,
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 7,
-                              padding: "8px 10px",
-                              background: "var(--bg)",
-                              border: "none",
-                              color: isCurrent ? "var(--text)" : "var(--text-muted)",
-                              cursor: "pointer",
-                              textAlign: "left",
-                              fontSize: 11,
-                              fontFamily: "var(--font-mono)",
-                            }}
+                            style={{ flex: 1 }}
                           >
                             {isCurrent ? (
                               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -1410,13 +1352,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                                title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
                               style={{
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                width: 34, height: 28, padding: 0, marginRight: 4,
+                                width: 28, height: 28, padding: 0,
                                 background: "none", border: "none",
                                 color: "var(--text-muted)", cursor: "pointer",
                                 borderRadius: 4, flexShrink: 0,
                                 transition: "color 0.12s, background 0.12s",
                               }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "none"; }}
                             >
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1431,12 +1373,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       );
                     })}
                     {showWtFilter && visibleWorktrees.length === 0 && wtFilter.trim() && (
-                      <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.noMatchingWorktrees")}</div>
+                      <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>{t("sidebar.noMatchingWorktrees")}</div>
                     )}
                   </div>
 
                   {!wtNewOpen ? (
                     <button
+                      type="button"
+                      role="menuitem"
                       onClick={(e) => {
                         e.stopPropagation();
                         setWtNewOpen(true);
@@ -1444,19 +1388,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         setTimeout(() => wtNewInputRef.current?.focus(), 0);
                       }}
                       title={t("sidebar.createWorktreeTitle")}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 7,
-                        width: "100%",
-                        padding: "8px 10px",
-                        background: "none",
-                        border: "none",
-                        color: "var(--text-muted)",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        fontSize: 11,
-                      }}
+                      style={{ marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: "0 0 4px 4px" }}
                     >
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" style={{ flexShrink: 0 }}>
                         <line x1="5" y1="1" x2="5" y2="9" />
@@ -1465,7 +1397,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                        <span>{t("sidebar.newWorktree")}</span>
                     </button>
                   ) : (
-                    <div style={{ padding: "6px 8px" }}>
+                    <div style={{ marginTop: 4, padding: "6px 4px 2px", borderTop: "1px solid var(--border)" }}>
                       <input
                         ref={wtNewInputRef}
                         className="sidebar-dropdown-filter-input"
@@ -1546,7 +1478,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       {wtError}
                     </div>
                   )}
-                    </AnimatedDropdown>
+                    </div>
+                    )}
                   </div>
               );
             })() : null;
@@ -1598,7 +1531,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         return (
           <div
             role="menu"
-            className="project-context-menu"
+            className="project-context-menu menu-surface"
             style={{
               left: Math.min(projectMenu.x + 2, window.innerWidth - 168),
               top: Math.min(projectMenu.y + 2, window.innerHeight - 76),
@@ -1726,23 +1659,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             </svg>
           </ToolbarIconButton>
         </div>
-        <AnimatedDropdown
-          open={dropdownOpen}
+        {dropdownOpen && (
+        <div
+          role="menu"
+          className="menu-surface"
           style={{
             position: "absolute",
             top: "calc(100% + 4px)",
             left: 6,
             right: 6,
             zIndex: 100,
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
-            overflow: "hidden",
           }}
         >
           {singleProject && (
-            <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", scrollbarWidth: "none", marginBottom: 4, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>
               {workspaceProjects.map((project) => {
                 const active = project.key === selectedProject?.key;
                 const activity = projectActivity.get(project.key);
@@ -1750,15 +1680,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                   <div key={project.key} style={{ display: "flex", alignItems: "center" }}>
                     <button
                       type="button"
-                      aria-current={active ? "true" : undefined}
+                      role="menuitemradio"
+                      aria-checked={active}
                       onClick={() => { setSelectedCwd(project.root); setDropdownOpen(false); }}
                       title={project.root}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0,
-                        padding: "7px 10px", background: "none", border: "none",
-                        color: active ? "var(--text)" : "var(--text-muted)",
-                        cursor: "pointer", textAlign: "left", fontSize: 11, fontFamily: "var(--font-mono)",
-                      }}
+                      style={{ flex: 1 }}
                     >
                       <PathLabel text={displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
                       {activity?.running ? <LivePulseBeacon size={11} /> : null}
@@ -1785,29 +1711,23 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             </div>
           )}
           <button
+            type="button"
+            role="menuitem"
             onClick={(event) => { event.stopPropagation(); void handleDefaultCwd(); }}
-            style={{
-              display: "flex", alignItems: "center", gap: 7, width: "100%",
-              padding: "8px 10px", background: "none", border: "none",
-              borderBottom: "1px solid var(--border)", color: "var(--text-muted)",
-              cursor: "pointer", textAlign: "left", fontSize: 11,
-            }}
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M1 3A1 1 0 0 1 2 2H4L5 3.5H8.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 1 8V3Z" /></svg>
             <span>{t("sidebar.useDefaultDirectory")}</span>
           </button>
           <button
+            type="button"
+            role="menuitem"
             onClick={(event) => { event.stopPropagation(); handleCustomPathClick(); }}
-            style={{
-              display: "flex", alignItems: "center", gap: 7, width: "100%",
-              padding: "8px 10px", background: "none", border: "none",
-              color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11,
-            }}
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0 }}><line x1="5" y1="1" x2="5" y2="9" /><line x1="1" y1="5" x2="9" y2="5" /></svg>
             <span>{t("sidebar.customPath")}</span>
           </button>
-        </AnimatedDropdown>
+        </div>
+        )}
       </div>
 
       {sessionSearchOpen && projectsOpen && (
@@ -1838,7 +1758,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         const count = sessionsForProject(allSessions, project.key).length;
         return (
           <div
-            className="project-context-menu"
+            className="project-context-menu menu-surface"
             style={{
               left: Math.min(deleteConfirm.x + 2, window.innerWidth - 232),
               top: Math.min(deleteConfirm.y + 2, window.innerHeight - 148),
