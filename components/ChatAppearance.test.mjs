@@ -61,16 +61,17 @@ test("markdown hierarchy uses spacing and neutral emphasis without changing link
   assert.equal(declaration(".markdown-body a", "text-decoration"), "underline");
 });
 
-test("mobile composer keeps full-sized touch targets without enlarging the icons", () => {
+test("mobile composer keeps 32px touch targets without enlarging the icons", () => {
   const css = postcss.parse(globals);
-  const mobile = css.nodes.find((node) => node.type === "atrule" && node.name === "media" && node.params === "(max-width: 640px)" && node.toString().includes(".chat-input-action"));
+  const mobile = css.nodes.find((node) => node.type === "atrule" && node.name === "media" && node.params === "(max-width: 640px)" && node.toString().includes(".composer-send"));
   assert.ok(mobile);
-  const action = mobile.nodes.find((node) => node.type === "rule" && node.selector === ".chat-input-action");
-  const values = Object.fromEntries(action.nodes.filter((node) => node.type === "decl").map((node) => [node.prop, node.value]));
-  assert.equal(values.width, "32px");
-  assert.equal(values["min-width"], "32px");
-  assert.equal(values.height, "32px");
-  assert.doesNotMatch(mobile.toString(), /\.chat-input-action svg/);
+  const decls = (selector) => Object.fromEntries(mobile.nodes.find((node) => node.type === "rule" && node.selector === selector).nodes.filter((node) => node.type === "decl").map((node) => [node.prop, node.value]));
+  assert.equal(decls(".composer-btn,\n  .composer-send").height, "32px");
+  assert.equal(decls(".composer-send").width, "24px");
+  assert.equal(decls(".chat-input-actions .composer-btn.is-icon").width, "24px");
+  // Drawn at 24px, touched at 32px.
+  assert.equal(decls(".chat-input-actions .composer-btn::before,\n  .composer-send::before").inset, "-4px");
+  assert.doesNotMatch(mobile.toString(), /\.composer-(btn|send) svg/);
 });
 
 test("chat font size preserves the default and bounds stored or supplied values", () => {

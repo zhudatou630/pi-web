@@ -54,6 +54,8 @@ interface Props {
   onModelsChanged: () => void;
   quoteSelectionEnabled: boolean;
   onQuoteSelectionChange: (enabled: boolean) => void;
+  soundEnabled: boolean;
+  onSoundToggle: () => void;
 }
 
 function ThemeIcon({ preference }: { preference: ThemePreference }) {
@@ -66,7 +68,7 @@ function ThemeIcon({ preference }: { preference: ThemePreference }) {
   return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="settings-theme-icon"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>;
 }
 
-function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange">) {
+function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange" | "soundEnabled" | "onSoundToggle">) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
@@ -309,6 +311,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.notifications")}>
+        {switchRow(t("settings.completionSound"), t("settings.completionSoundDescription"), soundEnabled, onSoundToggle)}
         {notificationPermission && (
           <SettingsRow label={t("settings.browserNotifications")} description={t("settings.browserNotificationsDescription")}>
             {notificationPermission === "granted" ? (
@@ -351,7 +354,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   );
 }
 
-export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, onModelsChanged, quoteSelectionEnabled, onQuoteSelectionChange }: Props) {
+export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, onModelsChanged, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
   // Narrow screens show one page at a time: the section list, then the section.
@@ -465,7 +468,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
           </div>
 
           <main ref={mainRef} className="settings-dialog-main">
-            {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} />)}
+            {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} soundEnabled={soundEnabled} onSoundToggle={onSoundToggle} />)}
             {sectionHost("models", <ModelsConfig embedded onClose={requestClose} cwd={cwd} onModelsChanged={onModelsChanged} onDirtyChange={handleModelsDirty} />)}
             {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
             {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}

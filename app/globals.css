@@ -2546,19 +2546,319 @@ span.token.table {
   }
 }
 
-.chat-input-toolbar-controls {
+/* Composer: the field and its status line share one box. The status line keeps the tool's
+   icon + label vocabulary: what the next run uses on the left, readouts, the rare-controls menu
+   and the action slot on the right. Only the action slot is filled. */
+.chat-input-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Dense like a terminal status line: 24px rows, tight padding. */
+.chat-input:not(.is-compact) .chat-input-composer {
+  padding: 5px 5px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.chat-input:not(.is-compact) .chat-input-composer.is-bash-mode {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--bg-panel) 75%, var(--bg));
+}
+
+.chat-input:not(.is-compact) .chat-input-composer.is-bash-excluded {
+  border-color: color-mix(in srgb, var(--text-dim) 45%, var(--border));
+}
+
+/* The text and its verb share a row; the verb stays level with the last line as the text grows. */
+.chat-input-field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+
+
+.chat-input-dock {
   display: flex;
   align-items: center;
+  gap: 2px;
+  min-width: 0;
+  /* Pull the first icon's ink (not its hit box) onto the text's left edge. */
+  margin-left: -7px;
 }
 
-.chat-input-toolbar-controls button {
+.chat-input-dock-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.chat-input-popover-anchor {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.composer-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-shrink: 0;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
 
-.chat-input-toolbar-controls svg {
+.composer-btn.is-icon {
+  width: 24px;
+  padding: 0;
+}
+
+.composer-btn svg {
   display: block;
   flex-shrink: 0;
+}
+
+.composer-btn[aria-expanded="true"],
+.composer-btn[aria-pressed="true"] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+@media (hover: hover) {
+  .composer-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+}
+
+.composer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.composer-btn[data-active] {
+  color: var(--accent);
+}
+
+.model-selector-trigger {
+  flex-shrink: 1;
+  max-width: 240px;
+}
+
+.chat-input-context {
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A second reading, set off by a rule and named by its key. */
+.chat-input-context-cache {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  /* The warning color belongs to context pressure, not to the cache reading. */
+  color: var(--text-muted);
+}
+
+.chat-input-context.is-warning {
+  color: var(--warning);
+}
+
+.chat-input-context.is-high {
+  color: var(--danger);
+}
+
+
+
+.chat-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.composer-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--primary);
+  border-radius: 5px;
+  background: var(--primary);
+  color: var(--primary-contrast);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+@media (hover: hover) {
+  .composer-send:hover:not(:disabled) {
+    border-color: var(--primary-hover);
+    background: var(--primary-hover);
+  }
+}
+
+.composer-send:disabled {
+  border-color: transparent;
+  background: none;
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
+.composer-send svg {
+  display: block;
+}
+
+.composer-btn:focus-visible,
+.composer-send:focus-visible,
+.menu-surface button:focus-visible,
+.chat-input-image-remove:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* One menu surface for the composer popovers and the model picker. */
+@keyframes menu-surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+.menu-surface {
+  animation: menu-surface-in 0.12s ease-out;
+  max-width: calc(100vw - 24px);
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.menu-surface button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menu-surface button[data-active] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+@media (hover: hover) {
+  .menu-surface button:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+}
+
+.menu-surface button[aria-checked="true"],
+.menu-surface button[aria-selected="true"] {
+  color: var(--text);
+}
+
+.menu-surface button:disabled {
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
+/* A long list scrolls without showing a bar; padding stays inside the scroller so nothing
+   overflows sideways. */
+.menu-surface.is-scrolling {
+  padding: 0;
+}
+
+.menu-surface-scroll {
+  min-height: 0;
+  padding: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.menu-surface-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Provider groups: a rule between groups and a heading-weight label set flush left, so the
+   indented model names read as its children. */
+.menu-surface-group + .menu-surface-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.menu-surface-label {
+  padding: 6px 8px 4px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat-input-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 100;
+}
+
+.chat-input-menu-check {
+  color: var(--accent);
+}
+
+.chat-input-menu-note {
+  margin-left: auto;
+  padding-left: 16px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chat-input-menu-chevron {
+  margin-left: auto;
+  color: var(--text-dim);
+}
+
+.chat-input-menu-note + .chat-input-menu-chevron {
+  margin-left: 0;
+}
+
+.menu-surface button.chat-input-menu-back {
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+  color: var(--text-dim);
 }
 
 /* Composer feedback shares one quiet treatment; the tone comes from semantic tokens. */
@@ -2610,53 +2910,74 @@ span.token.table {
   font-size: 11px;
 }
 
-.chat-input-image-remove {
-  z-index: 1;
+.chat-input-image-preview {
+  position: relative;
+  flex-shrink: 0;
 }
 
 .chat-input-image-preview img {
-  border-radius: 5px;
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
-@media (max-width: 640px) {
+/* Remove sits outside the corner as a small neutral dot; it appears on hover so it never
+   stains the image. Touch screens always show it with a full-size hit area. */
+.chat-input-image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.chat-input-image-preview:hover .chat-input-image-remove,
+.chat-input-image-remove:focus-visible {
+  opacity: 1;
+}
+
+.chat-input-image-remove:hover {
+  color: var(--text);
+}
+
+@media (hover: none) {
   .chat-input-image-remove {
-    width: 44px !important;
-    height: 44px !important;
-    top: -10px !important;
-    right: -10px !important;
-    padding: 0 !important;
-    background: transparent !important;
-    border-radius: 50%;
-    backdrop-filter: none !important;
+    top: -14px;
+    right: -14px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: none;
+    opacity: 1;
   }
 
   .chat-input-image-remove::before {
     content: "";
     position: absolute;
-    inset: 13px;
+    inset: 8px;
+    border: 1px solid var(--border);
     border-radius: 50%;
-    background: color-mix(in srgb, var(--text) 70%, transparent);
-  }
-
-  .chat-input-image-remove:hover::before,
-  .chat-input-image-remove:focus-visible::before {
-    background: color-mix(in srgb, var(--text) 88%, transparent);
+    background: var(--bg);
   }
 
   .chat-input-image-remove svg {
     position: relative;
-    z-index: 1;
   }
-}
-
-.chat-input:not(.is-compact) .chat-input-composer:focus-within {
-  border-color: color-mix(in srgb, var(--text-dim) 60%, var(--border)) !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
-}
-
-.chat-input:not(.is-compact) .chat-input-composer.is-bash-mode:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border)) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
 /* Mobile sidebar: slide in/out as overlay */
@@ -2665,31 +2986,98 @@ span.token.table {
     --font-chat: var(--font-ui);
   }
 
+  /* The card is a closed box on phones too: keep the same 10px inset below it as beside it,
+     so its bottom edge never sits against the screen edge. */
   .chat-input:not(.is-compact) {
-    padding: 0 10px 0 !important;
-  }
-
-  .chat-input-toolbar {
-    margin-top: 0 !important;
+    padding: 0 10px 10px !important;
   }
 
   .chat-input:not(.is-compact) .chat-input-composer {
-    padding: 2px 2px 2px 10px !important;
-    border-color: var(--border) !important;
-    border-radius: 6px !important;
-    box-shadow: none !important;
+    padding: 6px 5px 0 10px;
+    gap: 0;
   }
 
-  .chat-input-action {
-    width: 32px;
-    min-width: 32px;
-    height: 32px !important;
-    padding: 0 !important;
-    justify-content: center;
+  /* Touch rows stay 32px tall, but status-line controls hug their content like the old
+     toolbar: 4px side padding, 1px gaps. The first icon's ink still lands on the text edge. */
+  .chat-input-dock {
+    gap: 1px;
+    margin-left: -6px;
   }
 
-  .chat-input-action-label {
+  /* Wide enough that the 32px touch rings of neighbouring run controls do not overlap. */
+  .chat-input-actions {
+    gap: 8px;
+  }
+
+  .chat-input-context-cache {
     display: none;
+  }
+
+  .composer-btn,
+  .composer-send {
+    height: 32px;
+  }
+
+  .composer-btn,
+  .composer-btn.is-icon {
+    width: auto;
+    padding: 0 4px;
+  }
+
+  /* The run controls beside the text are drawn at 24px, as on desktop, to sit with one line
+     of 14px text; an invisible 4px ring keeps the touch target at 32px. */
+  .chat-input-actions .composer-btn.is-icon {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  .chat-input-actions .composer-btn,
+  .composer-send {
+    position: relative;
+  }
+
+  .chat-input-actions .composer-btn::before,
+  .composer-send::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+
+  .composer-send {
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+  }
+
+  .model-selector-trigger {
+    max-width: 40vw;
+  }
+
+  /* Phones keep the model name readable: an off-default tool preset collapses to a dot on
+     the controls icon; the menu names it. */
+  .composer-tools-label {
+    display: none;
+  }
+
+  .composer-btn.is-flagged {
+    position: relative;
+  }
+
+  .composer-btn.is-flagged::after {
+    content: "";
+    position: absolute;
+    top: 7px;
+    right: 1px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* Compact touch rows in every composer menu and the model picker. */
+  .menu-surface button {
+    height: 32px;
   }
 
   .chat-stats-center {

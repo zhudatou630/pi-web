@@ -1800,7 +1800,6 @@ export function AppShell() {
         initialPrompt={pendingQuotePrompt?.sessionId === tabSession?.id ? pendingQuotePrompt?.text : undefined}
         onInitialPromptConsumed={handlePendingQuotePromptConsumed}
         soundEnabled={soundEnabled}
-        onSoundToggle={onSoundToggle}
         playDoneSound={playDoneSound}
         unlockAudio={unlockAudio}
       />
@@ -3262,6 +3261,8 @@ export function AppShell() {
         initialSection={settingsSection}
         quoteSelectionEnabled={quoteSelectionEnabled}
         onQuoteSelectionChange={handleQuoteSelectionChange}
+        soundEnabled={soundEnabled}
+        onSoundToggle={onSoundToggle}
         onClose={() => {
           setSettingsSection(null);
           setModelsRefreshKey((key) => key + 1);

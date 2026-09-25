@@ -31,9 +31,9 @@ test("provides outline trigger in mobile toolbar actions", () => {
   assert.match(appShellSource, /window\.dispatchEvent\(new CustomEvent\("pi-toggle-outline"\)\)/);
 });
 
-test("enables context usage stats in bottom input toolbar across mobile and desktop", () => {
-  assert.match(chatInputSource, /renderContextUsageWidget\(true\)/);
-  assert.match(chatInputSource, /renderContextUsageWidget\(false\)/);
+test("enables context usage stats in the composer dock on mobile and desktop", () => {
+  assert.match(chatInputSource, /\{renderContextUsageWidget\(\)\}/);
+  assert.match(chatInputSource, /if \(!contextUsage \|\| contextPercent === null\) return null;/);
 });
 
 test("implements bottom sheet with accessible dialog, backdrop and entry selection", () => {

@@ -144,10 +144,10 @@ test("keeps the main composer compact in idle and streaming states", () => {
         onSend() {}, onAbort() {}, onSteer() {}, onFollowUp() {}, isStreaming,
       }),
     ));
-    assert.match(html, /padding:4px 6px 4px 10px/);
     assert.match(html, /<textarea[^>]*rows="1"[^>]*min-height:24px;max-height:200px/);
-    const buttons = html.match(/<button[^>]*height:28px;padding:0 10px[^>]*>/g) ?? [];
-    assert.equal(buttons.length, 1);
+    assert.match(html, /class="chat-input-composer"[\s\S]*class="chat-input-dock"/);
+    assert.equal((html.match(/class="composer-send"/g) ?? []).length, 1);
+    assert.match(html, new RegExp(`class="composer-send" aria-label="${isStreaming ? "Stop" : "Send"}"`));
   }
 
   const draftKey = "test:composer-streaming-intervene";
@@ -160,41 +160,46 @@ test("keeps the main composer compact in idle and streaming states", () => {
         onSend() {}, onAbort() {}, onSteer() {}, onFollowUp() {}, isStreaming: true, draftKey,
       }),
     ));
-    const buttons = html.match(/<button[^>]*height:28px;padding:0 10px[^>]*>/g) ?? [];
-    assert.equal(buttons.length, 2);
+    // A live run with a draft: quiet Stop and Follow-up, and the filled slot steers like Enter.
+    assert.match(html, /class="chat-input-field-row"><textarea[\s\S]*?<\/textarea><div class="chat-input-actions">/);
+    assert.match(html, /class="composer-btn is-icon" aria-label="Stop"/);
+    assert.match(html, /class="composer-btn is-icon" aria-label="Follow-up"/);
+    assert.match(html, /class="composer-send" aria-label="Steer"/);
+    assert.doesNotMatch(html, /composer-btn-label/);
+    assert.doesNotMatch(html, /#ef4444/);
   } finally {
     clearDraft(draftKey);
   }
 });
 
-test("shows context as a compact ring with cache beside it", () => {
-  const html = renderToStaticMarkup(React.createElement(
+test("shows context as an always-visible ring readout that only colors past 70%", () => {
+  const render = (percent, tokens) => renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
     React.createElement(ChatInput, {
       onSend() {},
       onAbort() {},
       isStreaming: false,
-      contextUsage: { percent: 17, contextWindow: 872000, tokens: 150000 },
+      contextUsage: { percent, contextWindow: 872000, tokens },
       cacheHitRate: 98,
       onOpenSessionStats() {},
     }),
   ));
-  const meter = html.match(/<button[^>]*data-top-panel-trigger="session"[\s\S]*?<\/button>/)?.[0];
-  assert.ok(meter);
-  assert.match(meter, /viewBox="0 0 16 16"/);
-  assert.match(meter, /stroke-dasharray="17 100"/);
-  assert.match(meter, /stroke="currentColor"/);
-  assert.match(meter, /150k\/872k/);
-  assert.match(meter, />98%<\/span>/);
-  assert.doesNotMatch(meter, /98% cache/);
-  assert.doesNotMatch(meter, /--text-dim/);
-  assert.match(html, /data-top-panel-trigger="session"/);
-  assert.match(html, /aria-controls="workspace-top-panel"/);
-  assert.doesNotMatch(html, /width:42px;height:4px/);
+  const low = render(17, 150000).match(/<button[^>]*data-top-panel-trigger="session"[\s\S]*?<\/button>/)?.[0];
+  assert.ok(low);
+  assert.match(low, /class="composer-btn chat-input-context"/);
+  assert.match(low, /viewBox="0 0 16 16"/);
+  assert.match(low, /stroke-dasharray="17 100"/);
+  assert.match(low, /<\/svg><span>150k\/872k<\/span><span class="chat-input-context-cache">cache 98%<\/span><\/button>/);
+  assert.match(low, /title="Context usage: 150k \/ 872k \(17\.0%\)[^"]*Avg cache hit rate: 98\.0%"/);
+  assert.match(low, /aria-controls="workspace-top-panel"/);
+  assert.doesNotMatch(low, /Compact context/);
+
+  assert.match(render(72, 628000), /class="composer-btn chat-input-context is-warning"/);
+  assert.match(render(90, 785000), /class="composer-btn chat-input-context is-high"/);
 });
 
-test("orders toolbar controls as effort, context, tools, compact", () => {
+test("groups model and effort on the dock and folds rare controls", () => {
   const html = renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
@@ -205,25 +210,28 @@ test("orders toolbar controls as effort, context, tools, compact", () => {
       onThinkingLevelChange() {},
       thinkingLevel: "high",
       onToolPresetChange() {},
-      toolPreset: "default",
-      contextUsage: { percent: 17, contextWindow: 500000, tokens: 43000 },
-      cacheHitRate: 88,
+      onModelChange() {},
+      model: { provider: "openai", modelId: "gpt-test" },
+      modelList: [{ provider: "openai", id: "gpt-test", name: "GPT Test" }],
+      contextUsage: { percent: 72, contextWindow: 500000, tokens: 360000 },
       onCompact() {},
     }),
   ));
+  const attach = html.indexOf('aria-label="Attach image"');
+  const model = html.indexOf(">GPT Test<");
   const effort = html.indexOf("Change reasoning level");
-  const context = html.indexOf("43k/500k");
-  const tools = html.indexOf("Change tool preset");
-  const compact = html.indexOf("Compact context");
-  assert.ok(effort >= 0, "effort control");
-  assert.ok(context > effort, "context after effort");
-  assert.ok(tools > context, "tools after context");
-  assert.ok(compact > tools, "compact after tools");
+  const context = html.indexOf("360k / 500k");
+  const more = html.indexOf("More controls");
+  const send = html.indexOf('aria-label="Send"');
+  assert.ok(send >= 0 && attach > send && model > attach && effort > model && context > effort && more > context);
+  assert.doesNotMatch(html, />default<|>chat-only<|>Compact context/);
+  assert.match(html, /class="chat-input-composer"[\s\S]*class="chat-input-dock"/);
 });
 
 test("keeps effort visible but locked while streaming", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   assert.match(source, /\{onThinkingLevelChange && \(/);
+  assert.doesNotMatch(source, /THINKING_LEVEL_DESC_KEYS/);
   assert.doesNotMatch(source, /ThinkingIcon active=\{thinkingLevel/);
   const html = renderToStaticMarkup(React.createElement(
     I18nProvider,
@@ -261,10 +269,10 @@ test("keeps empty Send quiet and highlights text or image submissions", () => {
       assert.ok(send);
       const empty = !draft.value && draft.images.length === 0;
       assert.equal(send.includes('disabled=""'), empty);
-      assert.ok(send.includes(empty ? "background:none" : "background:var(--primary)"));
-      assert.doesNotMatch(send, /box-shadow|background:var\(--bg-panel\)/);
-      assert.match(send, /<svg width="13" height="13" viewBox="0 0 24 24"[^>]*stroke-width="2"/);
-      assert.match(html, /class="chat-input-toolbar"[^>]*margin-top:4px/);
+      assert.match(send, /class="composer-send"/);
+      assert.match(send, /<svg width="14" height="14" viewBox="0 0 24 24"[^>]*stroke-width="1.9"/);
+      assert.doesNotMatch(send, /composer-btn-label/);
+      assert.match(html, /class="chat-input-composer"[\s\S]*class="chat-input-dock"/);
       const attach = html.match(/<button[^>]*aria-label="Attach image"[\s\S]*?<\/button>/)?.[0];
       assert.match(attach ?? "", /<svg width="13" height="13"[^>]*stroke-width="2"/);
     }
@@ -298,44 +306,17 @@ test("keeps queued subagent sessions inspectable without accepting input", () =>
   assert.match(html, /<button[^>]*aria-label="Send"[^>]*disabled=""/);
 });
 
-test("shows the live mobile contract on the overflow chip instead of a generic Options label", () => {
+test("keeps rare session controls in one always-available menu", () => {
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
-  const labelStart = source.indexOf("const mobileContractLabel = [");
-  const label = source.slice(labelStart, source.indexOf("].filter(Boolean).join", labelStart));
-  assert.match(label, /thinkingDisplayLabel/);
-  assert.doesNotMatch(label, /toolPresetLabel/);
-  assert.match(label, /contextPercent >= 70/);
-  const start = source.indexOf("title={controlsMenuOpen ? t(\"chat.collapseControls\") : t(\"chat.moreControls\")}");
-  assert.ok(start >= 0);
-  const options = source.slice(start, source.indexOf("</button>", start));
-  assert.match(options, /aria-label=\{t\("chat.moreControls"\)\}/);
-  assert.match(options, /<ThinkingIcon size=\{13\}/);
-  assert.match(options, /\{mobileContractLabel\}/);
-  assert.doesNotMatch(options, /chat\.inputOptions/);
-  assert.doesNotMatch(options, /aria-hidden/);
-  assert.doesNotMatch(options, /visibility:/);
-});
-
-test("opens mobile session controls flush with the composer height", () => {
-  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
-  assert.match(source, /display: "flex", alignItems: "center", gap: 1 \}\}>/);
-  assert.match(source, /className="chat-input-toolbar"[\s\S]*?marginTop: isMobile \? 0 : 4/);
-  assert.match(source, /ref=\{toolbarControlsRef\}/);
-  assert.match(source, /panel\.style\.height = "32px"/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?gap: 1,/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?right: 0,/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?bottom: "100%"/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?width: "max-content"/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?justifyContent: "flex-end"/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?flexWrap: "wrap"/);
-  assert.match(source, /className="chat-input-toolbar-controls"[\s\S]*?overflow: "visible"/);
-  assert.doesNotMatch(source, /className="chat-input-toolbar-controls"[\s\S]*?justifyContent: "space-between"/);
-  assert.doesNotMatch(source, /className="chat-input-toolbar-controls"[\s\S]*?overflowY: "auto"/);
-  assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?thinkingDropdownOpen/);
-  assert.match(source, /if \(isStreaming \|\| isMobile\) return;[\s\S]*?toolDropdownOpen/);
-  assert.match(source, /if \(isMobile \|\| \(isStreaming && !isCompacting\)\) return;/);
+  assert.match(source, /aria-label=\{t\("chat.moreControls"\)\}/);
+  // tools and compact drill down in place; compact needs a confirming second click.
+  assert.match(source, /setControlsView\("tools"\)/);
+  assert.match(source, /setControlsView\("compact"\)/);
+  assert.match(source, /t\("chat.compactConfirm"\)/);
+  assert.doesNotMatch(source, /onSoundToggle/);
+  assert.doesNotMatch(source, /className="chat-input-toolbar-controls"/);
+  assert.doesNotMatch(source, /mobileContractLabel/);
   assert.doesNotMatch(source, /title=\{t\("chat.collapseControls"\)\}/);
-  assert.doesNotMatch(source, /top: "50%"[\s\S]*?translateY\(-50%\)/);
 });
 
 test("keeps the message input free of hints but accessible", () => {
@@ -362,7 +343,7 @@ test("shows the follow-up shortcut in the button tooltip", () => {
     setDraft(draftKey, { value: "queue next", images: [] });
     const html = renderToStaticMarkup(
       React.createElement(I18nProvider, null, React.createElement(ChatInput, {
-        onSend() {}, onAbort() {}, onFollowUp() {}, isStreaming: true, draftKey,
+        onSend() {}, onAbort() {}, onSteer() {}, onFollowUp() {}, isStreaming: true, draftKey,
       })),
     );
 
@@ -494,7 +475,7 @@ test("renders the compact composer with the standard Send button and no session 
 
   assert.match(html, /<textarea/);
   assert.match(html, /aria-label="Send"/);
-  assert.match(html, /class="chat-input-action-label">Send<\/span>/);
+  assert.match(html, /class="composer-send" aria-label="Send"/);
   assert.equal((html.match(/<button\b/g) ?? []).length, 1);
   assert.doesNotMatch(html, /type="file"|Attach image|Change tool preset/);
 });
@@ -523,13 +504,13 @@ test("shows and locks the optimistic model while a switch is pending", () => {
   assert.match(html, /animation:spin 0\.8s linear infinite/);
 });
 
-test("keeps the toolbar model name left aligned without a chip icon", () => {
+test("renders the toolbar model as a plain dock button without a chip icon", () => {
   const html = renderToStaticMarkup(React.createElement(ModelSelector, {
     options: [{ provider: "openai", modelId: "gpt-test", name: "GPT Test" }],
     value: { provider: "openai", modelId: "gpt-test" }, onChange() {},
   }));
-  assert.match(html, /justify-content:flex-start;text-align:left;gap:6px/);
-  assert.match(html, />GPT Test</);
+  assert.match(html, /class="composer-btn model-selector-trigger"/);
+  assert.match(html, />GPT Test<\/span><\/button>/);
   assert.doesNotMatch(html, /<rect x="4" y="4" width="16" height="16"/);
 });
 

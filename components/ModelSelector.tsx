@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useIsMobile } from "@/hooks/useIsMobile";
 
 export interface ModelSelectorOption {
   provider: string;
@@ -46,7 +45,6 @@ export function ModelSelector({
   variant = "toolbar",
   placement = "up",
 }: ModelSelectorProps) {
-  const isMobile = useIsMobile();
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -144,27 +142,7 @@ export function ModelSelector({
         fontSize: 12,
         textAlign: "left",
       }
-    : {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "flex-start",
-        textAlign: "left",
-        gap: 6,
-        width: undefined,
-        maxWidth: 220,
-        height: isMobile ? 32 : 28,
-        padding: "0 4px",
-        overflow: "visible",
-        border: "none",
-        borderRadius: 4,
-        background: open ? "var(--bg-hover)" : "none",
-        color: "var(--text-muted)",
-        cursor: locked ? "not-allowed" : "pointer",
-        fontSize: 12,
-        lineHeight: 1.25,
-        opacity: locked ? 0.5 : 1,
-        transition: "background 0.12s, color 0.12s",
-      };
+    : {};
 
   const choose = (option: ModelSelectorOption) => {
     const active = option.modelId === value?.modelId && option.provider === value?.provider;
@@ -235,26 +213,14 @@ export function ModelSelector({
         aria-busy={busy || undefined}
         disabled={locked}
         title={busy ? "Switching model" : locked ? currentName : sortedOptions.length > 0 || onClear ? "Change model" : "No available models"}
+        className={variant === "toolbar" ? "composer-btn model-selector-trigger" : undefined}
         style={buttonStyle}
         onClick={() => {
           updateAnchor();
           setOpen((current) => !current);
         }}
-        onMouseEnter={(event) => {
-          if (locked || (isMobile && variant === "toolbar")) return;
-          event.currentTarget.style.background = "var(--bg-hover)";
-          event.currentTarget.style.color = "var(--text)";
-        }}
-        onMouseLeave={(event) => {
-          if (locked) {
-            event.currentTarget.style.background = variant === "field" ? "var(--bg-panel)" : "none";
-            event.currentTarget.style.color = variant === "field" ? "var(--text-dim)" : "var(--text-muted)";
-            return;
-          }
-          if (isMobile && variant === "toolbar") return;
-          event.currentTarget.style.background = open ? "var(--bg-hover)" : variant === "field" ? "var(--bg)" : "none";
-          event.currentTarget.style.color = variant === "field" ? "var(--text)" : "var(--text-muted)";
-        }}
+        onMouseEnter={variant === "field" && !locked ? (event) => { event.currentTarget.style.background = "var(--bg-hover)"; } : undefined}
+        onMouseLeave={variant === "field" && !locked ? (event) => { event.currentTarget.style.background = "var(--bg)"; } : undefined}
       >
         {busy ? (
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", display: "block", flexShrink: 0, transform: "translateY(-1px)" }} aria-hidden="true">
@@ -288,9 +254,9 @@ export function ModelSelector({
         const verticalPosition = openAbove
           ? { bottom: viewportHeight - anchorRect.top + 6 }
           : { top: anchorRect.bottom + 6 };
-        const horizontalPosition: CSSProperties = isMobile
-          ? { left: 8, right: 8, maxWidth: "calc(100vw - 16px)" }
-          : { left: anchorRect.left, width: "max-content", minWidth: anchorRect.width, maxWidth: Math.max(anchorRect.width, viewportWidth - anchorRect.left - 8) };
+        // Size to the longest name on every screen; a full-width sheet made short names float.
+        const left = Math.max(8, anchorRect.left);
+        const horizontalPosition: CSSProperties = { left, width: "max-content", minWidth: anchorRect.width, maxWidth: viewportWidth - left - 8 };
 
         return (
           <div
@@ -299,6 +265,7 @@ export function ModelSelector({
             role="listbox"
             aria-label={ariaLabel}
             aria-activedescendant={activeOptionId}
+            className="menu-surface is-scrolling"
             style={{
               position: "fixed",
               ...verticalPosition,
@@ -308,13 +275,9 @@ export function ModelSelector({
               flexDirection: "column",
               maxHeight,
               overflow: "hidden",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              background: "var(--bg)",
-              boxShadow: openAbove ? "0 -4px 16px rgba(0,0,0,0.10)" : "0 4px 16px rgba(0,0,0,0.10)",
             }}
           >
-            <div style={{ minHeight: 0, overflowY: "auto" }}>
+            <div className="menu-surface-scroll">
               {onClear && (
                 <ModelOptionButton
                   id={`${listboxId}-option-0`}
@@ -329,16 +292,12 @@ export function ModelSelector({
                 />
               )}
               {modelsByProvider.length === 0 ? (
-                <div style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
+                <div style={{ padding: "7px 8px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
                   No available models
                 </div>
-              ) : modelsByProvider.map((group, index) => (
-                <div key={group.provider}>
-                  {modelsByProvider.length > 1 && (
-                    <div style={{ padding: "6px 12px 4px", borderTop: index > 0 || onClear ? "1px solid var(--border)" : "none", color: "var(--text-dim)", fontSize: 10, letterSpacing: 0, textTransform: "uppercase" }}>
-                      {group.provider}
-                    </div>
-                  )}
+              ) : modelsByProvider.map((group) => (
+                <div key={group.provider} className="menu-surface-group">
+                  {modelsByProvider.length > 1 && <div className="menu-surface-label">{group.provider}</div>}
                   {group.options.map((option) => (
                     <ModelOptionButton
                       key={`${option.provider}:${option.modelId}`}
@@ -369,13 +328,9 @@ function ModelOptionButton({ id, active, highlighted, label, onActive, onClick }
       aria-selected={active}
       data-active={highlighted || undefined}
       onClick={onClick}
-      style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "7px 12px", border: "none", background: active ? "var(--bg-selected)" : highlighted ? "var(--bg-hover)" : "none", color: active ? "var(--text)" : "var(--text-muted)", cursor: "pointer", fontSize: 12, textAlign: "left", whiteSpace: "nowrap" }}
-      onMouseEnter={(event) => { onActive?.(); if (!active) event.currentTarget.style.background = "var(--bg-hover)"; }}
-      onMouseLeave={(event) => { if (!active) event.currentTarget.style.background = "none"; }}
+      onMouseEnter={onActive}
     >
-      {active
-        ? <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
-        : <span style={{ width: 10, flexShrink: 0 }} />}
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, visibility: active ? "visible" : "hidden" }} aria-hidden="true"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
       <span title={label} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
     </button>
   );
