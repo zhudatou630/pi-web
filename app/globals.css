@@ -2638,7 +2638,66 @@ span.token.table {
   min-width: 0;
 }
 
+.chat-input-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-bottom: 4px;
+}
 
+.chat-input-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.chat-input-queue-kind {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.chat-input-queue-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.chat-input-queue-count {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-dim);
+}
+
+.chat-input-queue-recall {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .chat-input-queue-recall:hover {
+    color: var(--text);
+  }
+}
 
 .chat-input-dock {
   display: flex;
@@ -2812,6 +2871,7 @@ span.token.table {
 
 .composer-btn:focus-visible,
 .composer-send:focus-visible,
+.chat-input-queue-recall:focus-visible,
 .menu-surface button:focus-visible,
 .chat-input-image-remove:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
@@ -3088,6 +3148,20 @@ span.token.table {
   .chat-input:not(.is-compact) .chat-input-composer {
     padding: 6px 5px 0 10px;
     gap: 0;
+  }
+
+  .chat-input-queue {
+    margin-bottom: 6px;
+  }
+
+  .chat-input-queue-recall {
+    position: relative;
+  }
+
+  .chat-input-queue-recall::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
   }
 
   /* Touch rows stay 32px tall, but status-line controls hug their content like the old

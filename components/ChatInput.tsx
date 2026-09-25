@@ -448,34 +448,12 @@ function revokeImagePreview(image: AttachedImage): void {
   }
 }
 
-function QueuedMessageRow({ kind, text }: { kind: "steer" | "follow-up"; text: string }) {
+function QueuedMessageRow({ kind, text, action }: { kind: "steer" | "follow-up"; text: string; action?: React.ReactNode }) {
   return (
-    <div
-      title={text}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "3px 10px",
-        fontSize: 12,
-        color: "var(--text-muted)",
-        minWidth: 0,
-      }}
-    >
-      <span
-        style={{
-          flexShrink: 0,
-          fontSize: 10,
-          fontFamily: "var(--font-mono)",
-          padding: "1px 7px",
-          borderRadius: 4,
-          border: `1px solid ${kind === "steer" ? "color-mix(in srgb, var(--accent) 45%, transparent)" : "var(--border)"}`,
-          color: kind === "steer" ? "var(--accent)" : "var(--text-dim)",
-        }}
-      >
-        {kind}
-      </span>
-      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{text}</span>
+    <div className="chat-input-queue-row" title={text}>
+      <span className="chat-input-queue-kind">{kind}</span>
+      <span className="chat-input-queue-text">{text}</span>
+      {action}
     </div>
   );
 }
@@ -1697,6 +1675,23 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // draft is ready, a quiet Stop and the Alt+Enter follow-up queue join it. Icons only; the
   // titles carry the words and shortcuts. Keep those extra buttons mounted during a run so
   // they can widen instead of remounting the whole cluster.
+  const queuedSteering = queuedMessages?.steering ?? [];
+  const queuedFollowUp = queuedMessages?.followUp ?? [];
+  const queueCount = queuedSteering.length + queuedFollowUp.length;
+  const recallQueueButton = onRecallQueue ? (
+    <button
+      type="button"
+      className="chat-input-queue-recall"
+      onClick={onRecallQueue}
+      title={t("chat.recallTitle")}
+      aria-label={t("chat.recall")}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="9 14 4 9 9 4" />
+        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+      </svg>
+    </button>
+  ) : null;
   const queueStreamingActions = isStreaming && canQueueStreamingMessage;
   const actionButtons = !isStreaming ? (
     <button
@@ -1829,74 +1824,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             />
           );
         })()}
-        {/* Queued steering / follow-up messages (delivered by pi on upcoming turns) */}
-        {((queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0)) > 0 && (
-          <div style={{
-            marginBottom: 8,
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            background: "var(--bg-panel)",
-            padding: "5px 0",
-          }}>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              padding: "2px 8px 4px 10px",
-            }}>
-              <span style={{
-                fontSize: 10,
-                fontFamily: "var(--font-mono)",
-                color: "var(--text-dim)",
-                textTransform: "uppercase",
-                letterSpacing: 0.4,
-              }}>
-                {t("chat.queued", { count: (queuedMessages?.steering.length ?? 0) + (queuedMessages?.followUp.length ?? 0) })}
-              </span>
-              {onRecallQueue && (
-                <button
-                  onClick={onRecallQueue}
-                   title={t("chat.recallTitle")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "4px 12px",
-                    fontSize: 12,
-                    color: "var(--text)",
-                    background: "transparent",
-                    border: "1px solid var(--border)",
-                    borderRadius: 4,
-                    cursor: "pointer",
-                    transition: "background 0.12s, border-color 0.12s",
-                    whiteSpace: "nowrap",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--bg-hover)";
-                    e.currentTarget.style.borderColor = "color-mix(in srgb, var(--accent) 45%, var(--border))";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.borderColor = "var(--border)";
-                  }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 14 4 9 9 4" />
-                    <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
-                  </svg>
-                   {t("chat.recall")}
-                </button>
-              )}
-            </div>
-            {queuedMessages?.steering.map((text, i) => (
-              <QueuedMessageRow key={`steer-${i}`} kind="steer" text={text} />
-            ))}
-            {queuedMessages?.followUp.map((text, i) => (
-              <QueuedMessageRow key={`followup-${i}`} kind="follow-up" text={text} />
-            ))}
-          </div>
-        )}
         {/* Retry banner */}
         {retryInfo && (
           <div className="chat-input-feedback chat-input-feedback-warning">
@@ -2308,6 +2235,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <div
             className={`chat-input-composer${bashMode ? " is-bash-mode" : ""}${bashMode && bashExcluded ? " is-bash-excluded" : ""}`}
           >
+          {queueCount > 0 && (
+            <div className="chat-input-queue" role="status" aria-label={t("chat.queued", { count: queueCount })}>
+              {queueCount > 1 && (
+                <div className="chat-input-queue-row">
+                  <span className="chat-input-queue-count">queued · {queueCount}</span>
+                  {recallQueueButton}
+                </div>
+              )}
+              {queuedSteering.map((text, i) => (
+                <QueuedMessageRow key={`steer-${i}`} kind="steer" text={text} action={queueCount === 1 ? recallQueueButton : undefined} />
+              ))}
+              {queuedFollowUp.map((text, i) => (
+                <QueuedMessageRow key={`followup-${i}`} kind="follow-up" text={text} action={queueCount === 1 ? recallQueueButton : undefined} />
+              ))}
+            </div>
+          )}
           {/* Image previews */}
           {(attachedImages.length > 0 || mentionedImages.length > 0) && (
             <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>

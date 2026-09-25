@@ -898,3 +898,31 @@ test("wraps @ file picker selection and caps the menu above the composer", () =>
   assert.match(source, /min\(48vh, 400px, \$\{atMenuMaxHeight\}px\)/);
   assert.match(source, /<fieldset\s+disabled=\{builtinCommandPending\}\s+aria-busy=\{builtinCommandPending\}/);
 });
+
+test("keeps queued prompts as a quiet row inside the composer card", () => {
+  const one = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatInput, {
+      onSend() {}, onAbort() {}, isStreaming: true,
+      queuedMessages: { steering: ["dsdfdf"], followUp: [] },
+      onRecallQueue() {},
+    }),
+  ));
+  const composer = one.match(/class="chat-input-composer"[\s\S]*class="chat-input-dock"/)?.[0] ?? "";
+  assert.match(composer, /class="chat-input-queue"/);
+  assert.match(composer, />steer<\/span>/);
+  assert.match(composer, />dsdfdf<\/span>/);
+  assert.doesNotMatch(composer, /queued ·/);
+  assert.doesNotMatch(one, />Recall to input</);
+  assert.match(one, /aria-label="Recall to input"/);
+  assert.doesNotMatch(one, /text-transform:\s*uppercase/i);
+
+  const two = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatInput, {
+      onSend() {}, onAbort() {}, isStreaming: true,
+      queuedMessages: { steering: ["a"], followUp: ["b"] },
+      onRecallQueue() {},
+    }),
+  ));
+  assert.match(two, /queued · 2/);
+  assert.match(two, />follow-up<\/span>/);
+});
