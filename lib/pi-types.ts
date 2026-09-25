@@ -55,6 +55,8 @@ export interface SessionStatsInfo {
     total: number;
   };
   cost: number;
+  /** Per-token-class cost; the SDK stats omit it, pi-web adds it. */
+  costs?: { input: number; output: number; cacheRead: number; cacheWrite: number };
   contextUsage?: ContextUsage;
   /** Estimated active time across all entries in the session file. */
   totalActiveMs?: number;

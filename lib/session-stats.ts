@@ -14,6 +14,8 @@ export interface SessionFileStats {
     total: number;
   };
   cost: number;
+  /** Cost split by token class; may sum below `cost` when a provider reports only a total. */
+  costs: { input: number; output: number; cacheRead: number; cacheWrite: number };
 }
 
 function emptyStats(): SessionFileStats {
@@ -25,6 +27,7 @@ function emptyStats(): SessionFileStats {
     totalMessages: 0,
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     cost: 0,
+    costs: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   };
 }
 
@@ -35,6 +38,10 @@ function addUsage(stats: SessionFileStats, usage?: AgentUsage): void {
   stats.tokens.cacheRead += usage.cacheRead ?? 0;
   stats.tokens.cacheWrite += usage.cacheWrite ?? 0;
   stats.cost += usage.cost?.total ?? 0;
+  stats.costs.input += usage.cost?.input ?? 0;
+  stats.costs.output += usage.cost?.output ?? 0;
+  stats.costs.cacheRead += usage.cost?.cacheRead ?? 0;
+  stats.costs.cacheWrite += usage.cost?.cacheWrite ?? 0;
 }
 
 function addMessage(stats: SessionFileStats, message: AgentMessage): void {
@@ -94,6 +101,12 @@ export function mergeSessionStats(
     totalMessages: fileStats.totalMessages + delta(current.totalMessages, loaded.totalMessages),
     tokens,
     cost: fileStats.cost + delta(current.cost, loaded.cost),
+    costs: {
+      input: fileStats.costs.input + delta(current.costs.input, loaded.costs.input),
+      output: fileStats.costs.output + delta(current.costs.output, loaded.costs.output),
+      cacheRead: fileStats.costs.cacheRead + delta(current.costs.cacheRead, loaded.costs.cacheRead),
+      cacheWrite: fileStats.costs.cacheWrite + delta(current.costs.cacheWrite, loaded.costs.cacheWrite),
+    },
   };
 }
 

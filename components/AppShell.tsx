@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, Fragment } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
@@ -91,6 +91,7 @@ import { getSessionFamily } from "@/lib/session-family";
 import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
 import { formatTokensK } from "@/lib/token-display";
+import { iconStroke } from "./iconStroke";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 
@@ -2659,44 +2660,8 @@ export function AppShell() {
                   background: "var(--bg-panel)",
                   borderBottom: "1px solid var(--border)",
                   boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-                  padding: isMobile ? "12px 14px" : "14px 20px",
+                  padding: isMobile ? "12px 14px 14px" : "14px 20px 16px",
                 }}>
-                  {/* Top-right close button */}
-                  <div style={{ position: "absolute", top: 10, right: 12, zIndex: 2 }}>
-                    <button
-                      type="button"
-                      onClick={() => closeTopPanel(true)}
-                      title={translate("i18n.close")}
-                      aria-label={translate("i18n.close")}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: 24,
-                        height: 24,
-                        background: "transparent",
-                        border: "none",
-                        borderRadius: 4,
-                        color: "var(--text-muted)",
-                        cursor: "pointer",
-                        transition: "color 0.12s, background 0.12s",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = "var(--text)";
-                        e.currentTarget.style.background = "var(--bg-hover)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = "var(--text-muted)";
-                        e.currentTarget.style.background = "transparent";
-                      }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </div>
-
                   {sessionStats ? (() => {
                     const formatDuration = (ms: number) => {
                       if (ms <= 0) return "0s";
@@ -2717,53 +2682,53 @@ export function AppShell() {
                       gitBranch: "session.copyGitBranch",
                       gitWorktree: "session.copyGitWorktree",
                     };
-                    const copyButton = (field: SessionCopyField, value: string) => {
+                    const copyButton = (field: SessionCopyField, value: string, icon: "copy" | "file" = "copy") => {
                       const copied = copiedSessionField === field;
                       return (
                         <button
                           type="button"
-                          title={copied ? translate("session.copied") : translate(copyTitleKey[field])}
+                          className="session-copy-btn"
+                          data-copied={copied || undefined}
+                          title={copied ? translate("session.copied") : `${translate(copyTitleKey[field])}\n${value}`}
+                          aria-label={translate(copyTitleKey[field])}
                           onClick={() => handleCopySessionField(field, value)}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 20,
-                            height: 20,
-                            color: copied ? "var(--accent)" : "var(--text-muted)",
-                            background: "transparent",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            cursor: "pointer",
-                            flex: "0 0 auto",
-                            transition: "color 0.12s, border-color 0.12s, background 0.12s",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.color = "var(--accent)";
-                            e.currentTarget.style.borderColor = "var(--accent)";
-                            e.currentTarget.style.background = "var(--bg-hover)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.color = copied ? "var(--accent)" : "var(--text-muted)";
-                            e.currentTarget.style.borderColor = "var(--border)";
-                            e.currentTarget.style.background = "transparent";
-                          }}
+                          style={{ color: copied ? "var(--accent)" : undefined }}
                         >
-                          {copied ? (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(13)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            {copied ? (
                               <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          ) : (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          )}
+                            ) : icon === "file" ? (
+                              <>
+                                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                                <polyline points="14 3 14 8 19 8" />
+                              </>
+                            ) : (
+                              <>
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </>
+                            )}
+                          </svg>
                         </button>
                       );
                     };
 
-                    // 1. Active Context (Core Focus)
+                    // Shared section grammar: heading (+ optional key figure), then label/value rows.
+                    const label = (text: string) => <div className="session-stats-label">{text}</div>;
+                    const num = (value: string, strong = false) => (
+                      <div className="session-stats-num" style={strong ? { color: "var(--text)" } : undefined}>{value}</div>
+                    );
+                    const section = (title: string, aside: React.ReactNode, body: React.ReactNode) => (
+                      <section className="session-stats-section">
+                        <div className="session-stats-heading">
+                          <span>{title}</span>
+                          {aside}
+                        </div>
+                        {body}
+                      </section>
+                    );
+
+                    // 1. Active Context
                     const ctx = contextUsage ?? sessionStats.contextUsage;
                     const pct = ctx?.percent ?? (ctx?.tokens !== null && ctx?.contextWindow ? (ctx.tokens / ctx.contextWindow) * 100 : null);
                     const clampedPct = pct !== null ? Math.min(100, Math.max(0, pct)) : 0;
@@ -2772,187 +2737,132 @@ export function AppShell() {
                     const barColor = isHigh ? "#ef4444" : isWarning ? "#eab308" : "var(--accent)";
                     const remaining = ctx?.tokens !== null && ctx?.contextWindow ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
 
-                    const activeContextBlock = ctx?.contextWindow ? (
-                      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span>{translate("session.activeContext")}</span>
-                          {pct !== null && (
-                            <span style={{ fontSize: 11, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--accent)" }}>
-                              {pct.toFixed(1)}%
-                            </span>
-                          )}
+                    const activeContextBlock = ctx?.contextWindow ? section(
+                      translate("session.activeContext"),
+                      pct !== null && (
+                        <span style={{ fontWeight: 400, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--text)" }}>
+                          {pct.toFixed(1)}%
+                        </span>
+                      ),
+                      <>
+                        <div style={{ height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden", margin: "2px 0 10px" }}>
+                          <div style={{ width: `${clampedPct}%`, height: "100%", background: barColor, borderRadius: 2, transition: "width 0.3s ease" }} />
                         </div>
-                        <div style={{ width: "100%", height: 5, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginBottom: 8 }}>
-                          <div style={{ width: `${clampedPct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.3s ease" }} />
-                        </div>
-                        <div style={{
-                          display: "grid",
-                          gridTemplateColumns: "max-content max-content",
-                          columnGap: 14,
-                          rowGap: 4,
-                          justifyContent: "start",
-                          fontSize: 11,
-                        }}>
+                        <div className="session-stats-table">
                           {ctx.tokens !== null && (
-                            <>
-                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextUsed")}</div>
-                              <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.tokens, locale)}</div>
-                            </>
+                            <>{label(translate("session.contextUsed"))}{num(formatTokensK(ctx.tokens, locale), true)}</>
                           )}
-                          <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextWindow")}</div>
-                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(ctx.contextWindow, locale)}</div>
                           {remaining !== null && (
-                            <>
-                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.contextRemaining")}</div>
-                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(remaining, locale)}</div>
-                            </>
+                            <>{label(translate("session.contextRemaining"))}{num(formatTokensK(remaining, locale))}</>
                           )}
+                          {label(translate("session.contextWindow"))}{num(formatTokensK(ctx.contextWindow, locale))}
                         </div>
                         {isHigh && (
-                          <div style={{ marginTop: 6, fontSize: 11, color: "#ef4444", display: "flex", alignItems: "center", gap: 4 }}>
-                            <span>⚠️</span>
-                            <span>{translate("chat.contextHighWarning")}</span>
+                          <div className="session-stats-note" style={{ color: "#ef4444" }}>
+                            {translate("chat.contextHighWarning")}
                           </div>
                         )}
-                      </div>
+                      </>,
                     ) : null;
 
                     // 2. Cumulative Traffic & Cost
-                    const cacheTotal = sessionStats.tokens.cacheRead + sessionStats.tokens.cacheWrite;
-                    const cacheHitRate = cacheTotal + sessionStats.tokens.input > 0
-                      ? `${(sessionStats.tokens.cacheRead / (cacheTotal + sessionStats.tokens.input) * 100).toFixed(1)}%`
+                    const { tokens: tk, costs } = sessionStats;
+                    const cacheTotal = tk.cacheRead + tk.cacheWrite;
+                    const cacheHitRate = cacheTotal + tk.input > 0
+                      ? `${(tk.cacheRead / (cacheTotal + tk.input) * 100).toFixed(1)}%`
                       : null;
+                    // Per-class cost only when the provider reported it; otherwise the column stays empty.
+                    const hasCostSplit = !!costs && costs.input + costs.output + costs.cacheRead + costs.cacheWrite > 0;
+                    const showCost = sessionStats.cost > 0;
+                    const money = (v: number) => (v > 0 && v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`);
+                    const trafficRows: Array<[string, number, number | undefined]> = [
+                      [translate("session.input"), tk.input, costs?.input],
+                      [translate("session.output"), tk.output, costs?.output],
+                      [translate("session.cacheRead"), tk.cacheRead, costs?.cacheRead],
+                      [translate("session.cacheWrite"), tk.cacheWrite, costs?.cacheWrite],
+                    ];
 
-                    const cumulativeBlock = (
-                      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <span>{translate("session.cumulativeTokens")}</span>
-                          {sessionStats.cost > 0 && (
-                            <span style={{ fontSize: 11, color: "var(--text)" }}>
-                              ${sessionStats.cost.toFixed(4)}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{
-                          display: "grid",
-                          gridTemplateColumns: "max-content max-content",
-                          columnGap: 14,
-                          rowGap: 4,
-                          justifyContent: "start",
-                          fontSize: 11,
-                        }}>
-                          <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.total")}</div>
-                          <div style={{ color: "var(--text)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.total, locale)}</div>
-
-                          <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.input")} / {translate("session.output")}</div>
-                          <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>
-                            {formatTokensK(sessionStats.tokens.input, locale)} / {formatTokensK(sessionStats.tokens.output, locale)}
-                          </div>
-
-                          {sessionStats.tokens.cacheRead > 0 && (
-                            <>
-                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.cacheRead")}</div>
-                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{formatTokensK(sessionStats.tokens.cacheRead, locale)}</div>
-                            </>
-                          )}
+                    const cumulativeBlock = section(
+                      translate("session.cumulativeTokens"),
+                      null,
+                      <>
+                        <div className="session-stats-table" style={showCost ? { gridTemplateColumns: "1fr max-content max-content" } : undefined}>
+                          {trafficRows.map(([rowLabel, count, cost]) => (
+                            <Fragment key={rowLabel}>
+                              {label(rowLabel)}
+                              {num(formatTokensK(count, locale))}
+                              {showCost && num(hasCostSplit && cost !== undefined ? money(cost) : "")}
+                            </Fragment>
+                          ))}
+                          <div className="session-stats-rule" />
+                          {label(translate("session.total"))}
+                          {num(formatTokensK(tk.total, locale), true)}
+                          {showCost && num(money(sessionStats.cost), true)}
                           {cacheHitRate && (
                             <>
-                              <div style={{ color: "var(--text-dim)", whiteSpace: "nowrap" }}>{translate("session.cacheHitRate")}</div>
-                              <div style={{ color: "var(--text-muted)", textAlign: "right", whiteSpace: "nowrap" }}>{cacheHitRate}</div>
+                              {label(translate("session.cacheHitRate"))}
+                              <div className="session-stats-num" style={{ gridColumn: "2 / -1" }}>{cacheHitRate}</div>
                             </>
                           )}
                         </div>
-                      </div>
+                      </>,
                     );
 
-                    // 3. Session & Activity (Refined & De-duplicated)
-                    const sessionBlock = (
-                      <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
-                          {translate("session.infoSection")}
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 11 }}>
-                          {sessionStats.sessionName && (
-                            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                              <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.name")}:</span>
-                              <span style={{ color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {sessionStats.sessionName}
-                              </span>
-                            </div>
-                          )}
-                          {selectedSession && (() => {
-                            const displayWorkspacePath = homeDir && selectedSession.cwd.startsWith(homeDir)
-                              ? `~${selectedSession.cwd.slice(homeDir.length)}`
-                              : selectedSession.cwd;
-                            return (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                                <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.directory")}:</span>
-                                <span
-                                  title={selectedSession.cwd}
-                                  style={{
-                                    color: "var(--text-muted)",
-                                    minWidth: 0,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                    direction: "rtl",
-                                    textAlign: "left",
-                                  }}
-                                >
-                                  <span style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
-                                </span>
-                                {selectedSession.branch && (
-                                  <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
-                                    · {selectedSession.branch}
-                                  </span>
-                                )}
-                                {copyButton(selectedSession.isWorktree ? "gitWorktree" : "projectDir", selectedSession.cwd)}
-                              </div>
-                            );
-                          })()}
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.messages")}:</span>
-                            <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                              {sessionStats.userMessages} {translate("session.user").toLowerCase()} · {sessionStats.assistantMessages} {translate("session.assistant").toLowerCase()} · {sessionStats.toolCalls} {translate("session.toolCalls").toLowerCase()}
-                              {totalActiveMs > 0 ? ` (${formatDuration(totalActiveMs)})` : ""}
-                            </span>
-                          </div>
-                          {sessionStats.sessionFile && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                              <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.file")}:</span>
-                              <span
-                                title={sessionStats.sessionFile}
-                                style={{
-                                  color: "var(--text-muted)",
-                                  minWidth: 0,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                  direction: "rtl",
-                                  textAlign: "left",
-                                }}
-                              >
-                                <span style={{ unicodeBidi: "plaintext" }}>{sessionStats.sessionFile}</span>
-                              </span>
-                              {copyButton("file", sessionStats.sessionFile)}
-                            </div>
-                          )}
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ color: "var(--text-dim)", whiteSpace: "nowrap", flexShrink: 0 }}>{translate("session.id")}:</span>
-                            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                              {sessionStats.sessionId ? `${sessionStats.sessionId.slice(0, 8)}...${sessionStats.sessionId.slice(-6)}` : "?"}
-                            </span>
-                            {sessionStats.sessionId && copyButton("id", sessionStats.sessionId)}
-                          </div>
-                        </div>
+                    // 3. Session
+                    const displayWorkspacePath = selectedSession
+                      ? homeDir && selectedSession.cwd.startsWith(homeDir)
+                        ? `~${selectedSession.cwd.slice(homeDir.length)}`
+                        : selectedSession.cwd
+                      : null;
+                    const text = (value: React.ReactNode, title?: string, ...buttons: React.ReactNode[]) => (
+                      <div className="session-stats-text">
+                        <span title={title} className="session-stats-ellipsis">{value}</span>
+                        {buttons}
                       </div>
+                    );
+                    const sessionBlock = section(
+                      translate("session.infoSection"),
+                      null,
+                      <div className="session-stats-table" style={{ gridTemplateColumns: "max-content minmax(0, 1fr)" }}>
+                        {sessionStats.sessionName && (
+                          <>{label(translate("session.name"))}{text(<span style={{ color: "var(--text)" }}>{sessionStats.sessionName}</span>, sessionStats.sessionName)}</>
+                        )}
+                        {selectedSession && displayWorkspacePath && (
+                          <>
+                            {label(translate("session.directory"))}
+                            <div className="session-stats-text">
+                              {/* rtl clips the start of the path so the project name stays visible */}
+                              <span title={selectedSession.cwd} className="session-stats-ellipsis" style={{ direction: "rtl", textAlign: "left" }}>
+                                <span style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
+                              </span>
+                              {copyButton(selectedSession.isWorktree ? "gitWorktree" : "projectDir", selectedSession.cwd)}
+                            </div>
+                          </>
+                        )}
+                        {selectedSession?.branch && (
+                          <>{label(translate("session.branch"))}{text(selectedSession.branch, selectedSession.branch)}</>
+                        )}
+                        {label(translate("session.id"))}
+                        {text(
+                          sessionStats.sessionId ? `${sessionStats.sessionId.slice(0, 8)}…${sessionStats.sessionId.slice(-6)}` : "?",
+                          sessionStats.sessionId,
+                          sessionStats.sessionId ? <Fragment key="i">{copyButton("id", sessionStats.sessionId)}</Fragment> : null,
+                          sessionStats.sessionFile ? <Fragment key="f">{copyButton("file", sessionStats.sessionFile, "file")}</Fragment> : null,
+                        )}
+                        <div className="session-stats-rule" />
+                        {label(translate("session.messages"))}
+                        {/* Wraps instead of truncating: on phones the three counts exceed one line. */}
+                        <div style={{ color: "var(--text-muted)" }}>
+                          {sessionStats.userMessages} {translate("session.user").toLowerCase()} · {sessionStats.assistantMessages} {translate("session.assistant").toLowerCase()} · <span style={{ whiteSpace: "nowrap" }}>{sessionStats.toolCalls} {translate("session.toolCalls").toLowerCase()}</span>
+                        </div>
+                        {totalActiveMs > 0 && (
+                          <>{label(translate("session.activeTime"))}{text(formatDuration(totalActiveMs))}</>
+                        )}
+                      </div>,
                     );
 
                     return (
-                      <div className="session-stats-grid" style={{
-                        fontFamily: "var(--font-mono)",
-                        lineHeight: 1.45,
-                      }}>
+                      <div className="session-stats-grid">
                         {activeContextBlock}
                         {cumulativeBlock}
                         {sessionBlock}

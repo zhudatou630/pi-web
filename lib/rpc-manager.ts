@@ -18,6 +18,7 @@ import {
 } from "./project-command-env";
 import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, resolveSessionPath } from "./session-reader";
 import { getSessionFirstMessagePreview } from "./session-display-title";
+import { computeSessionStats } from "./session-stats";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
@@ -931,6 +932,7 @@ export class AgentSessionWrapper {
       case "get_session_stats": {
         return {
           ...this.inner.getSessionStats(),
+          costs: computeSessionStats(this.inner.sessionManager.getEntries() as never).costs,
           sessionName: this.inner.sessionManager.getSessionName(),
         };
       }
