@@ -227,6 +227,8 @@ export const zhCNLocale: LocalePlugin = {
     "appUpdate.manualUpdate": "当前安装方式不支持一键更新，请按安装说明手动更新。",
     "appUpdate.manualCommand": "npm 全局目录没有写权限，请用以下命令手动更新：",
     "appUpdate.releaseNotes": "Pi Web v{version} 可用，查看更新说明",
+    "appUpdate.update": "更新",
+    "appUpdate.updating": "更新中",
     "appUpdate.updateAndRestart": "更新并重启",
     "appUpdate.confirm": "更新 Pi Web 并重启服务？连接会短暂断开，请先完成正在运行的任务。更新完成后页面将自动刷新。",
     "appUpdate.waiting": "正在更新并重启…完成后页面将自动刷新。",

@@ -338,9 +338,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.about")}>
-        <SettingsRow label={t("settings.version")}>
-          <AppUpdateNotice showCurrentVersion />
-        </SettingsRow>
+        <AppUpdateNotice showCurrentVersion />
         {webAuthEnabled && (
           <SettingsRow label={t("auth.logOut")} description={t("settings.logOutDescription")}>
             <ConfigButton size="small" variant="danger" disabled={loggingOut} onClick={() => void logOut()}>

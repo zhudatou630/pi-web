@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { AppUpdateResponse } from "@/lib/api-types";
+import { SettingsRow } from "./SettingsUi";
 
 export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVersion?: boolean }) {
   const { t } = useI18n();
@@ -108,108 +109,88 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
   const available = update?.updateAvailable && update.latestVersion && update.releaseUrl;
   if (!showCurrentVersion && !available) return null;
   const accessibleLabel = t("appUpdate.releaseNotes", { version: update?.latestVersion ?? "" });
+  const updateLabel = t("appUpdate.updateAndRestart");
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: showCurrentVersion ? "flex-start" : "center", gap: 6 }}>
-      {showCurrentVersion && (
-        <p style={{ fontSize: 12 }}>
-          {t("appUpdate.currentVersion", { version: update?.currentVersion ?? process.env.NEXT_PUBLIC_APP_VERSION ?? "dev" })}
-          {!available && (
-            <span role="status" style={{ color: "var(--text-muted)" }}>
-              {" · "}{t(manualChecking || (!update && !checkFailed) ? "appUpdate.checking" : checkFailed ? "appUpdate.checkFailed" : !update?.releaseUrl ? "appUpdate.checkDisabled" : "appUpdate.upToDate")}
-            </span>
-          )}
-          {(checkFailed || update?.releaseUrl) && (
-            <>
-              {" "}
-              <button
-                type="button"
-                disabled={manualChecking || status !== "idle"}
-                onClick={() => { void checkNow(); }}
-                title={t("appUpdate.checkNow")}
-                aria-label={t("appUpdate.checkNow")}
-                // One line-box tall and centered: verticalAlign "middle" sits on the x-height and drops the icon ~1px.
-                style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", height: "1lh", verticalAlign: "top", cursor: manualChecking ? "default" : "pointer" }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
-                  <path d="M21 3v5h-5" />
-                </svg>
-              </button>
-            </>
-          )}
-        </p>
-      )}
-      {available && update && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <a
-            href={update.releaseUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={accessibleLabel}
-            aria-label={accessibleLabel}
-            onMouseEnter={(event) => { event.currentTarget.style.background = "var(--bg-hover)"; }}
-            onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              alignSelf: "center",
-              gap: 3,
-              minHeight: 32,
-              minWidth: 0,
-              padding: "0 4px",
-              background: "transparent",
-              borderRadius: 4,
-              color: "var(--accent)",
-              fontSize: 12,
-              lineHeight: 1.2,
-              textDecoration: "none",
-              transition: "background 0.12s",
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>v{update.latestVersion}</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-              <path d="M7 17 17 7" />
-              <path d="M7 7h10v10" />
-            </svg>
-          </a>
-          {update.canUpdate && (
-            <button
-              type="button"
-              disabled={status !== "idle"}
-              onClick={() => { void startUpdate(); }}
-              style={{ color: "var(--accent)", fontSize: 12, cursor: status === "idle" ? "pointer" : "default" }}
-            >
-              {t("appUpdate.updateAndRestart")}
-            </button>
-          )}
-        </div>
-      )}
+  const releaseLink = available && update ? (
+    <a className="app-update-link" href={update.releaseUrl} target="_blank" rel="noopener noreferrer" title={accessibleLabel} aria-label={accessibleLabel}>
+      v{update.latestVersion}
+    </a>
+  ) : null;
+  const updating = status === "requesting" || status === "waiting";
+  const updateButton = available && update?.canUpdate ? (
+    <button type="button" className="app-update-action" disabled={status !== "idle"} title={updating ? t("appUpdate.waiting") : updateLabel} aria-label={updating ? t("appUpdate.waiting") : updateLabel} onClick={() => { void startUpdate(); }}>
+      {t(updating ? "appUpdate.updating" : "appUpdate.update")}
+    </button>
+  ) : null;
+  const refresh = (checkFailed || update?.releaseUrl) ? (
+    <button
+      type="button"
+      className="app-update-icon"
+      disabled={manualChecking || status !== "idle"}
+      onClick={() => { void checkNow(); }}
+      title={t("appUpdate.checkNow")}
+      aria-label={t("appUpdate.checkNow")}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+        <path d="M21 3v5h-5" />
+      </svg>
+    </button>
+  ) : null;
+
+  const showDetail = (showCurrentVersion && available && !update?.canUpdate) || !!error || status === "timeout";
+  const detailPanel = showDetail ? (
+    <div className="app-update-detail popover-surface">
       {showCurrentVersion && available && !update?.canUpdate && (
         update?.manualCommand ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
-            {t("appUpdate.manualCommand")}
-            <br />
-            <code>{update.manualCommand}</code>
-          </p>
+          <p>{t("appUpdate.manualCommand")} <code>{update.manualCommand}</code></p>
         ) : (
-          <p style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("appUpdate.manualUpdate")}</p>
+          <p>{t("appUpdate.manualUpdate")}</p>
         )
       )}
-      {(status === "requesting" || status === "waiting") && (
-        <p role="status" style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("appUpdate.waiting")}</p>
-      )}
-      {error && <p role="alert" style={{ color: "var(--text-muted)", fontSize: 12 }}>{error}</p>}
+      {error && <p role="alert">{error}</p>}
       {status === "timeout" && (
-        <div role="alert" style={{ color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
+        <div role="alert">
           <p>{t("appUpdate.timeout")}</p>
-          <code>npm install -g @calmabacus/pi-web@latest</code>
-          <p>{t("appUpdate.thenStart")}</p>
-          <code>pi-web</code>
+          <p><code>npm install -g @calmabacus/pi-web@latest</code></p>
+          <p>{t("appUpdate.thenStart")} <code>pi-web</code></p>
         </div>
       )}
     </div>
+  ) : null;
+
+  if (!showCurrentVersion) {
+    return (
+      <>
+        <div className="app-update-home">
+          {releaseLink}
+          {updateButton}
+        </div>
+        {detailPanel}
+      </>
+    );
+  }
+
+  const statusText = t(manualChecking || (!update && !checkFailed) ? "appUpdate.checking" : checkFailed ? "appUpdate.checkFailed" : !update?.releaseUrl ? "appUpdate.checkDisabled" : "appUpdate.upToDate");
+  return (
+    <>
+      <SettingsRow label={t("settings.version")}>
+        <span className="app-update-line">
+          <span className="app-update-current">{t("appUpdate.currentVersion", { version: update?.currentVersion ?? process.env.NEXT_PUBLIC_APP_VERSION ?? "dev" })}</span>
+          {available ? (
+            <>
+              <span aria-hidden="true">→</span>
+              {releaseLink}
+              {updateButton}
+            </>
+          ) : (
+            <span role="status" className="app-update-status">{statusText}</span>
+          )}
+          {refresh}
+          {detailPanel}
+        </span>
+      </SettingsRow>
+    </>
   );
 }
 
