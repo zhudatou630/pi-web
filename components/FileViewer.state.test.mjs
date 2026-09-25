@@ -27,11 +27,13 @@ for (const [name, nextName] of [
     const block = functionBlock(name, nextName);
     const guard = block.indexOf("if (!watchEnabled) return;");
     const eventSource = block.indexOf("new EventSource", guard);
-    const synchronize = block.indexOf("synchronize();", eventSource);
+    const synchronize = block.indexOf("synchronize(reconnecting);", eventSource);
 
     assert.ok(guard >= 0, "watchEnabled guard missing");
     assert.ok(eventSource > guard, "EventSource created before watchEnabled guard");
     assert.ok(synchronize > eventSource, "connected synchronization missing");
+    // Only a reconnect reloads the element; the first connect would load the file twice.
+    assert.match(block, /if \(reload\) setBust/);
     assert.match(block, /\}, \[[^\]]*watchEnabled[^\]]*\]\);/);
   });
 }
@@ -41,7 +43,7 @@ test("TextFileViewer compares the connected version before refreshing its snapsh
   assert.match(block, /initialContentLoadRef/);
   assert.match(block, /connectedVersion === contentVersionRef\.current/);
   assert.match(block, /if \(esRef\.current !== es \|\| connectedVersion === contentVersionRef\.current\) return;/);
-  assert.match(block, /connectedVersion === contentVersionRef\.current\) return;[\s\S]*fetchContent\(filePath, 0\);[\s\S]*fetchGitDiff\(filePath\)/);
+  assert.match(block, /connectedVersion === contentVersionRef\.current\) return;[\s\S]*loadContent\(filePath, [\s\S]*fetchGitDiff\(filePath\)/);
   assert.match(block, /es\.addEventListener\("change", synchronize\)/);
   assert.match(block, /if \(reconnecting\) void fetchGitDiff\(filePath\)/);
 });
@@ -53,8 +55,9 @@ test("TextFileViewer keeps paginated content on one file version and restores lo
   assert.match(block, /effectiveOffset = 0;[\s\S]*next = await readAt\(0\)/);
   assert.match(block, /effectiveOffset && next\.error === "Invalid text preview offset"/);
   assert.match(block, /viewerStateRef\.current\.loadedBytes = next\.nextOffset/);
-  assert.match(block, /while \(active && chunk\?\.truncated && chunk\.nextOffset < initialLoadedBytes\)/);
+  assert.match(block, /loadContent\(filePath, Math\.max\(initialLoadedBytes, autoLoadBytes\)\)/);
   assert.match(block, /active = false;[\s\S]*contentRequestRef\.current \+= 1/);
+  assert.match(block, /while \(chunk\?\.truncated && chunk\.nextOffset < minBytes\)/);
 });
 
 test("TextFileViewer does not render a truncated document as a preview", () => {

@@ -61,15 +61,6 @@ function normalizeLocalPath(filePath: string): string {
   return leadingSlash ? `/${joined}` : joined;
 }
 
-function isPathInside(candidate: string, root: string): boolean {
-  const normalizedCandidate = normalizeLocalPath(candidate).replace(/\/+$/, "");
-  const normalizedRoot = normalizeLocalPath(root).replace(/\/+$/, "");
-  const useCaseInsensitive = /^[a-zA-Z]:\//.test(normalizedCandidate) || /^[a-zA-Z]:\//.test(normalizedRoot);
-  const filePath = useCaseInsensitive ? normalizedCandidate.toLowerCase() : normalizedCandidate;
-  const rootPath = useCaseInsensitive ? normalizedRoot.toLowerCase() : normalizedRoot;
-  return filePath === rootPath || filePath.startsWith(`${rootPath}/`);
-}
-
 function looksLikeRelativeFileHref(href: string): boolean {
   if (href.startsWith("#") || href.startsWith("?")) return false;
   if (href.startsWith("./") || href.startsWith("../")) return true;
@@ -92,10 +83,11 @@ function fileUrlToPath(href: string): string | null {
   }
 }
 
+// Relative links may leave baseDir: /api/files enforces the allowed roots, so a
+// client-side cwd fence only broke links in files opened from another project.
 export function resolveLocalFileHref(
   href: string | undefined,
   baseDir?: string,
-  relativeRoot = baseDir,
 ): string | null {
   if (!href) return null;
 
@@ -105,7 +97,6 @@ export function resolveLocalFileHref(
   if (!cleanHref) return null;
 
   let candidate: string | null = null;
-  let candidateKind: "absolute" | "relative" | null = null;
   const decodedHref = safeDecode(cleanHref);
   const isBackslashUncPath = decodedHref.startsWith("\\\\");
   const normalizedHref = normalizeFilePathSlashes(decodedHref);
@@ -120,23 +111,16 @@ export function resolveLocalFileHref(
   if (lowerHref.startsWith("file:")) {
     // Decode only the parsed pathname so encoded delimiters stay in the filename.
     candidate = fileUrlToPath(cleanHref);
-    candidateKind = candidate ? "absolute" : null;
   } else if (/^[a-zA-Z]:\//.test(normalizedHref)) {
     candidate = normalizedHref;
-    candidateKind = "absolute";
   } else if (normalizedHref.startsWith("/")) {
     candidate = normalizedHref;
-    candidateKind = "absolute";
   } else if (baseDir && looksLikeRelativeFileHref(normalizedHref)) {
     candidate = `${normalizeFilePathSlashes(baseDir).replace(/\/+$/, "")}/${normalizedHref}`;
-    candidateKind = "relative";
   }
 
   if (!candidate) return null;
-
-  const filePath = stripLineSuffix(normalizeLocalPath(candidate));
-  if (candidateKind === "relative" && relativeRoot && !isPathInside(filePath, relativeRoot)) return null;
-  return filePath;
+  return stripLineSuffix(normalizeLocalPath(candidate));
 }
 
 /**

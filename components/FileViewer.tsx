@@ -11,6 +11,7 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import ReactMarkdown from "react-markdown";
 import { useTheme } from "@/hooks/useTheme";
 import {
+  BINARY_FILE_ERROR,
   DOCX_PREVIEW_MAX_BYTES,
   getFileExt,
   isAudioPath,
@@ -20,9 +21,9 @@ import {
   isVideoPath,
 } from "@/lib/file-types";
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
-import { resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
+import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { parseFrontmatter } from "@/lib/frontmatter";
-import { extractMarkdownOutline } from "@/lib/markdown-outline";
+import { extractMarkdownOutline, findHeadingBySlug } from "@/lib/markdown-outline";
 import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { CodeBlock, MermaidBlock } from "./MermaidBlock";
 import { FrontmatterCard } from "./FrontmatterCard";
@@ -53,7 +54,7 @@ interface Props {
   filePath: string;
   cwd?: string;
   sourceSessionId?: string | null;
-  onOpenFile?: (filePath: string) => void;
+  onOpenFile?: (filePath: string, page?: number) => void;
   onMentionLines?: (relativePath: string, startLine: number, endLine: number, sourceCwd?: string) => void;
   /** Insert this file's relative path into the chat input (@ mention). */
   onAtMention?: (relativePath: string, isDir: boolean, sourceCwd?: string) => void;
@@ -75,6 +76,7 @@ interface FileData {
   version: string;
 }
 
+const PREVIEW_AUTOLOAD_MAX_BYTES = 4 * 1024 * 1024;
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
 const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;
 const FILE_CODE_STYLE: CSSProperties = {
@@ -433,7 +435,8 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     if (!watchEnabled) return;
 
     let active = true;
-    const synchronize = () => {
+    let reconnecting = false;
+    const synchronize = (reload: boolean) => {
       const requestId = ++syncRequestRef.current;
       fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
         .then((response) => response.json())
@@ -446,7 +449,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
           if (typeof next.size === "number") setSize(next.size);
           setNaturalSize(null);
           setError(null);
-          setBust((value) => value + 1);
+          if (reload) setBust((value) => value + 1);
         })
         .catch((nextError) => {
           if (active && requestId === syncRequestRef.current) setError(String(nextError));
@@ -458,7 +461,9 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
 
     es.addEventListener("connected", () => {
       setWatching(true);
-      synchronize();
+      // The first connect only refreshes metadata; the element already loaded this file.
+      synchronize(reconnecting);
+      reconnecting = true;
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
@@ -605,7 +610,8 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     if (!watchEnabled) return;
 
     let active = true;
-    const synchronize = () => {
+    let reconnecting = false;
+    const synchronize = (reload: boolean) => {
       const requestId = ++syncRequestRef.current;
       fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
         .then((response) => response.json())
@@ -618,7 +624,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
           if (typeof next.size === "number") setSize(next.size);
           setDuration(null);
           setError(null);
-          setBust((value) => value + 1);
+          if (reload) setBust((value) => value + 1);
         })
         .catch((nextError) => {
           if (active && requestId === syncRequestRef.current) setError(String(nextError));
@@ -630,7 +636,9 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
 
     es.addEventListener("connected", () => {
       setWatching(true);
-      synchronize();
+      // The first connect only refreshes metadata; the element already loaded this file.
+      synchronize(reconnecting);
+      reconnecting = true;
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
@@ -758,7 +766,8 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
     if (!watchEnabled) return;
 
     let active = true;
-    const synchronize = () => {
+    let reconnecting = false;
+    const synchronize = (reload: boolean) => {
       const requestId = ++syncRequestRef.current;
       fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
         .then((response) => response.json())
@@ -771,7 +780,7 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
           if (typeof next.size === "number") setSize(next.size);
           setDuration(null);
           setError(null);
-          setBust((value) => value + 1);
+          if (reload) setBust((value) => value + 1);
         })
         .catch((nextError) => {
           if (active && requestId === syncRequestRef.current) setError(String(nextError));
@@ -783,7 +792,9 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true }: Pr
 
     es.addEventListener("connected", () => {
       setWatching(true);
-      synchronize();
+      // The first connect only refreshes metadata; the element already loaded this file.
+      synchronize(reconnecting);
+      reconnecting = true;
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
@@ -940,7 +951,8 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, p
     if (!watchEnabled) return;
 
     let active = true;
-    const synchronize = () => {
+    let reconnecting = false;
+    const synchronize = (reload: boolean) => {
       const requestId = ++syncRequestRef.current;
       fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
         .then((r) => r.json())
@@ -958,7 +970,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, p
             }
           }
           setError(null);
-          setBust((value) => value + 1);
+          if (reload) setBust((value) => value + 1);
         })
         .catch((nextError) => {
           if (active && requestId === syncRequestRef.current) setError(String(nextError));
@@ -970,7 +982,9 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, p
 
     es.addEventListener("connected", () => {
       setWatching(true);
-      synchronize();
+      // The first connect only refreshes metadata; the element already loaded this file.
+      synchronize(reconnecting);
+      reconnecting = true;
     });
     es.addEventListener("change", (e) => {
       syncRequestRef.current += 1;
@@ -1175,35 +1189,13 @@ function TextFileViewer({
     });
   }, []);
 
-  useEffect(() => {
-    const nextState: FileViewerState = {
-      displayMode: requestedInitialDisplayMode,
-      wrapLines: initialWrapLines,
-      scrollTop: initialScrollTop,
-      scrollLeft: initialScrollLeft,
-      loadedBytes: initialLoadedBytes,
-      scrollByMode: { ...initialState?.scrollByMode },
-    };
-
-    viewerStateRef.current = nextState;
-    scrollRestorePendingRef.current = true;
-    autoDiffAppliedRef.current = false;
-    setDisplayMode(requestedInitialDisplayMode);
-    setWrapLines(initialWrapLines);
-
-    return () => {
-      onStateChangeRef.current?.({ ...viewerStateRef.current });
-    };
-  }, [
-    filePath,
-    sourceSessionId,
-    requestedInitialDisplayMode,
-    initialWrapLines,
-    initialScrollTop,
-    initialScrollLeft,
-    initialLoadedBytes,
-    initialState?.scrollByMode,
-  ]);
+  // AppShell keys this viewer by tab id + viewerRevision, so every intended reset
+  // remounts it and the initializers above apply. Save on unmount only: reacting to
+  // `initialState` would re-read our own saved echo (new scrollByMode identity each
+  // time) and loop under StrictMode's mount/unmount/mount.
+  useEffect(() => () => {
+    onStateChangeRef.current?.({ ...viewerStateRef.current });
+  }, []);
 
   const fetchContent = useCallback(async (filePath: string, offset = 0) => {
     const requestId = ++contentRequestRef.current;
@@ -1252,6 +1244,18 @@ function TextFileViewer({
       return null;
     }
   }, [sourceSessionId]);
+
+  // Reload from the start, then keep reading chunks up to `minBytes`. A superseded
+  // request returns null, which ends the loop.
+  const loadContent = useCallback(async (filePath: string, minBytes: number) => {
+    let chunk = await fetchContent(filePath);
+    while (chunk?.truncated && chunk.nextOffset < minBytes) {
+      chunk = await fetchContent(filePath, chunk.nextOffset);
+    }
+    return chunk;
+  }, [fetchContent]);
+  // Markdown/HTML preview needs the whole document, so read those in full up to a cap.
+  const autoLoadBytes = isFilePreviewPath(filePath) ? PREVIEW_AUTOLOAD_MAX_BYTES : 0;
 
   const fetchGitDiff = useCallback(async (targetPath: string) => {
     const requestId = ++gitDiffRequestRef.current;
@@ -1308,13 +1312,7 @@ function TextFileViewer({
       };
     }
 
-    const initialLoad = (async () => {
-      let chunk = await fetchContent(filePath);
-      while (active && chunk?.truncated && chunk.nextOffset < initialLoadedBytes) {
-        chunk = await fetchContent(filePath, chunk.nextOffset);
-      }
-      return chunk;
-    })();
+    const initialLoad = loadContent(filePath, Math.max(initialLoadedBytes, autoLoadBytes));
     initialContentLoadRef.current = initialLoad;
     initialLoad.finally(() => {
       if (initialContentLoadRef.current === initialLoad) {
@@ -1327,7 +1325,7 @@ function TextFileViewer({
       active = false;
       contentRequestRef.current += 1;
     };
-  }, [filePath, fetchContent, initialLoadedBytes, skipContentLoad, sourceSessionId]);
+  }, [autoLoadBytes, filePath, loadContent, initialLoadedBytes, skipContentLoad, sourceSessionId]);
 
   useEffect(() => {
     setWatching(false);
@@ -1340,7 +1338,7 @@ function TextFileViewer({
     if (!watchEnabled) return;
 
     const synchronize = () => {
-      if (!skipContentLoad) void fetchContent(filePath, 0);
+      if (!skipContentLoad) void loadContent(filePath, Math.max(viewerStateRef.current.loadedBytes ?? 0, autoLoadBytes));
       void fetchGitDiff(filePath);
     };
 
@@ -1362,7 +1360,7 @@ function TextFileViewer({
       })();
       void (initialContentLoadRef.current ?? Promise.resolve()).then(() => {
         if (esRef.current !== es || connectedVersion === contentVersionRef.current) return;
-        void fetchContent(filePath, 0);
+        void loadContent(filePath, Math.max(viewerStateRef.current.loadedBytes ?? 0, autoLoadBytes));
         void fetchGitDiff(filePath);
       });
     });
@@ -1379,7 +1377,7 @@ function TextFileViewer({
       es.close();
       if (esRef.current === es) esRef.current = null;
     };
-  }, [filePath, fetchContent, fetchGitDiff, skipContentLoad, sourceSessionId, watchEnabled]);
+  }, [autoLoadBytes, filePath, fetchGitDiff, loadContent, skipContentLoad, sourceSessionId, watchEnabled]);
 
   useEffect(() => {
     void fetchGitDiff(filePath);
@@ -1607,8 +1605,9 @@ function TextFileViewer({
 
   if (error && !(effectiveDisplayMode === "diff" && hasGitDiff)) {
     return (
-      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171", fontSize: 12 }}>
+      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "#f87171", fontSize: 12 }}>
         {error}
+        {error === BINARY_FILE_ERROR && <DownloadLink filePath={filePath} sourceSessionId={sourceSessionId} />}
       </div>
     );
   }
@@ -1833,8 +1832,21 @@ function TextFileViewer({
                 },
                 a({ href, children, ...props }) {
                   delete props.node;
+                  if (href?.startsWith("#")) {
+                    // In-document anchor (e.g. a TOC): scroll inside the preview instead of opening a tab.
+                    const handleAnchorClick = (event: MouseEvent<HTMLAnchorElement>) => {
+                      event.preventDefault();
+                      const slug = decodeURIComponent(href.slice(1));
+                      const root = event.currentTarget.closest(".markdown-file-preview");
+                      const headings = [...(root?.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? [])];
+                      const target = root?.querySelector<HTMLElement>(`[id="user-content-${CSS.escape(slug)}"]`)
+                        ?? headings[findHeadingBySlug(headings.map((el) => el.textContent ?? ""), slug)];
+                      target?.scrollIntoView({ block: "start", inline: "nearest" });
+                    };
+                    return <a href={href} {...props} onClick={handleAnchorClick}>{children}</a>;
+                  }
                   const linkedFile = onOpenFile
-                    ? resolveLocalFileHref(href, markdownDirectory, cwd ?? markdownDirectory)
+                    ? resolveLocalFileHref(href, markdownDirectory)
                     : null;
                   if (!linkedFile || !onOpenFile) {
                     return <a href={href} {...props} target="_blank" rel="noopener noreferrer">{children}</a>;
@@ -1843,7 +1855,7 @@ function TextFileViewer({
                   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
                     if (!shouldOpenLocalFileInApp(event)) return;
                     event.preventDefault();
-                    onOpenFile(linkedFile);
+                    onOpenFile(linkedFile, pdfPageFromHref(href) ?? undefined);
                   };
 
                   return <a href={href} {...props} onClick={handleClick}>{children}</a>;
@@ -1851,7 +1863,7 @@ function TextFileViewer({
                 img({ src, alt, ...props }) {
                   delete props.node;
                   const imagePath = typeof src === "string"
-                    ? resolveLocalFileHref(src, markdownDirectory, cwd ?? markdownDirectory)
+                    ? resolveLocalFileHref(src, markdownDirectory)
                     : null;
                   const imageSrc = imagePath
                     ? getFileApiUrl(imagePath, "read", sourceSessionId)

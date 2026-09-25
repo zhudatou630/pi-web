@@ -90,5 +90,5 @@ test("an explicit diff request bypasses native media viewers", () => {
   assert.match(source, /if \(error && !\(effectiveDisplayMode === "diff" && hasGitDiff\)\)/);
   assert.match(source, /if \(!data && !\(effectiveDisplayMode === "diff" && hasGitDiff\)\) return null;/);
   assert.match(source, /if \(skipContentLoad\) \{[\s\S]*setLoading\(false\);/);
-  assert.match(source, /if \(!skipContentLoad\) void fetchContent\(filePath, 0\);/);
+  assert.match(source, /if \(!skipContentLoad\) void loadContent\(filePath, /);
 });

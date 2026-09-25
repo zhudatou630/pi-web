@@ -2,6 +2,9 @@ export const TEXT_PREVIEW_MAX_BYTES = 256 * 1024;
 export const IMAGE_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 export const DOCX_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 
+/** /api/files read error for files that are not text (NUL byte in the first chunk, as git decides). */
+export const BINARY_FILE_ERROR = "Binary file, preview not available";
+
 export type DocumentPreviewKind = "pdf" | "docx";
 
 export const IMAGE_EXT_TO_MIME: Record<string, string> = {
@@ -87,7 +90,7 @@ export function isDocumentPreviewPath(filePath: string): boolean {
   return documentPreviewKind(filePath) !== null;
 }
 
-const FILE_PREVIEW_EXTENSIONS = new Set(["md", "mdx", "html", "htm"]);
+const FILE_PREVIEW_EXTENSIONS = new Set(["md", "mdx", "markdown", "html", "htm"]);
 
 export function isFilePreviewPath(filePath: string): boolean {
   return FILE_PREVIEW_EXTENSIONS.has(getFileExt(filePath));

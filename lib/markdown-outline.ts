@@ -14,6 +14,23 @@ export function outlineParentIndex(items: MarkdownOutlineItem[], index: number):
   return -1;
 }
 
+/** GitHub heading anchor: lowercase, drop punctuation/symbols, spaces become `-`. */
+export function headingSlug(text: string): string {
+  return text.trim().toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc}\- ]/gu, "").replace(/ /g, "-");
+}
+
+/** Index of the heading a `#slug` link points at, counting duplicates as GitHub does (`a`, `a-1`, ...). */
+export function findHeadingBySlug(headingTexts: string[], slug: string): number {
+  const seen = new Map<string, number>();
+  for (let i = 0; i < headingTexts.length; i++) {
+    const base = headingSlug(headingTexts[i]);
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    if ((n ? `${base}-${n}` : base) === slug) return i;
+  }
+  return -1;
+}
+
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const ATX = /^ {0,3}(#{1,3})[ \t]+(.+?)[ \t]*#*[ \t]*$/;
 

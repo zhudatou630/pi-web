@@ -3232,10 +3232,10 @@ export function AppShell() {
               )}
               onMentionLines={rightPanelOpen ? handleFileLineMention : undefined}
               onAtMention={handleAtMention}
-              onOpenFile={(filePath) => handleOpenFile(
+              onOpenFile={(filePath, page) => handleOpenFile(
                 filePath,
                 getFileName(filePath),
-                { sourceSessionId: activeFileTab.sourceSessionId, cwd: activeFileTab.cwd },
+                { sourceSessionId: activeFileTab.sourceSessionId, cwd: activeFileTab.cwd, page },
               )}
             />
           ) : !terminalTabs.some((tab) => tab.id === activeFileTabId) ? (

@@ -7,6 +7,7 @@ import {
   isFilePathAllowed,
 } from "@/lib/file-access";
 import {
+  BINARY_FILE_ERROR,
   DOCX_PREVIEW_MAX_BYTES,
   IMAGE_PREVIEW_MAX_BYTES,
   documentPreviewKind,
@@ -52,7 +53,7 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   c: "c", cpp: "cpp", h: "c", hpp: "cpp", cs: "csharp",
   html: "html", htm: "html", css: "css", scss: "css", less: "css",
   json: "json", jsonl: "json", yaml: "yaml", yml: "yaml",
-  toml: "toml", xml: "xml", md: "markdown", mdx: "markdown",
+  toml: "toml", xml: "xml", md: "markdown", mdx: "markdown", markdown: "markdown",
   sh: "bash", bash: "bash", zsh: "bash", fish: "bash",
   sql: "sql", graphql: "graphql", gql: "graphql",
   dockerfile: "dockerfile", tf: "hcl", hcl: "hcl",
@@ -484,6 +485,9 @@ export async function GET(
         return NextResponse.json({ error: "Invalid text preview offset" }, { status: 400 });
       }
       const chunk = readTextPreviewChunk(filePath, stat.size, offset);
+      if (offset === 0 && chunk.content.slice(0, 8000).includes("\0")) {
+        return NextResponse.json({ error: BINARY_FILE_ERROR }, { status: 415 });
+      }
       const language = getLanguage(filePath);
       return NextResponse.json({
         ...chunk,
