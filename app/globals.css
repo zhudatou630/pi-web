@@ -173,7 +173,8 @@ html.dark {
   min-width: 0;
   height: 100%;
   margin: 0;
-  padding: 0 4px 0 2px;
+  /* No leading icon: the text starts on the ink column of the row icons below. */
+  padding: 0 4px 0 8px;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -2042,6 +2043,17 @@ span.token.table {
   pointer-events: auto !important;
 }
 
+.session-row-pin {
+  opacity: 0;
+}
+
+.session-row-pin.is-pinned,
+.session-list-row:hover .session-row-pin,
+.session-list-row:has(:focus-visible) .session-row-pin,
+.session-list-row.is-actions-revealed .session-row-pin {
+  opacity: 1;
+}
+
 .session-list-row:has(.session-row-actions):hover .session-row-meta,
 .session-list-row:has(.session-row-actions):has(:focus-visible) .session-row-meta,
 .session-list-row.is-actions-revealed .session-row-meta {
@@ -2077,8 +2089,7 @@ span.token.table {
   }
 }
 
-.workspace-list-row:has(:focus-visible) .workspace-row-action > button,
-.workspace-list-row.is-actions-revealed .workspace-row-action > button {
+.workspace-list-row:has(:focus-visible) .workspace-row-action > button {
   max-width: 20px;
   filter: none;
   pointer-events: auto;
@@ -2101,31 +2112,17 @@ span.token.table {
   color: var(--text);
 }
 
-/* The working project is marked with an accent rail, not a fill. A fill here
-   would be the same #e8e8e8 block as the selected session right below it — two
-   identical chips for a container and its content. The rail keeps working while
-   the project is collapsed, and leaves the one available fill to the session. */
-.workspace-list-row[data-active="true"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--accent);
+/* Project state lives on the folder glyph, not a side rail or a tinted row. */
+.workspace-folder-icon {
+  color: inherit;
 }
 
-/* Same rail as the active project, recolored while its deletion awaits confirmation. */
-.workspace-list-row[data-pending-delete="true"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 1px;
-  background: #ef4444;
+.workspace-list-row[data-active="true"] .workspace-folder-icon {
+  color: var(--accent);
+}
+
+.workspace-list-row[data-pending-delete="true"] .workspace-folder-icon {
+  color: #ef4444;
 }
 
 /* Show more: label aligned with project/session names, count flush right
@@ -2193,17 +2190,118 @@ span.token.table {
   }
 }
 
-.project-pin-row .project-pin-btn {
-  color: var(--text-dim);
-  opacity: 0;
-}
-.project-pin-row:hover .project-pin-btn,
-.project-pin-row:has(:focus-visible) .project-pin-btn {
-  opacity: 0.7;
-}
-.project-pin-row .project-pin-btn[aria-pressed="true"] {
+.file-row-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
   color: var(--text-muted);
-  opacity: 1;
+  cursor: pointer;
+}
+
+.file-row-action:hover {
+  color: var(--text);
+  background: var(--bg-selected);
+}
+
+.project-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 18%, transparent);
+}
+
+.project-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.project-context-menu button svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.project-context-menu button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.project-context-menu button.is-danger:hover:not(:disabled),
+.project-context-menu button.is-danger:hover:not(:disabled) svg {
+  color: #ef4444;
+}
+
+.project-context-menu button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.project-context-menu button:disabled svg {
+  color: var(--text-dim);
+}
+
+.project-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 4px 2px;
+}
+
+.project-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+#delete-project-title {
+  padding: 0 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#delete-project-detail {
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.project-confirm-actions button {
+  width: auto;
+  color: var(--text-muted);
+}
+
+.project-confirm-actions button.is-danger {
+  color: #ef4444;
 }
 
 /* Compact running-state beacon: refined 5px core with a smooth expanding wave ring */

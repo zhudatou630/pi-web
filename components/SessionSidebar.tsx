@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { listSessionFamilies } from "@/lib/session-family";
+import { listSessionFamilies, type SessionFamily } from "@/lib/session-family";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
@@ -16,7 +16,6 @@ import { useI18n } from "@/hooks/useI18n";
 import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
-import { SidebarChevronGlyph } from "./FileIcons";
 import { SessionSearch } from "./SessionSearch";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { SubagentIcon } from "./SubagentIcon";
@@ -59,7 +58,7 @@ function ToolbarIconButton({
   className,
   children,
 }: {
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   title: string;
   disabled?: boolean;
   skipHover?: boolean;
@@ -109,10 +108,14 @@ function ToolbarIconButton({
   );
 }
 
-function SidebarChevron({ open }: { open: boolean }) {
+function ProjectFolderIcon({ open }: { open: boolean }) {
   return (
-    <span className="sidebar-section-gutter">
-      <SidebarChevronGlyph open={open} />
+    <span className="sidebar-section-gutter workspace-folder-icon">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {open
+          ? <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-1.94V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+          : <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />}
+      </svg>
     </span>
   );
 }
@@ -121,7 +124,6 @@ interface Props {
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
   onOpenSessionInNewTab?: (session: SessionInfo) => void;
-  onPinSession?: (session: SessionInfo) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
   skipInitialProjectSelection?: boolean;
@@ -144,6 +146,8 @@ interface Props {
   onBackgroundTaskDone?: (completedSessionIds: string[]) => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   onSessionsChange?: (sessions: SessionInfo[]) => void;
+  /** Explicitly added project directories (storage name predates the removed
+      project-pin UI). They keep a project listed before it has any session. */
   pinnedCwds: string[];
   onTogglePinnedCwd: (cwd: string) => void;
   onHomeDirChange?: (homeDir: string) => void;
@@ -336,9 +340,10 @@ function AnimatedDropdown({ open, children, style }: { open: boolean; children: 
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onPinSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
+  const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
   const [sessionListVersion, setSessionListVersion] = useState<number | null>(null);
   const sessionListVersionRef = useRef<number | null>(null);
   const sessionLoadIdRef = useRef(0);
@@ -367,6 +372,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const wtNewInputRef = useRef<HTMLInputElement>(null);
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [projectsOpen, setProjectsOpen] = useState(true);
+  const [pinnedOpen, setPinnedOpen] = useState(true);
   const [expandedWorkspaceKeys, setExpandedWorkspaceKeys] = useState<Set<string> | null>(loadExpandedWorkspaceKeys);
   const [workspaceSessionLimits, setWorkspaceSessionLimits] = useState<Record<string, number>>({});
   const [explorerKey, setExplorerKey] = useState(0);
@@ -393,8 +399,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [listScrollTop, setListScrollTop] = useState(0);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const [revealedSessionId, setRevealedSessionId] = useState<string | null>(null);
-  const [revealedWorkspaceKey, setRevealedWorkspaceKey] = useState<string | null>(null);
-  const [confirmDeleteProjectKey, setConfirmDeleteProjectKey] = useState<string | null>(null);
+  const [projectMenu, setProjectMenu] = useState<{ key: string; cwd: string; x: number; y: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ key: string; x: number; y: number } | null>(null);
+  const confirmDeleteProjectKey = deleteConfirm?.key ?? null;
   const [deletingProjectKey, setDeletingProjectKey] = useState<string | null>(null);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
   const workspaceLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -403,7 +410,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const listScrollRafRef = useRef<number | null>(null);
   const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setRevealedSessionId(null);
-    setRevealedWorkspaceKey(null);
+    setProjectMenu(null);
     const top = e.currentTarget.scrollTop;
     if (listScrollRafRef.current != null) return;
     listScrollRafRef.current = requestAnimationFrame(() => {
@@ -414,28 +421,38 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
 
   // Global click-outside listener to dismiss touch-revealed row actions.
   useEffect(() => {
-    if (!revealedSessionId && !revealedWorkspaceKey) return;
+    if (!revealedSessionId && !projectMenu && !deleteConfirm) return;
     const handleGlobalPointerDown = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target?.closest(".session-row-actions, .workspace-row-action")) return;
+      if (target?.closest(".session-row-actions, .project-context-menu")) return;
       setRevealedSessionId(null);
-      setRevealedWorkspaceKey(null);
+      setProjectMenu(null);
+      setDeleteConfirm(null);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setProjectMenu(null);
+      setDeleteConfirm(null);
     };
     window.addEventListener("pointerdown", handleGlobalPointerDown, true);
-    return () => window.removeEventListener("pointerdown", handleGlobalPointerDown, true);
-  }, [revealedSessionId, revealedWorkspaceKey]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handleGlobalPointerDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [revealedSessionId, projectMenu, deleteConfirm]);
 
-  const handleWorkspaceTouchStart = useCallback((key: string, event: React.TouchEvent) => {
+  const handleWorkspaceTouchStart = useCallback((key: string, cwd: string, event: React.TouchEvent) => {
     // A touch starting on a row action is a tap on that action, not a long
     // press on the project row (otherwise the new-session button would both
-    // reveal actions and create a session).
+    // open the menu and create a session).
     if ((event.target as HTMLElement | null)?.closest(".workspace-row-action")) return;
     const touch = event.touches[0];
     workspaceTouchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     workspaceLongPressTriggeredRef.current = false;
     workspaceLongPressTimerRef.current = setTimeout(() => {
       workspaceLongPressTriggeredRef.current = true;
-      setRevealedWorkspaceKey(key);
+      setProjectMenu({ key, cwd, x: touch.clientX, y: touch.clientY });
       navigator.vibrate?.(15);
     }, 400);
   }, []);
@@ -480,6 +497,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       const data = await res.json() as {
         sessions: SessionInfo[];
         sessionListVersion: number;
+        pinnedSessionIds: string[];
         runningSessionIds?: string[];
         completionNotificationSuppressedSessionIds?: string[];
       };
@@ -487,6 +505,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       sessionListVersionRef.current = data.sessionListVersion;
       setSessionListVersion(data.sessionListVersion);
       setAllSessions(data.sessions);
+      setPinnedSessionIds(data.pinnedSessionIds);
       // Treat the fetched running set as an initial fallback only. Once the
       // lightweight poll is live, a slow session-list fetch cannot overwrite it.
       if (!runningPollAuthoritativeRef.current) {
@@ -514,6 +533,21 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       if (loadId === sessionLoadIdRef.current) setLoading(false);
     }
   }, []);
+
+  // Optimistic toggle; the server list (and every other browser's poll) is authoritative.
+  const toggleSessionPinned = useCallback(async (id: string) => {
+    const pinned = !pinnedSessionIds.includes(id);
+    setPinnedSessionIds((current) => pinned ? [...current, id] : current.filter((item) => item !== id));
+    try {
+      await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      });
+    } finally {
+      void loadSessions();
+    }
+  }, [loadSessions, pinnedSessionIds]);
 
   const initialLoadDone = useRef(false);
   useEffect(() => {
@@ -1023,7 +1057,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       seen.add(project.key);
       projects.push(project);
     };
-    pinnedCwds.forEach((cwd) => add(projectFor(cwd)));
+    // A freshly added project without history leads; once it has sessions it
+    // sorts by activity like every other project.
+    const recentKeys = new Set(recentProjects.map((project) => project.key));
+    pinnedCwds.forEach((cwd) => {
+      const project = projectFor(cwd);
+      if (project && !recentKeys.has(project.key)) add(project);
+    });
     recentProjects.forEach(add);
     // Selection is navigation, not activity. Only append a selected directory
     // that has no session history; never promote an existing project on view.
@@ -1070,7 +1110,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   // Removes a project from the sidebar by clearing every source that lists it:
   // its persisted sessions, any pinned cwd, and the current selection.
   const deleteProject = useCallback(async (project: ProjectSelection) => {
-    setConfirmDeleteProjectKey(null);
+    setDeleteConfirm(null);
     setDeleteProjectError(null);
     setDeletingProjectKey(project.key);
     try {
@@ -1110,7 +1150,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       ? workspaceProjects.filter((project) => project.key === (selectedProject ?? workspaceProjects[0])?.key)
       : workspaceProjects;
     for (const project of listedProjects) {
-      const families = listSessionFamilies(sessionsForProject(allSessions, project.key));
+      const allFamilies = listSessionFamilies(sessionsForProject(allSessions, project.key));
+      // Pinned sessions live in their own section above the projects.
+      const families = allFamilies.filter((family) => !pinnedSessionIds.includes(family.root.id));
       rows.push({
         kind: "workspace",
         project,
@@ -1132,7 +1174,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       }
     }
     return rows;
-  }, [allSessions, defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
+  }, [allSessions, defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, pinnedSessionIds, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
+
+  const pinnedFamilies = useMemo(
+    () => listSessionFamilies(allSessions).filter((family) => pinnedSessionIds.includes(family.root.id)),
+    [allSessions, pinnedSessionIds],
+  );
 
   const virtualIndices = getSessionListIndices(
     workspaceRows.length,
@@ -1505,6 +1552,33 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               );
             })() : null;
 
+  const renderSessionFamily = (family: SessionFamily, showProject = false) => {
+    const familySessions = [family.root, ...family.subagents];
+    const displaySession = family.latestModified === family.root.modified ? family.root : { ...family.root, modified: family.latestModified };
+    const pinned = pinnedSessionIds.includes(family.root.id);
+    return (
+      <div onFocus={() => setFocusedSessionId(family.root.id)} onBlur={() => setFocusedSessionId(null)}>
+        <SessionItem
+          session={displaySession}
+          indent={14}
+          isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+          isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+          isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+          isActionsRevealed={revealedSessionId === family.root.id}
+          onRevealActions={() => setRevealedSessionId(family.root.id)}
+          onDismissActions={() => setRevealedSessionId((curr) => curr === family.root.id ? null : curr)}
+          onClick={() => { setRevealedSessionId(null); handleSelectSessionFromList(family.root); }}
+          onRenamed={loadSessions}
+          onOpenInNewTab={onOpenSessionInNewTab ? () => { setRevealedSessionId(null); onOpenSessionInNewTab(family.root); } : undefined}
+          isPinned={pinned}
+          projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
+          onTogglePin={() => { setRevealedSessionId(null); void toggleSessionPinned(family.root.id); }}
+          onDeleted={(id) => { setRevealedSessionId(null); onSessionDeleted?.(id); loadSessions(); }}
+        />
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {customPathOpen && (
@@ -1520,6 +1594,64 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         />
       )}
 
+      {projectMenu && (() => {
+        const running = Boolean(projectActivity.get(projectMenu.key)?.running);
+        return (
+          <div
+            role="menu"
+            className="project-context-menu"
+            style={{
+              left: Math.min(projectMenu.x + 2, window.innerWidth - 168),
+              top: Math.min(projectMenu.y + 2, window.innerHeight - 76),
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setProjectMenu(null);
+                setSelectedCwd(projectMenu.cwd);
+                setExplorerOpen(true);
+                saveExplorerOpen(true);
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h4" /><path d="M10 5h10" /><path d="M4 12h4" /><path d="M10 12h10" /><path d="M4 19h4" /><path d="M10 19h10" /></svg>
+              {t("files.explorer")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="is-danger"
+              disabled={running || deletingProjectKey === projectMenu.key}
+              title={t(running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
+              onClick={() => {
+                setDeleteConfirm({ key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
+                setProjectMenu(null);
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+              {t("sidebar.deleteSessions")}
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Pinned sessions, across all projects */}
+      {pinnedFamilies.length > 0 && (
+        <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)" }}>
+          <div className="sidebar-section-row">
+            <button type="button" onClick={() => setPinnedOpen((open) => !open)} className="sidebar-section-label" aria-expanded={pinnedOpen}>
+              <span>{t("sidebar.pinned")}</span>
+            </button>
+          </div>
+          {pinnedOpen && (
+            <div style={{ padding: "0 4px" }}>
+              {pinnedFamilies.map((family) => <div key={family.root.id}>{renderSessionFamily(family, true)}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Projects and their sessions */}
       <div ref={dropdownRef} className="sidebar-section-row" style={{ position: "relative" }}>
         <button
@@ -1527,10 +1659,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           onClick={() => setProjectsOpen((open) => !open)}
           className="sidebar-section-label"
         >
-          <SidebarChevron open={projectsOpen} />
           <span>{t("sidebar.projects")}</span>
         </button>
         <div className="sidebar-header-actions">
+          {(expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).size > 0 && !singleProject && (
+            <ToolbarIconButton
+              onClick={() => setExpandedWorkspaceKeys(new Set())}
+              title={t("sidebar.collapseAll")}
+              color="var(--text-muted)"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="7 20 12 15 17 20" /><polyline points="7 4 12 9 17 4" />
+              </svg>
+            </ToolbarIconButton>
+          )}
           <div style={{ display: "flex", alignItems: "center" }}>
             {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.unread > 0) && (
               <span
@@ -1604,7 +1746,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             <div style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", borderBottom: "1px solid var(--border)" }}>
               {workspaceProjects.map((project) => {
                 const active = project.key === selectedProject?.key;
-                const pinned = pinnedCwds.includes(project.root);
                 const activity = projectActivity.get(project.key);
                 return (
                   <div key={project.key} style={{ display: "flex", alignItems: "center" }}>
@@ -1628,9 +1769,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         are visible, so it must be able to delete them without switching. */}
                     {allSessions.some((session) => workspaceKeyOf(session) === project.key) && (
                       <ToolbarIconButton
-                        onClick={() => {
+                        onClick={(event) => {
                           setDropdownOpen(false);
-                          setConfirmDeleteProjectKey(project.key);
+                          setDeleteConfirm({ key: project.key, x: event.clientX, y: event.clientY });
                         }}
                         disabled={Boolean(activity?.running) || deletingProjectKey === project.key}
                         title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
@@ -1639,15 +1780,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
                       </ToolbarIconButton>
                     )}
-                    <ToolbarIconButton
-                      onClick={() => onTogglePinnedCwd(project.root)}
-                      title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
-                      ariaPressed={pinned}
-                      color={pinned ? "var(--text)" : "var(--text-muted)"}
-                      marginRight={4}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
-                    </ToolbarIconButton>
                   </div>
                 );
               })}
@@ -1701,43 +1833,30 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         </div>
       )}
 
-      {/* Outside the virtual list so the full warning is always visible. */}
-      {(() => {
-        const project = confirmDeleteProjectKey ? workspaceProjects.find((item) => item.key === confirmDeleteProjectKey) : null;
+      {deleteConfirm && (() => {
+        const project = workspaceProjects.find((item) => item.key === deleteConfirm.key);
         if (!project) return null;
-        const name = getFileName(project.root);
         const count = sessionsForProject(allSessions, project.key).length;
         return (
           <div
-            role="alertdialog"
-            aria-labelledby="delete-project-title"
-            aria-describedby="delete-project-detail"
-            onKeyDown={(event) => { if (event.key === "Escape") setConfirmDeleteProjectKey(null); }}
-            style={{ margin: "4px 8px 6px", padding: "8px 10px", flexShrink: 0, border: "1px solid rgba(239,68,68,0.4)", borderRadius: 4, background: "rgba(239,68,68,0.06)", fontSize: 12, lineHeight: 1.45 }}
+            className="project-context-menu"
+            style={{
+              left: Math.min(deleteConfirm.x + 2, window.innerWidth - 232),
+              top: Math.min(deleteConfirm.y + 2, window.innerHeight - 148),
+            }}
           >
-            <div id="delete-project-title" style={{ fontWeight: 600, color: "#ef4444", overflowWrap: "anywhere" }}>
-              {t("sidebar.deleteProjectSessionsConfirm", { name, count })}
-            </div>
-            <div id="delete-project-detail" style={{ marginTop: 4, color: "var(--text-muted)" }}>
-              {t("sidebar.deleteProjectSessionsDetail", { name, count })}
-            </div>
-            {/* Buttons never wrap their label; a narrow sidebar wraps the row instead. */}
-            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
-              <button
-                type="button"
-                autoFocus
-                onClick={() => setConfirmDeleteProjectKey(null)}
-                style={{ height: 24, padding: "0 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-muted)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}
-              >
-                {t("sidebar.cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void deleteProject(project)}
-                style={{ height: 24, padding: "0 10px", background: "#ef4444", border: "none", borderRadius: 4, color: "#fff", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}
-              >
-                {t("sidebar.deleteProjectSessionsAction", { count })}
-              </button>
+            <div
+              role="alertdialog"
+              aria-labelledby="delete-project-title"
+              aria-describedby="delete-project-detail"
+              className="project-confirm"
+            >
+              <div id="delete-project-title">{t("sidebar.deleteProjectSessionsConfirm", { count })}</div>
+              <div id="delete-project-detail">{t("sidebar.deleteProjectSessionsDetail", { count })}</div>
+              <div className="project-confirm-actions">
+                <button type="button" autoFocus onClick={() => setDeleteConfirm(null)}>{t("sidebar.cancel")}</button>
+                <button type="button" className="is-danger" onClick={() => void deleteProject(project)}>{t("sidebar.delete")}</button>
+              </div>
             </div>
           </div>
         );
@@ -1768,23 +1887,23 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                 const active = row.project.key === selectedProject?.key;
                 const activity = projectActivity.get(row.project.key);
                 const workspaceCwd = active && selectedCwd ? selectedCwd : row.cwd;
-                const pinned = pinnedCwds.includes(row.project.root);
-                const actionsRevealed = revealedWorkspaceKey === row.project.key;
                 const pendingDelete = confirmDeleteProjectKey === row.project.key;
                 return (
                   <div
-                    className={`workspace-list-row${actionsRevealed ? " is-actions-revealed" : ""}`}
+                    className="workspace-list-row"
                     key={`workspace:${row.project.key}`}
                     data-active={active ? "true" : "false"}
                     data-pending-delete={pendingDelete ? "true" : undefined}
-                    onTouchStart={(event) => handleWorkspaceTouchStart(row.project.key, event)}
+                    onTouchStart={(event) => handleWorkspaceTouchStart(row.project.key, workspaceCwd, event)}
                     onTouchMove={handleWorkspaceTouchMove}
                     onTouchEnd={handleWorkspaceTouchEnd}
                     onTouchCancel={handleWorkspaceTouchEnd}
                     onContextMenu={(event) => {
-                      if (!workspaceLongPressTriggeredRef.current) return;
                       event.preventDefault();
                       event.stopPropagation();
+                      // A long press already opened the menu at the touch point.
+                      if (workspaceLongPressTriggeredRef.current) return;
+                      setProjectMenu({ key: row.project.key, cwd: workspaceCwd, x: event.clientX, y: event.clientY });
                     }}
                     style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT, display: "flex", alignItems: "center", WebkitTouchCallout: "none", userSelect: "none" }}
                   >
@@ -1823,7 +1942,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       title={row.project.root}
                       style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 0", border: "none", background: "none", color: "inherit", cursor: "pointer", textAlign: "left", fontSize: 12 }}
                     >
-                      <SidebarChevron open={singleProject ? dropdownOpen : expanded} />
+                      <ProjectFolderIcon open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{getFileName(row.project.root)}</span>
                       {activity?.running ? (
                         <span role="status" aria-label={`${t("sidebar.agentRunning")} (${activity.running})`}>
@@ -1838,18 +1957,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     <span className="workspace-row-action">
                       <ToolbarIconButton
                         onClick={() => {
-                          setRevealedWorkspaceKey(null);
-                          setConfirmDeleteProjectKey(row.project.key);
-                        }}
-                        disabled={Boolean(activity?.running) || deletingProjectKey === row.project.key}
-                        title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
-                        color="var(--text-muted)"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
-                      </ToolbarIconButton>
-                      <ToolbarIconButton
-                        onClick={() => {
-                          setRevealedWorkspaceKey(null);
                           setSelectedCwd(workspaceCwd);
                           setExplorerOpen(true);
                           saveExplorerOpen(true);
@@ -1861,19 +1968,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => {
-                          setRevealedWorkspaceKey(null);
-                          onTogglePinnedCwd(row.project.root);
-                        }}
-                        title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
-                        ariaPressed={pinned}
-                        color={pinned ? "var(--text)" : "var(--text-muted)"}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
-                      </ToolbarIconButton>
-                      <ToolbarIconButton
-                        onClick={() => {
                           workspaceLongPressTriggeredRef.current = false;
-                          setRevealedWorkspaceKey(null);
                           setSelectedCwd(workspaceCwd);
                           setExpandedWorkspaceKeys((current) => new Set([...(current ?? defaultExpandedWorkspaceKeys), row.project.key]));
                           createSessionForCwd(workspaceCwd);
@@ -1911,26 +2006,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                   </button>
                 );
               }
-              const family = row.family;
-              const familySessions = [family.root, ...family.subagents];
-              const displaySession = family.latestModified === family.root.modified ? family.root : { ...family.root, modified: family.latestModified };
               return (
-                <div key={family.root.id} onFocus={() => setFocusedSessionId(family.root.id)} onBlur={() => setFocusedSessionId(null)} style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4 }}>
-                  <SessionItem
-                    session={displaySession}
-                    indent={14}
-                    isSelected={familySessions.some((session) => session.id === selectedSessionId)}
-                    isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
-                    isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
-                    isActionsRevealed={revealedSessionId === family.root.id}
-                    onRevealActions={() => setRevealedSessionId(family.root.id)}
-                    onDismissActions={() => setRevealedSessionId((curr) => curr === family.root.id ? null : curr)}
-                    onClick={() => { setRevealedSessionId(null); handleSelectSessionFromList(family.root); }}
-                    onRenamed={loadSessions}
-                    onOpenInNewTab={onOpenSessionInNewTab ? () => { setRevealedSessionId(null); onOpenSessionInNewTab(family.root); } : undefined}
-                    onPin={onPinSession ? () => { setRevealedSessionId(null); onPinSession(family.root); } : undefined}
-                    onDeleted={(id) => { setRevealedSessionId(null); onSessionDeleted?.(id); loadSessions(); }}
-                  />
+                <div key={row.family.root.id} style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4 }}>
+                  {renderSessionFamily(row.family)}
                 </div>
               );
             })}
@@ -1961,7 +2039,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               })}
               className="sidebar-section-label"
             >
-              <SidebarChevron open={explorerOpen} />
               <span>{t("files.explorer")}</span>
             </button>
             <div className="sidebar-header-actions">
@@ -2103,7 +2180,9 @@ export function SessionItem({
   onClick,
   onRenamed,
   onOpenInNewTab,
-  onPin,
+  isPinned = false,
+  onTogglePin,
+  projectHint,
   onDeleted,
   indent = 0,
   depth = 0,
@@ -2121,7 +2200,10 @@ export function SessionItem({
   onClick: () => void;
   onRenamed?: () => void;
   onOpenInNewTab?: () => void;
-  onPin?: () => void;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
+  /** Shown under the title in the tooltip where the project isn't visible from context. */
+  projectHint?: string;
   onDeleted?: (id: string) => void;
   indent?: number;
   depth?: number;
@@ -2291,7 +2373,7 @@ export function SessionItem({
       }}
       onDoubleClick={() => {
         if (confirmDelete || renaming || isActionsRevealed || session.transient) return;
-        onPin?.();
+        onOpenInNewTab?.();
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -2321,7 +2403,6 @@ export function SessionItem({
         background: confirmDelete
           ? "rgba(239,68,68,0.06)"
           : isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
-        borderLeft: confirmDelete ? "2px solid #ef4444" : "2px solid transparent",
         borderRadius: 4,
         transition: "background 0.1s",
         opacity: deleting ? 0.5 : 1,
@@ -2404,6 +2485,33 @@ export function SessionItem({
       ) : (
         /* ── Normal view ── */
         <>
+          {/* Pin toggle sits in the row's left indent so titles never shift */}
+          {onTogglePin && !session.transient && (
+            <button
+              type="button"
+              className={`session-row-pin${isPinned ? " is-pinned" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin();
+              }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              title={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
+              aria-label={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
+              aria-pressed={isPinned}
+              style={{
+                position: "absolute", left: indent + depth * 14 - 14, top: 4,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 20, height: 20, padding: 0,
+                background: "transparent", border: "none", borderRadius: 4,
+                color: isSelected || hovered ? "var(--text)" : "var(--text-muted)", cursor: "pointer",
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="12" y1="17" x2="12" y2="22" />
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+              </svg>
+            </button>
+          )}
           {/* Subagent indicator for child sessions */}
           {depth > 0 && (
             <SubagentIcon size={13} style={{ color: "var(--accent)" }} />
@@ -2433,7 +2541,7 @@ export function SessionItem({
                 lineHeight: 1.4,
                 color: isSelected || hovered ? "var(--text)" : "var(--text-muted)",
               }}
-              title={session.name || displayFirstMessage || session.id}
+              title={(session.name || displayFirstMessage || session.id) + (projectHint ? `\n${projectHint}` : "")}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {title}
@@ -2513,40 +2621,6 @@ export function SessionItem({
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
-                  </svg>
-                </button>
-              )}
-              {onPin && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDismissActions?.();
-                    onPin();
-                  }}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  title={t("chatTabs.pinTab", { defaultValue: "固定标签" })}
-                  aria-label={t("chatTabs.pinTab", { defaultValue: "固定标签" })}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 20, height: 20, padding: 0,
-                    background: "transparent", border: "none",
-                    borderRadius: 4, color: "var(--text-muted)",
-                    cursor: "pointer", flexShrink: 0,
-                    transition: "background 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = isSelected ? "var(--bg-hover)" : "var(--bg-selected)";
-                    e.currentTarget.style.color = "var(--accent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "var(--text-muted)";
-                  }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <line x1="12" y1="17" x2="12" y2="22" />
-                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
                   </svg>
                 </button>
               )}

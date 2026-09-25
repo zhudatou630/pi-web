@@ -67,8 +67,8 @@ test("projects section owns workspace sessions and new-session actions", () => {
   assert.doesNotMatch(source, /chatsOpen|setChatsOpen/);
   assert.match(source, /indent=\{14\}/);
   assert.doesNotMatch(source, /depth=\{1\}/);
-  assert.doesNotMatch(source, /FolderIcon/);
-  assert.match(source, /<SidebarChevron open=\{singleProject \? dropdownOpen : expanded\} \/>/);
+  assert.doesNotMatch(source, /SidebarChevron/);
+  assert.match(source, /<ProjectFolderIcon open=\{singleProject \? dropdownOpen : expanded\} \/>/);
   assert.doesNotMatch(source, /inactiveWorktreeSelector/);
 });
 
@@ -83,8 +83,12 @@ test("single-project mode lists only the current project and switches via the dr
 
 test("project rows delete all sessions behind an unskippable confirmation", () => {
   assert.match(source, /fetch\("\/api\/projects", \{\s*method: "DELETE"/);
-  assert.match(source, /disabled=\{Boolean\(activity\?\.running\) \|\| deletingProjectKey === row\.project\.key\}/);
-  assert.match(source, /setConfirmDeleteProjectKey\(row\.project\.key\)/);
+  // Delete lives in the project context menu (right-click / long press), not the hover actions.
+  const menu = source.slice(source.indexOf('className="project-context-menu"'), source.indexOf("{/* Pinned sessions"));
+  assert.match(menu, /disabled=\{running \|\| deletingProjectKey === projectMenu\.key\}/);
+  assert.match(menu, /setDeleteConfirm\(\{ key: projectMenu\.key, x: projectMenu\.x, y: projectMenu\.y \}\)/);
+  const rowActions = source.slice(source.indexOf('<span className="workspace-row-action">'), source.indexOf('if (row.kind === "showMore")'));
+  assert.doesNotMatch(rowActions, /setConfirmDeleteProjectKey/);
   assert.match(source, /if \(projectFor\(cwd\)\?\.key === project\.key\) onTogglePinnedCwd\(cwd\)/);
   assert.match(source, /for \(const id of data\.deletedSessionIds \?\? \[\]\) onSessionDeleted\?\.\(id\)/);
   const confirm = source.slice(source.indexOf('role="alertdialog"'), source.indexOf("<SessionSearch open="));
@@ -95,7 +99,7 @@ test("project rows delete all sessions behind an unskippable confirmation", () =
 
 test("single-project switcher can delete any listed project without switching to it", () => {
   const dropdown = source.slice(source.indexOf("{singleProject && ("), source.indexOf("handleDefaultCwd(); }}"));
-  assert.match(dropdown, /setDropdownOpen\(false\);\s*setConfirmDeleteProjectKey\(project\.key\)/);
-  assert.doesNotMatch(dropdown, /setConfirmDeleteProjectKey[\s\S]*setSelectedCwd\(project\.root\)[\s\S]*setConfirmDeleteProjectKey/);
+  assert.match(dropdown, /setDropdownOpen\(false\);\s*setDeleteConfirm\(\{ key: project\.key, x: event\.clientX, y: event\.clientY \}\)/);
+  assert.doesNotMatch(dropdown, /setDeleteConfirm[\s\S]*setSelectedCwd\(project\.root\)[\s\S]*setDeleteConfirm/);
   assert.match(dropdown, /disabled=\{Boolean\(activity\?\.running\) \|\| deletingProjectKey === project\.key\}/);
 });

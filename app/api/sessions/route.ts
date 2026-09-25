@@ -10,6 +10,7 @@ import {
   getRpcSessionInfos,
   getRunningRpcSessionIds,
 } from "@/lib/rpc-manager";
+import { readPinnedSessionIds } from "@/lib/pinned-sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
       {
         sessions,
         sessionListVersion,
+        pinnedSessionIds: readPinnedSessionIds(),
         runningSessionIds: getRunningRpcSessionIds(),
         completionNotificationSuppressedSessionIds: getCompletionNotificationSuppressedRpcSessionIds(),
       },

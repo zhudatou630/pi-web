@@ -29,7 +29,6 @@ function boundAction(component, prop, scope) {
 }
 
 for (const [component, prop, split] of [
-  ["SessionSidebar", "onPinSession"],
   ["SessionSidebar", "onOpenSessionInNewTab"],
   ["AgentSessionPanel", "onOpenInNewTab"],
 ].flatMap(([component, prop]) => [false, true].map((split) => [component, prop, split]))) {

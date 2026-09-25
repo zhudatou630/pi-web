@@ -100,11 +100,10 @@ test("sidebar single-click opens a preview tab while explicit new tab action app
   assert.match(source, /onOpenSessionInNewTab=\{handlePinSession\}/);
   assert.match(source, /const pane = isSplitActiveRef\.current \? activeChatPaneRef\.current : "primary"/);
   assert.match(source, /if \(pinned\) setChatTabs\(\(prev\) => pinSessionTab\(prev, session\.id\)\);/);
-  assert.match(source, /onPinSession=\{handlePinSession\}/);
   assert.match(sidebarSource, /onDoubleClick=\{\(\) => \{/);
   assert.match(sidebarSource, /e\.button === 1 && onOpenInNewTab/);
   assert.match(sidebarSource, /title=\{t\("chatTabs\.openInNewTab"/);
-  assert.match(sidebarSource, /title=\{t\("chatTabs\.pinTab"/);
+  assert.match(sidebarSource, /onDoubleClick=\{\(\) => \{[\s\S]*?onOpenInNewTab\?\.\(\);/);
 });
 
 test("explicit opens are pinned: restore, notifications, subagent cards, send-promote", () => {

@@ -162,7 +162,7 @@ test("does not expose disk-backed actions for transient sessions", () => {
 });
 
 test("hides subagent rows and aggregates their state into the main session row", () => {
-  assert.match(source, /const families = listSessionFamilies\(sessionsForProject\(allSessions, project\.key\)\)/);
+  assert.match(source, /const allFamilies = listSessionFamilies\(sessionsForProject\(allSessions, project\.key\)\)/);
   assert.match(source, /familySessions\.some\(\(session\) => session\.id === selectedSessionId\)/);
   assert.match(source, /familySessions\.some\(\(session\) => runningSessionIds\.has\(session\.id\)\)/);
   assert.doesNotMatch(source, /function SessionTreeItem/);
@@ -189,10 +189,15 @@ test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible))
   assert.doesNotMatch(globalCss, /\.session-list-row:has\(\.session-row-actions\):focus-within \.session-row-meta/);
 });
 
-test("project pins live on workspace rows and the add menu does not switch projects", () => {
+test("collapse all shows only while a project is expanded", () => {
+  assert.match(source, /sidebar\.collapseAll/);
+  assert.match(source, /\(expandedWorkspaceKeys \?\? defaultExpandedWorkspaceKeys\)\.size > 0 && !singleProject/);
+  assert.match(source, /setExpandedWorkspaceKeys\(new Set\(\)\)/);
+});
+
+test("projects have no pin toggle and the add menu does not switch projects", () => {
   assert.doesNotMatch(source, /dropdownProjectRows/);
-  assert.match(source, /pinnedCwds\.includes\(row\.project\.root\)/);
-  assert.match(source, /onTogglePinnedCwd\(row\.project\.root\)/);
+  assert.doesNotMatch(source, /sidebar\.(un)?pinDirectory/);
   assert.match(source, /sidebar\.addProject/);
 });
 
@@ -218,16 +223,18 @@ test("project rows carry no session count", () => {
   assert.doesNotMatch(source, /sidebar-header-count\}\{row\./);
 });
 
-test("workspace actions stay quiet on touch until a long press reveals them", async () => {
+test("workspace actions stay quiet on touch; long press and right-click open the project menu", async () => {
   const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.doesNotMatch(source, /workspace-row-more/);
-  assert.match(source, /revealedWorkspaceKey/);
+  assert.doesNotMatch(source, /revealedWorkspaceKey/);
   assert.match(source, /handleWorkspaceTouchStart/);
   assert.match(source, /workspaceLongPressTriggeredRef/);
+  assert.match(source, /setProjectMenu\(\{ key, cwd, x: touch\.clientX, y: touch\.clientY \}\)/);
+  assert.match(source, /setProjectMenu\(\{ key: row\.project\.key, cwd: workspaceCwd, x: event\.clientX, y: event\.clientY \}\)/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row \.workspace-row-action/);
-  assert.match(globalCss, /\.workspace-list-row\.is-actions-revealed \.workspace-row-action/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row:hover[\s\S]*?background: transparent !important;/);
-  assert.match(globalCss, /\.workspace-list-row\[data-active="true"\]::before[\s\S]*?background: var\(--accent\)/);
+  assert.match(globalCss, /\.workspace-list-row\[data-active="true"\] \.workspace-folder-icon \{\s*color: var\(--accent\);/);
+  assert.doesNotMatch(globalCss, /\.workspace-list-row\[[^\]]+\]::before/);
   assert.doesNotMatch(globalCss, /\.workspace-list-row\[data-active="true"\][\s\S]{0,80}?background: var\(--bg-selected\)/);
   // New session is the one action phones can reach without a long press.
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-new-session[\s\S]*?max-width: 26px !important;/);

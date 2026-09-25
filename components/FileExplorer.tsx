@@ -1,7 +1,8 @@
 "use client";
 
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
-import { getFileIcon, FolderIcon, SidebarChevronGlyph } from "./FileIcons";
+import { iconStroke } from "./iconStroke";
+import { getFileIcon, SidebarChevronGlyph } from "./FileIcons";
 import {
   encodeFilePathForApi,
   getFileDirectory,
@@ -184,9 +185,9 @@ function uploadFiles(
   });
 }
 
-function MentionIcon() {
+function MentionIcon({ size = 12 }: { size?: number }) {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(size)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="4" />
       <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
     </svg>
@@ -298,8 +299,8 @@ function TreeNode({
           position: "relative",
           display: "flex",
           alignItems: "center",
-          gap: 2,
-          paddingLeft: 2 + depth * 14,
+          gap: 6,
+          paddingLeft: 4 + depth * 14,
           paddingRight: 8,
           height: 28,
           boxSizing: "border-box",
@@ -309,15 +310,17 @@ function TreeNode({
           userSelect: "none",
         }}
       >
-        {node.isDir && (
-          <span style={{ color: "var(--text-dim)", display: "inline-flex" }}>
+        {/* The chevron is a folder's icon. Glyphs share one left ink column and one
+            ink-to-text gap; the chevron's 12px box has 4.5px of side air, trimmed here. */}
+        {node.isDir ? (
+          <span style={{ flexShrink: 0, display: "inline-flex", margin: "0 -4px 0 -4px", color: "var(--text-dim)" }}>
             <SidebarChevronGlyph open={open} />
           </span>
+        ) : (
+          <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", color: hovered ? "var(--text)" : "var(--text-muted)" }}>
+            {getFileIcon(node.name, 13)}
+          </span>
         )}
-        {!node.isDir && <span style={{ width: 12, flexShrink: 0 }} />}
-        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", color: hovered ? "var(--text)" : "var(--text-muted)" }}>
-          {node.isDir ? <FolderIcon size={13} open={open} /> : getFileIcon(node.name, 13)}
-        </span>
         <span
           style={{
             fontSize: 12,
@@ -365,70 +368,40 @@ function TreeNode({
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
           </svg>
         )}
-        {onAtMention && hovered && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir, cwd);
-            }}
-            title={t("files.insertPath")}
-            style={{
-              position: "absolute",
-              right: !node.isDir ? 28 : 4,
-              top: "50%",
-              transform: "translateY(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              padding: "0 8px",
-              height: 20,
-              background: "var(--bg-panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              color: "var(--accent)",
-              cursor: "pointer",
-              fontSize: 11,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <MentionIcon />
-            {t("files.mention")}
-          </button>
-        )}
-        {hovered && !node.isDir && (
-          <a
-            href={`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`}
-            download
-            onClick={(e) => e.stopPropagation()}
-            title={t("files.download")}
-            style={{
-              position: "absolute",
-              right: 4,
-              top: "50%",
-              transform: "translateY(-50%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              padding: "0 5px",
-              height: 20,
-              background: "var(--bg-panel)",
-              border: "1px solid var(--border)",
-              borderRadius: 4,
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontSize: 11,
-              whiteSpace: "nowrap",
-              textDecoration: "none",
-            }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </a>
+        {hovered && (onAtMention || !node.isDir) && (
+          // Quiet icon actions like the session rows; the row's hover fill hides the name beneath.
+          <span style={{ position: "absolute", right: 4, top: 0, height: "100%", display: "flex", alignItems: "center", gap: 2, paddingLeft: 4, background: "var(--bg-hover)", borderRadius: 4 }}>
+            {onAtMention && (
+              <button
+                type="button"
+                className="file-row-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAtMention(getRelativeFilePath(node.fullPath, cwd), node.isDir, cwd);
+                }}
+                title={t("files.insertPath")}
+                aria-label={t("files.insertPath")}
+              >
+                <MentionIcon size={13} />
+              </button>
+            )}
+            {!node.isDir && (
+              <a
+                href={`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`}
+                download
+                className="file-row-action"
+                onClick={(e) => e.stopPropagation()}
+                title={t("files.download")}
+                aria-label={t("files.download")}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </a>
+            )}
+          </span>
         )}
       </div>
       {node.isDir && open && (
@@ -451,7 +424,7 @@ function TreeNode({
             />
           ))}
           {children.length === 0 && loaded && (
-            <div style={{ paddingLeft: 2 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
+            <div style={{ paddingLeft: 4 + (depth + 1) * 14, fontSize: 11, color: "var(--text-dim)", height: 22, display: "flex", alignItems: "center" }}>
               empty
             </div>
           )}

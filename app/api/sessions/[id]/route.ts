@@ -28,6 +28,7 @@ import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
 import { writePrivateFileAtomicSync } from "@/lib/atomic-file";
+import { setSessionPinned } from "@/lib/pinned-sessions";
 
 /**
  * A live wrapper only reflects appends Pi Web itself made. When another pi process
@@ -163,23 +164,24 @@ export async function GET(
   }
 }
 
-// PATCH /api/sessions/[id]  body: { name: string }
+// PATCH /api/sessions/[id]  body: { name: string } | { pinned: boolean }
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   try {
-    const { name } = await req.json() as { name?: string };
-    if (typeof name !== "string") {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    const { name, pinned } = await req.json() as { name?: string; pinned?: boolean };
+    if (typeof name !== "string" && typeof pinned !== "boolean") {
+      return NextResponse.json({ error: "name or pinned is required" }, { status: 400 });
     }
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
-    const sm = SessionManager.open(filePath);
-    sm.appendSessionInfo(name.trim());
+    if (typeof pinned === "boolean") setSessionPinned(id, pinned);
+    if (typeof name === "string") SessionManager.open(filePath).appendSessionInfo(name.trim());
+    // Also bumps the list version, so other browsers' running poll refetches names and pins.
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {

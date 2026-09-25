@@ -1775,7 +1775,6 @@ export function AppShell() {
           : undefined}
         recentProjectPaths={recentProjectPaths}
         pinnedCwds={pinnedCwds}
-        onTogglePinnedCwd={handleTogglePinnedCwd}
         homeDir={homeDir}
         worktreeInfo={worktreeInfo}
         draftPersistenceWarning={draftTabsPersistenceFailed}
@@ -1927,7 +1926,6 @@ export function AppShell() {
     <>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
-        onPinSession={handlePinSession}
         onSelectSession={handleSelectSession}
         onOpenSessionInNewTab={handlePinSession}
         onNewSession={handleNewSession}

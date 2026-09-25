@@ -64,7 +64,6 @@ interface Props {
   onNewSessionCwdChange?: (cwd: string) => Promise<void>;
   recentProjectPaths?: string[];
   pinnedCwds?: string[];
-  onTogglePinnedCwd?: (cwd: string) => void;
   homeDir?: string;
   worktreeInfo?: {
     forCwd: string;
@@ -122,7 +121,6 @@ function NewSessionCwdControl({
   onChange,
   recentPaths,
   pinnedPaths,
-  onTogglePinnedCwd,
   homeDir,
   worktreeInfo,
 }: {
@@ -130,7 +128,6 @@ function NewSessionCwdControl({
   onChange: (cwd: string) => Promise<void>;
   recentPaths: string[];
   pinnedPaths: string[];
-  onTogglePinnedCwd?: (cwd: string) => void;
   homeDir: string;
   worktreeInfo: {
     forCwd: string;
@@ -146,10 +143,8 @@ function NewSessionCwdControl({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cwdRows = [
-    ...pinnedPaths.map((path) => ({ path, pinned: true })),
-    ...recentPaths.filter((path) => !pinnedPaths.includes(path)).map((path) => ({ path, pinned: false })),
-  ];
+  // Added projects without history first, then projects by recent activity (matches the sidebar).
+  const cwdRows = [...pinnedPaths.filter((path) => !recentPaths.includes(path)), ...recentPaths];
   const activeWorktree = worktreeInfo
     && (worktreeInfo.forCwd === cwd
       || worktreeInfo.projectRoot === cwd
@@ -276,12 +271,11 @@ function NewSessionCwdControl({
           }}
         >
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
-            {cwdRows.map(({ path, pinned }) => {
+            {cwdRows.map((path) => {
               const isSelected = path === cwd || Boolean(activeWorktree?.projectRoot && path === activeWorktree.projectRoot);
               return (
                 <div
                   key={path}
-                  className="project-pin-row"
                   style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)" }}
                 >
                   <button
@@ -317,33 +311,6 @@ function NewSessionCwdControl({
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {homeDir && path.startsWith(homeDir) ? `~${path.slice(homeDir.length)}` : path}
                     </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="project-pin-btn"
-                    title={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
-                    aria-label={t(pinned ? "sidebar.unpinDirectory" : "sidebar.pinDirectory")}
-                    aria-pressed={pinned}
-                    onClick={() => onTogglePinnedCwd?.(path)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 24,
-                      height: 24,
-                      marginRight: 4,
-                      padding: 0,
-                      background: "none",
-                      border: "none",
-                      borderRadius: 4,
-                      cursor: "pointer",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <line x1="12" y1="17" x2="12" y2="22" />
-                      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
-                    </svg>
                   </button>
                 </div>
               );
@@ -757,7 +724,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, recentProjectPaths = [], pinnedCwds = [], onTogglePinnedCwd, homeDir = "", worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, recentProjectPaths = [], pinnedCwds = [], homeDir = "", worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -2373,7 +2340,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 onChange={onNewSessionCwdChange}
                 recentPaths={recentProjectPaths}
                 pinnedPaths={pinnedCwds}
-                onTogglePinnedCwd={onTogglePinnedCwd}
                 homeDir={homeDir}
                 worktreeInfo={worktreeInfo}
               />
