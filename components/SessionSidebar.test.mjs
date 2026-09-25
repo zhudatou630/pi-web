@@ -19,7 +19,7 @@ test("session rows use one compact line without message counts", async () => {
     isSelected: true,
     onClick() {},
   })));
-  assert.match(html, /height:28px/);
+  assert.match(html, /height:26px/);
   assert.doesNotMatch(html, /min-width:60px/);
   assert.match(html, /text-overflow:ellipsis;white-space:nowrap/);
   assert.ok(html.includes(`title="${title}"`));
@@ -32,24 +32,24 @@ test("session rows use one compact line without message counts", async () => {
 test("scrolling keeps the focused session and the viewport mounted without expanding the whole window", () => {
   for (const [scrollTop, focusedIndex] of [[0, 1999], [10000, 0]]) {
     const indices = getSessionListIndices(2000, scrollTop, 335, focusedIndex);
-    const firstVisible = Math.floor(scrollTop / 28);
-    const lastVisible = Math.ceil((scrollTop + 335) / 28) - 1;
+    const firstVisible = Math.floor(scrollTop / 26);
+    const lastVisible = Math.ceil((scrollTop + 335) / 26) - 1;
     for (let index = firstVisible; index <= lastVisible; index++) assert.ok(indices.includes(index));
     assert.ok(indices.includes(focusedIndex));
-    assert.equal(indices.length, 29);
+    assert.equal(indices.length, 30);
     assert.equal(new Set(indices).size, indices.length);
     assert.deepEqual(indices, [...indices].sort((a, b) => a - b));
   }
-  assert.equal(getSessionListIndices(2000, 0, 335, 3).length, 28);
+  assert.equal(getSessionListIndices(2000, 0, 335, 3).length, 29);
   const blurred = getSessionListIndices(2000, 10000, 335);
-  assert.equal(blurred.length, 28);
+  assert.equal(blurred.length, 29);
   assert.ok(!blurred.includes(0));
 });
 
 test("session windows stay valid after a project shrinks and before the viewport is measured", () => {
   assert.deepEqual(getSessionListIndices(5, 80000, 335, 1999), [0, 1, 2, 3, 4]);
   assert.deepEqual(getSessionListIndices(0, 80000, 335, 1999), []);
-  assert.equal(getSessionListIndices(2000, 0, 0).length, 38);
+  assert.equal(getSessionListIndices(2000, 0, 0).length, 40);
 });
 
 test("only Shift+click bypasses session deletion confirmation", () => {

@@ -45,7 +45,8 @@ test("sidebar starts with project sections sharing one chevron gutter and settin
   assert.equal(label["font-size"], "12px");
   assert.equal(label["font-weight"], "600");
   assert.equal(footer["font-weight"], undefined);
-  assert.equal(footer.padding, "0 8px 0 2px");
+  assert.equal(footer.padding, "0 8px 0 8px");
+  assert.equal(label.padding, "0 4px 0 12px");
   assert.equal(declarations(".sidebar-footer").padding, "4px 8px 4px 0");
   assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 3);
   assert.doesNotMatch(sidebar, /className="sidebar-switcher"|Workspace context bar/);

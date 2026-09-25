@@ -22,7 +22,7 @@ import { SubagentIcon } from "./SubagentIcon";
 
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
-const SESSION_LIST_ITEM_HEIGHT = 28;
+const SESSION_LIST_ITEM_HEIGHT = 26;
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
 const WORKSPACE_SESSION_PAGE_SIZE = 20;
 
@@ -1253,7 +1253,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                           whiteSpace: "nowrap",
                           minWidth: 0,
                           fontSize: 11,
-                          lineHeight: 1,
                         }}
                       >
                         {branchLabel}
@@ -1940,7 +1939,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         });
                       }}
                       title={row.project.root}
-                      style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 0", border: "none", background: "none", color: "inherit", cursor: "pointer", textAlign: "left", fontSize: 12 }}
+                      style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px", border: "none", background: "none", color: "inherit", cursor: "pointer", textAlign: "left", fontSize: 12 }}
                     >
                       <ProjectFolderIcon open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{getFileName(row.project.root)}</span>
@@ -2397,7 +2396,7 @@ export function SessionItem({
         position: "relative",
         display: "flex",
         alignItems: "center",
-        paddingLeft: 10 + indent + depth * 14,
+        paddingLeft: 14 + indent + depth * 14,
         paddingRight: 8,
         cursor: confirmDelete || renaming ? "default" : "pointer",
         background: confirmDelete
@@ -2499,7 +2498,7 @@ export function SessionItem({
               aria-label={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
               aria-pressed={isPinned}
               style={{
-                position: "absolute", left: indent + depth * 14 - 14, top: 4,
+                position: "absolute", left: indent + depth * 14 - 10, top: (SESSION_LIST_ITEM_HEIGHT - 20) / 2,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 width: 20, height: 20, padding: 0,
                 background: "transparent", border: "none", borderRadius: 4,

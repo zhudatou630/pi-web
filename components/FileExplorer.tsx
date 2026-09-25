@@ -299,10 +299,10 @@ function TreeNode({
           position: "relative",
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          gap: 4,
           paddingLeft: 4 + depth * 14,
           paddingRight: 8,
-          height: 28,
+          height: 26,
           boxSizing: "border-box",
           cursor: "pointer",
           background: hovered ? "var(--bg-hover)" : "transparent",
@@ -310,21 +310,22 @@ function TreeNode({
           userSelect: "none",
         }}
       >
-        {/* The chevron is a folder's icon. Glyphs share one left ink column and one
-            ink-to-text gap; the chevron's 12px box has 4.5px of side air, trimmed here. */}
+        {/* The chevron is a folder's icon and shares the sidebar's glyph slot. Its ink is
+            only ~4px wide, so centered it leaves a wider gap to the name than file icons
+            do. Shifting it 4.5px right gives the same ~8.5px ink-to-name gap as file icons;
+            the gap reads as belonging, the column offset does not. */}
         {node.isDir ? (
-          <span style={{ flexShrink: 0, display: "inline-flex", margin: "0 -4px 0 -4px", color: "var(--text-dim)" }}>
+          <span className="sidebar-section-gutter" style={{ paddingLeft: 9, boxSizing: "border-box" }}>
             <SidebarChevronGlyph open={open} />
           </span>
         ) : (
-          <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", color: hovered ? "var(--text)" : "var(--text-muted)" }}>
+          <span className="sidebar-section-gutter" style={{ color: hovered ? "var(--text)" : "var(--text-muted)" }}>
             {getFileIcon(node.name, 13)}
           </span>
         )}
         <span
           style={{
             fontSize: 12,
-            lineHeight: 1,
             color: hovered ? "var(--text)" : "var(--text-muted)",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -474,7 +475,7 @@ function ChangeRow({
         gap: 6,
         paddingLeft: 10,
         paddingRight: 8,
-        height: 28,
+        height: 26,
         boxSizing: "border-box",
         cursor: "pointer",
         background: hovered ? "var(--bg-hover)" : "transparent",
@@ -489,7 +490,6 @@ function ChangeRow({
       <span
         style={{
           fontSize: 12,
-          lineHeight: 1,
           color: hovered ? "var(--text)" : "var(--text-muted)",
           overflow: "hidden",
           textOverflow: "ellipsis",
