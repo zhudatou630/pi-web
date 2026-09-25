@@ -50,7 +50,7 @@ export function ModelSelector({
   const panelRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [anchorRect, setAnchorRect] = useState<{ top: number; right: number; bottom: number; left: number; width: number } | null>(null);
   const locked = disabled || busy;
   const sortedOptions = useMemo(() => [...options].sort(compareModelOptions), [options]);
@@ -72,8 +72,10 @@ export function ModelSelector({
   const selectedIndex = selectableOptions.findIndex((option) => option !== null
     ? option.modelId === value?.modelId && option.provider === value?.provider
     : !value);
-  const activeOptionIndex = selectableOptions.length ? Math.min(activeIndex, selectableOptions.length - 1) : 0;
-  const activeOptionId = selectableOptions.length ? `${listboxId}-option-${activeOptionIndex}` : undefined;
+  const activeOptionIndex = activeIndex >= 0 && selectableOptions.length
+    ? Math.min(activeIndex, selectableOptions.length - 1)
+    : -1;
+  const activeOptionId = activeOptionIndex >= 0 ? `${listboxId}-option-${activeOptionIndex}` : undefined;
 
   const updateAnchor = useCallback(() => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -115,14 +117,15 @@ export function ModelSelector({
   }, [open, updateAnchor]);
 
   useEffect(() => {
-    if (!open) return;
-    setActiveIndex(Math.max(0, Math.min(selectedIndex >= 0 ? selectedIndex : 0, selectableOptions.length - 1)));
-  }, [open, selectedIndex, selectableOptions.length]);
+    if (!open) setActiveIndex(-1);
+  }, [open]);
 
   useEffect(() => {
-    if (!open || !activeOptionId) return;
-    document.getElementById(activeOptionId)?.scrollIntoView({ block: "nearest" });
-  }, [open, activeOptionId]);
+    if (!open) return;
+    const id = activeOptionId ?? (selectedIndex >= 0 ? `${listboxId}-option-${selectedIndex}` : undefined);
+    if (!id) return;
+    document.getElementById(id)?.scrollIntoView({ block: "nearest" });
+  }, [open, activeOptionId, selectedIndex, listboxId]);
 
   const buttonStyle: CSSProperties = variant === "field"
     ? {
@@ -192,7 +195,11 @@ export function ModelSelector({
               return;
             }
             const direction = event.key === "ArrowDown" ? 1 : -1;
-            setActiveIndex((index) => selectableOptions.length ? (index + direction + selectableOptions.length) % selectableOptions.length : 0);
+            setActiveIndex((index) => {
+              if (!selectableOptions.length) return 0;
+              if (index < 0) return selectedIndex >= 0 ? selectedIndex : (direction > 0 ? 0 : selectableOptions.length - 1);
+              return (index + direction + selectableOptions.length) % selectableOptions.length;
+            });
             return;
           }
           if (!open || !selectableOptions.length) return;

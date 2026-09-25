@@ -518,6 +518,7 @@ test("keeps the model listbox keyboard and ARIA contract explicit", () => {
   const source = readFileSync(new URL("./ModelSelector.tsx", import.meta.url), "utf8");
   assert.match(source, /aria-controls=\{listboxId\}/);
   assert.match(source, /aria-activedescendant=\{open \? activeOptionId : undefined\}/);
+  assert.match(source, /if \(!open\) setActiveIndex\(-1\)/);
   assert.match(source, /event\.key === "ArrowDown" \|\| event\.key === "ArrowUp"/);
   assert.match(source, /event\.key === "Home" \|\| event\.key === "End"/);
   assert.match(source, /event\.key === "Enter" \|\| event\.key === " "/);
