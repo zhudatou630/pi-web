@@ -688,10 +688,10 @@ function AssistantMessageView({
             style={{
               marginTop: blocks.length > 0 ? 8 : 0,
               padding: "7px 10px",
-              border: "1px solid rgba(239,68,68,0.3)",
+              border: "1px solid color-mix(in srgb, var(--danger) 30%, transparent)",
               borderRadius: 6,
-              background: "rgba(239,68,68,0.07)",
-              color: "#ef4444",
+              background: "color-mix(in srgb, var(--danger) 7%, transparent)",
+              color: "var(--danger)",
               fontFamily: "var(--font-mono)",
               fontSize: 12,
               lineHeight: 1.5,
@@ -710,9 +710,9 @@ function AssistantMessageView({
           style={{
             marginTop: blocks.length > 0 ? 8 : 0,
             padding: "7px 10px",
-            border: "1px solid rgba(234,179,8,0.35)",
+            border: "1px solid color-mix(in srgb, var(--warning) 35%, transparent)",
             borderRadius: 6,
-            background: "rgba(234,179,8,0.08)",
+            background: "color-mix(in srgb, var(--warning) 8%, transparent)",
             color: "var(--text-muted)",
             fontSize: 12,
             lineHeight: 1.5,
@@ -782,8 +782,8 @@ function ProcessErrorCard({ error }: { error: string }) {
         borderRadius: 6,
         overflow: "hidden",
         fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
-        border: "1px solid rgba(248,113,113,0.35)",
-        background: "rgba(248,113,113,0.05)",
+        border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
+        background: "color-mix(in srgb, var(--danger) 5%, transparent)",
       }}
     >
       <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
@@ -811,13 +811,13 @@ function ProcessErrorCard({ error }: { error: string }) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <span style={{ color: "#f87171", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: "var(--danger)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {t("chat.modelError")}
           </span>
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
@@ -834,11 +834,11 @@ function ProcessErrorCard({ error }: { error: string }) {
           style={{
             padding: "8px 10px",
             background: "var(--bg)",
-            borderTop: "1px solid rgba(248,113,113,0.2)",
+            borderTop: "1px solid color-mix(in srgb, var(--danger) 20%, transparent)",
             fontFamily: "var(--font-mono)",
             fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.55,
-            color: "#f87171",
+            color: "var(--danger)",
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
           }}
@@ -1038,7 +1038,7 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
             fontFamily: "var(--font-mono)",
             fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.55,
-            color: error ? "#f87171" : "var(--text-muted)",
+            color: error ? "var(--danger)" : "var(--text-muted)",
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
           }}
@@ -1093,8 +1093,8 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
         borderRadius: 6,
         overflow: "hidden",
         fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
-        border: isError ? "1px solid rgba(248,113,113,0.45)" : "1px solid var(--border)",
-        background: isError ? "rgba(248,113,113,0.05)" : "var(--bg-subtle)",
+        border: isError ? "1px solid color-mix(in srgb, var(--danger) 45%, transparent)" : "1px solid var(--border)",
+        background: isError ? "color-mix(in srgb, var(--danger) 5%, transparent)" : "var(--bg-subtle)",
         transition: "border-color 0.15s ease",
       }}
     >
@@ -1121,10 +1121,10 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
             textAlign: "left",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, color: isError ? "#f87171" : undefined }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, color: isError ? "var(--danger)" : undefined }}>
             <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
-          <span style={{ color: isError ? "#f87171" : "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {toolLabel}
           </span>
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
@@ -1159,7 +1159,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
             lineHeight: 1.5,
             overflow: "auto",
             background: "var(--bg)",
-            borderTop: isError ? "1px solid rgba(239,68,68,0.25)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
+            borderTop: isError ? "1px solid color-mix(in srgb, var(--danger) 25%, transparent)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -1214,7 +1214,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
         <div
           style={{
             padding: "6px 10px 8px",
-            borderTop: isError ? "1px solid rgba(239,68,68,0.25)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
+            borderTop: isError ? "1px solid color-mix(in srgb, var(--danger) 25%, transparent)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
             background: "var(--bg)",
           }}
         >
@@ -1292,7 +1292,7 @@ function PairedDiffResult({ diff }: {
   return (
     <div
       style={{
-        borderTop: "1px solid rgba(34,197,94,0.15)",
+        borderTop: "1px solid color-mix(in srgb, var(--success) 15%, transparent)",
         background: "var(--bg)",
       }}
     >
@@ -1402,16 +1402,16 @@ function SplitDiffHeader({ title, side }: { title: string; side: "left" | "right
 function SplitDiffCellView({ cell, side }: { cell: SplitDiffCell; side: "left" | "right" }) {
   const bg =
     cell.type === "added"
-      ? "rgba(34,197,94,0.12)"
+      ? "color-mix(in srgb, var(--success) 12%, transparent)"
       : cell.type === "removed"
-      ? "rgba(248,113,113,0.13)"
+      ? "color-mix(in srgb, var(--danger) 13%, transparent)"
       : cell.type === "empty"
       ? "var(--bg-subtle)"
       : "transparent";
   const marker =
     cell.type === "added" ? "+" : cell.type === "removed" ? "-" : " ";
   const markerColor =
-    cell.type === "added" ? "#22c55e" : cell.type === "removed" ? "#f87171" : "var(--text-dim)";
+    cell.type === "added" ? "var(--success)" : cell.type === "removed" ? "var(--danger)" : "var(--text-dim)";
 
   return (
     <div
@@ -1475,13 +1475,13 @@ function PatchTextView({ text }: { text: string }) {
           line.startsWith("-") && !line.startsWith("---") ? "removed" :
           "context";
         const bg =
-          kind === "added" ? "rgba(34,197,94,0.12)" :
-          kind === "removed" ? "rgba(248,113,113,0.13)" :
-          kind === "hunk" ? "rgba(96,165,250,0.12)" :
+          kind === "added" ? "color-mix(in srgb, var(--success) 12%, transparent)" :
+          kind === "removed" ? "color-mix(in srgb, var(--danger) 13%, transparent)" :
+          kind === "hunk" ? "color-mix(in srgb, var(--accent) 12%, transparent)" :
           "transparent";
         const color =
-          kind === "added" ? "#22c55e" :
-          kind === "removed" ? "#f87171" :
+          kind === "added" ? "var(--success)" :
+          kind === "removed" ? "var(--danger)" :
           kind === "hunk" ? "var(--accent)" :
           "var(--text)";
 
@@ -1492,9 +1492,9 @@ function PatchTextView({ text }: { text: string }) {
               display: "flex",
               background: bg,
               borderLeft: kind === "added"
-                ? "3px solid #22c55e"
+                ? "3px solid var(--success)"
                 : kind === "removed"
-                ? "3px solid #f87171"
+                ? "3px solid var(--danger)"
                 : kind === "hunk"
                 ? "3px solid var(--accent)"
                 : "3px solid transparent",
@@ -1552,8 +1552,8 @@ function PairedResult({ text, images, isEmpty, isError }: {
   return (
     <div
       style={{
-        borderTop: `1px solid ${isError ? "rgba(248,113,113,0.3)" : "rgba(34,197,94,0.15)"}`,
-        background: isError ? "rgba(248,113,113,0.04)" : "var(--bg-subtle)",
+        borderTop: `1px solid ${isError ? "color-mix(in srgb, var(--danger) 30%, transparent)" : "color-mix(in srgb, var(--success) 15%, transparent)"}`,
+        background: isError ? "color-mix(in srgb, var(--danger) 4%, transparent)" : "var(--bg-subtle)",
       }}
     >
       {images.length > 0 && (
@@ -1566,7 +1566,7 @@ function PairedResult({ text, images, isEmpty, isError }: {
           style={{
             margin: 0,
             padding: "8px 10px",
-            color: isError ? "#f87171" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
+            color: isError ? "var(--danger)" : (isEmpty ? "var(--text-dim)" : "var(--text-muted)"),
             fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",

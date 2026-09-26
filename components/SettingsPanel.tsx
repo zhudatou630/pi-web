@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { useTheme, type ThemePreference } from "@/hooks/useTheme";
+import { useTheme, type ThemePalette, type ThemePreference } from "@/hooks/useTheme";
 import {
   CHAT_CONTENT_WIDTH_DEFAULT,
   CHAT_CONTENT_WIDTH_MAX,
@@ -72,7 +72,7 @@ function ThemeIcon({ preference }: { preference: ThemePreference }) {
 
 function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange" | "soundEnabled" | "onSoundToggle">) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
-  const { preference, setThemePreference } = useTheme();
+  const { preference, setThemePreference, palette, setThemePalette } = useTheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
   // The last replies paint at once; the mount loads then revalidate them.
   const [shellSettings, setShellSettings] = useState<ShellToolSettingsResponse | null>(() => {
@@ -110,6 +110,10 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     { id: "light", label: t("settings.themeLight") },
     { id: "dark", label: t("settings.themeDark") },
     { id: "auto", label: t("settings.themeSystem") },
+  ];
+  const paletteOptions: { id: ThemePalette; label: string }[] = [
+    { id: "default", label: t("settings.paletteDefault") },
+    { id: "claude", label: t("settings.paletteClaude") },
   ];
 
   useEffect(() => {
@@ -245,6 +249,22 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
                 className="settings-segmented-option"
               >
                 <ThemeIcon preference={option.id} />
+                <span className="settings-segmented-label">{option.label}</span>
+              </button>
+            ))}
+          </div>
+        </SettingsRow>
+        <SettingsRow label={t("settings.palette")} stacked>
+          <div role="radiogroup" aria-label={t("settings.palette")} className="settings-segmented">
+            {paletteOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={palette === option.id}
+                onClick={() => setThemePalette(option.id)}
+                className="settings-segmented-option"
+              >
                 <span className="settings-segmented-label">{option.label}</span>
               </button>
             ))}

@@ -460,7 +460,7 @@ function QueuedMessageRow({ kind, text, action }: { kind: "steer" | "follow-up";
 }
 
 function ModelNoticeBanner({ tone, title, body, onClose }: { tone: "error" | "warning"; title: string; body: string; onClose?: () => void }) {
-  const color = tone === "error" ? "239,68,68" : "234,179,8";
+  const color = tone === "error" ? "var(--danger)" : "var(--warning)";
   return (
     <div
       role="alert"
@@ -472,10 +472,10 @@ function ModelNoticeBanner({ tone, title, body, onClose }: { tone: "error" | "wa
         marginBottom: 8,
         padding: "7px 10px",
         overflowY: "auto",
-        border: `1px solid rgba(${color},0.3)`,
+        border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
         borderRadius: 4,
-        background: `rgba(${color},0.07)`,
-        color: `rgb(${color})`,
+        background: `color-mix(in srgb, ${color} 7%, transparent)`,
+        color,
         fontSize: 11,
         lineHeight: 1.45,
       }}
@@ -2329,7 +2329,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 gap: 5,
                 padding: "2px 6px",
                 borderRadius: 4,
-                background: bashExcluded ? "rgba(100,116,139,0.12)" : "rgba(37,99,235,0.12)",
+                background: bashExcluded ? "color-mix(in srgb, var(--text-dim) 12%, transparent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
                 color: bashExcluded ? "var(--text-muted)" : "var(--accent)",
                 fontFamily: "var(--font-mono)",
                 fontSize: 11,

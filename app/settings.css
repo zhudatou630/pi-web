@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--settings-scrim, rgba(0, 0, 0, 0.35));
 }
 
 .config-panel-surface {
@@ -42,6 +42,7 @@
   height: min(var(--config-panel-height), calc(100dvh - 16px));
   border: 1px solid var(--border);
   border-radius: 8px;
+  background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
 
@@ -473,7 +474,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.38);
+  background: var(--settings-scrim, rgba(0, 0, 0, 0.38));
   animation: settings-backdrop-in 0.12s ease-out;
 }
 
@@ -500,7 +501,7 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-lg);
-  background: var(--bg);
+  background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
 
@@ -1647,9 +1648,9 @@
 }
 
 @keyframes saved-pop {
-  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55); }
-  40%  { transform: scale(1.08); box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.25); }
-  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 55%, transparent); }
+  40%  { transform: scale(1.08); box-shadow: 0 0 0 6px color-mix(in srgb, var(--success) 25%, transparent); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 0%, transparent); }
 }
 
 @keyframes saved-check-draw {
@@ -2448,7 +2449,7 @@ a.models-hint:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.32);
+  background: var(--settings-scrim, rgba(0, 0, 0, 0.32));
 }
 
 .models-dialog {
@@ -2459,7 +2460,7 @@ a.models-hint:hover {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg);
+  background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
 

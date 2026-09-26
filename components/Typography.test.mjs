@@ -42,7 +42,7 @@ test("UI uses only font weights 400 and 600, never as a state toggle", () => {
 });
 
 test("text tiers hit the same contrast targets in light and dark themes", async () => {
-  const css = await readFile(join(root, "app/globals.css"), "utf8");
+  const css = (await readFile(join(root, "app/globals.css"), "utf8")) + (await readFile(join(root, "app/theme-claude.css"), "utf8"));
   const block = (selector) => css.match(new RegExp(`^${selector} \\{([\\s\\S]*?)^\\}`, "m"))[1];
   const token = (body, name) => body.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"))[1];
   const lum = (hex) => {
@@ -51,12 +51,14 @@ test("text tiers hit the same contrast targets in light and dark themes", async 
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   };
   const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
-  for (const selector of [":root", "html\\.dark"]) {
+  for (const selector of [":root", "html\\[data-theme=\"claude\"\\]", "html\\[data-theme=\"claude\"\\]\\.dark", "html\\.dark"]) {
     const body = block(selector);
     const panel = token(body, "bg-panel");
     const at = (name) => ratio(token(body, name), panel);
     assert.ok(at("text") >= 12, `${selector} --text ${at("text")}`);
-    assert.ok(at("text-muted") >= 8.5 && at("text-muted") <= 9.5, `${selector} --text-muted ${at("text-muted")}`);
+    // Claude dark follows Claude Desktop's measured secondary tier (~11:1).
+    const [mutedLo, mutedHi] = selector.includes("claude") && selector.endsWith("dark") ? [10.5, 12] : [8.5, 9.5];
+    assert.ok(at("text-muted") >= mutedLo && at("text-muted") <= mutedHi, `${selector} --text-muted ${at("text-muted")}`);
     assert.ok(at("text-dim") >= 5.5 && at("text-dim") <= 6.5, `${selector} --text-dim ${at("text-dim")}`);
   }
 });

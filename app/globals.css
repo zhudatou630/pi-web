@@ -77,6 +77,9 @@ html.sarasa-term-webfont {
   --assistant-bg: #ffffff;
   --tool-bg: #f9fafb;
   --bg-subtle: rgba(0,0,0,0.03);
+  /* Dialogs and popovers. Same as --bg unless a palette lifts floating
+     surfaces above the page (Claude dark does, like Claude Desktop). */
+  --bg-elevated: var(--bg);
   /* Shape and control scale. Pick from these; do not add one-off radii or heights. */
   --ui-radius-sm: 4px;
   --ui-radius-md: 6px;
@@ -591,13 +594,9 @@ body {
 .web-login-error {
   min-height: 17px;
   margin: 7px 4px 0;
-  color: #dc2626;
+  color: var(--danger);
   font-size: 11px;
   line-height: 17px;
-}
-
-html.dark .web-login-error {
-  color: #f87171;
 }
 
 .web-login-form button {
@@ -2255,7 +2254,7 @@ span.token.table {
 }
 
 .workspace-list-row[data-pending-delete="true"] .workspace-folder-icon {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 /* Show more: label aligned with project/session names, count flush right
@@ -2941,7 +2940,7 @@ span.token.table {
 .menu-surface {
   animation: menu-surface-in 0.12s ease-out;
   max-width: calc(100vw - 24px);
-  background: var(--bg);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06);

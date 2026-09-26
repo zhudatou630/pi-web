@@ -177,7 +177,7 @@ export function SessionHistoryControl({
             )}
           </button>
           {error && (
-            <div style={{ padding: "6px 8px", fontSize: 11, color: "#dc2626", lineHeight: 1.35 }}>
+            <div style={{ padding: "6px 8px", fontSize: 11, color: "var(--danger)", lineHeight: 1.35 }}>
               {error}
             </div>
           )}

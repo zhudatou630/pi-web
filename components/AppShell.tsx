@@ -2008,11 +2008,11 @@ export function AppShell() {
           minHeight: mobileBanner ? 32 : undefined,
           height: mobileBanner ? undefined : "100%",
           padding: mobileBanner ? "6px 12px" : "0 12px",
-          background: mobileBanner ? "color-mix(in srgb, #d97706 8%, var(--bg-panel))" : "none",
+          background: mobileBanner ? "color-mix(in srgb, var(--warning) 8%, var(--bg-panel))" : "none",
           border: "none",
           borderRight: mobileBanner ? "none" : "1px solid var(--border)",
           borderBottom: mobileBanner ? "1px solid var(--border)" : "none",
-          color: "#d97706",
+          color: "var(--warning)",
           cursor: "pointer",
           flexShrink: 0,
           fontSize: 11,
@@ -2748,13 +2748,13 @@ export function AppShell() {
                     const clampedPct = pct !== null ? Math.min(100, Math.max(0, pct)) : 0;
                     const isHigh = pct !== null && pct >= 85;
                     const isWarning = pct !== null && pct >= 70 && pct < 85;
-                    const barColor = isHigh ? "#ef4444" : isWarning ? "#eab308" : "var(--accent)";
+                    const barColor = isHigh ? "var(--danger)" : isWarning ? "var(--warning)" : "var(--accent)";
                     const remaining = ctx?.tokens !== null && ctx?.contextWindow ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
 
                     const activeContextBlock = ctx?.contextWindow ? section(
                       translate("session.activeContext"),
                       pct !== null && (
-                        <span style={{ fontWeight: 400, color: isHigh ? "#ef4444" : isWarning ? "rgba(234,179,8,0.95)" : "var(--text)" }}>
+                        <span style={{ fontWeight: 400, color: isHigh ? "var(--danger)" : isWarning ? "color-mix(in srgb, var(--warning) 95%, transparent)" : "var(--text)" }}>
                           {pct.toFixed(1)}%
                         </span>
                       ),
@@ -2772,7 +2772,7 @@ export function AppShell() {
                           {label(translate("session.contextWindow"))}{num(formatTokensK(ctx.contextWindow, locale))}
                         </div>
                         {isHigh && (
-                          <div className="session-stats-note" style={{ color: "#ef4444" }}>
+                          <div className="session-stats-note" style={{ color: "var(--danger)" }}>
                             {translate("chat.contextHighWarning")}
                           </div>
                         )}
@@ -3068,7 +3068,7 @@ export function AppShell() {
               role="alert"
               style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
             >
-               <div style={{ fontSize: 14, color: "#dc2626" }}>{translate("workspace.unable")}</div>
+               <div style={{ fontSize: 14, color: "var(--danger)" }}>{translate("workspace.unable")}</div>
               <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
                 {initialNavigation.requestedCwd}
               </div>

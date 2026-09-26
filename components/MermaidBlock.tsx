@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
+import { claudeCodeStyle, claudeDarkCodeStyle, claudeDarkMermaidVariables, claudeMermaidVariables } from "@/lib/claude-theme";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -35,13 +36,14 @@ type RenderState =
   | { key: string; status: "ready"; svg: string };
 
 export function MermaidBlock({ code, isStreaming, defaultPreview = false }: MermaidBlockProps) {
-  const { isDark } = useTheme();
+  const { isDark, palette } = useTheme();
+  const isClaude = palette === "claude";
   const { t } = useI18n();
   const [showPreview, setShowPreview] = useState(defaultPreview);
   const [renderState, setRenderState] = useState<RenderState | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
   const previewRef = useRef<HTMLButtonElement>(null);
-  const currentKey = `${isDark ? "dark" : "light"}\n${code}`;
+  const currentKey = `${palette}-${isDark ? "dark" : "light"}\n${code}`;
   const previewVisible = showPreview && !isStreaming;
 
   useEffect(() => {
@@ -56,7 +58,9 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
         startOnLoad: false,
         securityLevel: "strict",
         suppressErrorRendering: true,
-        theme: isDark ? "dark" : "default",
+        ...(isClaude
+          ? { theme: "base" as const, themeVariables: isDark ? claudeDarkMermaidVariables : claudeMermaidVariables }
+          : { theme: isDark ? "dark" as const : "default" as const }),
       });
 
       const parsed = await mermaid.parse(code, { suppressErrors: true });
@@ -79,7 +83,7 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
     return () => {
       cancelled = true;
     };
-  }, [code, currentKey, isDark, previewVisible]);
+  }, [code, currentKey, isClaude, isDark, previewVisible]);
 
   const previewButton = useMemo(() => (
     <button
@@ -269,7 +273,7 @@ interface CodeBlockProps {
  * every chunk, which is the single most expensive part of streamed rendering.
  */
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
-  const { isDark } = useTheme();
+  const { isDark, palette } = useTheme();
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -326,7 +330,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
       ) : (
         <SyntaxHighlighter
           language={lang || "text"}
-          style={isDark ? vscDarkPlus : vs}
+          style={palette === "claude" ? (isDark ? claudeDarkCodeStyle : claudeCodeStyle) : isDark ? vscDarkPlus : vs}
           showLineNumbers
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", paddingRight: "0.8em", userSelect: "none" }}
           customStyle={{

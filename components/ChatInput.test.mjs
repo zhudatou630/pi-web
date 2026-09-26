@@ -176,7 +176,7 @@ test("keeps the main composer compact in idle and streaming states", () => {
     assert.doesNotMatch(html, /aria-label="Follow-up"/);
     assert.match(html, /class="composer-send" aria-label="Send"[^>]*aria-haspopup="menu" aria-expanded="false"[^>]*><svg[^>]*><path d="M12 19V5m-7 7 7-7 7 7"/);
     assert.doesNotMatch(html, /composer-btn-label/);
-    assert.doesNotMatch(html, /#ef4444/);
+    assert.doesNotMatch(html, /--danger/);
 
     // Busy without a queue (bash / direct image run): the verb stays Stop so the draft survives.
     const busy = renderToStaticMarkup(React.createElement(I18nProvider, null,

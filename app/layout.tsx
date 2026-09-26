@@ -4,6 +4,7 @@ import { PwaRegistration } from "@/components/PwaRegistration";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./settings.css";
+import "./theme-claude.css";
 
 const notoSansMono = Noto_Sans_Mono({
   subsets: ["latin", "cyrillic"],
@@ -71,7 +72,7 @@ export default function RootLayout({
         <meta name="google" content="notranslate" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(localStorage.getItem("pi-web-sarasa-enabled")==="1")document.documentElement.classList.add("sarasa-term-webfont");var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");var c=dark?"#242424":"#f5f5f5";var ms=document.querySelectorAll('meta[name="theme-color"]');if(ms.length===0){var m=document.createElement("meta");m.name="theme-color";m.content=c;document.head.appendChild(m)}else{for(var i=0;i<ms.length;i++){ms[i].removeAttribute("media");ms[i].content=c}}}catch(e){}})();`,
+            __html: `(function(){try{if(localStorage.getItem("pi-web-sarasa-enabled")==="1")document.documentElement.classList.add("sarasa-term-webfont");var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");var claude=localStorage.getItem("pi-theme-palette")==="claude";if(claude)document.documentElement.dataset.theme="claude";var c=claude?(dark?"#111111":"#fafaf4"):(dark?"#242424":"#f5f5f5");var ms=document.querySelectorAll('meta[name="theme-color"]');if(ms.length===0){var m=document.createElement("meta");m.name="theme-color";m.content=c;document.head.appendChild(m)}else{for(var i=0;i<ms.length;i++){ms[i].removeAttribute("media");ms[i].content=c}}}catch(e){}})();`,
           }}
         />
       </head>

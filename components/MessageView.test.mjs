@@ -311,11 +311,11 @@ test("keeps pending and successful tools neutral while retaining error emphasis"
       toolResults: new Map(result ? [[block.toolCallId, result]] : []),
     });
     if (state === "error") {
-      assert.match(html, /border:1px solid rgba\(248,113,113,0\.45\)/);
-      assert.match(html, /color:#f87171/);
+      assert.match(html, /border:1px solid color-mix\(in srgb, var\(--danger\) 45%, transparent\)/);
+      assert.match(html, /color:var\(--danger\)/);
     } else {
       assert.match(html, /border:1px solid var\(--border\);background:var\(--bg-subtle\)/);
-      assert.doesNotMatch(html, /34,197,94|#16a34a|#f87171/);
+      assert.doesNotMatch(html, /--success|--danger/);
     }
     const preview = state === "generating" ? "Generating parameters" : "src/example.ts";
     assert.ok(html.includes(preview));

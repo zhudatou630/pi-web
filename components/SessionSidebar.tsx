@@ -1302,7 +1302,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                             <button
                               onClick={() => void handleRemoveWorktree(wt.path, true)}
                               disabled={wtBusy}
-                              style={{ padding: "3px 9px", background: "#ef4444", border: "none", borderRadius: 4, color: "#fff", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
+                              style={{ padding: "3px 9px", background: "var(--danger)", border: "none", borderRadius: 4, color: "#fff", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
                             >
                               {t("sidebar.force")}
                             </button>
@@ -1471,7 +1471,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                   {wtError && (
                     <div style={{
                       padding: "5px 10px 8px",
-                      color: "#dc2626",
+                      color: "var(--danger)",
                       fontSize: 11,
                       lineHeight: 1.35,
                       overflowWrap: "anywhere",
@@ -1616,7 +1616,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               >
                 {otherProjectActivity.running > 0
                   ? <LivePulseBeacon size={11} />
-                  : <span style={{ color: "#10b981", fontSize: 10 }}>{otherProjectActivity.unread}</span>}
+                  : <span style={{ color: "var(--success)", fontSize: 10 }}>{otherProjectActivity.unread}</span>}
               </span>
             )}
             <ToolbarIconButton
@@ -1689,7 +1689,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     >
                       <PathLabel text={displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
                       {activity?.running ? <LivePulseBeacon size={11} /> : null}
-                      {activity?.unread ? <span style={{ color: "#10b981", fontSize: 10 }}>{activity.unread}</span> : null}
+                      {activity?.unread ? <span style={{ color: "var(--success)", fontSize: 10 }}>{activity.unread}</span> : null}
                     </button>
                     {/* Single-project mode: this list is the only place other projects
                         are visible, so it must be able to delete them without switching. */}
@@ -1789,9 +1789,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         onScroll={handleListScroll}
         style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", scrollbarGutter: "stable", padding: "0", minHeight: 80 }}
       >
-        {error && <div style={{ padding: "12px 14px", color: "#f87171", fontSize: 12 }}>{error}</div>}
+        {error && <div style={{ padding: "12px 14px", color: "var(--danger)", fontSize: 12 }}>{error}</div>}
         {deleteProjectError && (
-          <div role="alert" onClick={() => setDeleteProjectError(null)} style={{ padding: "6px 14px", color: "#f87171", fontSize: 12, cursor: "pointer" }}>
+          <div role="alert" onClick={() => setDeleteProjectError(null)} style={{ padding: "6px 14px", color: "var(--danger)", fontSize: 12, cursor: "pointer" }}>
             {t("sidebar.deleteProjectSessionsFailed", { error: deleteProjectError })}
           </div>
         )}
@@ -1870,7 +1870,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         </span>
                       ) : null}
                       {activity?.unread ? (
-                        <span aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ color: "#10b981", fontSize: 10 }}>{activity.unread}</span>
+                        <span aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ color: "var(--success)", fontSize: 10 }}>{activity.unread}</span>
                       ) : null}
                     </button>
                     {active ? worktreeSwitcher : null}
@@ -2082,7 +2082,7 @@ function UnreadSessionIndicator() {
       }}
     >
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style={{ display: "block" }}>
-        <circle cx="6" cy="6" r="5" fill="#10b981" />
+        <circle cx="6" cy="6" r="5" fill="var(--success)" />
         <path d="M3.6 6.2l1.6 1.6 3.2-3.4" stroke="#ffffff" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
@@ -2310,7 +2310,7 @@ export function SessionItem({
         paddingRight: 8,
         cursor: confirmDelete || renaming ? "default" : "pointer",
         background: confirmDelete
-          ? "rgba(239,68,68,0.06)"
+          ? "color-mix(in srgb, var(--danger) 6%, transparent)"
           : isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
         borderRadius: 4,
         transition: "background 0.1s",
@@ -2334,7 +2334,7 @@ export function SessionItem({
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
                 height: 24, padding: "0 8px",
-                background: "#ef4444", border: "none",
+                background: "var(--danger)", border: "none",
                 borderRadius: 4, color: "#fff",
                 cursor: "pointer", fontSize: 12,
                 whiteSpace: "nowrap",

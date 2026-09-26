@@ -4,17 +4,22 @@ import { useCallback, useSyncExternalStore } from "react";
 
 export type ThemePreference = "light" | "dark" | "auto";
 export type ResolvedTheme = "light" | "dark";
+// Palette and light/dark mode are independent: data-theme picks the palette,
+// .dark the mode, so every palette gets light, dark, and system.
+export type ThemePalette = "default" | "claude";
 
 type ThemeState = {
   preference: ThemePreference;
   theme: ResolvedTheme;
+  palette: ThemePalette;
 };
 
 type ToggleOrigin = { x: number; y: number };
 
 const STORAGE_KEY = "pi-theme";
+const PALETTE_STORAGE_KEY = "pi-theme-palette";
 const PREFERENCE_CYCLE: ThemePreference[] = ["light", "dark", "auto"];
-const SERVER_SNAPSHOT: ThemeState = { preference: "auto", theme: "light" };
+const SERVER_SNAPSHOT: ThemeState = { preference: "auto", theme: "light", palette: "default" };
 
 const listeners = new Set<() => void>();
 let state: ThemeState | null = null;
@@ -29,14 +34,29 @@ function getSystemTheme(): ResolvedTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function readStoredPreference(): ThemePreference {
+function readStored(key: string): string | null {
   try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    if (value === "light" || value === "dark" || value === "auto") return value;
+    return localStorage.getItem(key);
+  } catch {
+    return null; // private mode, quota, etc.
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
   } catch {
     // ignore storage errors (private mode, quota, etc.)
   }
-  return "auto";
+}
+
+function readStoredPreference(): ThemePreference {
+  const value = readStored(STORAGE_KEY);
+  return value === "light" || value === "dark" ? value : "auto";
+}
+
+function readStoredPalette(): ThemePalette {
+  return readStored(PALETTE_STORAGE_KEY) === "claude" ? "claude" : "default";
 }
 
 function resolveTheme(preference: ThemePreference): ResolvedTheme {
@@ -44,14 +64,14 @@ function resolveTheme(preference: ThemePreference): ResolvedTheme {
 }
 
 // Match --bg-panel so the PWA status bar blends into the workspace header.
-const THEME_COLOR: Record<ResolvedTheme, string> = {
-  light: "#f5f5f5",
-  dark: "#242424",
+const THEME_COLOR: Record<ThemePalette, Record<ResolvedTheme, string>> = {
+  default: { light: "#f5f5f5", dark: "#242424" },
+  claude: { light: "#fafaf4", dark: "#111111" },
 };
 
-function applyThemeColor(theme: ResolvedTheme): void {
+function applyThemeColor(palette: ThemePalette, theme: ResolvedTheme): void {
   if (typeof document === "undefined") return;
-  const color = THEME_COLOR[theme];
+  const color = THEME_COLOR[palette][theme];
   const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
   if (metas.length === 0) {
     const meta = document.createElement("meta");
@@ -66,10 +86,13 @@ function applyThemeColor(theme: ResolvedTheme): void {
   }
 }
 
-function applyDomTheme(theme: ResolvedTheme): void {
+function applyDomTheme(palette: ThemePalette, theme: ResolvedTheme): void {
   if (typeof document === "undefined") return;
-  document.documentElement.classList.toggle("dark", theme === "dark");
-  applyThemeColor(theme);
+  const root = document.documentElement;
+  root.classList.toggle("dark", theme === "dark");
+  if (palette === "default") delete root.dataset.theme;
+  else root.dataset.theme = palette;
+  applyThemeColor(palette, theme);
 }
 
 function ensureState(): ThemeState {
@@ -77,22 +100,20 @@ function ensureState(): ThemeState {
   if (state) return state;
 
   const preference = readStoredPreference();
+  const palette = readStoredPalette();
   const theme = resolveTheme(preference);
-  applyDomTheme(theme);
-  state = { preference, theme };
+  applyDomTheme(palette, theme);
+  state = { preference, theme, palette };
   return state;
 }
 
-function setThemeState(preference: ThemePreference, theme: ResolvedTheme, persist: boolean): void {
-  applyDomTheme(theme);
+function setThemeState(next: ThemeState, persist: boolean): void {
+  applyDomTheme(next.palette, next.theme);
   if (persist) {
-    try {
-      localStorage.setItem(STORAGE_KEY, preference);
-    } catch {
-      // ignore storage errors (private mode, quota, etc.)
-    }
+    writeStored(STORAGE_KEY, next.preference);
+    writeStored(PALETTE_STORAGE_KEY, next.palette);
   }
-  state = { preference, theme };
+  state = next;
   emit();
 }
 
@@ -101,7 +122,7 @@ function syncAutoThemeFromSystem(): void {
   if (current.preference !== "auto") return;
   const theme = getSystemTheme();
   if (theme === current.theme) return;
-  setThemeState("auto", theme, false);
+  setThemeState({ ...current, theme }, false);
 }
 
 function ensureSystemListener(): void {
@@ -149,7 +170,7 @@ export function useTheme() {
     const nextTheme = resolveTheme(nextPreference);
 
     const apply = () => {
-      setThemeState(nextPreference, nextTheme, true);
+      setThemeState({ ...ensureState(), preference: nextPreference, theme: nextTheme }, true);
     };
 
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -189,6 +210,11 @@ export function useTheme() {
       });
   }, []);
 
+  const setThemePalette = useCallback((palette: ThemePalette) => {
+    const current = ensureState();
+    if (current.palette !== palette) setThemeState({ ...current, palette }, true);
+  }, []);
+
   const toggleTheme = useCallback((origin?: ToggleOrigin) => {
     const current = ensureState();
     setThemePreference(nextPreference(current.preference), origin);
@@ -197,7 +223,9 @@ export function useTheme() {
   return {
     theme: snapshot.theme,
     preference: snapshot.preference,
+    palette: snapshot.palette,
     setThemePreference,
+    setThemePalette,
     toggleTheme,
     isDark: snapshot.theme === "dark",
   };

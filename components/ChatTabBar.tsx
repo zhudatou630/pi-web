@@ -241,7 +241,7 @@ export function ChatTabBar({
                 touchAction: "pan-x",
                 position: "relative",
                 transition: "background 0.12s, color 0.12s",
-                boxShadow: isCurrentPane ? "inset 0 -2px 0 var(--accent)" : undefined,
+                boxShadow: isCurrentPane ? "inset 0 2px 0 var(--accent)" : undefined,
               }}
               title={tab.preview ? `${tab.title} · ${t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })}` : tab.title}
             >
