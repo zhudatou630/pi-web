@@ -2809,6 +2809,12 @@ export function AppShell() {
                           {label(translate("session.total"))}
                           {num(formatTokensK(tk.total, locale), true)}
                           {showCost && num(money(sessionStats.cost), true)}
+                          {showCost && tk.total > 0 && (
+                            <>
+                              {label(translate("session.avgPrice"))}
+                              <div className="session-stats-num" style={{ gridColumn: "2 / -1" }}>${(sessionStats.cost / tk.total * 1e6).toFixed(2)}/M</div>
+                            </>
+                          )}
                           {cacheHitRate && (
                             <>
                               {label(translate("session.cacheHitRate"))}
