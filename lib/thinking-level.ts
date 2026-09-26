@@ -4,9 +4,9 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 export const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 // Mirrors pi-ai's clampThinkingLevel: nearest supported level, scanning upward
-// first. "auto" is a UI-only value (pi decides), so it passes through.
+// first.
 export function clampThinkingLevelTo(available: string[] | undefined, level: string): string {
-  if (!available?.length || available.includes(level) || level === "auto") return level;
+  if (!available?.length || available.includes(level)) return level;
   const start = THINKING_LEVELS.indexOf(level as ThinkingLevel);
   if (start === -1) return available[0];
   for (let i = start + 1; i < THINKING_LEVELS.length; i++) {

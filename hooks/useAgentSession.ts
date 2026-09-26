@@ -44,6 +44,7 @@ import { recalledQueuedPrompts } from "@/lib/queued-messages";
 import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import {
+  invalidateModelsClientCache,
   loadModelsWithClientCache,
   peekModelsClientCache,
   type ModelEntry,
@@ -210,7 +211,7 @@ export interface UseAgentSessionOptions {
   deferInitialScroll?: boolean;
 }
 
-export type ThinkingLevelOption = "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export type ThinkingLevelOption = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 const PROMPT_SETTLE_INITIAL_DELAY_MS = 800;
 const PROMPT_SETTLE_POLL_MS = 600;
@@ -309,6 +310,16 @@ function getDefaultDisplayModel(data: ModelsResponse | undefined): SelectedModel
   return match ? { provider: match.provider, modelId: match.id } : null;
 }
 
+// The level pi resolves for a fresh session on `model`: `enabledModels` pin,
+// else settings `defaultThinkingLevel` clamped to what the model supports.
+function resolveDefaultThinkingLevel(data: ModelsResponse | undefined, model: SelectedModel | null): ThinkingLevelOption | null {
+  if (!data || !model) return null;
+  const pinned = data.thinkingLevelPins?.[`${model.provider}/${model.modelId}`];
+  if (pinned) return pinned as ThinkingLevelOption;
+  if (!data.defaultThinkingLevel) return null;
+  return clampThinkingLevelTo(data.thinkingLevels?.[`${model.provider}:${model.modelId}`], data.defaultThinkingLevel) as ThinkingLevelOption;
+}
+
 type SlashCommandsResponse = {
   commands?: SlashCommandInfo[];
 };
@@ -325,9 +336,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const modelsUrl = modelCwd ? `/api/models?cwd=${encodeURIComponent(modelCwd)}` : "/api/models";
   const initialModels = peekModelsClientCache(modelsUrl);
   const initialDefaultModel = isNew ? getDefaultDisplayModel(initialModels) : null;
-  const initialThinkingLevel = initialDefaultModel
-    ? initialModels?.thinkingLevelPins?.[`${initialDefaultModel.provider}/${initialDefaultModel.modelId}`] as ThinkingLevelOption | undefined
-    : undefined;
+  const initialThinkingLevel = resolveDefaultThinkingLevel(initialModels, initialDefaultModel);
 
   const [data, setData] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(!isNew);
@@ -367,10 +376,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [modelThinkingLevels, setModelThinkingLevels] = useState<Record<string, string[]>>(() => initialModels?.thinkingLevels ?? {});
   const [modelThinkingLevelMaps, setModelThinkingLevelMaps] = useState<Record<string, Record<string, string | null>>>(() => initialModels?.thinkingLevelMaps ?? {});
   const [modelThinkingLevelPins, setModelThinkingLevelPins] = useState<Record<string, string>>(() => initialModels?.thinkingLevelPins ?? {});
+  const [modelDefaultThinkingLevel, setModelDefaultThinkingLevel] = useState<string | undefined>(() => initialModels?.defaultThinkingLevel);
   const [newSessionModel, setNewSessionModel] = useState<SelectedModel | null>(null);
   const [newSessionDefaultModel, setNewSessionDefaultModel] = useState<SelectedModel | null>(initialDefaultModel);
   const [toolPreset, setToolPreset] = useState<ToolPreset>(CONFIGURED_TOOL_PRESET);
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption>(initialThinkingLevel ?? "auto");
+  // null until known (models not loaded yet / session state not read yet).
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption | null>(initialThinkingLevel);
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -423,7 +434,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
   const newSessionPromotedRef = useRef(false);
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(null);
-  const thinkingLevelOverrideRef = useRef<Exclude<ThinkingLevelOption, "auto"> | null>(null);
+  const thinkingLevelOverrideRef = useRef<ThinkingLevelOption | null>(null);
   const promptRunIdRef = useRef(0);
   const promptRunGateRef = useRef(new PromptRunGate());
   const pendingPromptRef = useRef<{
@@ -594,7 +605,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setToolPresetState(d.toolNames !== undefined ? getPresetFromToolNames(d.toolNames) : CONFIGURED_TOOL_PRESET);
       setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
       setError(null);
-      if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
+      if (d.context.thinkingLevel) {
         setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
       }
       if (d.contextUsage !== undefined) {
@@ -615,7 +626,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (liveState) {
           if (liveState.contextUsage !== undefined) setContextUsage(liveState.contextUsage ?? null);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.thinkingLevel !== undefined) setThinkingLevel((liveState.thinkingLevel as ThinkingLevelOption) ?? "auto");
+          if (liveState.thinkingLevel) setThinkingLevel(liveState.thinkingLevel as ThinkingLevelOption);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
@@ -746,6 +757,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Explicit selections were just persisted as the new defaults.
+      if (selectedModel || selectedThinkingLevel) invalidateModelsClientCache();
       const result = await res.json() as {
         sessionId: string;
         model?: SelectedModel | null;
@@ -1608,7 +1621,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             setPendingModel(selectedModel);
             if (existingSid) {
               const result = await sendAgentCommand<{ thinkingLevel?: string }>(sid, { type: "set_model", provider: selectedModel.provider, modelId: selectedModel.modelId });
-              if (result?.thinkingLevel && result.thinkingLevel !== "off") setThinkingLevel(result.thinkingLevel as ThinkingLevelOption);
+              if (result?.thinkingLevel) setThinkingLevel(result.thinkingLevel as ThinkingLevelOption);
               if (promptRunGateRef.current.isCancelled(promptRunId)) return null;
             }
           }
@@ -1878,21 +1891,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
       if (!sid) {
         // No session yet — mirror what pi will resolve when the session is
-        // created: per-model pin first, else the displayed level clamped to
-        // the model's supported levels.
-        // thinkingLevels are keyed `provider:modelId` (models API), pins `provider/modelId`.
-        const pinned = modelThinkingLevelPins[`${provider}/${modelId}`];
-        if (pinned && thinkingLevelOverrideRef.current === null) {
-          setThinkingLevel(pinned as ThinkingLevelOption);
-        } else {
-          setThinkingLevel(clampThinkingLevelTo(modelThinkingLevels[`${provider}:${modelId}`], thinkingLevel) as ThinkingLevelOption);
-        }
+        // created: an explicit choice clamped to the model, else the default.
+        const override = thinkingLevelOverrideRef.current;
+        setThinkingLevel(override
+          ? clampThinkingLevelTo(modelThinkingLevels[`${provider}:${modelId}`], override) as ThinkingLevelOption
+          : resolveDefaultThinkingLevel({ models: {}, thinkingLevels: modelThinkingLevels, thinkingLevelPins: modelThinkingLevelPins, defaultThinkingLevel: modelDefaultThinkingLevel }, selectedModel));
         return;
       }
       try {
         const result = await sendAgentCommand<{ thinkingLevel?: string }>(sid, { type: "set_model", provider, modelId });
         // setModel may reset the level (per-model pin or global default); keep the picker honest.
-        if (result?.thinkingLevel && result.thinkingLevel !== "off") {
+        if (result?.thinkingLevel) {
           setThinkingLevel(result.thinkingLevel as ThinkingLevelOption);
         }
       } catch (e) {
@@ -1928,7 +1937,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       modelSwitchPendingRef.current = false;
       setModelSwitching(false);
     }
-  }, [addNotice, currentModelOverride, isNew, loadSession, modelThinkingLevelPins, modelThinkingLevels, setNewSessionModel, thinkingLevel]);
+  }, [addNotice, currentModelOverride, isNew, loadSession, modelDefaultThinkingLevel, modelThinkingLevelPins, modelThinkingLevels, setNewSessionModel]);
 
   const handleCompact = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -1980,17 +1989,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setModelThinkingLevels(d.thinkingLevels ?? {});
     setModelThinkingLevelMaps(d.thinkingLevelMaps ?? {});
     setModelThinkingLevelPins(d.thinkingLevelPins ?? {});
+    setModelDefaultThinkingLevel(d.defaultThinkingLevel);
     const nextModelList = d.modelList ?? [];
     setModelList(nextModelList);
     if (isNew && !sessionIdRef.current) {
       // The first listed model is not necessarily the runtime's automatic choice.
       const displayModel = getDefaultDisplayModel(d);
       setNewSessionDefaultModel(displayModel);
-      // An `enabledModels` pattern may pin a thinking level (`anthropic/*:high`).
-      // Like pi, apply it to the model a new session starts with.
-      const pinned = displayModel && d.thinkingLevelPins?.[`${displayModel.provider}/${displayModel.modelId}`];
       if (thinkingLevelOverrideRef.current === null) {
-        setThinkingLevel((pinned as ThinkingLevelOption | undefined) ?? "auto");
+        setThinkingLevel(resolveDefaultThinkingLevel(d, newSessionModelOverrideRef.current ?? displayModel));
       }
     }
   }, [isNew, modelsUrl]);
@@ -2225,10 +2232,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
     setThinkingLevel(level);
-    if (isNew && !sessionIdRef.current) {
-      thinkingLevelOverrideRef.current = level === "auto" ? null : level;
-    }
-    if (level === "auto") return; // "auto" leaves pi's current setting untouched
+    if (isNew && !sessionIdRef.current) thinkingLevelOverrideRef.current = level;
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
     if (!sid) return;
     try {
@@ -2347,7 +2351,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (typeof agentState.state.autoCompactionEnabled === "boolean") setAutoCompactionEnabled(agentState.state.autoCompactionEnabled);
           if (agentState.state.contextUsage !== undefined) setContextUsage(agentState.state.contextUsage ?? null);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
-          if (agentState.state.thinkingLevel !== undefined) setThinkingLevel((agentState.state.thinkingLevel as ThinkingLevelOption) ?? "auto");
+          if (agentState.state.thinkingLevel) setThinkingLevel(agentState.state.thinkingLevel as ThinkingLevelOption);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
         }
       });

@@ -14,6 +14,9 @@ import { projectTrustReloadOptions } from "@/lib/project-trust";
 
 export const dynamic = "force-dynamic";
 
+// pi's DEFAULT_THINKING_LEVEL (not exported by the SDK).
+const DEFAULT_THINKING_LEVEL = "medium";
+
 const modelNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function compareModelEntries(
@@ -83,6 +86,7 @@ async function loadModels(cwd: string): Promise<ModelsData> {
       thinkingLevels,
       thinkingLevelMaps,
       thinkingLevelPins,
+      defaultThinkingLevel: settings.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
       ...(warnings.length > 0 ? { modelScopeWarnings: warnings } : {}),
     },
     modelError,
@@ -96,6 +100,7 @@ const EMPTY_MODELS: ModelsData = {
   thinkingLevels: {},
   thinkingLevelMaps: {},
   thinkingLevelPins: {},
+  defaultThinkingLevel: DEFAULT_THINKING_LEVEL,
 };
 
 export async function GET(req: Request) {

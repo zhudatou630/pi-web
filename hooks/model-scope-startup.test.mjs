@@ -46,5 +46,5 @@ test("model-list refresh does not overwrite a live session or explicit thinking 
     loadModelsSource,
     /thinkingLevelOverrideRef\.current === null/,
   );
-  assert.match(loadModelsSource, /setThinkingLevel\(\(pinned[\s\S]*\?\? "auto"\)/);
+  assert.match(loadModelsSource, /setThinkingLevel\(resolveDefaultThinkingLevel\(d,/);
 });

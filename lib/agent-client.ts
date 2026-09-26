@@ -7,6 +7,11 @@
 // Call sites previously repeated the same 5-line fetch block 13× in
 // hooks/useAgentSession.ts. This helper collapses that down to one line.
 
+import { invalidateModelsClientCache } from "./models-client-cache";
+
+// These commands also persist the default model/effort for new sessions.
+const DEFAULT_CHANGING_COMMANDS = new Set(["set_model", "set_thinking_level"]);
+
 export class AgentCommandError extends Error {
   constructor(
     message: string,
@@ -49,5 +54,6 @@ export async function sendAgentCommand<T = unknown>(
       body.accepted,
     );
   }
+  if (DEFAULT_CHANGING_COMMANDS.has(command.type as string)) invalidateModelsClientCache();
   return body.data as T;
 }

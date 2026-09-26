@@ -1632,7 +1632,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onOpenSessionStats={onSessionStatsPanelOpen}
       toolPreset={toolPreset}
       onToolPresetChange={!isQueuedSubagent && (session || isNew) ? handleToolPresetChange : undefined}
-      thinkingLevel={isSessionLoading ? undefined : thinkingLevel}
+      thinkingLevel={isSessionLoading ? undefined : thinkingLevel ?? undefined}
       onThinkingLevelChange={isSessionLoading || isQueuedSubagent ? undefined : (session || isNew ? handleThinkingLevelChange : undefined)}
       availableThinkingLevels={availableThinkingLevels}
       thinkingLevelMap={currentThinkingLevelMap}

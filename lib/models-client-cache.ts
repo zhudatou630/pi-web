@@ -12,6 +12,7 @@ export type ModelsResponse = {
   thinkingLevels?: Record<string, string[]>;
   thinkingLevelMaps?: Record<string, Record<string, string | null>>;
   thinkingLevelPins?: Record<string, string>;
+  defaultThinkingLevel?: string;
   modelError?: string;
   modelScopeWarnings?: string[];
 };
@@ -53,6 +54,11 @@ function writeStored(key: string, data: ModelsResponse): void {
   } catch {
     // Storage full or unavailable: the in-memory cache still works.
   }
+}
+
+/** Drop in-memory entries so the next load refetches (e.g. after the default model/effort changed). */
+export function invalidateModelsClientCache(): void {
+  entries.clear();
 }
 
 export function peekModelsClientCache(key: string): ModelsResponse | undefined {

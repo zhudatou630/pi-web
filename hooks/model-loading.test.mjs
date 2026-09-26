@@ -18,6 +18,7 @@ function visit(node) {
 visit(source);
 const loader = nodes.find((node) => ts.isVariableDeclaration(node) && node.name.getText(source) === "loadModels");
 const defaultModelResolver = nodes.find((node) => ts.isFunctionDeclaration(node) && node.name?.getText(source) === "getDefaultDisplayModel");
+const defaultThinkingResolver = nodes.find((node) => ts.isFunctionDeclaration(node) && node.name?.getText(source) === "resolveDefaultThinkingLevel");
 const schedule = nodes.find((node) => ts.isVariableDeclaration(node) && node.name.getText(source) === "MODELS_RETRY_DELAYS_MS");
 const effect = nodes.find((node) => ts.isCallExpression(node)
   && node.expression.getText(source) === "useEffect"
@@ -31,6 +32,7 @@ function script(text) {
 }
 const loadScript = script(`(${loader.initializer.arguments[0].getText(source)})`);
 const defaultModelResolverScript = script(defaultModelResolver.getText(source));
+const defaultThinkingResolverScript = script(defaultThinkingResolver.getText(source));
 const retryScript = script(retry.getText(source));
 
 function setup(fetchImpl) {
@@ -44,14 +46,16 @@ function setup(fetchImpl) {
     modelsRefreshKey: 0,
     modelsRefreshKeyRef: { current: 0 },
     force: false,
-    sessionIdRef: { current: null }, thinkingLevelOverrideRef: { current: null },
+    sessionIdRef: { current: null }, thinkingLevelOverrideRef: { current: null }, newSessionModelOverrideRef: { current: null },
+    clampThinkingLevelTo: (_available, level) => level,
     fetch: fetchImpl,
     loadModelsWithClientCache: async (_key, load) => load(),
     MODELS_RETRY_DELAYS_MS: script(schedule.initializer.getText(source)).runInNewContext(),
     delay: async (ms) => { delays.push(ms); },
   };
   defaultModelResolverScript.runInNewContext(context);
-  for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelList", "NewSessionDefaultModel", "ThinkingLevel"]) {
+  defaultThinkingResolverScript.runInNewContext(context);
+  for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "NewSessionDefaultModel", "ThinkingLevel"]) {
     context[`set${name}`] = (value) => writes.push([name, value]);
   }
   context.loadModels = loadScript.runInNewContext(context);

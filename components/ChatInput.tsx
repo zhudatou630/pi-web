@@ -70,8 +70,8 @@ interface Props {
   onOpenSessionStats?: () => void;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
-  thinkingLevel?: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-  onThinkingLevelChange?: (level: "auto" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  onThinkingLevelChange?: (level: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max") => void;
   availableThinkingLevels?: string[] | null;
   thinkingLevelMap?: Record<string, string | null> | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
@@ -200,7 +200,6 @@ function subscribeUpwardMenuMaxHeight(
   };
 }
 
-const THINKING_LEVELS = ["auto", ...THINKING_LEVEL_VALUES] as const;
 
 function formatTokenCount(tokens: number): string {
   return formatTokensK(tokens);
@@ -1556,9 +1555,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? `${compactResult.reason && compactResult.reason !== "manual" ? `${compactResult.reason[0].toUpperCase()}${compactResult.reason.slice(1)} ` : t("chat.compacted")} ${formatTokenCount(compactResult.tokensBefore)} -> ${formatTokenCount(compactResult.estimatedTokensAfter)} tokens (${t("chat.tokensSaved", { saved: formatTokenCount(compactSavedTokens) })})`
     : null;
   const thinkingDisplayLabel = (() => {
-    const lvl = thinkingLevel ?? "auto";
-    if (lvl === "auto" || !thinkingLevelMap) return lvl;
-    return thinkingLevelMap[lvl] ?? lvl;
+    // Unknown until models/session state load; never guess a level.
+    if (!thinkingLevel) return "…";
+    return thinkingLevelMap?.[thinkingLevel] ?? thinkingLevel;
   })();
   const rawToolPresetLabel = Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? CONFIGURED_TOOL_PRESET))?.[0] ?? "configured";
   const toolPresetLabel = rawToolPresetLabel === "chat-only" ? t("chat.chatOnly") : rawToolPresetLabel;
@@ -2470,13 +2469,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   </button>
                   {thinkingDropdownOpen && (
                     <div role="menu" className="chat-input-menu menu-surface" style={{ left: 0 }} onKeyDown={closeMenuOnEscape}>
-                      {THINKING_LEVELS.filter((lvl) => {
-                        if (!availableThinkingLevels) return true;
-                        if (lvl === "auto") return true;
-                        return availableThinkingLevels.includes(lvl);
-                      }).map((lvl) => {
-                        const isActive = (thinkingLevel ?? "auto") === lvl;
-                        const mappedVal = (lvl !== "auto" && thinkingLevelMap) ? thinkingLevelMap[lvl] : undefined;
+                      {THINKING_LEVEL_VALUES.filter((lvl) => !availableThinkingLevels || availableThinkingLevels.includes(lvl)).map((lvl) => {
+                        const isActive = thinkingLevel === lvl;
+                        const mappedVal = thinkingLevelMap?.[lvl];
                         const displayLabel = (mappedVal != null && mappedVal !== lvl) ? mappedVal : lvl;
                         return (
                           <button

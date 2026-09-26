@@ -774,7 +774,8 @@ export class AgentSessionWrapper {
           model = this.inner.modelRuntime.getModel(provider, modelId);
         }
         if (!model) throw new Error(`Model not found: ${provider}/${modelId}`);
-        await this.inner.setModel(model);
+        // Like pi's /model: the last explicit choice becomes the default for new sessions.
+        await this.inner.setModel(model, { persist: true });
         invalidateModelsCache();
         invalidateSessionListCache();
         // setModel resets the thinking level (per-model pin or global default).
@@ -900,13 +901,16 @@ export class AgentSessionWrapper {
 
       case "set_thinking_level": {
         const level = command.level as string;
-        this.inner.setThinkingLevel(level);
+        // Unlike pi's TUI (session-only unless "set as default"), pi-web remembers
+        // the last explicit effort, mirroring how the model choice is remembered.
+        this.inner.setThinkingLevel(level, { persist: true });
         // setThinkingLevel clamps xhigh→high for models where supportsXhigh()===false.
         // If the model has DeepSeek thinking compat (reasoningEffortMap maps xhigh→max),
         // force the state back so the compat layer can use it correctly.
         if (level === "xhigh" && (this.inner.model as { compat?: { thinkingFormat?: string } } | null)?.compat?.thinkingFormat === "deepseek" && this.inner.agent?.state) {
           this.inner.agent.state.thinkingLevel = "xhigh";
         }
+        invalidateModelsCache();
         invalidateSessionListCache();
         return null;
       }
