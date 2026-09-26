@@ -929,12 +929,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     // Measure without a scrollbar: the fine-pointer ::-webkit-scrollbar takes
     // 5px of layout width, which would wrap a nearly-full last line during
     // measurement and leave a phantom blank line afterwards.
+    // Collapsing to `auto` must not shrink the composer even transiently: the
+    // forced layout would clamp the message list's scrollTop while it is taller.
+    const row = ta.parentElement;
+    if (row) row.style.minHeight = `${row.offsetHeight}px`;
     ta.style.overflowY = "hidden";
     ta.style.height = "auto";
-    if (!ta.value) return;
-    const height = ta.scrollHeight;
-    ta.style.height = `${Math.min(height, 200)}px`;
+    const height = ta.value ? ta.scrollHeight : 0;
+    if (height) ta.style.height = `${Math.min(height, 200)}px`;
     if (height > 200) ta.style.overflowY = "auto";
+    if (row) row.style.minHeight = "";
   }, []);
 
   useLayoutEffect(resizeTextarea, [value, fontSize, resizeTextarea]);
