@@ -9,7 +9,7 @@ test("withholds model, effort, and context controls while an existing session is
   assert.match(source, /model=\{isSessionLoading \? null : displayModelValue\}/);
   assert.match(source, /isStreaming=\{sessionBusy \|\| isQueuedSubagent\}/);
   assert.match(source, /onModelChange=\{isSessionLoading \|\| isQueuedSubagent \? undefined : handleModelChange\}/);
-  assert.match(source, /thinkingLevel=\{isSessionLoading \? undefined : thinkingLevel\}/);
+  assert.match(source, /thinkingLevel=\{isSessionLoading \? undefined : thinkingLevel \?\? undefined\}/);
   assert.match(
     source,
     /onThinkingLevelChange=\{isSessionLoading \|\| isQueuedSubagent \? undefined : \(session \|\| isNew \? handleThinkingLevelChange : undefined\)\}/,
