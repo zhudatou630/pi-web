@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect, useId, useLayoutEffect, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import React, { useRef, useState, useCallback, useEffect, useId, useLayoutEffect, useImperativeHandle, useSyncExternalStore, forwardRef, KeyboardEvent } from "react";
 import type { BuiltinSlashCommandResult, CompactResultInfo, QueuedMessages, SlashCommandInfo } from "@/hooks/useAgentSession";
 import type { SkillsResponse } from "@/lib/api-types";
 import type { TextContent, UserMessage } from "@/lib/types";
@@ -448,6 +448,8 @@ function revokeImagePreview(image: AttachedImage): void {
   }
 }
 
+const subscribeNever = () => () => {};
+
 function QueuedMessageRow({ kind, text, action }: { kind: "steer" | "follow-up"; text: string; action?: React.ReactNode }) {
   return (
     <div className="chat-input-queue-row" title={text}>
@@ -572,6 +574,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const { t } = useI18n();
   const { fontSize } = useChatAppearance();
   const isMobile = useIsMobile();
+  // Re-read on every render (the setting has no change event); false on the server.
+  const shiftEnterToSend = useSyncExternalStore(subscribeNever, isShiftEnterToSend, () => false);
   // Explains a no-op Enter during a queue-less busy run; cleared by typing or the run ending.
   const [sendHeld, setSendHeld] = useState(false);
   const menuId = useId();
@@ -581,6 +585,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [statsActive, setStatsActive] = useState(false);
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [mentionedImages, setMentionedImages] = useState<string[]>([]);
   const mentionedImagesRef = useRef<string[]>([]);
   mentionedImagesRef.current = mentionedImages;
@@ -624,6 +629,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const imageMenuRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
+  const sendMenuRef = useRef<HTMLDivElement>(null);
   const composerBoxRef = useRef<HTMLDivElement>(null);
   const statsButtonRef = useRef<HTMLButtonElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
@@ -1373,10 +1379,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return;
       }
 
-      if (e.key === "Escape" && (imageMenuOpen || controlsMenuOpen || thinkingDropdownOpen)) {
+      if (e.key === "Escape" && (imageMenuOpen || controlsMenuOpen || thinkingDropdownOpen || sendMenuOpen)) {
         e.preventDefault();
         setImageMenuOpen(false);
         setControlsMenuOpen(false);
+        setSendMenuOpen(false);
         setControlsView("root");
         setThinkingDropdownOpen(false);
         return;
@@ -1402,7 +1409,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isMobile, isStreaming, canQueueStreamingMessage, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, thinkingDropdownOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
+    [isMobile, isStreaming, canQueueStreamingMessage, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, sendMenuOpen, thinkingDropdownOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
   );
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1572,6 +1579,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         setControlsMenuOpen(false);
         setControlsView("root");
       }
+      if (sendMenuRef.current && !sendMenuRef.current.contains(target)) {
+        setSendMenuOpen(false);
+      }
       if (statsButtonRef.current && !statsButtonRef.current.contains(target)) {
         setStatsActive(false);
       }
@@ -1658,6 +1668,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     setControlsMenuOpen(false);
     setControlsView("root");
     setThinkingDropdownOpen(false);
+    setSendMenuOpen(false);
     textareaRef.current?.focus();
   };
 
@@ -1671,16 +1682,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
     </svg>
   );
-  const steerIcon = (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 12h14m-6-6 6 6-6 6" />
-    </svg>
-  );
-  const followUpShortcut = isMobile ? "Control+Alt+Enter Meta+Alt+Enter" : "Alt+Enter";
-  // One filled slot carries the Enter verb: Send, Stop, or Steer. While a run is live and a
-  // draft is ready, a quiet Stop and the Alt+Enter follow-up queue join it. Icons only; the
-  // titles carry the words and shortcuts. Keep those extra buttons mounted during a run so
-  // they can widen instead of remounting the whole cluster.
+  // Same key rules as handleKeyDown: phones need Ctrl/Cmd, desktop may prefer Shift+Enter.
+  const enterPrefix = isMobile ? "Ctrl/Cmd+" : shiftEnterToSend ? "Shift+" : "";
+  const enterAriaPrefixes = isMobile ? ["Control+", "Meta+"] : [shiftEnterToSend ? "Shift+" : ""];
+  const steerShortcut = enterAriaPrefixes.map((prefix) => `${prefix}Enter`).join(" ");
+  const followUpShortcut = enterAriaPrefixes.map((prefix) => `${prefix}Alt+Enter`).join(" ");
+  // One filled slot: Send, Stop, or (with a draft during a run) Send again. Steer and
+  // follow-up are one act with two delivery times, so they share that button: Enter steers,
+  // Alt+Enter follows up, and a click opens a menu naming both. A quiet Stop joins it; keep it
+  // mounted during a run so it widens instead of remounting the whole cluster.
   const queuedSteering = queuedMessages?.steering ?? [];
   const queuedFollowUp = queuedMessages?.followUp ?? [];
   const queueCount = queuedSteering.length + queuedFollowUp.length;
@@ -1701,6 +1711,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // Bash / direct image runs are busy without a queue: the verb stays Stop, so a click
   // cannot clear a draft that nothing would accept.
   const queueStreamingActions = isStreaming && Boolean(onSteer || onFollowUp) && canQueueStreamingMessage;
+  // A click chooses the delivery; the keyboard already names it (Enter / Alt+Enter).
+  const chooseDelivery = queueStreamingActions && Boolean(onSteer && onFollowUp);
   const actionButtons = !isStreaming ? (
     <button
       type="button"
@@ -1722,41 +1734,50 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         inert={!queueStreamingActions ? true : undefined}
         onClick={onAbort}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.9" />
-          <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" />
-        </svg>
+        {stopIcon}
       </button>
-      {onSteer && onFollowUp && (
-        <button
-          type="button"
-          className="composer-btn is-icon chat-input-queue-action"
-          aria-label={t("chat.followUp")}
-          title={`${t("chat.followUpHint")} (${isMobile ? "Ctrl/Cmd+" : ""}Alt/Option+Enter)`}
-          aria-keyshortcuts={followUpShortcut}
-          inert={!queueStreamingActions ? true : undefined}
-          onClick={() => sendQueued("followup")}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M11 12H3M16 6H3M16 18H3M18 9v6M21 12h-6" />
-          </svg>
-        </button>
-      )}
+      <div ref={sendMenuRef} className="chat-input-popover-anchor">
       <button
         type="button"
         className="composer-send"
-        aria-label={queueStreamingActions ? (onSteer ? t("chat.steer") : t("chat.followUp")) : t("chat.stop")}
-        title={queueStreamingActions ? (onSteer ? t("chat.steerHint") : t("chat.followUpHint")) : t("chat.stopAgent")}
-        onClick={queueStreamingActions ? () => sendQueued(onSteer ? "steer" : "followup") : onAbort}
+        aria-label={!queueStreamingActions ? t("chat.stop") : chooseDelivery ? t("chat.send") : onSteer ? t("chat.steer") : t("chat.followUp")}
+        title={!queueStreamingActions
+          ? `${t("chat.stopAgent")} (Esc)`
+          : chooseDelivery
+            ? `${t("chat.sendOptions")} (${enterPrefix}Enter: steer · ${enterPrefix}Alt+Enter: follow-up)`
+            : `${onSteer ? t("chat.steerHint") : t("chat.followUpHint")} (${enterPrefix}Enter)`}
+        aria-keyshortcuts={queueStreamingActions ? steerShortcut : "Escape"}
+        aria-haspopup={chooseDelivery ? "menu" : undefined}
+        aria-expanded={chooseDelivery ? sendMenuOpen : undefined}
+        onClick={!queueStreamingActions
+          ? onAbort
+          : chooseDelivery
+            ? () => setSendMenuOpen((open) => !open)
+            : () => sendQueued(onSteer ? "steer" : "followup")}
+        onKeyDown={chooseDelivery ? closeMenuOnEscape : undefined}
       >
-        {queueStreamingActions ? steerIcon : stopIcon}
+        {queueStreamingActions ? arrowUpIcon : stopIcon}
       </button>
+      {sendMenuOpen && chooseDelivery && (
+        <div role="menu" className="chat-input-menu menu-surface" style={{ right: 0, minWidth: 180 }} onKeyDown={closeMenuOnEscape}>
+          <button type="button" role="menuitem" title={t("chat.steerHint")} aria-keyshortcuts={steerShortcut} onClick={() => { setSendMenuOpen(false); sendQueued("steer"); }}>
+            <span>steer</span>
+            {!isMobile && <span className="chat-input-menu-note">{enterPrefix}Enter</span>}
+          </button>
+          <button type="button" role="menuitem" title={t("chat.followUpHint")} aria-keyshortcuts={followUpShortcut} onClick={() => { setSendMenuOpen(false); sendQueued("followup"); }}>
+            <span>follow-up</span>
+            {!isMobile && <span className="chat-input-menu-note">{enterPrefix}Alt+Enter</span>}
+          </button>
+        </div>
+      )}
+      </div>
     </>
   );
 
   useEffect(() => {
     if (!isStreaming) {
       setSendHeld(false);
+      setSendMenuOpen(false);
       return;
     }
     setThinkingDropdownOpen(false);

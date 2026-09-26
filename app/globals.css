@@ -2825,15 +2825,24 @@ span.token.table {
   flex-shrink: 0;
 }
 
-/* Extra Stop / Follow-up sit at width 0 until a draft is ready, then widen.
-   Spacing lives on the extras so collapsed buttons do not leave a phantom gap. */
+/* The extra Stop sits at width 0 until a draft is ready, then widens; its spacing lives on
+   it so a collapsed button leaves no phantom gap. The demoted Stop keeps the filled Stop's 24px box, radius and glyph on a soft fill, so it
+   pairs with the filled Send by weight alone. No border: a frame around the small square
+   reads as an empty checkbox. */
 .composer-btn.is-icon.chat-input-queue-action {
   max-width: 0;
+  border-radius: 5px;
+  background: var(--bg-hover);
+  color: var(--text);
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
   margin-inline-end: 0;
-  transition: max-width 0.2s ease, opacity 0.16s ease, margin-inline-end 0.2s ease;
+  /* Collapsing: clip at once and fade fast, so it never sits beside the filled Stop that
+     replaces Send. Opening: overflow (kept visible only for the touch ring) waits for the
+     width, so the glyph never spills out of a half-open box. */
+  transition: max-width 0.2s ease, opacity 0.06s ease, margin-inline-end 0.2s ease, background 0.12s, color 0.12s, overflow 0s;
+  transition-behavior: allow-discrete;
 }
 
 .chat-input-actions.is-queueing .composer-btn.is-icon.chat-input-queue-action {
@@ -2841,7 +2850,14 @@ span.token.table {
   opacity: 1;
   overflow: visible;
   pointer-events: auto;
-  margin-inline-end: 2px;
+  margin-inline-end: 4px;
+  transition: max-width 0.2s ease, opacity 0.16s ease, margin-inline-end 0.2s ease, background 0.12s, color 0.12s, overflow 0s 0.2s;
+}
+
+@media (hover: hover) {
+  .composer-btn.is-icon.chat-input-queue-action:hover {
+    background: var(--bg-selected);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

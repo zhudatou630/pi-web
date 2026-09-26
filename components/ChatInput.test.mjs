@@ -172,8 +172,9 @@ test("keeps the main composer compact in idle and streaming states", () => {
     // A live run with a draft: quiet Stop and Follow-up, and the filled slot steers like Enter.
     assert.match(html, /class="chat-input-field-row"><textarea[\s\S]*?<\/textarea><div class="chat-input-actions is-queueing">/);
     assert.match(html, /class="composer-btn is-icon chat-input-queue-action" aria-label="Stop"/);
-    assert.match(html, /class="composer-btn is-icon chat-input-queue-action" aria-label="Follow-up"/);
-    assert.match(html, /class="composer-send" aria-label="Steer"/);
+    // Steer and follow-up share one Send button: a click opens the choice, no extra icons or segment.
+    assert.doesNotMatch(html, /aria-label="Follow-up"/);
+    assert.match(html, /class="composer-send" aria-label="Send"[^>]*aria-haspopup="menu" aria-expanded="false"[^>]*><svg[^>]*><path d="M12 19V5m-7 7 7-7 7 7"/);
     assert.doesNotMatch(html, /composer-btn-label/);
     assert.doesNotMatch(html, /#ef4444/);
 
@@ -352,7 +353,7 @@ test("keeps the message input free of hints but accessible", () => {
   }
 });
 
-test("shows the follow-up shortcut in the button tooltip", () => {
+test("names both delivery shortcuts on the run-time send button", () => {
   const draftKey = "test:follow-up-tooltip";
   try {
     setDraft(draftKey, { value: "queue next", images: [] });
@@ -362,8 +363,16 @@ test("shows the follow-up shortcut in the button tooltip", () => {
       })),
     );
 
-    assert.match(html, /title="Queue this message after the agent finishes \(Alt\/Option\+Enter\)"/);
-    assert.match(html, /aria-keyshortcuts="Alt\+Enter"/);
+    assert.match(html, /aria-label="Send" title="Choose how to send \(Enter: steer · Alt\+Enter: follow-up\)" aria-keyshortcuts="Enter"/);
+
+    // With only one delivery available, a click sends directly: no menu.
+    const single = renderToStaticMarkup(
+      React.createElement(I18nProvider, null, React.createElement(ChatInput, {
+        onSend() {}, onAbort() {}, onSteer() {}, isStreaming: true, draftKey,
+      })),
+    );
+    assert.match(single, /class="composer-send" aria-label="Steer" title="Deliver after the current step, without stopping the run \(Enter\)"/);
+    assert.doesNotMatch(single, /aria-haspopup="menu" aria-expanded/);
   } finally {
     clearDraft(draftKey);
   }
