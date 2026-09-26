@@ -694,9 +694,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           <SectionHeading
             title={<CountedTitle label={t("models.sectionModelsTitle")} count={modelRows.length} />}
             hint={cwd && scopeDoc ? t("models.chatSwitchHint") : undefined}
-            actions={json && (
+            actions={(json || builtIn) && (
               <>
-                <ConfigButton size="small" disabled={!json.baseUrl?.trim()} title={json.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
+                <ConfigButton size="small" disabled={!json?.baseUrl?.trim()} title={json?.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
                   {t("models.discoveryFetch")}
                 </ConfigButton>
                 <ConfigButton size="small" onClick={() => addModel(row.id)}>{t("models.newModel")}</ConfigButton>
