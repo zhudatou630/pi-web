@@ -16,6 +16,16 @@ export const CHAT_SPLIT_HANDLE_WIDTH = 12;
 const COMPACT_CHAT_MIN_WIDTH = 320;
 const DESKTOP_CHAT_MIN_WIDTH = 420;
 
+// Side panels open over different distances. Equal durations make the wider one feel faster;
+// scaling linearly makes it drag. Grow with sqrt(distance), anchored at the default sidebar.
+const PANEL_TRANSITION_BASE_MS = 200;
+const PANEL_TRANSITION_MAX_MS = 360;
+
+export function getPanelTransitionMs(width: number): number {
+  const ms = PANEL_TRANSITION_BASE_MS * Math.sqrt(Math.max(width, 1) / SIDEBAR_DEFAULT_WIDTH);
+  return Math.round(Math.min(ms, PANEL_TRANSITION_MAX_MS));
+}
+
 export function clampPanelWidth(width: number, minWidth: number, maxWidth: number): number {
   const finiteWidth = Number.isFinite(width) ? width : minWidth;
   const effectiveMax = Math.max(minWidth, maxWidth);

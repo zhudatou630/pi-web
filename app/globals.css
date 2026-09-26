@@ -2490,7 +2490,9 @@ span.token.table {
   .sidebar-container {
     position: relative;
     overflow: hidden;
-    transition: width 0.2s ease, min-width 0.2s ease;
+    transition-property: width, min-width;
+    transition-duration: var(--panel-transition, 0.2s);
+    transition-timing-function: ease;
   }
   .sidebar-container.sidebar-open {
     width: var(--sidebar-width, 260px);
@@ -2518,7 +2520,11 @@ span.token.table {
   .right-panel-container {
     overflow: hidden;
     contain: layout paint;
-    transition: width 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), min-width 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    /* Same motion as .sidebar-container; duration scales with width (getPanelTransitionMs).
+       Longhands: the CSS pipeline resolves var() inside the transition shorthand to its fallback. */
+    transition-property: width, min-width;
+    transition-duration: var(--panel-transition, 0.2s);
+    transition-timing-function: ease;
     flex-shrink: 0;
   }
   .right-panel-container.right-panel-open {
@@ -2581,7 +2587,7 @@ span.token.table {
     min-width: 300px;
     overflow: hidden;
     contain: layout paint;
-    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: transform 0.2s ease;
   }
   .right-panel-container.right-panel-open {
     transform: translateX(0);

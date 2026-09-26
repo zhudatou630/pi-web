@@ -74,6 +74,7 @@ import {
   getChatSplitRatioBounds,
   getRightPanelMaxWidth,
   getSidebarMaxWidth,
+  getPanelTransitionMs,
   CHAT_SPLIT_MIN_WIDTH,
   RIGHT_PANEL_FALLBACK_WIDTH,
   RIGHT_PANEL_MAX_WIDTH,
@@ -448,7 +449,7 @@ export function AppShell() {
       }
     };
     panel?.addEventListener("transitionend", onTransitionEnd);
-    const timeout = window.setTimeout(enable, 280);
+    const timeout = window.setTimeout(enable, getPanelTransitionMs(rightPanelWidthRef.current) + 80);
     return () => {
       panel?.removeEventListener("transitionend", onTransitionEnd);
       window.clearTimeout(timeout);
@@ -1655,6 +1656,13 @@ export function AppShell() {
     }
   }, [activeChatPane, activeChatTabId, activeCwd, canSplitChat, chatTabs, focusChatTab, primaryTab, router, secondaryTab, splitChatTabId, translate]);
 
+  // A transition starts from the current frame's timestamp, so a heavy commit in the same task
+  // (new viewer/terminal mount) swallows the start of the open animation. Mount first, open
+  // after that frame has painted.
+  const openRightPanelAfterRender = useCallback(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setRightPanelOpen(true)));
+  }, []);
+
   const handleOpenFile = useCallback((
     filePath: string,
     fileName: string,
@@ -1673,10 +1681,10 @@ export function AppShell() {
       tabId,
     }));
     setActiveFileTabId(tabId);
-    setRightPanelOpen(true);
+    openRightPanelAfterRender();
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
-  }, [activeCwd, isMobile]);
+  }, [activeCwd, isMobile, openRightPanelAfterRender]);
 
   const handleOpenLinkedFile = useCallback((filePath: string, sourceSessionId: string | null, page?: number) => {
     const sourceCwd = sourceSessionId
@@ -1694,9 +1702,9 @@ export function AppShell() {
     const tab = existing ?? newTerminalTab(cwd);
     if (!existing) setTerminalTabs((tabs) => [...tabs, tab]);
     setActiveFileTabId(tab.id);
-    setRightPanelOpen(true);
+    openRightPanelAfterRender();
     if (isMobile) setSidebarOpen(false);
-  }, [terminalTabs, isMobile]);
+  }, [terminalTabs, isMobile, openRightPanelAfterRender]);
 
   const handleTerminalClosed = (tab: TerminalTab) => {
     const replacement = tab.closing === "restart" ? newTerminalTab(tab.cwd) : null;
@@ -2487,6 +2495,7 @@ export function AppShell() {
         className={`sidebar-container${sidebarOpen ? " sidebar-open" : " sidebar-closed"}${mobileSidebarReady ? "" : " sidebar-mobile-pending"}${sidebarResizer.isResizing ? " sidebar-resizing" : ""}`}
         style={{
           "--sidebar-width": `${sidebarResizer.width}px`,
+          "--panel-transition": `${getPanelTransitionMs(sidebarResizer.width)}ms`,
           background: "var(--bg-panel)",
           borderRight: "1px solid var(--border)",
           display: "flex",
@@ -3085,6 +3094,7 @@ export function AppShell() {
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}${rightPanelResizer.isResizing ? " right-panel-resizing" : ""}`}
         style={{
           "--right-panel-width": `${rightPanelResizer.width}px`,
+          "--panel-transition": `${getPanelTransitionMs(rightPanelResizer.width)}ms`,
           display: "flex",
           flexDirection: "column",
           borderLeft: "1px solid var(--border)",
