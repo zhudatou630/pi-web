@@ -40,6 +40,7 @@ import { SkillsConfig } from "./SkillsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { ImagesConfig } from "./ImagesConfig";
+import { UsageStats } from "./UsageStats";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
 import { downloadSarasa, hasDownloadedSarasa } from "@/lib/sarasa-font";
@@ -371,6 +372,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     { id: "images", label: t("settings.images"), requiresProject: false },
     { id: "skills", label: t("common.skills"), requiresProject: true },
     { id: "plugins", label: t("common.plugins"), requiresProject: true },
+    { id: "usage", label: t("settings.usage"), requiresProject: false },
   ];
 
   // Unsaved models.json edits live only in the Models section; closing drops them.
@@ -479,6 +481,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}
             {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
             {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
+            {sectionHost("usage", <UsageStats />)}
           </main>
         </div>
         <button type="button" onClick={requestClose} title={t("i18n.close")} aria-label={t("i18n.close")} className="config-close-button settings-dialog-close">×</button>

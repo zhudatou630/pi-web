@@ -96,6 +96,7 @@ app/api/
   skills/search/route.ts          GET/POST skills.sh search
   subagents/settings/route.ts     GET/PUT built-in subagent feature setting
   worktrees/route.ts              GET/POST/DELETE git worktrees
+  usage/route.ts                  GET token/cost report for the Settings > Usage page
 
 lib/
   agent-client.ts      typed fetch helper for /api/agent commands
@@ -238,6 +239,12 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - OAuth/device-code/manual-code flows are streamed by `GET /api/auth/login/[provider]`; manual code responses POST back with a short-lived token stored in `globalThis.__piLoginCallbacks`.
 - API-key routes store and remove keys through `AuthStorage`. Status endpoints must never return the raw key.
 - The model test route is `app/api/models-config/test/route.ts`; `app/api/models/test/` is not a real route.
+
+### Usage statistics
+- `lib/usage-stats.ts` sums assistant `usage` per local day × hour × provider × model for every session file under `sessions/` (recursively: extensions nest subagent runs below a session directory), caching rows plus the header cwd in `~/.pi/agent/pi-web-usage-cache.json` keyed by `(size, mtimeMs)`. Cache entries outlive their files, and `commitSessionDeletes()` folds a file in before deleting it; every pi-web delete path (session, cascade, project) goes through it, so deleted sessions keep counting. v1 entries (no hour/cwd) stay visible until rescanned.
+- Forks and context-inheriting subagents copy parent history; only messages at or after the file header's timestamp count.
+- `GET /api/usage` starts an incremental scan, waits for its stat pass, then at most 1.5s more; a longer (cold/upgrade) scan returns the cached rows with `scan: { done, total }` and the page polls until it is null.
+- Cost is repriced at current rates like tokscale: pi's `ModelRuntime` model cost (exact provider/model, then same id), then models.dev, then the recorded cost; otherwise the message is reported as unpriced. Flat rates, no long-context tiers. Model ids drop a router's `vendor/` prefix after pricing. The response is priced day × hour × model × project records; `lib/usage-view.ts` does all range/grouping/drill-down in the browser.
 
 ### Completion sound
 - `hooks/useAudio.ts` stores the toggle in `localStorage` as `pi-sound-enabled` and reuses one `AudioContext`.

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { existsSync, readdirSync, readFileSync, statSync, unlinkSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { dirname, join } from "path";
 import {
   commitSessionDeletes,
@@ -206,11 +206,8 @@ export async function DELETE(
       }
       const persistedPath = runtime.sessionFile || filePath;
       await runtime.shutdown();
-      if (persistedPath) {
-        try { unlinkSync(persistedPath); } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-        }
-      }
+      // Same delete path as below, so the usage cache records the file first.
+      if (persistedPath) commitSessionDeletes([persistedPath]);
       invalidateSessionPathCache(id);
       invalidateSessionListCache();
       return NextResponse.json({ ok: true });

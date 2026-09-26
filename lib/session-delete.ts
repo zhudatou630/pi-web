@@ -4,6 +4,7 @@ import { basename, dirname, join } from "path";
 import { sessionPathKey } from "./session-path";
 import { readSubagentRun, SUBAGENT_META_TYPE } from "./subagents";
 import type { SessionEntry } from "./types";
+import { recordUsageBeforeDelete } from "./usage-stats";
 
 export interface SessionFileRecord {
   path: string;
@@ -79,6 +80,8 @@ export function reparentSessionRecord(
 }
 
 export function commitSessionDeletes(filePaths: readonly string[]): void {
+  // Usage statistics keep counting deleted sessions; best-effort, never blocks a delete.
+  try { recordUsageBeforeDelete(filePaths); } catch { /* usage stats only */ }
   const staged: Array<{ original: string; staged: string }> = [];
   try {
     for (const original of filePaths) {

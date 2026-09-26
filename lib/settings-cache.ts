@@ -48,6 +48,7 @@ export const settingsUrls = {
   imageSettings: "/api/image-generation/settings",
   skills: (cwd: string) => `/api/skills?${q(cwd)}`,
   plugins: (cwd: string) => `/api/plugins?${q(cwd)}`,
+  usage: "/api/usage",
 };
 
 /** Warms every settings page that has no data yet; pages revalidate when they mount.
@@ -56,8 +57,8 @@ export function prefetchSettings(cwd: string | null): void {
   const u = settingsUrls;
   const urls = cwd
     ? [u.modelsConfig, u.authProviders(cwd), u.modelsRuntime(cwd), u.modelsPicker(cwd), u.webAuth, u.toolSettings,
-      u.subagentSettings, u.subagentProfiles(cwd), u.chatModels(cwd), u.imageSettings, u.skills(cwd), u.plugins(cwd)]
-    : [u.modelsConfig, u.authProviders(cwd), u.webAuth, u.toolSettings, u.subagentSettings, u.imageSettings];
+      u.subagentSettings, u.subagentProfiles(cwd), u.chatModels(cwd), u.imageSettings, u.skills(cwd), u.plugins(cwd), u.usage]
+    : [u.modelsConfig, u.authProviders(cwd), u.webAuth, u.toolSettings, u.subagentSettings, u.imageSettings, u.usage];
   for (const url of urls) if (!replies.has(url)) getJson(url).catch(() => {});
 }
 

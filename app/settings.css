@@ -2635,3 +2635,502 @@ a.models-hint:hover {
 .models-custom-form .models-form-actions {
   align-self: flex-end;
 }
+
+/* ── Usage: tabs over one time range; facts, charts, dense tables with drill-down ── */
+
+.settings-page.usage-page {
+  gap: 24px;
+  max-width: 880px;
+}
+
+.usage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.usage-toolbar .settings-segmented,
+.usage-page .settings-group-header .settings-segmented {
+  grid-auto-columns: minmax(52px, auto);
+}
+
+.usage-scan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-scan-track {
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-hover);
+}
+
+.usage-scan-track > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.usage-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px 24px;
+  margin: 0;
+}
+
+.usage-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.usage-stat dt {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.usage-stat dd {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-stat-value {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-stat-detail {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Quiet text actions (fold/unfold, clear), styled like the settings back link. */
+.usage-link {
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.usage-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Bar chart */
+
+.usage-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+
+.usage-chart-peak,
+.usage-chart-axis {
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-chart-axis {
+  display: flex;
+  justify-content: space-between;
+}
+
+.usage-bars {
+  display: grid;
+  grid-template-columns: repeat(var(--usage-bar-count), minmax(0, 1fr));
+  align-items: end;
+  gap: 2px;
+  height: 120px;
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-bar {
+  position: relative;
+  display: block;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.usage-bar::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  max-width: 28px;
+  height: var(--usage-bar);
+  min-height: 0;
+  margin: 0 auto;
+  border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--accent) 72%, var(--bg-hover));
+  transition: background-color 0.15s ease;
+}
+
+button.usage-bar {
+  cursor: pointer;
+}
+
+button.usage-bar:hover::after,
+.usage-bar[aria-pressed="true"]::after {
+  background: var(--accent);
+}
+
+.usage-bar[data-dimmed]::after {
+  background: color-mix(in srgb, var(--accent) 30%, var(--bg-hover));
+}
+
+/* Tables */
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table th {
+  padding: 6px 0 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.usage-sort {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: inherit;
+  white-space: nowrap;
+}
+
+.usage-sort:hover,
+.usage-table th[aria-sort] {
+  color: var(--text);
+}
+
+/* The sorted column: an accent bar under its label, on the header rule. The
+   label itself never moves, so the numbers below stay aligned with it. */
+.usage-table th[aria-sort] > .usage-sort {
+  position: relative;
+}
+
+.usage-table th[aria-sort] > .usage-sort::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -6px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.usage-table td {
+  padding: 8px 0 8px 12px;
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.usage-table th:first-child,
+.usage-table td:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.usage-table tbody > tr + tr > td {
+  border-top: 1px solid var(--border);
+}
+
+.usage-table td.is-strong {
+  color: var(--text);
+}
+
+/* Numbers keep their fixed widths; the name column takes the rest and is never
+   cut off. A table that cannot fit scrolls sideways instead. */
+.usage-table-scroll {
+  overflow-x: auto;
+}
+
+.usage-table td.usage-table-name {
+  color: var(--text);
+}
+
+.usage-badge {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-sm);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.usage-table-more > td {
+  padding-top: 8px;
+}
+
+.usage-period-row {
+  cursor: pointer;
+}
+
+.usage-period-row:hover > td {
+  background: var(--bg-hover);
+}
+
+.usage-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.usage-disclosure > svg {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: transform 0.15s ease;
+}
+
+.usage-disclosure[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+.usage-table tr.usage-period-detail > td {
+  padding: 0 0 12px 16px;
+  border-top: 0;
+}
+
+.usage-period-detail .usage-table {
+  font-size: 11px;
+}
+
+.usage-period-detail .usage-table td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+/* Heatmap */
+
+.usage-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.usage-legend > .usage-cell {
+  width: 10px;
+  height: 10px;
+}
+
+.usage-legend > .usage-cell:first-of-type {
+  margin-left: 3px;
+}
+
+.usage-legend > .usage-cell:last-of-type {
+  margin-right: 3px;
+}
+
+.usage-heatmap-scroll {
+  overflow-x: auto;
+  padding: 6px 0 2px;
+}
+
+.usage-heatmap {
+  display: grid;
+  grid-template-columns: auto repeat(var(--usage-weeks), minmax(8px, 1fr));
+  gap: 3px;
+  min-width: 480px;
+}
+
+.usage-month,
+.usage-weekday {
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.usage-month {
+  grid-row: 1;
+  padding-bottom: 3px;
+}
+
+.usage-weekday {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  grid-column: 1;
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+  background: var(--bg);
+}
+
+.usage-cell {
+  display: block;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--bg-hover);
+}
+
+button.usage-cell:not(:disabled) {
+  cursor: pointer;
+}
+
+.usage-cell[data-level="1"] { background: color-mix(in srgb, var(--accent) 28%, var(--bg-hover)); }
+.usage-cell[data-level="2"] { background: color-mix(in srgb, var(--accent) 50%, var(--bg-hover)); }
+.usage-cell[data-level="3"] { background: color-mix(in srgb, var(--accent) 74%, var(--bg-hover)); }
+.usage-cell[data-level="4"] { background: var(--accent); }
+.usage-cell[data-future] { visibility: hidden; }
+
+.usage-heatmap > button.usage-cell:not(:disabled):hover,
+.usage-heatmap > .usage-cell[aria-pressed="true"] {
+  outline: 1px solid var(--text-muted);
+  outline-offset: 1px;
+}
+
+.usage-caption {
+  margin: 8px 0 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .usage-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-table .is-secondary {
+    display: none;
+  }
+
+  .usage-table tr.usage-period-detail > td {
+    padding-left: 0;
+  }
+}
+
+/* Hourly profile: share rows scaled to the largest row */
+
+.usage-profile {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 40px;
+  align-items: start;
+}
+
+.usage-subtitle {
+  margin: 16px 0 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.usage-profile-summary {
+  margin-top: 2px;
+}
+
+.usage-share-rows {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-share-row {
+  display: contents;
+  color: var(--text-muted);
+}
+
+.usage-share-row[data-top] {
+  color: var(--text);
+}
+
+.usage-share-label {
+  grid-column: 1;
+}
+
+.usage-share-span {
+  grid-column: 2;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.usage-share-track {
+  grid-column: 3;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-hover);
+}
+
+.usage-share-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 55%, var(--bg-hover));
+}
+
+.usage-share-row[data-top] .usage-share-track > span {
+  background: var(--accent);
+}
+
+.usage-share-value {
+  grid-column: 4;
+  min-width: 44px;
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .usage-profile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

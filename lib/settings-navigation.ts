@@ -5,6 +5,7 @@ export const SETTINGS_SECTION_VALUES = [
   "images",
   "skills",
   "plugins",
+  "usage",
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTION_VALUES)[number];

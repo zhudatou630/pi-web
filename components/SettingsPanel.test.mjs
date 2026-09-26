@@ -27,10 +27,10 @@ test("opens settings from a single sidebar text control", () => {
 });
 
 test("keeps every requested configuration surface inside the settings panel", () => {
-  for (const section of ["general", "models", "agents", "images", "skills", "plugins"]) {
+  for (const section of ["general", "models", "agents", "images", "skills", "plugins", "usage"]) {
     assert.match(panelSource, new RegExp(`id: "${section}"`));
   }
-  assert.match(panelSource, /id: "general"[\s\S]*id: "models"[\s\S]*id: "agents"[\s\S]*id: "images"[\s\S]*id: "skills"[\s\S]*id: "plugins"/);
+  assert.match(panelSource, /id: "general"[\s\S]*id: "models"[\s\S]*id: "agents"[\s\S]*id: "images"[\s\S]*id: "skills"[\s\S]*id: "plugins"[\s\S]*id: "usage"/);
   for (const component of ["ModelsConfig", "SkillsConfig", "AgentsConfig", "PluginsConfig"]) {
     assert.match(panelSource, new RegExp(`<${component} embedded`));
   }
