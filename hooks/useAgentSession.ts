@@ -434,6 +434,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   } | null>(null);
   const bashAbortRequestedRef = useRef(false);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
+  // Bumped on every local (optimistic/SSE) append. A history snapshot requested
+  // before an append must not overwrite it; the run's settle reload refreshes later.
+  const localAppendSeqRef = useRef(0);
   const modelSwitchPendingRef = useRef(false);
   const modelsRefreshKeyRef = useRef(modelsRefreshKey);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
@@ -544,6 +547,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
     let messagesLoaded = false;
+    const appendSeq = localAppendSeqRef.current;
     try {
       if (showLoading) setLoading(true);
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
@@ -568,6 +572,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as SessionData;
       if (sessionIdRef.current !== sid) return null;
+      if (localAppendSeqRef.current !== appendSeq) {
+        messagesLoaded = true;
+        if (showLoading) setLoading(false);
+        return null;
+      }
       const incoming = {
         messages: d.context.messages,
         entryIds: d.context.entryIds ?? [],
@@ -1353,6 +1362,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (!agentRunningRef.current) break;
         if (isSystemMessageEvent(event)) break;
         const completed = event.message as AgentMessage | undefined;
+        if (completed) localAppendSeqRef.current += 1;
         if (completed && completed.role === "user") {
           // Delivered steering/follow-up messages surface here as user
           // messages. The run's initial prompt also emits one, but handleSend
@@ -1528,6 +1538,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, userMsg]);
+    localAppendSeqRef.current += 1;
     optimisticUserMessageKeyRef.current = userMessageKey(userMsg);
     promptRunIdRef.current = promptRunId;
     agentRunningRef.current = true;
