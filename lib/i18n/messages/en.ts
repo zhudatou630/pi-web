@@ -185,7 +185,7 @@ export const enLocale: LocalePlugin = {
     "usage.cost": "Cost",
     "usage.tokenShare": "Token%",
     "usage.costShare": "Cost%",
-    "usage.cacheRatioHint": "Cache reads per fresh input token",
+    "usage.cacheRatioHint": "Cache reads ÷ (input + cache writes)",
     "usage.costPerMillion": "$/1M",
     "usage.costPerMillionHint": "Effective cost per million tokens",
     "usage.showMore": "{count} more",

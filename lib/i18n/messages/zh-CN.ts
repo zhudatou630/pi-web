@@ -185,7 +185,7 @@ export const zhCNLocale: LocalePlugin = {
     "usage.cost": "成本",
     "usage.tokenShare": "Token%",
     "usage.costShare": "成本%",
-    "usage.cacheRatioHint": "缓存读取 ÷ 输入",
+    "usage.cacheRatioHint": "缓存读取 ÷（输入 + 缓存写入）",
     "usage.costPerMillion": "$/1M",
     "usage.costPerMillionHint": "每百万 Token 的实际成本",
     "usage.showMore": "其余 {count} 项",

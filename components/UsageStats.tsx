@@ -294,8 +294,16 @@ function Overview({ records, range, today, format, t }: { records: UsageRecord[]
 type SortKey = "name" | "input" | "output" | "cacheRead" | "cacheWrite" | "cacheRatio" | "tokens" | "cost" | "costPerMillion";
 interface Sort { key: SortKey; desc: boolean }
 
-/** tokscale's derived columns: cache reads per fresh input token, and the effective price. */
-const cacheRatio = (g: UsageGroup) => (g.input > 0 ? g.cacheRead / g.input : null);
+/**
+ * Derived columns: cache reads per fresh input token, and the effective price.
+ * Fresh input includes cache writes: Anthropic reports newly cached prompt
+ * tokens as cacheWrite and only the uncached tail as input, while OpenAI-style
+ * providers count all new prompt tokens as input.
+ */
+const cacheRatio = (g: UsageGroup) => {
+  const fresh = g.input + g.cacheWrite;
+  return fresh > 0 ? g.cacheRead / fresh : null;
+};
 const costPerMillion = (g: UsageGroup) => (g.tokens > 0 ? (g.cost / g.tokens) * 1e6 : null);
 const METRICS: Record<Exclude<SortKey, "name">, (g: UsageGroup) => number | null> = {
   input: (g) => g.input,
