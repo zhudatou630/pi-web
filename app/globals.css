@@ -2764,8 +2764,7 @@ span.token.table {
 }
 
 .composer-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  cursor: default;
 }
 
 .composer-btn[data-active] {
