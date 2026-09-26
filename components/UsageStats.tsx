@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import type { UsageRecord, UsageResponse } from "@/lib/usage-stats";
 import {
@@ -339,6 +340,8 @@ function UsageTable({ groups, nameLabel, name = (key) => key || "—", limit = I
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const totalCost = groups.reduce((sum, g) => sum + g.cost, 0);
   const totalTokens = groups.reduce((sum, g) => sum + g.tokens, 0);
+  // Mobile hides the token-share column; its one share column follows the sort, token % only while sorted by tokens.
+  const tokenShareOnly = useIsMobile() && sort.key === "tokens";
   const sorted = [...groups].sort((a, b) => {
     const order = sort.key === "name"
       ? a.key.localeCompare(b.key, undefined, { numeric: true })
@@ -373,9 +376,11 @@ function UsageTable({ groups, nameLabel, name = (key) => key || "—", limit = I
       cell: (g) => (totalTokens > 0 ? format.share(g.tokens / totalTokens) : "—"),
     },
     {
-      label: t("usage.costShare"),
+      label: tokenShareOnly ? t("usage.tokenShare") : t("usage.costShare"),
       width: 56,
-      cell: (g) => (totalCost > 0 ? format.share(g.cost / totalCost) : "—"),
+      cell: (g) => tokenShareOnly
+        ? (totalTokens > 0 ? format.share(g.tokens / totalTokens) : "—")
+        : (totalCost > 0 ? format.share(g.cost / totalCost) : "—"),
     },
   ];
   const span = columns.length + 1;
