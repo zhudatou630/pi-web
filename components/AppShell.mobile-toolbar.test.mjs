@@ -211,6 +211,11 @@ test("top-bar sheets animate a wrapper, not the content nodes", async () => {
     /\.session-sheet-pop,\s*\.branch-dropdown \{[\s\S]*?animation: menu-surface-in 0\.12s ease-out;/,
   );
   assert.doesNotMatch(cssSource, /session-info-pop\b/);
+  // Reduced motion keeps the fade; only the travel goes.
+  assert.match(
+    cssSource,
+    /prefers-reduced-motion: reduce\) \{\s*\.popover-surface,\s*\.menu-surface,\s*\.session-sheet-pop,\s*\.branch-dropdown \{\s*animation-name: menu-surface-fade;/,
+  );
   assert.match(source, /className="session-sheet-pop"/);
   assert.doesNotMatch(cssSource, /\.tool-definitions-panel,\s*\.session-info-popover/);
   const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");

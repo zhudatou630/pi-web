@@ -2926,12 +2926,19 @@ span.token.table {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* Reduced motion keeps the fade (not motion) and drops only the 2px travel. */
+@keyframes menu-surface-fade {
+  from {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .popover-surface,
   .menu-surface,
   .session-sheet-pop,
   .branch-dropdown {
-    animation: none;
+    animation-name: menu-surface-fade;
   }
 }
 
