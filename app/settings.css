@@ -2343,7 +2343,7 @@ a.models-hint:hover {
 
 .models-cost-value {
   color: var(--text);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -2419,7 +2419,7 @@ a.models-hint:hover {
   width: 64px;
   flex-shrink: 0;
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
 }
 

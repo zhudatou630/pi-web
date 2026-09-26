@@ -556,7 +556,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
               )}
             </div>
           )}
-          {time && <span style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
+          {time && <span style={{ fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", userSelect: "none" }}>{time}</span>}
         </div>
       )}
     </div>
@@ -692,7 +692,6 @@ function AssistantMessageView({
               borderRadius: 6,
               background: "color-mix(in srgb, var(--danger) 7%, transparent)",
               color: "var(--danger)",
-              fontFamily: "var(--font-mono)",
               fontSize: 12,
               lineHeight: 1.5,
               whiteSpace: "pre-wrap",
@@ -756,7 +755,7 @@ function AssistantMessageView({
                 )}
               </button>
             )}
-            {time && <span style={{ color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)", userSelect: "none" }}>{time}</span>}
+            {time && <span style={{ color: "var(--text-dim)", fontSize: 11, fontVariantNumeric: "tabular-nums", userSelect: "none" }}>{time}</span>}
           </div>
           )}
         </div>
@@ -817,10 +816,10 @@ function ProcessErrorCard({ error }: { error: string }) {
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <span style={{ color: "var(--danger)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: "var(--danger)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {t("chat.modelError")}
           </span>
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
             {preview}
           </span>
           <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
@@ -835,7 +834,6 @@ function ProcessErrorCard({ error }: { error: string }) {
             padding: "8px 10px",
             background: "var(--bg)",
             borderTop: "1px solid color-mix(in srgb, var(--danger) 20%, transparent)",
-            fontFamily: "var(--font-mono)",
             fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.55,
             color: "var(--danger)",
@@ -1035,7 +1033,7 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
             padding: "8px 10px",
             background: "var(--bg)",
             borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
-            fontFamily: "var(--font-mono)",
+            fontFamily: "var(--font-chat)",
             fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.55,
             color: error ? "var(--danger)" : "var(--text-muted)",
@@ -1124,7 +1122,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, color: isError ? "var(--danger)" : undefined }}>
             <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
-          <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {toolLabel}
           </span>
           <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
@@ -1610,7 +1608,7 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
             color: "var(--text-muted)",
           }}
         >
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+          <span style={{ fontSize: 11 }}>
             compaction
           </span>
           {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 11 }}>{time}</span>}
@@ -1705,7 +1703,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
         <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", flexShrink: 0 }}>
           <SubagentIcon size={12} />
         </span>
-        <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+        <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 11 }}>
           {label}
         </span>
         <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} aria-hidden="true">
@@ -1763,7 +1761,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
             fontSize: 12,
           }}
         >
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
             {title}
           </span>
            {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{t("i18n.hiddenExtensionMessage")}</span>}

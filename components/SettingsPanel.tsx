@@ -43,7 +43,6 @@ import { ImagesConfig } from "./ImagesConfig";
 import { UsageStats } from "./UsageStats";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
-import { downloadSarasa, hasDownloadedSarasa } from "@/lib/sarasa-font";
 import { AppUpdateNotice } from "./AppUpdateNotice";
 import { ConfigButton, ConfigSwitch, SettingsGroup, SettingsRow } from "./SettingsUi";
 import { SubagentIcon } from "./SubagentIcon";
@@ -106,8 +105,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [webAuthEnabled, setWebAuthEnabled] = useState(() => peekJson<{ enabled?: boolean }>(settingsUrls.webAuth)?.data.enabled === true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
-  const [sarasaStatus, setSarasaStatus] = useState<"cached" | "available" | "loading" | "error">("available");
-  const [sarasaError, setSarasaError] = useState<string | null>(null);
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
@@ -187,23 +184,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       setPushStatus({ kind: "error", message: `${t("settings.pushRegisterFailed")} ${cause instanceof Error ? cause.message : String(cause)}` });
     } finally {
       setPushRegistering(false);
-    }
-  };
-
-  useEffect(() => {
-    const downloaded = hasDownloadedSarasa();
-    setSarasaStatus(downloaded ? "cached" : "available");
-  }, []);
-
-  const downloadSarasaFont = async () => {
-    setSarasaStatus("loading");
-    setSarasaError(null);
-    try {
-      await downloadSarasa();
-      setSarasaStatus("cached");
-    } catch (cause) {
-      setSarasaStatus("error");
-      setSarasaError(cause instanceof Error ? cause.message : String(cause));
     }
   };
 
@@ -301,16 +281,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
             ))}
           </div>
         </SettingsRow>
-        <SettingsRow label={t("settings.typography")} description={t("settings.typographyDescription")}>
-          {sarasaStatus === "cached" ? (
-            <span role="status" className="settings-row-status">{t("settings.fontCached")}</span>
-          ) : (
-            <ConfigButton size="small" disabled={sarasaStatus === "loading"} onClick={() => void downloadSarasaFont()}>
-              {sarasaStatus === "loading" ? t("settings.fontDownloadLoading") : t("settings.fontDownload")}
-            </ConfigButton>
-          )}
-        </SettingsRow>
-        {sarasaStatus === "error" && <p role="alert" className="settings-row-message is-error">{t("settings.fontDownloadFailed")} {sarasaError}</p>}
         <SettingsRow label={t("settings.chatContentWidth")} description={t("settings.chatContentWidthDescription")} htmlFor="settings-chat-content-width" stacked>
           {rangeControl("settings-chat-content-width", chatContentWidth, CHAT_CONTENT_WIDTH_MIN, CHAT_CONTENT_WIDTH_MAX, 10, CHAT_CONTENT_WIDTH_DEFAULT, t("settings.resetChatContentWidth"), setChatContentWidth)}
         </SettingsRow>

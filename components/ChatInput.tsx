@@ -1999,7 +1999,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         lineHeight: 1.45,
                       }}
                     >
-                      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-dim)", paddingTop: 1 }}>
+                      <span style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums", fontSize: 11, color: "var(--text-dim)", paddingTop: 1 }}>
                         {index + 1}
                       </span>
                       <span style={{ minWidth: 0, display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, overflow: "hidden", overflowWrap: "anywhere" }}>
@@ -2044,7 +2044,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 }}
               >
                  <span>{slashCommandsLoading ? t("chat.loadingCommands") : t("chat.slashCommands", { label: slashCommandCountLabel })}</span>
-                 <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
+                 <span>{t("chat.tabEnter")}</span>
               </div>
               <div id={slashListboxId} role="listbox" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 6 }}>
                 {!slashCommandsLoading && filteredSlashCommands.length === 0 ? (
@@ -2072,7 +2072,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         }}
                       >
                         <span>{t(SLASH_SOURCE_GROUP_LABEL_KEYS[group.source])}</span>
-                        <span style={{ fontFamily: "var(--font-mono)" }}>{group.items.length}</span>
+                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{group.items.length}</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                         {group.items.map(({ command, index }) => {
@@ -2206,7 +2206,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                        ? t("chat.loadingFiles")
                        : t("chat.files", { label: matchCountLabel, hint: truncatedHint })}
                   </span>
-                   <span style={{ fontFamily: "var(--font-mono)" }}>{t("chat.tabEnter")}</span>
+                   <span>{t("chat.tabEnter")}</span>
                 </div>
                 <div id={fileListboxId} role="listbox" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 4 }}>
                   {!indexLoading && atMatches.length === 0 ? (
@@ -2331,7 +2331,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 borderRadius: 4,
                 background: bashExcluded ? "color-mix(in srgb, var(--text-dim) 12%, transparent)" : "color-mix(in srgb, var(--accent) 12%, transparent)",
                 color: bashExcluded ? "var(--text-muted)" : "var(--accent)",
-                fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 flexShrink: 0,
                 alignSelf: "flex-start",

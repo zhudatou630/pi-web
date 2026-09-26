@@ -201,7 +201,6 @@ function TreeNodeView({ node, activePathIds, depth, isLast, parentLines, onSelec
         {role && (
           <span style={{
             fontSize: 10,
-            fontFamily: "var(--font-mono)",
             color: role === "user" ? "var(--accent)" : "var(--text-dim)",
             background: role === "user" ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-hover)",
             border: `1px solid ${role === "user" ? "color-mix(in srgb, var(--accent) 20%, transparent)" : "var(--border)"}`,

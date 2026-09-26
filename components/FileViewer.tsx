@@ -320,7 +320,7 @@ function DiffView({ patch }: { patch: string }) {
   const hasChanges = metadata.length > 0 || diff.some((line) => line.type === "added" || line.type === "removed");
   if (!hasChanges) {
     return (
-      <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+      <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-dim)" }}>
         {t("i18n.noChanges")}
       </div>
     );

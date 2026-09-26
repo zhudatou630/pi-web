@@ -2529,7 +2529,7 @@ function ExtensionDialog({
         <div style={{ flexShrink: 0, display: "flex", alignItems: "flex-start", gap: 8, padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 600 }}>{request.title}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 3, color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 3, color: "var(--text-dim)", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
               <span>{t("chat.extensionRequest")}</span>
               {countdown}
             </div>

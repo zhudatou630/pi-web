@@ -75,7 +75,7 @@ test("groups display controls under Appearance and behavior under Chat, as flat 
   const chat = section('{t("settings.chat")}', "{shellSettings?.isWindows");
   const notifications = section('{t("settings.notifications")}', '{t("settings.about")}');
 
-  for (const key of ["theme", "typography", "chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault"]) {
+  for (const key of ["theme", "chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault"]) {
     assert.match(appearance, new RegExp(`t\\("settings\\.${key}"\\)`));
   }
   for (const key of ["shiftEnterToSend", "autoSessionTitle", "quoteSelection", "sidebarSingleProject"]) {
@@ -133,7 +133,7 @@ test("uses a left section nav on desktop and push navigation on mobile", () => {
 test("every General row explains itself in place, not in a hover title", () => {
   const general = panelSource.slice(panelSource.indexOf("function GeneralSettings"), panelSource.indexOf("export function SettingsPanel"));
   assert.doesNotMatch(general, /title=\{t\("settings\.\w+Description"\)\}/);
-  for (const key of ["typography", "chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault", "shiftEnterToSend", "autoSessionTitle", "quoteSelection", "sidebarSingleProject", "browserNotifications", "pushPermission", "shellTool"]) {
+  for (const key of ["chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault", "shiftEnterToSend", "autoSessionTitle", "quoteSelection", "sidebarSingleProject", "browserNotifications", "pushPermission", "shellTool"]) {
     assert.match(general, new RegExp(`t\\("settings\\.${key}Description"\\)`));
     assert.match(enSource, new RegExp(`"settings\\.${key}Description":`));
     assert.match(zhSource, new RegExp(`"settings\\.${key}Description":`));

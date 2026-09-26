@@ -141,7 +141,6 @@ function GitStatusBadge({ status, t }: { status: GitFileStatus; t: Translate }) 
         alignItems: "center",
         justifyContent: "center",
         color: GIT_STATUS_COLORS[status.status],
-        fontFamily: "var(--font-mono)",
         fontSize: 11,
       }}
     >
@@ -1012,8 +1011,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             <span style={{ color: "var(--text-dim)" }}>
               {t("files.changedCount", { count: gitFiles.length })}
             </span>
-            <span style={{ color: GIT_STATUS_COLORS.added, fontFamily: "var(--font-mono)" }}>+{gitLineStats.additions}</span>
-            <span style={{ color: GIT_STATUS_COLORS.deleted, fontFamily: "var(--font-mono)" }}>-{gitLineStats.deletions}</span>
+            <span style={{ color: GIT_STATUS_COLORS.added, fontVariantNumeric: "tabular-nums" }}>+{gitLineStats.additions}</span>
+            <span style={{ color: GIT_STATUS_COLORS.deleted, fontVariantNumeric: "tabular-nums" }}>-{gitLineStats.deletions}</span>
           </div>
           {gitFiles.map((status) => (
             <ChangeRow key={status.filePath} status={status} cwd={cwd} onOpenFile={onOpenFile} t={t} />

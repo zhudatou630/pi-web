@@ -29,8 +29,7 @@
    for dense reading content (code, terminal, tables), 16/20 exceptions. */
 @font-face {
   font-family: "Sarasa Term SC Web";
-  src: local("Sarasa Term SC"), local("Sarasa-Term-SC-Regular"),
-    url("/fonts/SarasaTermSC-Regular.woff2?v=1") format("woff2");
+  src: url("/fonts/SarasaTermSC-Regular.woff2?v=1") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -38,8 +37,23 @@
 
 @font-face {
   font-family: "Sarasa Term SC Web";
-  src: local("Sarasa Term SC SemiBold"), local("Sarasa-Term-SC-SemiBold"),
-    url("/fonts/SarasaTermSC-SemiBold.woff2?v=1") format("woff2");
+  src: url("/fonts/SarasaTermSC-SemiBold.woff2?v=1") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Sarasa UI SC Web";
+  src: url("/fonts/SarasaUiSC-Regular.woff2?v=1") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Sarasa UI SC Web";
+  src: url("/fonts/SarasaUiSC-SemiBold.woff2?v=1") format("woff2");
   font-style: normal;
   font-weight: 600;
   font-display: swap;
@@ -47,10 +61,6 @@
 
 html {
   font-synthesis: none;
-}
-
-html.sarasa-term-webfont {
-  --font-sarasa: "Sarasa Term SC Web", var(--font-sarasa-local);
 }
 
 :root {
@@ -104,13 +114,11 @@ html.sarasa-term-webfont {
   --chat-content-font-size: 14px;
   --chat-font-size-offset: calc(var(--chat-content-font-size, 14px) - 14px);
   --workspace-header-height: 30px;
-  /* Sarasa Term SC is the one intended face for prose and code alike. Only
-     same-design Term/Mono cuts are accepted locally; proportional Sarasa
-     cuts and unrelated families made the UI look different per machine.
-     The optional web face is enabled only after an explicit user download. */
-  --font-sarasa-local: 'Sarasa Term SC', 'Sarasa Term SC Nerd', 'Sarasa Term SC Nerd Font', 'Sarasa Mono SC', 'Sarasa Mono SC Nerd';
-  --font-sarasa: var(--font-sarasa-local);
-  --font-ui: var(--font-sarasa), ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
+  /* Sarasa has two roles: proportional UI SC for chrome and prose, Term SC
+     for code. Both are always the bundled web fonts, never local installs,
+     so every machine renders the same cut and version. The system tail only
+     shows while the font loads (swap) or if the download fails. */
+  --font-ui: "Sarasa UI SC Web", ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
   --font-chat: var(--font-ui);
 }
 
@@ -304,7 +312,7 @@ html.dark {
   grid-template-columns: minmax(200px, 240px) minmax(240px, 280px) minmax(280px, 400px);
   justify-content: start;
   gap: 40px;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -352,6 +360,9 @@ html.dark {
   color: var(--text-muted);
 }
 
+.session-stats-code {
+  font-family: var(--font-mono);
+}
 .session-stats-ellipsis {
   min-width: 0;
   overflow: hidden;
@@ -699,7 +710,7 @@ body {
 .terminal-panel-exit {
   padding: 7px 12px;
   color: #9ca3af;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
 }
 
@@ -713,7 +724,7 @@ body {
   border-bottom: 1px solid #5f2424;
   background: #321b1b;
   color: #fca5a5;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
 }
 
@@ -798,12 +809,12 @@ body {
 }
 
 :root {
-  /* Shares the Sarasa prefix with --font-ui so both resolve to one face when
-     installed. This tail is monospace-first and, unlike the UI tail, ends
+  /* Sarasa Term SC, the monospace sibling of --font-ui's Sarasa UI SC.
+     This tail is monospace-first and, unlike the UI tail, ends
      with explicit CJK families: on systems where the generic monospace face
      has no Chinese glyphs the browser would otherwise pick an arbitrary
      CJK fallback, often a proportional one. */
-  --font-mono: var(--font-sarasa), ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', var(--font-noto-mono), monospace, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
+  --font-mono: "Sarasa Term SC Web", ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', var(--font-noto-mono), monospace, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
 }
 
 pre, code {
@@ -1128,8 +1139,12 @@ pre, code {
   }
 }
 
+/* Prose role: model/user/extension-written text and read documents. */
 .markdown-assistant-message,
-.markdown-user-message {
+.markdown-user-message,
+.markdown-compaction-message,
+.markdown-custom-message,
+.markdown-file-preview {
   font-family: var(--font-chat);
 }
 .markdown-user-message p {
@@ -1289,7 +1304,7 @@ pre, code {
   background-color: transparent !important;
 }
 .markdown-code-header {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   padding: 3px 10px;
   min-height: 24px;
   background: color-mix(in srgb, var(--bg-subtle) 60%, var(--bg));
@@ -1303,7 +1318,7 @@ pre, code {
 }
 .markdown-code-lang {
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   letter-spacing: 0.02em;
 }
@@ -1322,7 +1337,7 @@ pre, code {
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   line-height: 1.2;
   transition: all 0.12s ease;
@@ -1413,7 +1428,7 @@ pre, code {
 }
 .mermaid-block-error {
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
 }
 
@@ -1540,7 +1555,7 @@ pre, code {
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 11px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -1605,7 +1620,8 @@ pre, code {
   min-width: 48px;
   height: 22px;
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   line-height: 22px;
   text-align: center;
@@ -3149,7 +3165,7 @@ span.token.table {
 }
 
 .chat-input-feedback-detail {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -3234,10 +3250,6 @@ span.token.table {
 
 /* Mobile sidebar: slide in/out as overlay */
 @media (max-width: 640px) {
-  :root {
-    --font-chat: var(--font-ui);
-  }
-
   /* The card is a closed box on phones too: keep the same 10px inset below it as beside it,
      so its bottom edge never sits against the screen edge. */
   .chat-input:not(.is-compact) {

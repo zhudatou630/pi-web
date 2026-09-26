@@ -2853,18 +2853,18 @@ export function AppShell() {
                             <div className="session-stats-text">
                               {/* rtl clips the start of the path so the project name stays visible */}
                               <span title={selectedSession.cwd} className="session-stats-ellipsis" style={{ direction: "rtl", textAlign: "left" }}>
-                                <span style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
+                                <span className="session-stats-code" style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
                               </span>
                               {copyButton(selectedSession.isWorktree ? "gitWorktree" : "projectDir", selectedSession.cwd)}
                             </div>
                           </>
                         )}
                         {selectedSession?.branch && (
-                          <>{label(translate("session.branch"))}{text(selectedSession.branch, selectedSession.branch)}</>
+                          <>{label(translate("session.branch"))}{text(<span className="session-stats-code">{selectedSession.branch}</span>, selectedSession.branch)}</>
                         )}
                         {label(translate("session.id"))}
                         {text(
-                          sessionStats.sessionId ? `${sessionStats.sessionId.slice(0, 8)}…${sessionStats.sessionId.slice(-6)}` : "?",
+                          sessionStats.sessionId ? <span className="session-stats-code">{`${sessionStats.sessionId.slice(0, 8)}…${sessionStats.sessionId.slice(-6)}`}</span> : "?",
                           sessionStats.sessionId,
                           sessionStats.sessionId ? <Fragment key="i">{copyButton("id", sessionStats.sessionId)}</Fragment> : null,
                           sessionStats.sessionFile ? <Fragment key="f">{copyButton("file", sessionStats.sessionFile, "file")}</Fragment> : null,
