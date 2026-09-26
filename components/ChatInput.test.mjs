@@ -97,6 +97,8 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
     ["mobile modified Enter respects composition grace", { altKey: true, ctrlKey: true }, { isMobile: true, lastCompositionEndAtRef: { current: 950 } }, "prevented"],
     ["Enter falls back to follow-up", {}, { onSteer: undefined }, "followup"],
     ["Alt+Enter falls back to steer", { altKey: true }, { onFollowUp: undefined }, "steer"],
+    ["busy run without a queue explains the held Enter", {}, { onSteer: undefined, onFollowUp: undefined, value: "draft" }, "held+send"],
+    ["busy run still runs streaming built-ins silently", {}, { onSteer: undefined, onFollowUp: undefined, value: "/copy" }, "send"],
     ["slash completion takes priority", { altKey: true }, { slashMenuOpen: true, slashQuery: "help" }, "slash"],
     ["available built-in commands take priority", { altKey: true }, { slashMenuOpen: true, slashQuery: "copy", value: "/copy", displayedSlashCommands: [{ name: "copy", source: "builtin", availableWhileStreaming: true }] }, "send"],
     ["file completion takes priority", { altKey: true }, { atMenuOpen: true, atQuery: {} }, "file"],
@@ -118,7 +120,8 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
       slashMenuOpen: false, slashQuery: null, displayedSlashCommands: [{}], slashActiveIndex: 0,
       atMenuOpen: false, atQuery: null, atMatches: [{}], atActiveIndex: 0, setAtMenuOpen() {},
       onSteer() {}, onFollowUp() {},
-      sendQueued(mode) { action = mode; }, handleSend() { action = "send"; },
+      sendQueued(mode) { action = mode; }, handleSend() { action = action === "held" ? "held+send" : "send"; },
+      canQueueStreamingMessage: true, canRunBuiltinSlashCommandWhileStreaming, setSendHeld() { action = "held"; },
       applySlashCommand() { action = "slash"; },
       isExactSlashCommand, value: "", setSlashMenuOpen() {},
       applyAtCompletion() { action = "file"; },
@@ -173,6 +176,12 @@ test("keeps the main composer compact in idle and streaming states", () => {
     assert.match(html, /class="composer-send" aria-label="Steer"/);
     assert.doesNotMatch(html, /composer-btn-label/);
     assert.doesNotMatch(html, /#ef4444/);
+
+    // Busy without a queue (bash / direct image run): the verb stays Stop so the draft survives.
+    const busy = renderToStaticMarkup(React.createElement(I18nProvider, null,
+      React.createElement(ChatInput, { onSend() {}, onAbort() {}, isStreaming: true, draftKey })));
+    assert.doesNotMatch(busy, /chat-input-actions is-queueing/);
+    assert.match(busy, /class="composer-send" aria-label="Stop"/);
   } finally {
     clearDraft(draftKey);
   }

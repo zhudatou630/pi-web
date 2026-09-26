@@ -471,6 +471,7 @@ export const enLocale: LocalePlugin = {
     "chat.steer": "Steer",
     "chat.followUp": "Follow-up",
     "chat.steerHint": "Interrupt the current run and inject this message now",
+    "chat.sendHeldWhileBusy": "A command is running, so this cannot be sent yet. Your draft is kept.",
     "chat.followUpHint": "Queue this message after the agent finishes",
     "chat.inputHistory": "Input history",
     "chat.modelError": "Model error",

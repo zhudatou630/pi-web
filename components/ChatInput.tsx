@@ -572,6 +572,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const { t } = useI18n();
   const { fontSize } = useChatAppearance();
   const isMobile = useIsMobile();
+  // Explains a no-op Enter during a queue-less busy run; cleared by typing or the run ending.
+  const [sendHeld, setSendHeld] = useState(false);
   const menuId = useId();
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [controlsView, setControlsView] = useState<"root" | "tools" | "compact">("root");
@@ -1392,11 +1394,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         if (isStreaming && (onSteer || onFollowUp)) {
           sendQueued((e.altKey && onFollowUp) || !onSteer ? "followup" : "steer");
         } else {
+          // A shell or direct image run has no queue: say why Enter did nothing.
+          if (isStreaming && canQueueStreamingMessage && !canRunBuiltinSlashCommandWhileStreaming(value.trim())) {
+            setSendHeld(true);
+          }
           handleSend();
         }
       }
     },
-    [isMobile, isStreaming, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, thinkingDropdownOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
+    [isMobile, isStreaming, canQueueStreamingMessage, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, thinkingDropdownOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
   );
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1692,7 +1698,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       </svg>
     </button>
   ) : null;
-  const queueStreamingActions = isStreaming && canQueueStreamingMessage;
+  // Bash / direct image runs are busy without a queue: the verb stays Stop, so a click
+  // cannot clear a draft that nothing would accept.
+  const queueStreamingActions = isStreaming && Boolean(onSteer || onFollowUp) && canQueueStreamingMessage;
   const actionButtons = !isStreaming ? (
     <button
       type="button"
@@ -1747,7 +1755,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   );
 
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isStreaming) {
+      setSendHeld(false);
+      return;
+    }
     setThinkingDropdownOpen(false);
     setControlsView("root");
     setImageMenuOpen(false);
@@ -1845,6 +1856,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {compactError && (
           <div role="alert" className="chat-input-feedback chat-input-feedback-error chat-input-feedback-detail" style={{ whiteSpace: "pre-wrap" }}>
             {compactError}
+          </div>
+        )}
+        {sendHeld && isStreaming && (
+          <div role="status" className="chat-input-feedback chat-input-feedback-warning">
+            {t("chat.sendHeldWhileBusy")}
           </div>
         )}
         {(draftPersistenceFailed || draftPersistenceWarning) && (
@@ -2325,6 +2341,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               setCursorPosition(e.target.selectionStart);
               historyStashRef.current = null;
               setHistoryMenuOpen(false);
+              setSendHeld(false);
               updateAtQuery(e.target.value, e.target.selectionStart);
             }}
             onSelect={(e) => {

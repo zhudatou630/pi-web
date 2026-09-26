@@ -471,6 +471,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.steer": "引导",
     "chat.followUp": "后续消息",
     "chat.steerHint": "中断当前运行并立即注入此消息",
+    "chat.sendHeldWhileBusy": "命令运行中，暂时无法发送；草稿已保留。",
     "chat.followUpHint": "在 Agent 完成后排队此消息",
     "chat.inputHistory": "输入历史",
     "chat.modelError": "模型错误",

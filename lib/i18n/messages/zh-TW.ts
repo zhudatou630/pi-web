@@ -471,6 +471,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.steer": "引導",
     "chat.followUp": "後續訊息",
     "chat.steerHint": "中斷目前的執行並立即注入此訊息",
+    "chat.sendHeldWhileBusy": "命令執行中，暫時無法傳送；草稿已保留。",
     "chat.followUpHint": "在 Agent 完成後排入此訊息",
     "chat.inputHistory": "輸入紀錄",
     "chat.modelError": "模型錯誤",
