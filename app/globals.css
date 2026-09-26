@@ -2357,10 +2357,12 @@ span.token.table {
   }
 
   /* Row actions stay hidden until a long press, except "new session in this
-     project": phones have no hover, so it is the only reachable affordance.
+     project" and, on an expanded project, its Explorer: phones have no hover,
+     so expanding stands in for it.
      A 26px row cannot host a 44px target; give it the full row height instead.
      ToolbarIconButton sizes itself inline, so this needs !important. */
-  .workspace-list-row .workspace-row-action > .workspace-new-session {
+  .workspace-list-row .workspace-row-action > .workspace-new-session,
+  .workspace-list-row[data-expanded="true"] .workspace-row-action > .workspace-explorer {
     max-width: 26px !important;
     filter: none;
     pointer-events: auto;

@@ -1814,6 +1814,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     key={`workspace:${row.project.key}`}
                     data-active={active ? "true" : "false"}
                     data-pending-delete={pendingDelete ? "true" : undefined}
+                    data-expanded={!singleProject && expanded ? "true" : undefined}
                     onTouchStart={(event) => handleWorkspaceTouchStart(row.project.key, workspaceCwd, event)}
                     onTouchMove={handleWorkspaceTouchMove}
                     onTouchEnd={handleWorkspaceTouchEnd}
@@ -1883,6 +1884,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         }}
                         title={t("sidebar.openProjectExplorer", { path: workspaceCwd })}
                         color="var(--text-muted)"
+                        className="workspace-explorer"
                       >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h4" /><path d="M10 5h10" /><path d="M4 12h4" /><path d="M10 12h10" /><path d="M4 19h4" /><path d="M10 19h10" /></svg>
                       </ToolbarIconButton>
