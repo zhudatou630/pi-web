@@ -149,7 +149,9 @@ html.dark {
   flex-shrink: 0;
   height: calc(var(--workspace-header-height) + env(safe-area-inset-top));
   padding-top: env(safe-area-inset-top);
-  border-bottom: 1px solid var(--border);
+  /* The bottom rule is painted under the children, not as a border, so the
+     visible tab (opaque --bg) covers it and joins the content below. */
+  box-shadow: inset 0 -1px 0 var(--border);
 }
 
 .workspace-header-action > svg {

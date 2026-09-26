@@ -141,7 +141,7 @@ export function ChatTabBar({
         display: "flex",
         alignItems: "stretch",
         background: unifiedHeader ? "transparent" : "var(--bg-panel)",
-        borderBottom: unifiedHeader ? "none" : "1px solid var(--border)",
+        boxShadow: unifiedHeader ? undefined : "inset 0 -1px 0 var(--border)",
         height: "var(--workspace-header-height, 30px)",
         minHeight: "var(--workspace-header-height, 30px)",
         maxHeight: "var(--workspace-header-height, 30px)",
@@ -227,7 +227,9 @@ export function ChatTabBar({
                 height: "100%",
                 paddingLeft: isMobile ? 8 : 10,
                 paddingRight: isMobile ? (isVisible ? 4 : 8) : 4,
-                borderRight: isMobile && index === tabs.length - 1 ? "none" : "1px solid var(--border)",
+                // A visible tab is always ruled off from its neighbors; only an inactive
+                // last tab on mobile drops its edge to avoid a doubled strip edge.
+                borderRight: isMobile && index === tabs.length - 1 && !isVisible ? "none" : "1px solid var(--border)",
                 background: isVisible ? "var(--bg)" : "var(--bg-panel)",
                 cursor: "pointer",
                 fontSize: 12,
@@ -241,7 +243,15 @@ export function ChatTabBar({
                 touchAction: "pan-x",
                 position: "relative",
                 transition: "background 0.12s, color 0.12s",
-                boxShadow: isCurrentPane ? "inset 0 2px 0 var(--accent)" : undefined,
+                // Visible tabs drop the bottom rule to join their pane; the focused
+                // pane's tab also carries the top accent bar.
+                // In the unified header the first tab sits next to header icons, so a
+                // visible first tab also takes a left rule.
+                boxShadow: [
+                  isCurrentPane && "inset 0 2px 0 var(--accent)",
+                  isVisible && index === 0 && unifiedHeader && "inset 1px 0 0 var(--border)",
+                  !isVisible && "inset 0 -1px 0 var(--border)",
+                ].filter(Boolean).join(", ") || undefined,
               }}
               title={tab.preview ? `${tab.title} · ${t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })}` : tab.title}
             >
@@ -344,7 +354,7 @@ export function ChatTabBar({
           display: "flex",
           alignItems: "center",
           flexShrink: 0,
-          background: unifiedHeader ? "transparent" : "var(--bg-panel)",
+          alignSelf: "stretch",
         }}
       >
         {/* All-tabs overflow menu — desktop only; the mobile strip swipes */}

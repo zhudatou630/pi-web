@@ -29,7 +29,7 @@ test("conversation and file headers keep the aligned 30px row", () => {
   assert.equal(declarations(":root")["--workspace-header-height"], "30px");
   assert.equal(header.height, "calc(var(--workspace-header-height) + env(safe-area-inset-top))");
   assert.equal(header["padding-top"], "env(safe-area-inset-top)");
-  assert.equal(header["border-bottom"], "1px solid var(--border)");
+  assert.equal(header["box-shadow"], "inset 0 -1px 0 var(--border)");
   assert.equal((shell.match(/className="workspace-header"/g) ?? []).length, 2);
   assert.match(shell, /const TOP_BAR_ICON_BUTTON_SIZE = 30/);
   assert.equal(declarations(".sidebar-section-row").height, "var(--workspace-header-height, 30px)");

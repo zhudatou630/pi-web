@@ -181,7 +181,7 @@ test("toolbar actions use spacing rather than per-button dividers, preserving re
   const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(branchNavigator, /borderRight:/);
   assert.match(source, /className="workspace-header" style=\{\{ position: "relative" \}\}/);
-  assert.match(cssSource, /\.workspace-header \{[^}]*border-bottom: 1px solid var\(--border\)/);
+  assert.match(cssSource, /\.workspace-header \{[^}]*box-shadow: inset 0 -1px 0 var\(--border\)/);
   const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
   assert.doesNotMatch(fileToggle, /borderLeft:/);
 });

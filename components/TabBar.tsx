@@ -52,6 +52,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
         display: "flex",
         alignItems: "stretch",
         background: "var(--bg-panel)",
+        boxShadow: "inset 0 -1px 0 var(--border)",
         overflowX: "auto",
         flexShrink: 0,
         height: "100%",
@@ -101,6 +102,9 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
               paddingRight: 6,
               borderRight: "1px solid var(--border)",
               background: isActive ? "var(--bg)" : "var(--bg-panel)",
+              // Same language as chat tabs: the active tab joins the viewer below
+              // and carries the top accent bar; the others keep the bottom rule.
+              boxShadow: isActive ? "inset 0 2px 0 var(--accent)" : "inset 0 -1px 0 var(--border)",
               cursor: "pointer",
               fontSize: 12,
               color: isActive ? "var(--text)" : "var(--text-muted)",

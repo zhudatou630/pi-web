@@ -206,3 +206,18 @@ test("mobile mode hides split toggle and only shows close button on active tab",
   assert.doesNotMatch(html, /box-shadow:-4px 0 10px/);
 });
 
+
+test("a visible tab is ruled off on both sides", () => {
+  const tabs = [
+    { id: "s1", kind: "session", title: "First", session: { id: "s1" }, newSessionCwd: null, newSessionDraftKey: null },
+    { id: "s2", kind: "session", title: "Last", session: { id: "s2" }, newSessionCwd: null, newSessionDraftKey: null },
+  ];
+  const render = (props) => tabNodes(renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatTabBar, { tabs, onSelectTab() {}, onCloseTab() {}, onNewTab() {}, ...props }))));
+
+  // Unified header: the first tab sits beside header icons and needs a left rule only when visible.
+  assert.match(render({ activeTabId: "s1", unifiedHeader: true })[0], /box-shadow:[^;"]*inset 1px 0 0 var\(--border\)/);
+  assert.doesNotMatch(render({ activeTabId: "s2", unifiedHeader: true })[0], /inset 1px 0 0/);
+  // Mobile: the last tab keeps its right rule while visible.
+  assert.match(render({ activeTabId: "s2", isMobile: true })[1], /border-right:1px solid var\(--border\)/);
+});

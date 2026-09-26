@@ -2905,7 +2905,7 @@ export function AppShell() {
           <div
             data-mobile-chat-tabs="true"
             style={{
-              borderBottom: "1px solid var(--border)",
+              boxShadow: "inset 0 -1px 0 var(--border)",
               background: "var(--bg-panel)",
               height: "var(--workspace-header-height, 30px)",
               minHeight: "var(--workspace-header-height, 30px)",
