@@ -183,9 +183,9 @@ test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible))
   assert.doesNotMatch(globalCss, /\.session-list-row:has\(\.session-row-actions\):focus-within \.session-row-meta/);
 });
 
-test("collapse all shows only while a project is expanded", () => {
+test("collapse all shows only while two or more listed projects are expanded", () => {
   assert.match(source, /sidebar\.collapseAll/);
-  assert.match(source, /\(expandedWorkspaceKeys \?\? defaultExpandedWorkspaceKeys\)\.size > 0 && !singleProject/);
+  assert.match(source, /!singleProject && workspaceProjects\.filter\(\(p\) => \(expandedWorkspaceKeys \?\? defaultExpandedWorkspaceKeys\)\.has\(p\.key\)\)\.length >= 2/);
   assert.match(source, /setExpandedWorkspaceKeys\(new Set\(\)\)/);
 });
 
