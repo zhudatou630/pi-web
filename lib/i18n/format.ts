@@ -48,10 +48,10 @@ export function formatCompactRelativeTime(date: Date | string, locale: Locale, n
   const target = date instanceof Date ? date : new Date(date);
   const minutes = Math.max(0, Math.floor((now.getTime() - target.getTime()) / 60_000));
   const chinese = locale.startsWith("zh");
-  if (minutes < 1) return chinese ? (locale === "zh-TW" ? "剛剛" : "刚刚") : "now";
-  if (minutes < 60) return chinese ? `${minutes}${locale === "zh-TW" ? "分鐘" : "分钟"}` : `${minutes}m`;
+  if (minutes < 1) return chinese ? "刚刚" : "now";
+  if (minutes < 60) return chinese ? `${minutes}分钟` : `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return chinese ? `${hours}${locale === "zh-TW" ? "小時" : "小时"}` : `${hours}h`;
+  if (hours < 24) return chinese ? `${hours}小时` : `${hours}h`;
   const days = Math.floor(hours / 24);
   return chinese ? `${days}天` : `${days}d`;
 }
