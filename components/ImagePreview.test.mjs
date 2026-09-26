@@ -28,19 +28,19 @@ test("Escape closes image preview without reaching global shortcuts", () => {
   );
 });
 
-test("closes only when the backdrop itself is clicked", () => {
-  assert.match(source, /event\.target === event\.currentTarget[\s\S]*?closePreview\(\)/);
+test("closes when the image or backdrop is clicked", () => {
+  assert.match(source, /onClick=\{closePreview\}/);
 });
 
-test("keeps the preview and Pi-style close button inside mobile safe areas", () => {
+test("keeps the preview and close button inside mobile safe areas", () => {
   assert.match(
     cssSource,
     /\.image-preview-dialog \{[\s\S]*?env\(safe-area-inset-top\)[\s\S]*?env\(safe-area-inset-right\)[\s\S]*?env\(safe-area-inset-bottom\)[\s\S]*?env\(safe-area-inset-left\)/,
   );
   assert.match(
     cssSource,
-    /\.image-preview-close \{[\s\S]*?top: max\(12px, env\(safe-area-inset-top\)\)[\s\S]*?right: max\(12px, env\(safe-area-inset-right\)\)[\s\S]*?border-radius: 6px[\s\S]*?background: var\(--bg-panel\)/,
+    /\.image-preview-close \{[\s\S]*?top: max\(12px, env\(safe-area-inset-top\)\)[\s\S]*?right: max\(12px, env\(safe-area-inset-right\)\)[\s\S]*?background: transparent/,
   );
-  assert.match(cssSource, /@media \(pointer: coarse\) \{[\s\S]*?\.image-preview-close \{[\s\S]*?width: 44px;[\s\S]*?height: 44px;/);
+  assert.match(cssSource, /@media \(pointer: coarse\) \{[\s\S]*?\.image-preview-close \{[\s\S]*?width: 40px;[\s\S]*?height: 40px;/);
   assert.match(source, /<path d="M6 6l12 12M18 6 6 18" \/>/);
 });

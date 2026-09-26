@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef, type RefObject } from "react";
-import { createPortal } from "react-dom";
-import { useI18n } from "@/hooks/useI18n";
+import { useState, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { findActiveUser, mapEntriesToUsers, minimapReadingLine } from "@/lib/chat-minimap";
+import type { SessionOutlineItem } from "@/lib/types";
+import { useI18n } from "@/hooks/useI18n";
 import { useSessionOutline } from "./ChatMinimap";
 
-interface Props {
+export type MobileOutlineView = {
+  items: SessionOutlineItem[];
+  scrollContainer?: RefObject<HTMLDivElement | null>;
+  contentContainer?: RefObject<HTMLDivElement | null>;
+  loadedEntryIds?: string[];
+  onJumpToEntry: (entryId: string) => Promise<void>;
+};
+
+type SyncProps = {
   sessionId: string | null;
   leafId: string | null;
   outlineRevision: string;
@@ -14,9 +22,10 @@ interface Props {
   contentContainer?: RefObject<HTMLDivElement | null>;
   loadedEntryIds?: string[];
   onJumpToEntry: (entryId: string) => Promise<void>;
-}
+  onChange?: (view: MobileOutlineView | null) => void;
+};
 
-export function MobileChatNav({
+export function MobileOutlineSync({
   sessionId,
   leafId,
   outlineRevision,
@@ -24,93 +33,95 @@ export function MobileChatNav({
   contentContainer,
   loadedEntryIds,
   onJumpToEntry,
-}: Props) {
-  const { t } = useI18n();
+  onChange,
+}: SyncProps) {
   const items = useSessionOutline(sessionId, leafId, outlineRevision);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [activeEntryId, setActiveEntryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    onChange?.({ items, scrollContainer, contentContainer, loadedEntryIds, onJumpToEntry });
+  }, [items, scrollContainer, contentContainer, loadedEntryIds, onJumpToEntry, onChange]);
+
+  useEffect(() => () => { onChange?.(null); }, [onChange]);
+
+  return null;
+}
+
+export function MobileOutlineList({ view, onClose }: { view: MobileOutlineView; onClose: () => void }) {
+  const { t } = useI18n();
+  const { items, scrollContainer, contentContainer, loadedEntryIds, onJumpToEntry } = view;
+  const [activeEntryId, setActiveEntryId] = useState<string | null>(() => items[items.length - 1]?.entryId ?? null);
   const activeItemRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const toggle = () => setSheetOpen((v) => !v);
-    window.addEventListener("pi-toggle-outline", toggle);
-    return () => window.removeEventListener("pi-toggle-outline", toggle);
-  }, []);
-
-  useEffect(() => {
-    if (!sheetOpen || !items.length || !scrollContainer?.current || !contentContainer?.current) return;
+  // Measure before paint; a passive effect shows the fallback row for a frame, then jumps.
+  useLayoutEffect(() => {
+    if (!items.length || !scrollContainer?.current || !contentContainer?.current) return;
     const scrollEl = scrollContainer.current;
     const contentEl = contentContainer.current;
-    const owners = mapEntriesToUsers(items.map((i) => i.entryId), loadedEntryIds ?? []);
+    const owners = mapEntriesToUsers(items.map((item) => item.entryId), loadedEntryIds ?? []);
     const viewport = scrollEl.getBoundingClientRect();
     const anchors = [];
-    for (const node of contentEl.children) {
-      if (node instanceof HTMLElement && node.dataset.entryId) {
-        const userId = owners.get(node.dataset.entryId);
-        if (userId) anchors.push({ userId, top: node.getBoundingClientRect().top - viewport.top - scrollEl.clientTop + scrollEl.scrollTop });
-      }
+    for (const node of contentEl.querySelectorAll<HTMLElement>("[data-entry-id]")) {
+      const userId = owners.get(node.dataset.entryId ?? "");
+      if (!userId) continue;
+      anchors.push({
+        userId,
+        top: node.getBoundingClientRect().top - viewport.top - scrollEl.clientTop + scrollEl.scrollTop,
+      });
     }
     anchors.sort((a, b) => a.top - b.top);
-    setActiveEntryId(findActiveUser(anchors, minimapReadingLine(scrollEl.scrollTop, scrollEl.clientHeight, scrollEl.scrollHeight)));
-  }, [sheetOpen, items, loadedEntryIds, scrollContainer, contentContainer]);
+    setActiveEntryId(
+      findActiveUser(anchors, minimapReadingLine(scrollEl.scrollTop, scrollEl.clientHeight, scrollEl.scrollHeight))
+        ?? items[items.length - 1]?.entryId
+        ?? null,
+    );
+  }, [items, loadedEntryIds, scrollContainer, contentContainer]);
 
-  useEffect(() => {
-    if (sheetOpen && activeItemRef.current) {
-      activeItemRef.current.scrollIntoView({ block: "center" });
-    }
-  }, [sheetOpen, activeEntryId]);
+  useLayoutEffect(() => {
+    const el = activeItemRef.current;
+    const root = listRef.current;
+    if (!el || !root) return;
+    const row = el.getBoundingClientRect();
+    const box = root.getBoundingClientRect();
+    // Scroll only the list; scrollIntoView would also move the page behind the fixed panel.
+    if (row.top < box.top) root.scrollTop += row.top - box.top;
+    else if (row.bottom > box.bottom) root.scrollTop += row.bottom - box.bottom;
+  }, [activeEntryId]);
 
-  if (!sheetOpen || !items.length || typeof document === "undefined") return null;
-
-  return createPortal(
-    <>
-      <div
-        className="fixed inset-0 z-[120] bg-black/50 transition-opacity"
-        onClick={() => setSheetOpen(false)}
-        aria-hidden="true"
-      />
-      <section
-        className="fixed bottom-0 left-0 right-0 z-[121] flex max-h-[72dvh] flex-col overflow-hidden rounded-t-[16px] border-t border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl pb-[max(12px,env(safe-area-inset-bottom))]"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("i18n.outline") || "目录"}
-      >
-        <div className="flex-1 overflow-y-auto overscroll-contain px-2 py-2.5 space-y-0.5">
-          {items.map((item, index) => {
-            const isActive = activeEntryId === item.entryId;
-            return (
-              <button
-                key={item.entryId}
-                ref={isActive ? activeItemRef : undefined}
-                type="button"
-                className={`relative flex w-full items-start gap-2.5 rounded-[4px] py-2 pl-2.5 pr-2 text-left transition-colors [-webkit-tap-highlight-color:transparent] ${
-                  isActive
-                    ? "bg-[var(--bg-selected)] text-[var(--text)] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2.5px] before:rounded-r-[1.5px] before:bg-[var(--accent)]"
-                    : "text-[var(--text)] hover:bg-[var(--bg-hover)] active:bg-[var(--bg-hover)]"
-                }`}
-                aria-current={isActive ? "location" : undefined}
-                onClick={() => {
-                  setSheetOpen(false);
-                  void onJumpToEntry(item.entryId);
-                }}
-              >
-                <span
-                  className={`w-5 shrink-0 text-right tabular-nums text-[12px] leading-5 select-none ${
-                    isActive ? "text-[var(--accent)]" : "text-[var(--text-dim)]"
-                  }`}
-                  aria-hidden="true"
-                >
-                  {index + 1}
-                </span>
-                <span className="flex-1 min-w-0 line-clamp-2 text-[12px] leading-5" style={{ hangingPunctuation: "first" }}>
-                  {item.preview}
-                </span>
-              </button>
-            );
-          })}
+  return (
+    <div ref={listRef} className="overflow-y-auto overscroll-contain border-b border-[var(--border)] py-1.5" style={{ maxHeight: "inherit" }}>
+      {items.length === 0 ? (
+        <div style={{ padding: "12px 16px", color: "var(--text-muted)", fontSize: 12 }}>
+          {t("chatMinimap.empty")}
         </div>
-      </section>
-    </>,
-    document.body
+      ) : items.map((item, index) => {
+        const isActive = activeEntryId === item.entryId;
+        return (
+          <button
+            key={item.entryId}
+            ref={isActive ? activeItemRef : undefined}
+            type="button"
+            className="mobile-outline-row"
+            aria-current={isActive ? "location" : undefined}
+            onClick={() => {
+              onClose();
+              void onJumpToEntry(item.entryId);
+            }}
+          >
+            <span
+              className={`w-5 shrink-0 text-right tabular-nums text-[12px] leading-[18px] select-none ${
+                isActive ? "text-[var(--accent)]" : "text-[var(--text-dim)]"
+              }`}
+              aria-hidden="true"
+            >
+              {index + 1}
+            </span>
+            <span className="flex-1 min-w-0 line-clamp-2 text-[12px] leading-[18px]" style={{ hangingPunctuation: "first" }}>
+              {item.preview}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

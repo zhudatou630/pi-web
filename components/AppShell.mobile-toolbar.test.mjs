@@ -31,12 +31,14 @@ test("removes the closed mobile sidebar from the accessibility tree", () => {
 });
 
 test("closes shared top panels consistently and restores their trigger on Escape", () => {
-  assert.match(source, /if \(!activeTopPanel \|\| activeTopPanel === "branches" \|\| activeTopPanel === "language"\) return/);
+  assert.match(source, /if \(!activeTopPanel \|\| activeTopPanel === "language"\) return/);
   assert.match(source, /topPanelRef\.current\?\.contains\(target\)/);
+  assert.match(source, /target\.closest\("\[data-top-panel-trigger\]"\)/);
   assert.match(source, /event\.stopPropagation\(\);\s*closeTopPanel\(true\)/);
   assert.match(source, /data-top-panel-trigger="system"/);
   assert.match(source, /data-top-panel-trigger="tools"/);
   assert.match(source, /data-top-panel-trigger="session"/);
+  assert.match(source, /data-top-panel-trigger="outline"/);
   assert.match(source, /id="workspace-top-panel"/);
 });
 
@@ -71,7 +73,9 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
 test("only renders branch toolbar controls for sessions with branches on mobile and disables desktop button without branches", () => {
   assert.match(source, /const sessionHasBranches = hasSessionBranches\(branchTree\)/);
   assert.match(source, /disabled=\{!sessionHasBranches\}/);
-  assert.match(source, /\{isMobile && sessionHasBranches && \(/);
+  // Branches render in the shared sheet like every other full-width panel.
+  assert.match(source, /activeTopPanel === "branches" && \([\s\S]*?<BranchTreeList/);
+  assert.equal(source.match(/<BranchNavigator/g).length, 1);
   assert.match(source, /panel === "branches" \? null : panel/);
 });
 
@@ -151,7 +155,7 @@ test("desktop chat toolbar actions are icon-only", () => {
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   assert.doesNotMatch(actions, /\{!mobile && <span>/);
   assert.match(actions, /width: TOP_BAR_ICON_BUTTON_SIZE/);
-  assert.match(actions, /inline\s+compact\s+containerRef=\{topBarRef\}/);
+  assert.match(actions, /inline\s+compact\s+open=\{activeTopPanel === "branches"\}/);
 });
 
 test("desktop session controls follow the task-first order", () => {
@@ -199,4 +203,16 @@ test("mobile session stats aligns with desktop to keep top session status limite
   const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
   assert.match(stats, /costText/);
   assert.doesNotMatch(stats, /contextLabel/);
+});
+
+test("top-bar sheets animate a wrapper, not the content nodes", async () => {
+  assert.match(
+    cssSource,
+    /\.session-sheet-pop,\s*\.branch-dropdown \{[\s\S]*?animation: menu-surface-in 0\.12s ease-out;/,
+  );
+  assert.doesNotMatch(cssSource, /session-info-pop\b/);
+  assert.match(source, /className="session-sheet-pop"/);
+  assert.doesNotMatch(cssSource, /\.tool-definitions-panel,\s*\.session-info-popover/);
+  const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");
+  assert.match(branchNavigator, /className="branch-dropdown"/);
 });

@@ -578,6 +578,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.tooManyImagesBody": "当前草稿有 {count} 张图片。请删到不超过 {max} 张后再发送；已恢复的附件不会被丢弃。",
     "chat.tokensSaved": "节省 {saved}",
     "chatMinimap.userOutline": "目录",
+    "chatMinimap.empty": "暂无目录",
     "chatMinimap.jumpFailed": "跳转失败：",
     "chatMinimap.retry": "重试",
     "i18n.close": "关闭",

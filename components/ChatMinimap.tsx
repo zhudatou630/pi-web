@@ -337,6 +337,8 @@ function LocatedMinimap({ items, scrollContainer, contentContainer, loadedEntryI
   return createPortal(<ChatMinimapRail items={items} activeEntryId={activeEntryId} onJumpToEntry={onJumpToEntry} label={label} {...position} />, document.body);
 }
 
+const EMPTY_OUTLINE: SessionOutlineItem[] = [];
+
 export function useSessionOutline(
   sessionId: string | null | undefined,
   leafId: string | null | undefined,
@@ -365,7 +367,7 @@ export function useSessionOutline(
     return () => controller.abort();
   }, [sessionId, leafId, outlineRevision, key]);
 
-  if (!sessionId || outline?.key !== key) return [];
+  if (!sessionId || outline?.key !== key) return EMPTY_OUTLINE;
   return outline.items;
 }
 

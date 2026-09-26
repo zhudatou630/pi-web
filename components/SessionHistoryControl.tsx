@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 
 const ICON_BUTTON_SIZE = 30;
 
@@ -36,7 +36,7 @@ export function SessionHistoryControl({
   const rootRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!menuOpen) {
       setMenuPos(null);
       return;
@@ -68,8 +68,7 @@ export function SessionHistoryControl({
   const color = disabled ? "var(--text-dim)" : "var(--text-muted)";
   const hover = (event: MouseEvent<HTMLButtonElement>, on: boolean) => {
     if (disabled) return;
-    event.currentTarget.style.color = on ? "var(--text)" : "var(--text-muted)";
-    event.currentTarget.style.background = on ? "var(--bg-hover)" : "none";
+    event.currentTarget.style.color = on || menuOpen ? "var(--text)" : "var(--text-muted)";
   };
 
   return (
@@ -85,6 +84,7 @@ export function SessionHistoryControl({
         aria-label={labels.menu}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
+        data-active={menuOpen || undefined}
         style={{
           display: "flex",
           alignItems: "center",
@@ -98,7 +98,7 @@ export function SessionHistoryControl({
           cursor: disabled ? "not-allowed" : "pointer",
           opacity: disabled ? 0.45 : 1,
           flexShrink: 0,
-          transition: "color 0.1s, background 0.1s, opacity 0.1s",
+          transition: "color 0.1s, background 0.1s, opacity 0.1s, box-shadow 0.1s",
         }}
         onMouseEnter={(event) => hover(event, true)}
         onMouseLeave={(event) => hover(event, false)}

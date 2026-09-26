@@ -29,8 +29,9 @@ import { getAdjacentTabId, openFileTab, saveFileViewerState } from "./file-tab-s
 import { SettingsPanel } from "./SettingsPanel";
 import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
-import { BranchNavigator, hasSessionBranches } from "./BranchNavigator";
+import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionHistoryControl } from "./SessionHistoryControl";
+import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
 import { SystemPromptPanel } from "./SystemPromptPanel";
 import { ToolDefinitionsPanel } from "./ToolDefinitionsPanel";
 import { AgentSessionPanel } from "./AgentSessionPanel";
@@ -568,7 +569,8 @@ export function AppShell() {
   }, [selectedSession, syncSessionMetadata]);
 
   // Single active panel — only one dropdown open at a time
-  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | "language" | null>(null);
+  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | "language" | "outline" | null>(null);
+  const [outlineView, setOutlineView] = useState<MobileOutlineView | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const closeTopPanel = useCallback((restoreFocus = false) => {
@@ -594,7 +596,12 @@ export function AppShell() {
     }
   }, [hasSubagentSessions]);
 
-  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "system" | "tools" | "session" | "language") => {
+  const handleOutlineViewChange = useCallback((view: MobileOutlineView | null) => {
+    setOutlineView(view);
+    if (!view) setActiveTopPanel((panel) => panel === "outline" ? null : panel);
+  }, []);
+
+  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "system" | "tools" | "session" | "language" | "outline") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
@@ -603,6 +610,8 @@ export function AppShell() {
     const opening = activeTopPanel !== panel;
     toggleTopPanel(panel);
     if (!opening || systemInfoLoading) return;
+    if (panel === "system" && systemPrompt !== null) return;
+    if (panel === "tools" && systemTools !== null) return;
 
     const load = systemInfoLoaderRef.current;
     if (!load) return;
@@ -615,7 +624,7 @@ export function AppShell() {
         setSystemInfoLoading(false);
       }
     });
-  }, [activeTopPanel, systemInfoLoading, toggleTopPanel]);
+  }, [activeTopPanel, systemInfoLoading, systemPrompt, systemTools, toggleTopPanel]);
 
   const openSessionStatsPanel = useCallback(() => {
     if (isMobile) setSidebarOpen(false);
@@ -696,7 +705,8 @@ export function AppShell() {
     if (activeTopPanel) setHistoryMenuOpen(false);
   }, [activeTopPanel]);
 
-  useEffect(() => {
+  // Layout effect: a switched panel must never paint one frame at the previous panel's position.
+  useLayoutEffect(() => {
     if (!activeTopPanel || !topBarRef.current) return;
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
@@ -730,12 +740,12 @@ export function AppShell() {
   }, [activeTopPanel, isMobile]);
 
   useEffect(() => {
-    if (!activeTopPanel || activeTopPanel === "branches" || activeTopPanel === "language") return;
+    if (!activeTopPanel || activeTopPanel === "language") return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
       if (topPanelRef.current?.contains(target)) return;
-      if (target instanceof Element && target.closest(`[data-top-panel-trigger="${activeTopPanel}"]`)) return;
+      if (target instanceof Element && target.closest("[data-top-panel-trigger]")) return;
       closeTopPanel();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1791,6 +1801,7 @@ export function AppShell() {
         onSystemPromptChange={isFocusedPane ? handleSystemPromptChange : undefined}
         onSystemToolsChange={isFocusedPane ? handleSystemToolsChange : undefined}
         onSystemInfoLoaderChange={isFocusedPane ? handleSystemInfoLoaderChange : undefined}
+        onOutlineViewChange={isFocusedPane ? handleOutlineViewChange : undefined}
         onSessionStatsChange={isFocusedPane ? handleSessionStatsChange : undefined}
         onSessionStatsPanelOpen={openSessionStatsPanel}
         onContextUsageChange={isFocusedPane ? handleContextUsageChange : undefined}
@@ -2098,6 +2109,7 @@ export function AppShell() {
             title={translate("i18n.branches")}
             aria-label={translate("i18n.branches")}
             aria-pressed={activeTopPanel === "branches"}
+            data-top-panel-trigger="branches"
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
@@ -2105,6 +2117,7 @@ export function AppShell() {
               border: "none",
               color: activeTopPanel === "branches" ? "var(--text)" : "var(--text-muted)",
               cursor: "pointer", flexShrink: 0,
+              transition: "color 0.1s, background 0.1s",
             }}
             className="workspace-header-action"
             data-mobile-toolbar-action="branches"
@@ -2123,7 +2136,6 @@ export function AppShell() {
             onLeafChange={handleBranchLeafChange}
             inline
             compact
-            containerRef={topBarRef}
             open={activeTopPanel === "branches"}
             onToggle={() => toggleTopPanel("branches")}
             disabled={!sessionHasBranches}
@@ -2231,16 +2243,25 @@ export function AppShell() {
         {sessionTools && mobile && (
           <button
             type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent("pi-toggle-outline"))}
+            onClick={() => toggleTopPanel("outline")}
             title={translate("chatMinimap.userOutline") || "Outline"}
             aria-label={translate("chatMinimap.userOutline") || "Outline"}
+            aria-pressed={activeTopPanel === "outline"}
+            aria-expanded={activeTopPanel === "outline"}
+            aria-controls="workspace-top-panel"
+            data-top-panel-trigger="outline"
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: "none",
+              background: activeTopPanel === "outline" ? "var(--bg-selected)" : "none",
               border: "none",
-              color: "var(--text-muted)",
+              color: activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)",
               cursor: "pointer", flexShrink: 0,
+              transition: "color 0.1s, background 0.1s",
+            }}
+            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.color = activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)";
             }}
             className="workspace-header-action"
             data-mobile-toolbar-action="outline"
@@ -2419,26 +2440,6 @@ export function AppShell() {
   return (
     <>
     <style>{`
-      @keyframes session-info-pop {
-        0% {
-          opacity: 0;
-          transform: translateY(-8px);
-        }
-        100% {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      .session-info-popover {
-        position: relative;
-        overflow: hidden;
-        animation: session-info-pop 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .session-info-popover {
-          animation: none;
-        }
-      }
       @media (max-width: 640px) {
         .sidebar-overlay-backdrop.sidebar-mobile-pending {
           opacity: 0 !important;
@@ -2593,20 +2594,6 @@ export function AppShell() {
             </>
           )}
           {!isMobile && renderMainFileToggle(false)}
-          {isMobile && sessionHasBranches && (
-            <BranchNavigator
-              tree={branchTree}
-              activeLeafId={branchActiveLeafId}
-              onLeafChange={handleBranchLeafChange}
-              inline
-              compact
-              containerRef={topBarRef}
-              open={activeTopPanel === "branches"}
-              onToggle={() => toggleTopPanel("branches")}
-              hasSession={showChat}
-              hideInlineButton
-            />
-          )}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
             <div
@@ -2619,7 +2606,11 @@ export function AppShell() {
                   ? translate("system.prompt")
                   : activeTopPanel === "tools"
                     ? translate("tools.title")
-                    : translate("session.title")}
+                    : activeTopPanel === "outline"
+                      ? translate("chatMinimap.userOutline")
+                      : activeTopPanel === "branches"
+                        ? translate("i18n.branches")
+                        : translate("session.title")}
               style={{
                 position: "fixed",
                 top: topPanelPos.top,
@@ -2640,6 +2631,9 @@ export function AppShell() {
                   onOpenInNewTab={handlePinSession}
                 />
               )}
+              {(activeTopPanel === "system" || activeTopPanel === "tools" || activeTopPanel === "session" || activeTopPanel === "outline" || activeTopPanel === "branches") && (
+              // max-height is inherited down to the outline list so it scrolls itself and can reveal its active row.
+              <div className="session-sheet-pop" style={{ maxHeight: "inherit", overflowY: "auto" }}>
               {activeTopPanel === "system" && (
                 <SystemPromptPanel
                   loading={systemInfoLoading}
@@ -2653,6 +2647,14 @@ export function AppShell() {
                   tools={systemTools}
                   translate={translate}
                 />
+              )}
+              {activeTopPanel === "branches" && (
+                <div style={{ borderBottom: "1px solid var(--border)" }}>
+                  <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} hasSession={showChat} />
+                </div>
+              )}
+              {activeTopPanel === "outline" && (
+                <MobileOutlineList view={outlineView ?? { items: [], onJumpToEntry: async () => {} }} onClose={closeTopPanel} />
               )}
               {activeTopPanel === "session" && (
                 <div className="session-info-popover" style={{
@@ -2874,6 +2876,8 @@ export function AppShell() {
                     </div>
                   )}
                 </div>
+              )}
+              </div>
               )}
             </div>
           )}

@@ -9,6 +9,7 @@ test("history control is a unified icon button opening a matching dropdown menu"
   assert.match(source, /onMenuOpenChange\(!menuOpen\);/);
   assert.match(source, /labels\.full/);
   assert.match(source, /labels\.exportMarkdown/);
+  assert.match(source, /data-active=\{menuOpen \|\| undefined\}/);
   assert.doesNotMatch(source, /!mobile && \(/);
 });
 

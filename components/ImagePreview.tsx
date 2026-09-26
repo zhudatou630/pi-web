@@ -82,9 +82,7 @@ export function ImagePreview({ src, alt = "", children, className, style }: Imag
             event.stopPropagation();
             closePreview();
           }}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) closePreview();
-          }}
+          onClick={closePreview}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="image-preview-image" src={src} alt={alt} />

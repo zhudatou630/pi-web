@@ -578,6 +578,7 @@ export const enLocale: LocalePlugin = {
     "chat.tooManyImagesBody": "This draft has {count} images. Remove extras until {max} or fewer remain; nothing was discarded.",
     "chat.tokensSaved": "{saved} saved",
     "chatMinimap.userOutline": "Outline",
+    "chatMinimap.empty": "No outline",
     "chatMinimap.jumpFailed": "Jump failed: ",
     "chatMinimap.retry": "Retry",
     "i18n.close": "Close",

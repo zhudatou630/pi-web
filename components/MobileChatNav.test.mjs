@@ -18,17 +18,27 @@ test("unifies scroll-to-bottom button without persistent floating outline in cha
   );
 });
 
-test("mounts MobileChatNav on mobile visible pane for top-bar toggle", () => {
+test("syncs mobile outline data into the shared top panel instead of a portal sheet", () => {
   assert.match(
     chatWindowSource,
-    /<MobileChatNav[\s\S]*?onJumpToEntry=\{jumpToOutlineEntry\}/,
+    /<MobileOutlineSync[\s\S]*?onJumpToEntry=\{jumpToOutlineEntry\}/,
   );
-  assert.match(mobileNavSource, /window\.addEventListener\("pi-toggle-outline"/);
+  assert.match(mobileNavSource, /export function MobileOutlineList/);
+  assert.match(mobileNavSource, /useEffect\(\(\) => \(\) => \{ onChange\?\.\(null\); \}, \[onChange\]\)/);
+  assert.match(mobileNavSource, /chatMinimap\.empty/);
+  assert.match(mobileNavSource, /root\.scrollTop \+= row\.bottom - box\.bottom/);
+  assert.doesNotMatch(mobileNavSource, /\.scrollIntoView\(/);
+  assert.match(mobileNavSource, /maxHeight: "inherit"/);
+  assert.doesNotMatch(mobileNavSource, /block: "center"/);
+  assert.doesNotMatch(mobileNavSource, /createPortal|pi-toggle-outline|session-sheet-pop/);
 });
 
 test("provides outline trigger in mobile toolbar actions", () => {
   assert.match(appShellSource, /data-mobile-toolbar-action="outline"/);
-  assert.match(appShellSource, /window\.dispatchEvent\(new CustomEvent\("pi-toggle-outline"\)\)/);
+  assert.match(appShellSource, /toggleTopPanel\("outline"\)/);
+  assert.match(appShellSource, /aria-pressed=\{activeTopPanel === "outline"\}/);
+  assert.match(appShellSource, /data-top-panel-trigger="outline"/);
+  assert.match(appShellSource, /<MobileOutlineList view=\{outlineView \?\? \{ items: \[\], onJumpToEntry: async \(\) => \{\} \}\} onClose=\{closeTopPanel\} \/>/);
 });
 
 test("enables context usage stats in the composer dock on mobile and desktop", () => {
@@ -36,10 +46,9 @@ test("enables context usage stats in the composer dock on mobile and desktop", (
   assert.match(chatInputSource, /if \(!contextUsage \|\| contextPercent === null\) return null;/);
 });
 
-test("implements bottom sheet with accessible dialog, backdrop and entry selection", () => {
-  assert.match(mobileNavSource, /role="dialog"/);
-  assert.match(mobileNavSource, /aria-modal="true"/);
-  assert.match(mobileNavSource, /createPortal/);
-  assert.match(mobileNavSource, /void onJumpToEntry\(item\.entryId\)/);
-  assert.match(mobileNavSource, /setSheetOpen\(false\)/);
+test("keeps outline on the shared session sheet with system tools and session", () => {
+  assert.match(
+    appShellSource,
+    /activeTopPanel === "system" \|\| activeTopPanel === "tools" \|\| activeTopPanel === "session" \|\| activeTopPanel === "outline"/,
+  );
 });
