@@ -109,6 +109,12 @@ export function ConfigEmptyState({ children }: { children: ReactNode }) {
   return <div className="config-empty-state">{children}</div>;
 }
 
+/** The one wait indicator for settings pages. It stays invisible for 400ms, so a
+    fast load reads as part of the page appearing instead of a loading step. */
+export function SettingsLoading({ label }: { label: string }) {
+  return <p role="status" className="settings-loading"><span>{label}</span></p>;
+}
+
 export function ConfigFooter({ status, children }: { status?: ReactNode; children?: ReactNode }) {
   return (
     <footer className="config-footer">

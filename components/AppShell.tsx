@@ -92,6 +92,7 @@ import type { ToolEntry } from "@/lib/tool-presets";
 import { getSessionFamily } from "@/lib/session-family";
 import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
+import { prefetchSettings } from "@/lib/settings-cache";
 import { formatTokensK } from "@/lib/token-display";
 import { iconStroke } from "./iconStroke";
 
@@ -1972,6 +1973,8 @@ export function AppShell() {
         <button
           type="button"
           onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
+          onPointerEnter={() => prefetchSettings(projectTrustCwd)}
+          onFocus={() => prefetchSettings(projectTrustCwd)}
           title={translate("common.settings")}
           aria-label={translate("common.settings")}
           className="sidebar-footer-item"

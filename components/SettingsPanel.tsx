@@ -14,6 +14,7 @@ import {
 } from "@/hooks/useChatAppearance";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ShellToolSettingsResponse } from "@/lib/api-types";
+import { getJson, peekJson, prefetchSettings, revalidateSettings, settingsUrls } from "@/lib/settings-cache";
 import {
   setLastSettingsSection,
   type SettingsSection,
@@ -72,7 +73,11 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const { preference, setThemePreference } = useTheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
-  const [shellSettings, setShellSettings] = useState<ShellToolSettingsResponse | null>(null);
+  // The last replies paint at once; the mount loads then revalidate them.
+  const [shellSettings, setShellSettings] = useState<ShellToolSettingsResponse | null>(() => {
+    const reply = peekJson<ShellToolSettingsResponse & { error?: string }>(settingsUrls.toolSettings);
+    return reply?.ok && !reply.data.error ? reply.data : null;
+  });
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -82,7 +87,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
   const [pushRegistering, setPushRegistering] = useState(false);
   const [pushStatus, setPushStatus] = useState<{ kind: "ok" | "error"; message: string } | null>(null);
-  const [webAuthEnabled, setWebAuthEnabled] = useState(false);
+  const [webAuthEnabled, setWebAuthEnabled] = useState(() => peekJson<{ enabled?: boolean }>(settingsUrls.webAuth)?.data.enabled === true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const [sarasaStatus, setSarasaStatus] = useState<"cached" | "available" | "loading" | "error">("available");
@@ -95,9 +100,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     setShiftEnterToSendState(isShiftEnterToSend());
   }, []);
   useEffect(() => {
-    void fetch("/api/web-auth")
-      .then((response) => response.ok ? response.json() : null)
-      .then((data: { enabled?: boolean } | null) => setWebAuthEnabled(data?.enabled === true))
+    void getJson<{ enabled?: boolean }>(settingsUrls.webAuth)
+      .then((response) => setWebAuthEnabled(response.ok && response.data.enabled === true))
       .catch(() => {});
   }, []);
   useEffect(() => subscribeNotificationPermission(setNotificationPermission), []);
@@ -109,9 +113,9 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/tools/settings")
+    void getJson<ShellToolSettingsResponse & { error?: string }>(settingsUrls.toolSettings)
       .then(async (response) => {
-        const data = await response.json() as ShellToolSettingsResponse & { error?: string };
+        const data = response.data;
         if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
         if (!cancelled) setShellSettings(data);
       })
@@ -378,6 +382,9 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   }, [onClose, t]);
 
   useEffect(() => setLastSettingsSection(initialSection), [initialSection]);
+  // Sections not visited yet load in the background, so switching to them paints at once.
+  useEffect(() => prefetchSettings(cwd), [cwd]);
+  useEffect(() => revalidateSettings, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

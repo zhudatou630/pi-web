@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { IMAGE_CUSTOM_MODEL_PRESETS } from "@/lib/image-generation";
 import type {
@@ -9,7 +10,7 @@ import type {
   ImageGenerationSettingsProvider,
   ImageGenerationSettingsResponse,
 } from "@/lib/api-types";
-import { ConfigButton, ConfigSwitch, CountedTitle, SettingsGroup, SettingsRow } from "./SettingsUi";
+import { ConfigButton, ConfigSwitch, CountedTitle, SettingsGroup, SettingsLoading, SettingsRow } from "./SettingsUi";
 
 type Draft =
   | { mode: "edit"; id: string; label: string; provider: string; model: string }
@@ -29,8 +30,12 @@ export function ImagesConfig({
   onReloaded?: () => void;
 }) {
   const { t } = useI18n();
-  const [settings, setSettings] = useState<ImageGenerationSettingsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The last reply paints at once; the mount load then revalidates it.
+  const [settings, setSettings] = useState<ImageGenerationSettingsResponse | null>(() => {
+    const reply = peekJson<Partial<ImageGenerationSettingsResponse> & { error?: string }>(settingsUrls.imageSettings);
+    return reply?.ok && !reply.data.error ? normalizeSettings(reply.data) : null;
+  });
+  const [loading, setLoading] = useState(settings === null);
   const [saving, setSaving] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [reloadNeeded, setReloadNeeded] = useState(false);
@@ -40,12 +45,12 @@ export function ImagesConfig({
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
     setError(null);
     void (async () => {
       try {
-        const response = await fetch("/api/image-generation/settings", { cache: "no-store", signal: controller.signal });
-        const data = await response.json() as Partial<ImageGenerationSettingsResponse> & { error?: string };
+        const response = await getJson<Partial<ImageGenerationSettingsResponse> & { error?: string }>(settingsUrls.imageSettings);
+        if (controller.signal.aborted) return;
+        const data = response.data;
         if (!response.ok || data.error || typeof data.enabled !== "boolean" || !Array.isArray(data.connections)) {
           throw new Error(data.error ?? `HTTP ${response.status}`);
         }
@@ -233,8 +238,10 @@ export function ImagesConfig({
               </form>
   );
 
+  if (loading && !settings) return <div key="loading" className="settings-page"><SettingsLoading label={t("i18n.loading")} /></div>;
+
   return (
-    <div className="settings-page">
+    <div key="ready" className="settings-page">
       <SettingsGroup>
         <SettingsRow label={t("settings.imagesEnabled")} description={t("settings.imagesDescription")}>
           {reloadNeeded && sessionId && (

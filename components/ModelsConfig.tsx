@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   assignRuntimeOverride,
@@ -31,6 +32,7 @@ import {
   SettingsBackLink,
   SettingsGroup,
   SettingsLinkRow,
+  SettingsLoading,
   SettingsRow,
 } from "./SettingsUi";
 import { ProviderIcon } from "./ProviderIcon";
@@ -64,6 +66,10 @@ interface View {
   provider: string | null;
   model?: ModelRef;
 }
+
+type AuthProvidersReply = { oauthProviders?: OAuthProvider[]; apiKeyProviders?: ApiKeyProvider[] };
+type RuntimeReply = { catalog?: RuntimeCatalogModel[]; builtIn?: string[]; modelError?: string };
+type ScopeReply = EnabledModelsPanelState & { error?: string };
 
 interface ProviderRow {
   id: string;
@@ -112,49 +118,62 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [expandedOverrides, setExpandedOverrides] = useState<Record<string, boolean>>({});
 
+  // Each source has an apply step so the mount can paint the cached reply first.
+  const configDirtyRef = useRef(false);
+  const applyConfig = useCallback((d: ModelsJson) => {
+    setLoadError(d.error ?? null);
+    // Revalidation never discards a draft the user already started.
+    if (configDirtyRef.current) return;
+    const normalized = d.providers ? d : { ...d, providers: {} };
+    setConfig(normalized);
+    setSavedConfig(normalized);
+  }, []);
+
+  const applyAuthProviders = useCallback((d: AuthProvidersReply) => {
+    if (Array.isArray(d.oauthProviders)) setOauthProviders(d.oauthProviders);
+    if (Array.isArray(d.apiKeyProviders)) setApiKeyProviders(d.apiKeyProviders);
+  }, []);
+
+  const applyRuntime = useCallback((d: RuntimeReply) => {
+    if (Array.isArray(d.catalog)) setCatalog(d.catalog);
+    if (Array.isArray(d.builtIn)) setBuiltInRefs(new Set(d.builtIn));
+    setRuntimeError(d.modelError ?? null);
+  }, []);
+
+  const applyScope = useCallback(({ ok, data: d }: JsonReply<ScopeReply>) => {
+    if (!ok || d.error || !d.source) {
+      setScopeError(d.error ?? t("models.scopeError"));
+      return;
+    }
+    setScopeError(null);
+    setScopeDoc(d);
+  }, [t]);
+
   const refreshAuthProviders = useCallback(() => {
-    return fetch(`/api/auth/providers${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`)
-      .then((r) => r.json())
-      .then((d: { oauthProviders?: OAuthProvider[]; apiKeyProviders?: ApiKeyProvider[] }) => {
-        if (Array.isArray(d.oauthProviders)) setOauthProviders(d.oauthProviders);
-        if (Array.isArray(d.apiKeyProviders)) setApiKeyProviders(d.apiKeyProviders);
-      })
+    return getJson<AuthProvidersReply>(settingsUrls.authProviders(cwd))
+      .then((r) => applyAuthProviders(r.data))
       .catch(() => {});
-  }, [cwd]);
+  }, [cwd, applyAuthProviders]);
 
   const refreshRuntime = useCallback(() => {
     if (!cwd) {
       setCatalog([]);
       return;
     }
-    const params = new URLSearchParams({ cwd });
-    return fetch(`/api/models-config/runtime?${params}`)
-      .then((r) => r.json())
-      .then((d: { catalog?: RuntimeCatalogModel[]; builtIn?: string[]; modelError?: string }) => {
-        if (Array.isArray(d.catalog)) setCatalog(d.catalog);
-        if (Array.isArray(d.builtIn)) setBuiltInRefs(new Set(d.builtIn));
-        setRuntimeError(d.modelError ?? null);
-      })
+    return getJson<RuntimeReply>(settingsUrls.modelsRuntime(cwd))
+      .then((r) => applyRuntime(r.data))
       .catch(() => {});
-  }, [cwd]);
+  }, [cwd, applyRuntime]);
 
   const refreshScope = useCallback(() => {
     if (!cwd) {
       setScopeDoc(null);
       return;
     }
-    return fetch(`/api/models-config/picker?cwd=${encodeURIComponent(cwd)}`)
-      .then(async (res) => {
-        const d = await res.json() as EnabledModelsPanelState & { error?: string };
-        if (!res.ok || d.error || !d.source) {
-          setScopeError(d.error ?? t("models.scopeError"));
-          return;
-        }
-        setScopeError(null);
-        setScopeDoc(d);
-      })
+    return getJson<ScopeReply>(settingsUrls.modelsPicker(cwd))
+      .then(applyScope)
       .catch(() => setScopeError(t("models.scopeError")));
-  }, [cwd, t]);
+  }, [cwd, t, applyScope]);
 
   useEffect(() => {
     if (!scopeNotice) return;
@@ -169,27 +188,35 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     refreshScope();
   }, [refreshAuthProviders, refreshRuntime, refreshScope]);
 
-  useEffect(() => {
+  // Layout effect: with every source cached, the first painted frame is the finished page.
+  useLayoutEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    const configRequest = fetch("/api/models-config")
-      .then((r) => r.json())
-      .then((d: ModelsJson) => {
-        const normalized = d.providers ? d : { ...d, providers: {} };
-        setLoadError(d.error ?? null);
-        setConfig(normalized);
-        setSavedConfig(normalized);
-      })
+    const cachedConfig = peekJson<ModelsJson>(settingsUrls.modelsConfig);
+    const cachedAuth = peekJson<AuthProvidersReply>(settingsUrls.authProviders(cwd));
+    const cachedRuntime = cwd ? peekJson<RuntimeReply>(settingsUrls.modelsRuntime(cwd)) : undefined;
+    const cachedScope = cwd ? peekJson<ScopeReply>(settingsUrls.modelsPicker(cwd)) : undefined;
+    if (cachedConfig && cachedAuth && (!cwd || (cachedRuntime && cachedScope))) {
+      applyConfig(cachedConfig.data);
+      applyAuthProviders(cachedAuth.data);
+      if (cachedRuntime) applyRuntime(cachedRuntime.data);
+      if (cachedScope) applyScope(cachedScope);
+      setLoading(false);
+    }
+    const configRequest = getJson<ModelsJson>(settingsUrls.modelsConfig)
+      .then((r) => applyConfig(r.data))
       .catch((error) => setLoadError(String(error)));
     // No provider forms mount until all four inputs have settled. Otherwise
     // built-ins briefly look like disconnected custom endpoints.
     void Promise.all([configRequest, refreshAuthProviders(), refreshRuntime(), refreshScope()])
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [refreshAuthProviders, refreshRuntime, refreshScope]);
+  }, [cwd, applyConfig, applyAuthProviders, applyRuntime, applyScope, refreshAuthProviders, refreshRuntime, refreshScope]);
 
   const configDirty = JSON.stringify(config) !== JSON.stringify(savedConfig);
-  useEffect(() => { onDirtyChange?.(configDirty); }, [configDirty, onDirtyChange]);
+  useEffect(() => {
+    configDirtyRef.current = configDirty;
+    onDirtyChange?.(configDirty);
+  }, [configDirty, onDirtyChange]);
   useEffect(() => {
     if (!configDirty) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -849,15 +876,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   return (
     <>
     <ConfigPanelShell embedded={embedded} title={t("common.models")} closeLabel={t("i18n.close")} onClose={onClose}>
-      {loading ? (
-        <div className="models-loading" role="status" aria-busy="true">
-          <span>{t("i18n.loading")}</span>
+      <div className="models-body settings-scroll">
+        <div key={loading ? "loading" : JSON.stringify(view)} className="settings-page">
+          {loading ? <SettingsLoading label={t("i18n.loading")} /> : renderProvidersTab()}
         </div>
-      ) : (
-        <div className="models-ready settings-scroll">
-          <div className="settings-page">{renderProvidersTab()}</div>
-        </div>
-      )}
+      </div>
 
       {(configDirty || saving || savedOk || saveError || configFatalError) && (
         <ConfigFooter status={(saveError || configFatalError) ? (

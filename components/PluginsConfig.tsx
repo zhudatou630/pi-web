@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { PluginPackageInfo, PluginStandaloneExtensionInfo, PluginUpdateResult, PluginsResponse } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
+import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import {
   ConfigButton,
   ConfigPanelShell,
@@ -14,6 +15,7 @@ import {
   SettingsDetailPage,
   SettingsGroup,
   SettingsLinkRow,
+  SettingsLoading,
   SettingsProperties,
   SettingsProperty,
   SettingsRow,
@@ -387,7 +389,11 @@ export function PluginsConfig({
   embedded?: boolean;
 }) {
   const { t } = useI18n();
-  const [data, setData] = useState<PluginsResponse | null>(null);
+  // The last reply paints at once; the mount load then revalidates it.
+  const [data, setData] = useState<PluginsResponse | null>(() => {
+    const reply = peekJson<PluginsResponse & { error?: string }>(settingsUrls.plugins(cwd));
+    return reply?.ok && !reply.data.error ? reply.data : null;
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -419,8 +425,8 @@ export function PluginsConfig({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/plugins?cwd=${encodeURIComponent(cwd)}`);
-      const next = (await res.json()) as PluginsResponse & { error?: string };
+      const res = await getJson<PluginsResponse & { error?: string }>(settingsUrls.plugins(cwd));
+      const next = res.data;
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
     } catch (err) {
@@ -608,7 +614,7 @@ export function PluginsConfig({
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.plugins")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={onClose}>
       <div className="settings-scroll">
-        <div className="settings-page">
+        <div key={loading && !data ? "loading" : view} className="settings-page">
           {view === "add" ? (
             <>
               <SettingsBackLink label={t("common.plugins")} onClick={openList} />
@@ -688,8 +694,8 @@ export function PluginsConfig({
               ) : null}
               {actionMessage && <p role="status" className="settings-row-message is-success">{actionMessage}</p>}
               {(actionError || updateError) && <p role="alert" className="settings-row-message is-error is-pre">{actionError || updateError}</p>}
-              {loading ? (
-                <p className="settings-row-message">{t("i18n.loading")}</p>
+              {loading && !data ? (
+                <SettingsLoading label={t("i18n.loading")} />
               ) : error ? (
                 <p role="alert" className="settings-row-message is-error">{error}</p>
               ) : packages.length === 0 && standaloneExtensions.length === 0 ? (

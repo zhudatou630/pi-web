@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import type {
   SkillInfo as Skill,
   SkillInstallScope,
@@ -18,6 +19,7 @@ import {
   SettingsDetailPage,
   SettingsGroup,
   SettingsLinkRow,
+  SettingsLoading,
   SettingsRow,
   SettingsSearch,
   SettingsSegmented,
@@ -371,8 +373,13 @@ export function SkillsConfig({
   embedded?: boolean;
 }) {
   const { t } = useI18n();
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The last reply paints at once; the mount load then revalidates it.
+  const [seed] = useState(() => {
+    const reply = peekJson<Partial<SkillsResponse> & { error?: string }>(settingsUrls.skills(cwd));
+    return reply?.ok && !reply.data.error ? reply.data : null;
+  });
+  const [skills, setSkills] = useState<Skill[]>(seed?.skills ?? []);
+  const [loading, setLoading] = useState(!seed);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
@@ -384,16 +391,15 @@ export function SkillsConfig({
   const [checkingAll, setCheckingAll] = useState(false);
   const [updatingSkill, setUpdatingSkill] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
-  const [projectResourcesLoaded, setProjectResourcesLoaded] = useState(true);
+  const [projectResourcesLoaded, setProjectResourcesLoaded] = useState(seed?.projectResourcesLoaded ?? true);
   const [deletingSkill, setDeletingSkill] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadSkills = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/skills?cwd=${encodeURIComponent(cwd)}`);
-      const d = (await res.json()) as Partial<SkillsResponse> & { error?: string };
+      const res = await getJson<Partial<SkillsResponse> & { error?: string }>(settingsUrls.skills(cwd));
+      const d = res.data;
       if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
       const list = d.skills ?? [];
       setSkills(list);
@@ -581,7 +587,7 @@ export function SkillsConfig({
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.skills")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={onClose}>
       <div className="settings-scroll">
-        <div className="settings-page">
+        <div key={loading ? "loading" : view} className="settings-page">
           {view === "add" ? (
             <>
               <SettingsBackLink label={t("common.skills")} onClick={openList} />
@@ -631,7 +637,7 @@ export function SkillsConfig({
               </div>
               {(saveError || updateError) && <p role="alert" className="settings-row-message is-error">{saveError || updateError}</p>}
               {loading ? (
-                <p className="settings-row-message">{t("i18n.loading")}</p>
+                <SettingsLoading label={t("i18n.loading")} />
               ) : error ? (
                 <p role="alert" className="settings-row-message is-error">{error}</p>
               ) : groups.length === 0 ? (

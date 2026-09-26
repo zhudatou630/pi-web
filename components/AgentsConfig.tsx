@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
 import type { SubagentProfilesResponse, SubagentSettingsResponse } from "@/lib/api-types";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ModelsData } from "@/lib/models-cache";
@@ -20,6 +21,7 @@ import {
   SettingsDetailPage,
   SettingsGroup,
   SettingsLinkRow,
+  SettingsLoading,
   SettingsRow,
 } from "./SettingsUi";
 import { ModelSelector } from "./ModelSelector";
@@ -115,23 +117,33 @@ export function AgentsConfig({
   embedded?: boolean;
 }) {
   const { t } = useI18n();
-  const [profiles, setProfiles] = useState<SubagentProfile[]>([]);
-  const [modelOptions, setModelOptions] = useState<ModelsData["modelList"]>([]);
-  const [modelsLoading, setModelsLoading] = useState(true);
+  // The last replies paint at once; the mount loads then revalidate them.
+  const [seed] = useState(() => {
+    const ok = <T,>(reply: JsonReply<T & { error?: string }> | undefined) => reply?.ok && !reply.data.error ? reply.data : undefined;
+    const settings = ok(peekJson<Partial<SubagentSettingsResponse> & { error?: string }>(settingsUrls.subagentSettings));
+    return {
+      profiles: ok(peekJson<Partial<SubagentProfilesResponse> & { error?: string }>(settingsUrls.subagentProfiles(cwd)))?.profiles,
+      settings: typeof settings?.enabled === "boolean" ? settings : undefined,
+      models: ok(peekJson<Partial<ModelsData> & { error?: string }>(settingsUrls.chatModels(cwd)))?.modelList,
+    };
+  });
+  const [profiles, setProfiles] = useState<SubagentProfile[]>(seed.profiles ?? []);
+  const [modelOptions, setModelOptions] = useState<ModelsData["modelList"]>(seed.models ?? []);
+  const [modelsLoading, setModelsLoading] = useState(!seed.models);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [page, setPage] = useState<"list" | "detail">("list");
   const [draft, setDraft] = useState<EditableProfile>(EMPTY_PROFILE);
   const [mode, setMode] = useState<EditorMode>("view");
   const [targetScope, setTargetScope] = useState<SubagentWritableScope>("project");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!seed.profiles);
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [builtInEnabled, setBuiltInEnabled] = useState(true);
-  const [maxConcurrent, setMaxConcurrent] = useState(10);
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [builtInEnabled, setBuiltInEnabled] = useState(seed.settings?.enabled ?? true);
+  const [maxConcurrent, setMaxConcurrent] = useState(seed.settings?.maxConcurrent ?? 10);
+  const [settingsLoading, setSettingsLoading] = useState(!seed.settings);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [reloadNeeded, setReloadNeeded] = useState(false);
@@ -173,8 +185,8 @@ export function AgentsConfig({
   }, []);
 
   const fetchProfiles = useCallback(async () => {
-    const response = await fetch(`/api/subagents/profiles?cwd=${encodeURIComponent(cwd)}`, { cache: "no-store" });
-    const data = await response.json() as Partial<SubagentProfilesResponse> & { error?: string };
+    const response = await getJson<Partial<SubagentProfilesResponse> & { error?: string }>(settingsUrls.subagentProfiles(cwd));
+    const data = response.data;
     if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
     const next = data.profiles ?? [];
     setProfiles(next);
@@ -182,7 +194,6 @@ export function AgentsConfig({
   }, [cwd]);
 
   const loadProfiles = useCallback(async (preferredName?: string) => {
-    setLoading(true);
     setError(null);
     try {
       const next = await fetchProfiles();
@@ -201,15 +212,12 @@ export function AgentsConfig({
 
   useEffect(() => {
     const controller = new AbortController();
-    setSettingsLoading(true);
     setSettingsError(null);
     void (async () => {
       try {
-        const response = await fetch("/api/subagents/settings", {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const data = await response.json() as Partial<SubagentSettingsResponse> & { error?: string };
+        const response = await getJson<Partial<SubagentSettingsResponse> & { error?: string }>(settingsUrls.subagentSettings);
+        if (controller.signal.aborted) return;
+        const data = response.data;
         if (!response.ok || data.error || typeof data.enabled !== "boolean") {
           throw new Error(data.error ?? `HTTP ${response.status}`);
         }
@@ -227,12 +235,12 @@ export function AgentsConfig({
 
   useEffect(() => {
     const controller = new AbortController();
-    setModelsLoading(true);
     setModelsError(null);
     void (async () => {
       try {
-        const response = await fetch(`/api/models?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal });
-        const data = await response.json() as Partial<ModelsData> & { error?: string };
+        const response = await getJson<Partial<ModelsData> & { error?: string }>(settingsUrls.chatModels(cwd));
+        if (controller.signal.aborted) return;
+        const data = response.data;
         if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
         setModelOptions(data.modelList ?? []);
         setModelsError(data.modelError ?? null);
@@ -469,7 +477,7 @@ export function AgentsConfig({
         </div>
       )}
       <div className="settings-scroll">
-        <div className="settings-page">
+        <div key={loading ? "loading" : page} className="settings-page">
           {page === "list" ? (
             <>
               <SettingsGroup>
@@ -504,7 +512,7 @@ export function AgentsConfig({
               >
                 {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
                 {loading ? (
-                  <p className="settings-row-message">{t("agents.loading")}</p>
+                  <SettingsLoading label={t("agents.loading")} />
                 ) : rows.map(({ name, top, label, description }) => (
                   <SettingsLinkRow
                     key={name}
