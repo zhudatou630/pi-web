@@ -82,7 +82,7 @@ test("skill and plugin group titles are human labels, not scope ids", () => {
 
 test("item pages share one content hierarchy", () => {
   const sources = Object.fromEntries(configSources);
-  assert.match(cssSource, /\.settings-page \{[\s\S]*?width: 100%;[\s\S]*?max-width: 680px;/);
+  assert.match(cssSource, /\.settings-page \{[\s\S]*?width: 100%;[\s\S]*?padding: 8px 40px 48px;/);
   for (const name of ["SkillsConfig", "AgentsConfig", "PluginsConfig"]) {
     assert.match(sources[name], /<SettingsDetailPage/);
   }

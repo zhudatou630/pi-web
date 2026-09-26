@@ -135,6 +135,7 @@ export const enLocale: LocalePlugin = {
     "settings.imagesSignedOut": "Not signed in",
     "settings.imagesNotConfigured": "Provider has no key",
     "settings.usage": "Usage",
+    "settings.navAgent": "Agent",
     "usage.overview": "Overview",
     "usage.projects": "Projects",
     "usage.timeline": "Timeline",

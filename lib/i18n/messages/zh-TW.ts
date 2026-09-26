@@ -135,6 +135,7 @@ export const zhTWLocale: LocalePlugin = {
     "settings.imagesSignedOut": "未登入",
     "settings.imagesNotConfigured": "未設定金鑰",
     "settings.usage": "用量",
+    "settings.navAgent": "Agent",
     "usage.overview": "概覽",
     "usage.projects": "專案",
     "usage.timeline": "明細",

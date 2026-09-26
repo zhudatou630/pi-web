@@ -30,7 +30,7 @@ test("keeps every requested configuration surface inside the settings panel", ()
   for (const section of ["general", "models", "agents", "images", "skills", "plugins", "usage"]) {
     assert.match(panelSource, new RegExp(`id: "${section}"`));
   }
-  assert.match(panelSource, /id: "general"[\s\S]*id: "models"[\s\S]*id: "agents"[\s\S]*id: "images"[\s\S]*id: "skills"[\s\S]*id: "plugins"[\s\S]*id: "usage"/);
+  assert.match(panelSource, /id: "general"[\s\S]*id: "usage"[\s\S]*id: "models"[\s\S]*id: "agents"[\s\S]*id: "images"[\s\S]*id: "skills"[\s\S]*id: "plugins"/);
   for (const component of ["ModelsConfig", "SkillsConfig", "AgentsConfig", "PluginsConfig"]) {
     assert.match(panelSource, new RegExp(`<${component} embedded`));
   }
@@ -122,7 +122,7 @@ test("uses a left section nav on desktop and push navigation on mobile", () => {
   assert.match(cssSource, /\.settings-dialog-main \[data-settings-back\] \{\n    display: none;/);
   assert.match(panelSource, /\[data-settings-back\]/);
   assert.doesNotMatch(panelSource, /settings-mobile-section-picker|<select/);
-  assert.match(cssSource, /\.settings-nav \{[\s\S]*?flex: 0 0 168px/);
+  assert.match(cssSource, /\.settings-nav \{[\s\S]*?flex: 0 0 184px/);
   assert.match(cssSource, /\.settings-nav-chevron,\n\.settings-nav-back \{\n  display: none;/);
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.settings-dialog-surface\[data-pane="nav"\] > \.settings-dialog-content,\n  \.settings-dialog-surface\[data-pane="section"\] > \.settings-nav \{\n    display: none;/);
   assert.match(panelSource, /<main ref=\{mainRef\} className="settings-dialog-main">/);
@@ -161,8 +161,10 @@ test("labels agent profiles as sub-agents", () => {
   assert.match(zhSource, /"agents\.new": "新建子代理"/);
 });
 
-test("the section nav is one flat text list", () => {
-  assert.doesNotMatch(panelSource, /SettingsSectionIcon|SubagentIcon|settings-section-icon|settings-nav-group/);
+test("the section nav is grouped, with one icon per section", () => {
+  assert.match(panelSource, /className="settings-nav-group"/);
+  assert.match(panelSource, /className="settings-nav-group-label"/);
+  assert.match(panelSource, /<SectionIcon section=\{item\.id\} \/>/);
   // Matches the app sidebar's selected session row: a flat fill, no lifted card.
   assert.match(cssSource, /\.settings-nav-item\[aria-current="page"\] \{\n  background: var\(--bg-selected\);\n  color: var\(--text\);\n\}/);
   assert.doesNotMatch(panelSource, /settings-nav-footer/);
