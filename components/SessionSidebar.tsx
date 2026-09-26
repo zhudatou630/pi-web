@@ -1181,7 +1181,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                         borderRadius: 4,
                         cursor: "pointer",
                         fontSize: 11,
-                        lineHeight: 1,
+                        lineHeight: 1.3,
                         color: "var(--text-dim)",
                         textAlign: "left",
                         overflow: "hidden",
@@ -2460,7 +2460,7 @@ export function SessionItem({
           {session.isWorktree && session.branch && (
             <span
               title={`Worktree: ${session.branch}\n${session.cwd}`}
-              style={{ display: "flex", alignItems: "center", gap: 3, maxWidth: 82, color: "var(--text-dim)", flexShrink: 1, fontSize: 10, fontFamily: "var(--font-mono)", lineHeight: 1 }}
+              style={{ display: "flex", alignItems: "center", gap: 3, maxWidth: 82, color: "var(--text-dim)", flexShrink: 1, fontSize: 10, lineHeight: 1.3 }}
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
                 <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />

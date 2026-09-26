@@ -35,7 +35,6 @@ export function TurnWrittenFiles({ files, onOpenFile }: {
               padding: "2.5px 7px",
               minHeight: 22,
               fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
-              fontFamily: "var(--font-mono)",
               lineHeight: 1,
               color: "var(--text-muted)",
               background: "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))",

@@ -27,7 +27,7 @@ function render(tabs, activeTabId = tabs[0]?.id) {
 }
 
 function visibleLabels(html) {
-  return [...html.matchAll(/line-height:1" title="[^"]*">([^<]+)</g)].map((match) => match[1]);
+  return [...html.matchAll(/line-height:1.3" title="[^"]*">([^<]+)</g)].map((match) => match[1]);
 }
 
 function tabNodes(html) {

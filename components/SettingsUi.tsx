@@ -48,9 +48,9 @@ export function ConfigPanelShell({
           <div className="config-panel-header">
             <strong className="config-panel-title">{title}</strong>
             {subtitle && (
-              <code className="config-panel-subtitle" title={subtitle}>
+              <span className="config-panel-subtitle" title={subtitle}>
                 {subtitle}
-              </code>
+              </span>
             )}
             <button
               type="button"
@@ -264,11 +264,11 @@ export function SettingsProperties({ children }: { children: ReactNode }) {
   return <dl className="settings-properties">{children}</dl>;
 }
 
-export function SettingsProperty({ label, mono = false, children }: { label: ReactNode; mono?: boolean; children: ReactNode }) {
+export function SettingsProperty({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <>
       <dt>{label}</dt>
-      <dd className={mono ? "is-mono" : undefined}>{children}</dd>
+      <dd>{children}</dd>
     </>
   );
 }

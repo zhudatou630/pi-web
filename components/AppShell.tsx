@@ -2853,18 +2853,18 @@ export function AppShell() {
                             <div className="session-stats-text">
                               {/* rtl clips the start of the path so the project name stays visible */}
                               <span title={selectedSession.cwd} className="session-stats-ellipsis" style={{ direction: "rtl", textAlign: "left" }}>
-                                <span className="session-stats-code" style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
+                                <span style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
                               </span>
                               {copyButton(selectedSession.isWorktree ? "gitWorktree" : "projectDir", selectedSession.cwd)}
                             </div>
                           </>
                         )}
                         {selectedSession?.branch && (
-                          <>{label(translate("session.branch"))}{text(<span className="session-stats-code">{selectedSession.branch}</span>, selectedSession.branch)}</>
+                          <>{label(translate("session.branch"))}{text(selectedSession.branch, selectedSession.branch)}</>
                         )}
                         {label(translate("session.id"))}
                         {text(
-                          sessionStats.sessionId ? <span className="session-stats-code">{`${sessionStats.sessionId.slice(0, 8)}…${sessionStats.sessionId.slice(-6)}`}</span> : "?",
+                          sessionStats.sessionId ? `${sessionStats.sessionId.slice(0, 8)}…${sessionStats.sessionId.slice(-6)}` : "?",
                           sessionStats.sessionId,
                           sessionStats.sessionId ? <Fragment key="i">{copyButton("id", sessionStats.sessionId)}</Fragment> : null,
                           sessionStats.sessionFile ? <Fragment key="f">{copyButton("file", sessionStats.sessionFile, "file")}</Fragment> : null,
@@ -3059,7 +3059,7 @@ export function AppShell() {
               style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
             >
                <div style={{ fontSize: 14, color: "var(--text)" }}>{translate("workspace.opening")}</div>
-              <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+              <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontSize: 12 }}>
                 {initialNavigation.requestedCwd}
               </div>
             </div>
@@ -3069,7 +3069,7 @@ export function AppShell() {
               style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: 24, color: "var(--text-muted)", textAlign: "center" }}
             >
                <div style={{ fontSize: 14, color: "var(--danger)" }}>{translate("workspace.unable")}</div>
-              <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontFamily: "var(--font-mono)", fontSize: 12 }}>
+              <div style={{ maxWidth: "min(720px, 100%)", overflowWrap: "anywhere", fontSize: 12 }}>
                 {initialNavigation.requestedCwd}
               </div>
               <div style={{ maxWidth: 720, fontSize: 12 }}>{initialCwdError}</div>

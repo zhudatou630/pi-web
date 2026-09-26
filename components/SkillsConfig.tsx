@@ -140,8 +140,8 @@ function SkillDetail({
             label={t("i18n.version")}
             description={(
               <>
-                <span className="is-mono">{shortVersion(updateStatus?.currentVersion ?? skill.install.versionHash)}</span>
-                {updateAvailable && <> → <span className="is-mono is-accent">{shortVersion(updateStatus.latestVersion)}</span></>}
+                <span>{shortVersion(updateStatus?.currentVersion ?? skill.install.versionHash)}</span>
+                {updateAvailable && <> → <span className="is-accent">{shortVersion(updateStatus.latestVersion)}</span></>}
                 {statusText && <> · <span className={updateStatus?.state === "error" ? "is-error" : undefined}>{statusText}</span></>}
               </>
             )}
@@ -304,7 +304,7 @@ function AddSkillPanel({
             {searching ? t("i18n.searching") : t("i18n.search")}
           </ConfigButton>
         </div>
-        <SettingsRow label={t("skills.installTo")} description={<span className="is-mono">{installPath}</span>}>
+        <SettingsRow label={t("skills.installTo")} description={installPath}>
           <SettingsSegmented
             label={t("skills.installTo")}
             value={scope}
@@ -341,7 +341,7 @@ function AddSkillPanel({
                 label={skillpart ?? repopart}
                 description={(
                   <>
-                    <span className="is-mono">{repopart}</span>
+                    <span>{repopart}</span>
                     {" · "}{r.installs}
                     {r.url && <>{" · "}<a href={r.url} target="_blank" rel="noreferrer" className="settings-link">skills.sh ↗</a></>}
                   </>

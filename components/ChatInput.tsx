@@ -2114,7 +2114,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                               <span style={{
                                 flexShrink: 0,
                                 fontSize: 12,
-                                fontFamily: "var(--font-mono)",
                                 whiteSpace: "nowrap",
                                 color: active ? "var(--text)" : (dormant ? "var(--text-dim)" : "var(--text)"),
                               }}>
@@ -2248,7 +2247,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             cursor: "pointer",
                             textAlign: "left",
                             fontSize: 12,
-                            fontFamily: "var(--font-mono)",
                             transition: "background 0.08s ease",
                           }}
                         >

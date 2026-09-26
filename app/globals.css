@@ -43,6 +43,31 @@
   font-display: swap;
 }
 
+/* Claude scheme prose: Source Serif 4 (Latin-only subset, variable wght
+   400-600) in front of Noto Serif SC (CJK, same weight range), matching
+   claude.ai's serif Latin + Song CJK. unicode-range leaves CJK-shared
+   punctuation (curly double quotes, ellipsis, em dash, middle dot) to the Song
+   face so it is full width in Chinese; the apostrophe/single quotes stay Latin.
+   size-adjust matches Source Serif's cap height (0.67em) to the CJK faces'
+   (~0.73em) so Latin does not shrink next to Chinese. */
+@font-face {
+  font-family: "Source Serif 4 Web";
+  src: url("/fonts/SourceSerif4-Latin.woff2?v=2") format("woff2");
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  size-adjust: 108%;
+  unicode-range: U+0000-00B6, U+00B8-00FF, U+0100-017F, U+0192, U+02C6, U+02DC, U+2013, U+2018-2019, U+201A, U+201E, U+2020-2022, U+2030, U+2039-203A, U+20AC, U+2122, U+2212;
+}
+
+@font-face {
+  font-family: "Noto Serif SC Web";
+  src: url("/fonts/NotoSerifSC.woff2?v=1") format("woff2");
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+}
+
 @font-face {
   font-family: "Sarasa UI SC Web";
   src: url("/fonts/SarasaUiSC-Regular.woff2?v=1") format("woff2");
@@ -114,12 +139,20 @@ html {
   --chat-content-font-size: 14px;
   --chat-font-size-offset: calc(var(--chat-content-font-size, 14px) - 14px);
   --workspace-header-height: 30px;
-  /* Sarasa has two roles: proportional UI SC for chrome and prose, Term SC
-     for code. Both are always the bundled web fonts, never local installs,
-     so every machine renders the same cut and version. The system tail only
-     shows while the font loads (swap) or if the download fails. */
-  --font-ui: "Sarasa UI SC Web", ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
+  /* Font schemes only redefine the three role variables (UI, prose, code).
+     Faces are always the bundled web fonts, never local installs, so every
+     machine renders the same cut and version. The system tail only shows
+     while the font loads (swap) or if the download fails.
+     Default scheme: Sarasa UI SC for UI and prose, Term SC for code. */
+  --font-ui-fallback: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
+  --font-ui: "Sarasa UI SC Web", var(--font-ui-fallback);
   --font-chat: var(--font-ui);
+}
+
+/* Claude scheme: serif prose (Source Serif 4 + Noto Serif SC). UI and code
+   are unchanged. */
+html[data-font="claude"] {
+  --font-chat: "Source Serif 4 Web", "Noto Serif SC Web", 'Songti SC', 'Noto Serif CJK SC', serif;
 }
 
 html.dark {
@@ -360,9 +393,6 @@ html.dark {
   color: var(--text-muted);
 }
 
-.session-stats-code {
-  font-family: var(--font-mono);
-}
 .session-stats-ellipsis {
   min-width: 0;
   overflow: hidden;
@@ -1146,6 +1176,11 @@ pre, code {
 .markdown-custom-message,
 .markdown-file-preview {
   font-family: var(--font-chat);
+}
+/* The steps list is process UI: intermediate assistant text there matches
+   thinking and tool rows instead of switching to the prose face. */
+.process-details-list .markdown-assistant-message {
+  font-family: var(--font-ui);
 }
 .markdown-user-message p {
   white-space: pre-wrap;

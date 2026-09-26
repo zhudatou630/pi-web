@@ -430,7 +430,6 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     border: "none",
                     cursor: "pointer",
                     color: "var(--accent)",
-                    fontFamily: "var(--font-mono)",
                     fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
                     textAlign: "left",
                   }}
@@ -1033,7 +1032,7 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
             padding: "8px 10px",
             background: "var(--bg)",
             borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
-            fontFamily: "var(--font-chat)",
+            fontFamily: "var(--font-ui)",
             fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.55,
             color: error ? "var(--danger)" : "var(--text-muted)",

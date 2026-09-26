@@ -128,7 +128,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: Props) {
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 flex: 1,
-                lineHeight: 1,
+                lineHeight: 1.3,
               }}
               title={tab.filePath}
             >

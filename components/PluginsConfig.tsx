@@ -110,7 +110,7 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
           key={`${resource.kind}:${resource.path}`}
           title={resource.path}
           label={resource.name}
-          description={<span className="is-mono">{resource.relativePath}</span>}
+          description={resource.relativePath}
         />
       ))}
     </SettingsGroup>
@@ -186,7 +186,7 @@ function AddPluginPanel({
             {busy ? t("i18n.installing") : t("i18n.install")}
           </ConfigButton>
         </div>
-        <SettingsRow label={t("skills.installTo")} description={<span className="is-mono">{installLocation(scope, cwd)}</span>}>
+        <SettingsRow label={t("skills.installTo")} description={installLocation(scope, cwd)}>
           <SettingsSegmented
             label={t("skills.installTo")}
             value={scope}
@@ -288,7 +288,7 @@ function PackageDetail({
           label={t("i18n.version")}
           description={(
             <>
-              <span className="is-mono">{versionSummary(pkg, t)}</span>
+              <span>{versionSummary(pkg, t)}</span>
               {updateAvailable && <> · <span className="is-accent" title={updateStatus.displayName}>{t("i18n.updateAvailable")}</span></>}
               {statusText && <> · <span className={updateStatus?.state === "error" ? "is-error" : undefined}>{statusText}</span></>}
             </>
@@ -330,7 +330,7 @@ function PackageDetail({
             <span className={`settings-status is-${pkg.status}`}>{pkg.status}</span>
           </SettingsProperty>
           <SettingsProperty label={t("i18n.resources")}>{resourceSummary(pkg, t)}</SettingsProperty>
-          <SettingsProperty label={t("i18n.installedPath")} mono>
+          <SettingsProperty label={t("i18n.installedPath")}>
             {pkg.installedPath ? shortenPath(pkg.installedPath) : <span className="is-error">{t("i18n.notFound")}</span>}
           </SettingsProperty>
         </SettingsProperties>
@@ -368,7 +368,7 @@ function StandaloneExtensionDetail({ extension }: { extension: PluginStandaloneE
           <SettingsProperty label={t("i18n.status")}>
             <span className={`settings-status is-${status}`}>{status}</span>
           </SettingsProperty>
-          <SettingsProperty label={t("i18n.installedPath")} mono>{shortenPath(extension.path)}</SettingsProperty>
+          <SettingsProperty label={t("i18n.installedPath")}>{shortenPath(extension.path)}</SettingsProperty>
         </SettingsProperties>
       </SettingsGroup>
     </SettingsDetailPage>
@@ -711,7 +711,7 @@ export function PluginsConfig({
                           <SettingsLinkRow
                             key={key}
                             label={pkg.packageName ?? pkg.source}
-                            description={<><span className="is-mono">{shortenPath(pkg.source)}</span>{" · "}{resourceSummary(pkg, t)}</>}
+                            description={<>{shortenPath(pkg.source)}{" · "}{resourceSummary(pkg, t)}</>}
                             muted={pkg.disabled}
                             title={pkg.source}
                             onOpen={() => openItem(key)}
@@ -740,7 +740,7 @@ export function PluginsConfig({
                         <SettingsLinkRow
                           key={extensionKey(extension)}
                           label={extension.name}
-                          description={<span className="is-mono">{shortenPath(extension.path)}</span>}
+                          description={shortenPath(extension.path)}
                           muted={!extension.enabled}
                           title={extension.path}
                           onOpen={() => openItem(extensionKey(extension))}

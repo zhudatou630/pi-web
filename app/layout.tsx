@@ -72,7 +72,7 @@ export default function RootLayout({
         <meta name="google" content="notranslate" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");var claude=localStorage.getItem("pi-theme-palette")==="claude";if(claude)document.documentElement.dataset.theme="claude";var c=claude?(dark?"#111111":"#fafaf4"):(dark?"#242424":"#f5f5f5");var ms=document.querySelectorAll('meta[name="theme-color"]');if(ms.length===0){var m=document.createElement("meta");m.name="theme-color";m.content=c;document.head.appendChild(m)}else{for(var i=0;i<ms.length;i++){ms[i].removeAttribute("media");ms[i].content=c}}}catch(e){}})();`,
+            __html: `(function(){try{if(localStorage.getItem("pi-font-scheme")==="claude")document.documentElement.dataset.font="claude";var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");var claude=localStorage.getItem("pi-theme-palette")==="claude";if(claude)document.documentElement.dataset.theme="claude";var c=claude?(dark?"#111111":"#fafaf4"):(dark?"#242424":"#f5f5f5");var ms=document.querySelectorAll('meta[name="theme-color"]');if(ms.length===0){var m=document.createElement("meta");m.name="theme-color";m.content=c;document.head.appendChild(m)}else{for(var i=0;i<ms.length;i++){ms[i].removeAttribute("media");ms[i].content=c}}}catch(e){}})();`,
           }}
         />
       </head>

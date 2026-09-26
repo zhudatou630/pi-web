@@ -17,7 +17,14 @@ async function sourceLines() {
       if (!e.isFile() || !/\.(tsx?|css)$/.test(e.name) || e.name.includes(".test.")) continue;
       const file = join(e.parentPath, e.name);
       const lines = (await readFile(file, "utf8")).split("\n");
-      lines.forEach((line, i) => out.push({ where: `${file.slice(root.length)}:${i + 1}`, line, prev: lines.slice(Math.max(0, i - 3), i).join("\n") }));
+      let fontFace = false;
+      lines.forEach((line, i) => {
+        // @font-face descriptors declare what a face covers (e.g. a variable
+        // 400 600 range, a real italic); they are not usage.
+        if (/^@font-face \{/.test(line)) fontFace = true;
+        if (!fontFace) out.push({ where: `${file.slice(root.length)}:${i + 1}`, line, prev: lines.slice(Math.max(0, i - 3), i).join("\n") });
+        if (line === "}") fontFace = false;
+      });
     }
   }
   return out;
