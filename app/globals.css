@@ -2639,21 +2639,34 @@ span.token.table {
   min-width: 0;
 }
 
+/* Pending prompts: one grid so every text starts on the same column, set off from the
+   draft by a rule. The recall column is as wide as the send button and sits above it. */
 .chat-input-queue {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) 24px;
+  column-gap: 8px;
+  row-gap: 2px;
   min-width: 0;
   margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
 }
 
 .chat-input-queue-row {
-  display: flex;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: 6px;
   min-width: 0;
   font-size: 12px;
   line-height: 16px;
+  animation: menu-surface-in 0.14s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-input-queue-row {
+    animation: none;
+  }
 }
 
 .chat-input-queue-kind {
@@ -2671,7 +2684,7 @@ span.token.table {
 }
 
 .chat-input-queue-count {
-  flex: 1;
+  grid-column: 1 / 3;
   min-width: 0;
   font-size: 11px;
   line-height: 16px;
@@ -2682,20 +2695,22 @@ span.token.table {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  margin-left: auto;
+  grid-column: 3;
+  width: 24px;
+  height: 18px;
+  margin: -1px 0;
   padding: 0;
   border: none;
   border-radius: 4px;
   background: none;
   color: var(--text-muted);
   cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
 
 @media (hover: hover) {
   .chat-input-queue-recall:hover {
+    background: var(--bg-hover);
     color: var(--text);
   }
 }
@@ -3207,10 +3222,11 @@ span.token.table {
     position: relative;
   }
 
+  /* 24x18 drawn, 32x30 touch: stops where the run controls' touch rings begin. */
   .chat-input-queue-recall::before {
     content: "";
     position: absolute;
-    inset: -4px;
+    inset: -6px -4px;
   }
 
   /* Touch rows stay 32px tall, but status-line controls hug their content like the old
