@@ -353,7 +353,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [listViewportH, setListViewportH] = useState(0);
   const [listScrollTop, setListScrollTop] = useState(0);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
-  const [revealedSessionId, setRevealedSessionId] = useState<string | null>(null);
+  const [sessionMenu, setSessionMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [projectMenu, setProjectMenu] = useState<{ key: string; cwd: string; x: number; y: number } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ key: string; x: number; y: number } | null>(null);
   const confirmDeleteProjectKey = deleteConfirm?.key ?? null;
@@ -364,7 +364,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const workspaceLongPressTriggeredRef = useRef(false);
   const listScrollRafRef = useRef<number | null>(null);
   const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setRevealedSessionId(null);
+    setSessionMenu(null);
     setProjectMenu(null);
     const top = e.currentTarget.scrollTop;
     if (listScrollRafRef.current != null) return;
@@ -374,18 +374,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     });
   }, []);
 
-  // Global click-outside listener to dismiss touch-revealed row actions.
+  // Global click-outside listener to dismiss row menus.
   useEffect(() => {
-    if (!revealedSessionId && !projectMenu && !deleteConfirm) return;
+    if (!sessionMenu && !projectMenu && !deleteConfirm) return;
     const handleGlobalPointerDown = (e: PointerEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target?.closest(".session-row-actions, .project-context-menu")) return;
-      setRevealedSessionId(null);
+      if (target?.closest(".project-context-menu")) return;
+      setSessionMenu(null);
       setProjectMenu(null);
       setDeleteConfirm(null);
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      setSessionMenu(null);
       setProjectMenu(null);
       setDeleteConfirm(null);
     };
@@ -395,7 +396,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       window.removeEventListener("pointerdown", handleGlobalPointerDown, true);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [revealedSessionId, projectMenu, deleteConfirm]);
+  }, [sessionMenu, projectMenu, deleteConfirm]);
 
   const handleWorkspaceTouchStart = useCallback((key: string, cwd: string, event: React.TouchEvent) => {
     // A touch starting on a row action is a tap on that action, not a long
@@ -1496,16 +1497,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           isSelected={familySessions.some((session) => session.id === selectedSessionId)}
           isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
           isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
-          isActionsRevealed={revealedSessionId === family.root.id}
-          onRevealActions={() => setRevealedSessionId(family.root.id)}
-          onDismissActions={() => setRevealedSessionId((curr) => curr === family.root.id ? null : curr)}
-          onClick={() => { setRevealedSessionId(null); handleSelectSessionFromList(family.root); }}
+          menuAt={sessionMenu?.id === family.root.id ? sessionMenu : null}
+          onOpenMenu={(x, y) => { setProjectMenu(null); setSessionMenu({ id: family.root.id, x, y }); }}
+          onCloseMenu={() => setSessionMenu(null)}
+          onClick={() => handleSelectSessionFromList(family.root)}
           onRenamed={loadSessions}
-          onOpenInNewTab={onOpenSessionInNewTab ? () => { setRevealedSessionId(null); onOpenSessionInNewTab(family.root); } : undefined}
+          onOpenInNewTab={onOpenSessionInNewTab ? () => onOpenSessionInNewTab(family.root) : undefined}
           isPinned={pinned}
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
-          onTogglePin={() => { setRevealedSessionId(null); void toggleSessionPinned(family.root.id); }}
-          onDeleted={(id) => { setRevealedSessionId(null); onSessionDeleted?.(id); loadSessions(); }}
+          onTogglePin={() => void toggleSessionPinned(family.root.id)}
+          onDeleted={(id) => { onSessionDeleted?.(id); loadSessions(); }}
         />
       </div>
     );
@@ -2093,9 +2094,9 @@ export function SessionItem({
   isSelected,
   isRunning,
   isUnread,
-  isActionsRevealed = false,
-  onRevealActions,
-  onDismissActions,
+  menuAt = null,
+  onOpenMenu,
+  onCloseMenu,
   onClick,
   onRenamed,
   onOpenInNewTab,
@@ -2113,9 +2114,10 @@ export function SessionItem({
   isSelected: boolean;
   isRunning?: boolean;
   isUnread?: boolean;
-  isActionsRevealed?: boolean;
-  onRevealActions?: () => void;
-  onDismissActions?: () => void;
+  /** Open context-menu position; the sidebar owns which row's menu is open. */
+  menuAt?: { x: number; y: number } | null;
+  onOpenMenu?: (x: number, y: number) => void;
+  onCloseMenu?: () => void;
   onClick: () => void;
   onRenamed?: () => void;
   onOpenInNewTab?: () => void;
@@ -2156,9 +2158,9 @@ export function SessionItem({
       } catch {
         // ignore
       }
-      onRevealActions?.();
+      onOpenMenu?.(touch.clientX, touch.clientY);
     }, 400);
-  }, [confirmDelete, onRevealActions, renaming, session.transient]);
+  }, [confirmDelete, onOpenMenu, renaming, session.transient]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStartPosRef.current || !longPressTimerRef.current) return;
@@ -2233,15 +2235,6 @@ export function SessionItem({
     }
   }, [session.id, session.transient, onDeleted]);
 
-  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (e.shiftKey) {
-      void performDelete();
-    } else {
-      setConfirmDelete(true);
-    }
-  }, [performDelete]);
-
   const handleDeleteConfirm = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     void performDelete();
@@ -2253,11 +2246,11 @@ export function SessionItem({
   }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (isLongPressRef.current || isActionsRevealed) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
+    e.preventDefault();
+    e.stopPropagation();
+    // A long press already opened the menu at the touch point.
+    if (isLongPressRef.current || session.transient) return;
+    // A downstream listener may claim the right-click before the built-in menu.
     const handled = dispatchSessionRowContextMenu({
       id: session.id,
       path: session.path,
@@ -2267,15 +2260,16 @@ export function SessionItem({
       clientY: e.clientY,
       refresh: () => { onRenamed?.(); },
     });
-    if (!handled) return;
-    e.preventDefault();
-    e.stopPropagation();
-  }, [isActionsRevealed, onRenamed, session.cwd, session.id, session.name, session.path]);
+    if (!handled) onOpenMenu?.(e.clientX, e.clientY);
+  }, [onOpenMenu, onRenamed, session.cwd, session.id, session.name, session.path, session.transient]);
+
+  const menuItem = (action: () => void) => () => { onCloseMenu?.(); action(); };
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
   return (
+    <>
     <div
-      className={`session-list-row${isActionsRevealed ? " is-actions-revealed" : ""}`}
+      className="session-list-row"
       onClick={(e) => {
         if (isLongPressRef.current) {
           isLongPressRef.current = false;
@@ -2283,15 +2277,11 @@ export function SessionItem({
           e.stopPropagation();
           return;
         }
-        if (isActionsRevealed) {
-          onDismissActions?.();
-          return;
-        }
         if (confirmDelete || renaming) return;
         onClick();
       }}
       onDoubleClick={() => {
-        if (confirmDelete || renaming || isActionsRevealed || session.transient) return;
+        if (confirmDelete || renaming || session.transient) return;
         onOpenInNewTab?.();
       }}
       onTouchStart={handleTouchStart}
@@ -2514,7 +2504,6 @@ export function SessionItem({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDismissActions?.();
                     onOpenInNewTab();
                   }}
                   title={t("chatTabs.openInNewTab", { defaultValue: "在新标签页打开" })}
@@ -2543,67 +2532,42 @@ export function SessionItem({
                   </svg>
                 </button>
               )}
-              <button
-                onClick={(e) => {
-                  onDismissActions?.();
-                  startRename(e);
-                }}
-                title={t("sidebar.rename")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 20, height: 20, padding: 0,
-                  background: "transparent", border: "none",
-                  borderRadius: 4, color: "var(--text-muted)",
-                  cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = isSelected ? "var(--bg-hover)" : "var(--bg-selected)";
-                  e.currentTarget.style.color = "var(--accent)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                </svg>
-              </button>
-              <button
-                onClick={(e) => {
-                  onDismissActions?.();
-                  handleDeleteClick(e);
-                }}
-                title={t("sidebar.deleteWithShiftClick")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 20, height: 20, padding: 0,
-                  background: "transparent", border: "none",
-                  borderRadius: 4, color: "var(--text-muted)",
-                  cursor: "pointer", flexShrink: 0,
-                  transition: "background 0.12s, color 0.12s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(239,68,68,0.12)";
-                  e.currentTarget.style.color = "#ef4444";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--text-muted)";
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6M14 11v6" />
-                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
             </div>
           )}
         </>
       )}
     </div>
+    {menuAt && (
+      <div
+        role="menu"
+        className="project-context-menu menu-surface"
+        style={{
+          left: Math.min(menuAt.x + 2, window.innerWidth - 168),
+          top: Math.min(menuAt.y + 2, window.innerHeight - 128),
+        }}
+      >
+        {onOpenInNewTab && (
+          <button type="button" role="menuitem" onClick={menuItem(onOpenInNewTab)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+            {t("chatTabs.openInNewTab")}
+          </button>
+        )}
+        {onTogglePin && (
+          <button type="button" role="menuitem" onClick={menuItem(onTogglePin)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
+            {t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
+          </button>
+        )}
+        <button type="button" role="menuitem" onClick={menuItem(startRename)}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
+          {t("sidebar.rename")}
+        </button>
+        <button type="button" role="menuitem" className="is-danger" onClick={menuItem(() => setConfirmDelete(true))}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+          {t("sidebar.delete")}
+        </button>
+      </div>
+    )}
+    </>
   );
 }

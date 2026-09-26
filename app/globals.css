@@ -2152,8 +2152,7 @@ span.token.table {
 }
 
 .session-list-row:hover .session-row-actions,
-.session-list-row:has(:focus-visible) .session-row-actions,
-.session-list-row.is-actions-revealed .session-row-actions {
+.session-list-row:has(:focus-visible) .session-row-actions {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
@@ -2164,15 +2163,34 @@ span.token.table {
 
 .session-row-pin.is-pinned,
 .session-list-row:hover .session-row-pin,
-.session-list-row:has(:focus-visible) .session-row-pin,
-.session-list-row.is-actions-revealed .session-row-pin {
+.session-list-row:has(:focus-visible) .session-row-pin {
   opacity: 1;
 }
 
 .session-list-row:has(.session-row-actions):hover .session-row-meta,
-.session-list-row:has(.session-row-actions):has(:focus-visible) .session-row-meta,
-.session-list-row.is-actions-revealed .session-row-meta {
+.session-list-row:has(.session-row-actions):has(:focus-visible) .session-row-meta {
   opacity: 0 !important;
+}
+
+/* Touch has no hover: row actions live in the long-press menu. A pinned row keeps
+   its pin as a state mark that ignores taps, so scrolling cannot unpin it. */
+@media (hover: none) {
+  .session-list-row:hover .session-row-actions {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .session-list-row:hover .session-row-pin:not(.is-pinned) {
+    opacity: 0;
+  }
+
+  .session-row-pin {
+    pointer-events: none;
+  }
+
+  .session-list-row:has(.session-row-actions):hover .session-row-meta {
+    opacity: 1 !important;
+  }
 }
 
 /* Project row actions take no width until revealed, so the branch label can sit

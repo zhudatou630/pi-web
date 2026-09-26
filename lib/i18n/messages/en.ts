@@ -384,7 +384,6 @@ export const enLocale: LocalePlugin = {
     "sidebar.deleteProjectSessionsFailed": "Could not delete sessions: {error}",
     "sidebar.rename": "Rename",
     "sidebar.delete": "Delete",
-    "sidebar.deleteWithShiftClick": "Delete (Shift+click to delete without confirmation)",
     "sidebar.expandSubagents": "Expand subagents",
     "sidebar.collapseAll": "Collapse all",
     "sidebar.collapseSubagents": "Collapse subagents",

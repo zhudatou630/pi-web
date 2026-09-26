@@ -52,13 +52,6 @@ test("session windows stay valid after a project shrinks and before the viewport
   assert.equal(getSessionListIndices(2000, 0, 0).length, 40);
 });
 
-test("only Shift+click bypasses session deletion confirmation", () => {
-  assert.match(
-    sessionItemSource,
-    /const handleDeleteClick[\s\S]*?if \(e\.shiftKey\) \{\s*void performDelete\(\);\s*\} else \{\s*setConfirmDelete\(true\);/,
-  );
-});
-
 test("uses a native main action without row-level deletion shortcuts", () => {
   assert.doesNotMatch(sessionItemSource, /const handleKeyDown/);
   assert.doesNotMatch(sessionItemSource, /onKeyDown=\{handleKeyDown\}/);
@@ -168,14 +161,15 @@ test("hides subagent rows and aggregates their state into the main session row",
   assert.doesNotMatch(source, /function SessionTreeItem/);
 });
 
-test("supports mobile long-press to reveal row action buttons without text selection", () => {
+test("right-click and mobile long-press open one session menu with every row action", () => {
   assert.match(sessionItemSource, /onTouchStart=\{handleTouchStart\}/);
-  assert.match(sessionItemSource, /onTouchMove=\{handleTouchMove\}/);
-  assert.match(sessionItemSource, /onTouchEnd=\{handleTouchEnd\}/);
-  assert.match(sessionItemSource, /onRevealActions\?\.()/);
-  assert.match(sessionItemSource, /is-actions-revealed/);
-  assert.match(sessionItemSource, /onOpenInNewTab/);
-  assert.match(source, /revealedSessionId/);
+  assert.match(sessionItemSource, /onOpenMenu\?\.\(touch\.clientX, touch\.clientY\)/);
+  assert.match(sessionItemSource, /if \(!handled\) onOpenMenu\?\.\(e\.clientX, e\.clientY\)/);
+  assert.match(sessionItemSource, /t\("chatTabs\.openInNewTab"\)/);
+  assert.match(sessionItemSource, /t\(isPinned \? "sidebar\.unpinSession" : "sidebar\.pinSession"\)/);
+  assert.match(sessionItemSource, /menuItem\(startRename\)/);
+  assert.match(sessionItemSource, /menuItem\(\(\) => setConfirmDelete\(true\)\)/);
+  assert.match(source, /setSessionMenu\(null\)/);
   assert.match(source, /handleGlobalPointerDown/);
 });
 

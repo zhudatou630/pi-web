@@ -384,7 +384,6 @@ export const zhTWLocale: LocalePlugin = {
     "sidebar.deleteProjectSessionsFailed": "刪除工作階段失敗：{error}",
     "sidebar.rename": "重新命名",
     "sidebar.delete": "刪除",
-    "sidebar.deleteWithShiftClick": "刪除（按住 Shift 點選可跳過確認）",
     "sidebar.expandSubagents": "展開子代理",
     "sidebar.collapseAll": "全部摺疊",
     "sidebar.collapseSubagents": "摺疊子代理",
