@@ -736,7 +736,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     isAutoModelSelection,
     agentPhase,
     isNew,
-    sessionIdRef, scrollContainerRef,
+    sessionIdRef, scrollContainerRef, isNearBottomRef,
     handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
@@ -1253,7 +1253,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       }
     };
     updateScrollBottom();
-    const observer = new ResizeObserver(updateScrollBottom);
+    // Content can still grow after the first paint (web font swap, async
+    // markdown/thinking content); stay pinned to the tail while following it.
+    const observer = new ResizeObserver(() => {
+      if (isNearBottomRef.current) scrollToBottom("instant");
+      updateScrollBottom();
+    });
     observer.observe(container);
     if (messageContentRef.current) observer.observe(messageContentRef.current);
     container.addEventListener("scroll", onScroll, { passive: true });
@@ -1261,7 +1266,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       observer.disconnect();
       container.removeEventListener("scroll", onScroll);
     };
-  }, [isEmptyNew, loading, scrollContainerRef, session?.id, unmountedNewerCount]);
+  }, [isEmptyNew, isNearBottomRef, loading, scrollContainerRef, scrollToBottom, session?.id, unmountedNewerCount]);
 
   // Sentinel trigger to slide the mounted window toward older in-memory
   // groups first; only then fetch the previous server page.

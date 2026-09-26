@@ -425,7 +425,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
   const initialScrollDoneRef = useRef(Boolean(opts.deferInitialScroll));
   const pendingScrollToBottomRef = useRef(false);
-  const isNearBottomRef = useRef(true);
+  const isNearBottomRef = useRef(!opts.deferInitialScroll);
   const previousScrollTopRef = useRef(0);
   const streamDeltaFrameRef = useRef<number | null>(null);
   const pendingStreamDeltasRef = useRef<ClientAssistantMessageEvent[]>([]);
@@ -2497,7 +2497,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     isNew,
     // Refs
     sessionIdRef, scrollContainerRef,
-    initialScrollDoneRef,
+    initialScrollDoneRef, isNearBottomRef,
     // Actions
     handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
