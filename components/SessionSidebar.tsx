@@ -1594,7 +1594,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           <span>{t("sidebar.projects")}</span>
         </button>
         <div className="sidebar-header-actions">
-          {(expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).size > 0 && !singleProject && (
+          {projectsOpen && !singleProject && workspaceProjects.filter((p) => (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(p.key)).length >= 2 && (
             <ToolbarIconButton
               onClick={() => setExpandedWorkspaceKeys(new Set())}
               title={t("sidebar.collapseAll")}
