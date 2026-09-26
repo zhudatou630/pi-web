@@ -1786,7 +1786,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       <div
         ref={listScrollRef}
         onScroll={handleListScroll}
-        style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}
+        style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", scrollbarGutter: "stable", padding: "0", minHeight: 80 }}
       >
         {error && <div style={{ padding: "12px 14px", color: "#f87171", fontSize: 12 }}>{error}</div>}
         {deleteProjectError && (
@@ -2032,7 +2032,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             </div>
           </div>
           {explorerOpen && (
-            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarGutter: "stable" }}>
               <FileExplorer
                 ref={fileExplorerRef}
                 cwd={selectedCwd ?? selectedCwdProp!}

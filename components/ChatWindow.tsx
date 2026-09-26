@@ -2393,7 +2393,7 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
           <NoticeIcon type={notice.type} />
           <span
             tabIndex={0}
-            style={{ minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", scrollbarWidth: "thin", whiteSpace: "pre-line", wordBreak: "break-word" }}
+            style={{ minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", whiteSpace: "pre-line", wordBreak: "break-word" }}
           >
             {notice.message}
           </span>

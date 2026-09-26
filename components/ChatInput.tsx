@@ -919,9 +919,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const resizeTextarea = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
-    // Measure without a scrollbar: the global ::-webkit-scrollbar takes 4px of
-    // layout width (even on mobile), which would wrap a nearly-full last line
-    // during measurement and leave a phantom blank line afterwards.
+    // Measure without a scrollbar: the fine-pointer ::-webkit-scrollbar takes
+    // 5px of layout width, which would wrap a nearly-full last line during
+    // measurement and leave a phantom blank line afterwards.
     ta.style.overflowY = "hidden";
     ta.style.height = "auto";
     if (!ta.value) return;

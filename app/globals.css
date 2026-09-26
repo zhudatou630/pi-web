@@ -737,20 +737,63 @@ html.dark .web-login-error {
   background-color: #111318;
 }
 
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+/* Scrollbars follow the input device. Touch hides them except in file preview:
+   the finger is the control, and Android's overlay bar appears whenever a
+   scroller is shown (the sidebar drawer) and stays until the first scroll,
+   which CSS cannot time.
+   Hiding via scrollbar-width takes no layout width, unlike ::-webkit-scrollbar.
+   A fine pointer gets a thin bar whose thumb only shows while the pointer is
+   over its scroller (which is also when the wheel scrolls it). */
+@media (pointer: coarse) {
+  * {
+    scrollbar-width: none;
+  }
+  /* File preview keeps the platform bar: reading a long file needs position. */
+  .file-preview-pane,
+  .file-preview-pane * {
+    scrollbar-width: auto;
+  }
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+@media (pointer: fine) {
+  /* A 5px track with a 1px transparent border floats a 3px pill off the
+     scroller's edge, so it never merges with an adjacent border line. */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 2.5px;
+    background-clip: padding-box;
+    background-color: transparent;
+  }
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--text-dim) 20%, transparent);
+  }
+  /* Chrome skips restyling an element whose :hover only changes its scrollbar
+     pseudo-elements, so the thumb above never appears. Any declaration on
+     the element itself makes hover restyle it; this one is otherwise unused. */
+  *:hover {
+    --scrollbar-hover: 1;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--text-dim) 45%, transparent);
+  }
 }
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-dim);
+/* Firefox has no ::-webkit-scrollbar; same hover-reveal thin bar. */
+@supports not selector(::-webkit-scrollbar) {
+  @media (pointer: fine) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
+    *:hover {
+      scrollbar-color: color-mix(in srgb, var(--text-dim) 20%, transparent) transparent;
+    }
+  }
 }
 
 :root {
@@ -914,24 +957,6 @@ pre, code {
   overflow-y: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-.markdown-table-wrap:hover {
-  scrollbar-color: color-mix(in srgb, var(--text-dim) 40%, transparent) transparent;
-}
-.markdown-table-wrap::-webkit-scrollbar {
-  height: 3.5px;
-}
-.markdown-table-wrap::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-.markdown-table-wrap::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-}
-.markdown-table-wrap:hover::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-dim) 40%, transparent);
 }
 .markdown-body table {
   border-collapse: separate;
@@ -974,25 +999,6 @@ pre, code {
   font-size: 1.05em;
 }
 
-/* Process details step box: clean high-density row-based layout with modern minimal floating scrollbar */
-.process-details-list::-webkit-scrollbar {
-  width: 4px;
-}
-.process-details-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-.process-details-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text) 18%, transparent);
-  border-radius: 4px;
-}
-.process-details-list::-webkit-scrollbar-thumb:hover {
-  background: var(--text-dim);
-}
-.process-details-list::-webkit-scrollbar-button {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-}
 .process-details-list [data-message-role="assistant"] {
   margin-bottom: 0 !important;
 }
@@ -1280,28 +1286,6 @@ pre, code {
   border-radius: 0 !important;
   background: transparent !important;
   background-color: transparent !important;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-.markdown-code-block:hover pre {
-  scrollbar-color: color-mix(in srgb, var(--text-dim) 40%, transparent) transparent;
-}
-.markdown-code-block pre::-webkit-scrollbar {
-  height: 3.5px;
-  width: 3.5px;
-}
-.markdown-code-block pre::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-.markdown-code-block pre::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-}
-.markdown-code-block:hover pre::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-dim) 40%, transparent);
-}
-.markdown-code-block pre::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 .markdown-code-header {
   font-family: var(--font-mono);
@@ -2125,6 +2109,14 @@ span.token.table {
   pointer-events: none;
   background: transparent;
   transition: background 0.12s ease;
+}
+/* The sidebar's scrollbar runs along its right edge, so its grab area sits
+   entirely on the chat side of the divider instead of covering that bar. */
+.sidebar-resize-handle {
+  margin: 0 -11px 0 -1px;
+}
+.sidebar-resize-handle::after {
+  left: 0;
 }
 .panel-resize-handle:hover::after,
 .panel-resize-handle:focus-visible::after,

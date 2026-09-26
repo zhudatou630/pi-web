@@ -315,7 +315,6 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             fontSize: "calc(13px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.54,
             overflowX: "auto",
-            scrollbarWidth: "thin",
             border: "none",
             borderRadius: 0,
             background: "transparent",
@@ -341,7 +340,6 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             background: "transparent",
             backgroundColor: "transparent",
             overflowX: "auto",
-            scrollbarWidth: "thin",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >
