@@ -155,6 +155,8 @@ export interface AgentSessionLike {
       thinkingLevel?: string;
       streamingMessage?: PiAgentMessage;
       messages?: PiAgentMessage[];
+      /** Tool call ids currently executing. */
+      readonly pendingToolCalls?: ReadonlySet<string>;
     };
     steer?: (message: PiAgentMessage) => void;
     /**

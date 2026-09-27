@@ -4,9 +4,16 @@ import {
   type AgentEventLike,
 } from "./agent-event-wire";
 
+export interface RunningToolCall {
+  id: string;
+  name: string;
+}
+
 export interface AgentEventStreamSession {
   readonly isStreaming: boolean;
   readonly streamingMessage: unknown;
+  /** Tool calls executing right now; a reconnecting client missed their start events. */
+  readonly runningTools: RunningToolCall[];
   onEvent(listener: (event: AgentEventLike) => void, keepAlive?: boolean): () => void;
   onClose?(listener: () => void): () => void;
 }
@@ -167,11 +174,14 @@ export function createAgentEventStream(
           }
           unsubscribeClose = stopClose ?? null;
 
+          // The handshake is the whole live state: `connected` replaces whatever the
+          // client held, and the snapshot below is the only in-flight message.
           const snapshot = session.streamingMessage;
           encode({
             type: "connected",
             sessionId,
             isStreaming: session.isStreaming,
+            runningTools: session.runningTools,
           });
           for (const event of bufferedEvents) forwardEvent(event, snapshot);
           if (snapshot !== undefined && snapshot !== null) {

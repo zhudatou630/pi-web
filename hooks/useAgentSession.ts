@@ -166,6 +166,12 @@ export type AgentPhase =
   | { kind: "running_tools"; tools: { id: string; name: string }[] }
   | null;
 
+/** Phase of a busy agent at SSE handshake; the server lists tools already executing. */
+function handshakePhase(runningTools: unknown): AgentPhase {
+  const tools = runningTools as { id: string; name: string }[] | undefined;
+  return tools && tools.length > 0 ? { kind: "running_tools", tools } : { kind: "waiting_model" };
+}
+
 export interface CompactResultInfo {
   reason: "manual" | "threshold" | "overflow" | "auto" | string;
   tokensBefore: number;
@@ -1255,13 +1261,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // disconnected must be recovered from persisted history on every handshake.
         const sid = sessionIdRef.current;
         if (sid) void loadSession(sid);
-        dispatch({ type: event.isStreaming === true ? "resume" : "end" });
+        // The handshake carries the complete live state. A partial held from before
+        // the disconnect may have ended while events were lost, so drop it: the
+        // server re-sends the in-flight message as `message_start` right after this.
+        dispatch({ type: event.isStreaming === true ? "reconnect" : "end" });
         if (event.isStreaming === true) {
           cancelEventStreamGrace();
           sdkAgentActiveRef.current = true;
           agentRunningRef.current = true;
           setAgentRunning(true);
-          setAgentPhase({ kind: "waiting_model" });
+          setAgentPhase(handshakePhase(event.runningTools));
         }
         break;
       }

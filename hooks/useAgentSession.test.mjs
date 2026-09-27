@@ -70,19 +70,44 @@ test("every SSE handshake reloads missed history, whether the agent is busy or i
   const ref = { current: "session-a" };
   const handle = new Function(
     "event", "sessionIdRef", "loadSession", "dispatch", "cancelEventStreamGrace",
-    "sdkAgentActiveRef", "agentRunningRef", "setAgentRunning", "setAgentPhase",
+    "sdkAgentActiveRef", "agentRunningRef", "setAgentRunning", "setAgentPhase", "handshakePhase",
     `switch (event.type) { ${connectedSource} }`,
   );
   const noop = () => {};
+  const actions = [];
+  const phases = [];
+  const phaseOf = (tools) => ({ tools });
   for (const isStreaming of [true, true, false]) {
-    handle({ type: "connected", isStreaming }, ref, (sid) => loads.push(sid),
-      noop, noop, {}, {}, noop, noop);
+    handle({ type: "connected", isStreaming, runningTools: [{ id: "c1", name: "bash" }] }, ref,
+      (sid) => loads.push(sid), (action) => actions.push(action.type), noop, {}, {}, noop,
+      (phase) => phases.push(phase), phaseOf);
   }
   assert.deepEqual(loads, ["session-a", "session-a", "session-a"]);
+  // A busy handshake drops the pre-disconnect partial instead of resuming it.
+  assert.deepEqual(actions, ["reconnect", "reconnect", "end"]);
+  assert.deepEqual(phases, [
+    { tools: [{ id: "c1", name: "bash" }] },
+    { tools: [{ id: "c1", name: "bash" }] },
+  ]);
   ref.current = null;
   handle({ type: "connected", isStreaming: false }, ref, (sid) => loads.push(sid),
-    noop, noop, {}, {}, noop, noop);
+    noop, noop, {}, {}, noop, noop, phaseOf);
   assert.equal(loads.length, 3);
+});
+
+test("handshake phase shows tools already executing, else waits for the model", () => {
+  const helperSource = source.slice(
+    source.indexOf("function handshakePhase"),
+    source.indexOf("export interface CompactResultInfo"),
+  ).replace("(runningTools: unknown): AgentPhase", "(runningTools)")
+    .replace(" as { id: string; name: string }[] | undefined", "");
+  const handshakePhase = new Function(`${helperSource}; return handshakePhase;`)();
+  assert.deepEqual(handshakePhase([{ id: "c1", name: "bash" }]), {
+    kind: "running_tools",
+    tools: [{ id: "c1", name: "bash" }],
+  });
+  assert.deepEqual(handshakePhase([]), { kind: "waiting_model" });
+  assert.deepEqual(handshakePhase(undefined), { kind: "waiting_model" });
 });
 
 test("page restoration replaces a half-open visible stream and removes its listeners on cleanup", () => {
@@ -423,7 +448,9 @@ test("keeps one reducer-owned assistant partial and consumes Pi JSON deltas", ()
 
   assert.match(source, /streamReducer,[\s\S]*type ClientAssistantMessageEvent/);
   assert.doesNotMatch(source, /streamingMessageRef/);
-  assert.match(connectedSource, /dispatch\(\{ type: event\.isStreaming === true \? "resume" : "end" \}\)/);
+  // A reconnect drops the pre-disconnect partial: it may have ended while events were lost.
+  assert.match(connectedSource, /dispatch\(\{ type: event\.isStreaming === true \? "reconnect" : "end" \}\)/);
+  assert.match(connectedSource, /setAgentPhase\(handshakePhase\(event\.runningTools\)\)/);
   assert.match(connectedSource, /event\.isStreaming === true/);
   assert.match(source, /dispatch\(\{ type: "resume" \}\)/);
   assert.doesNotMatch(

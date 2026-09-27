@@ -306,6 +306,21 @@ export class AgentSessionWrapper {
     return this.inner.agent.state?.streamingMessage;
   }
 
+  /** Executing tool calls, named from the assistant message that issued them. */
+  get runningTools(): { id: string; name: string }[] {
+    const state = this.inner.agent.state;
+    const pending = state?.pendingToolCalls;
+    if (!pending || pending.size === 0) return [];
+    const names = new Map<string, string>();
+    const issuer = this.inner.messages.findLast((message) => message.role === "assistant");
+    if (issuer?.role === "assistant") {
+      for (const block of issuer.content) {
+        if (block.type === "toolCall") names.set(block.id, block.name);
+      }
+    }
+    return [...pending].map((id) => ({ id, name: names.get(id) ?? "tool" }));
+  }
+
   get isStreaming(): boolean {
     return this.inner.isStreaming;
   }

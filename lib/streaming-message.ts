@@ -12,11 +12,18 @@ export type { ClientAssistantMessageEvent } from "./agent-event-wire";
 export interface StreamingState {
   isStreaming: boolean;
   streamingMessage: AssistantMessage | null;
+  /**
+   * The partial held when the event stream reconnected. It is not rendered: it
+   * may have ended while events were lost. It only lends client-side thinking
+   * timings to the server's re-sent snapshot of that same message.
+   */
+  reconnectedFrom?: AssistantMessage | null;
 }
 
 export type StreamAction =
   | { type: "start" }
   | { type: "resume" }
+  | { type: "reconnect" }
   | { type: "snapshot"; message: AgentMessage }
   | { type: "delta"; event: ClientAssistantMessageEvent }
   | { type: "deltas"; events: ClientAssistantMessageEvent[] }
@@ -151,11 +158,19 @@ export function streamReducer(
       return { isStreaming: true, streamingMessage: null };
     case "resume":
       return { ...state, isStreaming: true };
+    case "reconnect":
+      return {
+        isStreaming: true,
+        streamingMessage: null,
+        reconnectedFrom: state.streamingMessage ?? state.reconnectedFrom ?? null,
+      };
     case "snapshot": {
       const message = normalizeStreamingToolCalls(action.message);
       if (message.role !== "assistant") return state;
       const timestamp = typeof message.timestamp === "number" ? message.timestamp : Date.now();
-      const prev = state.streamingMessage;
+      const carried = state.reconnectedFrom;
+      const prev = state.streamingMessage
+        ?? (carried && typeof carried.timestamp === "number" && carried.timestamp === message.timestamp ? carried : null);
       const content = message.content.map((block, i) => {
         if (block.type !== "thinking") return block;
         const prevBlock = prev?.content[i];
