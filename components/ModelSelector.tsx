@@ -26,8 +26,8 @@ interface ModelSelectorProps {
 const MODEL_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 function compareModelOptions(a: ModelSelectorOption, b: ModelSelectorOption): number {
-  return MODEL_OPTION_COLLATOR.compare(a.name || a.modelId, b.name || b.modelId)
-    || MODEL_OPTION_COLLATOR.compare(a.provider, b.provider)
+  return MODEL_OPTION_COLLATOR.compare(a.provider, b.provider)
+    || MODEL_OPTION_COLLATOR.compare(a.name || a.modelId, b.name || b.modelId)
     || MODEL_OPTION_COLLATOR.compare(a.modelId, b.modelId);
 }
 
@@ -304,7 +304,7 @@ export function ModelSelector({
                 </div>
               ) : modelsByProvider.map((group) => (
                 <div key={group.provider} className="menu-surface-group">
-                  {modelsByProvider.length > 1 && <div className="menu-surface-label">{group.provider}</div>}
+                  <div className="menu-surface-label">{group.provider}</div>
                   {group.options.map((option) => (
                     <ModelOptionButton
                       key={`${option.provider}:${option.modelId}`}

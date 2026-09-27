@@ -538,6 +538,13 @@ test("renders the toolbar model as a plain dock button without a chip icon", () 
   assert.doesNotMatch(html, /<rect x="4" y="4" width="16" height="16"/);
 });
 
+test("orders model groups by provider id, then display name", () => {
+  const source = readFileSync(new URL("./ModelSelector.tsx", import.meta.url), "utf8");
+  assert.match(source, /compare\(a\.provider, b\.provider\)\s*\|\|\s*MODEL_OPTION_COLLATOR\.compare\(a\.name \|\| a\.modelId/);
+  assert.match(source, /className="menu-surface-label">\{group\.provider\}/);
+  assert.doesNotMatch(source, /modelsByProvider\.length > 1 &&/);
+});
+
 test("keeps the model listbox keyboard and ARIA contract explicit", () => {
   const source = readFileSync(new URL("./ModelSelector.tsx", import.meta.url), "utf8");
   assert.match(source, /aria-controls=\{listboxId\}/);

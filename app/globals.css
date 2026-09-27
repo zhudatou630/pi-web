@@ -3083,6 +3083,12 @@ span.token.table {
   cursor: pointer;
 }
 
+.menu-surface [aria-checked="true"],
+.menu-surface [aria-selected="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+
 .menu-surface [data-active] {
   background: var(--bg-hover);
   color: var(--text);
@@ -3093,11 +3099,6 @@ span.token.table {
     background: var(--bg-hover);
     color: var(--text);
   }
-}
-
-.menu-surface [aria-checked="true"],
-.menu-surface [aria-selected="true"] {
-  color: var(--text);
 }
 
 .menu-surface button:disabled {
@@ -3127,19 +3128,20 @@ span.token.table {
   display: none;
 }
 
-/* Provider groups: a rule between groups and a heading-weight label set flush left, so the
-   indented model names read as its children. */
+/* Provider groups: caption belongs to the rows below; one 6px gap, no stacked padding. */
 .menu-surface-group + .menu-surface-group {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
+  margin-top: 6px;
+}
+
+.menu-surface-group [role="option"] {
+  height: 26px;
 }
 
 .menu-surface-label {
-  padding: 6px 8px 4px;
+  padding: 0 8px 2px;
   color: var(--text-dim);
   font-size: 11px;
-  font-weight: 600;
+  line-height: 1.3;
 }
 
 .chat-input-menu {
