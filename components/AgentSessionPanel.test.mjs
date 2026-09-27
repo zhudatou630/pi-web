@@ -38,3 +38,10 @@ test("shows queued agents distinctly and sorts them before terminal runs", () =>
   assert.match(source, /if \(status === "queued"\)/);
   assert.match(source, /if \(status === "queued"\) return 1/);
 });
+
+test("subagent rows show a non-default profile, the model, and a compact time", () => {
+  assert.match(source, /const DEFAULT_SUBAGENT_PROFILE = "general-purpose"/);
+  assert.match(source, /\[relation\.profile !== DEFAULT_SUBAGENT_PROFILE && relation\.profile, relation\.model\?\.id, time\]/);
+  assert.match(source, /formatCompactRelativeTime\(session\.modified, locale\)/);
+  assert.match(source, /title=\{secondaryTitle\}/);
+});

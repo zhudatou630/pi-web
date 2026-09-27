@@ -354,6 +354,8 @@ export interface SessionInfo {
         profile: string;
         description: string;
         status: SubagentSessionStatus;
+        /** Model the subagent runs on; absent until a queued run has started. */
+        model?: { provider: string; id: string };
       };
   /** Main repo root shared by all worktrees of this cwd (cwd itself for non-git dirs).
    *  Always set by the server; optional because the client builds transient

@@ -144,7 +144,7 @@ export function mergeSessionLists(
   for (const session of persistedSessions) {
     const live = byId.get(session.id);
     const relation = session.relation?.kind === "subagent" && live?.relation?.kind === "subagent"
-      ? { ...session.relation, status: live.relation.status }
+      ? { ...session.relation, status: live.relation.status, ...(live.relation.model ? { model: live.relation.model } : {}) }
       : session.relation;
     byId.set(session.id, relation === session.relation ? session : { ...session, relation });
   }
@@ -160,9 +160,20 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
     cacheSessionPath(s.id, s.path);
     const originSessionId = s.parentSessionPath ? pathToId.get(sessionPathKey(s.parentSessionPath)) : undefined;
     let subagent = null;
+    let model: { provider: string; id: string } | undefined;
     if (s.parentSessionPath) {
       try {
-        subagent = readSubagentRun(readSessionRelationEntries(s.path), s.id, s.path);
+        const entries = readSessionRelationEntries(s.path);
+        subagent = readSubagentRun(entries, s.id, s.path);
+        // The already-read tail usually holds the final assistant message, which names
+        // the model actually used; no extra read just for display.
+        for (const entry of entries) {
+          if (entry.type === "model_change") model = { provider: entry.provider, id: entry.modelId };
+          if (entry.type === "message" && entry.message.role === "assistant") {
+            const { provider, model: id } = entry.message as { provider?: unknown; model?: unknown };
+            if (typeof provider === "string" && typeof id === "string") model = { provider, id };
+          }
+        }
       } catch { /* malformed or concurrently removed session */ }
     }
     return {
@@ -176,7 +187,7 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       firstMessage: s.firstMessage || "(no messages)",
       parentSessionId: originSessionId,
       ...(subagent
-        ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: subagent.status } }
+        ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: subagent.status, ...(model ? { model } : {}) } }
         : s.parentSessionPath
           ? { relation: { kind: "fork" as const, ...(originSessionId ? { originSessionId } : {}) } }
           : {}),

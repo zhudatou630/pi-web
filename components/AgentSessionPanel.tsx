@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import type { SessionInfo, SubagentSessionStatus } from "@/lib/types";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { SubagentIcon } from "./SubagentIcon";
@@ -19,18 +20,8 @@ function sessionTitle(session: SessionInfo): string {
   return session.name || session.firstMessage || session.id.slice(0, 12);
 }
 
-function formatRelativeTime(value: string, locale: string): string {
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return "";
-  const elapsedSeconds = Math.round((timestamp - Date.now()) / 1000);
-  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  if (Math.abs(elapsedSeconds) < 60) return formatter.format(elapsedSeconds, "second");
-  const elapsedMinutes = Math.round(elapsedSeconds / 60);
-  if (Math.abs(elapsedMinutes) < 60) return formatter.format(elapsedMinutes, "minute");
-  const elapsedHours = Math.round(elapsedMinutes / 60);
-  if (Math.abs(elapsedHours) < 24) return formatter.format(elapsedHours, "hour");
-  return formatter.format(Math.round(elapsedHours / 24), "day");
-}
+/** Most subagents use the default profile; naming it on every row only crowds out the model. */
+const DEFAULT_SUBAGENT_PROFILE = "general-purpose";
 
 function statusColor(status: SubagentSessionStatus): string {
   if (status === "running" || status === "starting") return "var(--accent)";
@@ -105,9 +96,15 @@ function AgentRow({
   const relation = session.relation?.kind === "subagent" ? session.relation : null;
   const status = sessionStatus(session, running);
   const primary = main ? t("agentSwitcher.main") : relation?.description || sessionTitle(session);
+  const time = formatCompactRelativeTime(session.modified, locale);
   const secondary = main
     ? sessionTitle(session)
-    : `${relation?.profile ?? t("agentSwitcher.subagent")} · ${formatRelativeTime(session.modified, locale)}`;
+    : relation
+      ? [relation.profile !== DEFAULT_SUBAGENT_PROFILE && relation.profile, relation.model?.id, time].filter(Boolean).join(" · ")
+      : `${t("agentSwitcher.subagent")} · ${time}`;
+  const secondaryTitle = relation
+    ? [relation.profile, relation.model && `${relation.model.provider}/${relation.model.id}`, session.modified].filter(Boolean).join(" · ")
+    : secondary;
 
   return (
     <button
@@ -158,7 +155,7 @@ function AgentRow({
         <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }} title={primary}>
           {primary}
         </span>
-        <span style={{ display: "block", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", fontSize: 11 }} title={secondary}>
+        <span style={{ display: "block", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", fontSize: 11 }} title={secondaryTitle}>
           {secondary}
         </span>
       </span>
