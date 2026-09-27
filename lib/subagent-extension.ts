@@ -7,9 +7,11 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
   SUBAGENT_CONTROL_TOOL_NAMES,
+  subagentNotFoundMessage,
   type SubagentProfile,
   type SubagentRunInfo,
 } from "./subagents";
+import type { SessionEntry } from "./types";
 import { MAX_SUBAGENT_INPUT_FILES } from "./subagent-input";
 
 export const HOST_SUBAGENT_EXTENSION_NAME = "pi-web-subagents";
@@ -136,6 +138,15 @@ export function createSubagentExtension(
       const profiles = getProfiles().filter((profile) => profile.enabled);
       const profileNames = profiles.map((profile) => profile.name);
       const availableTypes = profileNames.length > 0 ? profileNames.join(", ") : "none";
+      const notFound = (ctx: ExtensionContext, sessionId: string) =>
+        new Error(subagentNotFoundMessage(ctx.sessionManager.getEntries() as unknown as SessionEntry[], sessionId));
+      // A failed subagent run is returned with its details (so the card still links
+      // to the child session) and flagged here: a thrown error would drop `details`.
+      pi.on("tool_result", (event) => {
+        if (event.toolName !== "Agent" && event.toolName !== "get_subagent_result") return undefined;
+        const details = event.details as Partial<SubagentToolDetails> | undefined;
+        return details?.kind === "pi-web-subagent" && details.status === "failed" ? { isError: true } : undefined;
+      });
       pi.registerTool(defineTool({
         name: "Agent",
         label: "Agent",
@@ -202,7 +213,8 @@ export function createSubagentExtension(
             }),
           });
 
-          if (execution.run.runInBackground) {
+          // A background start that already failed (e.g. queue rejection) reports the failure now.
+          if (execution.run.runInBackground && execution.run.status !== "failed") {
             void execution.completion.catch((error) => {
               console.error(
                 "[pi-web] background subagent failed to settle:",
@@ -216,7 +228,8 @@ export function createSubagentExtension(
           }
 
           const run = await execution.completion;
-          if (run.status === "failed") throw new Error(subagentFinalText(run));
+          // The early background failure is already queued as unread; this result delivers it.
+          if (run.runInBackground) runtime.consume(ctx.sessionManager.getSessionId(), run);
           return {
             content: [{ type: "text", text: subagentFinalText(run) }],
             details: subagentToolDetails(run),
@@ -240,7 +253,7 @@ export function createSubagentExtension(
         async execute(_toolCallId, params, signal, _onUpdate, ctx) {
           const parentSessionId = ctx.sessionManager.getSessionId();
           let run = await runtime.get(parentSessionId, params.agent_id);
-          if (!run) throw new Error(`Subagent not found: ${params.agent_id}`);
+          if (!run) throw notFound(ctx, params.agent_id);
           const timeoutMs = params.timeout_ms ?? DEFAULT_RESULT_WAIT_TIMEOUT_MS;
           const deadline = Date.now() + timeoutMs;
           while (params.wait && (run.status === "starting" || run.status === "queued" || run.status === "running")) {
@@ -269,7 +282,6 @@ export function createSubagentExtension(
           if (run.status !== "starting" && run.status !== "queued" && run.status !== "running") {
             runtime.consume(parentSessionId, run);
           }
-          if (run.status === "failed") throw new Error(subagentFinalText(run));
           return {
             content: [{ type: "text", text: subagentFinalText(run) }],
             details: subagentToolDetails(run),

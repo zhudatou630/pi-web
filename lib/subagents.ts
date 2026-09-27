@@ -674,6 +674,37 @@ export function selectSubagentExtensionTools(
   });
 }
 
+const KNOWN_SUBAGENT_LIST_LIMIT = 20;
+
+/**
+ * Models mistype long session IDs. The error lists the subagents this parent has
+ * already been told about so the next call can copy the right one; no fuzzy match,
+ * which could silently steer or resume the wrong subagent.
+ */
+export function subagentNotFoundMessage(parentEntries: readonly SessionEntry[], sessionId: string): string {
+  const known = new Map<string, string>();
+  const remember = (id: string, label: string) => {
+    known.delete(id);
+    known.set(id, label);
+  };
+  for (const entry of parentEntries) {
+    if (entry.type === "message" && entry.message.role === "toolResult") {
+      const details: unknown = (entry.message as { details?: unknown }).details;
+      if (isRecord(details) && details.kind === "pi-web-subagent" && typeof details.sessionId === "string") {
+        remember(details.sessionId, `${String(details.description)} (${String(details.profile)})`);
+      }
+    } else if (entry.type === "custom_message" && entry.customType === "pi-web:subagent-notification" && isRecord(entry.details)) {
+      const ids = Array.isArray(entry.details.sessionIds) ? entry.details.sessionIds : [];
+      for (const id of ids) {
+        if (typeof id === "string") remember(id, known.get(id) ?? "background result notification");
+      }
+    }
+  }
+  if (known.size === 0) return `Subagent not found: ${sessionId}. No subagents have been started from this session.`;
+  const lines = [...known].slice(-KNOWN_SUBAGENT_LIST_LIMIT).map(([id, label]) => `- ${id}: ${label}`);
+  return `Subagent not found: ${sessionId}. Subagents known to this session (copy the ID exactly):\n${lines.join("\n")}`;
+}
+
 export function readSubagentRun(entries: readonly SessionEntry[], sessionId: string, sessionPath: string): SubagentRunInfo | null {
   const data = subagentMetadataData(entries);
   if (!data) return null;

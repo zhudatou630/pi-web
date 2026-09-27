@@ -24,6 +24,7 @@ import {
   readSubagentRun,
   resolveSubagentProfile,
   selectSubagentExtensionTools,
+  subagentNotFoundMessage,
   SUBAGENT_CONTROL_TOOL_NAMES,
   SUBAGENT_META_TYPE,
   SUBAGENT_RESULT_TYPE,
@@ -261,13 +262,18 @@ function parseSubagentModel(runtime: ModelRuntime, value: string | undefined) {
     const provider = requested.slice(0, slash);
     const modelId = requested.slice(slash + 1);
     const model = runtime.getModel(provider, modelId);
-    if (!model) throw new Error(`Subagent model not found: ${requested}`);
-    return model;
+    if (model) return model;
+    const sameId = runtime.getModels().filter((candidate) => candidate.id === modelId);
+    throw new Error(`Subagent model not found: ${requested}${sameId.length > 0 ? `. Same model id is available as: ${modelRefs(sameId)}` : ""}`);
   }
   const matches = runtime.getModels().filter((model) => model.id === requested);
   if (matches.length === 1) return matches[0];
   if (matches.length === 0) throw new Error(`Subagent model not found: ${requested}`);
-  throw new Error(`Subagent model is ambiguous; use provider/modelId: ${requested}`);
+  throw new Error(`Subagent model is ambiguous: ${requested}. Use one of: ${modelRefs(matches)}`);
+}
+
+function modelRefs(models: ReadonlyArray<{ provider: string; id: string }>): string {
+  return models.map((model) => `${model.provider}/${model.id}`).join(", ");
 }
 
 function contentText(content: unknown): string {
@@ -1043,7 +1049,10 @@ export function createSubagentController(
     if (!enabled()) throw new Error("Pi Web built-in sub-agents are disabled");
     const parentSessionId = request.parentContext.sessionManager.getSessionId();
     const existing = await get(request.sessionId);
-    if (!existing) throw new Error(`Subagent not found: ${request.sessionId}`);
+    if (!existing) {
+      const entries = request.parentContext.sessionManager.getEntries() as unknown as SessionEntry[];
+      throw new Error(subagentNotFoundMessage(entries, request.sessionId));
+    }
     if (existing.parentSessionId !== parentSessionId) throw new Error("Subagent does not belong to this parent session");
     if (existing.status === "running" || existing.status === "queued") throw new Error("Subagent is already running");
     const parent = dependencies.getSession(parentSessionId);
@@ -1224,7 +1233,17 @@ export function createSubagentController(
 
   async function steerForParent(parentSessionId: string, sessionId: string, message: string): Promise<void> {
     const run = await getForParent(parentSessionId, sessionId);
-    if (!run) throw new Error(`Subagent not found: ${sessionId}`);
+    if (!run) {
+      const entries = dependencies.getSession(parentSessionId)?.inner.sessionManager.getEntries() ?? [];
+      throw new Error(subagentNotFoundMessage(entries as unknown as SessionEntry[], sessionId));
+    }
+    // Steering reaches only a live run; say why it did not, and what still works.
+    if (run.status === "queued") {
+      throw new Error(`Subagent ${sessionId} is queued and has not started, so the message was not delivered. Steer it after it starts running.`);
+    }
+    if (run.status !== "starting" && run.status !== "running") {
+      throw new Error(`Subagent ${sessionId} already finished (${run.status}), so the message was not delivered. Read its result with get_subagent_result, or continue it with Agent resume.`);
+    }
     await steer(sessionId, message);
   }
 
