@@ -3,12 +3,12 @@
 import { useSyncExternalStore } from "react";
 
 export const CHAT_CONTENT_WIDTH_DEFAULT = 820;
-export const CHAT_CONTENT_WIDTH_MIN = 820;
-export const CHAT_CONTENT_WIDTH_MAX = 2000;
+export const CHAT_CONTENT_WIDTH_MIN = 680;
+export const CHAT_CONTENT_WIDTH_MAX = 1200;
 export const CHAT_CONTENT_WIDTH_STORAGE_KEY = "pi-chat-content-width";
 export const CHAT_CONTENT_FONT_SIZE_DEFAULT = 14;
-export const CHAT_CONTENT_FONT_SIZE_MIN = 12;
-export const CHAT_CONTENT_FONT_SIZE_MAX = 24;
+export const CHAT_CONTENT_FONT_SIZE_MIN = 13;
+export const CHAT_CONTENT_FONT_SIZE_MAX = 18;
 export const CHAT_CONTENT_FONT_SIZE_STORAGE_KEY = "pi-chat-content-font-size";
 
 interface ChatAppearance {

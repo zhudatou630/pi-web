@@ -1176,7 +1176,8 @@
 }
 
 .settings-range output {
-  min-width: 44px;
+  /* Fits "1200px" (48.5px) so a 4-digit value never pushes the slider. */
+  min-width: 50px;
   color: var(--text-muted);
   font-size: 13px;
   font-variant-numeric: tabular-nums;

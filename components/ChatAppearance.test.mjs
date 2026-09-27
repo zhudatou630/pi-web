@@ -34,9 +34,10 @@ test("General chat settings own the chat width preference", () => {
 test("chat width validation preserves the default and supported range", () => {
   assert.equal(clampChatContentWidth(undefined), 820);
   assert.equal(clampChatContentWidth("invalid"), 820);
-  assert.equal(clampChatContentWidth(700), 820);
+  assert.equal(clampChatContentWidth(600), 680);
   assert.equal(clampChatContentWidth(1104), 1104);
-  assert.equal(clampChatContentWidth(2400), 2000);
+  assert.equal(clampChatContentWidth(700), 700);
+  assert.equal(clampChatContentWidth(2400), 1200);
 });
 
 test("markdown hierarchy uses spacing and neutral emphasis without changing link semantics", () => {
@@ -78,8 +79,8 @@ test("chat font size preserves the default and bounds stored or supplied values"
   for (const value of [undefined, null, "invalid", Infinity, NaN]) {
     assert.equal(clampChatContentFontSize(value), 14);
   }
-  assert.equal(clampChatContentFontSize(8), 12);
-  assert.equal(clampChatContentFontSize("18"), 18);
-  assert.equal(clampChatContentFontSize(18.7), 19);
-  assert.equal(clampChatContentFontSize(30), 24);
+  assert.equal(clampChatContentFontSize(8), 13);
+  assert.equal(clampChatContentFontSize("16"), 16);
+  assert.equal(clampChatContentFontSize(15.7), 16);
+  assert.equal(clampChatContentFontSize(30), 18);
 });
