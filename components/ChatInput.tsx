@@ -935,8 +935,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     if (row) row.style.minHeight = `${row.offsetHeight}px`;
     ta.style.overflowY = "hidden";
     ta.style.height = "auto";
-    const height = ta.value ? ta.scrollHeight : 0;
-    if (height) ta.style.height = `${Math.min(height, 200)}px`;
+    // Measure even when empty: scrollHeight is an integer, so leaving an empty draft at its
+    // fractional natural height (15px × 1.5) made the first keystroke grow the composer.
+    const height = ta.scrollHeight;
+    ta.style.height = `${Math.min(height, 200)}px`;
     if (height > 200) ta.style.overflowY = "auto";
     if (row) row.style.minHeight = "";
   }, []);
