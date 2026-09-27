@@ -11,6 +11,7 @@ import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
+import { summarizeTurnActivity, type TurnActivity } from "@/lib/turn-activity";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
 import {
   classifyMissingChatEntry,
@@ -509,6 +510,25 @@ function elapsedProcessSeconds(start?: number, end?: number): number | undefined
   return Math.max(1, Math.round((end - start) / 1000));
 }
 
+/** What a settled turn did; its duration lives in the answer footer. Empty when no step fits a category. */
+function formatTurnActivity(
+  fileCount: number,
+  activity: TurnActivity | undefined,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  const count = (value: number | undefined, one: string, many: string) =>
+    value ? t(value === 1 ? one : many, { count: value }) : null;
+  const label = [
+    count(fileCount, "chat.activity.changedFile", "chat.activity.changedFiles"),
+    activity?.explored ? t("chat.activity.explored") : null,
+    count(activity?.commands, "chat.activity.ranCommand", "chat.activity.ranCommands"),
+    activity?.researched ? t("chat.activity.researched") : null,
+    count(activity?.subagents, "chat.activity.usedSubagent", "chat.activity.usedSubagents"),
+    count(activity?.images, "chat.activity.generatedImage", "chat.activity.generatedImages"),
+  ].filter(Boolean).join(" · ");
+  return label || (activity?.thought ? t("chat.activity.thought") : "");
+}
+
 function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: string, params?: Record<string, string | number>) => string }) {
   const [elapsed, setElapsed] = useState(() => Math.max(0, Math.round((Date.now() - startTime) / 1000)));
   useEffect(() => {
@@ -535,12 +555,15 @@ function ProcessDetailsGroup({
   isMobile = false,
   activeStepSummary = null,
   isStreaming = false,
+  activityLabel = null,
   children,
   t,
 }: {
   messageCount: number;
   toolCallCount: number;
+  /** Only for turns without a final answer; answered turns show it in the footer. */
   durationSeconds?: number;
+  activityLabel?: string | null;
   startTime?: number;
   defaultExpanded?: boolean;
   reveal?: boolean;
@@ -564,11 +587,11 @@ function ProcessDetailsGroup({
   // A step is a tool call; thinking and notes are shown but not counted.
   const stepsUnit = t(toolCallCount === 1 ? "chat.step" : "chat.steps");
   const formattedDuration = durationSeconds !== undefined && durationSeconds > 0 ? formatDuration(durationSeconds, t) : null;
-  const stepsLabel = formattedDuration
+  const stepsLabel = activityLabel || (formattedDuration
     ? (toolCallCount > 0
       ? t("chat.workedForSteps", { duration: formattedDuration, count: toolCallCount, steps: stepsUnit })
       : t("chat.workedFor", { duration: formattedDuration }))
-    : (toolCallCount > 0 ? `${toolCallCount} ${stepsUnit}` : t("chat.processDetails"));
+    : (toolCallCount > 0 ? `${toolCallCount} ${stepsUnit}` : t("chat.processDetails")));
 
   // Automatically keep scrolled to the latest step on mount/update unless user scrolled up
   useLayoutEffect(() => {
@@ -644,6 +667,7 @@ function ProcessDetailsGroup({
         ) : (
           <span
             data-summary-label=""
+            title={activityLabel ?? undefined}
             style={{
               minWidth: 0,
               overflow: "hidden",
@@ -1465,8 +1489,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const completedAssistantParts = useMemo(() => messages.map((message) => (
     message.role === "assistant" ? partitionAssistantMessage(message) : null
   )), [messages]);
-  const writtenFilesByAssistantIndex = useMemo(() => {
+  const { writtenFilesByAssistantIndex, turnActivityByAssistantIndex } = useMemo(() => {
     const filesByIndex = new Map<number, WrittenFile[]>();
+    const activityByIndex = new Map<number, TurnActivity>();
     for (let idx = 0; idx < messages.length;) {
       const boundaryIdx = isMessageGroupBoundary(messages[idx]) ? idx : -1;
       let endIdx = boundaryIdx >= 0 ? idx + 1 : idx;
@@ -1482,10 +1507,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           finalAssistantIdx,
           extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd),
         );
+        activityByIndex.set(finalAssistantIdx, summarizeTurnActivity(turnContent, toolResultsMap));
       }
       idx = endIdx;
     }
-    return filesByIndex;
+    return { writtenFilesByAssistantIndex: filesByIndex, turnActivityByAssistantIndex: activityByIndex };
   }, [completedAssistantParts, messageCwd, messages, toolResultsMap]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
@@ -1826,7 +1852,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 messageRefs.current[refIndex] = el;
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; isProcess?: boolean } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; turnDurationSeconds?: number; isProcess?: boolean } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -1871,6 +1897,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     isTurnEnd={options.isTurnEnd}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
+                    turnDurationSeconds={options.turnDurationSeconds}
                     isProcess={options.isProcess}
                     runningToolIds={msg.role === "assistant" && msg.content.some((block) => block.type === "toolCall" && runningToolIds.has(block.toolCallId)) ? runningToolIds : undefined}
                   />
@@ -2062,6 +2089,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   agentPhase,
                   hasLiveAnswer,
                 );
+                // Once the answer streams every step has finished, so the header already says what the turn did.
+                const answeringLive = !finalAnswerMessage && isLiveTail && Boolean(streamingParts.answerMessage) && !liveProcessActive;
                 const activeStepSummary = latchedLiveProcessSummary(
                   liveProcessSummary(streamingAssistant, agentPhase, t),
                   liveProcessActive,
@@ -2073,6 +2102,27 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   ? messages[boundaryIdx].timestamp
                   : processStartTime;
                 const processDurationSeconds = elapsedProcessSeconds(turnStartTime ?? processStartTime, processEndTime);
+                let activityLabel: string | null = null;
+                if (finalAnswerMessage) {
+                  activityLabel = formatTurnActivity(
+                    writtenFilesByAssistantIndex.get(finalAssistantIdx)?.length ?? 0,
+                    turnActivityByAssistantIndex.get(finalAssistantIdx),
+                    t,
+                  );
+                } else if (!liveProcessActive) {
+                  const turnContent = messages.slice(boundaryIdx + 1, endIdx)
+                    .flatMap((message) => message.role === "assistant" ? message.content : [])
+                    .concat(isLiveTail ? streamingParts.processMessage?.content ?? [] : []);
+                  const summary = formatTurnActivity(
+                    extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd).length,
+                    summarizeTurnActivity(turnContent, toolResultsMap),
+                    t,
+                  );
+                  // An interrupted or failed turn has no footer, so its duration stays in the header.
+                  activityLabel = summary && !answeringLive && processDurationSeconds
+                    ? `${summary} · ${formatDuration(processDurationSeconds, t)}`
+                    : summary || null;
+                }
 
                 if (processViews.length > 0) {
                   markOutlineTarget(processEntryIds);
@@ -2085,7 +2135,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       <ProcessDetailsGroup
                         messageCount={processViews.length}
                         toolCallCount={processToolCount}
-                        durationSeconds={processDurationSeconds}
+                        durationSeconds={finalAnswerMessage || answeringLive ? undefined : processDurationSeconds}
+                        activityLabel={activityLabel}
                         startTime={turnStartTime ?? processStartTime}
                         defaultExpanded={!finalAnswerMessage && endIdx === messages.length}
                         reveal={revealProcess}
@@ -2120,6 +2171,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     isTurnEnd: true,
                     messageOverride: finalAnswerMessage,
                     writtenFiles: writtenFilesByAssistantIndex.get(finalAssistantIdx),
+                    turnDurationSeconds: elapsedProcessSeconds(
+                      turnStartTime ?? processStartTime,
+                      (messages[finalAssistantIdx] as AssistantMessage).completedAt ?? messages[finalAssistantIdx].timestamp,
+                    ),
                   }));
                 }
                 if (finalAssistantIdx >= 0) {

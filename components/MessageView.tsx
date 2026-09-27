@@ -19,6 +19,7 @@ import { parseApplyPatch } from "@/lib/apply-patch";
 import { isApplyPatchToolName, isEditToolName } from "@/lib/tool-names";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
+import { iconStroke } from "./iconStroke";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import type { SubagentToolDetails } from "@/lib/subagent-extension";
@@ -35,6 +36,7 @@ import type {
   ToolCallContent,
   ThinkingContent,
 } from "@/lib/types";
+import { CopyGlyph } from "./CopyGlyph";
 
 const MAX_THINKING_CACHE_ENTRIES = 100;
 const thinkingContentCache = new Map<string, Promise<string>>();
@@ -158,6 +160,8 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
+  /** User send to final answer; shown in the turn-end footer. */
+  turnDurationSeconds?: number;
   isProcess?: boolean;
   /** Tool calls still executing (from `tool_execution_start/end`); their cards tick live. */
   runningToolIds?: ReadonlySet<string>;
@@ -179,7 +183,8 @@ export function getModelDisplayName(
   return configured.find((model) => model.id === normalizedResponse)?.name
     ?? configured.find((model) => normalizedResponse.endsWith(`/${model.id}`))?.name
     ?? Object.entries(modelNames ?? {}).find(([key]) => key.toLowerCase() === normalizedResponse)?.[1]
-    ?? (provider && responseModel ? `${provider}/${responseModel}` : responseModel);
+    // Unconfigured model: its bare id, without provider or a router's `vendor/` prefix.
+    ?? responseModel.slice(responseModel.lastIndexOf("/") + 1);
 }
 
 function elapsedSeconds(start?: number, end?: number): number | undefined {
@@ -188,16 +193,16 @@ function elapsedSeconds(start?: number, end?: number): number | undefined {
   return secs > 0 ? secs : undefined;
 }
 
-function formatTime(ts?: number): string | null {
+function formatTime(ts: number | undefined, locale: string): string | null {
   if (!ts) return null;
   const d = new Date(ts);
   const now = new Date();
   const isToday = d.getFullYear() === now.getFullYear() &&
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   if (isToday) return time;
-  const date = d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
+  const date = d.toLocaleDateString(locale, { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
   return `${date} ${time}`;
 }
 
@@ -234,12 +239,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, sessionId, writtenFiles, isProcess, runningToolIds }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} isProcess={isProcess} runningToolIds={runningToolIds} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationSeconds={turnDurationSeconds} isProcess={isProcess} runningToolIds={runningToolIds} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -276,6 +281,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.isTurnEnd === next.isTurnEnd
     && prev.modelName === next.modelName
     && prev.writtenFiles === next.writtenFiles
+    && prev.turnDurationSeconds === next.turnDurationSeconds
     && prev.sessionId === next.sessionId
     && prev.isProcess === next.isProcess;
 });
@@ -321,7 +327,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -349,7 +355,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
     ? commandText.slice(commandSeparator + 1)
     : "";
 
-  const time = formatTime(message.timestamp);
+  const time = formatTime(message.timestamp, locale);
   const canFork = !!entryId && !!onFork;
   const copyTarget = commandText ?? content;
   const editTarget = commandText ? replaceUserMessageText(message, commandText) : message;
@@ -481,17 +487,18 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 
       </div>
 
-      {/* Bottom row: action buttons + timestamp */}
-      {(time || canFork || canNavigate || true) && (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "flex-end",
-          gap: 6, marginTop: 2,
-        }}>
+      {/* Bottom row: timestamp, then the actions pinned to the right edge. */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "flex-end",
+        gap: 4, marginTop: 2,
+      }}>
+          {/* The answer footer already dates the turn; the send time is on-demand detail. */}
+          {time && <span data-user-time style={{ fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", userSelect: "none", opacity: hovered ? 1 : 0, transition: "opacity 0.12s ease" }}>{time}</span>}
           <div
             className="message-action-group"
             style={{
-              opacity: hovered ? 1 : 0,
-              pointerEvents: hovered ? "auto" : "none",
+              opacity: (hovered || forking) ? 1 : 0,
+              pointerEvents: (hovered || forking) ? "auto" : "none",
             }}
           >
             <button
@@ -508,20 +515,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 </svg>
               ) : (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  <CopyGlyph />
                 </svg>
               )}
             </button>
-          </div>
-          {(canFork || canNavigate) && (
-            <div
-              className="message-action-group"
-              style={{
-                opacity: (hovered || forking) ? 1 : 0,
-                pointerEvents: (hovered || forking) ? "auto" : "none",
-              }}
-            >
               {canNavigate && (
                 <button
                   type="button"
@@ -553,11 +550,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                   </svg>
                 </button>
               )}
-            </div>
-          )}
-          {time && <span style={{ fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", userSelect: "none" }}>{time}</span>}
-        </div>
-      )}
+          </div>
+      </div>
     </div>
   );
 }
@@ -575,6 +569,7 @@ function AssistantMessageView({
   entryId,
   searchBlock,
   writtenFiles,
+  turnDurationSeconds,
   isProcess,
   runningToolIds,
 }: {
@@ -590,10 +585,11 @@ function AssistantMessageView({
   entryId?: string;
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
+  turnDurationSeconds?: number;
   isProcess?: boolean;
   runningToolIds?: ReadonlySet<string>;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [copied, setCopied] = useState(false);
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
@@ -620,9 +616,10 @@ function AssistantMessageView({
     .filter((block): block is TextContent => block.type === "text")
     .map((block) => block.text)
     .join("\n");
-  const time = isTurnEnd && !isStreaming ? formatTime(message.timestamp) : null;
+  const time = isTurnEnd && !isStreaming ? formatTime(message.timestamp, locale) : null;
   const modelLabel = isTurnEnd && !isStreaming ? (modelName || message.model || null) : null;
-  const showFooter = isTurnEnd && !isStreaming && Boolean(modelLabel || textContent || time);
+  const duration = isTurnEnd && !isStreaming && turnDurationSeconds ? formatDuration(turnDurationSeconds, t) : null;
+  const showFooter = isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent);
   const copyContent = () => {
     copyText(textContent).then(() => {
       setCopied(true);
@@ -725,18 +722,35 @@ function AssistantMessageView({
       )}
 
       {showFooter && (
-        <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+        // Who answered, how long the turn took, when it ended; copy sits right after them.
+        <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>
           {modelLabel && (
-            <div data-answer-model style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-dim)", fontSize: 11, fontFamily: "var(--font-ui)" }}>
-              {modelLabel}
-            </div>
+            <span data-answer-model style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
           )}
-          {(textContent || time) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto", flexShrink: 0 }}>
-            {textContent && (
+          {duration && (
+            <span data-answer-duration title={t("chat.turnDuration")} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
+              <svg className="meta-row-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 22h14M5 2h14" />
+                <path d="M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22" />
+                <path d="M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2" />
+              </svg>
+              {duration}
+            </span>
+          )}
+          {time && (
+            <span data-answer-time style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
+              <svg className="meta-row-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+              {time}
+            </span>
+          )}
+          {textContent && (
               <button
                 type="button"
                 className="answer-copy-button message-action-button"
+                style={{ marginLeft: -5 }}
                 data-copied={copied ? "true" : undefined}
                 onClick={copyContent}
                 title={copied ? t("i18n.copied") : t("i18n.copyMessage")}
@@ -748,14 +762,10 @@ function AssistantMessageView({
                   </svg>
                 ) : (
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    <CopyGlyph />
                   </svg>
                 )}
               </button>
-            )}
-            {time && <span style={{ color: "var(--text-dim)", fontSize: 11, fontVariantNumeric: "tabular-nums", userSelect: "none" }}>{time}</span>}
-          </div>
           )}
         </div>
       )}
@@ -849,7 +859,7 @@ function ProcessErrorCard({ error }: { error: string }) {
 
 /** The one time slot on a step card: frozen duration when done, ticking while live, start time on hover. */
 function StepDuration({ seconds, startTime, live }: { seconds?: number; startTime?: number; live?: boolean }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!live) return;
@@ -859,7 +869,7 @@ function StepDuration({ seconds, startTime, live }: { seconds?: number; startTim
   const value = live && startTime !== undefined ? Math.max(0, Math.round((now - startTime) / 1000)) : seconds;
   if (value === undefined) return null;
   const title = startTime !== undefined
-    ? t("chat.stepStartedAt", { time: new Date(startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
+    ? t("chat.stepStartedAt", { time: new Date(startTime).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
     : undefined;
   return (
     <span title={title} style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>
@@ -1581,10 +1591,10 @@ function PairedResult({ text, images, isEmpty, isError }: {
 }
 
 function CompactionMessageView({ message }: { message: CustomMessage }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const summary = getMessageText(message.content);
   const parsedSummary = useMemo(() => parseCompactionSummary(summary), [summary]);
-  const time = formatTime(message.timestamp);
+  const time = formatTime(message.timestamp, locale);
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -1719,7 +1729,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
 }
 
 function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const isHiddenDisplay = message.display === false;
   const [contentExpanded, setContentExpanded] = useState(!isHiddenDisplay);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -1729,7 +1739,7 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   const hasDetails = message.details !== undefined;
   const detailsText = hasDetails ? safeJson(message.details) : "";
   const title = formatCustomType(message.customType);
-  const time = formatTime(message.timestamp);
+  const time = formatTime(message.timestamp, locale);
 
   const copyContent = () => {
     copyText(text || detailsText).then(() => {

@@ -1394,7 +1394,7 @@ pre, code {
 
 .message-action-group {
   display: flex;
-  gap: 3px;
+  gap: 0;
   align-items: center;
   transition: opacity 0.12s ease;
 }
@@ -1424,13 +1424,22 @@ pre, code {
   line-height: 1;
   transition: color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease;
 }
+/* Sarasa UI inks 11px digits and CJK ~0.9px above the centre of their line box
+   (measured against a flex-centred 12px icon), so icons in those metadata rows
+   rise by that much to centre on the ink of the text, not its box. */
+.message-action-button svg,
+.meta-row-icon {
+  position: relative;
+  top: -0.875px;
+}
 .message-action-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 @media (pointer: coarse) {
+  /* Narrower than tall: adjacent 12px icons stay 14px apart while each target keeps 26x32. */
   .message-action-button {
-    width: 32px;
+    width: 26px;
     height: 32px;
   }
 }

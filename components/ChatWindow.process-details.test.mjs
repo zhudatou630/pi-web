@@ -71,7 +71,8 @@ test("streams process blocks inside steps and answer blocks outside", () => {
 
 test("keeps completed turn projections stable while only the streaming tail changes", () => {
   assert.match(source, /const completedAssistantParts = useMemo\(\(\) => messages\.map/);
-  assert.match(source, /const writtenFilesByAssistantIndex = useMemo/);
+  assert.match(source, /const \{ writtenFilesByAssistantIndex, turnActivityByAssistantIndex \} = useMemo/);
+  assert.match(source, /durationSeconds=\{finalAnswerMessage \|\| answeringLive \? undefined : processDurationSeconds\}/);
   assert.match(source, /const finalParts = completedAssistantParts\[finalAssistantIdx\]/);
   assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);
 });
@@ -166,4 +167,8 @@ test("only auto-scrolls process details when the list overflows", () => {
 test("disables scroll anchoring on chat container and steps list to prevent jitter", () => {
   assert.match(source, /ref=\{scrollContainerRef\}[\s\S]*?overflowAnchor:\s*"none"/);
   assert.match(source, /ref=\{scrollBoxRef\}[\s\S]*?overflowAnchor:\s*"none"/);
+});
+
+test("keeps an unanswered turn's duration beside what it did", () => {
+  assert.match(source, /activityLabel = summary && !answeringLive && processDurationSeconds\s*\? `\$\{summary\} · \$\{formatDuration\(processDurationSeconds, t\)\}`/);
 });

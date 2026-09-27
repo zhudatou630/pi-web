@@ -56,6 +56,11 @@ test("renders generated image mentions as chips in user messages", () => {
   assert.doesNotMatch(html, /@&quot;\.pi\/generated-images/);
 });
 
+test("keeps the user send time out of the resting view", () => {
+  const html = renderMessage({ role: "user", content: "hi", timestamp: Date.now() });
+  assert.match(html, /data-user-time[^>]*opacity:0/);
+});
+
 test("updates a reused message when its written files change", () => {
   const props = { message: { role: "assistant", content: [] } };
   assert.equal(MessageView.compare(props, props), true);
@@ -222,13 +227,14 @@ test("restores copy and time only on a completed final answer", () => {
     timestamp,
     usage: { input: 246, output: 267, cacheRead: 0, cacheWrite: 0, cost: { total: 0.0774 } },
   };
-  const html = renderMessage(message, { isTurnEnd: true, modelName: "GPT-6 Astra" });
-  assert.match(html, /data-answer-footer[\s\S]*data-answer-model[^>]*>GPT-6 Astra<\/div>/);
+  const html = renderMessage(message, { isTurnEnd: true, modelName: "GPT-6 Astra", turnDurationSeconds: 47 });
+  assert.match(html, /data-answer-footer[\s\S]*data-answer-model[^>]*>GPT-6 Astra<\/span>[\s\S]*data-answer-duration[\s\S]*47s[\s\S]*data-answer-time[\s\S]*title="Copy message"/);
   assert.equal((html.match(/GPT-6 Astra/g) ?? []).length, 1);
   const fallbackHtml = renderMessage(message, { isTurnEnd: true });
-  assert.match(fallbackHtml, /data-answer-footer[\s\S]*data-answer-model[^>]*>hidden-model<\/div>/);
+  assert.match(fallbackHtml, /data-answer-footer[\s\S]*data-answer-model[^>]*>hidden-model<\/span>/);
+  assert.doesNotMatch(fallbackHtml, /47s/);
   assert.match(html, /margin-bottom:16px/);
-  assert.match(html.slice(html.indexOf("data-answer-footer")), /margin-left:auto/);
+  assert.doesNotMatch(source, /toLocale(?:Date|Time)?String\(\[\]/, "dates follow the app locale, not the browser's");
   assert.match(html, /title="Copy message"/);
   assert.ok(html.includes(new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
   assert.doesNotMatch(html, /opacity:0|hidden-model|246 in|267 out|\$0\.0774/);
@@ -545,4 +551,11 @@ test("a streaming apply_patch shows its patch text, never the JSON wrapper", asy
   // The generic raw-input <pre> must be skipped for patch tools in every case.
   assert.match(source, /\(isStreamingInput \|\| !isEditTool\) && !isApplyPatchTool &&/);
   assert.match(source, /isApplyPatchTool && applyPatchText === undefined && \(/);
+});
+
+test("names an unconfigured model by its bare id", async () => {
+  const { getModelDisplayName } = await jiti.import("./MessageView.tsx");
+  assert.equal(getModelDisplayName("xai", "grok-4.7", {}), "grok-4.7");
+  assert.equal(getModelDisplayName("openrouter", "anthropic/claude-x", {}), "claude-x");
+  assert.equal(getModelDisplayName("xai", "grok-4.7", { "xai:grok-4.7": "Grok 4.7" }), "Grok 4.7");
 });
