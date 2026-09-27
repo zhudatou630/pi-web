@@ -231,7 +231,8 @@ export function createSubagentExtension(
           // The early background failure is already queued as unread; this result delivers it.
           if (run.runInBackground) runtime.consume(ctx.sessionManager.getSessionId(), run);
           return {
-            content: [{ type: "text", text: subagentFinalText(run) }],
+            // details are not model-visible; the ID must be in the text for a later `resume`.
+            content: [{ type: "text", text: `${subagentFinalText(run)}\n\n[Subagent session ID: ${run.sessionId} (pass as resume to continue)]` }],
             details: subagentToolDetails(run),
           };
         },
