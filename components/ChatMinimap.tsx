@@ -5,10 +5,14 @@ import { createPortal } from "react-dom";
 import type { SessionOutlineItem } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
 import {
-  MINIMAP_MARKER_HEIGHT, MINIMAP_MAX_MARKERS, OUTLINE_MAX_HEIGHT, OUTLINE_ROW_HEIGHT,
-  findActiveUser, mapEntriesToUsers, markerWindow, minimapReadingLine, outlineWindow, revealOutlineEntry, type MinimapAnchor,
+  MINIMAP_MARKER_HEIGHT, MINIMAP_MARKER_OVERSCAN, OUTLINE_MAX_HEIGHT, OUTLINE_ROW_HEIGHT,
+  findActiveUser, mapEntriesToUsers, markerIndexAt, markerWindow, minimapReadingLine, minimapTriggerHeight,
+  outlineWindow, revealOutlineEntry, visibleMarkerCount, type MinimapAnchor,
 } from "@/lib/chat-minimap";
 import styles from "./ChatMinimap.module.css";
+
+/** Rows kept visible above/below the scrubbed row before the directory glides. */
+const SCRUB_MARGIN_ROWS = 2;
 
 interface Props {
   sessionId: string | null;
@@ -41,8 +45,11 @@ export function ChatMinimapRail({
   const [open, setOpen] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [cursor, setCursor] = useState(0);
+  const [scrub, setScrub] = useState<number | null>(null);
   const [jump, setJump] = useState<JumpState>(null);
   const request = useRef(0);
+  const scrubRef = useRef<number | null>(null);
+  const tickWindowRef = useRef<HTMLSpanElement>(null);
   const pendingFocus = useRef<number | null>(null);
   const wasOpen = useRef(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,7 +57,15 @@ export function ChatMinimapRail({
   const jumpCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelId = useId();
   const activeIndex = items.findIndex((item) => item.entryId === activeEntryId);
-  const markers = markerWindow(items.length, activeIndex);
+  const markerCount = visibleMarkerCount(items.length, maxHeight);
+  const markers = markerWindow(items.length, activeIndex, markerCount);
+  const tapeStart = Math.max(0, markers.start - MINIMAP_MARKER_OVERSCAN);
+  const tapeEnd = Math.min(items.length, markers.end + MINIMAP_MARKER_OVERSCAN);
+  const moreAbove = markers.start > 0;
+  const moreBelow = markers.end < items.length;
+  const tickMask = moreAbove || moreBelow
+    ? `linear-gradient(to bottom, ${moreAbove ? "transparent, black 22%" : "black"}, ${moreBelow ? "black 78%, transparent" : "black"})`
+    : undefined;
   const listHeight = Math.min(items.length * OUTLINE_ROW_HEIGHT, maxHeight - (jump?.state === "error" ? 28 : 0));
   const { start, end } = outlineWindow(items.length, scrollTop, listHeight);
 
@@ -124,7 +139,8 @@ export function ChatMinimapRail({
     const list = listRef.current;
     if (!list) return;
     if (!wasOpen.current) {
-      const index = Math.max(0, activeIndex);
+      // Opened by scrubbing: centre on the tick under the pointer, otherwise on the current turn.
+      const index = Math.max(0, scrubRef.current ?? activeIndex);
       list.scrollTop = Math.max(0, (index + 0.5) * OUTLINE_ROW_HEIGHT - listHeight / 2);
       setCursor(index);
       wasOpen.current = true;
@@ -159,6 +175,21 @@ export function ChatMinimapRail({
     setOpen(true);
   }
 
+  function scrubTo(index: number | null) {
+    if (index === scrubRef.current) return;
+    scrubRef.current = index;
+    setScrub(index);
+    const list = listRef.current;
+    if (index === null || !list) return;
+    list.scrollTop = revealOutlineEntry(index, list.scrollTop, listHeight, SCRUB_MARGIN_ROWS);
+    setScrollTop(list.scrollTop);
+  }
+
+  function indexAtPointer(clientY: number) {
+    const rect = tickWindowRef.current?.getBoundingClientRect();
+    return rect ? markerIndexAt(clientY - rect.top, markers) : null;
+  }
+
   if (!items.length) return null;
   return (
     <div
@@ -182,19 +213,21 @@ export function ChatMinimapRail({
         ref={triggerRef}
         type="button"
         className={styles.trigger}
-        style={{ height: Math.min(maxHeight, Math.max(20, (markers.end - markers.start) * MINIMAP_MARKER_HEIGHT + 6)) }}
+        style={{ height: minimapTriggerHeight(markers.end - markers.start) }}
         aria-label={label}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-busy={jump?.state === "loading" || undefined}
+        onMouseMove={(event) => scrubTo(indexAtPointer(event.clientY))}
+        onMouseLeave={() => scrubTo(null)}
         onClick={(event) => {
           if (event.detail === 0) {
             focusEntry(Math.max(0, activeIndex));
-          } else {
-            if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-            if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-            setOpen((v) => !v);
+            return;
           }
+          // Pointer click jumps straight to the tick under it; hovering already opened the directory.
+          const index = indexAtPointer(event.clientY);
+          if (index !== null) void jumpTo(items[index].entryId);
         }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -203,15 +236,29 @@ export function ChatMinimapRail({
           }
         }}
       >
-        {items.slice(markers.start, markers.end).map((item, offset) => (
-          <span
-            key={item.entryId}
-            className={styles.marker}
-            data-marker-index={markers.start + offset}
-            data-active={activeEntryId === item.entryId ? "true" : undefined}
-            aria-hidden="true"
-          />
-        ))}
+        <span
+          ref={tickWindowRef}
+          className={styles.tickWindow}
+          style={{ height: (markers.end - markers.start) * MINIMAP_MARKER_HEIGHT, maskImage: tickMask, WebkitMaskImage: tickMask }}
+          aria-hidden="true"
+        >
+          {/* The tape keeps absolute tick positions and slides, so the scale moves, not the marker. */}
+          <span className={styles.tape} style={{ transform: `translateY(${-markers.start * MINIMAP_MARKER_HEIGHT}px)` }}>
+            {items.slice(tapeStart, tapeEnd).map((item, offset) => {
+              const index = tapeStart + offset;
+              return (
+                <span
+                  key={item.entryId}
+                  className={styles.marker}
+                  style={{ top: index * MINIMAP_MARKER_HEIGHT }}
+                  data-marker-index={index}
+                  data-active={activeEntryId === item.entryId ? "true" : undefined}
+                  data-scrub={scrub === index ? "true" : undefined}
+                />
+              );
+            })}
+          </span>
+        </span>
       </button>
       {open && (
         <div className={styles.panel} style={{ width }}>
@@ -227,6 +274,7 @@ export function ChatMinimapRail({
                       className={styles.row}
                       style={{ top: index * OUTLINE_ROW_HEIGHT }}
                       data-outline-index={index}
+                      data-scrub={scrub === index ? "true" : undefined}
                       aria-current={activeEntryId === item.entryId ? "location" : undefined}
                       aria-label={item.preview}
                       tabIndex={index === (cursor >= start && cursor < end ? cursor : start) ? 0 : -1}
@@ -288,7 +336,7 @@ function LocatedMinimap({ items, scrollContainer, contentContainer, loadedEntryI
         const visibleBottom = Math.min(window.innerHeight, viewport.bottom);
         const visibleRight = Math.min(window.innerWidth, viewport.right);
         const maxHeight = Math.max(0, Math.min(OUTLINE_MAX_HEIGHT, visibleBottom - visibleTop - 16));
-        const markerHeight = Math.min(maxHeight, Math.max(20, Math.min(MINIMAP_MAX_MARKERS, items.length) * MINIMAP_MARKER_HEIGHT + 6));
+        const markerHeight = minimapTriggerHeight(visibleMarkerCount(items.length, maxHeight));
         const nextPosition = {
           // Anchor to the chat viewport's outer right edge, NEVER the prose column.
           left: visibleRight - 26,
@@ -374,7 +422,8 @@ export function useSessionOutline(
 export function ChatMinimap({ sessionId, leafId, outlineRevision, ...props }: Props) {
   const { t } = useI18n();
   const items = useSessionOutline(sessionId, leafId, outlineRevision);
-  if (!sessionId || !items.length) return null;
+  // One question has nowhere to navigate to.
+  if (!sessionId || items.length < 2) return null;
   return <LocatedMinimap key={JSON.stringify([sessionId, leafId])} {...props} items={items} label={t("chatMinimap.userOutline")} />;
 }
 
