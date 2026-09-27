@@ -438,6 +438,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const executeBashRef = useRef<(command: string, excludeFromContext: boolean) => Promise<void> | undefined>(undefined);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
+  const warmCwdRef = useRef(newSessionCwd);
   const newSessionPromotedRef = useRef(false);
   const newSessionModelOverrideRef = useRef<SelectedModel | null>(null);
   const thinkingLevelOverrideRef = useRef<ThinkingLevelOption | null>(null);
@@ -739,6 +740,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!isNew || !newSessionCwd) return sessionIdRef.current;
     if (ensuringNewSessionRef.current) return ensuringNewSessionRef.current;
 
+    const cwd = newSessionCwd;
     const promise = (async () => {
       // Only send explicit user overrides. The server resolves the current
       // enabledModels scope atomically with AgentSession construction.
@@ -771,6 +773,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         thinkingLevel?: ThinkingLevelOption;
         contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
       };
+      // The draft moved to another cwd while this runtime was starting; drop it.
+      if (warmCwdRef.current !== cwd) return null;
       const realId = result.sessionId;
       sessionIdRef.current = realId;
       if (visiblePaneRef.current) {
@@ -846,6 +850,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const closeEvents = useCallback(() => {
     eventConnectionRef.current?.close();
   }, []);
+
+  // The slash menu / System panel pre-warm a runtime, which is bound to the cwd it
+  // started in (resources, project overrides, context files). When the draft moves
+  // to another cwd, drop it so commands, tools and the first prompt use the new cwd.
+  // The orphaned runtime is reclaimed by the server idle timeout.
+  useEffect(() => {
+    if (!isNew || warmCwdRef.current === newSessionCwd) return;
+    warmCwdRef.current = newSessionCwd;
+    if (!sessionIdRef.current && !ensuringNewSessionRef.current) return;
+    cancelEventStreamGrace();
+    closeEvents();
+    sessionIdRef.current = null;
+    ensuringNewSessionRef.current = null;
+    setSlashCommands([]);
+    setSystemPrompt(null);
+    setContextUsage(null);
+    onSystemToolsChange?.(null);
+  }, [isNew, newSessionCwd, cancelEventStreamGrace, closeEvents, onSystemToolsChange]);
 
   const ensureEventsConnected = useCallback((sid: string) => (
     eventConnectionRef.current!.ensureConnected(sid)

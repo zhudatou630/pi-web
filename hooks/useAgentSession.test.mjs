@@ -724,3 +724,18 @@ test("the server's auto-compaction value is mirrored on load and reconcile", () 
   assert.match(source, /if \(typeof state\?\.autoCompactionEnabled === "boolean"\) \{\s*setAutoCompactionEnabled\(state\.autoCompactionEnabled\);/);
   assert.match(source, /autoCompactionEnabled\?: boolean/);
 });
+
+test("changing a draft's cwd drops the runtime pre-warmed in the old cwd", () => {
+  const resetSource = source.slice(
+    source.indexOf("if (!isNew || warmCwdRef.current === newSessionCwd) return;"),
+    source.indexOf("}, [isNew, newSessionCwd, cancelEventStreamGrace"),
+  );
+  assert.match(resetSource, /sessionIdRef\.current = null;/);
+  assert.match(resetSource, /ensuringNewSessionRef\.current = null;/);
+  assert.match(resetSource, /setSlashCommands\(\[\]\);/);
+  const ensureSource = source.slice(
+    source.indexOf("const ensureNewSession = useCallback"),
+    source.indexOf("sessionIdRef.current = realId;"),
+  );
+  assert.match(ensureSource, /if \(warmCwdRef\.current !== cwd\) return null;/);
+});
