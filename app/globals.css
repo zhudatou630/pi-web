@@ -1118,6 +1118,24 @@ pre, code {
   }
 }
 
+[data-step-action] {
+  color: var(--text-muted);
+  transition: color 0.12s ease, opacity 0.15s ease;
+}
+[data-step-action]:hover,
+[data-step-action]:focus-visible {
+  color: var(--text);
+}
+@media (hover: hover) and (pointer: fine) {
+  .process-details-list [data-step-action] {
+    opacity: 0;
+  }
+  .process-details-list [data-step-card]:hover [data-step-action],
+  .process-details-list [data-step-action]:focus-visible {
+    opacity: 1;
+  }
+}
+
 .process-details-list [data-step-trigger]:focus-visible [data-step-chevron],
 .process-details-list [data-step-card] [data-step-trigger][aria-expanded="true"] [data-step-chevron] {
   opacity: 0.6 !important;

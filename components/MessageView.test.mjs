@@ -325,9 +325,25 @@ test("keeps pending and successful tools neutral while retaining error emphasis"
     }
     const preview = state === "generating" ? "Generating parameters" : "src/example.ts";
     assert.ok(html.includes(preview));
-    assert.match(html, /color:var\(--text-muted\);font-family:var\(--font-mono\);font-size:11px;overflow:hidden/);
+    assert.doesNotMatch(html, /font-mono/); // Paths and status text are UI, not code.
     assert.doesNotMatch(html, /tool-result-payload/); // Still collapsed by default.
   }
+});
+
+test("shows tool paths cwd-relative with the directory clipped before the file name", () => {
+  const block = { type: "toolCall", toolCallId: "read-path", toolName: "read", input: { path: "/repo/components/deep/File.tsx" } };
+  const html = renderMessage({ role: "assistant", content: [block] }, { cwd: "/repo", onOpenFile: () => {} });
+  assert.match(html, /direction:rtl;color:var\(--text-dim\)"><bdi>components\/deep\/<\/bdi>/);
+  assert.match(html, /color:var\(--text-muted\)">File\.tsx<\/span>/);
+  assert.match(html, /data-step-action=""[^>]*title="\/repo\/components\/deep\/File\.tsx"/);
+});
+
+test("prefers a search pattern over its directory", () => {
+  const block = { type: "toolCall", toolCallId: "grep-1", toolName: "grep", input: { pattern: "fooBar", path: "/repo/src" } };
+  const html = renderMessage({ role: "assistant", content: [block] }, { cwd: "/repo", onOpenFile: () => {} });
+  assert.match(html, />fooBar</);
+  assert.doesNotMatch(html, /font-mono/); // Collapsed rows stay in the UI face.
+  assert.doesNotMatch(html, /data-step-action/);
 });
 
 const COMPLETE_SKILL_EXPANSION = `<skill name="review" location="/skills/review/SKILL.md">

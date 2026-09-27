@@ -16,7 +16,9 @@ import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { parseApplyPatch } from "@/lib/apply-patch";
-import { isApplyPatchToolName, isEditToolName } from "@/lib/tool-names";
+import { isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
+import { resolveLocalFilePath } from "@/lib/file-links";
+import { getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import { iconStroke } from "./iconStroke";
@@ -907,7 +909,7 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} startTime={startTime} live={live} onOpenSession={onOpenSession} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} startTime={startTime} live={live} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
   }
   return null;
 }
@@ -1063,7 +1065,7 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
-function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; onOpenSession?: (sessionId: string) => void }) {
+function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFile, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const inputStr = getToolCallInputText(block);
@@ -1092,6 +1094,10 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
   const subagent = isSubagentToolDetails(result?.details) ? result.details : null;
+  const preview = getToolPreview(block);
+  const previewPath = preview.path;
+  const opensFile = block.toolName.toLowerCase() === "read" || isEditTool || isWriteToolName(block.toolName);
+  const openablePath = previewPath && opensFile && !isError ? resolveLocalFilePath(previewPath, cwd) : null;
 
   return (
     <div
@@ -1134,14 +1140,34 @@ function ToolCallBlock({ block, result, duration, startTime, live, onOpenSession
           <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {toolLabel}
           </span>
-          <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
-            {isStreamingInput ? t("chat.generatingToolInput") : getToolPreview(block)}
-          </span>
+          {isStreamingInput ? (
+            <span style={{ color: "var(--text-muted)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
+              {t("chat.generatingToolInput")}
+            </span>
+          ) : previewPath ? (
+            <ToolPathPreview path={previewPath} cwd={cwd} />
+          ) : (
+            <span style={{ color: "var(--text-muted)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
+              {preview.text}
+            </span>
+          )}
           <StepDuration seconds={duration} startTime={startTime} live={live} />
           <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
+        {openablePath && onOpenFile && (
+          <button
+            type="button"
+            data-step-action=""
+            onClick={() => onOpenFile(openablePath)}
+            title={openablePath}
+            aria-label={t("chat.openWrittenFile", { name: getFileName(openablePath) })}
+            style={{ width: 30, display: "grid", placeItems: "center", border: "none", background: "none", cursor: "pointer", flexShrink: 0 }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>
+          </button>
+        )}
         {subagent && onOpenSession && (
           <button
             type="button"
@@ -1937,21 +1963,43 @@ function previewText(text: string): string {
 }
 
 
-function getToolPreview(block: ToolCallContent): string {
+/**
+ * One-line summary of a tool call's input, shown in the UI face on the collapsed row;
+ * the expanded body carries the verbatim input in the code face. `path` renders through ToolPathPreview.
+ */
+function getToolPreview(block: ToolCallContent): { text: string; path?: string } {
   const input = block.input;
-  if (!input || typeof input !== "object") return "";
+  if (!input || typeof input !== "object") return { text: "" };
   const keys = Object.keys(input);
-  if (keys.length === 0) return "";
+  if (keys.length === 0) return { text: "" };
 
-  // Common tool input patterns
-  if ("command" in input) return String(input.command).slice(0, 120);
-  if ("path" in input) return String(input.path).slice(0, 120);
-  if ("file_path" in input) return String(input.file_path).slice(0, 120);
-  if ("pattern" in input) return String(input.pattern).slice(0, 120);
-  if ("query" in input) return String(input.query).slice(0, 120);
+  // Common tool input patterns. A search's pattern says more than the directory it searched.
+  if ("command" in input) return { text: String(input.command).slice(0, 120) };
+  if ("pattern" in input) return { text: String(input.pattern).slice(0, 120) };
+  if ("query" in input) return { text: String(input.query).slice(0, 120) };
+  for (const key of ["path", "file_path"]) {
+    const value = input[key];
+    if (typeof value === "string" && value) return { text: value, path: value };
+  }
 
   const first = input[keys[0]];
-  return String(first).slice(0, 120);
+  return { text: String(first).slice(0, 120) };
+}
+
+/** A path argument: cwd-relative, directory clipped from the left so the file name stays visible. */
+function ToolPathPreview({ path, cwd }: { path: string; cwd?: string }) {
+  const display = getRelativeFilePath(path, cwd);
+  const dir = getFileDirectory(display);
+  return (
+    <span title={path} style={{ display: "flex", flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35, whiteSpace: "nowrap" }}>
+      {dir && (
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", direction: "rtl", color: "var(--text-dim)" }}>
+          <bdi>{dir.endsWith("/") ? dir : `${dir}/`}</bdi>
+        </span>
+      )}
+      <span style={{ flexShrink: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", color: "var(--text-muted)" }}>{getFileName(display)}</span>
+    </span>
+  );
 }
 
 function BashExecutionView({ message, sessionId }: { message: BashExecutionMessage; sessionId?: string }) {
