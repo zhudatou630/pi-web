@@ -10,6 +10,7 @@ import type {
   SkillsResponse,
   SkillUpdateResult,
 } from "@/lib/api-types";
+import { ProjectOverrideTag } from "./ProjectOverride";
 import {
   ConfigButton,
   ConfigPanelShell,
@@ -657,6 +658,7 @@ export function SkillsConfig({
                         onOpen={() => { setSelected(skill.filePath); setDeleteError(null); setView("detail"); }}
                       >
                         {hasUpdate && <span className="settings-row-status is-accent">{t("i18n.updateAvailable")}</span>}
+                        <ProjectOverrideTag value={skill.projectOverride} />
                         <ConfigSwitch
                           checked={!skill.disableModelInvocation}
                           loading={toggling.has(skill.filePath)}

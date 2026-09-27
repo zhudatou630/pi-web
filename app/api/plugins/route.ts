@@ -6,9 +6,8 @@ import {
   getAgentDir,
   SettingsManager,
   type PackageSource,
-  type ResolvedPaths,
-  type ResolvedResource,
 } from "@earendil-works/pi-coding-agent";
+import { resolveScopedResources, type ResourceType, type ScopedResource } from "@/lib/project-resource-overrides";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { getProjectTrustStatus } from "@/lib/project-trust";
@@ -95,6 +94,13 @@ function setPackageDisabled(
   return true;
 }
 
+const RESOURCE_KINDS: Record<ResourceType, PluginResourceKind> = {
+  extensions: "extension",
+  skills: "skill",
+  prompts: "prompt",
+  themes: "theme",
+};
+
 function addCount(counts: PluginResourceCounts, kind: keyof PluginResourceCounts): void {
   counts[kind] += 1;
 }
@@ -108,22 +114,6 @@ function getResourceName(path: string, kind: PluginResourceKind): string {
     return file.slice(0, -ext.length);
   }
   return file;
-}
-
-function getRelativePath(resource: ResolvedResource): string {
-  const baseDir = resource.metadata.baseDir;
-  if (!baseDir) return resource.path;
-  const rel = relative(baseDir, resource.path);
-  return rel && !rel.startsWith("..") ? rel : resource.path;
-}
-
-function toResourceInfo(resource: ResolvedResource, kind: PluginResourceKind): PluginResourceInfo {
-  return {
-    kind,
-    name: getResourceName(resource.path, kind),
-    path: resource.path,
-    relativePath: getRelativePath(resource),
-  };
 }
 
 function getConfiguredVersion(source: string): string | undefined {
@@ -165,56 +155,24 @@ function readPackageMetadata(installedPath?: string): { packageName?: string; ve
   }
 }
 
-function collectResource(
-  resource: ResolvedResource,
-  kind: keyof PluginResourceCounts,
-  countsByPackage: Map<string, PluginResourceCounts>,
-  resourcesByPackage: Map<string, PluginResourceInfo[]>,
-  totals: PluginResourceCounts,
-): void {
-  if (!resource.enabled || resource.metadata.origin !== "package") return;
-  const source = resource.metadata.source;
-  const scope = toPluginScope(resource.metadata.scope);
-  const key = keyFor(source, scope);
-  const counts = countsByPackage.get(key) ?? emptyCounts();
-  addCount(counts, kind);
-  addCount(totals, kind);
-  countsByPackage.set(key, counts);
-  const resources = resourcesByPackage.get(key) ?? [];
-  const resourceKind = kind === "extensions"
-    ? "extension"
-    : kind === "skills"
-      ? "skill"
-      : kind === "prompts"
-        ? "prompt"
-        : "theme";
-  resources.push(toResourceInfo(resource, resourceKind));
-  resourcesByPackage.set(key, resources);
+function toResourceInfo(resource: ScopedResource): PluginResourceInfo {
+  const kind = RESOURCE_KINDS[resource.type];
+  const baseDir = resource.metadata.baseDir;
+  const rel = baseDir ? relative(baseDir, resource.path) : "";
+  return {
+    kind,
+    name: getResourceName(resource.path, kind),
+    path: resource.path,
+    relativePath: rel && !rel.startsWith("..") ? rel : resource.path,
+    enabled: resource.enabled,
+    projectOverride: resource.override,
+  };
 }
 
-function collectResources(paths: ResolvedPaths): {
-  countsByPackage: Map<string, PluginResourceCounts>;
-  resourcesByPackage: Map<string, PluginResourceInfo[]>;
-  standaloneExtensions: PluginStandaloneExtensionInfo[];
-  totals: PluginResourceCounts;
-} {
-  const countsByPackage = new Map<string, PluginResourceCounts>();
-  const resourcesByPackage = new Map<string, PluginResourceInfo[]>();
-  const totals = emptyCounts();
-  for (const resource of paths.extensions) collectResource(resource, "extensions", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.skills) collectResource(resource, "skills", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.prompts) collectResource(resource, "prompts", countsByPackage, resourcesByPackage, totals);
-  for (const resource of paths.themes) collectResource(resource, "themes", countsByPackage, resourcesByPackage, totals);
-  const standaloneExtensions = paths.extensions
-    .filter((resource) => resource.metadata.origin === "top-level")
-    .map((resource): PluginStandaloneExtensionInfo => ({
-      ...toResourceInfo(resource, "extension"),
-      kind: "extension",
-      scope: toPluginScope(resource.metadata.scope),
-      enabled: resource.enabled,
-    }));
-  totals.extensions += standaloneExtensions.filter((extension) => extension.enabled).length;
-  return { countsByPackage, resourcesByPackage, standaloneExtensions, totals };
+function aggregateOverride(resources: PluginResourceInfo[]): PluginPackageInfo["projectOverride"] {
+  const states = new Set(resources.map((resource) => resource.projectOverride));
+  if (states.size === 0) return "inherit";
+  return states.size === 1 ? [...states][0]! : "mixed";
 }
 
 async function readPlugins(cwd: string): Promise<PluginsResponse> {
@@ -230,22 +188,43 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
   });
 
   const diagnostics: PluginDiagnostic[] = [];
-  let countsByPackage = new Map<string, PluginResourceCounts>();
-  let resourcesByPackage = new Map<string, PluginResourceInfo[]>();
-  let standaloneExtensions: PluginStandaloneExtensionInfo[] = [];
-  let totals = emptyCounts();
+  const missing = new Set<string>();
+  const countsByPackage = new Map<string, PluginResourceCounts>();
+  const resourcesByPackage = new Map<string, PluginResourceInfo[]>();
+  const standaloneExtensions: PluginStandaloneExtensionInfo[] = [];
+  const totals = emptyCounts();
   const disabledByPackage = getDisabledPackages(settingsManager);
 
   try {
-    const resolved = await packageManager.resolve(async (source) => {
-      diagnostics.push({
-        type: "warning",
-        source,
-        message: "Package is configured but not installed yet.",
-      });
+    const { resources } = await resolveScopedResources(cwd, agentDir, async (source) => {
+      if (!missing.has(source)) {
+        missing.add(source);
+        diagnostics.push({ type: "warning", source, message: "Package is configured but not installed yet." });
+      }
       return "skip";
     });
-    ({ countsByPackage, resourcesByPackage, standaloneExtensions, totals } = collectResources(resolved));
+    for (const resource of resources) {
+      if (resource.owner.origin === "top-level") {
+        if (resource.type !== "extensions") continue;
+        standaloneExtensions.push({
+          ...toResourceInfo(resource),
+          kind: "extension",
+          scope: toPluginScope(resource.owner.scope),
+        });
+        if (resource.enabled) totals.extensions += 1;
+        continue;
+      }
+      // Resources overridden by a project delta keep their global package as owner.
+      const key = keyFor(resource.owner.source, toPluginScope(resource.owner.scope));
+      const list = resourcesByPackage.get(key) ?? [];
+      list.push(toResourceInfo(resource));
+      resourcesByPackage.set(key, list);
+      if (!resource.enabled) continue;
+      const counts = countsByPackage.get(key) ?? emptyCounts();
+      addCount(counts, resource.type);
+      addCount(totals, resource.type);
+      countsByPackage.set(key, counts);
+    }
   } catch (error) {
     diagnostics.push({
       type: "error",
@@ -253,7 +232,15 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
     });
   }
 
-  const packages = packageManager.listConfiguredPackages().map((pkg) => {
+  // `autoload: false` project entries are overrides of a global package, not packages.
+  const deltaSources = new Set(
+    (projectTrust.trusted ? settingsManager.getProjectSettings().packages ?? [] : [])
+      .filter((entry) => typeof entry === "object" && entry.autoload === false)
+      .map(getPackageSource),
+  );
+  const packages = packageManager.listConfiguredPackages()
+    .filter((pkg) => !(pkg.scope === "project" && deltaSources.has(pkg.source)))
+    .map((pkg) => {
     const scope = toPluginScope(pkg.scope);
     const key = keyFor(pkg.source, scope);
     const disabled = disabledByPackage.get(key) ?? false;
@@ -280,7 +267,11 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
       configuredVersion: getConfiguredVersion(pkg.source),
       counts,
       resources,
-      status: disabled ? "disabled" : resourceCount > 0 ? "loaded" : pkg.installedPath ? "installed" : "missing",
+      projectOverride: aggregateOverride(resources),
+      // Resources that resolve but none load here (global or project off) read as disabled.
+      status: disabled || (resourceCount === 0 && resources.length > 0)
+        ? "disabled"
+        : resourceCount > 0 ? "loaded" : pkg.installedPath ? "installed" : "missing",
     } satisfies PluginPackageInfo;
   });
 

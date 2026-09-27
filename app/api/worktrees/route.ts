@@ -3,6 +3,8 @@ import { existsSync } from "fs";
 import { addWorktree, findCurrentWorktreePath, listWorktrees, removeWorktree, resolveProject } from "@/lib/worktree";
 import { allowFileRoot, getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed } from "@/lib/file-access";
 import { projectIdentityKey } from "@/lib/project-identity";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { seedWorktreeOverrides } from "@/lib/project-override-sync";
 
 /** Same gate as /api/files: only session cwds / project roots / explicitly
  *  allowed dirs may be inspected or mutated through this endpoint. */
@@ -70,6 +72,10 @@ export async function POST(req: Request) {
     }
 
     const result = await addWorktree(body.cwd, body.branch);
+    // Worktrees are one project to the user: carry this checkout's project overrides over.
+    // The worktree exists either way, so a failed replay is logged, not a failed request.
+    await seedWorktreeOverrides(body.cwd, result.path, getAgentDir())
+      .catch((error) => console.warn(`[worktrees] project overrides not copied to ${result.path}:`, error));
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

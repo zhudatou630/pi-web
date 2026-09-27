@@ -5,6 +5,7 @@ import { sendAgentCommand } from "@/lib/agent-client";
 import type { PluginPackageInfo, PluginStandaloneExtensionInfo, PluginUpdateResult, PluginsResponse } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
+import { ProjectOverrideTag } from "./ProjectOverride";
 import {
   ConfigButton,
   ConfigPanelShell,
@@ -43,7 +44,7 @@ function extensionKey(extension: PluginStandaloneExtensionInfo): string {
 }
 
 function resourceSummary(pkg: PluginPackageInfo, t: ReturnType<typeof useI18n>["t"]): string {
-  if (pkg.disabled) return t("i18n.disabled");
+  if (pkg.status === "disabled") return t("i18n.disabled");
   const parts = [
     pkg.counts.extensions ? t("i18n.resourceCount", { count: pkg.counts.extensions, label: t(pkg.counts.extensions === 1 ? "i18n.extensionShortOne" : "i18n.extensionShort") }) : "",
     pkg.counts.skills ? t("i18n.resourceCount", { count: pkg.counts.skills, label: t(pkg.counts.skills === 1 ? "i18n.skillShortOne" : "i18n.skillShort") }) : "",
@@ -110,7 +111,7 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
           key={`${resource.kind}:${resource.path}`}
           title={resource.path}
           label={resource.name}
-          description={resource.relativePath}
+          description={resource.enabled ? resource.relativePath : `${resource.relativePath} · ${t("i18n.disabled")}`}
         />
       ))}
     </SettingsGroup>
@@ -380,12 +381,15 @@ export function PluginsConfig({
   sessionId,
   onClose,
   onReloaded,
+  onChanged,
   embedded = false,
 }: {
   cwd: string;
   sessionId: string | null;
   onClose: () => void;
   onReloaded?: () => void;
+  /** A package change altered what the Project page shows. */
+  onChanged?: () => void;
   embedded?: boolean;
 }) {
   const { t } = useI18n();
@@ -498,6 +502,7 @@ export function PluginsConfig({
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
+      onChanged?.();
       setUpdateStatuses({});
       setActionMessage(t("i18n.packagesUpdated"));
       if (sessionId) {
@@ -508,7 +513,7 @@ export function PluginsConfig({
     } finally {
       setUpdatingAll(false);
     }
-  }, [cwd, sessionId, t]);
+  }, [cwd, onChanged, sessionId, t]);
 
   const runAction = useCallback(async (action: PluginAction, pkg: PluginPackageInfo) => {
     const key = packageKey(pkg);
@@ -524,6 +529,7 @@ export function PluginsConfig({
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
+      onChanged?.();
       if (action === "remove") {
         setSelected(null);
         setView("list");
@@ -554,7 +560,7 @@ export function PluginsConfig({
     } finally {
       setBusyKey(null);
     }
-  }, [cwd]);
+  }, [cwd, onChanged]);
 
   const installPlugin = useCallback(async () => {
     const source = normalizePluginSourceInput(installSource).trim();
@@ -573,6 +579,7 @@ export function PluginsConfig({
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
+      onChanged?.();
       const installed = findInstalledPackage(next.packages, source, installScope);
       setSelected(installed ? packageKey(installed) : key);
       setView("detail");
@@ -583,7 +590,7 @@ export function PluginsConfig({
     } finally {
       setBusyKey(null);
     }
-  }, [cwd, installScope, installSource]);
+  }, [cwd, installScope, installSource, onChanged]);
 
   const reloadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -712,7 +719,7 @@ export function PluginsConfig({
                             key={key}
                             label={pkg.packageName ?? pkg.source}
                             description={<>{shortenPath(pkg.source)}{" · "}{resourceSummary(pkg, t)}</>}
-                            muted={pkg.disabled}
+                            muted={pkg.status === "disabled"}
                             title={pkg.source}
                             onOpen={() => openItem(key)}
                           >
@@ -722,6 +729,7 @@ export function PluginsConfig({
                             {updateStatuses[key]?.state === "update-available" && (
                               <span className="settings-row-status is-accent">{t("i18n.updateAvailable")}</span>
                             )}
+                            {pkg.scope === "global" && <ProjectOverrideTag value={pkg.projectOverride} />}
                             <ConfigSwitch
                               checked={!pkg.disabled}
                               loading={busy}

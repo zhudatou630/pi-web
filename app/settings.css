@@ -3178,3 +3178,60 @@ button.usage-cell:not(:disabled) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Project page: package rows expand into their resources. */
+.settings-disclosure-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-disclosure {
+  flex: none;
+  margin-right: 6px;
+  color: var(--text-dim);
+}
+
+.settings-row.is-nested {
+  padding-left: 16px;
+}
+
+/* Project page: the project and its reload prompt stay visible while the long list scrolls. */
+.settings-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: -8px;
+  padding: 8px 0 12px;
+  background: var(--bg);
+}
+
+.settings-sticky-head > .settings-row-message {
+  margin: 0;
+}
+
+.project-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.project-head-name {
+  flex: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.project-head-path {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

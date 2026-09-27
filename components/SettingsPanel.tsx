@@ -40,6 +40,7 @@ import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { PluginsConfig } from "./PluginsConfig";
+import { ProjectConfig } from "./ProjectConfig";
 import { ImagesConfig } from "./ImagesConfig";
 import { UsageStats } from "./UsageStats";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
@@ -67,6 +68,7 @@ const SECTION_ICON_PATHS: Record<Exclude<SettingsSection, "agents">, ReactNode> 
   images: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21" /></>,
   skills: <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z" />,
   plugins: <path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z" />,
+  project: <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />,
   usage: <path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />,
 };
 
@@ -387,6 +389,12 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, onModelsChanged, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  // Bumped by the Project page so the mounted Plugins/Skills pages refetch their project tags.
+  const [projectResourcesVersion, setProjectResourcesVersion] = useState(0);
+  const handleProjectResourcesChanged = useCallback(() => setProjectResourcesVersion((v) => v + 1), []);
+  // Bumped by the Plugins page so a mounted Project page refetches after a package change.
+  const [pluginsVersion, setPluginsVersion] = useState(0);
+  const handlePluginsChanged = useCallback(() => setPluginsVersion((v) => v + 1), []);
   // Narrow screens show one page at a time: the section list, then the section.
   const [pane, setPane] = useState<"nav" | "section">("nav");
   const [mountedSections, setMountedSections] = useState<ReadonlySet<SettingsSection>>(
@@ -403,6 +411,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
       { id: "images", label: t("settings.images"), requiresProject: false },
       { id: "skills", label: t("common.skills"), requiresProject: true },
       { id: "plugins", label: t("common.plugins"), requiresProject: true },
+      { id: "project", label: t("project.title"), requiresProject: true },
     ] },
   ];
   const sections = navGroups.flatMap((group) => group.sections);
@@ -432,7 +441,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   }, [requestClose]);
 
   useEffect(() => {
-    if (cwd || (section !== "skills" && section !== "agents" && section !== "plugins")) return;
+    if (cwd || (section !== "skills" && section !== "agents" && section !== "plugins" && section !== "project")) return;
     setSection("general");
     setMountedSections((current) => new Set(current).add("general"));
     setLastSettingsSection("general");
@@ -515,8 +524,9 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             {sectionHost("models", <ModelsConfig embedded onClose={requestClose} cwd={cwd} onModelsChanged={onModelsChanged} onDirtyChange={handleModelsDirty} />)}
             {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
             {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}
-            {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
-            {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
+            {cwd && sectionHost("skills", <SkillsConfig embedded key={`${cwd}:${projectResourcesVersion}`} cwd={cwd} onClose={onClose} />)}
+            {cwd && sectionHost("plugins", <PluginsConfig embedded key={`${cwd}:${projectResourcesVersion}`} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handlePluginsChanged} />)}
+            {cwd && sectionHost("project", <ProjectConfig key={`${cwd}:${pluginsVersion}`} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleProjectResourcesChanged} />)}
             {sectionHost("usage", <UsageStats />)}
           </main>
         </div>

@@ -56,7 +56,7 @@ export function invalidateProjectCache(): void {
 /** Large repositories can take minutes to check out; the default 10s is far too short. */
 const WORKTREE_ADD_TIMEOUT_MS = 5 * 60_000;
 
-async function git(cwd: string, args: string[], timeout = 10_000): Promise<string> {
+export async function git(cwd: string, args: string[], timeout = 10_000): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
     timeout,
     maxBuffer: 1024 * 1024,
@@ -67,7 +67,7 @@ async function git(cwd: string, args: string[], timeout = 10_000): Promise<strin
   return stdout.trim();
 }
 
-function realPathOrSelf(filePath: string): string {
+export function realPathOrSelf(filePath: string): string {
   try {
     return realpathSync(filePath);
   } catch {

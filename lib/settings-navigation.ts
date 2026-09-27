@@ -5,6 +5,7 @@ export const SETTINGS_SECTION_VALUES = [
   "images",
   "skills",
   "plugins",
+  "project",
   "usage",
 ] as const;
 
@@ -12,7 +13,7 @@ export type SettingsSection = (typeof SETTINGS_SECTION_VALUES)[number];
 export type SettingsDetailSection = Exclude<SettingsSection, "general">;
 
 const STORAGE_KEY = "pi-web:settings-navigation";
-const PROJECT_SECTIONS = new Set<SettingsSection>(["skills", "agents", "plugins"]);
+const PROJECT_SECTIONS = new Set<SettingsSection>(["skills", "agents", "plugins", "project"]);
 
 interface StorageLike {
   getItem(key: string): string | null;

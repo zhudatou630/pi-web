@@ -86,6 +86,7 @@ export interface SkillInfo {
   install?: SkillInstallInfo;
   /** Lives directly in an auto-discovered skills directory, so the Skills panel may delete it. */
   removable?: boolean;
+  projectOverride?: ProjectOverride;
 }
 
 export interface SkillsResponse {
@@ -113,6 +114,8 @@ export interface PushConfigResponse {
 }
 
 export type PluginScope = "global" | "project";
+/** Per-project override of a global resource, same states as `pi config --local`. */
+export type ProjectOverride = "inherit" | "load" | "unload";
 export type PluginResourceKind = "extension" | "skill" | "prompt" | "theme";
 
 export interface PluginResourceCounts {
@@ -134,12 +137,13 @@ export interface PluginResourceInfo {
   name: string;
   path: string;
   relativePath: string;
+  enabled: boolean;
+  projectOverride: ProjectOverride;
 }
 
 export interface PluginStandaloneExtensionInfo extends PluginResourceInfo {
   kind: "extension";
   scope: PluginScope;
-  enabled: boolean;
 }
 
 export type PluginUpdateState =
@@ -168,7 +172,9 @@ export interface PluginPackageInfo {
   version?: string;
   configuredVersion?: string;
   counts: PluginResourceCounts;
+  /** All resources, including ones not loaded for this cwd. */
   resources: PluginResourceInfo[];
+  projectOverride: ProjectOverride | "mixed";
   status: "loaded" | "installed" | "missing" | "disabled";
 }
 
@@ -178,4 +184,44 @@ export interface PluginsResponse {
   totals: PluginResourceCounts;
   diagnostics: PluginDiagnostic[];
   projectResourcesLoaded: boolean;
+}
+
+export type ProjectResourceType = "extensions" | "skills" | "prompts" | "themes";
+
+export interface ProjectResourceItem {
+  type: ProjectResourceType;
+  path: string;
+  name: string;
+  /** Effective for this project. */
+  enabled: boolean;
+  /** null: exists only in this project. */
+  globalEnabled: boolean | null;
+  /** This project overrides the inherited state. */
+  overridden: boolean;
+  /** false: a hand-written project entry pi-web cannot change. */
+  editable: boolean;
+}
+
+export interface ProjectResourceGroup {
+  key: string;
+  origin: "package" | "top-level";
+  scope: PluginScope;
+  source: string;
+  label: string;
+  items: ProjectResourceItem[];
+}
+
+export type ProjectOverrideSyncKind = "none" | "subdirectory" | "tracked" | "worktrees";
+
+export interface ProjectResourcesResponse {
+  projectResourcesLoaded: boolean;
+  groups: ProjectResourceGroup[];
+  /** Where a change is written; `otherWorktrees` counts checkouts besides cwd. */
+  sync: { kind: ProjectOverrideSyncKind; otherWorktrees: number };
+}
+
+export interface ProjectOverridesWriteResponse {
+  ok: true;
+  /** Other worktrees that could not take the change (untrusted, hand-written entry, …). */
+  failures: { path: string; error: string }[];
 }
