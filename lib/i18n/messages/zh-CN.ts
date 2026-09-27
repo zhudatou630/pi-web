@@ -537,6 +537,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.activity.generatedImage": "生成了 {count} 张图片",
     "chat.activity.generatedImages": "生成了 {count} 张图片",
     "chat.activity.thought": "已思考",
+    "chat.activity.thoughtFor": "思考了 {duration}",
     "chat.turnDuration": "本轮耗时",
     "chat.collapseProcess": "收起处理详情",
     "chat.expandProcess": "展开处理详情",

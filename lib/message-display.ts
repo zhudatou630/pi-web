@@ -4,6 +4,18 @@ interface DisplayOptions {
   isStreaming?: boolean;
 }
 
+/** A thinking block's duration in whole seconds; history falls back to the message's own start and end. */
+export function thinkingDurationSeconds(
+  block: ThinkingContent,
+  message: Pick<AssistantMessage, "timestamp" | "completedAt">,
+): number | undefined {
+  const start = block.startedAt ?? message.timestamp;
+  const end = block.endedAt ?? message.completedAt;
+  if (typeof start !== "number" || typeof end !== "number") return undefined;
+  const secs = Math.round((end - start) / 1000);
+  return secs > 0 ? secs : undefined;
+}
+
 export function getThinkingPreview(thinking: string): string {
   return thinking.trimStart().match(/^[^\r\n]{0,240}/u)?.[0].trimEnd() ?? "";
 }

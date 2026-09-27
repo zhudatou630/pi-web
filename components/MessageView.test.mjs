@@ -27,8 +27,8 @@ test("looks up tool durations only for calls in the current assistant message", 
 
 test("derives thinking and tool durations from message timestamps, not a view clock", () => {
   assert.match(source, /function elapsedSeconds/);
-  assert.match(source, /thinking\.startedAt \?\? message\.timestamp/);
-  assert.match(source, /thinking\.endedAt \?\? message\.completedAt/);
+  // The thinking fallback itself is covered in lib/turn-activity.test.mjs.
+  assert.match(source, /thinkingDurationSeconds\(thinking, message\)/);
   assert.match(source, /message\.completedAt \?\? message\.timestamp/);
   assert.doesNotMatch(source, /blockStartTimesRef/);
   assert.doesNotMatch(source, /finalDurations/);

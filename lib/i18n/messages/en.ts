@@ -537,6 +537,7 @@ export const enLocale: LocalePlugin = {
     "chat.activity.generatedImage": "Generated {count} image",
     "chat.activity.generatedImages": "Generated {count} images",
     "chat.activity.thought": "Thought",
+    "chat.activity.thoughtFor": "Thought for {duration}",
     "chat.turnDuration": "Turn duration",
     "chat.collapseProcess": "Collapse process details",
     "chat.expandProcess": "Expand process details",

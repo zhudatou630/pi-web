@@ -1,5 +1,6 @@
 import { getImageGenerationResult, IMAGE_TOOL_NAME } from "./image-generation";
-import type { AssistantContentBlock, ToolResultMessage } from "./types";
+import { thinkingDurationSeconds } from "./message-display";
+import type { AssistantMessage, ToolResultMessage } from "./types";
 
 export interface TurnActivity {
   commands: number;
@@ -9,6 +10,8 @@ export interface TurnActivity {
   images: number;
   /** The turn reasoned; the header mentions it only when nothing else happened. */
   thought: boolean;
+  /** Summed thinking time in seconds, as the thinking rows show it; 0 when unknown. */
+  thoughtSeconds: number;
 }
 
 const EXPLORE_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -23,13 +26,15 @@ const WEB_TOOLS = new Set(["web_search", "fetch_content", "get_search_content", 
  * files come from `extractTurnWrittenFiles`, not from here.
  */
 export function summarizeTurnActivity(
-  content: AssistantContentBlock[],
+  messages: Pick<AssistantMessage, "content" | "timestamp" | "completedAt">[],
   toolResults: Map<string, ToolResultMessage> | undefined,
 ): TurnActivity {
-  const activity: TurnActivity = { commands: 0, explored: false, researched: false, subagents: 0, images: 0, thought: false };
-  for (const block of content) {
+  const activity: TurnActivity = { commands: 0, explored: false, researched: false, subagents: 0, images: 0, thought: false, thoughtSeconds: 0 };
+  for (const message of messages) for (const block of message.content) {
     if (block.type === "thinking") {
-      activity.thought ||= Boolean(block.deferred || block.thinking.trim());
+      if (!block.deferred && !block.thinking.trim()) continue;
+      activity.thought = true;
+      activity.thoughtSeconds += thinkingDurationSeconds(block, message) ?? 0;
       continue;
     }
     if (block.type !== "toolCall") continue;

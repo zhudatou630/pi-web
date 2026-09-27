@@ -515,6 +515,8 @@ function formatTurnActivity(
   fileCount: number,
   activity: TurnActivity | undefined,
   t: (key: string, params?: Record<string, string | number>) => string,
+  /** Appended for turns without a footer, which would otherwise show no duration. */
+  turnSeconds?: number,
 ): string {
   const count = (value: number | undefined, one: string, many: string) =>
     value ? t(value === 1 ? one : many, { count: value }) : null;
@@ -526,7 +528,13 @@ function formatTurnActivity(
     count(activity?.subagents, "chat.activity.usedSubagent", "chat.activity.usedSubagents"),
     count(activity?.images, "chat.activity.generatedImage", "chat.activity.generatedImages"),
   ].filter(Boolean).join(" · ");
-  return label || (activity?.thought ? t("chat.activity.thought") : "");
+  if (label) return turnSeconds ? `${label} · ${formatDuration(turnSeconds, t)}` : label;
+  if (!activity?.thought) return "";
+  // A turn that only reasoned reads as one timed thought, like the thinking row it expands to.
+  const thoughtSeconds = activity.thoughtSeconds || turnSeconds;
+  return thoughtSeconds
+    ? t("chat.activity.thoughtFor", { duration: formatDuration(thoughtSeconds, t) })
+    : t("chat.activity.thought");
 }
 
 function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: string, params?: Record<string, string | number>) => string }) {
@@ -1498,16 +1506,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       while (endIdx < messages.length && !isMessageGroupBoundary(messages[endIdx])) endIdx += 1;
       const finalAssistantIdx = findFinalAssistantIndex(messages, boundaryIdx, endIdx);
       if (finalAssistantIdx >= 0 && completedAssistantParts[finalAssistantIdx]?.answerMessage) {
-        const turnContent: AssistantContentBlock[] = [];
-        for (let messageIdx = boundaryIdx + 1; messageIdx <= finalAssistantIdx; messageIdx += 1) {
-          const message = messages[messageIdx];
-          if (message?.role === "assistant") turnContent.push(...message.content);
-        }
+        const turnMessages = messages.slice(boundaryIdx + 1, finalAssistantIdx + 1)
+          .filter((message): message is AssistantMessage => message.role === "assistant");
         filesByIndex.set(
           finalAssistantIdx,
-          extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd),
+          extractTurnWrittenFiles(turnMessages.flatMap((message) => message.content), toolResultsMap, messageCwd),
         );
-        activityByIndex.set(finalAssistantIdx, summarizeTurnActivity(turnContent, toolResultsMap));
+        activityByIndex.set(finalAssistantIdx, summarizeTurnActivity(turnMessages, toolResultsMap));
       }
       idx = endIdx;
     }
@@ -2110,18 +2115,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     t,
                   );
                 } else if (!liveProcessActive) {
-                  const turnContent = messages.slice(boundaryIdx + 1, endIdx)
-                    .flatMap((message) => message.role === "assistant" ? message.content : [])
-                    .concat(isLiveTail ? streamingParts.processMessage?.content ?? [] : []);
-                  const summary = formatTurnActivity(
-                    extractTurnWrittenFiles(turnContent, toolResultsMap, messageCwd).length,
-                    summarizeTurnActivity(turnContent, toolResultsMap),
-                    t,
-                  );
+                  const turnMessages = messages.slice(boundaryIdx + 1, endIdx)
+                    .filter((message): message is AssistantMessage => message.role === "assistant")
+                    .concat(isLiveTail && streamingParts.processMessage ? [streamingParts.processMessage] : []);
                   // An interrupted or failed turn has no footer, so its duration stays in the header.
-                  activityLabel = summary && !answeringLive && processDurationSeconds
-                    ? `${summary} · ${formatDuration(processDurationSeconds, t)}`
-                    : summary || null;
+                  activityLabel = formatTurnActivity(
+                    extractTurnWrittenFiles(turnMessages.flatMap((message) => message.content), toolResultsMap, messageCwd).length,
+                    summarizeTurnActivity(turnMessages, toolResultsMap),
+                    t,
+                    answeringLive ? undefined : processDurationSeconds,
+                  ) || null;
                 }
 
                 if (processViews.length > 0) {

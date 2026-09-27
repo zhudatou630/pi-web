@@ -170,5 +170,11 @@ test("disables scroll anchoring on chat container and steps list to prevent jitt
 });
 
 test("keeps an unanswered turn's duration beside what it did", () => {
-  assert.match(source, /activityLabel = summary && !answeringLive && processDurationSeconds\s*\? `\$\{summary\} · \$\{formatDuration\(processDurationSeconds, t\)\}`/);
+  assert.match(source, /if \(label\) return turnSeconds \? `\$\{label\} · \$\{formatDuration\(turnSeconds, t\)\}` : label;/);
+  assert.match(source, /answeringLive \? undefined : processDurationSeconds,/);
+});
+
+test("labels a turn that only reasoned as one timed thought", () => {
+  assert.match(source, /const thoughtSeconds = activity\.thoughtSeconds \|\| turnSeconds;/);
+  assert.match(source, /t\("chat\.activity\.thoughtFor", \{ duration: formatDuration\(thoughtSeconds, t\) \}\)/);
 });

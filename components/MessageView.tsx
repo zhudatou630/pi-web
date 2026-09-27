@@ -13,7 +13,7 @@ import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
-import { getAssistantErrorMessage, getThinkingPreview, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
+import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { parseApplyPatch } from "@/lib/apply-patch";
 import { isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
@@ -643,9 +643,7 @@ function AssistantMessageView({
         {blockItems.map(({ block, originalIndex }, displayIndex) => {
           const thinking = block.type === "thinking" ? block as ThinkingContent : null;
           const thinkingStart = thinking ? thinking.startedAt ?? message.timestamp : undefined;
-          const thinkingDuration = thinking
-            ? elapsedSeconds(thinkingStart, thinking.endedAt ?? message.completedAt)
-            : undefined;
+          const thinkingDuration = thinking ? thinkingDurationSeconds(thinking, message) : undefined;
           const isLiveThinking = Boolean(
             isStreaming
             && thinking
