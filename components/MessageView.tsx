@@ -10,6 +10,7 @@ import { ThinkingIcon } from "./ThinkingIcon";
 import { ToolIcon } from "./ToolIcon";
 import { SubagentIcon } from "./SubagentIcon";
 import { copyText } from "@/lib/clipboard";
+import { exportMessageImage, type MessageImageResult } from "@/lib/message-image";
 import { useI18n } from "@/hooks/useI18n";
 import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
@@ -593,6 +594,8 @@ function AssistantMessageView({
 }) {
   const { t, locale } = useI18n();
   const [copied, setCopied] = useState(false);
+  const [imageState, setImageState] = useState<"idle" | "busy" | MessageImageResult>("idle");
+  const rootRef = useRef<HTMLDivElement>(null);
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
@@ -629,12 +632,30 @@ function AssistantMessageView({
     });
   };
 
+  const exportImage = () => {
+    if (!rootRef.current || imageState === "busy") return;
+    setImageState("busy");
+    exportMessageImage(rootRef.current, `pi-answer-${entryId ?? message.timestamp}.png`).then(
+      (result) => {
+        if (result === "canceled") return setImageState("idle");
+        setImageState(result);
+        setTimeout(() => setImageState("idle"), 1500);
+      },
+      (error) => {
+        console.error(error);
+        setImageState("idle");
+        window.alert(t("i18n.exportImageFailed"));
+      },
+    );
+  };
+
   // A truncated turn whose only block was empty thinking must still render, so its
   // notice is not silently swallowed by the empty-content guard.
   if (blocks.length === 0 && !isStreaming && !providerError && !truncated) return null;
 
   return (
     <div
+      ref={rootRef}
       data-message-role="assistant"
       data-entry-id={entryId}
       style={{ marginBottom: isTurnEnd ? 16 : 8 }}
@@ -763,6 +784,31 @@ function AssistantMessageView({
                 ) : (
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <CopyGlyph />
+                  </svg>
+                )}
+              </button>
+          )}
+          {textContent && (
+              <button
+                type="button"
+                className="answer-copy-button message-action-button"
+                style={{ marginLeft: -10 }}
+                data-copied={imageState !== "idle" && imageState !== "busy" ? "true" : undefined}
+                disabled={imageState === "busy"}
+                onClick={exportImage}
+                title={imageState === "copied" ? t("i18n.imageCopied") : imageState === "downloaded" ? t("i18n.imageDownloaded") : t("i18n.exportImage")}
+                aria-label={t("i18n.exportImage")}
+              >
+                {imageState !== "idle" && imageState !== "busy" ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21" />
+                    <path d="m14 19 3 3v-5.5" />
+                    <path d="m17 22 3-3" />
+                    <circle cx="9" cy="9" r="2" />
                   </svg>
                 )}
               </button>

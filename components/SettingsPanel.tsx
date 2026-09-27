@@ -32,6 +32,7 @@ import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
+import { isExportImageFooterEnabled, setExportImageFooterEnabled } from "@/lib/message-image";
 import {
   isSidebarSingleProject,
   setSidebarSingleProject,
@@ -100,6 +101,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [exportImageFooter, setExportImageFooter] = useState(true);
   const [autoSessionTitle, setAutoSessionTitle] = useState(true);
   const [singleProject, setSingleProject] = useState(false);
   const [shiftEnterToSend, setShiftEnterToSendState] = useState(false);
@@ -112,6 +114,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
+    setExportImageFooter(isExportImageFooterEnabled());
     setAutoSessionTitle(isAutoSessionTitleEnabled());
     setSingleProject(isSidebarSingleProject());
     setShiftEnterToSendState(isShiftEnterToSend());
@@ -315,6 +318,10 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         {switchRow(t("settings.thinkingExpandedDefault"), t("settings.thinkingExpandedDefaultDescription"), thinkingExpanded, (enabled) => {
           setThinkingExpandedByDefault(enabled);
           setThinkingExpanded(enabled);
+        })}
+        {switchRow(t("settings.exportImageFooter"), t("settings.exportImageFooterDescription"), exportImageFooter, (enabled) => {
+          setExportImageFooterEnabled(enabled);
+          setExportImageFooter(enabled);
         })}
       </SettingsGroup>
 

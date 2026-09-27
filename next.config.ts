@@ -47,6 +47,7 @@ const nextConfig: NextConfig = {
   },
   serverExternalPackages: [
     "node-pty",
+    "subset-font",
     "undici",
     "web-push",
     "@earendil-works/pi-coding-agent",
