@@ -25,7 +25,7 @@ import {
   shouldAbortLocateOnLeafChange,
 } from "@/lib/chat-outline-jump";
 import { getModelDisplayName, MessageView } from "./MessageView";
-import { MarkdownBody } from "./MarkdownBody";
+import { MarkdownBody, MarkdownSessionContext } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -1746,6 +1746,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }
 
   return (
+    <MarkdownSessionContext.Provider value={session?.id ?? null}>
     <div
       className="chat-content relative flex h-full min-w-0 flex-col overflow-hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -2391,6 +2392,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       </div>
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>
+    </MarkdownSessionContext.Provider>
   );
 }
 

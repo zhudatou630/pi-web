@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo, type MouseEvent } from "react";
+import { createContext, useContext, useMemo, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
+
+/** Session whose messages are rendered; lets the file API serve images the session references outside allowed roots. */
+export const MarkdownSessionContext = createContext<string | null>(null);
 
 interface MarkdownBodyProps {
   children: string;
@@ -16,6 +19,7 @@ interface MarkdownBodyProps {
 }
 
 export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
+  const sessionId = useContext(MarkdownSessionContext);
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
   // Stable renderer identities keep stateful blocks mounted across message hover updates.
   const components = useMemo<Components>(() => ({
@@ -81,7 +85,7 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
       delete props.node;
       const filePath = typeof src === "string" ? resolveLocalFileHref(src, cwd) : null;
       const imageSrc = filePath
-        ? `/api/files/${encodeFilePathForApi(filePath)}?type=read`
+        ? `/api/files/${encodeFilePathForApi(filePath)}?type=read${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`
         : src;
       // Dynamic local paths are served directly by the file API.
       // eslint-disable-next-line @next/next/no-img-element
@@ -94,7 +98,7 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
         </div>
       );
     },
-  }), [cwd, isStreaming, onOpenFile]);
+  }), [cwd, isStreaming, onOpenFile, sessionId]);
 
   return (
     <div className={["markdown-body", className].filter(Boolean).join(" ")}>
