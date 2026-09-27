@@ -2729,6 +2729,25 @@ span.token.table {
   min-width: 0;
 }
 
+/* Syntax hint at the metadata tier. It is chrome, not prose: UI face and the toolbar's 12px
+   body size, even when a font scheme turns the composer serif. One line only: a wrapped placeholder counts toward
+   scrollHeight, so the empty composer would grow and shrink on the first keystroke. */
+.chat-input-textarea::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  /* The textarea's unitless 1.5 would give 12px text an 18px line pinned to the top, above
+     the caret; reuse the prose line box so the hint centers on it. */
+  line-height: calc(var(--chat-content-font-size, 14px) * 1.5);
+  /* Sarasa UI's default @ descends below the baseline and reads low beside the text; the
+     case form sits on the cap-height center. */
+  font-feature-settings: "case";
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Pending prompts: one grid so every text starts on the same column, set off from the
    draft by a rule. The recall column is as wide as the send button and sits above it. */
 .chat-input-queue {

@@ -2356,7 +2356,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             aria-activedescendant={activeOptionId}
             aria-label={compact ? t("chat.quoteQuestion") : t("chat.message")}
             disabled={disabled}
-            placeholder={disabled ? t("agentSwitcher.status.queued") : undefined}
+            placeholder={disabled ? t("agentSwitcher.status.queued")
+              : compact ? undefined
+              : t(isMobile ? "chat.composerHintCompact" : "chat.composerHint")}
             value={value}
             onChange={(e) => {
               valueRef.current = e.target.value;

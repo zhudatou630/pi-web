@@ -335,7 +335,7 @@ test("keeps rare session controls in one always-available menu", () => {
   assert.doesNotMatch(source, /title=\{t\("chat.collapseControls"\)\}/);
 });
 
-test("keeps the message input free of hints but accessible", () => {
+test("hints composer syntax only in the main input, independent of run state", () => {
   for (const compact of [false, true]) {
     for (const isStreaming of [false, true]) {
       const html = renderToStaticMarkup(React.createElement(
@@ -347,7 +347,8 @@ test("keeps the message input free of hints but accessible", () => {
       ));
       const textarea = html.match(/<textarea\b[^>]*>/)?.[0];
       assert.ok(textarea);
-      assert.doesNotMatch(textarea, /placeholder=/);
+      if (compact) assert.doesNotMatch(textarea, /placeholder=/);
+      else assert.match(textarea, /placeholder="@ for files\u2009·\u2009\/ for commands and skills\u2009·\u2009! for shell"/);
       assert.match(textarea, /aria-label="[^"]+"/);
     }
   }

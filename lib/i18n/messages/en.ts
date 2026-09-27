@@ -520,6 +520,8 @@ export const enLocale: LocalePlugin = {
     "chat.processDetails": "Process details",
     "chat.thinking": "Thinking...",
     "chat.message": "message",
+    "chat.composerHint": "@ for files\u2009·\u2009/ for commands and skills\u2009·\u2009! for shell",
+    "chat.composerHintCompact": "@ files\u2009·\u2009/ commands\u2009·\u2009! shell",
     "chat.step": "step",
     "chat.steps": "steps",
     "chat.workedFor": "Worked for {duration}",

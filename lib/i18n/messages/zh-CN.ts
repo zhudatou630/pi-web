@@ -520,6 +520,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.processDetails": "处理详情",
     "chat.thinking": "正在思考...",
     "chat.message": "条消息",
+    "chat.composerHint": "@ 引用文件\u2009·\u2009/ 命令和技能\u2009·\u2009! 运行 shell",
+    "chat.composerHintCompact": "@ 文件\u2009·\u2009/ 命令\u2009·\u2009! shell",
     "chat.step": "步操作",
     "chat.steps": "步操作",
     "chat.workedFor": "处理了 {duration}",
