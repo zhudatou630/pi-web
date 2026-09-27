@@ -2369,10 +2369,19 @@ span.token.table {
     width: 26px !important;
     height: 26px !important;
   }
+
+  /* No hover-intent sweep to smooth here: the width steps in the same frame the
+     session rows appear, and only the fade animates. A max-width transition
+     relayouts the row every frame and drags the branch label left in
+     pixel-snapped steps while the newly mounted rows compete for the frame. */
+  .workspace-row-action > .workspace-explorer {
+    transition: filter 0.12s ease-out, color 0.3s, background 0.3s !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-row-action > button {
+  .workspace-row-action > button,
+  .workspace-row-action > .workspace-explorer {
     transition: none !important;
   }
 }
