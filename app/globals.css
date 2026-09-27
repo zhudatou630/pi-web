@@ -80,14 +80,26 @@
   font-display: swap;
 }
 
-/* Kai scheme prose: LXGW WenKai Screen v1.522 (Regular only, CJK + Latin in
-   one face). The family has no heavier weight, so this scheme alone allows
-   synthesized bold (see html[data-font="wenkai"] below). */
+/* Kai scheme prose: LXGW WenKai v1.522, CJK + Latin in each face. The family
+   tops out at Medium and the Screen cut (body) is already about Medium, so
+   there is no real bold. CSS 400 matches Screen; CSS 600 finds no face at or
+   above it and falls back to the original Regular declared at 500, which the
+   browser then bolds (see html[data-font="wenkai"] below). Bolding the thinner
+   Regular gives a lighter bold (~25% more ink than body instead of ~48%), so
+   dense glyphs clog less. The 500 face downloads only when bold text shows. */
 @font-face {
-  font-family: "LXGW WenKai Screen Web";
+  font-family: "LXGW WenKai Web";
   src: url("/fonts/LXGWWenKaiScreen.woff2?v=1") format("woff2");
   font-style: normal;
   font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "LXGW WenKai Web";
+  src: url("/fonts/LXGWWenKai-Regular.woff2?v=1") format("woff2");
+  font-style: normal;
+  font-weight: 500;
   font-display: swap;
 }
 
@@ -178,12 +190,12 @@ html[data-font="claude"] {
   --font-chat: "Source Serif 4 Web", "Noto Serif SC Web", 'Songti SC', 'Noto Serif CJK SC', serif;
 }
 
-/* Kai scheme: WenKai prose; its strokes are near-monoline, so the browser's
-   uniform synthesized bold keeps the design; it is the only face that needs
+/* Kai scheme: WenKai prose. Its strokes are near-monoline, so the browser's
+   uniform synthesized bold keeps the design. It is the only face that needs
    it (Sarasa has real 400/600, so UI and code are unaffected). Italic stays
    unsynthesized. */
 html[data-font="wenkai"] {
-  --font-chat: "LXGW WenKai Screen Web", 'Kaiti SC', 'KaiTi', serif;
+  --font-chat: "LXGW WenKai Web", 'Kaiti SC', 'KaiTi', serif;
   font-synthesis: weight;
 }
 
