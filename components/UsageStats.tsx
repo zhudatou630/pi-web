@@ -237,6 +237,7 @@ function Overview({ records, range, today, format, t }: { records: UsageRecord[]
   const [selected, setSelected] = useState<string | null>(null);
   const totals = sumRecords(records);
   const activeDays = new Set(records.map((r) => r.day)).size;
+  const days = Math.max(activeDays, 1);
   const first = rangeStart(range, today) ?? records.reduce((min, r) => (r.day < min ? r.day : min), records[0].day);
   const last = dayKey(today);
   const grain: UsageGrain = periodsBetween(first, last, "day").length > MAX_DAILY_BARS ? "week" : "day";
@@ -265,7 +266,7 @@ function Overview({ records, range, today, format, t }: { records: UsageRecord[]
         { label: t("usage.messages"), value: format.count(totals.messages) },
         {
           label: t("usage.avgPerDay"),
-          value: format.cost(totals.cost / Math.max(activeDays, 1)),
+          value: `${format.cost(totals.cost / days)} · ${format.tokens(totals.tokens / days)}`,
           detail: t("usage.activeDaysDetail", { count: activeDays }),
         },
       ]} />

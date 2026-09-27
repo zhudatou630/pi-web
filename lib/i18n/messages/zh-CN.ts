@@ -172,7 +172,7 @@ export const zhCNLocale: LocalePlugin = {
     "usage.totalTokens": "总 Token",
     "usage.cacheShare": "缓存读取占 {share}",
     "usage.messages": "消息",
-    "usage.avgPerDay": "日均成本",
+    "usage.avgPerDay": "日均",
     "usage.activeDaysDetail": "按 {count} 个活跃日",
     "usage.activeDays": "活跃天数",
     "usage.streak": "连续使用",
