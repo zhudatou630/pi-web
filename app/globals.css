@@ -49,7 +49,11 @@
    punctuation (curly double quotes, ellipsis, em dash, middle dot) to the Song
    face so it is full width in Chinese; the apostrophe/single quotes stay Latin.
    size-adjust matches Source Serif's cap height (0.67em) to the CJK faces'
-   (~0.73em) so Latin does not shrink next to Chinese. */
+   (~0.73em) so Latin does not shrink next to Chinese.
+   Both files are variable 400-600. The Noto descriptor declares 500 600: the
+   browser clamps the requested weight into the descriptor range before
+   driving the wght axis, so CSS 400 CJK prose renders as Medium (Regular read
+   too thin at 14px) while 600 headings stay SemiBold. Latin stays Regular. */
 @font-face {
   font-family: "Source Serif 4 Web";
   src: url("/fonts/SourceSerif4-Latin.woff2?v=2") format("woff2");
@@ -64,7 +68,7 @@
   font-family: "Noto Serif SC Web";
   src: url("/fonts/NotoSerifSC.woff2?v=1") format("woff2");
   font-style: normal;
-  font-weight: 400 600;
+  font-weight: 500 600;
   font-display: swap;
 }
 
