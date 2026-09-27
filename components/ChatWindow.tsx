@@ -114,6 +114,40 @@ function ActivityPulse({ label }: { label: string }) {
   );
 }
 
+const STREAM_SILENCE_SECONDS = 5;
+
+/**
+ * Shows how long the streaming assistant message has been unchanged. Some
+ * upstreams (xAI Grok) send tool-call arguments in one chunk only after the
+ * whole argument is generated, so a long argument otherwise looks like a hang.
+ * Every flushed delta yields a new message object, which restarts the count.
+ */
+function StreamSilenceNotice({ message }: { message: AssistantMessage }) {
+  const { t } = useI18n();
+  const [silence, setSilence] = useState<{ message: AssistantMessage; seconds: number } | null>(null);
+  useEffect(() => {
+    const since = Date.now();
+    const id = setInterval(() => {
+      const seconds = Math.floor((Date.now() - since) / 1000);
+      if (seconds >= STREAM_SILENCE_SECONDS) setSilence({ message, seconds });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [message]);
+
+  if (silence?.message !== message) return null;
+  return (
+    <div
+      role="status"
+      aria-label={t("chat.agentWorking")}
+      className="flex h-[28px] items-center gap-2"
+      style={{ marginBottom: 8, fontSize: 11, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}
+    >
+      <LivePulseBeacon size={12} />
+      {formatDuration(silence.seconds, t)}
+    </div>
+  );
+}
+
 const CHAT_COLUMN_PADDING = 16;
 
 function NewSessionCwdControl({
@@ -2123,6 +2157,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             })()}
             {streamState.isStreaming && streamingParts.answerMessage && (
               <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
+            )}
+            {streamState.isStreaming && streamingAssistant && (
+              <StreamSilenceNotice message={streamingAssistant} />
             )}
 
             {agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput && (
