@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 // A scheme only swaps the --font-ui / --font-chat / --font-mono values in
 // app/globals.css via html[data-font]. The pre-paint script in app/layout.tsx
 // applies the same attribute from the same storage key.
-export const FONT_SCHEMES = ["sarasa", "claude"] as const;
+export const FONT_SCHEMES = ["sarasa", "claude", "wenkai"] as const;
 export type FontScheme = (typeof FONT_SCHEMES)[number];
 
 const STORAGE_KEY = "pi-font-scheme";

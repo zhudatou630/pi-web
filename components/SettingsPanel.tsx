@@ -134,6 +134,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const fontSchemeOptions: { id: FontScheme; label: string }[] = [
     { id: "sarasa", label: t("settings.fontSchemeSarasa") },
     { id: "claude", label: t("settings.fontSchemeClaude") },
+    { id: "wenkai", label: t("settings.fontSchemeWenkai") },
   ];
 
   useEffect(() => {

@@ -28,6 +28,7 @@ export const enLocale: LocalePlugin = {
     "settings.fontScheme": "Fonts",
     "settings.fontSchemeSarasa": "Sans",
     "settings.fontSchemeClaude": "Serif",
+    "settings.fontSchemeWenkai": "Kai",
     "settings.thinkingExpandedDefault": "Expand thinking blocks by default",
     "settings.sidebarSingleProject": "Sidebar shows only the current project",
     "settings.autoSessionTitle": "Automatically name new sessions",

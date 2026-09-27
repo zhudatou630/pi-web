@@ -28,6 +28,7 @@ export const zhCNLocale: LocalePlugin = {
     "settings.fontScheme": "字体",
     "settings.fontSchemeSarasa": "黑体",
     "settings.fontSchemeClaude": "宋体",
+    "settings.fontSchemeWenkai": "楷体",
     "settings.thinkingExpandedDefault": "默认展开思考块",
     "settings.sidebarSingleProject": "侧边栏只显示当前项目",
     "settings.autoSessionTitle": "自动为新会话生成标题",

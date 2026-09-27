@@ -80,6 +80,17 @@
   font-display: swap;
 }
 
+/* Kai scheme prose: LXGW WenKai Screen v1.522 (Regular only, CJK + Latin in
+   one face). The family has no heavier weight, so this scheme alone allows
+   synthesized bold (see html[data-font="wenkai"] below). */
+@font-face {
+  font-family: "LXGW WenKai Screen Web";
+  src: url("/fonts/LXGWWenKaiScreen.woff2?v=1") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 @font-face {
   font-family: "Sarasa UI SC Web";
   src: url("/fonts/SarasaUiSC-Regular.woff2?v=1") format("woff2");
@@ -165,6 +176,15 @@ html {
    are unchanged. */
 html[data-font="claude"] {
   --font-chat: "Source Serif 4 Web", "Noto Serif SC Web", 'Songti SC', 'Noto Serif CJK SC', serif;
+}
+
+/* Kai scheme: WenKai prose; its strokes are near-monoline, so the browser's
+   uniform synthesized bold keeps the design; it is the only face that needs
+   it (Sarasa has real 400/600, so UI and code are unaffected). Italic stays
+   unsynthesized. */
+html[data-font="wenkai"] {
+  --font-chat: "LXGW WenKai Screen Web", 'Kaiti SC', 'KaiTi', serif;
+  font-synthesis: weight;
 }
 
 html.dark {
