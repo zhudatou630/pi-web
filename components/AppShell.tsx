@@ -572,6 +572,28 @@ export function AppShell() {
 
   // Single active panel — only one dropdown open at a time
   const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | "language" | "outline" | null>(null);
+  // Subagent totals shown beside, never folded into, the parent's own usage.
+  const [subagentUsage, setSubagentUsage] = useState<{ sessionId: string; count: number; tokens: number; cost: number } | null>(null);
+  const subagentUsageRootId = activeTopPanel === "session"
+    && activeSessionFamily?.subagents.length
+    && activeSessionFamily.root.id === selectedSession?.id
+    ? selectedSession.id
+    : null;
+  // Refetch when a subagent row changes (new run, or a running one wrote more).
+  const subagentUsageKey = subagentUsageRootId
+    ? activeSessionFamily!.subagents.map((session) => `${session.id}:${session.modified}`).join()
+    : "";
+  useEffect(() => {
+    if (!subagentUsageRootId) return;
+    let cancelled = false;
+    void fetch(`/api/sessions/${encodeURIComponent(subagentUsageRootId)}/subagent-usage`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((usage) => {
+        if (!cancelled && usage) setSubagentUsage({ sessionId: subagentUsageRootId, ...usage });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [subagentUsageRootId, subagentUsageKey]);
   const [outlineView, setOutlineView] = useState<MobileOutlineView | null>(null);
   const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
@@ -2787,7 +2809,10 @@ export function AppShell() {
                       : null;
                     // Per-class cost only when the provider reported it; otherwise the column stays empty.
                     const hasCostSplit = !!costs && costs.input + costs.output + costs.cacheRead + costs.cacheWrite > 0;
-                    const showCost = sessionStats.cost > 0;
+                    const subagentRow = subagentUsage?.sessionId === sessionStats.sessionId && subagentUsage.count > 0
+                      ? subagentUsage
+                      : null;
+                    const showCost = sessionStats.cost > 0 || (subagentRow?.cost ?? 0) > 0;
                     const money = (v: number) => (v > 0 && v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`);
                     const trafficRows: Array<[string, number, number | undefined]> = [
                       [translate("session.input"), tk.input, costs?.input],
@@ -2812,16 +2837,20 @@ export function AppShell() {
                           {label(translate("session.total"))}
                           {num(formatTokensK(tk.total, locale), true)}
                           {showCost && num(money(sessionStats.cost), true)}
-                          {showCost && tk.total > 0 && (
+                          {/* One row, same columns as above: hit rate is a token figure, price a money figure. */}
+                          {(cacheHitRate || (showCost && tk.total > 0)) && (
                             <>
-                              {label(translate("session.avgPrice"))}
-                              <div className="session-stats-num" style={{ gridColumn: "2 / -1" }}>${(sessionStats.cost / tk.total * 1e6).toFixed(2)}/M</div>
+                              {label(translate("session.avg"))}
+                              {num(cacheHitRate ? translate("session.cacheHit", { rate: cacheHitRate }) : "")}
+                              {showCost && num(tk.total > 0 ? `$${(sessionStats.cost / tk.total * 1e6).toFixed(2)}/M` : "")}
                             </>
                           )}
-                          {cacheHitRate && (
+                          {subagentRow && (
                             <>
-                              {label(translate("session.cacheHitRate"))}
-                              <div className="session-stats-num" style={{ gridColumn: "2 / -1" }}>{cacheHitRate}</div>
+                              <div className="session-stats-rule" />
+                              {label(translate("session.subagents", { count: subagentRow.count }))}
+                              {num(formatTokensK(subagentRow.tokens, locale))}
+                              {showCost && num(money(subagentRow.cost))}
                             </>
                           )}
                         </div>
