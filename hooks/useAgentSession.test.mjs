@@ -214,7 +214,15 @@ test("recognizes the same transcript message across history and live state", () 
 test("does not show a silence notice beside an active process group", () => {
   assert.match(
     chatWindowSource,
-    /streamState\.isStreaming && streamingAssistant && !streamingParts\.processMessage && \(\s*<StreamSilenceNotice/,
+    /streamState\.isStreaming && streamingAssistant && !streamingParts\.processMessage && !currentTurnHasVisibleOutput && \(\s*<StreamSilenceNotice/,
+  );
+  assert.match(
+    chatWindowSource,
+    /agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput && !streamingParts\.processMessage && \(\s*<ActivityPulse/,
+  );
+  assert.match(
+    chatWindowSource,
+    /bashRunning && !pendingBash && !currentTurnHasVisibleOutput && !streamingParts\.processMessage && \(\s*<ActivityPulse/,
   );
 });
 test("opening System or Tools lazily starts a dormant session without sending a prompt", () => {

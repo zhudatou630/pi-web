@@ -2229,15 +2229,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             {streamState.isStreaming && streamingParts.answerMessage && (
               <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
             )}
-            {streamState.isStreaming && streamingAssistant && !streamingParts.processMessage && (
+            {streamState.isStreaming && streamingAssistant && !streamingParts.processMessage && !currentTurnHasVisibleOutput && (
               <StreamSilenceNotice message={streamingAssistant} />
             )}
 
-            {agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput && (
+            {agentRunning && !hasStreamingContent && !currentTurnHasVisibleOutput && !streamingParts.processMessage && (
               <ActivityPulse label={t("chat.agentWorking")} />
             )}
 
-            {bashRunning && !pendingBash && (
+            {bashRunning && !pendingBash && !currentTurnHasVisibleOutput && !streamingParts.processMessage && (
               <ActivityPulse label={t("chat.agentWorking")} />
             )}
 
