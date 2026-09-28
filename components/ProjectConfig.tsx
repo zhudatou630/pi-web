@@ -37,8 +37,8 @@ interface FeatureState {
 
 /** Same settings as "Enable in this project" on the Agents and Images pages. */
 const FEATURES = [
-  { id: "subagents", label: "project.subagents", description: "project.subagentsDescription", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings },
-  { id: "images", label: "project.images", description: "project.imagesDescription", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings },
+  { id: "subagents", label: "project.subagents", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings },
+  { id: "images", label: "project.images", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings },
 ] as const;
 type FeatureId = (typeof FEATURES)[number]["id"];
 
@@ -267,7 +267,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
                       <SettingsRow
                         key={feature.id}
                         label={t(feature.label)}
-                        description={`${t(feature.description)} ${t(state.enabled ? "project.globalOn" : "project.globalOff")}`}
+                        description={state.project.overridden
+                          ? t("project.feature.overridden", { state: t(state.enabled ? "project.feature.on" : "project.feature.off") })
+                          : t("project.feature.follows")}
                       >
                         {state.project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
                         <ConfigSwitch

@@ -190,3 +190,10 @@ test("the Images page follows the shared switch, banner, and wording rules", asy
   assert.match(images, /const activeHere = globalOn \|\| project\?\.enabled === true;/);
   assert.match(images, /save\(\{ projectEnabled \}\)/);
 });
+
+test("feature rows on the This project page say whether they follow the default, not how they are wired", async () => {
+  const project = await readFile(new URL("./ProjectConfig.tsx", import.meta.url), "utf8");
+  assert.match(project, /state\.project\.overridden\s*\? t\("project\.feature\.overridden"/);
+  assert.match(project, /: t\("project\.feature\.follows"\)/);
+  assert.doesNotMatch(enSource + zhSource, /Same switch as|是同一个开关/);
+});
