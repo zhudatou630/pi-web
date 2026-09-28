@@ -127,6 +127,11 @@ function keepContextUsage(prev: ContextUsage | null, next: ContextUsage | null):
   return next;
 }
 
+function hasTranscriptMessage(messages: AgentMessage[], message: AgentMessage): boolean {
+  return typeof message.timestamp === "number"
+    && messages.some((existing) => existing.role === message.role && existing.timestamp === message.timestamp);
+}
+
 function assistantUsageTokens(message: AgentMessage): number | null {
   if (message.role !== "assistant") return null;
   if (message.stopReason === "aborted" || message.stopReason === "error") return null;
@@ -1417,6 +1422,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const optimisticKey = optimisticUserMessageKeyRef.current;
           optimisticUserMessageKeyRef.current = null;
           setMessages((prev) => {
+            if (hasTranscriptMessage(prev, delivered)) return prev;
             const last = prev[prev.length - 1];
             if (optimisticKey && last?.role === "user" && userMessageKey(last) === optimisticKey) {
               return optimisticKey === deliveredKey
@@ -1443,9 +1449,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             const completedAt = Date.now();
             const settled = { ...normalized, completedAt };
             const timed = applyThinkingTimings(settled, streamStateRef.current.streamingMessage, completedAt);
-            setMessages((prev) => [...prev, timed]);
+            setMessages((prev) => (
+              hasTranscriptMessage(prev, normalized) ? prev : [...prev, timed]
+            ));
           } else if (normalized.role !== "system") {
-            setMessages((prev) => [...prev, normalized]);
+            setMessages((prev) => (
+              hasTranscriptMessage(prev, normalized) ? prev : [...prev, normalized]
+            ));
           }
         }
         dispatch({ type: "end" });

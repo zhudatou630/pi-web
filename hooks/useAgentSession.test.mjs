@@ -179,6 +179,38 @@ test("assistant message_end refreshes context usage without reloading the sessio
   assert.match(source, /stopReason === "aborted" \|\| message\.stopReason === "error"/);
 });
 
+test("deduplicates a message_end already restored by reconnect history", () => {
+  const messageEndSource = source.slice(
+    source.indexOf('case "message_end"'),
+    source.indexOf('case "tool_execution_start"'),
+  );
+  assert.match(messageEndSource, /hasTranscriptMessage\(prev, delivered\)/);
+  assert.match(messageEndSource, /hasTranscriptMessage\(prev, normalized\)/);
+  assert.match(source, /function hasTranscriptMessage\(messages: AgentMessage\[], message: AgentMessage\)/);
+});
+
+test("recognizes the same transcript message across history and live state", () => {
+  const hookHelper = source.slice(
+    source.indexOf("function hasTranscriptMessage"),
+    source.indexOf("function assistantUsageTokens"),
+  ).replace("(messages: AgentMessage[], message: AgentMessage): boolean", "(messages, message)");
+  const chatHelper = chatWindowSource.slice(
+    chatWindowSource.indexOf("function hasSameTranscriptIdentity"),
+    chatWindowSource.indexOf("function hasFinalAssistantAnswer"),
+  ).replace("(messages: AgentMessage[], message: AgentMessage): boolean", "(messages, message)");
+  const getHelpers = new Function(`${hookHelper}${chatHelper}; return [hasTranscriptMessage, hasSameTranscriptIdentity];`);
+  const [hasTranscriptMessage, hasSameTranscriptIdentity] = getHelpers();
+  const history = [{ role: "assistant", timestamp: 100, content: [] }];
+  assert.equal(hasTranscriptMessage(history, { role: "assistant", timestamp: 100, content: [] }), true);
+  assert.equal(hasTranscriptMessage(history, { role: "assistant", timestamp: 101, content: [] }), false);
+  assert.equal(hasTranscriptMessage(history, { role: "user", timestamp: 100, content: "same time" }), false);
+  assert.equal(hasTranscriptMessage(history, { role: "assistant", content: [] }), false);
+  assert.equal(hasSameTranscriptIdentity(history, { role: "assistant", timestamp: 100, content: [] }), true);
+  assert.equal(hasSameTranscriptIdentity(history, { role: "assistant", timestamp: 101, content: [] }), false);
+  assert.equal(hasSameTranscriptIdentity(history, { role: "user", timestamp: 100, content: "same time" }), false);
+  assert.equal(hasSameTranscriptIdentity(history, { role: "assistant", content: [] }), false);
+});
+
 test("opening System or Tools lazily starts a dormant session without sending a prompt", () => {
   const loadSystemInfoSource = source.slice(
     source.indexOf("  const loadSystemInfo = useCallback"),

@@ -409,6 +409,11 @@ function NewSessionCwdControl({
 }
 
 
+function hasSameTranscriptIdentity(messages: AgentMessage[], message: AgentMessage): boolean {
+  return typeof message.timestamp === "number"
+    && messages.some((existing) => existing.role === message.role && existing.timestamp === message.timestamp);
+}
+
 function hasFinalAssistantAnswer(message: AgentMessage): boolean {
   if (message.role !== "assistant") return false;
   return hasTrailingFinalAnswer(message as AssistantMessage);
@@ -1614,8 +1619,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     return false;
   }, [messages]);
-  const streamingAssistant = streamState.streamingMessage?.role === "assistant"
+  const rawStreamingAssistant = streamState.streamingMessage?.role === "assistant"
     ? streamState.streamingMessage as AssistantMessage
+    : null;
+  // A reconnect history refresh can contain the same assistant message as the
+  // live SSE snapshot. Render one source only while the two requests converge.
+  const streamingAssistant = rawStreamingAssistant && !hasSameTranscriptIdentity(messages, rawStreamingAssistant)
+    ? rawStreamingAssistant
     : null;
   const streamingParts = streamingAssistant
     ? partitionAssistantMessage(streamingAssistant, { isStreaming: true })
