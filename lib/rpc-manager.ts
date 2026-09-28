@@ -166,6 +166,8 @@ export interface RpcSessionStartOptions {
 }
 
 const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
+// Pi SDK's built-in selection when `defaultTools` is unset.
+const PI_DEFAULT_TOOL_NAMES = ["read", "bash", "edit", "write"];
 const THINKING_LEVEL_NAMES = new Set<ThinkingLevel>(VALID_THINKING_LEVELS);
 
 // custom() keeps the historical unstyled theme so overlay dialogs stay unchanged.
@@ -240,6 +242,20 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
     .filter((name) => !codingToolNames.has(name));
 
   return [...new Set([...selectedToolNames, ...activeExtensionToolNames])];
+}
+
+/**
+ * Configured sessions: built-ins follow `defaultTools`, extension tools stay as activated.
+ * Pi Web's host `bash` is registered as an extension tool, so the SDK activates it
+ * regardless of `defaultTools`; it is judged here by name like the built-in it replaces.
+ */
+export function withConfiguredBuiltInTools(
+  activeToolNames: readonly string[],
+  defaultTools: readonly string[] | undefined,
+): string[] {
+  const codingToolNames = new Set(CODING_TOOL_NAMES);
+  const allowed = new Set(resolveShellTools(defaultTools ?? PI_DEFAULT_TOOL_NAMES, defaultTools));
+  return activeToolNames.filter((name) => !codingToolNames.has(name) || allowed.has(name));
 }
 
 // ============================================================================
@@ -2300,7 +2316,9 @@ export async function startRpcSession(
     // web_enable's selected web tools), instead of reactivating every extension
     // tool whenever the runtime is rebuilt.
     if (!subagentResources && !chatOnly) {
-      inner.setActiveToolsByName(withExtensionTools(inner, selectedToolNames ?? inner.getActiveToolNames()));
+      inner.setActiveToolsByName(selectedToolNames
+        ? withExtensionTools(inner, selectedToolNames)
+        : withConfiguredBuiltInTools(inner.getActiveToolNames(), services.settingsManager.getDefaultTools()));
     }
 
     const wrapper = new AgentSessionWrapper(inner, {
