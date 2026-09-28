@@ -14,9 +14,8 @@ test("offers a persisted built-in sub-agent switch with explicit session reload"
   assert.match(source, /JSON\.stringify\(\{ maxConcurrent: value \}\)/);
   assert.match(source, /t\("agents\.maxConcurrent"\)/);
   assert.match(source, /<ConfigSwitch[\s\S]*?checked=\{builtInEnabled\}[\s\S]*?t\("agents\.builtInTitle"\)/);
-  assert.match(source, /sendAgentCommand\(sessionId, \{ type: "reload" \}\)/);
-  assert.match(source, /reloadNeeded && sessionId/);
-  assert.match(cssSource, /\.agents-feature-setting \{[\s\S]*?border-bottom: 1px solid var\(--border\)/);
+  assert.match(source, /\{reloadNeeded && <ReloadNotice sessionId=\{sessionId\}/);
+  assert.match(cssSource, /\.settings-reload-notice \{[\s\S]*?border-bottom: 1px solid var\(--border\)/);
   assert.match(source, /<SettingsRow label=\{t\("agents\.builtInTitle"\)\} description=\{t\("agents\.builtInDescription"\)\}>/);
 });
 
@@ -128,6 +127,6 @@ test("removing a file names the version that takes over", () => {
 });
 
 test("any profile change asks for a session reload from one top banner", () => {
-  assert.match(source, /const afterChange = async[\s\S]*?setReloadNeeded\(Boolean\(sessionId\)\)/);
-  assert.match(source, /\{reloadNeeded && sessionId && \(\s*<div className="agents-feature-setting is-notice">/);
+  assert.match(source, /const afterChange = async[\s\S]*?setReloadNeeded\(true\)/);
+  assert.match(source, /\{reloadNeeded && <ReloadNotice/);
 });

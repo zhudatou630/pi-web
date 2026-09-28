@@ -25,7 +25,14 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-type PluginAction = "install" | "remove" | "update" | "disable" | "enable" | "enable-extension" | "disable-extension";
+type PluginAction = "install" | "remove" | "update" | "disable" | "enable" | "enable-resource" | "disable-resource";
+
+const RESOURCE_TYPES_BY_KIND: Record<PluginResourceKind, ResourceType> = {
+  extension: "extensions",
+  skill: "skills",
+  prompt: "prompts",
+  theme: "themes",
+};
 
 function emptyCounts(): PluginResourceCounts {
   return { extensions: 0, skills: 0, prompts: 0, themes: 0 };
@@ -320,6 +327,7 @@ export async function POST(req: Request) {
       source?: string;
       scope?: PluginScope;
       path?: string;
+      kind?: PluginResourceKind;
       cwd?: string;
     };
     if (!body.cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
@@ -371,9 +379,11 @@ export async function POST(req: Request) {
       if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
       setPackageDisabled(settingsManager, source, scope, false);
       await settingsManager.flush();
-    } else if (body.action === "enable-extension" || body.action === "disable-extension") {
+    } else if (body.action === "enable-resource" || body.action === "disable-resource") {
       if (!body.path) return NextResponse.json({ error: "path required" }, { status: 400 });
-      await setGlobalResourceEnabled(body.cwd, agentDir, { type: "extensions", path: body.path }, body.action === "enable-extension");
+      const type = body.kind && Object.hasOwn(RESOURCE_TYPES_BY_KIND, body.kind) ? RESOURCE_TYPES_BY_KIND[body.kind] : undefined;
+      if (!type) return NextResponse.json({ error: "kind must be extension, skill, prompt, or theme" }, { status: 400 });
+      await setGlobalResourceEnabled(body.cwd, agentDir, { type, path: body.path }, body.action === "enable-resource");
     } else {
       return NextResponse.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });
     }

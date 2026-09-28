@@ -11,6 +11,7 @@ import type {
   SkillUpdateResult,
 } from "@/lib/api-types";
 import { ProjectOverrideTag } from "./ProjectOverride";
+import { ReloadNotice } from "./ReloadNotice";
 import {
   ConfigButton,
   ConfigPanelShell,
@@ -36,12 +37,30 @@ function isPackageSkill(skill: Skill): boolean {
   return skill.sourceInfo?.origin === "package";
 }
 
-function sourceLabel(skill: Skill): "global" | "project" | "path" {
-  const src = skill.sourceInfo?.source;
-  const scope = skill.sourceInfo?.scope;
-  if (scope === "user" || src === "user") return "global";
-  if (scope === "project" || src === "project") return "project";
-  return "path";
+/** A standalone skill file inside this project (`.pi/skills`, `.agents/skills`, project settings paths). */
+function isProjectFile(skill: Skill): boolean {
+  return !isPackageSkill(skill) && skill.sourceInfo?.scope === "project";
+}
+
+/** Readable package name from a pi package source: npm spec, git URL, or local path. */
+export function packageDisplayName(source: string): string {
+  const bare = source.replace(/^(npm|git|github|https?|ssh):/, "").replace(/[\/]+$/, "");
+  const last = bare.startsWith("@") && !bare.includes("/") ? bare : bare.split(/[\/]/).pop() ?? bare;
+  return last.replace(/(.)@.*$/, "$1") || source;
+}
+
+/** Where a skill comes from, which is how the list is grouped. */
+function sourceGroup(skill: Skill): { key: string; kind: "mine" | "projectFiles" | "package"; name?: string } {
+  if (isPackageSkill(skill)) {
+    const source = skill.sourceInfo.source ?? "";
+    return { key: `package:${source}`, kind: "package", name: packageDisplayName(source) };
+  }
+  return isProjectFile(skill) ? { key: "projectFiles", kind: "projectFiles" } : { key: "mine", kind: "mine" };
+}
+
+/** Switched on for the page's scope: the global switch, or the effective state when there is none. */
+function isOn(skill: Skill): boolean {
+  return skill.globalEnabled ?? skill.enabled;
 }
 
 export function orderSkillsByDormancy<
@@ -66,7 +85,8 @@ function shortVersion(version?: string): string {
 function SkillDetail({
   skill,
   cwd,
-  onToggle,
+  onToggleEnabled,
+  onToggleAutoInvoke,
   toggling,
   saveError,
   updateStatus,
@@ -81,7 +101,8 @@ function SkillDetail({
 }: {
   skill: Skill;
   cwd: string;
-  onToggle: (skill: Skill) => void;
+  onToggleEnabled: (skill: Skill) => void;
+  onToggleAutoInvoke: (skill: Skill) => void;
   toggling: boolean;
   saveError: string | null;
   updateStatus?: SkillUpdateResult;
@@ -95,11 +116,12 @@ function SkillDetail({
   deleteError: string | null;
 }) {
   const { t } = useI18n();
-  const label = sourceLabel(skill);
-  const enabled = !skill.disableModelInvocation;
+  const group = sourceGroup(skill);
+  const autoInvoke = !skill.disableModelInvocation;
+  const on = isOn(skill);
 
   function displayPath(p: string): string {
-    if (label === "project" && p.startsWith(cwd)) {
+    if (isProjectFile(skill) && p.startsWith(cwd)) {
       const rel = p.slice(cwd.length).replace(/^[/\\]/, "");
       return `./${rel}`;
     }
@@ -122,7 +144,9 @@ function SkillDetail({
       title={skill.name}
       meta={(
         <>
-          <span className={`config-scope-tag${label === "project" ? " is-project" : ""}`}>{t(`skills.scope.${label}`)}</span>
+          <span className={`config-scope-tag${group.kind === "projectFiles" ? " is-project" : ""}`}>
+            {group.kind === "package" ? t("skills.group.package", { name: group.name ?? "" }) : t(group.kind === "mine" ? "skills.group.mine" : "skills.group.projectFiles")}
+          </span>
           <span className="config-detail-path" title={skill.filePath}>{displayPath(skill.filePath)}</span>
         </>
       )}
@@ -130,17 +154,32 @@ function SkillDetail({
     >
       <SettingsGroup>
         <SettingsRow
+          label={t("skills.enabled")}
+          description={skill.globalEnabled === null ? t("skills.noGlobalSwitch") : t("skills.enabledDescription")}
+        >
+          {skill.globalEnabled !== null && (
+            <ConfigSwitch
+              checked={skill.globalEnabled}
+              loading={toggling}
+              label={t("skills.enabled")}
+              onChange={() => onToggleEnabled(skill)}
+            />
+          )}
+        </SettingsRow>
+        {/* A property of the skill file, so it applies everywhere and only once the skill is on. */}
+        <SettingsRow
           label={t("skills.modelInvocation")}
           description={isPackageSkill(skill)
-            ? t("skills.packageManaged", { source: shortenPath(skill.sourceInfo.source ?? "") })
-            : enabled ? t("skills.modelInvocationOn") : t("i18n.hiddenButInvocable")}
+            ? t("skills.packageManaged")
+            : !on ? t("skills.autoInvokeNeedsEnabled")
+              : autoInvoke ? t("skills.modelInvocationOn") : t("i18n.hiddenButInvocable")}
         >
           <ConfigSwitch
-            checked={enabled}
-            disabled={isPackageSkill(skill)}
+            checked={autoInvoke}
+            disabled={isPackageSkill(skill) || !on}
             loading={toggling}
             label={t("skills.modelInvocation")}
-            onChange={() => onToggle(skill)}
+            onChange={() => onToggleAutoInvoke(skill)}
           />
         </SettingsRow>
         {saveError && <p role="alert" className="settings-row-message is-error">{saveError}</p>}
@@ -374,11 +413,18 @@ function AddSkillPanel({
 
 export function SkillsConfig({
   cwd,
+  sessionId = null,
   onClose,
+  onReloaded,
+  onChanged,
   embedded = false,
 }: {
   cwd: string;
+  sessionId?: string | null;
   onClose: () => void;
+  onReloaded?: () => void;
+  /** A global switch changed what the Plugins/Project pages show. */
+  onChanged?: () => void;
   embedded?: boolean;
 }) {
   const { t } = useI18n();
@@ -403,6 +449,7 @@ export function SkillsConfig({
   const [projectResourcesLoaded, setProjectResourcesLoaded] = useState(seed?.projectResourcesLoaded ?? true);
   const [deletingSkill, setDeletingSkill] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [reloadNeeded, setReloadNeeded] = useState(false);
 
   const loadSkills = useCallback(async () => {
     setError(null);
@@ -516,32 +563,24 @@ export function SkillsConfig({
     }
   }, [cwd, loadSkills]);
 
-  const toggle = useCallback(async (skill: Skill) => {
-    const next = !skill.disableModelInvocation;
+  const patchSkill = useCallback(async (skill: Skill, change: { enabled: boolean } | { disableModelInvocation: boolean }) => {
     setToggling((s) => new Set(s).add(skill.filePath));
     setSaveError(null);
     try {
       const res = await fetch("/api/skills", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cwd,
-          filePath: skill.filePath,
-          disableModelInvocation: next,
-        }),
+        body: JSON.stringify({ cwd, filePath: skill.filePath, ...change }),
       });
       const d = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || d.error) {
         setSaveError(d.error ?? `HTTP ${res.status}`);
         return;
       }
-      setSkills((prev) =>
-        prev.map((s) =>
-          s.filePath === skill.filePath
-            ? { ...s, disableModelInvocation: next }
-            : s,
-        ),
-      );
+      // Switching a skill on or off also moves its effective and project state: reload the list.
+      await loadSkills();
+      setReloadNeeded(true);
+      if ("enabled" in change) onChanged?.();
     } catch (e) {
       setSaveError(String(e));
     } finally {
@@ -551,7 +590,13 @@ export function SkillsConfig({
         return n;
       });
     }
-  }, [cwd]);
+  }, [cwd, loadSkills, onChanged]);
+
+  const toggleEnabled = useCallback((skill: Skill) => patchSkill(skill, { enabled: !skill.globalEnabled }), [patchSkill]);
+  const toggleAutoInvoke = useCallback(
+    (skill: Skill) => patchSkill(skill, { disableModelInvocation: !skill.disableModelInvocation }),
+    [patchSkill],
+  );
 
   const deleteSkill = useCallback(async (skill: Skill) => {
     const message = [
@@ -573,6 +618,7 @@ export function SkillsConfig({
       setSelected(null);
       setView("list");
       await loadSkills();
+      setReloadNeeded(true);
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -587,14 +633,24 @@ export function SkillsConfig({
   const visibleSkills = needle
     ? skills.filter((skill) => `${skill.name} ${skill.description}`.toLowerCase().includes(needle))
     : skills;
-  // Where a skill lives is the grouping; where it was installed from is a per-row detail.
-  const groups = (["project", "global", "path"] as const)
-    .map((scope) => ({ label: t(`skills.group.${scope}`), matches: (skill: Skill) => sourceLabel(skill) === scope }))
-    .map(({ label, matches }) => ({ label, skills: orderSkillsByDormancy(visibleSkills.filter(matches)) }))
+  // Grouped by where a skill comes from: yours, this project's files, then one group per package.
+  const sourceGroups = new Map<string, { label: string; rank: string; skills: Skill[] }>();
+  for (const skill of skills) {
+    const group = sourceGroup(skill);
+    if (sourceGroups.has(group.key)) continue;
+    sourceGroups.set(group.key, group.kind === "package"
+      ? { label: t("skills.group.package", { name: group.name ?? "" }), rank: `2${group.name}`, skills: [] }
+      : { label: t(group.kind === "mine" ? "skills.group.mine" : "skills.group.projectFiles"), rank: group.kind === "mine" ? "0" : "1", skills: [] });
+  }
+  const matches = (key: string) => (skill: Skill) => sourceGroup(skill).key === key;
+  const groups = [...sourceGroups.entries()]
+    .sort(([, a], [, b]) => a.rank.localeCompare(b.rank))
+    .map(([key, group]) => ({ label: group.label, skills: orderSkillsByDormancy(visibleSkills.filter(matches(key))) }))
     .filter((group) => group.skills.length > 0);
 
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.skills")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={onClose}>
+      {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
       <div className="settings-scroll">
         <div key={loading ? "loading" : view} className="settings-page">
           {view === "add" ? (
@@ -617,7 +673,8 @@ export function SkillsConfig({
                 key={selectedSkill.filePath}
                 skill={selectedSkill}
                 cwd={cwd}
-                onToggle={toggle}
+                onToggleEnabled={(skill) => void toggleEnabled(skill)}
+                onToggleAutoInvoke={(skill) => void toggleAutoInvoke(skill)}
                 toggling={toggling.has(selectedSkill.filePath)}
                 saveError={saveError}
                 updateStatus={updateKey(selectedSkill) ? updateStatuses[updateKey(selectedSkill)!] : undefined}
@@ -659,21 +716,31 @@ export function SkillsConfig({
                     return (
                       <SettingsLinkRow
                         key={skill.filePath}
-                        label={<>{skill.name}{skill.install?.skillsShUrl && <span className="settings-row-tag">skills.sh</span>}</>}
+                        label={(
+                          <>
+                            {skill.name}
+                            {skill.disableModelInvocation && <span className="settings-row-tag">{t("skills.tag.manual")}</span>}
+                            {skill.install?.skillsShUrl && <span className="settings-row-tag">skills.sh</span>}
+                          </>
+                        )}
                         description={skill.description}
-                        muted={skill.disableModelInvocation}
+                        muted={!isOn(skill)}
                         title={skill.filePath}
                         onOpen={() => { setSelected(skill.filePath); setDeleteError(null); setView("detail"); }}
                       >
                         {hasUpdate && <span className="settings-row-status is-accent">{t("i18n.updateAvailable")}</span>}
                         <ProjectOverrideTag value={skill.projectOverride} />
-                        <ConfigSwitch
-                          checked={!skill.disableModelInvocation}
-                          disabled={isPackageSkill(skill)}
-                          loading={toggling.has(skill.filePath)}
-                          label={t("skills.modelInvocation")}
-                          onChange={() => void toggle(skill)}
-                        />
+                        {skill.globalEnabled === null ? (
+                          // No global switch: a project file or project package, switched on the This project page.
+                          !isProjectFile(skill) && <span className="settings-row-status">{t("project.projectOnly")}</span>
+                        ) : (
+                          <ConfigSwitch
+                            checked={skill.globalEnabled}
+                            loading={toggling.has(skill.filePath)}
+                            label={t("skills.enabled")}
+                            onChange={() => void toggleEnabled(skill)}
+                          />
+                        )}
                       </SettingsLinkRow>
                     );
                   })}

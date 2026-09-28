@@ -81,6 +81,10 @@ export interface SkillInfo {
   filePath: string;
   baseDir: string;
   disableModelInvocation: boolean;
+  /** Loaded for this cwd (global state plus any project override). */
+  enabled: boolean;
+  /** Global switch; null when the skill has none (project files, project packages, extension-provided). */
+  globalEnabled: boolean | null;
   sourceInfo: {
     source?: string;
     scope?: string;

@@ -5,6 +5,7 @@ import { runNpx } from "@/lib/npx";
 import { getRemovableSkillEntry, removeSkillEntry } from "@/lib/skill-delete";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { loadSkillsWithInstallInfo } from "@/lib/skills-service";
+import { setGlobalResourceEnabled } from "@/lib/project-resource-overrides";
 import { setDisableModelInvocation } from "@/lib/skill-frontmatter";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 
@@ -91,16 +92,20 @@ export async function DELETE(req: Request) {
   }
 }
 
-// PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file the user owns.
-// Authorize by cwd (same as GET) plus exact filePath membership in the skills
-// that cwd already loaded. Do not add install-cache directories to the file
-// allow-list: a loaded skill may be a symlink whose realpath lives anywhere.
+// PATCH /api/skills — { enabled } switches a skill globally (a user-settings filter, as
+// `pi config` writes); { disableModelInvocation } toggles that frontmatter key on a
+// SKILL.md the user owns. Authorize by cwd (same as GET) plus exact filePath membership
+// in the skills that cwd lists. Do not add install-cache directories to the file
+// allow-list: a listed skill may be a symlink whose realpath lives anywhere.
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json() as { cwd: string; filePath: string; disableModelInvocation: boolean };
-    const { cwd, filePath, disableModelInvocation } = body;
+    const body = await req.json() as { cwd: string; filePath: string; disableModelInvocation?: unknown; enabled?: unknown };
+    const { cwd, filePath, disableModelInvocation, enabled } = body;
     if (!cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
     if (!filePath) return NextResponse.json({ error: "filePath required" }, { status: 400 });
+    if (typeof enabled !== "boolean" && typeof disableModelInvocation !== "boolean") {
+      return NextResponse.json({ error: "enabled or disableModelInvocation must be a boolean" }, { status: 400 });
+    }
 
     const allowedRoots = await getAllowedFileRoots();
     if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
@@ -110,13 +115,21 @@ export async function PATCH(req: Request) {
     const { skills } = await loadSkillsWithInstallInfo(cwd);
     const skill = skills.find((item) => item.filePath === filePath);
     if (!skill) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+
+    if (typeof enabled === "boolean") {
+      if (skill.globalEnabled === null) {
+        return NextResponse.json({ error: "This skill has no global switch; use the This project page" }, { status: 409 });
+      }
+      await setGlobalResourceEnabled(cwd, getAgentDir(), { type: "skills", path: filePath }, enabled);
+      return NextResponse.json({ success: true });
+    }
+
     // Package files belong to the package: an edit dirties a git checkout or is lost on update.
     if (skill.sourceInfo?.origin === "package") {
       return NextResponse.json({ error: "This skill is managed by a package" }, { status: 409 });
     }
-
     const content = readFileSync(filePath, "utf8");
-    const updated = setDisableModelInvocation(content, disableModelInvocation);
+    const updated = setDisableModelInvocation(content, disableModelInvocation as boolean);
     writeFileSync(filePath, updated, "utf8");
     return NextResponse.json({ success: true });
   } catch (e) {

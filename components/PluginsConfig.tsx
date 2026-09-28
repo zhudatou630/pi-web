@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { sendAgentCommand } from "@/lib/agent-client";
 import type { PluginPackageInfo, PluginResourceInfo, PluginStandaloneExtensionInfo, PluginUpdateResult, PluginsResponse } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import { ProjectOverrideTag } from "./ProjectOverride";
+import { ReloadNotice } from "./ReloadNotice";
 import {
   ConfigButton,
   ConfigPanelShell,
@@ -79,35 +79,36 @@ function findInstalledPackage(
     ?? packages.find((pkg) => pkg.scope === scope && pkg.source.endsWith(trimmed));
 }
 
-type ToggleExtension = (extension: PluginResourceInfo) => void;
+type ToggleResource = (resource: PluginResourceInfo) => void;
 
-/** Global switch for one extension; project-only extensions have none. */
-function ExtensionControls({ extension, busyKey, disabled, onToggle }: {
-  extension: PluginResourceInfo;
+/** Global switch for one resource of any kind; project-only resources have none. */
+function ResourceControls({ resource, busyKey, disabled, onToggle }: {
+  resource: PluginResourceInfo;
   busyKey: string | null;
   disabled?: boolean;
-  onToggle: ToggleExtension;
+  onToggle: ToggleResource;
 }) {
   const { t } = useI18n();
-  if (extension.globalEnabled === null) return null;
+  if (resource.globalEnabled === null) return <span className="settings-row-status">{t("project.projectOnly")}</span>;
+  const key = `resource:${resource.path}`;
   return (
     <>
-      <ProjectOverrideTag value={extension.projectOverride} />
+      <ProjectOverrideTag value={resource.projectOverride} />
       <ConfigSwitch
-        checked={extension.globalEnabled}
-        loading={busyKey === `extension:${extension.path}`}
-        disabled={disabled || (busyKey !== null && busyKey !== `extension:${extension.path}`)}
-        label={extension.globalEnabled ? t("i18n.disableExtension") : t("i18n.enableExtension")}
-        onChange={() => onToggle(extension)}
+        checked={resource.globalEnabled}
+        loading={busyKey === key}
+        disabled={disabled || (busyKey !== null && busyKey !== key)}
+        label={resource.name}
+        onChange={() => onToggle(resource)}
       />
     </>
   );
 }
 
-function ResourceList({ pkg, busyKey, onToggleExtension }: {
+function ResourceList({ pkg, busyKey, onToggleResource }: {
   pkg: PluginPackageInfo;
   busyKey: string | null;
-  onToggleExtension: ToggleExtension;
+  onToggleResource: ToggleResource;
 }) {
   const { t } = useI18n();
   const groups = ([
@@ -140,11 +141,10 @@ function ResourceList({ pkg, busyKey, onToggleExtension }: {
           key={`${resource.kind}:${resource.path}`}
           title={resource.path}
           label={resource.name}
-          description={resource.enabled ? resource.relativePath : `${resource.relativePath} · ${t("i18n.disabled")}`}
+          description={resource.relativePath}
         >
-          {resource.kind === "extension" && (
-            <ExtensionControls extension={resource} busyKey={busyKey} disabled={pkg.disabled} onToggle={onToggleExtension} />
-          )}
+          {/* A package switched off as a whole keeps its items locked until it is on again. */}
+          <ResourceControls resource={resource} busyKey={busyKey} disabled={pkg.disabled} onToggle={onToggleResource} />
         </SettingsRow>
       ))}
     </SettingsGroup>
@@ -265,33 +265,29 @@ function PackageDetail({
   busyKey,
   actionError,
   actionMessage,
-  sessionId,
   updateStatus,
   checkingUpdate,
   updateError,
   onAction,
   onCheckUpdate,
-  onReloadSession,
-  onToggleExtension,
+  onToggleResource,
 }: {
   pkg: PluginPackageInfo;
   busyKey: string | null;
   actionError: string | null;
   actionMessage: string | null;
-  sessionId: string | null;
   updateStatus?: PluginUpdateResult;
   checkingUpdate: boolean;
   updateError: string | null;
   onAction: (action: PluginAction, pkg: PluginPackageInfo) => void;
   onCheckUpdate: () => void;
-  onReloadSession: () => void;
-  onToggleExtension: ToggleExtension;
+  onToggleResource: ToggleResource;
 }) {
   const { t } = useI18n();
   const key = packageKey(pkg);
   const busy = busyKey?.endsWith(key) ?? false;
-  const reloadBusy = busyKey === "reload";
   const enabled = !pkg.disabled;
+  const loaded = pkg.resources.filter((resource) => resource.globalEnabled !== false).length;
   const canCheckForUpdates = pkg.canCheckForUpdates;
   const updateAvailable = updateStatus?.state === "update-available";
   const statusText = canCheckForUpdates && (checkingUpdate || (updateStatus && !updateAvailable))
@@ -312,8 +308,8 @@ function PackageDetail({
           <ScopeTag scope={pkg.scope} />
           {pkg.disabled ? (
             <span className="config-scope-tag">{t("i18n.disabled")}</span>
-          ) : pkg.filtered && (
-            <span className="config-scope-tag is-warning">{t("i18n.filtered")}</span>
+          ) : loaded < pkg.resources.length && (
+            <span className="config-scope-tag">{t("project.loadedCount", { loaded, total: pkg.resources.length })}</span>
           )}
           <span className="config-detail-path" title={pkg.source}>{pkg.source}</span>
         </>
@@ -323,7 +319,7 @@ function PackageDetail({
         <SettingsRow label={t("plugins.enabled")} description={t("plugins.enabledDescription")}>
           <ConfigSwitch
             checked={enabled}
-            loading={busy || reloadBusy}
+            loading={busy}
             onChange={() => onAction(pkg.disabled ? "enable" : "disable", pkg)}
             label={pkg.disabled ? t("i18n.enablePackage") : t("i18n.disablePackage")}
           />
@@ -344,7 +340,7 @@ function PackageDetail({
             onClick={updateAvailable || !canCheckForUpdates
               ? () => onAction("update", pkg)
               : onCheckUpdate}
-            disabled={busy || reloadBusy || checkingUpdate}
+            disabled={busy || checkingUpdate}
           >
             {busyKey === `update:${key}`
               ? t("i18n.updating")
@@ -356,14 +352,6 @@ function PackageDetail({
           </ConfigButton>
         </SettingsRow>
         {updateError && <p role="alert" className="settings-row-message is-error">{updateError}</p>}
-        <SettingsRow
-          label={t("i18n.reloadSession")}
-          description={sessionId ? t("plugins.reloadDescription") : t("i18n.openSessionToReload")}
-        >
-          <ConfigButton size="small" onClick={onReloadSession} disabled={!sessionId || reloadBusy || busy}>
-            {reloadBusy ? t("i18n.reloading") : t("plugins.reload")}
-          </ConfigButton>
-        </SettingsRow>
         {actionMessage && <p role="status" className="settings-row-message is-success">{actionMessage}</p>}
         {actionError && <p role="alert" className="settings-row-message is-error">{actionError}</p>}
       </SettingsGroup>
@@ -380,11 +368,11 @@ function PackageDetail({
         </SettingsProperties>
       </SettingsGroup>
 
-      <ResourceList pkg={pkg} busyKey={busyKey} onToggleExtension={onToggleExtension} />
+      <ResourceList pkg={pkg} busyKey={busyKey} onToggleResource={onToggleResource} />
 
       <SettingsGroup>
         <SettingsRow label={t("plugins.removeTitle")} description={t("plugins.removeDescription")}>
-          <ConfigButton variant="danger" size="small" onClick={() => onAction("remove", pkg)} disabled={busy || reloadBusy}>
+          <ConfigButton variant="danger" size="small" onClick={() => onAction("remove", pkg)} disabled={busy}>
             {busyKey === `remove:${key}` ? t("i18n.removing") : t("i18n.remove")}
           </ConfigButton>
         </SettingsRow>
@@ -398,7 +386,7 @@ function StandaloneExtensionDetail({ extension, busyKey, actionError, actionMess
   busyKey: string | null;
   actionError: string | null;
   actionMessage: string | null;
-  onToggle: ToggleExtension;
+  onToggle: ToggleResource;
 }) {
   const { t } = useI18n();
   const status = extension.enabled ? "loaded" : "disabled";
@@ -416,7 +404,7 @@ function StandaloneExtensionDetail({ extension, busyKey, actionError, actionMess
       {extension.globalEnabled !== null && (
         <SettingsGroup>
           <SettingsRow label={t("plugins.enabled")} description={t("plugins.extensionEnabledDescription")}>
-            <ExtensionControls extension={extension} busyKey={busyKey} onToggle={onToggle} />
+            <ResourceControls resource={extension} busyKey={busyKey} onToggle={onToggle} />
           </SettingsRow>
           {actionMessage && <p role="status" className="settings-row-message is-success">{actionMessage}</p>}
           {actionError && <p role="alert" className="settings-row-message is-error">{actionError}</p>}
@@ -470,6 +458,7 @@ export function PluginsConfig({
   const [checkingAll, setCheckingAll] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updatingAll, setUpdatingAll] = useState(false);
+  const [reloadNeeded, setReloadNeeded] = useState(false);
 
   const packages = useMemo(() => data?.packages ?? [], [data?.packages]);
   const standaloneExtensions = useMemo(() => data?.standaloneExtensions ?? [], [data?.standaloneExtensions]);
@@ -563,15 +552,13 @@ export function PluginsConfig({
       onChanged?.();
       setUpdateStatuses({});
       setActionMessage(t("i18n.packagesUpdated"));
-      if (sessionId) {
-        setActionMessage(`${t("i18n.packagesUpdated")} ${t("agents.reloadRequired")}`);
-      }
+      setReloadNeeded(true);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setUpdatingAll(false);
     }
-  }, [cwd, onChanged, sessionId, t]);
+  }, [cwd, onChanged, t]);
 
   const runAction = useCallback(async (action: PluginAction, pkg: PluginPackageInfo) => {
     const key = packageKey(pkg);
@@ -588,6 +575,7 @@ export function PluginsConfig({
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
       onChanged?.();
+      setReloadNeeded(true);
       if (action === "remove") {
         setSelected(null);
         setView("list");
@@ -620,28 +608,28 @@ export function PluginsConfig({
     }
   }, [cwd, onChanged, t]);
 
-  const toggleExtension = useCallback(async (extension: PluginResourceInfo) => {
-    setBusyKey(`extension:${extension.path}`);
+  const toggleResource = useCallback(async (resource: PluginResourceInfo) => {
+    setBusyKey(`resource:${resource.path}`);
     setActionError(null);
     setActionMessage(null);
     try {
-      const action = extension.globalEnabled ? "disable-extension" : "enable-extension";
+      const action = resource.globalEnabled ? "disable-resource" : "enable-resource";
       const res = await fetch("/api/plugins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, path: extension.path, cwd }),
+        body: JSON.stringify({ action, kind: resource.kind, path: resource.path, cwd }),
       });
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
       onChanged?.();
-      setActionMessage(t("agents.reloadRequired"));
+      setReloadNeeded(true);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
-  }, [cwd, onChanged, t]);
+  }, [cwd, onChanged]);
 
   const installPlugin = useCallback(async () => {
     const source = normalizePluginSourceInput(installSource).trim();
@@ -666,29 +654,13 @@ export function PluginsConfig({
       setView("detail");
       setInstallSource("");
       setActionMessage(t("plugins.message.installed"));
+      setReloadNeeded(true);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
   }, [cwd, installScope, installSource, onChanged, t]);
-
-  const reloadSession = useCallback(async () => {
-    if (!sessionId) return;
-    setBusyKey("reload");
-    setActionError(null);
-    setActionMessage(null);
-    try {
-      await sendAgentCommand(sessionId, { type: "reload" });
-      onReloaded?.();
-      await loadPlugins();
-      setActionMessage(t("plugins.message.reloaded"));
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusyKey(null);
-    }
-  }, [loadPlugins, onReloaded, sessionId, t]);
 
   const addBusy = busyKey?.startsWith("install:") ?? false;
   const availableUpdateCount = Object.values(updateStatuses).filter(
@@ -701,6 +673,7 @@ export function PluginsConfig({
 
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.plugins")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={onClose}>
+      {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
       <div className="settings-scroll">
         <div key={loading && !data ? "loading" : view} className="settings-page">
           {view === "add" ? (
@@ -727,7 +700,7 @@ export function PluginsConfig({
                   busyKey={busyKey}
                   actionError={actionError}
                   actionMessage={actionMessage}
-                  onToggle={toggleExtension}
+                  onToggle={toggleResource}
                 />
               ) : selectedPackage && (
                 <PackageDetail
@@ -736,14 +709,12 @@ export function PluginsConfig({
                   busyKey={busyKey}
                   actionError={actionError}
                   actionMessage={actionMessage}
-                  sessionId={sessionId}
                   updateStatus={updateStatuses[packageKey(selectedPackage)]}
                   checkingUpdate={checkingUpdates.has(packageKey(selectedPackage))}
                   updateError={updateError}
                   onAction={runAction}
                   onCheckUpdate={() => void checkForUpdates(selectedPackage)}
-                  onReloadSession={reloadSession}
-                  onToggleExtension={toggleExtension}
+                  onToggleResource={toggleResource}
                 />
               )}
             </>
@@ -821,7 +792,6 @@ export function PluginsConfig({
                             <ConfigSwitch
                               checked={!pkg.disabled}
                               loading={busy}
-                              disabled={busyKey === "reload"}
                               label={pkg.disabled ? t("i18n.enablePackage") : t("i18n.disablePackage")}
                               onChange={() => void runAction(pkg.disabled ? "enable" : "disable", pkg)}
                             />
@@ -841,7 +811,7 @@ export function PluginsConfig({
                           title={extension.path}
                           onOpen={() => openItem(extensionKey(extension))}
                         >
-                          <ExtensionControls extension={extension} busyKey={busyKey} onToggle={toggleExtension} />
+                          <ResourceControls resource={extension} busyKey={busyKey} onToggle={toggleResource} />
                         </SettingsLinkRow>
                       ))}
                     </SettingsGroup>

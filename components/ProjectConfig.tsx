@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { sendAgentCommand } from "@/lib/agent-client";
 import type {
   ProjectOverridesWriteResponse,
   ProjectResourceGroup,
   ProjectResourceItem,
   ProjectResourcesResponse,
+  SubagentSettingsResponse,
 } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
@@ -18,8 +18,10 @@ import {
   SettingsGroup,
   SettingsLinkRow,
   SettingsLoading,
+  SettingsRow,
   SettingsSearch,
 } from "./SettingsUi";
+import { ReloadNotice } from "./ReloadNotice";
 
 function shortenPath(path: string): string {
   return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
@@ -51,6 +53,11 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const subagentsUrl = settingsUrls.subagentSettings(cwd);
+  const [subagents, setSubagents] = useState<SubagentSettingsResponse | null>(() => {
+    const reply = peekJson<SubagentSettingsResponse & { error?: string }>(subagentsUrl);
+    return reply?.ok && !reply.data.error ? reply.data : null;
+  });
 
   const load = useCallback(async () => {
     try {
@@ -62,7 +69,16 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     }
   }, [url]);
 
+  const loadSubagents = useCallback(async () => {
+    const res = await getJson<SubagentSettingsResponse & { error?: string }>(subagentsUrl);
+    if (!res.ok || res.data.error) throw new Error(res.data.error ?? `HTTP ${res.status}`);
+    setSubagents(res.data);
+  }, [subagentsUrl]);
+
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    loadSubagents().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [loadSubagents]);
 
   // Every change is saved immediately; an open session picks it up only after a reload.
   const run = useCallback(async (action: () => Promise<void>, needsReload: boolean) => {
@@ -71,7 +87,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     setSyncFailures([]);
     try {
       await action();
-      await load();
+      await Promise.all([load(), loadSubagents()]);
       setReloadNeeded(needsReload);
       onChanged?.();
     } catch (err) {
@@ -79,7 +95,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     } finally {
       setBusy(false);
     }
-  }, [load, onChanged]);
+  }, [load, loadSubagents, onChanged]);
 
   const post = async (targets: Target[], enabled: boolean) => {
     const res = await fetch("/api/project-overrides", {
@@ -94,16 +110,31 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
 
   const setEnabled = (targets: Target[], enabled: boolean) => run(() => post(targets, enabled), true);
 
+  // Same setting as "Enable in this project" on the Agents page (lib/subagent-settings.ts).
+  const putSubagentsEnabled = async (projectEnabled: boolean) => {
+    const res = await fetch("/api/subagents/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, projectEnabled }),
+    });
+    const body = (await res.json()) as { error?: string };
+    if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
+  };
+  const subagentsOff = subagents?.project?.enabled === false;
+
   const groups = data?.groups ?? [];
   const overridden = groups.flatMap((group) => group.items.filter((item) => item.overridden));
   const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0);
   const enabledCount = groups.reduce((sum, group) => sum + group.items.filter((item) => item.enabled).length, 0);
+  // Everything this project does differently from global: resource overrides plus the sub-agent switch.
+  const differences = overridden.length + (subagentsOff ? 1 : 0);
   const resetAll = () => run(async () => {
     const back = (item: ProjectResourceItem) => item.globalEnabled ?? true;
     const on = overridden.filter(back);
     const off = overridden.filter((item) => !back(item));
     if (on.length) await post(on, true);
     if (off.length) await post(off, false);
+    if (subagentsOff) await putSubagentsEnabled(true);
   }, true);
 
   // Same endpoint as the trust dialog; it also drops runtimes built without project resources.
@@ -117,16 +148,6 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
   }, false);
 
-  const [reloading, setReloading] = useState(false);
-  const reloadSession = async () => {
-    setReloading(true);
-    await run(async () => {
-      await sendAgentCommand(sessionId!, { type: "reload" });
-      onReloaded?.();
-    }, false);
-    setReloading(false);
-  };
-
   const needle = filter.trim().toLowerCase();
   const matches = (group: ProjectResourceGroup, item: ProjectResourceItem) =>
     !needle || `${group.label} ${item.name}`.toLowerCase().includes(needle);
@@ -139,6 +160,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
   const standalone = visible.filter((group) => group.origin === "top-level");
   const trusted = data?.projectResourcesLoaded ?? true;
   const locked = busy || !trusted;
+  const resetLocked = busy || (!trusted && overridden.length > 0);
   const projectName = cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
   const sync = data?.sync;
   const syncHint = !sync ? null
@@ -179,6 +201,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
 
   return (
     <ConfigPanelShell embedded title={t("project.title")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={() => {}}>
+      {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
       <div className="settings-scroll">
         <div className="settings-page">
           <div className="settings-sticky-head">
@@ -193,26 +216,17 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
               <SettingsSearch value={filter} onChange={setFilter} placeholder={t("project.filterPlaceholder")} />
               <span className="settings-toolbar-spacer" />
               {data && <span className="settings-toolbar-summary">{t("project.summary", { loaded: enabledCount, total: itemCount })}</span>}
-              {overridden.length > 0 && (
-                <ConfigButton size="small" variant="ghost" onClick={() => void resetAll()} disabled={locked}>
-                  {`${t("project.resetAll")} · ${overridden.length}`}
-                </ConfigButton>
-              )}
-              {reloadNeeded && sessionId && (
-                <ConfigButton size="small" variant="primary" onClick={() => void reloadSession()} disabled={busy}>
-                  {reloading ? t("agents.reloading") : t("agents.reloadSession")}
-                </ConfigButton>
-              )}
             </div>
+            {differences > 0 && (
+              <p role="status" className="settings-row-message project-differences">
+                <span>{t("project.differences", { count: differences })}</span>
+                <ConfigButton size="small" onClick={() => void resetAll()} disabled={resetLocked}>{t("project.resetAll")}</ConfigButton>
+              </p>
+            )}
             {!trusted && (
               <p role="status" className="settings-row-message is-warning">
                 {t("project.untrusted")}{" "}
                 <ConfigButton size="small" onClick={() => void trust()} disabled={busy}>{t("trust.trustProject")}</ConfigButton>
-              </p>
-            )}
-            {reloadNeeded && (
-              <p role="status" className={`settings-row-message${sessionId ? " is-warning" : ""}`}>
-                {sessionId ? t("agents.reloadRequired") : t("project.newSessionsOnly")}
               </p>
             )}
             {syncFailures.length > 0 && (
@@ -227,6 +241,22 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
             error ? null : <SettingsLoading label={t("i18n.loading")} />
           ) : (
             <>
+              {subagents?.project && (
+                <SettingsGroup>
+                  <SettingsRow
+                    label={t("project.subagents")}
+                    description={subagents.enabled ? t("project.subagentsDescription") : t("agents.projectGlobalOff")}
+                  >
+                    {subagentsOff && subagents.enabled && <span className="settings-row-status">{t("project.tag.override")}</span>}
+                    <ConfigSwitch
+                      checked={subagents.enabled && subagents.project.enabled}
+                      disabled={busy || !subagents.enabled}
+                      label={t("project.subagents")}
+                      onChange={(enabled) => void run(() => putSubagentsEnabled(enabled), true)}
+                    />
+                  </SettingsRow>
+                </SettingsGroup>
+              )}
               {packages.length > 0 && (
                 <SettingsGroup title={<CountedTitle label={t("project.group.packages")} count={packages.length} />}>
                   {packages.flatMap((group) => {

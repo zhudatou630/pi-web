@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
@@ -15,6 +16,7 @@ const jiti = createJiti(import.meta.url, {
   moduleCache: false,
 });
 const { GET, PUT } = await jiti.import("./route.ts");
+const { allowFileRoot } = await jiti.import("../../../../lib/file-access.ts");
 
 after(async () => {
   if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
@@ -31,7 +33,7 @@ function request(body, contentType = "application/json") {
 }
 
 test("settings route defaults on and persists both switch states", async () => {
-  let response = await GET();
+  let response = await GET(new Request("http://localhost/api/subagents/settings"));
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { enabled: true, maxConcurrent: 10 });
 
@@ -63,4 +65,24 @@ test("settings route validates mutations", async () => {
   const body = await response.json();
   assert.equal(body.maxConcurrent, 2);
   assert.equal(typeof body.enabled, "boolean");
+});
+
+test("a project switch turns sub-agents off for that project only", async (t) => {
+  const cwd = realpathSync(await mkdtemp(join(tmpdir(), "pi-web-subagent-settings-project-")));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  allowFileRoot(cwd);
+  await PUT(request({ enabled: true }));
+
+  let response = await PUT(request({ cwd, projectEnabled: false }));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).project, { root: cwd, enabled: false });
+  response = await GET(new Request(`http://localhost/api/subagents/settings?cwd=${encodeURIComponent(cwd)}`));
+  assert.deepEqual((await response.json()).project, { root: cwd, enabled: false });
+
+  response = await PUT(request({ cwd, projectEnabled: true }));
+  assert.deepEqual((await response.json()).project, { root: cwd, enabled: true });
+
+  // A cwd outside the allowed roots is refused before anything is written.
+  response = await PUT(request({ cwd: "/", projectEnabled: false }));
+  assert.equal(response.status, 403);
 });

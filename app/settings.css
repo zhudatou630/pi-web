@@ -103,31 +103,30 @@
   line-height: 1.4;
 }
 
-/* Tab-wide settings above the profile list: plain rows, not a tinted band. */
-.agents-feature-setting {
+/* "Reload to apply" banner shared by every settings page (components/ReloadNotice.tsx). */
+.settings-reload-notice {
   display: flex;
   flex-shrink: 0;
-  flex-direction: column;
-  padding: 0 40px;
-  border-bottom: 1px solid var(--border);
-}
-
-.agents-feature-setting > .settings-row + .settings-row {
-  border-top: 1px solid var(--border);
-}
-
-.agents-feature-setting.is-notice {
-  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   min-height: 44px;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--warning) 8%, var(--bg));
-}
-
-.agents-feature-reload-notice {
   color: var(--warning);
   font-size: 12px;
+}
+
+.project-differences {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-reload-notice .is-error {
+  color: var(--danger);
 }
 
 .agents-number-input {
@@ -1516,7 +1515,7 @@
     height: calc(100dvh - 16px);
   }
 
-  .agents-feature-setting {
+  .settings-reload-notice {
     padding: 0 16px;
   }
 

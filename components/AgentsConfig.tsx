@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
 import type { SubagentProfilesResponse, SubagentSettingsResponse } from "@/lib/api-types";
-import { sendAgentCommand } from "@/lib/agent-client";
 import type { ModelsData } from "@/lib/models-cache";
 import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
 import { THINKING_LEVELS as THINKING_LEVEL_VALUES } from "@/lib/thinking-levels";
@@ -25,6 +24,7 @@ import {
   SettingsRow,
 } from "./SettingsUi";
 import { ModelSelector } from "./ModelSelector";
+import { ReloadNotice } from "./ReloadNotice";
 
 const TOOL_OPTIONS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const THINKING_OPTIONS = ["", ...THINKING_LEVEL_VALUES] as const;
@@ -132,12 +132,15 @@ export function AgentsConfig({
   sessionId = null,
   onClose,
   onReloaded,
+  onChanged,
   embedded = false,
 }: {
   cwd: string;
   sessionId?: string | null;
   onClose: () => void;
   onReloaded?: () => void;
+  /** The sub-agent switches changed what the Project page shows. */
+  onChanged?: () => void;
   embedded?: boolean;
 }) {
   const { t } = useI18n();
@@ -173,7 +176,6 @@ export function AgentsConfig({
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [reloadNeeded, setReloadNeeded] = useState(false);
-  const [reloading, setReloading] = useState(false);
 
   // One agent per name. The highest-precedence file wins whole, matching pi-subagents.
   const sources = useMemo(
@@ -313,7 +315,7 @@ export function AgentsConfig({
 
   const afterChange = async (name?: string) => {
     await loadProfiles(name);
-    setReloadNeeded(Boolean(sessionId));
+    setReloadNeeded(true);
   };
 
   const save = async () => {
@@ -408,7 +410,7 @@ export function AgentsConfig({
       // Refresh the list but keep unsaved form edits.
       await fetchProfiles();
       if (name === selectedName) update("enabled", enabled);
-      setReloadNeeded(Boolean(sessionId));
+      setReloadNeeded(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -439,7 +441,8 @@ export function AgentsConfig({
       }
       setBuiltInEnabled(data.enabled);
       setProject(data.project ?? null);
-      setReloadNeeded(Boolean(sessionId));
+      setReloadNeeded(true);
+      onChanged?.();
     } catch (cause) {
       setSettingsError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -466,21 +469,6 @@ export function AgentsConfig({
     }
   };
 
-  const reloadSession = async () => {
-    if (!sessionId) return;
-    setReloading(true);
-    setSettingsError(null);
-    try {
-      await sendAgentCommand(sessionId, { type: "reload" });
-      setReloadNeeded(false);
-      onReloaded?.();
-    } catch (cause) {
-      setSettingsError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setReloading(false);
-    }
-  };
-
   const profileTitle = mode === "create" ? t("agents.new") : draft.displayName || draft.name;
   const sourceNotes = !writing && effective ? [
     ...(effectiveTag === "project" ? [t("agents.projectFileNote")] : []),
@@ -494,14 +482,7 @@ export function AgentsConfig({
 
   return (
     <ConfigPanelShell embedded={embedded} title={t("common.agents")} subtitle={shortenPath(cwd)} closeLabel={t("agents.close")} onClose={onClose}>
-      {reloadNeeded && sessionId && (
-        <div className="agents-feature-setting is-notice">
-          <span role="status" className="agents-feature-reload-notice">{t("agents.reloadRequired")}</span>
-          <ConfigButton size="small" onClick={() => void reloadSession()} disabled={reloading || settingsSaving}>
-            {reloading ? t("agents.reloading") : t("agents.reloadSession")}
-          </ConfigButton>
-        </div>
-      )}
+      {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
       <div className="settings-scroll">
         <div key={loading ? "loading" : page} className="settings-page">
           {page === "list" ? (
@@ -510,7 +491,7 @@ export function AgentsConfig({
                 <SettingsRow label={t("agents.builtInTitle")} description={t("agents.builtInDescription")}>
                   <ConfigSwitch
                     checked={builtInEnabled}
-                    disabled={settingsLoading || reloading}
+                    disabled={settingsLoading}
                     loading={settingsSaving}
                     label={t("agents.builtInTitle")}
                     onChange={(enabled) => void putSubagentSwitch({ enabled })}
@@ -526,7 +507,7 @@ export function AgentsConfig({
                   >
                     <ConfigSwitch
                       checked={builtInEnabled && project.enabled}
-                      disabled={!builtInEnabled || settingsLoading || reloading}
+                      disabled={!builtInEnabled || settingsLoading}
                       loading={settingsSaving}
                       label={t("agents.projectTitle")}
                       onChange={(projectEnabled) => void putSubagentSwitch({ projectEnabled })}

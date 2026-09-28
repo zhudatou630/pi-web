@@ -397,12 +397,17 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, onModelsChanged, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
-  // Bumped by the Project page so the mounted Plugins/Skills pages refetch their project tags.
-  const [projectResourcesVersion, setProjectResourcesVersion] = useState(0);
-  const handleProjectResourcesChanged = useCallback(() => setProjectResourcesVersion((v) => v + 1), []);
-  // Bumped by the Plugins page so a mounted Project page refetches after a package change.
-  const [pluginsVersion, setPluginsVersion] = useState(0);
-  const handlePluginsChanged = useCallback(() => setPluginsVersion((v) => v + 1), []);
+  // Agents, Skills, Plugins, and Project show each other's state (global switches, project
+  // overrides, the sub-agent project switch). A page bumps its own version on a change and is
+  // keyed by the others', so the mounted pages refetch without losing the one being edited.
+  const [versions, setVersions] = useState({ agents: 0, skills: 0, plugins: 0, project: 0 });
+  const bump = useCallback((page: keyof typeof versions) => setVersions((v) => ({ ...v, [page]: v[page] + 1 })), []);
+  const handleAgentsChanged = useCallback(() => bump("agents"), [bump]);
+  const handleSkillsChanged = useCallback(() => bump("skills"), [bump]);
+  const handlePluginsChanged = useCallback(() => bump("plugins"), [bump]);
+  const handleProjectResourcesChanged = useCallback(() => bump("project"), [bump]);
+  const keyWithout = (page: keyof typeof versions) =>
+    `${cwd}:${Object.entries(versions).filter(([name]) => name !== page).map(([, v]) => v).join(":")}`;
   // Narrow screens show one page at a time: the section list, then the section.
   const [pane, setPane] = useState<"nav" | "section">("nav");
   const [mountedSections, setMountedSections] = useState<ReadonlySet<SettingsSection>>(
@@ -530,11 +535,11 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
           <main ref={mainRef} className="settings-dialog-main">
             {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} soundEnabled={soundEnabled} onSoundToggle={onSoundToggle} />)}
             {sectionHost("models", <ModelsConfig embedded onClose={requestClose} cwd={cwd} onModelsChanged={onModelsChanged} onDirtyChange={handleModelsDirty} />)}
-            {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
+            {cwd && sectionHost("agents", <AgentsConfig embedded key={keyWithout("agents")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handleAgentsChanged} />)}
             {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}
-            {cwd && sectionHost("skills", <SkillsConfig embedded key={`${cwd}:${projectResourcesVersion}`} cwd={cwd} onClose={onClose} />)}
-            {cwd && sectionHost("plugins", <PluginsConfig embedded key={`${cwd}:${projectResourcesVersion}`} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handlePluginsChanged} />)}
-            {cwd && sectionHost("project", <ProjectConfig key={`${cwd}:${pluginsVersion}`} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleProjectResourcesChanged} />)}
+            {cwd && sectionHost("skills", <SkillsConfig embedded key={keyWithout("skills")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handleSkillsChanged} />)}
+            {cwd && sectionHost("plugins", <PluginsConfig embedded key={keyWithout("plugins")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handlePluginsChanged} />)}
+            {cwd && sectionHost("project", <ProjectConfig key={keyWithout("project")} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleProjectResourcesChanged} />)}
             {sectionHost("usage", <UsageStats />)}
           </main>
         </div>

@@ -16,7 +16,7 @@ await writeFile(join(agentDir, "extensions", "rtk.ts"), "export default () => {}
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() } });
 const { allowFileRoot } = await jiti.import("../../../lib/file-access.ts");
-const { GET } = await jiti.import("./route.ts");
+const { GET, POST } = await jiti.import("./route.ts");
 allowFileRoot(cwd);
 
 after(async () => {
@@ -42,4 +42,33 @@ test("lists auto-discovered top-level extensions", async () => {
     projectOverride: "inherit",
   }]);
   assert.equal(body.totals.extensions, 1);
+});
+
+function post(body) {
+  return POST(new Request("http://localhost/api/plugins", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Host: "localhost" },
+    body: JSON.stringify({ cwd, ...body }),
+  }));
+}
+
+test("switches a single package skill globally without touching the rest of the package", async () => {
+  const pkg = join(root, "pkg");
+  for (const name of ["kept", "dropped"]) {
+    await mkdir(join(pkg, "skills", name), { recursive: true });
+    await writeFile(join(pkg, "skills", name, "SKILL.md"), `---\nname: ${name}\ndescription: d\n---\nx\n`);
+  }
+  await writeFile(join(agentDir, "settings.json"), JSON.stringify({ packages: [pkg] }));
+  const dropped = join(pkg, "skills", "dropped", "SKILL.md");
+
+  const response = await post({ action: "disable-resource", kind: "skill", path: dropped });
+  assert.equal(response.status, 200);
+  const skills = (await response.json()).packages[0].resources.filter((resource) => resource.kind === "skill");
+  assert.deepEqual(
+    skills.map((resource) => [resource.name, resource.globalEnabled]).sort(),
+    [["dropped", false], ["kept", true]],
+  );
+
+  // Only the four resource kinds map to a settings key.
+  assert.equal((await post({ action: "enable-resource", kind: "constructor", path: dropped })).status, 400);
 });

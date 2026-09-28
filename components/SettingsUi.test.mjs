@@ -71,9 +71,9 @@ test("list rows keep to a name, one clamped line, and inline controls", () => {
 
 test("skill and plugin group titles are human labels, not scope ids", () => {
   const sources = Object.fromEntries(configSources);
-  assert.match(sources.SkillsConfig, /t\(`skills\.group\.\$\{scope\}`\)/);
+  assert.match(sources.SkillsConfig, /t\("skills\.group\.package", \{ name: group\.name \?\? "" \}\)/);
   assert.match(sources.PluginsConfig, /t\(`skills\.group\.\$\{group\.scope\}`\)/);
-  for (const scope of ["global", "project", "path"]) {
+  for (const scope of ["global", "project", "mine", "projectFiles", "package"]) {
     assert.match(enSource, new RegExp(`"skills\\.group\\.${scope}":`));
     assert.match(zhSource, new RegExp(`"skills\\.group\\.${scope}":`));
   }
@@ -104,8 +104,10 @@ test("skills and plugins pages show translated state and never edit package-owne
   const sources = Object.fromEntries(configSources);
   // A package skill's switch is locked; the page points to Plugins / This project instead.
   assert.match(sources.SkillsConfig, /skill\.sourceInfo\?\.origin === "package"/);
-  assert.equal(sources.SkillsConfig.match(/disabled=\{isPackageSkill\(skill\)\}/g)?.length, 2);
-  assert.match(sources.SkillsConfig, /t\(`skills\.scope\.\$\{label\}`\)/);
+  assert.match(sources.SkillsConfig, /disabled=\{isPackageSkill\(skill\) \|\| !on\}/);
+  // The list switch is the global load switch; auto-invoke lives in the detail page.
+  assert.match(sources.SkillsConfig, /<ConfigSwitch\s+checked=\{skill\.globalEnabled\}[\s\S]*?label=\{t\("skills\.enabled"\)\}/);
+  assert.match(sources.SkillsConfig, /patchSkill\(skill, \{ enabled: !skill\.globalEnabled \}\)/);
   // No raw English status or scope strings reach the page.
   assert.doesNotMatch(sources.PluginsConfig, /setActionMessage\("/);
   assert.match(sources.PluginsConfig, /t\(STATUS_LABELS\[pkg\.status\]\)/);

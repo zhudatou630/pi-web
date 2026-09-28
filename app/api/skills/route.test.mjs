@@ -37,7 +37,8 @@ test("PATCH /api/skills authorizes by loaded-skill membership, not extra roots",
   const patch = source.slice(source.indexOf("export async function PATCH"));
   assert.match(patch, /loadSkillsWithInstallInfo\(cwd\)/);
   assert.match(patch, /item\.filePath === filePath/);
-  assert.doesNotMatch(patch, /globalSkillsDir|getAgentDir\(/);
+  // The agent dir is only used to write the global switch, never to widen the file allow-list.
+  assert.doesNotMatch(patch, /globalSkillsDir|isExistingFilePathAllowed\(filePath|allowFileRoot/);
 });
 
 test("PATCH /api/skills requires cwd", async () => {
@@ -110,4 +111,31 @@ test("PATCH /api/skills refuses a skill shipped by a package and leaves its file
   const refused = await PATCH(patchRequest({ cwd, filePath: skill.filePath, disableModelInvocation: true }));
   assert.equal(refused.status, 409);
   assert.equal(await readFile(skillFile, "utf8"), original);
+});
+
+test("a skill switched off globally stays listed and can be switched back on", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "pi-web-skills-route-cwd-"));
+  allowFileRoot(cwd);
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const dir = join(testAgentDir, "skills", "switchable-skill");
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "SKILL.md"), "---\nname: switchable-skill\ndescription: Demo\n---\nBody.\n");
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  t.after(() => rm(join(testAgentDir, "settings.json"), { force: true }));
+
+  const list = async () => (await (await GET(new Request(`http://localhost/api/skills?cwd=${encodeURIComponent(cwd)}`))).json())
+    .skills.find((item) => item.name === "switchable-skill");
+  const before = await list();
+  assert.equal(before.enabled, true);
+  assert.equal(before.globalEnabled, true);
+
+  assert.equal((await PATCH(patchRequest({ cwd, filePath: before.filePath, enabled: false }))).status, 200);
+  const off = await list();
+  assert.ok(off, "a switched-off skill must still be listed");
+  assert.equal(off.enabled, false);
+  assert.equal(off.globalEnabled, false);
+  assert.equal(off.description, "Demo");
+
+  assert.equal((await PATCH(patchRequest({ cwd, filePath: off.filePath, enabled: true }))).status, 200);
+  assert.equal((await list()).globalEnabled, true);
 });
