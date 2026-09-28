@@ -235,12 +235,11 @@ function withExtensionTools(session: AgentSessionLike, toolNames: string[]): str
 
   const codingToolNames = new Set(CODING_TOOL_NAMES);
   const selectedToolNames = resolveShellTools(toolNames, session.settingsManager.getDefaultTools());
-  const extensionToolNames = session
-    .getAllTools()
-    .map((t) => t.name)
+  const activeExtensionToolNames = session
+    .getActiveToolNames()
     .filter((name) => !codingToolNames.has(name));
 
-  return [...new Set([...selectedToolNames, ...extensionToolNames])];
+  return [...new Set([...selectedToolNames, ...activeExtensionToolNames])];
 }
 
 // ============================================================================
@@ -2297,9 +2296,9 @@ export async function startRpcSession(
     );
     if (persistedPreferences.modelDefaultChanged) invalidateModelsCache();
 
-    // If specific tool names were requested (non-empty), set the active tools to the
-    // requested builtin coding tools PLUS all extension/package tools, so installed
-    // extensions stay usable in Pi Web just like in the `pi` CLI.
+    // Keep extension tools that the extension has already activated (for example
+    // web_enable's selected web tools), instead of reactivating every extension
+    // tool whenever the runtime is rebuilt.
     if (!subagentResources && !chatOnly) {
       inner.setActiveToolsByName(withExtensionTools(inner, selectedToolNames ?? inner.getActiveToolNames()));
     }
@@ -2318,6 +2317,7 @@ export async function startRpcSession(
     });
     const realSessionId = inner.sessionId as string;
     registerRpcWrapper(wrapper);
+    await wrapper.waitUntilReady();
 
     return { session: wrapper, realSessionId };
   })().finally(() => {
