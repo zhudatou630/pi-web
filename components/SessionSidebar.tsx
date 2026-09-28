@@ -355,9 +355,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const [sessionMenu, setSessionMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [projectMenu, setProjectMenu] = useState<{ key: string; cwd: string; x: number; y: number } | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ key: string; x: number; y: number } | null>(null);
-  const confirmDeleteProjectKey = deleteConfirm?.key ?? null;
+  const [deleteConfirm, setDeleteConfirm] = useState<
+    | { kind: "project"; key: string; x: number; y: number }
+    | { kind: "session"; id: string; x: number; y: number }
+    | null
+  >(null);
+  const confirmDeleteProjectKey = deleteConfirm?.kind === "project" ? deleteConfirm.key : null;
   const [deletingProjectKey, setDeletingProjectKey] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
   const workspaceLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const workspaceTouchStartPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -1076,6 +1081,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     }
   }, [loadSessions, onSessionDeleted, onTogglePinnedCwd, pinnedCwds, projectFor, selectedProject?.key, workspaceProjects]);
 
+  const deleteSession = useCallback(async (sessionId: string) => {
+    setDeleteConfirm(null);
+    setDeletingSessionId(sessionId);
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      onSessionDeleted?.(sessionId);
+      void loadSessions();
+    } catch {
+      setDeletingSessionId(null);
+    }
+  }, [loadSessions, onSessionDeleted]);
+
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -1482,7 +1500,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
           isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
           menuAt={sessionMenu?.id === family.root.id ? sessionMenu : null}
-          onOpenMenu={(x, y) => { setProjectMenu(null); setSessionMenu({ id: family.root.id, x, y }); }}
+          onOpenMenu={(x, y) => { setProjectMenu(null); setDeleteConfirm(null); setSessionMenu({ id: family.root.id, x, y }); }}
           onCloseMenu={() => setSessionMenu(null)}
           onClick={() => handleSelectSessionFromList(family.root)}
           onRenamed={loadSessions}
@@ -1490,7 +1508,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           isPinned={pinned}
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
-          onDeleted={(id) => { onSessionDeleted?.(id); loadSessions(); }}
+          pendingDelete={deleteConfirm?.kind === "session" && deleteConfirm.id === family.root.id}
+          deleting={deletingSessionId === family.root.id}
+          onRequestDelete={(x, y) => setDeleteConfirm({ kind: "session", id: family.root.id, x, y })}
         />
       </div>
     );
@@ -1542,7 +1562,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               disabled={running || deletingProjectKey === projectMenu.key}
               title={t(running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
               onClick={() => {
-                setDeleteConfirm({ key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
+                setDeleteConfirm({ kind: "project", key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
                 setProjectMenu(null);
               }}
             >
@@ -1683,7 +1703,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       <ToolbarIconButton
                         onClick={(event) => {
                           setDropdownOpen(false);
-                          setDeleteConfirm({ key: project.key, x: event.clientX, y: event.clientY });
+                          setDeleteConfirm({ kind: "project", key: project.key, x: event.clientX, y: event.clientY });
                         }}
                         disabled={Boolean(activity?.running) || deletingProjectKey === project.key}
                         title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
@@ -1732,9 +1752,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       )}
 
       {deleteConfirm && (() => {
-        const project = workspaceProjects.find((item) => item.key === deleteConfirm.key);
-        if (!project) return null;
-        const count = sessionsForProject(allSessions, project.key).length;
+        const project = deleteConfirm.kind === "project"
+          ? workspaceProjects.find((item) => item.key === deleteConfirm.key)
+          : null;
+        const session = deleteConfirm.kind === "session"
+          ? allSessions.find((item) => item.id === deleteConfirm.id)
+          : null;
+        if (deleteConfirm.kind === "project" ? !project : !session) return null;
+        const count = project ? sessionsForProject(allSessions, project.key).length : 0;
+        const title = project
+          ? t("sidebar.deleteProjectSessionsConfirm", { count })
+          : t("sidebar.deleteSession");
+        const detail = project
+          ? t("sidebar.deleteProjectSessionsDetail", { count })
+          : session ? getSessionDisplayTitle(session) : null;
         return (
           <div
             className="project-context-menu menu-surface"
@@ -1746,14 +1777,17 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             <div
               role="alertdialog"
               aria-labelledby="delete-project-title"
-              aria-describedby="delete-project-detail"
+              aria-describedby={detail ? "delete-project-detail" : undefined}
               className="project-confirm"
             >
-              <div id="delete-project-title">{t("sidebar.deleteProjectSessionsConfirm", { count })}</div>
-              <div id="delete-project-detail">{t("sidebar.deleteProjectSessionsDetail", { count })}</div>
+              <div id="delete-project-title">{title}</div>
+              {detail && <div id="delete-project-detail">{detail}</div>}
               <div className="project-confirm-actions">
                 <button type="button" autoFocus onClick={() => setDeleteConfirm(null)}>{t("sidebar.cancel")}</button>
-                <button type="button" className="is-danger" onClick={() => void deleteProject(project)}>{t("sidebar.delete")}</button>
+                <button type="button" className="is-danger" onClick={() => {
+                  if (project) void deleteProject(project);
+                  else if (session) void deleteSession(session.id);
+                }}>{t("sidebar.delete")}</button>
               </div>
             </div>
           </div>
@@ -2083,7 +2117,9 @@ export function SessionItem({
   isPinned = false,
   onTogglePin,
   projectHint,
-  onDeleted,
+  pendingDelete = false,
+  deleting = false,
+  onRequestDelete,
   indent = 0,
   depth = 0,
   hasChildren = false,
@@ -2105,7 +2141,9 @@ export function SessionItem({
   onTogglePin?: () => void;
   /** Shown under the title in the tooltip where the project isn't visible from context. */
   projectHint?: string;
-  onDeleted?: (id: string) => void;
+  pendingDelete?: boolean;
+  deleting?: boolean;
+  onRequestDelete?: (x: number, y: number) => void;
   indent?: number;
   depth?: number;
   hasChildren?: boolean;
@@ -2116,15 +2154,13 @@ export function SessionItem({
   const [hovered, setHovered] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isLongPressRef = useRef(false);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (confirmDelete || renaming || session.transient) return;
+    if (renaming || session.transient) return;
     const touch = e.touches[0];
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     isLongPressRef.current = false;
@@ -2140,7 +2176,7 @@ export function SessionItem({
       }
       onOpenMenu?.(touch.clientX, touch.clientY);
     }, 400);
-  }, [confirmDelete, onOpenMenu, renaming, session.transient]);
+  }, [onOpenMenu, renaming, session.transient]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStartPosRef.current || !longPressTimerRef.current) return;
@@ -2202,29 +2238,6 @@ export function SessionItem({
     }
   }, [renameValue, session.id, session.name, onRenamed, title]);
 
-  const performDelete = useCallback(async () => {
-    if (session.transient) return;
-    setConfirmDelete(false);
-    setDeleting(true);
-    try {
-      const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      onDeleted?.(session.id);
-    } catch {
-      setDeleting(false);
-    }
-  }, [session.id, session.transient, onDeleted]);
-
-  const handleDeleteConfirm = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    void performDelete();
-  }, [performDelete]);
-
-  const handleDeleteCancel = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDelete(false);
-  }, []);
-
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2250,6 +2263,7 @@ export function SessionItem({
     <>
     <div
       className="session-list-row"
+      data-pending-delete={pendingDelete ? "true" : undefined}
       onClick={(e) => {
         if (isLongPressRef.current) {
           isLongPressRef.current = false;
@@ -2257,11 +2271,11 @@ export function SessionItem({
           e.stopPropagation();
           return;
         }
-        if (confirmDelete || renaming) return;
+        if (renaming) return;
         onClick();
       }}
       onDoubleClick={() => {
-        if (confirmDelete || renaming || session.transient) return;
+        if (renaming || session.transient) return;
         onOpenInNewTab?.();
       }}
       onTouchStart={handleTouchStart}
@@ -2272,13 +2286,13 @@ export function SessionItem({
         if (e.button === 1) e.preventDefault();
       }}
       onAuxClick={(e) => {
-        if (e.button === 1 && onOpenInNewTab && !confirmDelete && !renaming) {
+        if (e.button === 1 && onOpenInNewTab && !renaming) {
           e.preventDefault();
           e.stopPropagation();
           onOpenInNewTab();
         }
       }}
-      onContextMenu={confirmDelete || renaming ? undefined : handleContextMenu}
+      onContextMenu={renaming ? undefined : handleContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
       style={{
@@ -2288,8 +2302,8 @@ export function SessionItem({
         alignItems: "center",
         paddingLeft: 14 + indent + depth * 14,
         paddingRight: 8,
-        cursor: confirmDelete || renaming ? "default" : "pointer",
-        background: confirmDelete
+        cursor: renaming ? "default" : "pointer",
+        background: pendingDelete
           ? "color-mix(in srgb, var(--danger) 6%, transparent)"
           : isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
         borderRadius: 4,
@@ -2302,47 +2316,7 @@ export function SessionItem({
         WebkitTouchCallout: "none",
       }}
     >
-      {confirmDelete ? (
-        /* ── Delete confirmation: same height, two flat buttons ── */
-        <>
-          <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {t("sidebar.deleteSession", { title: title.slice(0, 22) + (title.length > 22 ? "…" : "") })}
-          </div>
-          <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-            <button
-              onClick={handleDeleteConfirm}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                height: 24, padding: "0 8px",
-                background: "var(--danger)", border: "none",
-                borderRadius: 4, color: "#fff",
-                cursor: "pointer", fontSize: 12,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-              </svg>
-              {t("sidebar.delete")}
-            </button>
-            <button
-              onClick={handleDeleteCancel}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                height: 24, padding: "0 8px",
-                background: "var(--bg)", border: "1px solid var(--border)",
-                borderRadius: 4, color: "var(--text-muted)",
-                cursor: "pointer", fontSize: 12, whiteSpace: "nowrap",
-              }}
-            >
-              {t("sidebar.cancel")}
-            </button>
-          </div>
-        </>
-      ) : renaming ? (
+      {renaming ? (
         /* ── Rename: input fills the same row ── */
         <input
           ref={inputRef}
@@ -2542,7 +2516,7 @@ export function SessionItem({
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
           {t("sidebar.rename")}
         </button>
-        <button type="button" role="menuitem" className="is-danger" onClick={menuItem(() => setConfirmDelete(true))}>
+        <button type="button" role="menuitem" className="is-danger" onClick={menuItem(() => { if (menuAt) onRequestDelete?.(menuAt.x, menuAt.y); })}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
           {t("sidebar.delete")}
         </button>

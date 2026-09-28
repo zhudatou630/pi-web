@@ -86,12 +86,12 @@ test("project rows delete all sessions behind an unskippable confirmation", () =
   // Delete lives in the project context menu (right-click / long press), not the hover actions.
   const menu = source.slice(source.indexOf('className="project-context-menu'), source.indexOf("{/* Pinned sessions"));
   assert.match(menu, /disabled=\{running \|\| deletingProjectKey === projectMenu\.key\}/);
-  assert.match(menu, /setDeleteConfirm\(\{ key: projectMenu\.key, x: projectMenu\.x, y: projectMenu\.y \}\)/);
+  assert.match(menu, /setDeleteConfirm\(\{ kind: "project", key: projectMenu\.key, x: projectMenu\.x, y: projectMenu\.y \}\)/);
   const rowActions = source.slice(source.indexOf('<span className="workspace-row-action">'), source.indexOf('if (row.kind === "showMore")'));
   assert.doesNotMatch(rowActions, /setConfirmDeleteProjectKey/);
   assert.match(source, /if \(projectFor\(cwd\)\?\.key === project\.key\) onTogglePinnedCwd\(cwd\)/);
   assert.match(source, /for \(const id of data\.deletedSessionIds \?\? \[\]\) onSessionDeleted\?\.\(id\)/);
-  const confirm = source.slice(source.indexOf('role="alertdialog"'), source.indexOf("<SessionSearch open="));
+  const confirm = source.slice(source.indexOf("{deleteConfirm &&"), source.indexOf("<SessionSearch open="));
   assert.match(confirm, /sidebar\.deleteProjectSessionsDetail/);
   assert.doesNotMatch(confirm, /title=\{t\("sidebar\.deleteProjectSessionsDetail"/);
   assert.doesNotMatch(confirm, /shiftKey/);
@@ -99,7 +99,7 @@ test("project rows delete all sessions behind an unskippable confirmation", () =
 
 test("single-project switcher can delete any listed project without switching to it", () => {
   const dropdown = source.slice(source.indexOf("{singleProject && ("), source.indexOf("handleCustomPathClick(); }}"));
-  assert.match(dropdown, /setDropdownOpen\(false\);\s*setDeleteConfirm\(\{ key: project\.key, x: event\.clientX, y: event\.clientY \}\)/);
+  assert.match(dropdown, /setDropdownOpen\(false\);\s*setDeleteConfirm\(\{ kind: "project", key: project\.key, x: event\.clientX, y: event\.clientY \}\)/);
   assert.doesNotMatch(dropdown, /setDeleteConfirm[\s\S]*setSelectedCwd\(project\.root\)[\s\S]*setDeleteConfirm/);
   assert.match(dropdown, /disabled=\{Boolean\(activity\?\.running\) \|\| deletingProjectKey === project\.key\}/);
 });

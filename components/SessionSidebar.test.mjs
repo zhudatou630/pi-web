@@ -130,7 +130,7 @@ test("offers the downstream context-menu hook only on a normal session row", () 
   assert.match(sessionItemSource, /const handleContextMenu[\s\S]*?dispatchSessionRowContextMenu\(\{/);
   assert.match(
     sessionItemSource,
-    /onContextMenu=\{confirmDelete \|\| renaming \? undefined : handleContextMenu\}/,
+    /onContextMenu=\{renaming \? undefined : handleContextMenu\}/,
   );
 });
 
@@ -144,9 +144,10 @@ test("lifecycle refreshes bypass the cache while cross-window polling reuses it"
 });
 
 test("keeps a session visible when the delete request fails", () => {
-  assert.match(sessionItemSource, /const response = await fetch\(`\/api\/sessions\/\$\{encodeURIComponent\(session\.id\)\}`/);
-  assert.match(sessionItemSource, /if \(!response\.ok\) throw new Error\(`HTTP \$\{response\.status\}`\)/);
-  assert.match(sessionItemSource, /onDeleted\?\.\(session\.id\)/);
+  assert.match(source, /const response = await fetch\(`\/api\/sessions\/\$\{encodeURIComponent\(sessionId\)\}`/);
+  assert.match(source, /if \(!response\.ok\) throw new Error\(`HTTP \$\{response\.status\}`\)/);
+  assert.match(source, /onSessionDeleted\?\.\(sessionId\)/);
+  assert.match(source, /setDeletingSessionId\(null\)/);
 });
 
 test("does not expose disk-backed actions for transient sessions", () => {
@@ -168,9 +169,17 @@ test("right-click and mobile long-press open one session menu with every row act
   assert.match(sessionItemSource, /t\("chatTabs\.openInNewTab"\)/);
   assert.match(sessionItemSource, /t\(isPinned \? "sidebar\.unpinSession" : "sidebar\.pinSession"\)/);
   assert.match(sessionItemSource, /menuItem\(startRename\)/);
-  assert.match(sessionItemSource, /menuItem\(\(\) => setConfirmDelete\(true\)\)/);
+  assert.match(sessionItemSource, /onRequestDelete\?\.\(menuAt\.x, menuAt\.y\)/);
   assert.match(source, /setSessionMenu\(null\)/);
   assert.match(source, /handleGlobalPointerDown/);
+});
+
+test("session delete uses the same confirm popover as project delete", () => {
+  assert.match(source, /kind: "session"/);
+  assert.match(source, /className="project-confirm"/);
+  assert.match(source, /sidebar\.deleteSession/);
+  assert.doesNotMatch(sessionItemSource, /setConfirmDelete/);
+  assert.doesNotMatch(sessionItemSource, /background: "var\(--danger\)"/);
 });
 
 test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible)), or mobile long-press, avoiding mouse click focus retention", async () => {

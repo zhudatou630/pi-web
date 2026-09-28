@@ -489,7 +489,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.noSessions": "No sessions found",
     "sidebar.agentRunning": "Agent running…",
     "sidebar.newSessionActivity": "New session activity",
-    "sidebar.deleteSession": "Delete {title}?",
+    "sidebar.deleteSession": "Delete session?",
     "sidebar.deleteProjectSessions": "Delete all sessions (project folder is kept)",
     "sidebar.deleteSessions": "Delete sessions",
     "sidebar.deleteProjectSessionsRunning": "Stop running sessions before deleting",

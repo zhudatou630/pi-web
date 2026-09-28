@@ -489,7 +489,7 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.noSessions": "未找到会话",
     "sidebar.agentRunning": "Agent 运行中…",
     "sidebar.newSessionActivity": "会话有新活动",
-    "sidebar.deleteSession": "删除 {title}？",
+    "sidebar.deleteSession": "删除会话？",
     "sidebar.deleteProjectSessions": "删除全部会话（不影响项目目录）",
     "sidebar.deleteSessions": "删除会话",
     "sidebar.deleteProjectSessionsRunning": "请先停止运行中的会话",
