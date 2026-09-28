@@ -2176,8 +2176,8 @@ export async function startRpcSession(
     const chatOnlyExtension = chatOnly && !subagentResources
       ? createExactSystemPromptExtension(readChatOnlySystemPrompt)
       : undefined;
-    // The per-project sub-agent switch is keyed by the sidebar project root (shared by worktrees).
-    const subagentProjectRoot = !chatOnly && !subagentResources
+    // Per-project feature switches (sub-agents, images) are keyed by the sidebar project root.
+    const projectRoot = !chatOnly && !subagentResources
       ? (await resolveProject(sessionCwd)).projectRoot
       : sessionCwd;
 
@@ -2249,11 +2249,11 @@ export async function startRpcSession(
                 cwd: sessionCwd,
                 settings: settingsManager,
               }),
-              createImageGenerationExtension(agentDir),
+              createImageGenerationExtension(agentDir, { projectRoot }),
               createSubagentExtension(
                 SUBAGENT_CONTROLLER.extensionRuntime,
                 () => listSubagentProfiles(sessionCwd),
-                () => isSubagentsEnabledForProject(subagentProjectRoot),
+                () => isSubagentsEnabledForProject(projectRoot),
               ),
             ],
             extensionsOverride: (base) => preferUserBashExtension(preferPiWebImageTool(preferPiWebSubagentExtension(base))),

@@ -3,7 +3,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
-import { sendAgentCommand } from "@/lib/agent-client";
 import { IMAGE_CUSTOM_MODEL_PRESETS } from "@/lib/image-generation";
 import type {
   ImageGenerationSettingsConnection,
@@ -11,6 +10,7 @@ import type {
   ImageGenerationSettingsResponse,
 } from "@/lib/api-types";
 import { ConfigButton, ConfigSwitch, CountedTitle, SettingsGroup, SettingsLoading, SettingsRow } from "./SettingsUi";
+import { ReloadNotice } from "./ReloadNotice";
 
 type Draft =
   | { mode: "edit"; id: string; label: string; provider: string; model: string }
@@ -23,21 +23,28 @@ function preferredCustomProvider(providers: readonly ImageGenerationSettingsProv
 }
 
 export function ImagesConfig({
+  cwd = null,
   sessionId = null,
   onReloaded,
+  onChanged,
 }: {
+  cwd?: string | null;
   sessionId?: string | null;
   onReloaded?: () => void;
+  /** The image switches changed what the Project page shows. */
+  onChanged?: () => void;
 }) {
   const { t } = useI18n();
+  const url = settingsUrls.imageSettings(cwd);
   // The last reply paints at once; the mount load then revalidates it.
   const [settings, setSettings] = useState<ImageGenerationSettingsResponse | null>(() => {
-    const reply = peekJson<Partial<ImageGenerationSettingsResponse> & { error?: string }>(settingsUrls.imageSettings);
+    const reply = peekJson<Partial<ImageGenerationSettingsResponse> & { error?: string }>(url);
     return reply?.ok && !reply.data.error ? normalizeSettings(reply.data) : null;
   });
+  // Only the main settings route reports the project switch; connection edits keep it.
+  const [project, setProject] = useState(settings?.project ?? null);
   const [loading, setLoading] = useState(settings === null);
   const [saving, setSaving] = useState(false);
-  const [reloading, setReloading] = useState(false);
   const [reloadNeeded, setReloadNeeded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -48,7 +55,7 @@ export function ImagesConfig({
     setError(null);
     void (async () => {
       try {
-        const response = await getJson<Partial<ImageGenerationSettingsResponse> & { error?: string }>(settingsUrls.imageSettings);
+        const response = await getJson<Partial<ImageGenerationSettingsResponse> & { error?: string }>(url);
         if (controller.signal.aborted) return;
         const data = response.data;
         if (!response.ok || data.error || typeof data.enabled !== "boolean" || !Array.isArray(data.connections)) {
@@ -56,6 +63,7 @@ export function ImagesConfig({
         }
         const next = normalizeSettings(data);
         setSettings(next);
+        setProject(next.project ?? null);
       } catch (cause) {
         if (!(cause instanceof DOMException && cause.name === "AbortError")) {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -65,27 +73,30 @@ export function ImagesConfig({
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [url]);
 
   const applyResponse = async (response: Response) => {
     const data = await response.json() as Partial<ImageGenerationSettingsResponse> & { error?: string };
     if (!response.ok || data.error || typeof data.enabled !== "boolean" || !Array.isArray(data.connections)) {
       throw new Error(data.error ?? `HTTP ${response.status}`);
     }
-    setSettings(normalizeSettings(data));
-    setReloadNeeded(Boolean(sessionId));
+    const next = normalizeSettings(data);
+    setSettings(next);
+    if (next.project) setProject(next.project);
+    setReloadNeeded(true);
   };
 
-  const save = async (body: { enabled?: boolean; default?: string; connections?: Record<string, { enabled: boolean }> }) => {
+  const save = async (body: { enabled?: boolean; default?: string; connections?: Record<string, { enabled: boolean }>; projectEnabled?: boolean }) => {
     setSaving(true);
     setError(null);
     try {
       const response = await fetch("/api/image-generation/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, ...(cwd ? { cwd } : {}) }),
       });
       await applyResponse(response);
+      if (body.enabled !== undefined || body.projectEnabled !== undefined) onChanged?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -152,21 +163,6 @@ export function ImagesConfig({
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const reloadSession = async () => {
-    if (!sessionId) return;
-    setReloading(true);
-    setError(null);
-    try {
-      await sendAgentCommand(sessionId, { type: "reload" });
-      setReloadNeeded(false);
-      onReloaded?.();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setReloading(false);
     }
   };
 
@@ -240,29 +236,43 @@ export function ImagesConfig({
 
   if (loading && !settings) return <div key="loading" className="settings-page"><SettingsLoading label={t("i18n.loading")} /></div>;
 
+  const globalOn = settings?.enabled === true;
   return (
+    <>
+    {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
     <div key="ready" className="settings-page">
       <SettingsGroup>
         <SettingsRow label={t("settings.imagesEnabled")} description={t("settings.imagesDescription")}>
-          {reloadNeeded && sessionId && (
-            <ConfigButton size="small" onClick={() => void reloadSession()} disabled={reloading || saving}>
-              {reloading ? t("agents.reloading") : t("agents.reloadSession")}
-            </ConfigButton>
-          )}
           <ConfigSwitch
-            checked={settings?.enabled === true}
-            disabled={loading || reloading || !settings}
+            checked={globalOn}
+            disabled={loading || !settings}
             loading={saving && !draft && !rename}
             label={t("settings.imagesEnabled")}
             onChange={(enabled) => void save({ enabled })}
           />
         </SettingsRow>
+        {project && (
+          <SettingsRow
+            label={t("agents.projectTitle")}
+            description={globalOn
+              ? t("settings.imagesProjectDescription", { path: project.root.replace(/^\/(?:Users|home)\/[^/]+/, "~") })
+              : t("settings.imagesProjectGlobalOff")}
+            title={project.root}
+          >
+            <ConfigSwitch
+              checked={globalOn && project.enabled}
+              disabled={!globalOn || loading || saving}
+              label={t("agents.projectTitle")}
+              onChange={(projectEnabled) => void save({ projectEnabled })}
+            />
+          </SettingsRow>
+        )}
         {settings?.enabled && settings.connections.some((connection) => connection.enabled) && (
           <SettingsRow label={t("settings.imagesDefault")} description={t("settings.imagesDefaultDescription")}>
             <select
               className="settings-select"
               value={settings.defaultConnection}
-              disabled={loading || saving || reloading}
+              disabled={loading || saving}
               onChange={(event) => void save({ default: event.target.value })}
             >
               {settings.connections.filter((connection) => connection.enabled).map((connection) => (
@@ -273,7 +283,6 @@ export function ImagesConfig({
             </select>
           </SettingsRow>
         )}
-        {reloadNeeded && <p role="status" className="settings-row-message is-warning">{t("agents.reloadRequired")}</p>}
         {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
       </SettingsGroup>
 
@@ -284,7 +293,7 @@ export function ImagesConfig({
               <ConnectionSwitch
                 key={connection.id}
                 connection={connection}
-                disabled={loading || reloading || saving}
+                disabled={loading || saving}
                 unsignedLabel={t("settings.imagesSignedOut")}
                 onChange={(enabled) => void save({ connections: { [connection.id]: { enabled } } })}
                 renaming={rename?.id === connection.id}
@@ -303,7 +312,7 @@ export function ImagesConfig({
             action={providers.length > 0 && !draft && (
               <ConfigButton
                 size="small"
-                disabled={loading || reloading || saving}
+                disabled={loading || saving}
                 onClick={() => {
                   setRename(null);
                   setDraft({
@@ -326,7 +335,7 @@ export function ImagesConfig({
                 {draft?.mode === "edit" && draft.id === connection.id ? draftForm : (
                   <ConnectionSwitch
                     connection={connection}
-                    disabled={loading || reloading || saving}
+                    disabled={loading || saving}
                     unsignedLabel={t("settings.imagesNotConfigured")}
                     detail={connection.model}
                     onChange={(enabled) => void save({ connections: { [connection.id]: { enabled } } })}
@@ -340,7 +349,7 @@ export function ImagesConfig({
                         model: connection.model,
                       });
                     }}
-                    editLabel={t("image.edit")}
+                    editLabel={t("i18n.edit")}
                   />
                 )}
               </Fragment>
@@ -350,6 +359,7 @@ export function ImagesConfig({
         </>
       )}
     </div>
+    </>
   );
 }
 
@@ -365,6 +375,7 @@ function normalizeSettings(data: Partial<ImageGenerationSettingsResponse>): Imag
     providers: (data.providers ?? []).filter((provider): provider is ImageGenerationSettingsProvider => (
       Boolean(provider && typeof provider.id === "string" && provider.id)
     )),
+    ...(data.project ? { project: data.project } : {}),
   };
 }
 

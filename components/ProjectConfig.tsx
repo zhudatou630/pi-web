@@ -6,7 +6,6 @@ import type {
   ProjectResourceGroup,
   ProjectResourceItem,
   ProjectResourcesResponse,
-  SubagentSettingsResponse,
 } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
@@ -28,6 +27,19 @@ function shortenPath(path: string): string {
 }
 
 type Target = Pick<ProjectResourceItem, "type" | "path">;
+
+/** A Pi Web feature with a global switch plus a per-project off switch (lib/project-feature-switch.ts). */
+interface FeatureState {
+  enabled: boolean;
+  project?: { root: string; enabled: boolean };
+}
+
+/** Same settings as "Enable in this project" on the Agents and Images pages. */
+const FEATURES = [
+  { id: "subagents", label: "project.subagents", description: "project.subagentsDescription", globalOff: "agents.projectGlobalOff", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings },
+  { id: "images", label: "project.images", description: "project.imagesDescription", globalOff: "settings.imagesProjectGlobalOff", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings },
+] as const;
+type FeatureId = (typeof FEATURES)[number]["id"];
 
 /**
  * What the agent can use in this project: every global package and standalone
@@ -53,11 +65,12 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [filter, setFilter] = useState("");
-  const subagentsUrl = settingsUrls.subagentSettings(cwd);
-  const [subagents, setSubagents] = useState<SubagentSettingsResponse | null>(() => {
-    const reply = peekJson<SubagentSettingsResponse & { error?: string }>(subagentsUrl);
-    return reply?.ok && !reply.data.error ? reply.data : null;
-  });
+  const [features, setFeatures] = useState<Partial<Record<FeatureId, FeatureState>>>(() => Object.fromEntries(
+    FEATURES.flatMap((feature) => {
+      const reply = peekJson<FeatureState & { error?: string }>(feature.url(cwd));
+      return reply?.ok && !reply.data.error ? [[feature.id, reply.data]] : [];
+    }),
+  ));
 
   const load = useCallback(async () => {
     try {
@@ -69,16 +82,19 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     }
   }, [url]);
 
-  const loadSubagents = useCallback(async () => {
-    const res = await getJson<SubagentSettingsResponse & { error?: string }>(subagentsUrl);
-    if (!res.ok || res.data.error) throw new Error(res.data.error ?? `HTTP ${res.status}`);
-    setSubagents(res.data);
-  }, [subagentsUrl]);
+  const loadFeatures = useCallback(async () => {
+    const replies = await Promise.all(FEATURES.map(async (feature) => {
+      const res = await getJson<FeatureState & { error?: string }>(feature.url(cwd));
+      if (!res.ok || res.data.error) throw new Error(res.data.error ?? `HTTP ${res.status}`);
+      return [feature.id, res.data] as const;
+    }));
+    setFeatures(Object.fromEntries(replies));
+  }, [cwd]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    loadSubagents().catch((err) => setError(err instanceof Error ? err.message : String(err)));
-  }, [loadSubagents]);
+    loadFeatures().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [loadFeatures]);
 
   // Every change is saved immediately; an open session picks it up only after a reload.
   const run = useCallback(async (action: () => Promise<void>, needsReload: boolean) => {
@@ -87,7 +103,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     setSyncFailures([]);
     try {
       await action();
-      await Promise.all([load(), loadSubagents()]);
+      await Promise.all([load(), loadFeatures()]);
       setReloadNeeded(needsReload);
       onChanged?.();
     } catch (err) {
@@ -95,7 +111,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     } finally {
       setBusy(false);
     }
-  }, [load, loadSubagents, onChanged]);
+  }, [load, loadFeatures, onChanged]);
 
   const post = async (targets: Target[], enabled: boolean) => {
     const res = await fetch("/api/project-overrides", {
@@ -110,9 +126,8 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
 
   const setEnabled = (targets: Target[], enabled: boolean) => run(() => post(targets, enabled), true);
 
-  // Same setting as "Enable in this project" on the Agents page (lib/subagent-settings.ts).
-  const putSubagentsEnabled = async (projectEnabled: boolean) => {
-    const res = await fetch("/api/subagents/settings", {
+  const putFeatureEnabled = async (putUrl: string, projectEnabled: boolean) => {
+    const res = await fetch(putUrl, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cwd, projectEnabled }),
@@ -120,21 +135,21 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     const body = (await res.json()) as { error?: string };
     if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
   };
-  const subagentsOff = subagents?.project?.enabled === false;
+  const featuresOff = FEATURES.filter((feature) => features[feature.id]?.project?.enabled === false);
 
   const groups = data?.groups ?? [];
   const overridden = groups.flatMap((group) => group.items.filter((item) => item.overridden));
   const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0);
   const enabledCount = groups.reduce((sum, group) => sum + group.items.filter((item) => item.enabled).length, 0);
   // Everything this project does differently from global: resource overrides plus the sub-agent switch.
-  const differences = overridden.length + (subagentsOff ? 1 : 0);
+  const differences = overridden.length + featuresOff.length;
   const resetAll = () => run(async () => {
     const back = (item: ProjectResourceItem) => item.globalEnabled ?? true;
     const on = overridden.filter(back);
     const off = overridden.filter((item) => !back(item));
     if (on.length) await post(on, true);
     if (off.length) await post(off, false);
-    if (subagentsOff) await putSubagentsEnabled(true);
+    for (const feature of featuresOff) await putFeatureEnabled(feature.putUrl, true);
   }, true);
 
   // Same endpoint as the trust dialog; it also drops runtimes built without project resources.
@@ -241,20 +256,24 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
             error ? null : <SettingsLoading label={t("i18n.loading")} />
           ) : (
             <>
-              {subagents?.project && (
+              {FEATURES.some((feature) => features[feature.id]?.project) && (
                 <SettingsGroup>
-                  <SettingsRow
-                    label={t("project.subagents")}
-                    description={subagents.enabled ? t("project.subagentsDescription") : t("agents.projectGlobalOff")}
-                  >
-                    {subagentsOff && subagents.enabled && <span className="settings-row-status">{t("project.tag.override")}</span>}
-                    <ConfigSwitch
-                      checked={subagents.enabled && subagents.project.enabled}
-                      disabled={busy || !subagents.enabled}
-                      label={t("project.subagents")}
-                      onChange={(enabled) => void run(() => putSubagentsEnabled(enabled), true)}
-                    />
-                  </SettingsRow>
+                  {FEATURES.map((feature) => {
+                    const state = features[feature.id];
+                    if (!state?.project) return null;
+                    const off = !state.project.enabled;
+                    return (
+                      <SettingsRow key={feature.id} label={t(feature.label)} description={state.enabled ? t(feature.description) : t(feature.globalOff)}>
+                        {off && state.enabled && <span className="settings-row-status">{t("project.tag.override")}</span>}
+                        <ConfigSwitch
+                          checked={state.enabled && state.project.enabled}
+                          disabled={busy || !state.enabled}
+                          label={t(feature.label)}
+                          onChange={(enabled) => void run(() => putFeatureEnabled(feature.putUrl, enabled), true)}
+                        />
+                      </SettingsRow>
+                    );
+                  })}
                 </SettingsGroup>
               )}
               {packages.length > 0 && (

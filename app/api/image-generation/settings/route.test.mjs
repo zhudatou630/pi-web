@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
@@ -16,6 +17,9 @@ const jiti = createJiti(import.meta.url, {
 });
 const { GET, PUT } = await jiti.import("./route.ts");
 const { POST } = await jiti.import("./connections/route.ts");
+const { GET: popupGET } = await jiti.import("../route.ts");
+const { allowFileRoot } = await jiti.import("../../../../lib/file-access.ts");
+const { executeImageGeneration } = await jiti.import("../../../../lib/image-generation-runtime.ts");
 
 after(async () => {
   if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
@@ -80,7 +84,44 @@ test("connections route rejects providers that are not in models.json", async ()
 
 test("settings route still reports disabled when settings are off", async () => {
   await writeSettings({ enabled: false });
-  const response = await GET();
+  const response = await GET(new Request("http://localhost/api/image-generation/settings"));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).enabled, false);
+});
+
+test("a project switch hides image generation in that project only, and a missing file keeps the global state", async (t) => {
+  const cwd = realpathSync(await mkdtemp(join(tmpdir(), "pi-web-image-project-")));
+  const other = realpathSync(await mkdtemp(join(tmpdir(), "pi-web-image-other-")));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  t.after(() => rm(other, { recursive: true, force: true }));
+  allowFileRoot(cwd);
+  allowFileRoot(other);
+  // Legacy images.json means "on"; switching one project off must not turn it off globally.
+  await rm(join(testAgentDir, "images"), { recursive: true, force: true });
+  await writeFile(join(testAgentDir, "images.json"), JSON.stringify({
+    connections: { "grok-imagine": { provider: "xai", model: "grok-imagine-image-2.0" } },
+  }));
+  t.after(() => rm(join(testAgentDir, "images.json"), { force: true }));
+
+  const response = await PUT(request("/api/image-generation/settings", { cwd, projectEnabled: false }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.enabled, true);
+  assert.deepEqual(body.project, { root: cwd, enabled: false });
+
+  const here = await (await GET(new Request(`http://localhost/api/image-generation/settings?cwd=${encodeURIComponent(cwd)}`))).json();
+  const there = await (await GET(new Request(`http://localhost/api/image-generation/settings?cwd=${encodeURIComponent(other)}`))).json();
+  assert.equal(here.project.enabled, false);
+  assert.equal(there.project.enabled, true);
+  // The composer button is hidden for this project.
+  assert.deepEqual(await (await popupGET(new Request(`http://localhost/api/image-generation?cwd=${encodeURIComponent(cwd)}`))).json(), { available: false });
+  // And the one execution path refuses it, for the model tool and the button alike.
+  await assert.rejects(
+    executeImageGeneration(testAgentDir, { prompt: "a cat" }, { cwd, sessionManager: { getBranch: () => [] }, modelRegistry: {} }),
+    /disabled for this project/,
+  );
+
+  const restored = await (await PUT(request("/api/image-generation/settings", { cwd, projectEnabled: true }))).json();
+  assert.deepEqual(restored.project, { root: cwd, enabled: true });
+  assert.equal("disabledProjects" in JSON.parse(await readFile(join(testAgentDir, "images", "settings.json"), "utf8")), false);
 });

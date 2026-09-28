@@ -3,6 +3,7 @@ import path from "node:path";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { type ImageCapabilities, type ImageConfigView, type ImageConnectionView } from "./image-generation";
 import { readModelsConfig } from "./models-config-store";
+import { isProjectListed, withProjectSwitch } from "./project-feature-switch";
 
 export const IMAGE_CONFIG_FILE = "images.json";
 export const DEFAULT_IMAGE_CONNECTION_ID = "grok-imagine";
@@ -67,6 +68,7 @@ type StoredImageSettings = Record<string, unknown> & {
   default?: unknown;
   connections?: unknown;
   custom?: unknown;
+  disabledProjects?: unknown;
 };
 
 export const BUILTIN_IMAGE_CONNECTIONS: readonly ImageConnection[] = [
@@ -355,6 +357,32 @@ export function isImageGenerationEnabled(agentDir: string): boolean {
     }
   }
   return existsSync(getImageLegacyConfigPath(agentDir));
+}
+
+/** This project turned image generation off (keyed by sidebar project root). */
+export function isImageProjectDisabled(agentDir: string, projectRoot: string): boolean {
+  const settingsPath = getImageSettingsPath(agentDir);
+  return existsSync(settingsPath) && isProjectListed(readStoredSettings(settingsPath).disabledProjects, projectRoot);
+}
+
+/** Effective switch for one project: global on and not turned off here. Unreadable settings fail closed. */
+export function isImageGenerationEnabledForProject(agentDir: string, projectRoot: string): boolean {
+  try {
+    return isImageGenerationEnabled(agentDir) && !isImageProjectDisabled(agentDir, projectRoot);
+  } catch {
+    return false;
+  }
+}
+
+export function writeImageProjectEnabled(agentDir: string, projectRoot: string, enabled: boolean): void {
+  const settingsPath = getImageSettingsPath(agentDir);
+  // A missing file means "legacy images.json or off"; write that state first so adding the
+  // project list cannot flip the global switch.
+  if (!existsSync(settingsPath)) persistImageSettings(agentDir, loadImageSettingsSnapshot(agentDir));
+  const stored = readStoredSettings(settingsPath);
+  const next: StoredImageSettings = { ...stored, disabledProjects: withProjectSwitch(stored.disabledProjects, projectRoot, enabled) };
+  if (!next.disabledProjects) delete next.disabledProjects;
+  writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2));
 }
 
 export function resolveImageConfig(agentDir: string): ImageConfig {

@@ -179,3 +179,13 @@ test("filled primary actions share the neutral selection color everywhere", asyn
     assert.doesNotMatch(source, /background: "var\(--accent\)"|bg-accent\b/, `${file} fills a primary action with the accent`);
   }
 });
+
+test("the Images page follows the shared switch, banner, and wording rules", async () => {
+  const images = await readFile(new URL("./ImagesConfig.tsx", import.meta.url), "utf8");
+  assert.match(images, /<ReloadNotice sessionId=\{sessionId\}/);
+  assert.doesNotMatch(images, /sendAgentCommand/);
+  // "改图" is the image dialog's edit action, not "edit this connection".
+  assert.doesNotMatch(images, /editLabel=\{t\("image\.edit"\)\}/);
+  assert.match(images, /checked=\{globalOn && project\.enabled\}[\s\S]*?disabled=\{!globalOn/);
+  assert.match(images, /save\(\{ projectEnabled \}\)/);
+});

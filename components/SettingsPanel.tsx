@@ -397,12 +397,13 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, onModelsChanged, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
-  // Agents, Skills, Plugins, and Project show each other's state (global switches, project
+  // Agents, Images, Skills, Plugins, and Project show each other's state (global switches, project
   // overrides, the sub-agent project switch). A page bumps its own version on a change and is
   // keyed by the others', so the mounted pages refetch without losing the one being edited.
-  const [versions, setVersions] = useState({ agents: 0, skills: 0, plugins: 0, project: 0 });
+  const [versions, setVersions] = useState({ agents: 0, images: 0, skills: 0, plugins: 0, project: 0 });
   const bump = useCallback((page: keyof typeof versions) => setVersions((v) => ({ ...v, [page]: v[page] + 1 })), []);
   const handleAgentsChanged = useCallback(() => bump("agents"), [bump]);
+  const handleImagesChanged = useCallback(() => bump("images"), [bump]);
   const handleSkillsChanged = useCallback(() => bump("skills"), [bump]);
   const handlePluginsChanged = useCallback(() => bump("plugins"), [bump]);
   const handleProjectResourcesChanged = useCallback(() => bump("project"), [bump]);
@@ -536,7 +537,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             {sectionHost("general", <GeneralSettings sessionId={sessionId} onSessionReloaded={onSessionReloaded} quoteSelectionEnabled={quoteSelectionEnabled} onQuoteSelectionChange={onQuoteSelectionChange} soundEnabled={soundEnabled} onSoundToggle={onSoundToggle} />)}
             {sectionHost("models", <ModelsConfig embedded onClose={requestClose} cwd={cwd} onModelsChanged={onModelsChanged} onDirtyChange={handleModelsDirty} />)}
             {cwd && sectionHost("agents", <AgentsConfig embedded key={keyWithout("agents")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handleAgentsChanged} />)}
-            {sectionHost("images", <ImagesConfig sessionId={sessionId} onReloaded={onSessionReloaded} />)}
+            {sectionHost("images", <ImagesConfig key={keyWithout("images")} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleImagesChanged} />)}
             {cwd && sectionHost("skills", <SkillsConfig embedded key={keyWithout("skills")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handleSkillsChanged} />)}
             {cwd && sectionHost("plugins", <PluginsConfig embedded key={keyWithout("plugins")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handlePluginsChanged} />)}
             {cwd && sectionHost("project", <ProjectConfig key={keyWithout("project")} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleProjectResourcesChanged} />)}

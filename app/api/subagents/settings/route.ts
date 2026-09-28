@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { existsSync } from "fs";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import {
   isProjectSubagentsDisabled,
@@ -10,21 +8,10 @@ import {
   writeProjectSubagentsEnabled,
   writeSubagentMaxConcurrent,
 } from "@/lib/subagent-settings";
-import { resolveProject } from "@/lib/worktree";
+import { projectRootForRequest as projectRootFor, ProjectRequestError } from "@/lib/project-feature-switch";
 import type { SubagentSettingsResponse } from "@/lib/api-types";
 
 export const dynamic = "force-dynamic";
-
-class RequestError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
-}
-
-/** The per-project switch is keyed by the sidebar project root, so worktrees share it. */
-async function projectRootFor(cwd: unknown): Promise<string> {
-  if (typeof cwd !== "string" || !cwd || !existsSync(cwd)) throw new RequestError("Valid cwd required", 400);
-  if (!isExistingFilePathAllowed(cwd, await getAllowedFileRoots())) throw new RequestError("Access denied", 403);
-  return (await resolveProject(cwd)).projectRoot;
-}
 
 async function respond(cwd: unknown) {
   const settings = readSubagentSettings();
@@ -39,7 +26,7 @@ async function respond(cwd: unknown) {
 function failure(error: unknown) {
   return NextResponse.json(
     { error: error instanceof Error ? error.message : String(error) },
-    { status: error instanceof RequestError ? error.status : 500 },
+    { status: error instanceof ProjectRequestError ? error.status : 500 },
   );
 }
 

@@ -855,7 +855,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/image-generation", { signal: controller.signal })
+    // The image button follows the per-project switch, so ask for this session's cwd.
+    const imageCwd = session?.cwd ?? newSessionCwd;
+    fetch(`/api/image-generation${imageCwd ? `?cwd=${encodeURIComponent(imageCwd)}` : ""}`, { signal: controller.signal })
       .then(async (response) => {
         const body = await response.json() as { available?: boolean; config?: ImageConfigView };
         if (response.ok && body.available && body.config?.connections.length) setImageConfig(body.config);
@@ -869,7 +871,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         if (!(fetchError instanceof DOMException && fetchError.name === "AbortError")) console.error("Failed to load image generation config:", fetchError);
       });
     return () => controller.abort();
-  }, [imageConfigRefreshKey, modelsRefreshKey]);
+  }, [imageConfigRefreshKey, modelsRefreshKey, session?.cwd, newSessionCwd]);
 
   const submitDirectImage = useCallback(async (request: ImageGenerationRequest, sourceImage?: Base64ImageAttachment) => {
     keepTabOpen();

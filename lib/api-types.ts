@@ -33,6 +33,8 @@ export interface ImageGenerationSettingsResponse {
   defaultConnection: string;
   connections: ImageGenerationSettingsConnection[];
   providers: ImageGenerationSettingsProvider[];
+  /** Present when the request named a cwd: that project's own switch (the global one still applies). */
+  project?: { root: string; enabled: boolean };
 }
 
 export interface ShellToolSettingsResponse {

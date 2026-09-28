@@ -2,7 +2,7 @@ import path from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { ModelRuntime, type InlineExtension, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { IMAGE_TOOL_NAME } from "./image-generation";
-import { imageConfigView, isImageGenerationEnabled, resolveImageConfig, type ImageConfig } from "./image-generation-config";
+import { imageConfigView, isImageGenerationEnabled, isImageGenerationEnabledForProject, resolveImageConfig, type ImageConfig } from "./image-generation-config";
 import { executeImageGeneration } from "./image-generation-runtime";
 
 export const HOST_IMAGE_EXTENSION_PATH = "<inline:image-generation>";
@@ -36,6 +36,8 @@ function connectionGuideline(config: ImageConfig): string {
 
 export interface ImageGenerationExtensionOptions {
   hasAuth?: (provider: string) => boolean;
+  /** Sidebar project root of the session, for the per-project switch. */
+  projectRoot?: string;
 }
 
 export function createImageGenerationExtension(
@@ -46,7 +48,10 @@ export function createImageGenerationExtension(
     name: "image-generation",
     hidden: true,
     factory: async (pi) => {
-      if (!isImageGenerationEnabled(agentDir)) return;
+      const enabled = options.projectRoot
+        ? isImageGenerationEnabledForProject(agentDir, options.projectRoot)
+        : isImageGenerationEnabled(agentDir);
+      if (!enabled) return;
       const config = resolveImageConfig(agentDir);
       const configured = imageConfigView(config);
       if (!config.enabled || !configured.connections.length) return;

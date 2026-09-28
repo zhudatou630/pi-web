@@ -4,28 +4,35 @@ import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security"
 import {
   ImageConfigError,
   imageSettingsApiResponse,
+  isImageProjectDisabled,
   writeImageGenerationSettings,
+  writeImageProjectEnabled,
   type ImageSettingsPatch,
 } from "@/lib/image-generation-config";
+import { projectRootForRequest, ProjectRequestError } from "@/lib/project-feature-switch";
 
 export const dynamic = "force-dynamic";
 
-async function imageSettingsResponse(modelRuntime?: ModelRuntime) {
+/** With a cwd, the response also carries that project's own switch (the global one still applies). */
+async function imageSettingsResponse(modelRuntime?: ModelRuntime, cwd?: unknown) {
   const agentDir = getAgentDir();
   const runtime = modelRuntime ?? await ModelRuntime.create();
-  return imageSettingsApiResponse(agentDir, {
+  const body = imageSettingsApiResponse(agentDir, {
     hasAuth: (provider) => runtime.getProviderAuthStatus(provider).configured,
     providerName: (id) => runtime.getProvider(id)?.name ?? id,
   });
+  if (cwd === null || cwd === undefined) return body;
+  const root = await projectRootForRequest(cwd);
+  return { ...body, project: { root, enabled: !isImageProjectDisabled(agentDir, root) } };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    return NextResponse.json(await imageSettingsResponse());
+    return NextResponse.json(await imageSettingsResponse(undefined, new URL(req.url).searchParams.get("cwd")));
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 },
+      { status: error instanceof ProjectRequestError ? error.status : 500 },
     );
   }
 }
@@ -43,7 +50,16 @@ export async function PUT(req: Request) {
       enabled?: unknown;
       default?: unknown;
       connections?: unknown;
+      cwd?: unknown;
+      projectEnabled?: unknown;
     };
+    if (body.projectEnabled !== undefined) {
+      if (typeof body.projectEnabled !== "boolean") {
+        return NextResponse.json({ error: "projectEnabled must be a boolean" }, { status: 400 });
+      }
+      writeImageProjectEnabled(getAgentDir(), await projectRootForRequest(body.cwd), body.projectEnabled);
+      return NextResponse.json(await imageSettingsResponse(undefined, body.cwd));
+    }
     const patch: ImageSettingsPatch = {};
     if (body.enabled !== undefined) {
       if (typeof body.enabled !== "boolean") {
@@ -75,12 +91,12 @@ export async function PUT(req: Request) {
     writeImageGenerationSettings(patch, agentDir, {
       hasAuth: (provider) => modelRuntime.getProviderAuthStatus(provider).configured,
     });
-    return NextResponse.json(await imageSettingsResponse(modelRuntime));
+    return NextResponse.json(await imageSettingsResponse(modelRuntime, body.cwd));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       { error: message },
-      { status: error instanceof ImageConfigError ? 400 : 500 },
+      { status: error instanceof ImageConfigError ? 400 : error instanceof ProjectRequestError ? error.status : 500 },
     );
   }
 }

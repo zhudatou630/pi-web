@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
-import { samePath } from "./paths";
+import { isProjectListed, withProjectSwitch } from "./project-feature-switch";
 
 export interface SubagentSettings {
   builtInEnabled: boolean;
@@ -49,18 +49,12 @@ export function readSubagentSettings(
   };
 }
 
-function readDisabledProjects(stored: StoredSubagentSettings): string[] {
-  return Array.isArray(stored.disabledProjects)
-    ? stored.disabledProjects.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
 /** Whether this project turned the built-in sub-agents off (keyed by sidebar project root). */
 export function isProjectSubagentsDisabled(
   projectRoot: string,
   settingsPath = getSubagentSettingsPath(),
 ): boolean {
-  return readDisabledProjects(readStoredSettings(settingsPath)).some((root) => samePath(root, projectRoot));
+  return isProjectListed(readStoredSettings(settingsPath).disabledProjects, projectRoot);
 }
 
 /** Effective switch: global on and not turned off for this project. Unreadable settings fail closed. */
@@ -81,10 +75,8 @@ export function writeProjectSubagentsEnabled(
   settingsPath = getSubagentSettingsPath(),
 ): void {
   const stored = readStoredSettings(settingsPath);
-  const others = readDisabledProjects(stored).filter((root) => !samePath(root, projectRoot));
-  const disabledProjects = enabled ? others : [...others, projectRoot];
-  const next: StoredSubagentSettings = { ...stored, version: 1, disabledProjects };
-  if (disabledProjects.length === 0) delete next.disabledProjects;
+  const next: StoredSubagentSettings = { ...stored, version: 1, disabledProjects: withProjectSwitch(stored.disabledProjects, projectRoot, enabled) };
+  if (!next.disabledProjects) delete next.disabledProjects;
   mkdirSync(dirname(settingsPath), { recursive: true });
   writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2));
 }

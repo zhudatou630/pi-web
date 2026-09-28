@@ -653,6 +653,13 @@
   overflow: auto;
 }
 
+/* Pages without their own scroll pane (Images) keep the reload banner in view. */
+.settings-section-host > .settings-reload-notice {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .settings-section-host[hidden] {
   display: none !important;
 }
