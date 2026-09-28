@@ -69,7 +69,7 @@ function upstreamError(raw: Buffer): string | undefined {
 export function buildCodexImageBody(
   model: string,
   prompt: string,
-  input: { bytes: Buffer; mimeType: string } | undefined,
+  inputs: readonly { bytes: Buffer; mimeType: string }[],
   size: string | undefined,
   quality: string | undefined,
 ): Record<string, unknown> {
@@ -77,7 +77,7 @@ export function buildCodexImageBody(
   const mappedSize = codexImageSize(size);
   if (mappedSize) body.size = mappedSize;
   if (quality) body.quality = quality;
-  if (input) body.images = [{ image_url: `data:${input.mimeType};base64,${input.bytes.toString("base64")}` }];
+  if (inputs.length) body.images = inputs.map((input) => ({ image_url: `data:${input.mimeType};base64,${input.bytes.toString("base64")}` }));
   return body;
 }
 
@@ -90,7 +90,7 @@ export async function requestCodexImage(
     };
   },
   prompt: string,
-  input: { bytes: Buffer; mimeType: string } | undefined,
+  inputs: readonly { bytes: Buffer; mimeType: string }[],
   size: string | undefined,
   quality: string | undefined,
   signal?: AbortSignal,
@@ -100,7 +100,7 @@ export async function requestCodexImage(
   const token = auth.auth.apiKey;
   const accountId = extractCodexAccountId(token);
   const baseUrl = auth.auth.baseUrl ?? ctx.modelRegistry.getProvider(connection.provider)?.baseUrl;
-  const editing = Boolean(input);
+  const editing = inputs.length > 0;
   const endpoint = resolveCodexImagesUrl(baseUrl, editing ? "edits" : "generations");
   const headers = new Headers({
     Authorization: `Bearer ${token}`,
@@ -115,7 +115,7 @@ export async function requestCodexImage(
   const response = await fetch(endpoint, {
     method: "POST",
     headers,
-    body: JSON.stringify(buildCodexImageBody(connection.model, prompt, input, size, quality)),
+    body: JSON.stringify(buildCodexImageBody(connection.model, prompt, inputs, size, quality)),
     signal: requestSignal,
   });
   if (!response.ok) {

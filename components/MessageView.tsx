@@ -1134,7 +1134,8 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
   const resultText = result
     ? result.content.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("\n")
     : null;
-  const resultImages = getMessageImages(result?.content ?? []);
+  // A generated image has its own result card; its preview in content is for the model.
+  const resultImages = imageKind ? [] : getMessageImages(result?.content ?? []);
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
   const subagent = isSubagentToolDetails(result?.details) ? result.details : null;

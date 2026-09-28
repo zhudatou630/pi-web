@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { imageRatioKind, type ImageConfigView, type ImageConnectionView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
+import { imageRatioKind, MAX_REFERENCE_IMAGES, type ImageConfigView, type ImageConnectionView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { Base64ImageAttachment } from "@/lib/image-attachments";
 import { compressImageFile } from "./ChatInput";
 
@@ -59,14 +59,14 @@ function CompactSelect({ value, label, onChange, children }: {
   );
 }
 
-export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSourceImage, onClose, onSubmit }: {
+export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSourceImages, onClose, onSubmit }: {
   config: ImageConfigView;
   edit?: ImageGenerationResult | null;
   editPreviewUrl?: string;
-  /** Source image for a new edit (not used when editing a generated result). */
-  initialSourceImage?: Base64ImageAttachment;
+  /** Source images carried over from the composer; they follow the edited result, if any. */
+  initialSourceImages?: Base64ImageAttachment[];
   onClose: () => void;
-  onSubmit: (request: ImageGenerationRequest, sourceImage?: Base64ImageAttachment) => Promise<unknown>;
+  onSubmit: (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[]) => Promise<unknown>;
 }) {
   const { t } = useI18n();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -74,8 +74,12 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState("");
   const editableConnections = config.connections.filter((item) => item.capabilities.editing === true);
-  const [sourceImage, setSourceImage] = useState(() => (edit || !editableConnections.length ? undefined : initialSourceImage));
-  const editing = Boolean(edit || sourceImage);
+  // The edited result stays first and fixed; uploaded sources follow, up to the reference limit.
+  const sourceLimit = MAX_REFERENCE_IMAGES - (edit ? 1 : 0);
+  const [sourceImages, setSourceImages] = useState<Base64ImageAttachment[]>(() => (
+    editableConnections.length ? (initialSourceImages ?? []).slice(0, sourceLimit) : []
+  ));
+  const editing = Boolean(edit || sourceImages.length);
   const connections = editing ? editableConnections : config.connections;
   const [connectionId, setConnectionId] = useState(() => (
     edit?.connection && config.connections.some((item) => item.id === edit.connection) ? edit.connection : config.defaultConnection
@@ -85,11 +89,14 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
     setConnectionId(connections.some((item) => item.id === config.defaultConnection) ? config.defaultConnection : connections[0]?.id ?? "");
   }, [config.defaultConnection, connections, connectionId]);
   const connection = connections.find((item) => item.id === connectionId) ?? connections[0];
-  const canAttachSource = !edit && editableConnections.length > 0;
+  const canAttachSource = editableConnections.length > 0 && sourceImages.length < sourceLimit;
   const attachSource = (files: Iterable<File>) => {
-    const file = Array.from(files).find((item) => item.type.startsWith("image/"));
-    if (!file) return false;
-    void compressImageFile(file).then(setSourceImage, (error) => console.error("Failed to read source image:", error));
+    const images = Array.from(files).filter((item) => item.type.startsWith("image/")).slice(0, sourceLimit - sourceImages.length);
+    if (!images.length) return false;
+    void Promise.all(images.map(compressImageFile)).then(
+      (added) => setSourceImages((current) => [...current, ...added].slice(0, sourceLimit)),
+      (error) => console.error("Failed to read source image:", error),
+    );
     return true;
   };
   const [size, setSize] = useState(() => selectedOption(connection, "sizes", "size", edit?.size));
@@ -99,7 +106,10 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
   const resolutionChoices = connection?.capabilities.resolutions ?? [];
   const qualityChoices = connection?.capabilities.qualities ?? [];
   const showConnection = connections.length > 1;
-  const previewUrl = edit ? editPreviewUrl : sourceImage ? `data:${sourceImage.mimeType};base64,${sourceImage.data}` : undefined;
+  const previews = [
+    ...(edit && editPreviewUrl ? [{ url: editPreviewUrl, alt: edit.prompt }] : []),
+    ...sourceImages.map((image, index) => ({ url: `data:${image.mimeType};base64,${image.data}`, alt: t("image.editSource"), remove: () => setSourceImages((current) => current.filter((_, i) => i !== index)) })),
+  ];
 
   const resizePrompt = () => {
     const el = promptRef.current;
@@ -133,10 +143,10 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
       ...(size ? { size } : {}),
       ...(resolution ? { resolution } : {}),
       ...(quality ? { quality } : {}),
-      ...(edit ? { target: edit.path } : sourceImage ? {} : { new_image: true }),
+      ...(edit ? { reference_images: [edit.path] } : {}),
     };
     onClose();
-    void onSubmit(request, edit ? undefined : sourceImage);
+    void onSubmit(request, sourceImages);
   };
 
   return (
@@ -181,42 +191,48 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
         </header>
 
         <div className="min-h-0 overflow-y-auto px-4">
-          <div className={previewUrl ? "flex flex-col gap-3 sm:flex-row sm:items-start" : undefined}>
-            {previewUrl ? (
-              <div className="relative overflow-hidden rounded-[10px] sm:shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previewUrl} alt={edit?.prompt ?? t("image.editSource")} className="block h-auto w-full sm:h-28 sm:w-auto sm:max-w-[7.5rem]" />
-                {!edit ? (
-                  <button type="button" onClick={() => setSourceImage(undefined)} className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full border-0 bg-black/60 text-white hover:bg-black/80" title={t("image.removeSource")} aria-label={t("image.removeSource")}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            <textarea
-              ref={promptRef}
-              id="image-prompt"
-              rows={2}
-              value={prompt}
-              maxLength={32000}
-              aria-label={t("image.prompt")}
-              onChange={(event) => setPrompt(event.target.value)}
-              onPaste={(event) => { if (canAttachSource && attachSource(event.clipboardData.files)) event.preventDefault(); }}
-              placeholder={editing ? t("image.editPromptPlaceholder") : t("image.promptPlaceholder")}
-              className={`image-generation-prompt w-full resize-none rounded-[10px] border-0 bg-bg px-3 py-2.5 leading-[1.5] text-text outline-none ring-1 ring-inset ring-transparent placeholder:text-text-dim focus:ring-accent/50 ${previewUrl ? "sm:min-h-28 sm:flex-1" : ""}`}
-              style={{ fontFamily: "var(--font-chat)", fontSize: "var(--chat-content-font-size, 14px)" }}
-            />
-          </div>
+          {previews.length ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {previews.map((preview, index) => (
+                <div key={index} className="relative overflow-hidden rounded-[10px]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={preview.url} alt={preview.alt} className="block h-20 w-20 object-cover" />
+                  {/* Numbered in request order, so the prompt can say "image 1" / "image 2". */}
+                  {previews.length > 1 ? (
+                    <span className="absolute left-1 top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-black/60 px-1 text-[10px] text-white tabular-nums">{index + 1}</span>
+                  ) : null}
+                  {"remove" in preview ? (
+                    <button type="button" onClick={preview.remove} className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full border-0 bg-black/60 text-white hover:bg-black/80" title={t("image.removeSource")} aria-label={t("image.removeSource")}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <textarea
+            ref={promptRef}
+            id="image-prompt"
+            rows={2}
+            value={prompt}
+            maxLength={32000}
+            aria-label={t("image.prompt")}
+            onChange={(event) => setPrompt(event.target.value)}
+            onPaste={(event) => { if (canAttachSource && attachSource(event.clipboardData.files)) event.preventDefault(); }}
+            placeholder={editing ? t("image.editPromptPlaceholder") : t("image.promptPlaceholder")}
+            className="image-generation-prompt w-full resize-none rounded-[10px] border-0 bg-bg px-3 py-2.5 leading-[1.5] text-text outline-none ring-1 ring-inset ring-transparent placeholder:text-text-dim focus:ring-accent/50"
+            style={{ fontFamily: "var(--font-chat)", fontSize: "var(--chat-content-font-size, 14px)" }}
+          />
         </div>
 
         <footer className="flex shrink-0 items-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5">
-            {canAttachSource && !sourceImage ? (
+            {canAttachSource ? (
               <>
                 <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex h-7 w-7 flex-none items-center justify-center rounded-md border-0 bg-transparent text-text-muted hover:bg-bg-hover hover:text-text" title={t("image.addSource")} aria-label={t("image.addSource")}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
                 </button>
-                <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => { attachSource(event.target.files ?? []); event.target.value = ""; }} />
+                <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={(event) => { attachSource(event.target.files ?? []); event.target.value = ""; }} />
               </>
             ) : null}
             {showConnection ? (

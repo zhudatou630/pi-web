@@ -55,7 +55,7 @@ export async function requestXaiImage(
   connection: ImageConnectionView,
   ctx: XaiRuntimeContext,
   prompt: string,
-  input: { bytes: Buffer; mimeType: string } | undefined,
+  inputs: readonly { bytes: Buffer; mimeType: string }[],
   size: string | undefined,
   resolution: string | undefined,
   quality: string | undefined,
@@ -63,7 +63,7 @@ export async function requestXaiImage(
 ): Promise<Buffer> {
   const auth = await connectionAuth(connection, ctx);
   const aspectRatio = xaiAspectRatio(size);
-  const editing = Boolean(input);
+  const editing = inputs.length > 0;
   const fields: Record<string, unknown> = {
     model: connection.model,
     prompt,
@@ -73,8 +73,10 @@ export async function requestXaiImage(
     ...(quality ? { quality } : {}),
   };
   if (editing) {
-    const source = input as { bytes: Buffer; mimeType: string };
-    fields.image = { url: `data:${source.mimeType};base64,${source.bytes.toString("base64")}`, type: "image_url" };
+    const images = inputs.map((input) => ({ url: `data:${input.mimeType};base64,${input.bytes.toString("base64")}`, type: "image_url" }));
+    // xAI takes one source as `image` and several as `images`; the two are mutually exclusive.
+    if (images.length === 1) fields.image = images[0];
+    else fields.images = images;
     if (aspectRatio && aspectRatio !== "auto") fields.aspect_ratio = aspectRatio;
   } else if (aspectRatio) {
     fields.aspect_ratio = aspectRatio;

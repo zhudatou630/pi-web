@@ -1743,7 +1743,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission]);
 
-  const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest, sourceImage?: Base64ImageAttachment): Promise<ImageGenerationResult> => {
+  const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[] = []): Promise<ImageGenerationResult> => {
     if (agentRunningRef.current || bashRunningRef.current || directImageRunningRef.current) throw new Error("Cannot generate an image while the session is busy");
     const requestId = crypto.randomUUID();
     directImageRunningRef.current = true;
@@ -1758,7 +1758,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         type: IMAGE_DIRECT_COMMAND,
         requestId,
         arguments: request,
-        ...(sourceImage ? { sourceImage } : {}),
+        ...(sourceImages.length ? { sourceImages } : {}),
       });
       await loadSession(sid);
       if (isNew && newSessionCwd) promoteNewSession(1, request.prompt);

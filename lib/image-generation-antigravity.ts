@@ -39,7 +39,7 @@ export function buildAntigravityImageBody(
   prompt: string,
   size?: string,
   resolution?: string,
-  input?: { bytes: Buffer; mimeType: string },
+  inputs: readonly { bytes: Buffer; mimeType: string }[] = [],
 ): Record<string, unknown> {
   const imageConfig: Record<string, string> = {};
   const aspectRatio = antigravityAspectRatio(size);
@@ -47,7 +47,7 @@ export function buildAntigravityImageBody(
   if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
   if (imageSize) imageConfig.imageSize = imageSize;
   const parts: Array<Record<string, unknown>> = [{ text: prompt }];
-  if (input) parts.push({ inlineData: { mimeType: input.mimeType, data: input.bytes.toString("base64") } });
+  for (const input of inputs) parts.push({ inlineData: { mimeType: input.mimeType, data: input.bytes.toString("base64") } });
   return {
     project: projectId,
     model,
@@ -186,13 +186,13 @@ export async function requestAntigravityImage(
     };
   },
   prompt: string,
-  input: { bytes: Buffer; mimeType: string } | undefined,
+  inputs: readonly { bytes: Buffer; mimeType: string }[],
   size?: string,
   resolution?: string,
   signal?: AbortSignal,
 ): Promise<Buffer> {
   const { token, projectId } = await antigravityCredentials(ctx.modelRegistry.getProviderAuth);
-  const body = JSON.stringify(buildAntigravityImageBody(connection.model, projectId, prompt, size, resolution, input));
+  const body = JSON.stringify(buildAntigravityImageBody(connection.model, projectId, prompt, size, resolution, inputs));
   return requestImageFromEndpoints(
     endpointCandidates(ctx.modelRegistry.getProvider(connection.provider)?.baseUrl),
     antigravityHeaders(token),

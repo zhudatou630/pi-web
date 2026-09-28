@@ -838,7 +838,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [imageConfig, setImageConfig] = useState<ImageConfigView | null>(null);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [imageEdit, setImageEdit] = useState<ImageGenerationResult | null>(null);
-  const [imageSourceSeed, setImageSourceSeed] = useState<Base64ImageAttachment | undefined>(undefined);
+  const [imageSourceSeed, setImageSourceSeed] = useState<Base64ImageAttachment[]>([]);
   const [imageConfigRefreshKey, setImageConfigRefreshKey] = useState(0);
   const [quotedSelection, setQuotedSelection] = useState<{
     text: string;
@@ -873,7 +873,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return () => controller.abort();
   }, [imageConfigRefreshKey, modelsRefreshKey, session?.cwd, newSessionCwd]);
 
-  const submitDirectImage = useCallback(async (request: ImageGenerationRequest, sourceImage?: Base64ImageAttachment) => {
+  const submitDirectImage = useCallback(async (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[]) => {
     keepTabOpen();
     let source: ImageGenerationResult | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -881,8 +881,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       if (details) { source = details; break; }
     }
     const cwd = session?.cwd ?? newSessionCwd;
-    const targetPath = request.target;
+    const targetPath = request.reference_images?.[0];
     const absoluteTarget = targetPath && (targetPath.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(targetPath) ? targetPath : cwd ? joinFilePath(cwd, targetPath) : targetPath);
+    // The placeholder shows the first reference: an edited result is sent before any uploaded source.
+    const sourceImage = absoluteTarget ? undefined : sourceImages[0];
     setPendingImage({
       prompt: request.prompt,
       size: request.size,
@@ -893,9 +895,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         : absoluteTarget ? `/api/files/${encodeFilePathForApi(absoluteTarget)}?type=read` : undefined,
     });
     try {
-      await handleDirectImageGeneration(request, sourceImage);
-      // The source image may have been carried over from the composer; it has been used now.
-      if (sourceImage) ownChatInputRef.current?.removeAttachedImage(sourceImage.data);
+      await handleDirectImageGeneration(request, sourceImages);
+      // Source images may have been carried over from the composer; they have been used now.
+      for (const image of sourceImages) ownChatInputRef.current?.removeAttachedImage(image.data);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       addNotice({ type: "error", message: error instanceof Error ? error.message : String(error) });
@@ -1687,7 +1689,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     <ChatInput
       ref={setChatInputElement}
       onSend={handleChatSend}
-      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImage) => { setImageEdit(null); setImageSourceSeed(sourceImage); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
+      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImages) => { setImageEdit(null); setImageSourceSeed(sourceImages); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
       onAbort={handleActiveAbort}
       onSteer={agentRunning ? handleSteerWithSubmit : undefined}
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
@@ -1822,7 +1824,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           <ImageGenerationDialog
             config={imageConfig}
             edit={imageEdit}
-            initialSourceImage={imageSourceSeed}
+            initialSourceImages={imageSourceSeed}
             editPreviewUrl={imageEdit ? `/api/files/${encodeFilePathForApi(imageEdit.path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(imageEdit.path) ? imageEdit.path : messageCwd ? joinFilePath(messageCwd, imageEdit.path) : imageEdit.path)}?type=read` : undefined}
             onClose={() => { setImageDialogOpen(false); setImageEdit(null); }}
             onSubmit={submitDirectImage}

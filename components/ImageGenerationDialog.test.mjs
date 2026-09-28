@@ -83,12 +83,14 @@ test("undeclared image options stay out of the direct dialog", () => {
 });
 
 test("a source image turns the direct dialog into an edit on editing connections only", () => {
-  const renderWith = (connections, initialSourceImage) => renderToStaticMarkup(React.createElement(
+  const renderWith = (connections, initialSourceImages, edit) => renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
     React.createElement(ImageGenerationDialog, {
       config: { defaultConnection: connections[0].id, connections },
-      initialSourceImage,
+      initialSourceImages,
+      edit,
+      editPreviewUrl: edit ? "/api/files/result.png?type=read" : undefined,
       onClose() {},
       async onSubmit() {},
     }),
@@ -101,11 +103,21 @@ test("a source image turns the direct dialog into an edit on editing connections
   assert.match(fresh, /Add source image/);
   assert.match(fresh, />Painter</);
 
-  const edit = renderWith([painter, editor], source);
+  const edit = renderWith([painter, editor], [source]);
   assert.match(edit, /Edit image/);
   assert.match(edit, /data:image\/png;base64,iVBORw0KGgo=/);
   assert.match(edit, /Remove source image/);
   assert.doesNotMatch(edit, />Painter</);
 
-  assert.doesNotMatch(renderWith([painter], source), /Add source image|Remove source image|Edit image/);
+  assert.doesNotMatch(edit, />1</);
+  assert.doesNotMatch(renderWith([painter], [source]), /Add source image|Remove source image|Edit image/);
+
+  // Several sources are numbered in request order; the edited result comes first and cannot be removed.
+  const result = { type: "pi-image-result", version: 1, path: ".pi/generated-images/result.png", mimeType: "image/png", width: 1, height: 1, prompt: "result", connection: "editor", model: "image" };
+  const combined = renderWith([editor], [source, source], result);
+  assert.match(combined, /result\.png[\s\S]*>1<[\s\S]*>2<[\s\S]*>3</);
+  assert.equal(combined.match(/Remove source image/g).length, 2 * 2); // title + aria-label per removable source
+  assert.match(combined, /Add source image/);
+  // The reference limit hides the add button.
+  assert.doesNotMatch(renderWith([editor], [source, source, source, source], result), /Add source image/);
 });

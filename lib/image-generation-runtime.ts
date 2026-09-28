@@ -3,12 +3,13 @@ import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Buffer } from "node:buffer";
 import { getImageDimensions } from "@earendil-works/pi-tui";
+import { resizeImage } from "@earendil-works/pi-coding-agent";
 import { getBase64DecodedByteLength } from "./image-attachments";
 import { requestAntigravityImage } from "./image-generation-antigravity";
 import { requestCodexImage } from "./image-generation-codex";
 import { requestOpenAIImagesImage } from "./image-generation-openai-images";
 import { requestXaiImage } from "./image-generation-xai";
-import { IMAGE_RESULT_TYPE, extractMentionedImagePath, getImageGenerationResult, imageConnectionTransport, type ImageGenerationRequest, type ImageGenerationResult } from "./image-generation";
+import { IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES, imageConnectionTransport, type ImageGenerationRequest, type ImageGenerationResult } from "./image-generation";
 import { imageConfigView, resolveImageConfig } from "./image-generation-config";
 import { resolveProject } from "./worktree";
 import { isPathWithinRoots } from "./path-security";
@@ -45,25 +46,27 @@ function requiredText(value: unknown, name: string): string {
   return value.trim();
 }
 
+const REQUEST_FIELDS = ["prompt", "reference_images", "connection", "size", "resolution", "quality"];
+const ATTACHMENT_IMAGE = /^attachment:([1-9]\d*)$/;
+
 export function parseImageGenerationRequest(value: unknown): ImageGenerationRequest {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Image request must be an object");
   const input = value as Record<string, unknown>;
-  const supported = new Set(["prompt", "connection", "target", "use_last_attachment", "new_image", "size", "resolution", "quality"]);
-  const unknown = Object.keys(input).find((key) => !supported.has(key));
-  if (unknown) throw new Error(`Image request field ${unknown} is not supported`);
+  const unknown = Object.keys(input).find((key) => !REQUEST_FIELDS.includes(key));
+  if (unknown) throw new Error(`Image request field ${unknown} is not supported. Supported fields: ${REQUEST_FIELDS.join(", ")}`);
   const prompt = requiredText(input.prompt, "prompt");
   if (prompt.length > MAX_PROMPT_LENGTH) throw new Error(`prompt must not exceed ${MAX_PROMPT_LENGTH} characters`);
-  if (input.use_last_attachment !== undefined && typeof input.use_last_attachment !== "boolean") throw new Error("use_last_attachment must be a boolean");
-  if (input.new_image !== undefined && typeof input.new_image !== "boolean") throw new Error("new_image must be a boolean");
-  if (input.new_image === true && (input.target !== undefined || input.use_last_attachment === true)) {
-    throw new Error("new_image cannot be combined with an edit source");
+  const references = input.reference_images;
+  if (references !== undefined && (!Array.isArray(references) || references.some((item) => typeof item !== "string" || !item.trim()))) {
+    throw new Error("reference_images must be an array of image file paths or attachment:N ([] for a new picture)");
+  }
+  if (references && references.length > MAX_REFERENCE_IMAGES) {
+    throw new Error(`At most ${MAX_REFERENCE_IMAGES} reference images are supported per request`);
   }
   return {
     prompt,
+    ...(references?.length ? { reference_images: (references as string[]).map((item) => item.trim()) } : {}),
     ...(input.connection === undefined ? {} : { connection: requiredText(input.connection, "connection") }),
-    ...(input.target === undefined ? {} : { target: requiredText(input.target, "target") }),
-    ...(input.use_last_attachment === undefined ? {} : { use_last_attachment: input.use_last_attachment }),
-    ...(input.new_image === undefined ? {} : { new_image: input.new_image }),
     ...(input.size === undefined ? {} : { size: requiredText(input.size, "size") }),
     ...(input.resolution === undefined ? {} : { resolution: requiredText(input.resolution, "resolution") }),
     ...(input.quality === undefined ? {} : { quality: requiredText(input.quality, "quality") }),
@@ -92,7 +95,10 @@ function checkedImage(bytes: Buffer, fileName: string): ImageFile {
 
 async function pathImage(cwd: string, input: string): Promise<ImageFile> {
   const root = await realpath(cwd);
-  const resolved = await realpath(path.resolve(cwd, toNativePath(input.replace(/^@/, ""))));
+  const resolved = await realpath(path.resolve(cwd, toNativePath(input.replace(/^@/, "")))).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+    throw new Error(`Image file not found: ${input}. An image the user attached in chat has no file path; reference it as attachment:N instead.`);
+  });
   if (!isPathWithinRoots(resolved, new Set([root]))) throw new Error(`Image path is outside the working directory: ${input}`);
   const info = await stat(resolved);
   if (!info.isFile()) throw new Error(`Image path is not a file: ${input}`);
@@ -107,57 +113,19 @@ function base64Image(input: EncodedImageInput, fallbackName: string): ImageFile 
   return checkedImage(Buffer.from(input.data, "base64"), input.fileName ?? fallbackName);
 }
 
-function latestUserImageAttachment(ctx: RuntimeContext): EncodedImageInput | undefined {
-  const entries = ctx.sessionManager.getBranch();
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index] as { type?: string; message?: { role?: string; content?: unknown } };
-    if (entry.type !== "message" || entry.message?.role !== "user") continue;
-    if (!Array.isArray(entry.message.content)) return undefined;
-    for (const block of entry.message.content) {
-      if (!block || typeof block !== "object" || (block as { type?: unknown }).type !== "image") continue;
-      const image = block as { data?: unknown; mimeType?: unknown };
-      if (typeof image.data !== "string" || typeof image.mimeType !== "string") continue;
-      return { data: image.data, mimeType: image.mimeType, fileName: "attachment-1" };
-    }
-    return undefined;
-  }
-  return undefined;
-}
+type ConversationImage = { path: string } | { attachment: EncodedImageInput };
 
-function userMessageText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((block): block is { type?: unknown; text?: unknown } => Boolean(block) && typeof block === "object")
-    .filter((block) => block.type === "text" && typeof block.text === "string")
-    .map((block) => block.text as string)
-    .join("\n");
-}
-
-function latestMentionedImagePath(ctx: RuntimeContext): string | undefined {
-  const entries = ctx.sessionManager.getBranch();
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index] as { type?: string; message?: { role?: string; content?: unknown } };
-    if (entry.type !== "message" || entry.message?.role !== "user") continue;
-    return extractMentionedImagePath(userMessageText(entry.message.content));
-  }
-  return undefined;
-}
-
-function latestGeneratedPath(ctx: RuntimeContext): string | undefined {
-  const entries = ctx.sessionManager.getBranch();
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index] as { type?: string; details?: unknown; customType?: string; message?: { role?: string; details?: unknown } };
-    if (entry.type === "custom_message" || entry.customType) {
-      const result = getImageGenerationResult(entry.details);
-      if (result) return result.path;
-    }
-    if (entry.type === "message" && entry.message?.role === "toolResult") {
-      const result = getImageGenerationResult(entry.message.details);
-      if (result) return result.path;
+/** Images the user attached on the current branch, oldest first: attachment:1 is the first one. */
+function conversationAttachments(ctx: RuntimeContext): EncodedImageInput[] {
+  const found: EncodedImageInput[] = [];
+  for (const entry of ctx.sessionManager.getBranch() as Array<{ type?: string; message?: { role?: string; content?: unknown } }>) {
+    if (entry.type !== "message" || entry.message?.role !== "user" || !Array.isArray(entry.message.content)) continue;
+    for (const image of entry.message.content as Array<{ type?: unknown; data?: unknown; mimeType?: unknown } | null>) {
+      if (image?.type !== "image" || typeof image.data !== "string" || typeof image.mimeType !== "string") continue;
+      found.push({ data: image.data, mimeType: image.mimeType, fileName: `attachment:${found.length + 1}` });
     }
   }
-  return undefined;
+  return found;
 }
 
 async function saveImage(cwd: string, image: ImageFile): Promise<string> {
@@ -174,34 +142,66 @@ async function saveImage(cwd: string, image: ImageFile): Promise<string> {
   return relativePath;
 }
 
+const PREVIEW_EDGE = 512;
+
+/**
+ * A small copy of a generated image for the model's context, so it can check the result and
+ * follow "the left one" without reading the file. It stays in every later request of the
+ * branch, hence the size cap. Null when the file cannot be read or resized: the image is
+ * already saved, so a missing preview must not turn the generation into a failure.
+ */
+export async function generatedImagePreview(cwd: string, result: Pick<ImageGenerationResult, "path" | "mimeType">): Promise<{ type: "image"; data: string; mimeType: string } | null> {
+  try {
+    const bytes = await readFile(path.join(await realpath(cwd), ...result.path.split("/")));
+    const preview = await resizeImage(bytes, result.mimeType, { maxWidth: PREVIEW_EDGE, maxHeight: PREVIEW_EDGE, maxBytes: 64 * 1024, jpegQuality: 75 });
+    return preview ? { type: "image", data: preview.data, mimeType: preview.mimeType } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Store a user-supplied source image under the cwd so a direct edit can target it. */
 export async function saveSourceImage(cwd: string, input: EncodedImageInput): Promise<string> {
   return saveImage(cwd, base64Image(input, "source-image"));
 }
 
-export async function executeImageGeneration(agentDir: string, rawRequest: unknown, ctx: RuntimeContext, signal?: AbortSignal): Promise<ImageGenerationResult> {
+export interface ImageGenerationOptions {
+  /**
+   * The model tool names a connection only as a preference: it is tried first, and options it
+   * does not declare, missing auth, missing editing support, or quota errors fall through to
+   * automatic routing. A connection the user picked in the input-bar dialog stays strict.
+   */
+  preferConnection?: boolean;
+}
+
+export async function executeImageGeneration(agentDir: string, rawRequest: unknown, ctx: RuntimeContext, signal?: AbortSignal, runOptions: ImageGenerationOptions = {}): Promise<ImageGenerationResult> {
   signal?.throwIfAborted();
   const request = parseImageGenerationRequest(rawRequest);
   // One check for the model tool and the composer button, per project: a stale tool or tab cannot bypass it.
   const config = resolveImageConfig(agentDir, (await resolveProject(ctx.cwd)).projectRoot);
   if (!config.enabled) throw new Error("Image generation is disabled in this project");
   const defaultId = imageConfigView(config).defaultConnection;
-  const connectionIds = request.connection
-    ? [request.connection]
-    : [defaultId, ...Object.keys(config.connections).filter((id) => id !== defaultId)];
+  const strict = Boolean(request.connection) && !runOptions.preferConnection;
+  const preferred = !strict && request.connection && config.connections[request.connection] ? request.connection : undefined;
+  const connectionIds = strict
+    ? [request.connection as string]
+    : [...new Set([preferred, defaultId, ...Object.keys(config.connections)].filter((id): id is string => Boolean(id)))];
   if (!connectionIds[0]) throw new Error("No runnable image connection is configured");
-  if (request.connection && !config.connections[request.connection]) throw new Error(`Unknown image connection: ${request.connection}`);
-  const useImplicitSource = !request.target && !request.new_image;
-  const mentioned = useImplicitSource
-    ? latestMentionedImagePath(ctx)
-    : undefined;
-  const attachment = useImplicitSource && !mentioned
-    ? latestUserImageAttachment(ctx)
-    : undefined;
-  const lastGenerated = (useImplicitSource && !request.use_last_attachment && !mentioned && !attachment)
-    ? latestGeneratedPath(ctx)
-    : undefined;
-  const hasInput = Boolean(request.target || request.use_last_attachment || mentioned || attachment || lastGenerated);
+  if (strict && !config.connections[request.connection as string]) {
+    throw new Error(`Unknown image connection "${request.connection}". Omit connection to use the default, or use one of: ${Object.keys(config.connections).join(", ")}`);
+  }
+  const requested = request.reference_images ?? [];
+  const attachments = requested.some((item) => ATTACHMENT_IMAGE.test(item)) ? conversationAttachments(ctx) : [];
+  const references: ConversationImage[] = requested.map((item) => {
+    const match = ATTACHMENT_IMAGE.exec(item);
+    if (!match) return { path: item };
+    const attachment = attachments[Number(match[1]) - 1];
+    if (!attachment) {
+      throw new Error(`${item} does not exist: the user attached ${attachments.length} image(s) on this branch, numbered from attachment:1 (the first). If the image is gone, ask the user to attach it again.`);
+    }
+    return { attachment };
+  });
+  const hasInput = references.length > 0;
   type Connection = typeof config.connections[string];
   const options = [
     ["size", "sizes", request.size],
@@ -211,46 +211,37 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
   const editingError = (connection: Connection) => (
     hasInput && connection.capabilities.editing !== true ? `Image connection ${connection.id} does not declare editing support` : null
   );
-  if (request.connection) {
-    // A connection the user named must honor every requested option.
-    const connection = config.connections[request.connection];
+  if (strict) {
+    // A connection the user picked must honor every requested option.
+    const connection = config.connections[request.connection as string];
     const error = editingError(connection) ?? options
       .filter(([, list, value]) => value && !connection.capabilities[list]?.includes(value))
-      .map(([name, , value]) => `Image connection ${connection.id} does not support ${name} ${value}`)[0];
+      .map(([name, list, value]) => `Image connection ${connection.id} does not support ${name} ${value}. Declared: ${connection.capabilities[list]?.join(", ") || "none"}; omit ${name} to use its default`)[0];
     if (error) throw new Error(error);
   } else {
     // Automatic routing keeps the user's default connection: an option it does not declare
     // falls back to its own default instead of steering the request to another connection.
     for (const [name, list, value] of options) {
       if (value && !Object.values(config.connections).some((connection) => connection.capabilities[list]?.includes(value))) {
-        throw new Error(`No configured image connection supports ${name} ${value}`);
+        const declared = [...new Set(Object.values(config.connections).flatMap((connection) => connection.capabilities[list] ?? []))];
+        throw new Error(`No configured image connection supports ${name} ${value}. Declared: ${declared.join(", ") || "none"}; omit ${name} to use the default`);
       }
     }
   }
 
-  let input: ImageFile | undefined;
-  let source: string | undefined;
-  if (request.target) {
-    input = await pathImage(ctx.cwd, request.target);
-    source = request.target;
-  } else if (mentioned) {
-    input = await pathImage(ctx.cwd, mentioned);
-    source = mentioned;
-  } else if (attachment) {
-    input = base64Image(attachment, "attachment-1");
-    source = attachment.fileName ?? "attachment";
-  } else if (lastGenerated) {
-    input = await pathImage(ctx.cwd, lastGenerated);
-    source = lastGenerated;
-  }
-  if (!input && request.use_last_attachment) throw new Error("No image attachment is available in the current conversation");
+  const inputs = await Promise.all(references.map((reference) => (
+    "path" in reference ? pathImage(ctx.cwd, reference.path) : base64Image(reference.attachment, "attachment")
+  )));
+  const source = references.length
+    ? references.map((reference) => ("path" in reference ? reference.path : reference.attachment.fileName)).join(", ")
+    : undefined;
 
   let lastFallbackError: unknown;
   let incompatibleError: string | null = null;
   for (const id of connectionIds) {
     const connection = config.connections[id];
     if (!connection) continue;
-    if (!request.connection && !(await ctx.modelRegistry.getProviderAuth(connection.provider))) continue;
+    if (!strict && !(await ctx.modelRegistry.getProviderAuth(connection.provider))) continue;
     const error = editingError(connection);
     if (error) {
       incompatibleError ??= error;
@@ -266,13 +257,13 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
       let image: ImageFile;
       const transport = imageConnectionTransport(connection);
       if (transport === "codex") {
-        image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
+        image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, inputs, size, quality, signal), "generated-image");
       } else if (transport === "antigravity") {
-        image = checkedImage(await requestAntigravityImage(connection, ctx, request.prompt, input, size, resolution, signal), "generated-image");
+        image = checkedImage(await requestAntigravityImage(connection, ctx, request.prompt, inputs, size, resolution, signal), "generated-image");
       } else if (transport === "openai-images") {
-        image = checkedImage(await requestOpenAIImagesImage(connection, ctx, request.prompt, input, size, quality, signal), "generated-image");
+        image = checkedImage(await requestOpenAIImagesImage(connection, ctx, request.prompt, inputs, size, quality, signal), "generated-image");
       } else {
-        image = checkedImage(await requestXaiImage(connection, ctx, request.prompt, input, size, resolution, quality, signal), "generated-image");
+        image = checkedImage(await requestXaiImage(connection, ctx, request.prompt, inputs, size, resolution, quality, signal), "generated-image");
       }
       signal?.throwIfAborted();
       const filePath = await saveImage(ctx.cwd, image);
@@ -294,7 +285,7 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
       };
     } catch (error) {
       signal?.throwIfAborted();
-      if (request.connection || !(error instanceof Error) || !(/Image API returned HTTP (?:401|402|429)\b/.test(error.message) || /\b(?:quota|rate.?limit|resource.exhausted|insufficient.credits)\b/i.test(error.message))) throw error;
+      if (strict || !(error instanceof Error) || !(/Image API returned HTTP (?:401|402|429)\b/.test(error.message) || /\b(?:quota|rate.?limit|resource.exhausted|insufficient.credits)\b/i.test(error.message))) throw error;
       lastFallbackError = error;
     }
   }

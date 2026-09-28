@@ -40,8 +40,8 @@ import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
 
 interface Props {
   onSend: (message: string, images?: AttachedImage[]) => void;
-  /** Opens the direct image dialog; a single attached image is offered as its source. */
-  onOpenImageGeneration?: (sourceImage?: Base64ImageAttachment) => void;
+  /** Opens the direct image dialog; attached images are offered as its sources. */
+  onOpenImageGeneration?: (sourceImages: Base64ImageAttachment[]) => void;
   onAbort: () => void;
   onSteer?: (message: string, images?: AttachedImage[]) => void;
   onFollowUp?: (message: string, images?: AttachedImage[]) => void;
@@ -2439,7 +2439,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 {imageMenuOpen && onOpenImageGeneration && (
                   <div role="menu" className="chat-input-menu menu-surface" style={{ left: 0 }} onKeyDown={closeMenuOnEscape}>
                     <button type="button" role="menuitem" onClick={() => { setImageMenuOpen(false); fileInputRef.current?.click(); }}>{t("chat.attachImage")}</button>
-                    <button type="button" role="menuitem" onClick={() => { setImageMenuOpen(false); const [only] = attachedImagesRef.current.length === 1 ? attachedImagesRef.current : []; onOpenImageGeneration(only ? imageToDraftImage(only) : undefined); }}>{t("image.title")}</button>
+                    <button type="button" role="menuitem" onClick={() => { setImageMenuOpen(false); onOpenImageGeneration(attachedImagesRef.current.map(imageToDraftImage)); }}>{t("image.title")}</button>
                   </div>
                 )}
               </div>

@@ -21,7 +21,7 @@ export function resolveOpenAIImagesUrl(baseUrl: string | undefined, operation: "
 export function buildOpenAIImagesBody(
   model: string,
   prompt: string,
-  input: { bytes: Buffer; mimeType: string } | undefined,
+  inputs: readonly { bytes: Buffer; mimeType: string }[],
   size: string | undefined,
   quality: string | undefined,
 ): Record<string, unknown> {
@@ -29,7 +29,7 @@ export function buildOpenAIImagesBody(
   const mappedSize = openaiImageSize(size);
   if (mappedSize) body.size = mappedSize;
   if (quality) body.quality = quality;
-  if (input) body.images = [{ image_url: `data:${input.mimeType};base64,${input.bytes.toString("base64")}` }];
+  if (inputs.length) body.images = inputs.map((input) => ({ image_url: `data:${input.mimeType};base64,${input.bytes.toString("base64")}` }));
   return body;
 }
 
@@ -67,7 +67,7 @@ export async function requestOpenAIImagesImage(
     };
   },
   prompt: string,
-  input: { bytes: Buffer; mimeType: string } | undefined,
+  inputs: readonly { bytes: Buffer; mimeType: string }[],
   size: string | undefined,
   quality: string | undefined,
   signal?: AbortSignal,
@@ -75,7 +75,7 @@ export async function requestOpenAIImagesImage(
   const auth = await ctx.modelRegistry.getProviderAuth(connection.provider);
   if (!auth?.auth.apiKey) throw new Error(`No credentials configured for image provider ${connection.provider}`);
   const baseUrl = auth.auth.baseUrl ?? ctx.modelRegistry.getProvider(connection.provider)?.baseUrl;
-  const editing = Boolean(input);
+  const editing = inputs.length > 0;
   const endpoint = resolveOpenAIImagesUrl(baseUrl, editing ? "edits" : "generations");
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -86,7 +86,7 @@ export async function requestOpenAIImagesImage(
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(buildOpenAIImagesBody(connection.model, prompt, input, size, quality)),
+    body: JSON.stringify(buildOpenAIImagesBody(connection.model, prompt, inputs, size, quality)),
     signal: requestSignal,
   });
   if (!response.ok) {

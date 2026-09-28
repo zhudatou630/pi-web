@@ -50,8 +50,8 @@ import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, reservePiWebImageTool } from "./image-generation-extension";
-import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE } from "./image-generation";
-import { executeImageGeneration, saveSourceImage } from "./image-generation-runtime";
+import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES } from "./image-generation";
+import { executeImageGeneration, generatedImagePreview, parseImageGenerationRequest, saveSourceImage } from "./image-generation-runtime";
 import {
   appendClearedSessionToolSelection,
   appendSessionToolSelection,
@@ -1062,11 +1062,20 @@ export class AgentSessionWrapper {
         this.directImageRequestId = requestId;
         try {
           let request = command.arguments;
-          if (command.sourceImage !== undefined) {
-            // A source image picked in the input-bar dialog is stored in the cwd and edited through `target`.
-            if (!isBase64ImageWithinLimits(command.sourceImage)) throw new Error("sourceImage must be base64 image data within the attachment size limit");
-            if (!request || typeof request !== "object" || Array.isArray(request)) throw new Error("Image request must be an object");
-            request = { ...request, target: await saveSourceImage(this.cwd, command.sourceImage) };
+          // A tab opened before multi-image sources still sends one `sourceImage`.
+          const sourceImages = command.sourceImages ?? (command.sourceImage === undefined ? undefined : [command.sourceImage]);
+          if (sourceImages !== undefined) {
+            // Source images picked in the input-bar dialog are stored in the cwd and follow any reference already named.
+            if (!Array.isArray(sourceImages) || !sourceImages.every(isBase64ImageWithinLimits)) throw new Error("sourceImages must be base64 images within the attachment size limit");
+            // Validate the whole request before writing files, so a rejected one leaves none behind.
+            const parsed = parseImageGenerationRequest(request);
+            const named = parsed.reference_images ?? [];
+            if (named.length + sourceImages.length > MAX_REFERENCE_IMAGES) {
+              throw new Error(`At most ${MAX_REFERENCE_IMAGES} reference images are supported per request`);
+            }
+            const saved = [];
+            for (const image of sourceImages) saved.push(await saveSourceImage(this.cwd, image));
+            request = { ...parsed, reference_images: [...named, ...saved] };
           }
           const details = await executeImageGeneration(getAgentDir(), request, {
             cwd: this.cwd,
@@ -1085,7 +1094,8 @@ export class AgentSessionWrapper {
             ...(details.resolution ? [`Resolution: ${details.resolution}`] : []),
             ...(details.quality ? [`Quality: ${details.quality}`] : []),
           ].join("\n");
-          await this.inner.sendCustomMessage({ customType: IMAGE_RESULT_TYPE, content, display: true, details });
+          const preview = await generatedImagePreview(this.cwd, details);
+          await this.inner.sendCustomMessage({ customType: IMAGE_RESULT_TYPE, content: preview ? [{ type: "text", text: content }, preview] : content, display: true, details });
           this.persistCommandOnlySession();
           invalidateSessionListCache();
           return details;

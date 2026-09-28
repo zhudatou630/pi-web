@@ -2,6 +2,8 @@ export const IMAGE_TOOL_NAME = "generate_image";
 export const IMAGE_RESULT_TYPE = "pi-image-result";
 export const IMAGE_DIRECT_COMMAND = "generate_image_direct";
 export const IMAGE_ABORT_COMMAND = "abort_image_generation";
+/** Common ceiling across transports: Codex CLI and xAI both stop at 5. */
+export const MAX_REFERENCE_IMAGES = 5;
 
 type ImageAspect = "square" | "portrait" | "landscape";
 
@@ -135,15 +137,6 @@ function mentionedImagePathFromMatch(match: RegExpMatchArray): string | undefine
   return raw;
 }
 
-export function extractMentionedImagePath(text: string): string | undefined {
-  let found: string | undefined;
-  for (const match of text.matchAll(MENTIONED_IMAGE)) {
-    const path = mentionedImagePathFromMatch(match);
-    if (path) found = path;
-  }
-  return found;
-}
-
 export function splitImageMentions(text: string): Array<{ type: "text"; value: string } | { type: "mention"; path: string }> {
   const parts: Array<{ type: "text"; value: string } | { type: "mention"; path: string }> = [];
   let last = 0;
@@ -162,9 +155,8 @@ export function splitImageMentions(text: string): Array<{ type: "text"; value: s
 export interface ImageGenerationRequest {
   prompt: string;
   connection?: string;
-  target?: string;
-  use_last_attachment?: boolean;
-  new_image?: boolean;
+  /** Images to edit or build on: file paths under the cwd, or `attachment:N` for the N-th image the user attached (from 1). Omit for a new picture. */
+  reference_images?: string[];
   size?: string;
   resolution?: string;
   quality?: string;
@@ -216,7 +208,10 @@ export function imageToolDisplayKind(toolName: string, args?: unknown, resultDet
   if (toolName !== IMAGE_TOOL_NAME) return null;
   const result = getImageGenerationResult(resultDetails);
   if (result) return result.source ? "edit" : "generate";
-  if (isRecord(args) && args.new_image === true) return "generate";
-  if (isRecord(args) && ((typeof args.target === "string" && args.target) || args.use_last_attachment === true)) return "edit";
-  return null;
+  if (!isRecord(args)) return null;
+  if (Array.isArray(args.reference_images) && args.reference_images.length) return "edit";
+  // Sessions recorded before reference_images still carry the retired fields.
+  if (args.new_image === true) return "generate";
+  if ((typeof args.target === "string" && args.target) || args.use_last_attachment === true) return "edit";
+  return "generate";
 }
