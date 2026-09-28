@@ -854,22 +854,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     setCustomPathError(null);
     setDropdownOpen(false);
   }, []);
-  const handleDefaultCwd = useCallback(async () => {
-    try {
-      const res = await fetch("/api/default-cwd", { method: "POST" });
-      const data = await res.json() as { cwd?: string; error?: string };
-      if (data.cwd) {
-        if (!pinnedCwds.includes(data.cwd)) onTogglePinnedCwd(data.cwd);
-        setExpandedWorkspaceKeys((current) => new Set([...(current ?? []), data.cwd!]));
-        setSelectedCwd(data.cwd);
-        setCustomPathOpen(false);
-        setCustomPathError(null);
-        setDropdownOpen(false);
-      }
-    } catch {
-      // ignore
-    }
-  }, [onTogglePinnedCwd, pinnedCwds]);
 
   const handleCreateWorktree = useCallback(async () => {
     const branch = wtNewBranch.trim();
@@ -1621,7 +1605,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             )}
             <ToolbarIconButton
               onClick={() => {
-                setDropdownOpen((open) => !open);
+                // Multi-project mode has nothing to pick but a path: open it directly.
+                if (singleProject) setDropdownOpen((open) => !open);
+                else handleCustomPathClick();
                 setWtDropdownOpen(false);
               }}
               title={t(singleProject ? "sidebar.switchProject" : "sidebar.addProject")}
@@ -1711,14 +1697,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               })}
             </div>
           )}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={(event) => { event.stopPropagation(); void handleDefaultCwd(); }}
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><path d="M1 3A1 1 0 0 1 2 2H4L5 3.5H8.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 1 8V3Z" /></svg>
-            <span>{t("sidebar.useDefaultDirectory")}</span>
-          </button>
           <button
             type="button"
             role="menuitem"

@@ -98,7 +98,7 @@ test("project rows delete all sessions behind an unskippable confirmation", () =
 });
 
 test("single-project switcher can delete any listed project without switching to it", () => {
-  const dropdown = source.slice(source.indexOf("{singleProject && ("), source.indexOf("handleDefaultCwd(); }}"));
+  const dropdown = source.slice(source.indexOf("{singleProject && ("), source.indexOf("handleCustomPathClick(); }}"));
   assert.match(dropdown, /setDropdownOpen\(false\);\s*setDeleteConfirm\(\{ key: project\.key, x: event\.clientX, y: event\.clientY \}\)/);
   assert.doesNotMatch(dropdown, /setDeleteConfirm[\s\S]*setSelectedCwd\(project\.root\)[\s\S]*setDeleteConfirm/);
   assert.match(dropdown, /disabled=\{Boolean\(activity\?\.running\) \|\| deletingProjectKey === project\.key\}/);
