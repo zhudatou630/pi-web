@@ -14,6 +14,7 @@ const {
   ThinkingBlock,
   getToolCallInputText,
   replaceUserMessageText,
+  renderFullBlocks,
 } = await jiti.import("./MessageView.tsx");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 const { splitFinalAssistantBlocks } = await jiti.import("@/lib/message-display");
@@ -574,4 +575,15 @@ test("names an unconfigured model by its bare id", async () => {
   assert.equal(getModelDisplayName("xai", "grok-4.7", {}), "grok-4.7");
   assert.equal(getModelDisplayName("openrouter", "anthropic/claude-x", {}), "claude-x");
   assert.equal(getModelDisplayName("xai", "grok-4.7", { "xai:grok-4.7": "Grok 4.7" }), "Grok 4.7");
+});
+
+test("paints █ runs as currentColor cells so LCD AA cannot stripe them", () => {
+  assert.equal(renderFullBlocks("plain"), "plain");
+  const html = (text) => renderToStaticMarkup(React.createElement("pre", null, renderFullBlocks(text)));
+  assert.match(html("calendar ████░░░░ 36%"), /background-color:currentColor/);
+  assert.match(html("calendar ████░░░░ 36%"), /color:transparent">████</);
+  assert.match(html("calendar ████░░░░ 36%"), />░░░░ /);
+  assert.match(html("████ done"), /^<pre><span[^>]*><span style="color:transparent">████<\/span><\/span> done<\/pre>$/);
+  assert.match(html("start █"), /start <span[^>]*><span style="color:transparent">█<\/span><\/span><\/pre>$/);
+  assert.match(html("█ a █"), /transparent">█<\/span><\/span> a <span/);
 });

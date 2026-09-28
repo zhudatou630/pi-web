@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useMemo, useId } from "react";
+import { memo, useState, useRef, useEffect, useMemo, useId, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImagePreview } from "./ImagePreview";
@@ -1618,6 +1618,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** █ paints as rainbow stripes under LCD AA; fill the cell instead. */
+export function renderFullBlocks(text: string) {
+  if (!text.includes("█")) return text;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const match of text.matchAll(/█+/g)) {
+    const index = match.index ?? 0;
+    if (index > last) parts.push(text.slice(last, index));
+    parts.push(
+      <span key={key++} style={{ backgroundColor: "currentColor" }}>
+        <span style={{ color: "transparent" }}>{match[0]}</span>
+      </span>,
+    );
+    last = index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 function PairedResult({ text, images, isEmpty, isError }: {
   text: string;
   images: ImageContent[];
@@ -1653,7 +1673,7 @@ function PairedResult({ text, images, isEmpty, isError }: {
             wordBreak: "break-all",
           }}
         >
-           {isEmpty ? t("i18n.noOutput") : text}
+          {isEmpty ? t("i18n.noOutput") : renderFullBlocks(text)}
         </pre>
       )}
     </div>
