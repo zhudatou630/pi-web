@@ -557,8 +557,10 @@ export function deleteSubagentProfile(cwd: string, scope: SubagentWritableScope,
 }
 
 /**
- * Toggle the effective definition. Like pi-subagents, the highest-precedence file wins whole:
- * a built-in is disabled by a project stub, and re-enabling removes that stub.
+ * Toggle the effective definition. The highest-precedence file wins whole, as in pi-subagents.
+ * The Agents list is the user's global configuration, so an untouched built-in is disabled by a
+ * global stub (its definition keeps following Pi Web updates); re-enabling removes the stub.
+ * A project or workspace file is toggled in place and only affects that project.
  */
 export function setSubagentProfileEnabled(cwd: string, name: string, enabled: boolean): void {
   const profile = listSubagentProfiles(cwd).find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
@@ -566,7 +568,7 @@ export function setSubagentProfileEnabled(cwd: string, name: string, enabled: bo
   if (profile.configurationError) throw new Error(`Invalid subagent profile "${profile.name}": ${profile.configurationError}`);
   if (profile.enabled === enabled) return;
   if (profile.scope === "builtin") {
-    const dir = assertWritableProfileDirectory(cwd, "project");
+    const dir = assertWritableProfileDirectory(cwd, "global");
     mkdirSync(dir, { recursive: true });
     writePrivateFileAtomicSync(join(dir, `${profile.name}.md`), DISABLE_STUB);
     return;

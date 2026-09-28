@@ -43,7 +43,7 @@ export const settingsUrls = {
   modelsRuntime: (cwd: string) => `/api/models-config/runtime?${q(cwd)}`,
   modelsPicker: (cwd: string) => `/api/models-config/picker?${q(cwd)}`,
   subagentProfiles: (cwd: string) => `/api/subagents/profiles?${q(cwd)}`,
-  subagentSettings: "/api/subagents/settings",
+  subagentSettings: (cwd: string | null) => `/api/subagents/settings${cwd ? `?${q(cwd)}` : ""}`,
   chatModels: (cwd: string) => `/api/models?${q(cwd)}`,
   imageSettings: "/api/image-generation/settings",
   skills: (cwd: string) => `/api/skills?${q(cwd)}`,
@@ -58,8 +58,8 @@ export function prefetchSettings(cwd: string | null): void {
   const u = settingsUrls;
   const urls = cwd
     ? [u.modelsConfig, u.authProviders(cwd), u.modelsRuntime(cwd), u.modelsPicker(cwd), u.webAuth, u.toolSettings,
-      u.subagentSettings, u.subagentProfiles(cwd), u.chatModels(cwd), u.imageSettings, u.skills(cwd), u.plugins(cwd), u.projectResources(cwd), u.usage]
-    : [u.modelsConfig, u.authProviders(cwd), u.webAuth, u.toolSettings, u.subagentSettings, u.imageSettings, u.usage];
+      u.subagentSettings(cwd), u.subagentProfiles(cwd), u.chatModels(cwd), u.imageSettings, u.skills(cwd), u.plugins(cwd), u.projectResources(cwd), u.usage]
+    : [u.modelsConfig, u.authProviders(cwd), u.webAuth, u.toolSettings, u.subagentSettings(null), u.imageSettings, u.usage];
   for (const url of urls) if (!replies.has(url)) getJson(url).catch(() => {});
 }
 

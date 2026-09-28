@@ -30,8 +30,32 @@ const TOOL_OPTIONS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const THINKING_OPTIONS = ["", ...THINKING_LEVEL_VALUES] as const;
 
 type EditableProfile = Omit<SubagentProfile, "scope" | "filePath">;
-/** view: read-only built-in or disable stub; edit: the effective file in place; create: new name; customize: copy a built-in to a file. */
-type EditorMode = "view" | "edit" | "create" | "customize";
+/**
+ * view: read-only (invalid file, or a project stub); edit: the agent's effective definition,
+ * where a built-in is saved as the user's global copy; create: a new global agent.
+ */
+type EditorMode = "view" | "edit" | "create";
+
+/** What the user needs to know about where an agent comes from; storage layers stay hidden. */
+type ProfileTag = "modified" | "project" | null;
+
+function profileTag([top, below]: readonly SubagentProfile[]): ProfileTag {
+  if (!top) return null;
+  if (top.scope === "project" || top.scope === "workspace") return "project";
+  return top.scope === "global" && !top.disableStub && below?.scope === "builtin" ? "modified" : null;
+}
+
+/** Built-ins and the global stubs that disable them are edited as the user's global copy. */
+function editTarget(top: SubagentProfile): SubagentWritableScope | null {
+  if (top.configurationError) return null;
+  if (top.scope === "builtin" || (top.scope === "global" && top.disableStub)) return "global";
+  return isWritableScope(top.scope) && !top.disableStub ? top.scope : null;
+}
+
+/** Form fields that Save writes; `enabled` is switched immediately and never makes the form dirty. */
+function formSnapshot(profile: EditableProfile): string {
+  return JSON.stringify({ ...profile, enabled: undefined });
+}
 
 const EMPTY_PROFILE: EditableProfile = {
   name: "custom-agent",
@@ -120,7 +144,7 @@ export function AgentsConfig({
   // The last replies paint at once; the mount loads then revalidate them.
   const [seed] = useState(() => {
     const ok = <T,>(reply: JsonReply<T & { error?: string }> | undefined) => reply?.ok && !reply.data.error ? reply.data : undefined;
-    const settings = ok(peekJson<Partial<SubagentSettingsResponse> & { error?: string }>(settingsUrls.subagentSettings));
+    const settings = ok(peekJson<Partial<SubagentSettingsResponse> & { error?: string }>(settingsUrls.subagentSettings(cwd)));
     return {
       profiles: ok(peekJson<Partial<SubagentProfilesResponse> & { error?: string }>(settingsUrls.subagentProfiles(cwd)))?.profiles,
       settings: typeof settings?.enabled === "boolean" ? settings : undefined,
@@ -135,13 +159,15 @@ export function AgentsConfig({
   const [page, setPage] = useState<"list" | "detail">("list");
   const [draft, setDraft] = useState<EditableProfile>(EMPTY_PROFILE);
   const [mode, setMode] = useState<EditorMode>("view");
-  const [targetScope, setTargetScope] = useState<SubagentWritableScope>("project");
+  const [targetScope, setTargetScope] = useState<SubagentWritableScope>("global");
+  const [baseline, setBaseline] = useState("");
   const [loading, setLoading] = useState(!seed.profiles);
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [builtInEnabled, setBuiltInEnabled] = useState(seed.settings?.enabled ?? true);
+  const [project, setProject] = useState(seed.settings?.project ?? null);
   const [maxConcurrent, setMaxConcurrent] = useState(seed.settings?.maxConcurrent ?? 10);
   const [settingsLoading, setSettingsLoading] = useState(!seed.settings);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -156,13 +182,15 @@ export function AgentsConfig({
   );
   const effective = sources[0] ?? null;
   const shadowed = sources.slice(1);
+  const effectiveTag = profileTag(sources);
   /** A disable stub has no definition of its own, so show the one it hides. */
   const shown = effective?.disableStub ? shadowed[0] ?? effective : effective;
   const rows = useMemo(() => [...new Set(profiles.map((profile) => profile.name.toLowerCase()))]
     .map((name) => {
-      const [top, below] = subagentProfileSources(profiles, name);
+      const sources = subagentProfileSources(profiles, name);
+      const [top, below] = sources;
       const shownProfile = top.disableStub ? below ?? top : top;
-      return { name, top, label: shownProfile.displayName, description: shownProfile.description };
+      return { name, top, tag: profileTag(sources), label: shownProfile.displayName, description: shownProfile.description };
     })
     .sort((a, b) => a.label.localeCompare(b.label)), [profiles]);
   const modelSelectorOptions = useMemo(() => modelOptions.map((model) => ({
@@ -177,11 +205,13 @@ export function AgentsConfig({
     if (!name) return;
     const [top, below] = subagentProfileSources(list, name);
     if (!top) return;
-    setDraft(editableProfile(top.disableStub ? below ?? top : top));
+    const next = { ...editableProfile(top.disableStub ? below ?? top : top), enabled: top.enabled };
+    setDraft(next);
+    setBaseline(formSnapshot(next));
     // Invalid files are shown read-only: saving would rewrite them from a lossy parse.
-    const editable = isWritableScope(top.scope) && !top.disableStub && !top.configurationError;
-    setMode(editable ? "edit" : "view");
-    if (editable) setTargetScope(top.scope as SubagentWritableScope);
+    const target = editTarget(top);
+    setMode(target ? "edit" : "view");
+    if (target) setTargetScope(target);
   }, []);
 
   const fetchProfiles = useCallback(async () => {
@@ -215,13 +245,14 @@ export function AgentsConfig({
     setSettingsError(null);
     void (async () => {
       try {
-        const response = await getJson<Partial<SubagentSettingsResponse> & { error?: string }>(settingsUrls.subagentSettings);
+        const response = await getJson<Partial<SubagentSettingsResponse> & { error?: string }>(settingsUrls.subagentSettings(cwd));
         if (controller.signal.aborted) return;
         const data = response.data;
         if (!response.ok || data.error || typeof data.enabled !== "boolean") {
           throw new Error(data.error ?? `HTTP ${response.status}`);
         }
         setBuiltInEnabled(data.enabled);
+        setProject(data.project ?? null);
         if (typeof data.maxConcurrent === "number") setMaxConcurrent(data.maxConcurrent);
       } catch (cause) {
         if (controller.signal.aborted) return;
@@ -231,7 +262,7 @@ export function AgentsConfig({
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [cwd]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -261,7 +292,7 @@ export function AgentsConfig({
     setSelectedName(null);
     setDraft({ ...EMPTY_PROFILE, name, displayName: name });
     setMode("create");
-    setTargetScope("project");
+    setTargetScope("global");
     setError(null);
   };
 
@@ -276,15 +307,7 @@ export function AgentsConfig({
       enabled: true,
     });
     setMode("create");
-    setTargetScope("project");
-    setError(null);
-  };
-
-  const beginCustomize = () => {
-    if (!shown) return;
-    setDraft(editableProfile(shown));
-    setMode("customize");
-    setTargetScope("project");
+    setTargetScope("global");
     setError(null);
   };
 
@@ -322,9 +345,11 @@ export function AgentsConfig({
   const remove = async () => {
     if (!effective || !shown || !isWritableScope(effective.scope)) return;
     const fallback = shadowed[0];
-    const message = fallback
-      ? t("agents.restoreConfirm", { name: shown.displayName, scope: t(`agents.scope.${fallback.scope}`) })
-      : t("agents.deleteConfirm", { name: shown.displayName });
+    const message = !fallback
+      ? t("agents.deleteConfirm", { name: shown.displayName })
+      : fallback.scope === "builtin"
+        ? t("agents.restoreDefaultConfirm", { name: shown.displayName })
+        : t("agents.restoreGlobalConfirm", { name: shown.displayName });
     if (!window.confirm(message)) return;
     setSaving(true);
     setError(null);
@@ -345,17 +370,16 @@ export function AgentsConfig({
     }
   };
 
-  const writing = mode === "create" || mode === "customize";
+  const writing = mode === "create";
   const editing = mode !== "view";
   const disabled = !editing || saving || toggling;
-  const displayedScope = writing ? targetScope : effective?.scope;
+  const dirty = writing || formSnapshot(draft) !== baseline;
+  // Only a real file has a path worth showing; a built-in or a disable stub is just "the default".
   const displayedPath = writing
-    ? targetScope === "global"
-      ? `~/.pi/agent/agents/${draft.name || "..."}.md`
-      : `./.pi/agents/${draft.name || "..."}.md`
-    : effective
-      ? displayProfilePath(effective, cwd) ?? t("agents.builtinPath")
-      : "";
+    ? `~/.pi/agent/agents/${draft.name || "..."}.md`
+    : effective && !effective.disableStub
+      ? displayProfilePath(effective, cwd)
+      : null;
   const fullPath = writing ? displayedPath : effective?.filePath ?? displayedPath;
   const selectedModelAvailable = !draft.model || modelOptions.some((model) => `${model.provider}/${model.id}` === draft.model);
   const selectedModel = (() => {
@@ -400,20 +424,21 @@ export function AgentsConfig({
     if (effective) await setAgentEnabled(effective.name, enabled);
   };
 
-  const toggleBuiltInSubagents = async (enabled: boolean) => {
+  const putSubagentSwitch = async (change: { enabled: boolean } | { projectEnabled: boolean }) => {
     setSettingsSaving(true);
     setSettingsError(null);
     try {
       const response = await fetch("/api/subagents/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({ cwd, ...change }),
       });
       const data = await response.json() as Partial<SubagentSettingsResponse> & { error?: string };
       if (!response.ok || data.error || typeof data.enabled !== "boolean") {
         throw new Error(data.error ?? `HTTP ${response.status}`);
       }
       setBuiltInEnabled(data.enabled);
+      setProject(data.project ?? null);
       setReloadNeeded(Boolean(sessionId));
     } catch (cause) {
       setSettingsError(cause instanceof Error ? cause.message : String(cause));
@@ -458,11 +483,12 @@ export function AgentsConfig({
 
   const profileTitle = mode === "create" ? t("agents.new") : draft.displayName || draft.name;
   const sourceNotes = !writing && effective ? [
-    ...(effective.disableStub ? [t("agents.stubNote")] : []),
-    ...shadowed.map((source) => source.scope === "builtin"
-      ? t("agents.overridesBuiltin")
-      : t("agents.shadows", { scope: t(`agents.scope.${source.scope}`), path: displayProfilePath(source, cwd) ?? "" })),
+    ...(effectiveTag === "project" ? [t("agents.projectFileNote")] : []),
+    ...(effective.disableStub && effective.scope !== "global" ? [t("agents.stubNote")] : []),
   ] : [];
+  const restoresDefault = shadowed[0]?.scope === "builtin";
+  /** Sub-agents can run in this project at all (global switch and project switch). */
+  const activeHere = builtInEnabled && (project?.enabled ?? true);
   const enabledChecked = writing ? draft.enabled : Boolean(effective?.enabled);
   const removable = !writing && effective && isWritableScope(effective.scope) && !effective.disableStub;
 
@@ -487,9 +513,26 @@ export function AgentsConfig({
                     disabled={settingsLoading || reloading}
                     loading={settingsSaving}
                     label={t("agents.builtInTitle")}
-                    onChange={(enabled) => void toggleBuiltInSubagents(enabled)}
+                    onChange={(enabled) => void putSubagentSwitch({ enabled })}
                   />
                 </SettingsRow>
+                {project && (
+                  <SettingsRow
+                    label={t("agents.projectTitle")}
+                    description={builtInEnabled
+                      ? t("agents.projectDescription", { path: shortenPath(project.root) })
+                      : t("agents.projectGlobalOff")}
+                    title={project.root}
+                  >
+                    <ConfigSwitch
+                      checked={builtInEnabled && project.enabled}
+                      disabled={!builtInEnabled || settingsLoading || reloading}
+                      loading={settingsSaving}
+                      label={t("agents.projectTitle")}
+                      onChange={(projectEnabled) => void putSubagentSwitch({ projectEnabled })}
+                    />
+                  </SettingsRow>
+                )}
                 <SettingsRow label={t("agents.maxConcurrent")} description={t("agents.maxConcurrentDescription")}>
                   <input
                     aria-label={t("agents.maxConcurrent")}
@@ -510,15 +553,16 @@ export function AgentsConfig({
                 title={<CountedTitle label={t("agents.profiles")} count={rows.length} />}
                 action={<ConfigButton size="small" onClick={() => { beginCreate(); setPage("detail"); }}>{t("agents.new")}</ConfigButton>}
               >
+                {!activeHere && <p role="status" className="settings-row-message">{t("agents.inactiveNotice")}</p>}
                 {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
                 {loading ? (
                   <SettingsLoading label={t("agents.loading")} />
-                ) : rows.map(({ name, top, label, description }) => (
+                ) : rows.map(({ name, top, tag, label, description }) => (
                   <SettingsLinkRow
                     key={name}
-                    label={<>{label}<span className="settings-row-tag">{t(`agents.scope.${top.scope}`)}</span></>}
+                    label={<>{label}{tag && <span className="settings-row-tag">{tag === "modified" ? t("agents.tag.modified") : t("agents.tag.project")}</span>}</>}
                     description={description}
-                    muted={!top.enabled}
+                    muted={!top.enabled || !activeHere}
                     title={top.filePath}
                     onOpen={() => { showAgent(profiles, name); setPage("detail"); }}
                   >
@@ -542,12 +586,12 @@ export function AgentsConfig({
                   title={profileTitle}
                   meta={(
                     <>
-                      {displayedScope && (
-                        <span className={`config-scope-tag${displayedScope === "project" ? " is-project" : ""}`}>
-                          {t(`agents.scope.${displayedScope}`)}
+                      {!writing && effectiveTag && (
+                        <span className={`config-scope-tag${effectiveTag === "project" ? " is-project" : ""}`}>
+                          {effectiveTag === "modified" ? t("agents.tag.modified") : t("agents.tag.project")}
                         </span>
                       )}
-                      {displayedScope !== "builtin" && <span title={fullPath} className="config-detail-path">{displayedPath}</span>}
+                      {displayedPath && <span title={fullPath ?? undefined} className="config-detail-path">{displayedPath}</span>}
                     </>
                   )}
                   description={sourceNotes.length > 0 && (
@@ -557,7 +601,12 @@ export function AgentsConfig({
                   )}
                 >
                   <SettingsGroup>
-                    <SettingsRow label={t("agents.enabled")} description={t("agents.enabledDescription")}>
+                    <SettingsRow
+                      label={t("agents.enabled")}
+                      description={effectiveTag === "project" && !writing
+                        ? t("agents.enabledProjectDescription")
+                        : t("agents.enabledDescription")}
+                    >
                       <ConfigSwitch
                         checked={enabledChecked}
                         disabled={saving || toggling || (!writing && Boolean(effective?.configurationError))}
@@ -565,30 +614,6 @@ export function AgentsConfig({
                         onChange={(value) => void toggleEnabled(value)}
                       />
                     </SettingsRow>
-                    {effective?.scope === "builtin" && mode === "view" && (
-                      <SettingsRow label={t("agents.customize")} description={t("agents.customizeDescription")}>
-                        <ConfigButton size="small" onClick={beginCustomize} disabled={saving || toggling}>{t("agents.customize")}</ConfigButton>
-                      </SettingsRow>
-                    )}
-                    {writing && (
-                      <SettingsRow label={t("agents.saveScope")} description={t("agents.saveScopeDescription")}>
-                        <div role="radiogroup" aria-label={t("agents.saveScope")} className="settings-segmented">
-                          {(["global", "project"] as const).map((scope) => (
-                            <button
-                              key={scope}
-                              type="button"
-                              role="radio"
-                              aria-checked={targetScope === scope}
-                              className="settings-segmented-option"
-                              onClick={() => setTargetScope(scope)}
-                              disabled={saving}
-                            >
-                              {t(`agents.scope.${scope}`)}
-                            </button>
-                          ))}
-                        </div>
-                      </SettingsRow>
-                    )}
                   </SettingsGroup>
 
                   <SettingsGroup title={t("agents.profile")}>
@@ -673,11 +698,11 @@ export function AgentsConfig({
                       </SettingsRow>
                       {removable && (
                         <SettingsRow
-                          label={shadowed[0] ? t("agents.restore", { scope: t(`agents.scope.${shadowed[0].scope}`) }) : t("agents.deleteTitle")}
-                          description={shadowed[0] ? t("agents.restoreDescription") : t("agents.deleteDescription")}
+                          label={!shadowed[0] ? t("agents.deleteTitle") : restoresDefault ? t("agents.restoreDefault") : t("agents.restoreGlobal")}
+                          description={!shadowed[0] ? t("agents.deleteDescription") : restoresDefault ? t("agents.restoreDefaultDescription") : t("agents.restoreGlobalDescription")}
                         >
                           <ConfigButton variant="danger" size="small" onClick={() => void remove()} disabled={saving || toggling}>
-                            {shadowed[0] ? t("agents.restore", { scope: t(`agents.scope.${shadowed[0].scope}`) }) : t("agents.delete")}
+                            {!shadowed[0] ? t("agents.delete") : restoresDefault ? t("agents.restoreDefault") : t("agents.restoreGlobal")}
                           </ConfigButton>
                         </SettingsRow>
                       )}
@@ -695,7 +720,7 @@ export function AgentsConfig({
           <ConfigButton
             variant="primary"
             onClick={() => void save()}
-            disabled={saving || savedOk || toggling || !draft.name.trim()}
+            disabled={saving || savedOk || toggling || !dirty || !draft.name.trim()}
             className={savedOk ? "is-success" : undefined}
           >
             {savedOk && (

@@ -40,7 +40,8 @@ import { buildSubagentPromptPlan } from "./subagent-prompt";
 import { appendSubagentInputFiles, loadSubagentInputFiles } from "./subagent-input";
 import { projectTrustReloadOptions } from "./project-trust";
 import { resolveShellTools } from "./powershell-settings";
-import { isBuiltInSubagentsEnabled, readSubagentSettings } from "./subagent-settings";
+import { isSubagentsEnabledForProject, readSubagentSettings } from "./subagent-settings";
+import { resolveProject } from "./worktree";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension, type ContextFileContent } from "./chat-only";
 import { SubagentQueue } from "./subagent-queue";
 import {
@@ -72,7 +73,8 @@ export interface SubagentRuntimeDependencies {
   reopenSession?(sessionId: string, sessionPath: string, cwdOverride?: string): Promise<HostSession>;
   isSessionFileMutationReserved?(sessionId: string): boolean;
   invalidateSessionList(): void;
-  isBuiltInSubagentsEnabled?(): boolean;
+  /** Global switch and the per-project switch for this cwd. */
+  isSubagentsEnabled?(cwd: string): boolean | Promise<boolean>;
 }
 
 export interface SubagentController {
@@ -830,12 +832,17 @@ async function promptSubagent(
 export function createSubagentController(
   dependencies: SubagentRuntimeDependencies,
 ): SubagentController {
+  async function assertSubagentsEnabled(cwd: string): Promise<void> {
+    const enabled = dependencies.isSubagentsEnabled
+      ?? (async (dir: string) => isSubagentsEnabledForProject((await resolveProject(dir)).projectRoot));
+    if (!await enabled(cwd)) throw new Error("Pi Web built-in sub-agents are disabled for this project");
+  }
+
   async function start(request: StartSubagentRequest): Promise<SubagentExecution> {
-    const enabled = dependencies.isBuiltInSubagentsEnabled ?? isBuiltInSubagentsEnabled;
-    if (!enabled()) throw new Error("Pi Web built-in sub-agents are disabled");
     const parentSessionId = request.parentContext.sessionManager.getSessionId();
     const parent = dependencies.getSession(parentSessionId);
     if (!parent?.isAlive()) throw new Error("Parent session is no longer available");
+    await assertSubagentsEnabled(parent.cwd);
     if (!parent.sessionFile) throw new Error("Parent session must be persisted before starting a subagent");
 
     const profile = resolveSubagentProfile(parent.cwd, request.profile);
@@ -1045,8 +1052,6 @@ export function createSubagentController(
   }
 
   async function resume(request: ResumeSubagentRequest): Promise<SubagentExecution> {
-    const enabled = dependencies.isBuiltInSubagentsEnabled ?? isBuiltInSubagentsEnabled;
-    if (!enabled()) throw new Error("Pi Web built-in sub-agents are disabled");
     const parentSessionId = request.parentContext.sessionManager.getSessionId();
     const existing = await get(request.sessionId);
     if (!existing) {
@@ -1057,6 +1062,7 @@ export function createSubagentController(
     if (existing.status === "running" || existing.status === "queued") throw new Error("Subagent is already running");
     const parent = dependencies.getSession(parentSessionId);
     if (!parent?.isAlive()) throw new Error("Parent session is no longer available");
+    await assertSubagentsEnabled(parent.cwd);
     if (dependencies.isSessionFileMutationReserved?.(request.sessionId)) {
       throw new Error("Session file is being modified");
     }

@@ -136,6 +136,8 @@ export function createSubagentExtension(
     factory: (pi) => {
       if (!isEnabled()) return;
       const profiles = getProfiles().filter((profile) => profile.enabled);
+      // Nothing to delegate to: expose no tools rather than an Agent that always fails.
+      if (profiles.length === 0) return;
       const profileNames = profiles.map((profile) => profile.name);
       const availableTypes = profileNames.length > 0 ? profileNames.join(", ") : "none";
       const notFound = (ctx: ExtensionContext, sessionId: string) =>

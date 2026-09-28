@@ -45,7 +45,8 @@ import {
   SUBAGENT_CONTROL_TOOL_NAMES,
 } from "./subagents";
 import { createSubagentController, getActiveSubagentRuns, isSubagentQueued } from "./subagent-runtime";
-import { isBuiltInSubagentsEnabled } from "./subagent-settings";
+import { isSubagentsEnabledForProject } from "./subagent-settings";
+import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, preferPiWebImageTool } from "./image-generation-extension";
@@ -1668,7 +1669,6 @@ const SUBAGENT_CONTROLLER = createSubagentController({
   },
   isSessionFileMutationReserved: (sessionId) => getSessionFileMutations().has(sessionId),
   invalidateSessionList: invalidateSessionListCache,
-  isBuiltInSubagentsEnabled,
 });
 
 export function getSubagentRun(sessionId: string) {
@@ -2176,6 +2176,10 @@ export async function startRpcSession(
     const chatOnlyExtension = chatOnly && !subagentResources
       ? createExactSystemPromptExtension(readChatOnlySystemPrompt)
       : undefined;
+    // The per-project sub-agent switch is keyed by the sidebar project root (shared by worktrees).
+    const subagentProjectRoot = !chatOnly && !subagentResources
+      ? (await resolveProject(sessionCwd)).projectRoot
+      : sessionCwd;
 
     // Determine which tools to pass based on requested toolNames.
     // Since v0.68.0, session creation expects string[] tool names instead of Tool[] instances.
@@ -2249,7 +2253,7 @@ export async function startRpcSession(
               createSubagentExtension(
                 SUBAGENT_CONTROLLER.extensionRuntime,
                 () => listSubagentProfiles(sessionCwd),
-                isBuiltInSubagentsEnabled,
+                () => isSubagentsEnabledForProject(subagentProjectRoot),
               ),
             ],
             extensionsOverride: (base) => preferUserBashExtension(preferPiWebImageTool(preferPiWebSubagentExtension(base))),

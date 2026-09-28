@@ -8,6 +8,8 @@ export interface SubagentProfilesResponse {
 export interface SubagentSettingsResponse {
   enabled: boolean;
   maxConcurrent: number;
+  /** Present when the request named a cwd: that project's own switch (the global one still applies). */
+  project?: { root: string; enabled: boolean };
 }
 
 export interface ImageGenerationSettingsConnection {

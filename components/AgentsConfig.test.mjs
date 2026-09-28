@@ -9,7 +9,8 @@ const modelSelectorSource = await readFile(new URL("./ModelSelector.tsx", import
 
 test("offers a persisted built-in sub-agent switch with explicit session reload", () => {
   assert.match(source, /fetch\("\/api\/subagents\/settings"/);
-  assert.match(source, /JSON\.stringify\(\{ enabled \}\)/);
+  assert.match(source, /JSON\.stringify\(\{ cwd, \.\.\.change \}\)/);
+  assert.match(source, /putSubagentSwitch\(\{ enabled \}\)/);
   assert.match(source, /JSON\.stringify\(\{ maxConcurrent: value \}\)/);
   assert.match(source, /t\("agents\.maxConcurrent"\)/);
   assert.match(source, /<ConfigSwitch[\s\S]*?checked=\{builtInEnabled\}[\s\S]*?t\("agents\.builtInTitle"\)/);
@@ -17,6 +18,14 @@ test("offers a persisted built-in sub-agent switch with explicit session reload"
   assert.match(source, /reloadNeeded && sessionId/);
   assert.match(cssSource, /\.agents-feature-setting \{[\s\S]*?border-bottom: 1px solid var\(--border\)/);
   assert.match(source, /<SettingsRow label=\{t\("agents\.builtInTitle"\)\} description=\{t\("agents\.builtInDescription"\)\}>/);
+});
+
+test("a project switch sits under the global one and dims the profiles it turns off", () => {
+  assert.match(source, /settingsUrls\.subagentSettings\(cwd\)/);
+  assert.match(source, /checked=\{builtInEnabled && project\.enabled\}[\s\S]*?disabled=\{!builtInEnabled/);
+  assert.match(source, /putSubagentSwitch\(\{ projectEnabled \}\)/);
+  assert.match(source, /const activeHere = builtInEnabled && \(project\?\.enabled \?\? true\);/);
+  assert.match(source, /!activeHere && <p role="status"[^>]*>\{t\("agents\.inactiveNotice"\)\}/);
 });
 
 test("reuses the ChatInput model selector with scoped models", () => {
@@ -63,22 +72,27 @@ test("keeps a larger resize corner when system instructions need a scrollbar", (
   assert.match(cssSource, /\.agents-system-prompt::-webkit-scrollbar-thumb \{[\s\S]*?border: 5px solid transparent;/);
 });
 
-test("lists one row per agent name with its effective source", () => {
+test("lists one row per agent name, tagged only when modified or from this project", () => {
   assert.match(source, /subagentProfileSources\(profiles, name\)/);
-  assert.match(source, /rows\.map\(\(\{ name, top, label, description \}\)/);
+  assert.match(source, /rows\.map\(\(\{ name, top, tag, label, description \}\)/);
   assert.doesNotMatch(source, /<ConfigStatusDot/);
-  assert.match(source, /muted=\{!top\.enabled\}/);
-  assert.match(source, /<span className="settings-row-tag">\{t\(`agents\.scope\.\$\{top\.scope\}`\)\}<\/span>/);
+  assert.match(source, /muted=\{!top\.enabled \|\| !activeHere\}/);
+  // Storage layers (built-in, global, workspace) are not user concepts.
+  assert.doesNotMatch(source, /agents\.scope\./);
+  assert.match(source, /if \(top\.scope === "project" \|\| top\.scope === "workspace"\) return "project";/);
+  assert.match(source, /top\.scope === "global" && !top\.disableStub && below\?\.scope === "builtin" \? "modified" : null/);
   // A row's switch acts on that agent directly, without opening it.
   assert.match(source, /onChange=\{\(value\) => void setAgentEnabled\(top\.name, value\)\}/);
   assert.doesNotMatch(source, /ConfigSidebarGroupLabel|isSubagentProfileOverridden/);
 });
 
-test("shows a disable stub as the definition it hides, read-only", () => {
+test("shows a disable stub as the definition it hides; built-ins are edited as a global copy", () => {
   assert.match(source, /const shown = effective\?\.disableStub \? shadowed\[0\] \?\? effective : effective;/);
-  assert.match(source, /const editable = isWritableScope\(top\.scope\) && !top\.disableStub && !top\.configurationError;/);
-  assert.match(source, /\.\.\.\(effective\.disableStub \? \[t\("agents\.stubNote"\)\] : \[\]\)/);
-  assert.match(source, /t\("agents\.shadows"/);
+  assert.match(source, /if \(top\.scope === "builtin" \|\| \(top\.scope === "global" && top\.disableStub\)\) return "global";/);
+  assert.match(source, /enabled: top\.enabled \};/);
+  assert.match(source, /effective\.disableStub && effective\.scope !== "global" \? \[t\("agents\.stubNote"\)\]/);
+  // Opening an agent and pressing Save without changes must not fork a built-in.
+  assert.match(source, /disabled=\{saving \|\| savedOk \|\| toggling \|\| !dirty/);
 });
 
 test("the switch always toggles the effective agent by name", () => {
@@ -89,17 +103,16 @@ test("the switch always toggles the effective agent by name", () => {
   assert.doesNotMatch(source, /method: "PATCH"[\s\S]*?profile: draft/);
 });
 
-test("customizes built-ins and creates new agents in a chosen writable scope", () => {
-  assert.match(source, /effective\?\.scope === "builtin" && mode === "view" && \([\s\S]*?onClick=\{beginCustomize\}/);
-  assert.match(source, /\{writing && \(\s*<SettingsRow label=\{t\("agents\.saveScope"\)\}/);
-  assert.match(source, /\["global", "project"\] as const/);
+test("creates new agents globally without a customize step or scope picker", () => {
+  assert.doesNotMatch(source, /beginCustomize|agents\.customize|agents\.saveScope/);
+  assert.match(source, /setMode\("create"\);\s*setTargetScope\("global"\);/);
   assert.match(source, /JSON\.stringify\(\{ cwd, scope: targetScope, profile: draft \}\)/);
   assert.match(source, /mode === "create" \? \(\s*<input aria-label=\{t\("agents\.name"\)\}/);
   assert.match(source, /t\("agents\.nameExists"/);
   assert.match(source, /onClick=\{\(\) => \{ beginCreate\(\); setPage\("detail"\); \}\}/);
 });
 
-test("duplicates the shown definition into a new project agent", () => {
+test("duplicates the shown definition into a new global agent", () => {
   assert.match(source, /function duplicateProfileName\(name: string, profiles: readonly SubagentProfile\[\]\)/);
   assert.match(source, /\.\.\.editableProfile\(shown\),[\s\S]*?name,[\s\S]*?displayName: t\("agents\.copyName"/);
   // Enable switch leads the page; duplicate and remove sit at the bottom, remove last.
@@ -107,10 +120,11 @@ test("duplicates the shown definition into a new project agent", () => {
 });
 
 test("removing a file names the version that takes over", () => {
-  assert.match(source, /t\("agents\.restoreConfirm", \{ name: shown\.displayName, scope:/);
+  assert.match(source, /t\("agents\.restoreDefaultConfirm", \{ name: shown\.displayName \}\)/);
+  assert.match(source, /t\("agents\.restoreGlobalConfirm", \{ name: shown\.displayName \}\)/);
   assert.match(source, /t\("agents\.deleteConfirm", \{ name: shown\.displayName \}\)/);
   assert.match(source, /JSON\.stringify\(\{ cwd, scope: effective\.scope, name: effective\.name \}\)/);
-  assert.match(source, /shadowed\[0\] \? t\("agents\.restore"/);
+  assert.match(source, /restoresDefault \? t\("agents\.restoreDefault"\) : t\("agents\.restoreGlobal"\)/);
 });
 
 test("any profile change asks for a session reload from one top banner", () => {
