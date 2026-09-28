@@ -237,6 +237,8 @@ export function ImagesConfig({
   if (loading && !settings) return <div key="loading" className="settings-page"><SettingsLoading label={t("i18n.loading")} /></div>;
 
   const globalOn = settings?.enabled === true;
+  // Connections matter once generation is on somewhere you are looking: globally or in this project.
+  const activeHere = globalOn || project?.enabled === true;
   return (
     <>
     {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
@@ -254,20 +256,19 @@ export function ImagesConfig({
         {project && (
           <SettingsRow
             label={t("agents.projectTitle")}
-            description={globalOn
-              ? t("settings.imagesProjectDescription", { path: project.root.replace(/^\/(?:Users|home)\/[^/]+/, "~") })
-              : t("settings.imagesProjectGlobalOff")}
+            description={t("settings.imagesProjectDescription", { path: project.root.replace(/^\/(?:Users|home)\/[^/]+/, "~") })}
             title={project.root}
           >
+            {project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
             <ConfigSwitch
-              checked={globalOn && project.enabled}
-              disabled={!globalOn || loading || saving}
+              checked={project.enabled}
+              disabled={loading || saving}
               label={t("agents.projectTitle")}
               onChange={(projectEnabled) => void save({ projectEnabled })}
             />
           </SettingsRow>
         )}
-        {settings?.enabled && settings.connections.some((connection) => connection.enabled) && (
+        {activeHere && settings && settings.connections.some((connection) => connection.enabled) && (
           <SettingsRow label={t("settings.imagesDefault")} description={t("settings.imagesDefaultDescription")}>
             <select
               className="settings-select"
@@ -286,7 +287,7 @@ export function ImagesConfig({
         {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
       </SettingsGroup>
 
-      {settings?.enabled && (
+      {activeHere && (
         <>
           <SettingsGroup title={<CountedTitle label={t("settings.imagesBuiltin")} count={builtin.length} />}>
             {builtin.map((connection) => (

@@ -475,8 +475,8 @@ export function AgentsConfig({
     ...(effective.disableStub && effective.scope !== "global" ? [t("agents.stubNote")] : []),
   ] : [];
   const restoresDefault = shadowed[0]?.scope === "builtin";
-  /** Sub-agents can run in this project at all (global switch and project switch). */
-  const activeHere = builtInEnabled && (project?.enabled ?? true);
+  /** Sub-agents can run in this project at all: its own setting wins over the global default. */
+  const activeHere = project?.enabled ?? builtInEnabled;
   const enabledChecked = writing ? draft.enabled : Boolean(effective?.enabled);
   const removable = !writing && effective && isWritableScope(effective.scope) && !effective.disableStub;
 
@@ -500,14 +500,13 @@ export function AgentsConfig({
                 {project && (
                   <SettingsRow
                     label={t("agents.projectTitle")}
-                    description={builtInEnabled
-                      ? t("agents.projectDescription", { path: shortenPath(project.root) })
-                      : t("agents.projectGlobalOff")}
+                    description={t("agents.projectDescription", { path: shortenPath(project.root) })}
                     title={project.root}
                   >
+                    {project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
                     <ConfigSwitch
-                      checked={builtInEnabled && project.enabled}
-                      disabled={!builtInEnabled || settingsLoading}
+                      checked={project.enabled}
+                      disabled={settingsLoading}
                       loading={settingsSaving}
                       label={t("agents.projectTitle")}
                       onChange={(projectEnabled) => void putSubagentSwitch({ projectEnabled })}

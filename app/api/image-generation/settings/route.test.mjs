@@ -89,7 +89,7 @@ test("settings route still reports disabled when settings are off", async () => 
   assert.equal((await response.json()).enabled, false);
 });
 
-test("a project switch hides image generation in that project only, and a missing file keeps the global state", async (t) => {
+test("a project setting wins over the image default both ways, and a missing file keeps the global state", async (t) => {
   const cwd = realpathSync(await mkdtemp(join(tmpdir(), "pi-web-image-project-")));
   const other = realpathSync(await mkdtemp(join(tmpdir(), "pi-web-image-other-")));
   t.after(() => rm(cwd, { recursive: true, force: true }));
@@ -107,7 +107,7 @@ test("a project switch hides image generation in that project only, and a missin
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.enabled, true);
-  assert.deepEqual(body.project, { root: cwd, enabled: false });
+  assert.deepEqual(body.project, { root: cwd, enabled: false, overridden: true });
 
   const here = await (await GET(new Request(`http://localhost/api/image-generation/settings?cwd=${encodeURIComponent(cwd)}`))).json();
   const there = await (await GET(new Request(`http://localhost/api/image-generation/settings?cwd=${encodeURIComponent(other)}`))).json();
@@ -118,10 +118,22 @@ test("a project switch hides image generation in that project only, and a missin
   // And the one execution path refuses it, for the model tool and the button alike.
   await assert.rejects(
     executeImageGeneration(testAgentDir, { prompt: "a cat" }, { cwd, sessionManager: { getBranch: () => [] }, modelRegistry: {} }),
-    /disabled for this project/,
+    /disabled in this project/,
   );
 
   const restored = await (await PUT(request("/api/image-generation/settings", { cwd, projectEnabled: true }))).json();
-  assert.deepEqual(restored.project, { root: cwd, enabled: true });
-  assert.equal("disabledProjects" in JSON.parse(await readFile(join(testAgentDir, "images", "settings.json"), "utf8")), false);
+  assert.deepEqual(restored.project, { root: cwd, enabled: true, overridden: false });
+  assert.equal("projects" in JSON.parse(await readFile(join(testAgentDir, "images", "settings.json"), "utf8")), false);
+
+  // With the default off, this project alone can switch generation on.
+  await PUT(request("/api/image-generation/settings", { enabled: false }));
+  const onlyHere = await (await PUT(request("/api/image-generation/settings", { cwd, projectEnabled: true }))).json();
+  assert.equal(onlyHere.enabled, false);
+  assert.deepEqual(onlyHere.project, { root: cwd, enabled: true, overridden: true });
+  const elsewhere = await (await GET(new Request(`http://localhost/api/image-generation/settings?cwd=${encodeURIComponent(other)}`))).json();
+  assert.equal(elsewhere.project.enabled, false);
+  await assert.rejects(
+    executeImageGeneration(testAgentDir, { prompt: "a cat" }, { cwd: other, sessionManager: { getBranch: () => [] }, modelRegistry: {} }),
+    /disabled in this project/,
+  );
 });

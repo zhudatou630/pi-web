@@ -4,7 +4,7 @@ import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security"
 import {
   ImageConfigError,
   imageSettingsApiResponse,
-  isImageProjectDisabled,
+  imageProjectState,
   writeImageGenerationSettings,
   writeImageProjectEnabled,
   type ImageSettingsPatch,
@@ -23,7 +23,7 @@ async function imageSettingsResponse(modelRuntime?: ModelRuntime, cwd?: unknown)
   });
   if (cwd === null || cwd === undefined) return body;
   const root = await projectRootForRequest(cwd);
-  return { ...body, project: { root, enabled: !isImageProjectDisabled(agentDir, root) } };
+  return { ...body, project: imageProjectState(agentDir, root) };
 }
 
 export async function GET(req: Request) {
@@ -57,8 +57,11 @@ export async function PUT(req: Request) {
       if (typeof body.projectEnabled !== "boolean") {
         return NextResponse.json({ error: "projectEnabled must be a boolean" }, { status: 400 });
       }
-      writeImageProjectEnabled(getAgentDir(), await projectRootForRequest(body.cwd), body.projectEnabled);
-      return NextResponse.json(await imageSettingsResponse(undefined, body.cwd));
+      const modelRuntime = await ModelRuntime.create();
+      writeImageProjectEnabled(getAgentDir(), await projectRootForRequest(body.cwd), body.projectEnabled, {
+        hasAuth: (provider) => modelRuntime.getProviderAuthStatus(provider).configured,
+      });
+      return NextResponse.json(await imageSettingsResponse(modelRuntime, body.cwd));
     }
     const patch: ImageSettingsPatch = {};
     if (body.enabled !== undefined) {

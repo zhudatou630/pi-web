@@ -3,7 +3,8 @@ import path from "node:path";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { type ImageCapabilities, type ImageConfigView, type ImageConnectionView } from "./image-generation";
 import { readModelsConfig } from "./models-config-store";
-import { isProjectListed, withProjectSwitch } from "./project-feature-switch";
+import type { ProjectFeatureState } from "./api-types";
+import { projectFeatureState, withProjectOverride } from "./project-feature-switch";
 
 export const IMAGE_CONFIG_FILE = "images.json";
 export const DEFAULT_IMAGE_CONNECTION_ID = "grok-imagine";
@@ -68,6 +69,7 @@ type StoredImageSettings = Record<string, unknown> & {
   default?: unknown;
   connections?: unknown;
   custom?: unknown;
+  projects?: unknown;
   disabledProjects?: unknown;
 };
 
@@ -359,35 +361,49 @@ export function isImageGenerationEnabled(agentDir: string): boolean {
   return existsSync(getImageLegacyConfigPath(agentDir));
 }
 
-/** This project turned image generation off (keyed by sidebar project root). */
-export function isImageProjectDisabled(agentDir: string, projectRoot: string): boolean {
+/** This project's image-generation state: its own setting when it has one, else the global default. */
+export function imageProjectState(agentDir: string, projectRoot: string): ProjectFeatureState {
   const settingsPath = getImageSettingsPath(agentDir);
-  return existsSync(settingsPath) && isProjectListed(readStoredSettings(settingsPath).disabledProjects, projectRoot);
+  const stored = existsSync(settingsPath) ? readStoredSettings(settingsPath) : {};
+  return projectFeatureState(stored, projectRoot, isImageGenerationEnabled(agentDir));
 }
 
-/** Effective switch for one project: global on and not turned off here. Unreadable settings fail closed. */
+/** Effective switch for one project (project override wins). Unreadable settings fail closed. */
 export function isImageGenerationEnabledForProject(agentDir: string, projectRoot: string): boolean {
   try {
-    return isImageGenerationEnabled(agentDir) && !isImageProjectDisabled(agentDir, projectRoot);
+    return imageProjectState(agentDir, projectRoot).enabled;
   } catch {
     return false;
   }
 }
 
-export function writeImageProjectEnabled(agentDir: string, projectRoot: string, enabled: boolean): void {
+export function writeImageProjectEnabled(
+  agentDir: string,
+  projectRoot: string,
+  enabled: boolean,
+  options: ImageSettingsWriteOptions = {},
+): void {
   const settingsPath = getImageSettingsPath(agentDir);
-  // A missing file means "legacy images.json or off"; write that state first so adding the
-  // project list cannot flip the global switch.
-  if (!existsSync(settingsPath)) persistImageSettings(agentDir, loadImageSettingsSnapshot(agentDir));
+  const snapshot = loadImageSettingsSnapshot(agentDir);
+  // A missing file means "legacy images.json or off": write that state first so adding the
+  // project entry cannot flip the global default. Turning a project on with nothing to run
+  // enables the signed-in built-ins, as turning the global switch on does.
+  if (!existsSync(settingsPath) || (enabled && !hasLiveConnection(snapshot))) {
+    const next = { ...snapshot, builtinEnabled: { ...snapshot.builtinEnabled } };
+    if (enabled && !hasLiveConnection(snapshot)) bootstrapBuiltins(next, options);
+    next.defaultConnection = resolveDefaultConnection(next, snapshot.defaultConnection);
+    persistImageSettings(agentDir, next);
+  }
   const stored = readStoredSettings(settingsPath);
-  const next: StoredImageSettings = { ...stored, disabledProjects: withProjectSwitch(stored.disabledProjects, projectRoot, enabled) };
-  if (!next.disabledProjects) delete next.disabledProjects;
+  const next = withProjectOverride(stored, projectRoot, enabled, stored.enabled === true);
   writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2));
 }
 
-export function resolveImageConfig(agentDir: string): ImageConfig {
+/** With a project root, the project's own setting decides whether generation is on. */
+export function resolveImageConfig(agentDir: string, projectRoot?: string): ImageConfig {
   const snapshot = loadImageSettingsSnapshot(agentDir);
-  if (!snapshot.enabled) {
+  const enabled = projectRoot === undefined ? snapshot.enabled : isImageGenerationEnabledForProject(agentDir, projectRoot);
+  if (!enabled) {
     return { enabled: false, defaultConnection: snapshot.defaultConnection, connections: {} };
   }
   const connections: Record<string, ImageConnection> = {};
@@ -451,6 +467,13 @@ export function imageSettingsView(snapshot: ImageSettingsSnapshot, hasAuth: (pro
   };
 }
 
+/** Turn on every built-in connection whose account is signed in. */
+function bootstrapBuiltins(next: ImageSettingsSnapshot, options: ImageSettingsWriteOptions): void {
+  for (const connection of BUILTIN_IMAGE_CONNECTIONS) {
+    if (!options.hasAuth || options.hasAuth(connection.provider)) next.builtinEnabled[connection.id] = true;
+  }
+}
+
 function applySettingsPatch(
   snapshot: ImageSettingsSnapshot,
   patch: ImageSettingsPatch,
@@ -483,11 +506,7 @@ function applySettingsPatch(
     && !snapshot.enabled
     && !hasLiveConnection(snapshot)
     && patch.connections === undefined;
-  if (shouldBootstrapBuiltins) {
-    for (const connection of BUILTIN_IMAGE_CONNECTIONS) {
-      if (!options.hasAuth || options.hasAuth(connection.provider)) next.builtinEnabled[connection.id] = true;
-    }
-  }
+  if (shouldBootstrapBuiltins) bootstrapBuiltins(next, options);
   if (patch.defaultConnection && !liveConnectionIds(next).includes(patch.defaultConnection)) {
     throw new ImageConfigError("UNKNOWN_CONNECTION", `Image connection ${patch.defaultConnection} is not enabled`);
   }

@@ -150,8 +150,8 @@ test("keeps image generation on its own settings page", async () => {
   assert.match(imagesSource, /t\("settings\.imagesDefault"\)/);
   assert.match(imagesSource, /save\(\{ default: event\.target\.value \}\)/);
   assert.doesNotMatch(imagesSource, /settings-image-presets|addPreset|missingPresets/);
-  assert.match(enSource, /"settings\.imagesEnabled": "Enable image generation"/);
-  assert.match(zhSource, /"settings\.imagesEnabled": "启用生图"/);
+  assert.match(enSource, /"settings\.imagesEnabled": "Enable image generation by default"/);
+  assert.match(zhSource, /"settings\.imagesEnabled": "默认启用生图"/);
 });
 
 test("labels agent profiles as sub-agents", () => {

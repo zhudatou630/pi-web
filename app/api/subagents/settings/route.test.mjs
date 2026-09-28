@@ -67,7 +67,7 @@ test("settings route validates mutations", async () => {
   assert.equal(typeof body.enabled, "boolean");
 });
 
-test("a project switch turns sub-agents off for that project only", async (t) => {
+test("a project setting wins over the global default", async (t) => {
   const cwd = realpathSync(await mkdtemp(join(tmpdir(), "pi-web-subagent-settings-project-")));
   t.after(() => rm(cwd, { recursive: true, force: true }));
   allowFileRoot(cwd);
@@ -75,12 +75,17 @@ test("a project switch turns sub-agents off for that project only", async (t) =>
 
   let response = await PUT(request({ cwd, projectEnabled: false }));
   assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).project, { root: cwd, enabled: false });
+  assert.deepEqual((await response.json()).project, { root: cwd, enabled: false, overridden: true });
   response = await GET(new Request(`http://localhost/api/subagents/settings?cwd=${encodeURIComponent(cwd)}`));
-  assert.deepEqual((await response.json()).project, { root: cwd, enabled: false });
+  assert.deepEqual((await response.json()).project, { root: cwd, enabled: false, overridden: true });
 
   response = await PUT(request({ cwd, projectEnabled: true }));
-  assert.deepEqual((await response.json()).project, { root: cwd, enabled: true });
+  assert.deepEqual((await response.json()).project, { root: cwd, enabled: true, overridden: false });
+
+  // With the default off, this project can still switch sub-agents on for itself.
+  await PUT(request({ enabled: false }));
+  response = await PUT(request({ cwd, projectEnabled: true }));
+  assert.deepEqual((await response.json()).project, { root: cwd, enabled: true, overridden: true });
 
   // A cwd outside the allowed roots is refused before anything is written.
   response = await PUT(request({ cwd: "/", projectEnabled: false }));

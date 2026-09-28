@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import {
-  isProjectSubagentsDisabled,
   MAX_SUBAGENT_MAX_CONCURRENT,
   readSubagentSettings,
+  subagentProjectState,
   writeBuiltInSubagentsEnabled,
   writeProjectSubagentsEnabled,
   writeSubagentMaxConcurrent,
@@ -16,10 +16,7 @@ export const dynamic = "force-dynamic";
 async function respond(cwd: unknown) {
   const settings = readSubagentSettings();
   const body: SubagentSettingsResponse = { enabled: settings.builtInEnabled, maxConcurrent: settings.maxConcurrent };
-  if (cwd !== null && cwd !== undefined) {
-    const root = await projectRootFor(cwd);
-    body.project = { root, enabled: !isProjectSubagentsDisabled(root) };
-  }
+  if (cwd !== null && cwd !== undefined) body.project = subagentProjectState(await projectRootFor(cwd));
   return NextResponse.json(body);
 }
 

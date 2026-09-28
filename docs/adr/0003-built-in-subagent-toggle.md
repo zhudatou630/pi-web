@@ -5,15 +5,19 @@ It is enabled by default and controlled by the global
 `~/.pi/agent/agents/settings.json` setting `builtInEnabled`.
 An explicit `false` turns it off; a missing file or field stays on.
 
-A project can also turn the feature off for itself: `disabledProjects` in the
-same file lists sidebar project roots (`resolveProject().projectRoot`, so linked
-worktrees share the switch). The effective state is "global on and project not
-listed". It lives in the global file rather than the project's `.pi/settings.json`
-so nothing is written into the project tree and no worktree sync is needed; the
-cost is that renaming or moving a directory drops its entry. Both `Agent` start
-and resume check it against the parent's cwd, so an earlier child cannot be
-resumed from a project that has turned sub-agents off. The factory also registers
-no tools when no profile is enabled.
+A project can override that default in either direction: `projects` in the same
+file maps sidebar project roots (`resolveProject().projectRoot`, so linked
+worktrees share the switch) to on/off, and the project wins. The global switch is
+therefore the default for projects without their own setting. This matches
+resource overrides and covers "only this project uses it" (default off, one project
+on) as well as "every project but this one". A first version was off-only ("global
+on and project not listed", `disabledProjects`); that list still reads as `false`
+entries and is rewritten on the next write. The setting lives in the global file
+rather than the project's `.pi/settings.json` so nothing is written into the project
+tree and no worktree sync is needed; the cost is that renaming or moving a directory
+drops its entry. Both `Agent` start and resume check the effective state against the
+parent's cwd, so an earlier child cannot be resumed where sub-agents are off. The
+factory also registers no tools when no profile is enabled.
 
 The inline extension factory remains installed in every ordinary, non-Chat-only
 resource loader so an AgentSession reload can enable or disable its tools without

@@ -52,7 +52,7 @@ export function createImageGenerationExtension(
         ? isImageGenerationEnabledForProject(agentDir, options.projectRoot)
         : isImageGenerationEnabled(agentDir);
       if (!enabled) return;
-      const config = resolveImageConfig(agentDir);
+      const config = resolveImageConfig(agentDir, options.projectRoot);
       const configured = imageConfigView(config);
       if (!config.enabled || !configured.connections.length) return;
       const runtime = options.hasAuth

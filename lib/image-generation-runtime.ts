@@ -9,7 +9,7 @@ import { requestCodexImage } from "./image-generation-codex";
 import { requestOpenAIImagesImage } from "./image-generation-openai-images";
 import { requestXaiImage } from "./image-generation-xai";
 import { IMAGE_RESULT_TYPE, extractMentionedImagePath, getImageGenerationResult, imageConnectionTransport, type ImageGenerationRequest, type ImageGenerationResult } from "./image-generation";
-import { imageConfigView, isImageProjectDisabled, resolveImageConfig } from "./image-generation-config";
+import { imageConfigView, resolveImageConfig } from "./image-generation-config";
 import { resolveProject } from "./worktree";
 import { isPathWithinRoots } from "./path-security";
 import { toNativePath } from "./paths";
@@ -182,12 +182,9 @@ export async function saveSourceImage(cwd: string, input: EncodedImageInput): Pr
 export async function executeImageGeneration(agentDir: string, rawRequest: unknown, ctx: RuntimeContext, signal?: AbortSignal): Promise<ImageGenerationResult> {
   signal?.throwIfAborted();
   const request = parseImageGenerationRequest(rawRequest);
-  const config = resolveImageConfig(agentDir);
-  if (!config.enabled) throw new Error("Image generation is disabled");
-  // One guard for the model tool and the composer button: a stale tool or tab cannot bypass it.
-  if (isImageProjectDisabled(agentDir, (await resolveProject(ctx.cwd)).projectRoot)) {
-    throw new Error("Image generation is disabled for this project");
-  }
+  // One check for the model tool and the composer button, per project: a stale tool or tab cannot bypass it.
+  const config = resolveImageConfig(agentDir, (await resolveProject(ctx.cwd)).projectRoot);
+  if (!config.enabled) throw new Error("Image generation is disabled in this project");
   const defaultId = imageConfigView(config).defaultConnection;
   const connectionIds = request.connection
     ? [request.connection]

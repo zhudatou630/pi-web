@@ -19,11 +19,13 @@ test("offers a persisted built-in sub-agent switch with explicit session reload"
   assert.match(source, /<SettingsRow label=\{t\("agents\.builtInTitle"\)\} description=\{t\("agents\.builtInDescription"\)\}>/);
 });
 
-test("a project switch sits under the global one and dims the profiles it turns off", () => {
+test("a project switch overrides the default either way and dims the profiles when off here", () => {
   assert.match(source, /settingsUrls\.subagentSettings\(cwd\)/);
-  assert.match(source, /checked=\{builtInEnabled && project\.enabled\}[\s\S]*?disabled=\{!builtInEnabled/);
+  // Never locked by the default: a project can switch sub-agents on while the default is off.
+  assert.match(source, /checked=\{project\.enabled\}\s*disabled=\{settingsLoading\}/);
+  assert.match(source, /project\.overridden && <span className="settings-row-status">/);
   assert.match(source, /putSubagentSwitch\(\{ projectEnabled \}\)/);
-  assert.match(source, /const activeHere = builtInEnabled && \(project\?\.enabled \?\? true\);/);
+  assert.match(source, /const activeHere = project\?\.enabled \?\? builtInEnabled;/);
   assert.match(source, /!activeHere && <p role="status"[^>]*>\{t\("agents\.inactiveNotice"\)\}/);
 });
 

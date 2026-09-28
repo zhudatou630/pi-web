@@ -186,6 +186,7 @@ test("the Images page follows the shared switch, banner, and wording rules", asy
   assert.doesNotMatch(images, /sendAgentCommand/);
   // "改图" is the image dialog's edit action, not "edit this connection".
   assert.doesNotMatch(images, /editLabel=\{t\("image\.edit"\)\}/);
-  assert.match(images, /checked=\{globalOn && project\.enabled\}[\s\S]*?disabled=\{!globalOn/);
+  assert.match(images, /checked=\{project\.enabled\}\s*disabled=\{loading \|\| saving\}/);
+  assert.match(images, /const activeHere = globalOn \|\| project\?\.enabled === true;/);
   assert.match(images, /save\(\{ projectEnabled \}\)/);
 });

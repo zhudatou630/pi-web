@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
-import { isProjectListed, withProjectSwitch } from "./project-feature-switch";
+import type { ProjectFeatureState } from "./api-types";
+import { projectFeatureState, withProjectOverride } from "./project-feature-switch";
 
 export interface SubagentSettings {
   builtInEnabled: boolean;
@@ -13,6 +14,7 @@ type StoredSubagentSettings = Record<string, unknown> & {
   version?: unknown;
   builtInEnabled?: unknown;
   maxConcurrent?: unknown;
+  projects?: unknown;
   disabledProjects?: unknown;
 };
 
@@ -49,21 +51,22 @@ export function readSubagentSettings(
   };
 }
 
-/** Whether this project turned the built-in sub-agents off (keyed by sidebar project root). */
-export function isProjectSubagentsDisabled(
+/** This project's sub-agent state: its own setting when it has one, else the global default. */
+export function subagentProjectState(
   projectRoot: string,
   settingsPath = getSubagentSettingsPath(),
-): boolean {
-  return isProjectListed(readStoredSettings(settingsPath).disabledProjects, projectRoot);
+): ProjectFeatureState {
+  const stored = readStoredSettings(settingsPath);
+  return projectFeatureState(stored, projectRoot, stored.builtInEnabled !== false);
 }
 
-/** Effective switch: global on and not turned off for this project. Unreadable settings fail closed. */
+/** Effective switch for one project (project override wins). Unreadable settings fail closed. */
 export function isSubagentsEnabledForProject(
   projectRoot: string,
   settingsPath = getSubagentSettingsPath(),
 ): boolean {
   try {
-    return readSubagentSettings(settingsPath).builtInEnabled && !isProjectSubagentsDisabled(projectRoot, settingsPath);
+    return subagentProjectState(projectRoot, settingsPath).enabled;
   } catch {
     return false;
   }
@@ -75,8 +78,7 @@ export function writeProjectSubagentsEnabled(
   settingsPath = getSubagentSettingsPath(),
 ): void {
   const stored = readStoredSettings(settingsPath);
-  const next: StoredSubagentSettings = { ...stored, version: 1, disabledProjects: withProjectSwitch(stored.disabledProjects, projectRoot, enabled) };
-  if (!next.disabledProjects) delete next.disabledProjects;
+  const next = withProjectOverride({ ...stored, version: 1 }, projectRoot, enabled, stored.builtInEnabled !== false);
   mkdirSync(dirname(settingsPath), { recursive: true });
   writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2));
 }

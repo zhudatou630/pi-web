@@ -1,6 +1,15 @@
 import type { ResourceDiagnostic } from "@earendil-works/pi-coding-agent";
 import type { SubagentProfile } from "./subagents";
 
+/** A Pi Web feature's state in one project; the project's own setting wins over the global default. */
+export interface ProjectFeatureState {
+  root: string;
+  /** Effective here. */
+  enabled: boolean;
+  /** This project has its own setting that differs from the global default. */
+  overridden: boolean;
+}
+
 export interface SubagentProfilesResponse {
   profiles: SubagentProfile[];
 }
@@ -8,8 +17,8 @@ export interface SubagentProfilesResponse {
 export interface SubagentSettingsResponse {
   enabled: boolean;
   maxConcurrent: number;
-  /** Present when the request named a cwd: that project's own switch (the global one still applies). */
-  project?: { root: string; enabled: boolean };
+  /** Present when the request named a cwd: that project's state (its override wins over `enabled`). */
+  project?: ProjectFeatureState;
 }
 
 export interface ImageGenerationSettingsConnection {
@@ -33,8 +42,8 @@ export interface ImageGenerationSettingsResponse {
   defaultConnection: string;
   connections: ImageGenerationSettingsConnection[];
   providers: ImageGenerationSettingsProvider[];
-  /** Present when the request named a cwd: that project's own switch (the global one still applies). */
-  project?: { root: string; enabled: boolean };
+  /** Present when the request named a cwd: that project's state (its override wins over `enabled`). */
+  project?: ProjectFeatureState;
 }
 
 export interface ShellToolSettingsResponse {

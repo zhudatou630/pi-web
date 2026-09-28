@@ -5,6 +5,7 @@ import type {
   ProjectOverridesWriteResponse,
   ProjectResourceGroup,
   ProjectResourceItem,
+  ProjectFeatureState,
   ProjectResourcesResponse,
 } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
@@ -28,16 +29,16 @@ function shortenPath(path: string): string {
 
 type Target = Pick<ProjectResourceItem, "type" | "path">;
 
-/** A Pi Web feature with a global switch plus a per-project off switch (lib/project-feature-switch.ts). */
+/** A Pi Web feature: a global default plus this project's state (lib/project-feature-switch.ts). */
 interface FeatureState {
   enabled: boolean;
-  project?: { root: string; enabled: boolean };
+  project?: ProjectFeatureState;
 }
 
 /** Same settings as "Enable in this project" on the Agents and Images pages. */
 const FEATURES = [
-  { id: "subagents", label: "project.subagents", description: "project.subagentsDescription", globalOff: "agents.projectGlobalOff", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings },
-  { id: "images", label: "project.images", description: "project.imagesDescription", globalOff: "settings.imagesProjectGlobalOff", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings },
+  { id: "subagents", label: "project.subagents", description: "project.subagentsDescription", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings },
+  { id: "images", label: "project.images", description: "project.imagesDescription", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings },
 ] as const;
 type FeatureId = (typeof FEATURES)[number]["id"];
 
@@ -135,21 +136,22 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     const body = (await res.json()) as { error?: string };
     if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
   };
-  const featuresOff = FEATURES.filter((feature) => features[feature.id]?.project?.enabled === false);
+  const featuresOverridden = FEATURES.filter((feature) => features[feature.id]?.project?.overridden);
 
   const groups = data?.groups ?? [];
   const overridden = groups.flatMap((group) => group.items.filter((item) => item.overridden));
   const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0);
   const enabledCount = groups.reduce((sum, group) => sum + group.items.filter((item) => item.enabled).length, 0);
   // Everything this project does differently from global: resource overrides plus the sub-agent switch.
-  const differences = overridden.length + featuresOff.length;
+  const differences = overridden.length + featuresOverridden.length;
   const resetAll = () => run(async () => {
     const back = (item: ProjectResourceItem) => item.globalEnabled ?? true;
     const on = overridden.filter(back);
     const off = overridden.filter((item) => !back(item));
     if (on.length) await post(on, true);
     if (off.length) await post(off, false);
-    for (const feature of featuresOff) await putFeatureEnabled(feature.putUrl, true);
+    // Setting a project back to the global default drops its override.
+    for (const feature of featuresOverridden) await putFeatureEnabled(feature.putUrl, features[feature.id]!.enabled);
   }, true);
 
   // Same endpoint as the trust dialog; it also drops runtimes built without project resources.
@@ -261,13 +263,16 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
                   {FEATURES.map((feature) => {
                     const state = features[feature.id];
                     if (!state?.project) return null;
-                    const off = !state.project.enabled;
                     return (
-                      <SettingsRow key={feature.id} label={t(feature.label)} description={state.enabled ? t(feature.description) : t(feature.globalOff)}>
-                        {off && state.enabled && <span className="settings-row-status">{t("project.tag.override")}</span>}
+                      <SettingsRow
+                        key={feature.id}
+                        label={t(feature.label)}
+                        description={`${t(feature.description)} ${t(state.enabled ? "project.globalOn" : "project.globalOff")}`}
+                      >
+                        {state.project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
                         <ConfigSwitch
-                          checked={state.enabled && state.project.enabled}
-                          disabled={busy || !state.enabled}
+                          checked={state.project.enabled}
+                          disabled={busy}
                           label={t(feature.label)}
                           onChange={(enabled) => void run(() => putFeatureEnabled(feature.putUrl, enabled), true)}
                         />
