@@ -2227,7 +2227,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             {streamState.isStreaming && streamingParts.answerMessage && (
               <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
             )}
-            {streamState.isStreaming && streamingAssistant && (
+            {streamState.isStreaming && streamingAssistant && !streamingParts.processMessage && (
               <StreamSilenceNotice message={streamingAssistant} />
             )}
 

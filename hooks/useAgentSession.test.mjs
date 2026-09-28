@@ -211,6 +211,12 @@ test("recognizes the same transcript message across history and live state", () 
   assert.equal(hasSameTranscriptIdentity(history, { role: "assistant", content: [] }), false);
 });
 
+test("does not show a silence notice beside an active process group", () => {
+  assert.match(
+    chatWindowSource,
+    /streamState\.isStreaming && streamingAssistant && !streamingParts\.processMessage && \(\s*<StreamSilenceNotice/,
+  );
+});
 test("opening System or Tools lazily starts a dormant session without sending a prompt", () => {
   const loadSystemInfoSource = source.slice(
     source.indexOf("  const loadSystemInfo = useCallback"),
