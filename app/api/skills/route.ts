@@ -91,7 +91,7 @@ export async function DELETE(req: Request) {
   }
 }
 
-// PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file.
+// PATCH /api/skills — toggle disable-model-invocation on a SKILL.md file the user owns.
 // Authorize by cwd (same as GET) plus exact filePath membership in the skills
 // that cwd already loaded. Do not add install-cache directories to the file
 // allow-list: a loaded skill may be a symlink whose realpath lives anywhere.
@@ -108,8 +108,11 @@ export async function PATCH(req: Request) {
     }
 
     const { skills } = await loadSkillsWithInstallInfo(cwd);
-    if (!skills.some((skill) => skill.filePath === filePath)) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    const skill = skills.find((item) => item.filePath === filePath);
+    if (!skill) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    // Package files belong to the package: an edit dirties a git checkout or is lost on update.
+    if (skill.sourceInfo?.origin === "package") {
+      return NextResponse.json({ error: "This skill is managed by a package" }, { status: 409 });
     }
 
     const content = readFileSync(filePath, "utf8");

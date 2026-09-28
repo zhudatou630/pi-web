@@ -42,5 +42,5 @@ built-in profiles are ordinary entries that can be edited or disabled directly.
 Editing writes a global copy shown as "modified" with Restore default; disabling an
 untouched built-in writes a global `enabled: false` stub so its definition still
 follows Pi Web updates. Project and workspace profile files remain valid (pi and
-shared repositories use them) and are shown as "this project", but the UI does not
+shared repositories use them) and are shown as "project file", but the UI does not
 create them.

@@ -84,6 +84,8 @@ export interface SkillInfo {
   sourceInfo: {
     source?: string;
     scope?: string;
+    /** "package" when a plugin package ships the skill; its files are not ours to edit. */
+    origin?: string;
   };
   install?: SkillInstallInfo;
   /** Lives directly in an auto-discovered skills directory, so the Skills panel may delete it. */

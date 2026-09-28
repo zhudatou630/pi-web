@@ -63,7 +63,7 @@ function versionSummary(pkg: PluginPackageInfo, t: ReturnType<typeof useI18n>["t
 
 function installLocation(scope: PluginScope, cwd: string): string {
   return scope === "project"
-    ? `${shortenPath(cwd)}/.pi/agent/{npm,git}`
+    ? `${shortenPath(cwd)}/.pi/{npm,git}`
     : "~/.pi/agent/{npm,git}";
 }
 
@@ -152,8 +152,16 @@ function ResourceList({ pkg, busyKey, onToggleExtension }: {
 }
 
 function ScopeTag({ scope }: { scope: PluginScope }) {
-  return <span className={`config-scope-tag${scope === "project" ? " is-project" : ""}`}>{scope}</span>;
+  const { t } = useI18n();
+  return <span className={`config-scope-tag${scope === "project" ? " is-project" : ""}`}>{t(scope === "project" ? "skills.scope.project" : "skills.scope.global")}</span>;
 }
+
+const STATUS_LABELS = {
+  loaded: "plugins.status.loaded",
+  installed: "plugins.status.installed",
+  missing: "plugins.status.missing",
+  disabled: "i18n.disabled",
+} as const;
 
 function AddPluginPanel({
   cwd,
@@ -363,7 +371,7 @@ function PackageDetail({
       <SettingsGroup title={t("settings.details")}>
         <SettingsProperties>
           <SettingsProperty label={t("i18n.status")}>
-            <span className={`settings-status is-${pkg.status}`}>{pkg.status}</span>
+            <span className={`settings-status is-${pkg.status}`}>{t(STATUS_LABELS[pkg.status])}</span>
           </SettingsProperty>
           <SettingsProperty label={t("i18n.resources")}>{resourceSummary(pkg, t)}</SettingsProperty>
           <SettingsProperty label={t("i18n.installedPath")}>
@@ -417,7 +425,7 @@ function StandaloneExtensionDetail({ extension, busyKey, actionError, actionMess
       <SettingsGroup title={t("settings.details")}>
         <SettingsProperties>
           <SettingsProperty label={t("i18n.status")}>
-            <span className={`settings-status is-${status}`}>{status}</span>
+            <span className={`settings-status is-${status}`}>{t(STATUS_LABELS[status])}</span>
           </SettingsProperty>
           <SettingsProperty label={t("i18n.installedPath")}>{shortenPath(extension.path)}</SettingsProperty>
         </SettingsProperties>
@@ -583,7 +591,7 @@ export function PluginsConfig({
       if (action === "remove") {
         setSelected(null);
         setView("list");
-        setActionMessage("Package removed.");
+        setActionMessage(t("plugins.message.removed"));
         setUpdateStatuses((current) => {
           const nextStatuses = { ...current };
           delete nextStatuses[key];
@@ -591,10 +599,10 @@ export function PluginsConfig({
         });
       } else {
         const messages: Record<Exclude<PluginAction, "remove">, string> = {
-          install: "Package installed.",
-          update: "Package updated.",
-          disable: "Package disabled.",
-          enable: "Package enabled.",
+          install: t("plugins.message.installed"),
+          update: t("plugins.message.updated"),
+          disable: t("plugins.message.disabled"),
+          enable: t("plugins.message.enabled"),
         };
         setActionMessage(messages[action]);
         if (action === "update") {
@@ -610,7 +618,7 @@ export function PluginsConfig({
     } finally {
       setBusyKey(null);
     }
-  }, [cwd, onChanged]);
+  }, [cwd, onChanged, t]);
 
   const toggleExtension = useCallback(async (extension: PluginResourceInfo) => {
     setBusyKey(`extension:${extension.path}`);
@@ -657,13 +665,13 @@ export function PluginsConfig({
       setSelected(installed ? packageKey(installed) : key);
       setView("detail");
       setInstallSource("");
-      setActionMessage("Package installed.");
+      setActionMessage(t("plugins.message.installed"));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
-  }, [cwd, installScope, installSource, onChanged]);
+  }, [cwd, installScope, installSource, onChanged, t]);
 
   const reloadSession = useCallback(async () => {
     if (!sessionId) return;
@@ -674,13 +682,13 @@ export function PluginsConfig({
       await sendAgentCommand(sessionId, { type: "reload" });
       onReloaded?.();
       await loadPlugins();
-      setActionMessage("Session reloaded.");
+      setActionMessage(t("plugins.message.reloaded"));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyKey(null);
     }
-  }, [loadPlugins, onReloaded, sessionId]);
+  }, [loadPlugins, onReloaded, sessionId, t]);
 
   const addBusy = busyKey?.startsWith("install:") ?? false;
   const availableUpdateCount = Object.values(updateStatuses).filter(

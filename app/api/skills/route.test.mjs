@@ -36,7 +36,7 @@ test("PATCH /api/skills authorizes by loaded-skill membership, not extra roots",
   // DELETE may use the agent dir to locate removable entries; PATCH must not widen access with it.
   const patch = source.slice(source.indexOf("export async function PATCH"));
   assert.match(patch, /loadSkillsWithInstallInfo\(cwd\)/);
-  assert.match(patch, /skill\.filePath === filePath/);
+  assert.match(patch, /item\.filePath === filePath/);
   assert.doesNotMatch(patch, /globalSkillsDir|getAgentDir\(/);
 });
 
@@ -87,4 +87,27 @@ test("PATCH /api/skills toggles a loaded skill whose realpath is outside allowed
   assert.equal(toggled.status, 200);
   assert.deepEqual(await toggled.json(), { success: true });
   assert.match(await readFile(join(realDir, "SKILL.md"), "utf8"), /disable-model-invocation: true/);
+});
+
+test("PATCH /api/skills refuses a skill shipped by a package and leaves its file untouched", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "pi-web-skills-route-cwd-"));
+  allowFileRoot(cwd);
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+
+  const pkgDir = await mkdtemp(join(tmpdir(), "pi-web-skills-route-pkg-"));
+  t.after(() => rm(pkgDir, { recursive: true, force: true }));
+  const skillFile = join(pkgDir, "skills", "packaged-skill", "SKILL.md");
+  const original = "---\nname: packaged-skill\ndescription: Shipped by a package\n---\nBody.\n";
+  await mkdir(join(pkgDir, "skills", "packaged-skill"), { recursive: true });
+  await writeFile(skillFile, original);
+  await writeFile(join(testAgentDir, "settings.json"), JSON.stringify({ packages: [pkgDir] }));
+  t.after(() => rm(join(testAgentDir, "settings.json"), { force: true }));
+
+  const listed = await GET(new Request(`http://localhost/api/skills?cwd=${encodeURIComponent(cwd)}`));
+  const skill = (await listed.json()).skills.find((item) => item.name === "packaged-skill");
+  assert.equal(skill?.sourceInfo.origin, "package");
+
+  const refused = await PATCH(patchRequest({ cwd, filePath: skill.filePath, disableModelInvocation: true }));
+  assert.equal(refused.status, 409);
+  assert.equal(await readFile(skillFile, "utf8"), original);
 });

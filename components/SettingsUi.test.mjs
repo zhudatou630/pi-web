@@ -96,8 +96,21 @@ test("item detail pages share one template: title, rows, destructive action last
   }
   // The destructive action is the last row of the page, never in the header.
   assert.match(sources.SkillsConfig, /<SettingsRow[\s\S]*?label=\{t\("skills\.deleteTitle"\)\}[\s\S]*?variant="danger"[\s\S]*?<\/SettingsDetailPage>/);
-  assert.match(sources.PluginsConfig, /<ResourceList pkg=\{pkg\} \/>[\s\S]*?label=\{t\("plugins\.removeTitle"\)\}[\s\S]*?variant="danger"/);
+  assert.match(sources.PluginsConfig, /<ResourceList pkg=\{pkg\}[^>]*\/>[\s\S]*?label=\{t\("plugins\.removeTitle"\)\}[\s\S]*?variant="danger"/);
   assert.match(cssSource, /\.settings-detail-title \{[\s\S]*?font-size: 14px;[\s\S]*?font-weight: 600;/);
+});
+
+test("skills and plugins pages show translated state and never edit package-owned skills", async () => {
+  const sources = Object.fromEntries(configSources);
+  // A package skill's switch is locked; the page points to Plugins / This project instead.
+  assert.match(sources.SkillsConfig, /skill\.sourceInfo\?\.origin === "package"/);
+  assert.equal(sources.SkillsConfig.match(/disabled=\{isPackageSkill\(skill\)\}/g)?.length, 2);
+  assert.match(sources.SkillsConfig, /t\(`skills\.scope\.\$\{label\}`\)/);
+  // No raw English status or scope strings reach the page.
+  assert.doesNotMatch(sources.PluginsConfig, /setActionMessage\("/);
+  assert.match(sources.PluginsConfig, /t\(STATUS_LABELS\[pkg\.status\]\)/);
+  // pi installs project packages under <cwd>/.pi/{npm,git}.
+  assert.match(sources.PluginsConfig, /\/\.pi\/\{npm,git\}`/);
 });
 
 test("keeps shared static presentation in the stylesheet", () => {

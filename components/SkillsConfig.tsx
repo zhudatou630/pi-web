@@ -31,7 +31,12 @@ function shortenPath(p: string): string {
   return p.replace(/^\/(?:Users|home)\/[^/]+/, "~");
 }
 
-function sourceLabel(skill: Skill): string {
+/** A package owns its SKILL.md: writing to it dirties a git checkout or is lost on update. */
+function isPackageSkill(skill: Skill): boolean {
+  return skill.sourceInfo?.origin === "package";
+}
+
+function sourceLabel(skill: Skill): "global" | "project" | "path" {
   const src = skill.sourceInfo?.source;
   const scope = skill.sourceInfo?.scope;
   if (scope === "user" || src === "user") return "global";
@@ -117,7 +122,7 @@ function SkillDetail({
       title={skill.name}
       meta={(
         <>
-          <span className={`config-scope-tag${label === "project" ? " is-project" : ""}`}>{label}</span>
+          <span className={`config-scope-tag${label === "project" ? " is-project" : ""}`}>{t(`skills.scope.${label}`)}</span>
           <span className="config-detail-path" title={skill.filePath}>{displayPath(skill.filePath)}</span>
         </>
       )}
@@ -126,10 +131,13 @@ function SkillDetail({
       <SettingsGroup>
         <SettingsRow
           label={t("skills.modelInvocation")}
-          description={enabled ? t("skills.modelInvocationOn") : t("i18n.hiddenButInvocable")}
+          description={isPackageSkill(skill)
+            ? t("skills.packageManaged", { source: shortenPath(skill.sourceInfo.source ?? "") })
+            : enabled ? t("skills.modelInvocationOn") : t("i18n.hiddenButInvocable")}
         >
           <ConfigSwitch
             checked={enabled}
+            disabled={isPackageSkill(skill)}
             loading={toggling}
             label={t("skills.modelInvocation")}
             onChange={() => onToggle(skill)}
@@ -661,6 +669,7 @@ export function SkillsConfig({
                         <ProjectOverrideTag value={skill.projectOverride} />
                         <ConfigSwitch
                           checked={!skill.disableModelInvocation}
+                          disabled={isPackageSkill(skill)}
                           loading={toggling.has(skill.filePath)}
                           label={t("skills.modelInvocation")}
                           onChange={() => void toggle(skill)}
