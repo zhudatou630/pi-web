@@ -49,7 +49,7 @@ import { isSubagentsEnabledForProject } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
-import { createImageGenerationExtension, preferPiWebImageTool } from "./image-generation-extension";
+import { createImageGenerationExtension, reservePiWebImageTool } from "./image-generation-extension";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE } from "./image-generation";
 import { executeImageGeneration, saveSourceImage } from "./image-generation-runtime";
 import {
@@ -2214,6 +2214,7 @@ export async function startRpcSession(
       resourceLoaderOptions: subagentResources
         ? {
             noExtensions: !subagentResources.loadExtensions,
+            extensionsOverride: reservePiWebImageTool,
             noSkills: !subagentResources.loadSkills,
             noPromptTemplates: true,
             noThemes: true,
@@ -2256,7 +2257,7 @@ export async function startRpcSession(
                 () => isSubagentsEnabledForProject(projectRoot),
               ),
             ],
-            extensionsOverride: (base) => preferUserBashExtension(preferPiWebImageTool(preferPiWebSubagentExtension(base))),
+            extensionsOverride: (base) => preferUserBashExtension(reservePiWebImageTool(preferPiWebSubagentExtension(base))),
           },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });

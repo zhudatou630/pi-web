@@ -7,9 +7,13 @@ import { executeImageGeneration } from "./image-generation-runtime";
 
 export const HOST_IMAGE_EXTENSION_PATH = "<inline:image-generation>";
 
-export function preferPiWebImageTool(base: LoadExtensionsResult): LoadExtensionsResult {
-  const host = base.extensions.find((extension) => extension.path === HOST_IMAGE_EXTENSION_PATH);
-  if (!host?.tools.has(IMAGE_TOOL_NAME)) return base;
+/**
+ * `generate_image` belongs to Pi Web's own image extension. Another package's tool of that
+ * name (pi-antigravity ships one) is always dropped, whether or not Pi Web's is on here: the
+ * package may be installed for its provider login, and switching images off must mean off.
+ * Only that tool goes; the package's other tools and its provider stay.
+ */
+export function reservePiWebImageTool(base: LoadExtensionsResult): LoadExtensionsResult {
   let changed = false;
   const extensions = base.extensions.map((extension) => {
     if (extension.path === HOST_IMAGE_EXTENSION_PATH || !extension.tools.has(IMAGE_TOOL_NAME)) return extension;
