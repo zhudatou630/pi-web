@@ -137,7 +137,10 @@ export interface PluginResourceInfo {
   name: string;
   path: string;
   relativePath: string;
+  /** Effective for this cwd. */
   enabled: boolean;
+  /** State in global settings; null when the resource is project-only. */
+  globalEnabled: boolean | null;
   projectOverride: ProjectOverride;
 }
 

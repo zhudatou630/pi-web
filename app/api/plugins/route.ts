@@ -7,7 +7,7 @@ import {
   SettingsManager,
   type PackageSource,
 } from "@earendil-works/pi-coding-agent";
-import { resolveScopedResources, type ResourceType, type ScopedResource } from "@/lib/project-resource-overrides";
+import { resolveScopedResources, setGlobalResourceEnabled, type ResourceType, type ScopedResource } from "@/lib/project-resource-overrides";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import { getProjectTrustStatus } from "@/lib/project-trust";
@@ -25,7 +25,7 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-type PluginAction = "install" | "remove" | "update" | "disable" | "enable";
+type PluginAction = "install" | "remove" | "update" | "disable" | "enable" | "enable-extension" | "disable-extension";
 
 function emptyCounts(): PluginResourceCounts {
   return { extensions: 0, skills: 0, prompts: 0, themes: 0 };
@@ -165,6 +165,7 @@ function toResourceInfo(resource: ScopedResource): PluginResourceInfo {
     path: resource.path,
     relativePath: rel && !rel.startsWith("..") ? rel : resource.path,
     enabled: resource.enabled,
+    globalEnabled: resource.globalEnabled,
     projectOverride: resource.override,
   };
 }
@@ -304,7 +305,7 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/plugins body: { action, source?, scope?, cwd }
+// POST /api/plugins body: { action, source?, scope?, path?, cwd }
 export async function POST(req: Request) {
   if (!isApiRequestAllowed(req)) {
     return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
@@ -318,6 +319,7 @@ export async function POST(req: Request) {
       action?: PluginAction;
       source?: string;
       scope?: PluginScope;
+      path?: string;
       cwd?: string;
     };
     if (!body.cwd) return NextResponse.json({ error: "cwd required" }, { status: 400 });
@@ -369,6 +371,9 @@ export async function POST(req: Request) {
       if (!source) return NextResponse.json({ error: "source required" }, { status: 400 });
       setPackageDisabled(settingsManager, source, scope, false);
       await settingsManager.flush();
+    } else if (body.action === "enable-extension" || body.action === "disable-extension") {
+      if (!body.path) return NextResponse.json({ error: "path required" }, { status: 400 });
+      await setGlobalResourceEnabled(body.cwd, agentDir, { type: "extensions", path: body.path }, body.action === "enable-extension");
     } else {
       return NextResponse.json({ error: `Unsupported action: ${body.action}` }, { status: 400 });
     }

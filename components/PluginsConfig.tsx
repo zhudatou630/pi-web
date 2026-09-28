@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
-import type { PluginPackageInfo, PluginStandaloneExtensionInfo, PluginUpdateResult, PluginsResponse } from "@/lib/api-types";
+import type { PluginPackageInfo, PluginResourceInfo, PluginStandaloneExtensionInfo, PluginUpdateResult, PluginsResponse } from "@/lib/api-types";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import { ProjectOverrideTag } from "./ProjectOverride";
@@ -79,7 +79,36 @@ function findInstalledPackage(
     ?? packages.find((pkg) => pkg.scope === scope && pkg.source.endsWith(trimmed));
 }
 
-function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
+type ToggleExtension = (extension: PluginResourceInfo) => void;
+
+/** Global switch for one extension; project-only extensions have none. */
+function ExtensionControls({ extension, busyKey, disabled, onToggle }: {
+  extension: PluginResourceInfo;
+  busyKey: string | null;
+  disabled?: boolean;
+  onToggle: ToggleExtension;
+}) {
+  const { t } = useI18n();
+  if (extension.globalEnabled === null) return null;
+  return (
+    <>
+      <ProjectOverrideTag value={extension.projectOverride} />
+      <ConfigSwitch
+        checked={extension.globalEnabled}
+        loading={busyKey === `extension:${extension.path}`}
+        disabled={disabled || (busyKey !== null && busyKey !== `extension:${extension.path}`)}
+        label={extension.globalEnabled ? t("i18n.disableExtension") : t("i18n.enableExtension")}
+        onChange={() => onToggle(extension)}
+      />
+    </>
+  );
+}
+
+function ResourceList({ pkg, busyKey, onToggleExtension }: {
+  pkg: PluginPackageInfo;
+  busyKey: string | null;
+  onToggleExtension: ToggleExtension;
+}) {
   const { t } = useI18n();
   const groups = ([
     ["extension", t("i18n.extensions")],
@@ -112,7 +141,11 @@ function ResourceList({ pkg }: { pkg: PluginPackageInfo }) {
           title={resource.path}
           label={resource.name}
           description={resource.enabled ? resource.relativePath : `${resource.relativePath} · ${t("i18n.disabled")}`}
-        />
+        >
+          {resource.kind === "extension" && (
+            <ExtensionControls extension={resource} busyKey={busyKey} disabled={pkg.disabled} onToggle={onToggleExtension} />
+          )}
+        </SettingsRow>
       ))}
     </SettingsGroup>
   ));
@@ -231,6 +264,7 @@ function PackageDetail({
   onAction,
   onCheckUpdate,
   onReloadSession,
+  onToggleExtension,
 }: {
   pkg: PluginPackageInfo;
   busyKey: string | null;
@@ -243,6 +277,7 @@ function PackageDetail({
   onAction: (action: PluginAction, pkg: PluginPackageInfo) => void;
   onCheckUpdate: () => void;
   onReloadSession: () => void;
+  onToggleExtension: ToggleExtension;
 }) {
   const { t } = useI18n();
   const key = packageKey(pkg);
@@ -337,7 +372,7 @@ function PackageDetail({
         </SettingsProperties>
       </SettingsGroup>
 
-      <ResourceList pkg={pkg} />
+      <ResourceList pkg={pkg} busyKey={busyKey} onToggleExtension={onToggleExtension} />
 
       <SettingsGroup>
         <SettingsRow label={t("plugins.removeTitle")} description={t("plugins.removeDescription")}>
@@ -350,7 +385,13 @@ function PackageDetail({
   );
 }
 
-function StandaloneExtensionDetail({ extension }: { extension: PluginStandaloneExtensionInfo }) {
+function StandaloneExtensionDetail({ extension, busyKey, actionError, actionMessage, onToggle }: {
+  extension: PluginStandaloneExtensionInfo;
+  busyKey: string | null;
+  actionError: string | null;
+  actionMessage: string | null;
+  onToggle: ToggleExtension;
+}) {
   const { t } = useI18n();
   const status = extension.enabled ? "loaded" : "disabled";
 
@@ -364,6 +405,15 @@ function StandaloneExtensionDetail({ extension }: { extension: PluginStandaloneE
         </>
       )}
     >
+      {extension.globalEnabled !== null && (
+        <SettingsGroup>
+          <SettingsRow label={t("plugins.enabled")} description={t("plugins.extensionEnabledDescription")}>
+            <ExtensionControls extension={extension} busyKey={busyKey} onToggle={onToggle} />
+          </SettingsRow>
+          {actionMessage && <p role="status" className="settings-row-message is-success">{actionMessage}</p>}
+          {actionError && <p role="alert" className="settings-row-message is-error">{actionError}</p>}
+        </SettingsGroup>
+      )}
       <SettingsGroup title={t("settings.details")}>
         <SettingsProperties>
           <SettingsProperty label={t("i18n.status")}>
@@ -562,6 +612,29 @@ export function PluginsConfig({
     }
   }, [cwd, onChanged]);
 
+  const toggleExtension = useCallback(async (extension: PluginResourceInfo) => {
+    setBusyKey(`extension:${extension.path}`);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const action = extension.globalEnabled ? "disable-extension" : "enable-extension";
+      const res = await fetch("/api/plugins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, path: extension.path, cwd }),
+      });
+      const next = (await res.json()) as PluginsResponse & { error?: string };
+      if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
+      setData(next);
+      onChanged?.();
+      setActionMessage(t("agents.reloadRequired"));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }, [cwd, onChanged, t]);
+
   const installPlugin = useCallback(async () => {
     const source = normalizePluginSourceInput(installSource).trim();
     if (!source) return;
@@ -641,7 +714,13 @@ export function PluginsConfig({
             <>
               <SettingsBackLink label={t("common.plugins")} onClick={openList} />
               {selectedExtension ? (
-                <StandaloneExtensionDetail extension={selectedExtension} />
+                <StandaloneExtensionDetail
+                  extension={selectedExtension}
+                  busyKey={busyKey}
+                  actionError={actionError}
+                  actionMessage={actionMessage}
+                  onToggle={toggleExtension}
+                />
               ) : selectedPackage && (
                 <PackageDetail
                   key={packageKey(selectedPackage)}
@@ -656,6 +735,7 @@ export function PluginsConfig({
                   onAction={runAction}
                   onCheckUpdate={() => void checkForUpdates(selectedPackage)}
                   onReloadSession={reloadSession}
+                  onToggleExtension={toggleExtension}
                 />
               )}
             </>
@@ -752,7 +832,9 @@ export function PluginsConfig({
                           muted={!extension.enabled}
                           title={extension.path}
                           onOpen={() => openItem(extensionKey(extension))}
-                        />
+                        >
+                          <ExtensionControls extension={extension} busyKey={busyKey} onToggle={toggleExtension} />
+                        </SettingsLinkRow>
                       ))}
                     </SettingsGroup>
                   )}

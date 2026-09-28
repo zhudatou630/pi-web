@@ -38,6 +38,7 @@ test("lists auto-discovered top-level extensions", async () => {
     relativePath: "extensions/rtk.ts",
     scope: "global",
     enabled: true,
+    globalEnabled: true,
     projectOverride: "inherit",
   }]);
   assert.equal(body.totals.extensions, 1);

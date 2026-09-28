@@ -229,6 +229,50 @@ export async function resolveScopedResources(
   return { resources, trusted: trust.trusted };
 }
 
+/**
+ * Toggle one globally configured resource in user settings, like `pi config`
+ * (without `--local`): a `+/-` entry relative to the package root or the
+ * top-level base dir. Unknown or non-global targets throw.
+ */
+export async function setGlobalResourceEnabled(
+  cwd: string,
+  agentDir: string,
+  resource: { type: ResourceType; path: string },
+  enabled: boolean,
+): Promise<void> {
+  const sm = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
+  const loadError = sm.drainErrors()[0];
+  if (loadError) throw new Error(`Cannot read ${loadError.path ?? "global settings"}: ${loadError.error.message}`);
+  const paths = await new DefaultPackageManager({ cwd, agentDir, settingsManager: sm }).resolve(async () => "skip");
+  const key = keyOf(resource.type, resource.path);
+  const item = toItems(paths).find((entry) => keyOf(entry.type, entry.path) === key && entry.metadata.scope === "user");
+  if (!item) throw new Error(`Not a global resource: ${resource.path}`);
+  const settings = sm.getGlobalSettings();
+  const withEntry = (current: string[], pattern: string) => [
+    ...current.filter((entry) => target(entry) !== pattern),
+    `${enabled ? "+" : "-"}${pattern}`,
+  ];
+  if (item.metadata.origin === "top-level") {
+    const updated = withEntry(settings[item.type] ?? [], relative(item.metadata.baseDir ?? agentDir, item.path));
+    if (item.type === "extensions") sm.setExtensionPaths(updated);
+    else if (item.type === "skills") sm.setSkillPaths(updated);
+    else if (item.type === "prompts") sm.setPromptTemplatePaths(updated);
+    else sm.setThemePaths(updated);
+  } else {
+    const packages = [...(settings.packages ?? [])];
+    const index = packages.findIndex((entry) => sourceOf(entry) === item.metadata.source);
+    if (index === -1) throw new Error(`Package not found in global settings: ${item.metadata.source}`);
+    const entry = packages[index]!;
+    const pkg = typeof entry === "string" ? { source: entry } : { ...entry };
+    pkg[item.type] = withEntry(pkg[item.type] ?? [], packagePattern(item));
+    packages[index] = pkg;
+    sm.setPackages(packages);
+  }
+  await sm.flush();
+  const writeError = sm.drainErrors()[0];
+  if (writeError) throw new Error(`Cannot write ${writeError.path ?? "global settings"}: ${writeError.error.message}`);
+}
+
 export class ProjectNotTrustedError extends Error {}
 
 /**
