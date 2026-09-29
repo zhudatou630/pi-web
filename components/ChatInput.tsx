@@ -67,6 +67,8 @@ interface Props {
   compactResult?: CompactResultInfo | null;
   contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
   cacheHitRate?: number | null;
+  /** Session spend; shown beside context when the window has stats. */
+  sessionCost?: number | null;
   onOpenSessionStats?: () => void;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
@@ -557,7 +559,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
-  contextUsage, cacheHitRate, onOpenSessionStats,
+  contextUsage, cacheHitRate, sessionCost, onOpenSessionStats,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -1618,12 +1620,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const isHigh = contextPercent >= 85;
     const isWarning = contextPercent >= 70 && !isHigh;
     const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
+    const costLabel = sessionCost == null
+      ? null
+      : sessionCost >= 0.01 ? `$${sessionCost.toFixed(2)}` : sessionCost > 0 ? `<$0.01` : "$0.00";
     const tooltip = [
       `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${contextPercent.toFixed(1)}%)`,
       remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)}` : null,
       cacheHitRate !== null && cacheHitRate !== undefined
         ? `${t("session.cacheHitRate")}: ${cacheHitRate.toFixed(1)}%`
         : null,
+      costLabel && `cost: ${costLabel}`,
       isHigh ? t("chat.contextHighWarning") : null,
     ].filter(Boolean).join("\n");
 
@@ -1649,8 +1655,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         <span>{tokens !== null ? formatTokensK(tokens) : "?"}/{formatTokensK(windowTokens)}</span>
         {cacheHitRate !== null && cacheHitRate !== undefined && (
           <span className="chat-input-context-cache">
-            cache {cacheHitRate.toFixed(0)}%
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+              <ellipse cx="8" cy="3.5" rx="5" ry="1.8" />
+              <path d="M3 3.5v9a5 1.8 0 0 0 10 0v-9" />
+              <path d="M3 8a5 1.8 0 0 0 10 0" />
+            </svg>
+            {cacheHitRate.toFixed(0)}%
           </span>
+        )}
+        {costLabel && (
+          <span className="chat-input-context-cache">{costLabel}</span>
         )}
       </button>
     );

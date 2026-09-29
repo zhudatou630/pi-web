@@ -108,8 +108,6 @@ const TOP_BAR_ICON_BUTTON_SIZE = 30;
 const isPrimaryPointerPress = (event: React.PointerEvent) => event.button === 0 && !event.ctrlKey;
 
 const AGENT_PANEL_WIDTH = 420;
-// Keeps the header cost slot the same width before and after the stats arrive.
-const COST_MIN_WIDTH = 40;
 const DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs";
 
 function filenameFromContentDisposition(header: string | null): string | null {
@@ -1950,10 +1948,6 @@ export function AppShell() {
     activeNewSessionDraftKeyRef.current = focusedDraftKey;
   }, [focusedDraftKey]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
-  const sessionHeaderReady = Boolean(selectedSession && sessionStats?.sessionId === selectedSession.id);
-  // The focused session's header data (stats, branches, prompt loader) arrives after its window loads.
-  // Until then the tool slots stay in place, disabled, so the tab strip beside them does not reflow.
-  const sessionToolsPending = Boolean(showChat && selectedSession && !sessionHeaderReady);
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
 
   useEffect(() => {
@@ -2117,9 +2111,9 @@ export function AppShell() {
     );
   };
 
-  const renderChatToolbarActions = (mobile: boolean, options?: { sessionTools?: boolean; pending?: boolean }) => {
-    const pending = options?.pending ?? false;
-    const sessionTools = (options?.sessionTools ?? true) || pending;
+  const renderChatToolbarActions = (mobile: boolean, options?: { sessionTools?: boolean; interactive?: boolean }) => {
+    const interactive = options?.interactive ?? true;
+    const sessionTools = options?.sessionTools ?? true;
     const toolsUnavailable = mobile && !showChat;
     if (!mobile && !showChat) return null;
     if (!mobile && !sessionTools && !hasSubagentSessions) return null;
@@ -2149,7 +2143,7 @@ export function AppShell() {
         )}
         {hasSubagentSessions && (
           <button
-            ref={!mobile ? agentsButtonRef : undefined}
+            ref={!mobile && interactive ? agentsButtonRef : undefined}
             type="button"
             onClick={(event) => {
               agentsAnchorRef.current = event.currentTarget;
@@ -2157,18 +2151,18 @@ export function AppShell() {
             }}
             title={translate("agentSwitcher.title")}
             aria-label={translate("agentSwitcher.title")}
-            aria-pressed={activeTopPanel === "agents"}
-            aria-expanded={activeTopPanel === "agents"}
+            aria-pressed={interactive && activeTopPanel === "agents"}
+            aria-expanded={interactive && activeTopPanel === "agents"}
             aria-controls="workspace-top-panel"
-            data-top-panel-trigger="agents"
+            data-top-panel-trigger={interactive ? "agents" : undefined}
             style={{
               position: "relative",
               display: "flex", alignItems: "center", justifyContent: "center",
               width: TOP_BAR_ICON_BUTTON_SIZE,
               height: "100%", padding: 0,
-              background: activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
+              background: interactive && activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
               border: "none",
-              color: activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
+              color: interactive && activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
               cursor: "pointer", flexShrink: 0,
               transition: "color 0.1s, background 0.1s",
             }}
@@ -2195,8 +2189,8 @@ export function AppShell() {
             onClick={() => toggleTopPanel("branches")}
             title={translate("i18n.branches")}
             aria-label={translate("i18n.branches")}
-            aria-pressed={activeTopPanel === "branches"}
-            data-top-panel-trigger="branches"
+            aria-pressed={interactive && activeTopPanel === "branches"}
+            data-top-panel-trigger={interactive ? "branches" : undefined}
             style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
@@ -2223,7 +2217,7 @@ export function AppShell() {
             onLeafChange={handleBranchLeafChange}
             inline
             compact
-            open={activeTopPanel === "branches"}
+            open={interactive && activeTopPanel === "branches"}
             onToggle={() => toggleTopPanel("branches")}
             disabled={!sessionHasBranches}
             hasSession
@@ -2232,7 +2226,7 @@ export function AppShell() {
         {sessionTools && <SessionHistoryControl
           mobile={mobile}
           disabled={!selectedSession}
-          menuOpen={historyMenuOpen}
+          menuOpen={interactive && historyMenuOpen}
           exporting={historyExporting}
           error={historyExportError}
           labels={{
@@ -2254,25 +2248,24 @@ export function AppShell() {
         />}
         {sessionTools && <>
         <button
-          ref={systemBtnRef}
+          ref={interactive ? systemBtnRef : undefined}
           type="button"
-          onClick={() => { if (!pending) handleSystemInfoToggle("system"); }}
+          onClick={() => handleSystemInfoToggle("system")}
           disabled={toolsUnavailable}
           title={translate("system.prompt")}
           aria-label={translate("system.prompt")}
-          aria-pressed={activeTopPanel === "system"}
-          aria-disabled={pending || undefined}
-          aria-expanded={activeTopPanel === "system"}
+          aria-pressed={interactive && activeTopPanel === "system"}
+          aria-expanded={interactive && activeTopPanel === "system"}
           aria-controls="workspace-top-panel"
-          data-top-panel-trigger="system"
+          data-top-panel-trigger={interactive ? "system" : undefined}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: TOP_BAR_ICON_BUTTON_SIZE,
             height: "100%", padding: 0,
-            background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
+            background: interactive && activeTopPanel === "system" ? "var(--bg-selected)" : "none",
             border: "none",
             cursor: toolsUnavailable ? "not-allowed" : "pointer",
-            color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
+            color: interactive && activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
             opacity: toolsUnavailable ? 0.45 : 1,
             transition: "color 0.1s, background 0.1s",
           }}
@@ -2281,7 +2274,7 @@ export function AppShell() {
             event.currentTarget.style.color = "var(--text)";
           }}
           onMouseLeave={(event) => {
-            event.currentTarget.style.color = activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)";
+            event.currentTarget.style.color = interactive && activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)";
           }}
           className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "system" : undefined}
@@ -2295,23 +2288,22 @@ export function AppShell() {
         </button>
         <button
           type="button"
-          onClick={() => { if (!pending) handleSystemInfoToggle("tools"); }}
+          onClick={() => handleSystemInfoToggle("tools")}
           disabled={toolsUnavailable}
           title={translate("tools.title")}
           aria-label={translate("tools.title")}
-          aria-pressed={activeTopPanel === "tools"}
-          aria-disabled={pending || undefined}
-          aria-expanded={activeTopPanel === "tools"}
+          aria-pressed={interactive && activeTopPanel === "tools"}
+          aria-expanded={interactive && activeTopPanel === "tools"}
           aria-controls="workspace-top-panel"
-          data-top-panel-trigger="tools"
+          data-top-panel-trigger={interactive ? "tools" : undefined}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: TOP_BAR_ICON_BUTTON_SIZE,
             height: "100%", padding: 0,
-            background: activeTopPanel === "tools" ? "var(--bg-selected)" : "none",
+            background: interactive && activeTopPanel === "tools" ? "var(--bg-selected)" : "none",
             border: "none",
             cursor: toolsUnavailable ? "not-allowed" : "pointer",
-            color: activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)",
+            color: interactive && activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)",
             opacity: toolsUnavailable ? 0.45 : 1,
             transition: "color 0.1s, background 0.1s",
           }}
@@ -2320,7 +2312,7 @@ export function AppShell() {
             event.currentTarget.style.color = "var(--text)";
           }}
           onMouseLeave={(event) => {
-            event.currentTarget.style.color = activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)";
+            event.currentTarget.style.color = interactive && activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)";
           }}
           className="workspace-header-action"
           data-mobile-toolbar-action={mobile ? "tools" : undefined}
@@ -2410,16 +2402,14 @@ export function AppShell() {
   };
 
   const renderSessionStatsButton = (mobile: boolean) => {
-    if (!mobile && !showChat) return null;
-    // Loading: the same button with an empty cost, so the slot is identical before and after the stats arrive.
-    const statsPending = !mobile && sessionToolsPending;
-    if (!mobile && !sessionHeaderReady && !statsPending) return null;
+    // Desktop spend lives in the composer next to context/cache; this button is mobile-only.
+    if (!mobile) return null;
     const ctx = contextUsage ?? sessionStats?.contextUsage;
-    if (!statsPending && !sessionStats && (!mobile || !ctx)) return null;
+    if (!sessionStats && !ctx) return null;
 
     const tokens = sessionStats?.tokens;
     const cost = sessionStats?.cost ?? 0;
-    const costText = statsPending ? "" : cost >= 0.01
+    const costText = cost >= 0.01
       ? `$${cost.toFixed(2)}`
       : cost > 0
         ? `<$0.01`
@@ -2451,7 +2441,7 @@ export function AppShell() {
       <button
         type="button"
         onClick={() => toggleTopPanel("session")}
-        disabled={!showChat || statsPending}
+        disabled={!showChat}
         title={tooltip || translate("session.title")}
         aria-label={tooltip || translate("session.title")}
         aria-pressed={activeTopPanel === "session"}
@@ -2483,9 +2473,11 @@ export function AppShell() {
           event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
         }}
       >
-        <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: COST_MIN_WIDTH, color: "var(--text-muted)", fontWeight: 400, flexShrink: 0, lineHeight: 1 }}>
-          {costText}
-        </span>
+        {costText && (
+          <span style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400, flexShrink: 0, lineHeight: 1 }}>
+            {costText}
+          </span>
+        )}
       </button>
     );
   };
@@ -2556,20 +2548,22 @@ export function AppShell() {
       </button>
   );
 
-  const renderDesktopHeaderActions = () => (
+  const renderDesktopHeaderActions = (options?: { inert?: boolean }) => (
     <div
       data-desktop-header-actions="true"
+      inert={options?.inert || undefined}
+      aria-hidden={options?.inert || undefined}
       style={{
         marginLeft: "auto",
         display: "flex",
         alignItems: "stretch",
         height: "100%",
         flexShrink: 0,
+        pointerEvents: options?.inert ? "none" : undefined,
       }}
     >
       {renderProjectTrustWarning(false)}
-      {renderSessionStatsButton(false)}
-      {renderChatToolbarActions(false, { sessionTools: sessionHeaderReady, pending: sessionToolsPending })}
+      {renderChatToolbarActions(false, { sessionTools: showChat, interactive: !options?.inert })}
     </div>
   );
 
@@ -2671,7 +2665,7 @@ export function AppShell() {
           {!isMobile && (isSplitActive ? (
             <>
               {/* Split: one header row carries both groups' strips, cut at the split line.
-                  The session tools sit in the focused group's segment, so they visibly belong to it. */}
+                  Each group keeps its tool icons; the unfocused copy is inert. Spend lives in the composer. */}
               <div
                 data-header-segment="primary"
                 style={{ display: "flex", alignItems: "stretch", width: `${chatSplitRatio * 100}%`, flexShrink: 0, minWidth: 0, height: "100%" }}
@@ -2699,7 +2693,9 @@ export function AppShell() {
                     unifiedHeader={true}
                   />
                 </div>
-                {activeChatPane === "primary" && renderDesktopHeaderActions()}
+                <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}>
+                  {renderDesktopHeaderActions({ inert: activeChatPane !== "primary" })}
+                </div>
               </div>
               <div
                 data-header-segment="secondary"
@@ -2726,7 +2722,9 @@ export function AppShell() {
                     unifiedHeader={true}
                   />
                 </div>
-                {activeChatPane === "secondary" && renderDesktopHeaderActions()}
+                <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}>
+                  {renderDesktopHeaderActions({ inert: activeChatPane !== "secondary" })}
+                </div>
                 {renderMainFileToggle(false)}
               </div>
             </>

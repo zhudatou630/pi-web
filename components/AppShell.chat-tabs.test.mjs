@@ -35,10 +35,10 @@ test("supports split view with resizer and secondary pane", () => {
   assert.match(source, /onPointerCancel=\{handleSplitResizeEnd\}/);
   assert.match(source, /onKeyDown=\{handleSplitResizeKeyDown\}/);
   assert.match(source, /onDoubleClick=\{\(\) => setChatSplitRatio\(0\.5\)\}/);
-  // Both groups' strips live in the one header row, cut at the split ratio; tools follow the focused group.
+  // Both groups' strips live in the one header row, cut at the split ratio; each keeps its tools.
   assert.match(source, /data-header-segment="primary"[^>]*\n?[^>]*chatSplitRatio \* 100/);
-  assert.match(source, /activeChatPane === "primary" && renderDesktopHeaderActions\(\)/);
-  assert.match(source, /activeChatPane === "secondary" && renderDesktopHeaderActions\(\)/);
+  assert.match(source, /renderDesktopHeaderActions\(\{ inert: activeChatPane !== "primary" \}\)/);
+  assert.match(source, /renderDesktopHeaderActions\(\{ inert: activeChatPane !== "secondary" \}\)/);
 });
 
 test("split pane plus buttons create a tab in that pane", () => {

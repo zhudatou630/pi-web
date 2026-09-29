@@ -206,8 +206,24 @@ test("shows context as an always-visible ring readout that only colors past 70%"
   assert.match(low, /class="composer-btn chat-input-context"/);
   assert.match(low, /viewBox="0 0 16 16"/);
   assert.match(low, /stroke-dasharray="17 100"/);
-  assert.match(low, /<\/svg><span>150k\/872k<\/span><span class="chat-input-context-cache">cache 98%<\/span><\/button>/);
+  assert.match(low, /<ellipse cx="8" cy="3.5" rx="5" ry="1.8"><\/ellipse><path d="M3 3.5v9a5 1.8 0 0 0 10 0v-9"><\/path><path d="M3 8a5 1.8 0 0 0 10 0"><\/path><\/svg>98%/);
   assert.match(low, /title="Context usage: 150k \/ 872k \(17\.0%\)[^"]*Avg cache hit rate: 98\.0%"/);
+  const withCost = renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(ChatInput, {
+      onSend() {},
+      onAbort() {},
+      isStreaming: false,
+      contextUsage: { percent: 17, contextWindow: 872000, tokens: 150000 },
+      cacheHitRate: 98,
+      sessionCost: 0.49,
+      onOpenSessionStats() {},
+    }),
+  )).match(/<button[^>]*data-top-panel-trigger="session"[\s\S]*?<\/button>/)?.[0];
+  assert.match(withCost, /98%<\/span><span class="chat-input-context-cache">\$0\.49<\/span>/);
+  assert.doesNotMatch(withCost, />cache /);
+  assert.match(withCost, /cost: \$0\.49/);
   assert.match(low, /aria-controls="workspace-top-panel"/);
   assert.doesNotMatch(low, /Compact context/);
 

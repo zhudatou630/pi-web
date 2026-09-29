@@ -243,8 +243,8 @@ test("opening System or Tools lazily starts a dormant session without sending a 
   assert.match(loadSystemInfoSource, /setSystemPrompt\(state\.systemPrompt \?\? ""\)/);
   assert.match(loaderEffectSource, /onSystemInfoLoaderChange\?\.\(loadSystemInfo\)/);
   assert.match(loaderEffectSource, /onSystemInfoLoaderChange\?\.\(null\)/);
-  assert.match(appShellSource, /onClick=\{\(\) => \{ if \(!pending\) handleSystemInfoToggle\("system"\); \}\}/);
-  assert.match(appShellSource, /onClick=\{\(\) => \{ if \(!pending\) handleSystemInfoToggle\("tools"\); \}\}/);
+  assert.match(appShellSource, /onClick=\{\(\) => handleSystemInfoToggle\("system"\)\}/);
+  assert.match(appShellSource, /onClick=\{\(\) => handleSystemInfoToggle\("tools"\)\}/);
   assert.match(appShellSource, /systemInfoLoaderRef\.current/);
   assert.doesNotMatch(appShellSource, /systemPrompt !== null \|\| systemInfoLoading/);
   assert.match(appShellSource, /const loadId = \+\+systemInfoLoadIdRef\.current/);

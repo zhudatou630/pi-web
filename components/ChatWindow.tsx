@@ -1711,7 +1711,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       compactError={compactError}
       compactResult={compactResult}
       contextUsage={isSessionLoading ? null : contextUsage}
-      cacheHitRate={cacheHitRate}
+      cacheHitRate={isSessionLoading ? null : cacheHitRate}
+      sessionCost={isSessionLoading ? null : sessionStats?.cost}
       onOpenSessionStats={onSessionStatsPanelOpen}
       toolPreset={toolPreset}
       onToolPresetChange={!isQueuedSubagent && (session || isNew) ? handleToolPresetChange : undefined}
