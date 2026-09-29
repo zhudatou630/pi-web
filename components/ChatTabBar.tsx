@@ -2,9 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import type { ChatTabItem } from "@/lib/chat-tab-state";
+import type { ChatPane, ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
 import { LivePulseBeacon } from "./LivePulseBeacon";
+
+const TAB_DRAG_MIME = "application/x-pi-chat-tab";
+// Shared by every bar: dataTransfer data is unreadable during dragover, and a tab dragged
+// between the two groups' bars starts in one instance and drops on another.
+let draggedTabId: string | null = null;
 
 interface Props {
   tabs: ChatTabItem[];
@@ -14,10 +19,16 @@ interface Props {
   runningSessionIds?: ReadonlySet<string>;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => boolean | void;
+  /** Batch close for the context menu (close others / close to the right). */
+  onCloseTabs?: (tabIds: string[]) => boolean | void;
   onPinTab?: (tabId: string) => void;
   onNewTab: () => void;
   onToggleSplit?: () => void;
-  onClosePane?: () => void;
+  /** Drag-reorder, cross-group drag and the context menu's move item. Absent = tabs stay put. */
+  onMoveTab?: (tabId: string, targetPane: ChatPane, beforeTabId: string | null) => void;
+  /** Which group this strip shows. */
+  pane?: ChatPane;
+  canMoveToOtherPane?: boolean;
   canSplit?: boolean;
   isSecondaryPane?: boolean;
   unifiedHeader?: boolean;
@@ -32,10 +43,13 @@ export function ChatTabBar({
   runningSessionIds,
   onSelectTab,
   onCloseTab,
+  onCloseTabs,
   onPinTab,
   onNewTab,
   onToggleSplit,
-  onClosePane,
+  onMoveTab,
+  pane = "primary",
+  canMoveToOtherPane = false,
   canSplit = true,
   isSecondaryPane = false,
   unifiedHeader = false,
@@ -51,6 +65,10 @@ export function ChatTabBar({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const tabsMenuButtonRef = useRef<HTMLButtonElement>(null);
   const tabsMenuRef = useRef<HTMLDivElement>(null);
+  const [hiddenTabIds, setHiddenTabIds] = useState<ReadonlySet<string>>(new Set());
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll active tab into view whenever selection changes
   useEffect(() => {
@@ -70,6 +88,26 @@ export function ChatTabBar({
     update();
     const observer = new ResizeObserver(update);
     observer.observe(container);
+    return () => observer.disconnect();
+  }, [tabs]);
+
+  // Tabs scrolled out of the strip (less than 60% showing) count as hidden.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const observer = new IntersectionObserver((entries) => {
+      setHiddenTabIds((prev) => {
+        const next = new Set(prev);
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.chatTabId;
+          if (!id) continue;
+          if (entry.intersectionRatio >= 0.6) next.delete(id);
+          else next.add(id);
+        }
+        return next;
+      });
+    }, { root: container, threshold: [0, 0.6, 1] });
+    container.querySelectorAll("[data-chat-tab-id]").forEach((element) => observer.observe(element));
     return () => observer.disconnect();
   }, [tabs]);
 
@@ -102,6 +140,53 @@ export function ChatTabBar({
   useEffect(() => {
     if (!tabsOverflow) setTabsMenuOpen(false);
   }, [tabsOverflow]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const handlePointerDown = (event: PointerEvent) => {
+      if (contextMenuRef.current && event.composedPath().includes(contextMenuRef.current)) return;
+      close();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    };
+    contextMenuRef.current?.querySelector<HTMLElement>("button")?.focus();
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [contextMenu]);
+
+  const dragEnabled = Boolean(onMoveTab) && !isMobile;
+  const acceptsDrag = (event: React.DragEvent) =>
+    dragEnabled && draggedTabId !== null && event.dataTransfer.types.includes(TAB_DRAG_MIME);
+  // Insertion slot 0..tabs.length: the half of the hovered tab the pointer is in; the empty strip appends.
+  const dropIndexAt = (event: React.DragEvent) => {
+    const element = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-chat-tab-id]") : null;
+    const index = element ? tabs.findIndex((tab) => tab.id === element.dataset.chatTabId) : -1;
+    if (!element || index < 0) return tabs.length;
+    const rect = element.getBoundingClientRect();
+    return event.clientX < rect.left + rect.width / 2 ? index : index + 1;
+  };
+
+  const isTabRunning = (tab: ChatTabItem) => tab.kind === "session" && Boolean(tab.session && runningSessionIds?.has(tab.session.id));
+  const hiddenTabs = tabs.filter((tab) => hiddenTabIds.has(tab.id));
+  const hiddenRunning = hiddenTabs.some(isTabRunning);
+  const hiddenDraft = hiddenTabs.some((tab) => tab.kind === "draft" && tab.dirty);
+  const allTabsLabel = [
+    t("chatTabs.allTabs"),
+    hiddenTabs.length > 0 && t("chatTabs.hiddenCount", { count: hiddenTabs.length }),
+    hiddenRunning && t("chatTabs.hiddenRunning"),
+    !hiddenRunning && hiddenDraft && t("chatTabs.unsentDraft"),
+  ].filter(Boolean).join(", ");
 
   const effectiveCanSplit = canSplit && !isMobile;
   const isSplitActive = Boolean(splitTabId && !isMobile);
@@ -137,6 +222,24 @@ export function ChatTabBar({
     <div
       role="tablist"
       aria-label={t("chatTabs.label", { defaultValue: "对话标签" })}
+      onDragOver={(event) => {
+        if (!acceptsDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDropIndex(dropIndexAt(event));
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropIndex(null);
+      }}
+      onDrop={(event) => {
+        if (!acceptsDrag(event) || !draggedTabId) return;
+        event.preventDefault();
+        const before = tabs[dropIndexAt(event)]?.id ?? null;
+        const tabId = draggedTabId;
+        draggedTabId = null;
+        setDropIndex(null);
+        onMoveTab?.(tabId, pane, before);
+      }}
       style={{
         display: "flex",
         alignItems: "stretch",
@@ -179,7 +282,7 @@ export function ChatTabBar({
           const isSecondary = tab.id === splitTabId;
           const isVisible = isPrimary || isSecondary;
           const isCurrentPane = (isPrimary && activePane === "primary") || (isSecondary && activePane === "secondary");
-          const isRunning = tab.kind === "session" && Boolean(tab.session && runningSessionIds?.has(tab.session.id));
+          const isRunning = isTabRunning(tab);
 
           return (
             <div
@@ -202,6 +305,21 @@ export function ChatTabBar({
                 onCloseTab(tab.id);
               }}
               onDoubleClick={() => onPinTab?.(tab.id)}
+              draggable={dragEnabled}
+              onDragStart={(e) => {
+                draggedTabId = tab.id;
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData(TAB_DRAG_MIME, tab.id);
+              }}
+              onDragEnd={() => {
+                draggedTabId = null;
+                setDropIndex(null);
+              }}
+              onContextMenu={(e) => {
+                if (isMobile) return;
+                e.preventDefault();
+                setContextMenu({ tabId: tab.id, x: e.clientX, y: e.clientY });
+              }}
               onKeyDown={(e) => {
                 if (e.target !== e.currentTarget) return;
                 if (e.key === "Enter" || e.key === " ") {
@@ -236,8 +354,11 @@ export function ChatTabBar({
                 color: isVisible ? "var(--text)" : "var(--text-muted)",
                 whiteSpace: "nowrap",
                 maxWidth: isMobile ? 130 : 200,
-                minWidth: isMobile ? 70 : 84,
-                flexShrink: 0,
+                minWidth: isMobile ? 70 : 96,
+                // Desktop tabs compress before the strip scrolls. Selection never changes a tab's
+                // width, so clicking does not shift the strip under the pointer.
+                // The mobile strip swipes at natural width.
+                flexShrink: isMobile ? 0 : 1,
                 userSelect: "none",
                 WebkitUserSelect: "none",
                 touchAction: "pan-x",
@@ -249,12 +370,27 @@ export function ChatTabBar({
                 // visible first tab also takes a left rule.
                 boxShadow: [
                   isCurrentPane && "inset 0 2px 0 var(--accent)",
-                  isVisible && index === 0 && unifiedHeader && "inset 1px 0 0 var(--border)",
+                  isVisible && index === 0 && unifiedHeader && pane !== "secondary" && "inset 1px 0 0 var(--border)",
                   !isVisible && "inset 0 -1px 0 var(--border)",
                 ].filter(Boolean).join(", ") || undefined,
               }}
               title={tab.preview ? `${tab.title} · ${t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })}` : tab.title}
             >
+              {dropIndex !== null && (dropIndex === index || (dropIndex === tabs.length && index === tabs.length - 1)) && (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    width: 2,
+                    [dropIndex === index ? "left" : "right"]: 0,
+                    background: "var(--accent)",
+                    pointerEvents: "none",
+                    zIndex: 1,
+                  }}
+                />
+              )}
               {/* Tab Icon: running beacon or draft indicator */}
               {(isRunning || tab.kind === "draft") && (
                 <span
@@ -364,25 +500,40 @@ export function ChatTabBar({
             type="button"
             onClick={toggleTabsMenu}
             aria-expanded={tabsMenuOpen}
-            title={t("chatTabs.allTabs")}
-            aria-label={t("chatTabs.allTabs")}
+            title={allTabsLabel}
+            aria-label={allTabsLabel}
             style={{
+              position: "relative",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 28,
+              width: 32,
               height: "100%",
               padding: 0,
               border: "none",
+              fontSize: 11,
+              lineHeight: 1,
+              fontVariantNumeric: "tabular-nums",
               background: tabsMenuOpen ? "var(--bg-selected)" : "transparent",
               color: "var(--text-muted)",
               cursor: "pointer",
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <path d="M8 6h13M8 12h13M8 18h13" />
-              <path d="M3 6h.01M3 12h.01M3 18h.01" />
-            </svg>
+            {(hiddenRunning || hiddenDraft) && (
+              <span aria-hidden="true" style={{ position: "absolute", top: 3, right: 2, display: "flex", color: "var(--accent)" }}>
+                {hiddenRunning
+                  ? <LivePulseBeacon size={10} />
+                  : <span style={{ width: 5, height: 5, margin: 2.5, borderRadius: "50%", background: "var(--accent)" }} />}
+              </span>
+            )}
+            {hiddenTabs.length > 0 ? (
+              <span aria-hidden="true">+{hiddenTabs.length}</span>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M8 6h13M8 12h13M8 18h13" />
+                <path d="M3 6h.01M3 12h.01M3 18h.01" />
+              </svg>
+            )}
           </button>
         )}
         {/* New Chat Tab Button */}
@@ -430,9 +581,12 @@ export function ChatTabBar({
               justifyContent: "center",
               width: 28,
               height: "100%",
-              background: isSplitActive ? "var(--bg-selected)" : "transparent",
+              background: "transparent",
               border: "none",
-              color: isSplitActive ? "var(--accent)" : "var(--text-muted)",
+              // Pressed = quiet: only the icon steps up to full-strength text. No accent and no
+              // selected background; both are reserved for the focused tab, so this control does
+              // not compete with it. aria-pressed and the title carry the state.
+              color: isSplitActive ? "var(--text)" : "var(--text-muted)",
               cursor: "pointer",
               padding: 0,
               transition: "color 0.12s, background 0.12s",
@@ -448,16 +602,12 @@ export function ChatTabBar({
                 : t("chatTabs.splitView", { defaultValue: "向右分屏" })
             }
             onMouseEnter={(e) => {
-              if (!isSplitActive) {
-                e.currentTarget.style.color = "var(--text)";
-                e.currentTarget.style.background = "var(--bg-hover)";
-              }
+              e.currentTarget.style.color = "var(--text)";
+              e.currentTarget.style.background = "var(--bg-hover)";
             }}
             onMouseLeave={(e) => {
-              if (!isSplitActive) {
-                e.currentTarget.style.color = "var(--text-muted)";
-                e.currentTarget.style.background = "transparent";
-              }
+              e.currentTarget.style.color = isSplitActive ? "var(--text)" : "var(--text-muted)";
+              e.currentTarget.style.background = "transparent";
             }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -466,43 +616,64 @@ export function ChatTabBar({
             </svg>
           </button>
         )}
-
-        {/* Close Pane Button (Secondary Pane) */}
-        {isSecondaryPane && onClosePane && (
-          <button
-            type="button"
-            onClick={onClosePane}
+      </div>
+      {contextMenu && (() => {
+        const menuTab = tabs.find((tab) => tab.id === contextMenu.tabId);
+        if (!menuTab) return null;
+        const run = (action: () => void) => () => {
+          setContextMenu(null);
+          action();
+        };
+        const otherIds = tabs.filter((tab) => tab.id !== menuTab.id).map((tab) => tab.id);
+        const rightIds = tabs.slice(tabs.indexOf(menuTab) + 1).map((tab) => tab.id);
+        // Unsplit, the only strip is the primary one and has no splitTabId.
+        const moveLabel = pane === "secondary"
+          ? t("chatTabs.moveLeft")
+          : splitTabId ? t("chatTabs.moveRight") : t("chatTabs.splitTabRight");
+        return createPortal(
+          <div
+            ref={contextMenuRef}
+            role="menu"
+            className="menu-surface"
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 28,
-              height: "100%",
-              background: "transparent",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              padding: 0,
-              transition: "color 0.12s, background 0.12s",
-            }}
-            title={t("chatTabs.closeSplit", { defaultValue: "关闭分屏" })}
-            aria-label={t("chatTabs.closeSplit", { defaultValue: "关闭分屏" })}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--text)";
-              e.currentTarget.style.background = "var(--bg-hover)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "var(--text-muted)";
-              e.currentTarget.style.background = "transparent";
+              position: "fixed",
+              left: Math.min(contextMenu.x + 2, window.innerWidth - 168),
+              top: Math.min(contextMenu.y + 2, window.innerHeight - 156),
+              minWidth: 160,
+              zIndex: 700,
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        )}
-      </div>
+            {menuTab.preview && onPinTab && (
+              <button type="button" role="menuitem" onClick={run(() => onPinTab(menuTab.id))}>
+                {t("chatTabs.pinTab")}
+              </button>
+            )}
+            {onMoveTab && canMoveToOtherPane && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={run(() => onMoveTab(menuTab.id, pane === "primary" ? "secondary" : "primary", null))}
+              >
+                {moveLabel}
+              </button>
+            )}
+            <button type="button" role="menuitem" onClick={run(() => { onCloseTab(menuTab.id); })}>
+              {t("chatTabs.closeTab")}
+            </button>
+            {onCloseTabs && otherIds.length > 0 && (
+              <button type="button" role="menuitem" onClick={run(() => { onCloseTabs(otherIds); })}>
+                {t("chatTabs.closeOthers")}
+              </button>
+            )}
+            {onCloseTabs && rightIds.length > 0 && (
+              <button type="button" role="menuitem" onClick={run(() => { onCloseTabs(rightIds); })}>
+                {t("chatTabs.closeRight")}
+              </button>
+            )}
+          </div>,
+          document.body,
+        );
+      })()}
       {tabsMenuOpen && createPortal(
         <div
           ref={tabsMenuRef}
@@ -521,7 +692,7 @@ export function ChatTabBar({
           <div style={{ maxHeight: "min(50vh, 360px)", overflowY: "auto", scrollbarWidth: "none" }}>
             {tabs.map((tab, index) => {
               const selected = tab.id === activeTabId || tab.id === splitTabId;
-              const running = tab.kind === "session" && Boolean(tab.session && runningSessionIds?.has(tab.session.id));
+              const running = isTabRunning(tab);
               return (
                 <div
                   key={tab.id}
@@ -544,7 +715,7 @@ export function ChatTabBar({
                       padding: "0 8px",
                       border: "none",
                       background: "transparent",
-                      color: "var(--text)",
+                      color: selected || hiddenTabIds.has(tab.id) ? "var(--text)" : "var(--text-muted)",
                       cursor: "pointer",
                       textAlign: "left",
                       fontSize: 12,

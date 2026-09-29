@@ -16,10 +16,13 @@ import {
   mergeChatTabPanes,
   openDraftInTabs,
   closeChatTab,
+  closeChatTabs,
+  moveChatTab,
   getDraftTabTitle,
   chatTabMountKey,
   chatTabCwd,
   promoteDraftToSession,
+  type ChatPane,
   type ChatTabItem,
 } from "@/lib/chat-tab-state";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
@@ -100,7 +103,13 @@ import { iconStroke } from "./iconStroke";
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
+// A right/middle press (or ctrl-click) on a tab strip acts on that tab (context menu, close);
+// only a primary press moves focus to the group.
+const isPrimaryPointerPress = (event: React.PointerEvent) => event.button === 0 && !event.ctrlKey;
+
 const AGENT_PANEL_WIDTH = 420;
+// Keeps the header cost slot the same width before and after the stats arrive.
+const COST_MIN_WIDTH = 40;
 const DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs";
 
 function filenameFromContentDisposition(header: string | null): string | null {
@@ -1511,6 +1520,19 @@ export function AppShell() {
     focusChatTab(tab, pane);
   }, [chatTabs, focusChatTab, isSplitActive]);
 
+  const handleMoveChatTab = useCallback((tabId: string, targetPane: ChatPane, beforeTabId: string | null) => {
+    const prev = chatTabsRef.current;
+    const source = prev.find((tab) => tab.id === tabId);
+    const result = moveChatTab(prev, tabId, targetPane, beforeTabId, activeChatTabId, splitChatTabId);
+    if (!source || result.tabs === prev) return;
+    setChatTabs(result.tabs);
+    if (chatTabPane(source) === targetPane) return; // reorder: selection and focus stay put
+    setActiveChatTabId(result.nextActiveTabId);
+    setSplitChatTabId(result.nextSplitTabId);
+    const moved = result.tabs.find((tab) => tab.id === tabId);
+    if (moved) focusChatTab(moved, result.nextSplitTabId ? targetPane : "primary");
+  }, [activeChatTabId, focusChatTab, splitChatTabId]);
+
   const handleCloseChatTab = useCallback((tabId: string): boolean => {
     const closingTab = chatTabsRef.current.find((tab) => tab.id === tabId);
     if (closingTab?.kind === "draft" && closingTab.newSessionDraftKey) {
@@ -1570,6 +1592,32 @@ export function AppShell() {
     });
     return true;
   }, [activeChatPane, activeChatTabId, activeCwd, router, splitChatTabId, translate]);
+
+  // Batch close from a tab's context menu. The caller always leaves at least one tab in the group,
+  // so there is no empty-workspace fallback here; only the focused pane needs re-pointing.
+  const handleCloseChatTabs = useCallback((tabIds: string[]): boolean => {
+    const closing = chatTabsRef.current.filter((tab) => tabIds.includes(tab.id));
+    const unsent = closing.filter((tab) => {
+      if (tab.kind !== "draft" || !tab.newSessionDraftKey) return false;
+      const draft = getDraft(tab.newSessionDraftKey);
+      return tab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
+    });
+    if (unsent.length > 0 && !window.confirm(translate("chatTabs.discardDrafts", { count: unsent.length }))) return false;
+    for (const tab of closing) {
+      if (tab.kind === "draft" && tab.newSessionDraftKey) clearDraft(tab.newSessionDraftKey);
+    }
+    const result = closeChatTabs(chatTabsRef.current, tabIds, activeChatTabId ?? "", splitChatTabId);
+    setChatTabs(result.tabs);
+    setActiveChatTabId(result.nextActiveTabId);
+    setSplitChatTabId(result.nextSplitTabId);
+    const focusedId = activeChatPane === "secondary" ? splitChatTabId : activeChatTabId;
+    if (focusedId && tabIds.includes(focusedId)) {
+      const pane = activeChatPane === "secondary" && result.nextSplitTabId ? "secondary" : "primary";
+      const target = result.tabs.find((tab) => tab.id === (pane === "secondary" ? result.nextSplitTabId : result.nextActiveTabId));
+      if (target) focusChatTab(target, pane);
+    }
+    return true;
+  }, [activeChatPane, activeChatTabId, focusChatTab, splitChatTabId, translate]);
 
   const handleNewChatTab = useCallback((pane?: "primary" | "secondary") => {
     const openInSecondary = isSplitActive && (
@@ -1903,6 +1951,9 @@ export function AppShell() {
   }, [focusedDraftKey]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const sessionHeaderReady = Boolean(selectedSession && sessionStats?.sessionId === selectedSession.id);
+  // The focused session's header data (stats, branches, prompt loader) arrives after its window loads.
+  // Until then the tool slots stay in place, disabled, so the tab strip beside them does not reflow.
+  const sessionToolsPending = Boolean(showChat && selectedSession && !sessionHeaderReady);
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
 
   useEffect(() => {
@@ -2066,8 +2117,10 @@ export function AppShell() {
     );
   };
 
-  const renderChatToolbarActions = (mobile: boolean, options?: { sessionTools?: boolean }) => {
-    const sessionTools = options?.sessionTools ?? true;
+  const renderChatToolbarActions = (mobile: boolean, options?: { sessionTools?: boolean; pending?: boolean }) => {
+    const pending = options?.pending ?? false;
+    const sessionTools = (options?.sessionTools ?? true) || pending;
+    const toolsUnavailable = mobile && !showChat;
     if (!mobile && !showChat) return null;
     if (!mobile && !sessionTools && !hasSubagentSessions) return null;
     return (
@@ -2203,11 +2256,12 @@ export function AppShell() {
         <button
           ref={systemBtnRef}
           type="button"
-          onClick={() => handleSystemInfoToggle("system")}
-          disabled={mobile && !showChat}
+          onClick={() => { if (!pending) handleSystemInfoToggle("system"); }}
+          disabled={toolsUnavailable}
           title={translate("system.prompt")}
           aria-label={translate("system.prompt")}
           aria-pressed={activeTopPanel === "system"}
+          aria-disabled={pending || undefined}
           aria-expanded={activeTopPanel === "system"}
           aria-controls="workspace-top-panel"
           data-top-panel-trigger="system"
@@ -2217,13 +2271,13 @@ export function AppShell() {
             height: "100%", padding: 0,
             background: activeTopPanel === "system" ? "var(--bg-selected)" : "none",
             border: "none",
-            cursor: mobile && !showChat ? "not-allowed" : "pointer",
+            cursor: toolsUnavailable ? "not-allowed" : "pointer",
             color: activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-            opacity: mobile && !showChat ? 0.45 : 1,
+            opacity: toolsUnavailable ? 0.45 : 1,
             transition: "color 0.1s, background 0.1s",
           }}
           onMouseEnter={(event) => {
-            if (mobile && !showChat) return;
+            if (toolsUnavailable) return;
             event.currentTarget.style.color = "var(--text)";
           }}
           onMouseLeave={(event) => {
@@ -2241,11 +2295,12 @@ export function AppShell() {
         </button>
         <button
           type="button"
-          onClick={() => handleSystemInfoToggle("tools")}
-          disabled={mobile && !showChat}
+          onClick={() => { if (!pending) handleSystemInfoToggle("tools"); }}
+          disabled={toolsUnavailable}
           title={translate("tools.title")}
           aria-label={translate("tools.title")}
           aria-pressed={activeTopPanel === "tools"}
+          aria-disabled={pending || undefined}
           aria-expanded={activeTopPanel === "tools"}
           aria-controls="workspace-top-panel"
           data-top-panel-trigger="tools"
@@ -2255,13 +2310,13 @@ export function AppShell() {
             height: "100%", padding: 0,
             background: activeTopPanel === "tools" ? "var(--bg-selected)" : "none",
             border: "none",
-            cursor: mobile && !showChat ? "not-allowed" : "pointer",
+            cursor: toolsUnavailable ? "not-allowed" : "pointer",
             color: activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)",
-            opacity: mobile && !showChat ? 0.45 : 1,
+            opacity: toolsUnavailable ? 0.45 : 1,
             transition: "color 0.1s, background 0.1s",
           }}
           onMouseEnter={(event) => {
-            if (mobile && !showChat) return;
+            if (toolsUnavailable) return;
             event.currentTarget.style.color = "var(--text)";
           }}
           onMouseLeave={(event) => {
@@ -2355,13 +2410,16 @@ export function AppShell() {
   };
 
   const renderSessionStatsButton = (mobile: boolean) => {
-    if (!mobile && (!showChat || !sessionHeaderReady)) return null;
+    if (!mobile && !showChat) return null;
+    // Loading: the same button with an empty cost, so the slot is identical before and after the stats arrive.
+    const statsPending = !mobile && sessionToolsPending;
+    if (!mobile && !sessionHeaderReady && !statsPending) return null;
     const ctx = contextUsage ?? sessionStats?.contextUsage;
-    if (!sessionStats && (!mobile || !ctx)) return null;
+    if (!statsPending && !sessionStats && (!mobile || !ctx)) return null;
 
     const tokens = sessionStats?.tokens;
     const cost = sessionStats?.cost ?? 0;
-    const costText = cost >= 0.01
+    const costText = statsPending ? "" : cost >= 0.01
       ? `$${cost.toFixed(2)}`
       : cost > 0
         ? `<$0.01`
@@ -2393,7 +2451,7 @@ export function AppShell() {
       <button
         type="button"
         onClick={() => toggleTopPanel("session")}
-        disabled={!showChat}
+        disabled={!showChat || statsPending}
         title={tooltip || translate("session.title")}
         aria-label={tooltip || translate("session.title")}
         aria-pressed={activeTopPanel === "session"}
@@ -2425,11 +2483,9 @@ export function AppShell() {
           event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
         }}
       >
-        {costText && (
-          <span style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400, flexShrink: 0, lineHeight: 1 }}>
-            {costText}
-          </span>
-        )}
+        <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: COST_MIN_WIDTH, color: "var(--text-muted)", fontWeight: 400, flexShrink: 0, lineHeight: 1 }}>
+          {costText}
+        </span>
       </button>
     );
   };
@@ -2470,6 +2526,52 @@ export function AppShell() {
       </button>
     );
   };
+
+  const sidebarToggleButton = (
+      <button
+        ref={sidebarToggleRef}
+        data-dialog-focus-fallback="true"
+        className="workspace-header-action"
+        onClick={handleSidebarToggle}
+         title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
+         aria-label={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+          background: "none", border: "none",
+          color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+      >
+        {sidebarOpen ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        )}
+      </button>
+  );
+
+  const renderDesktopHeaderActions = () => (
+    <div
+      data-desktop-header-actions="true"
+      style={{
+        marginLeft: "auto",
+        display: "flex",
+        alignItems: "stretch",
+        height: "100%",
+        flexShrink: 0,
+      }}
+    >
+      {renderProjectTrustWarning(false)}
+      {renderSessionStatsButton(false)}
+      {renderChatToolbarActions(false, { sessionTools: sessionHeaderReady, pending: sessionToolsPending })}
+    </div>
+  );
 
   return (
     <>
@@ -2549,32 +2651,7 @@ export function AppShell() {
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
         <div className="workspace-header" style={{ position: "relative" }}>
-          <button
-            ref={sidebarToggleRef}
-            data-dialog-focus-fallback="true"
-            className="workspace-header-action"
-            onClick={handleSidebarToggle}
-             title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
-             aria-label={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: "none", border: "none",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color 0.12s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
-          >
-            {sidebarOpen ? (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
-              </svg>
-            ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
-              </svg>
-            )}
-          </button>
+          {!isSplitActive && sidebarToggleButton}
           {isMobile && (
             <div
               data-mobile-toolbar="true"
@@ -2591,7 +2668,69 @@ export function AppShell() {
               {renderMainFileToggle(true)}
             </div>
           )}
-          {!isMobile && (
+          {!isMobile && (isSplitActive ? (
+            <>
+              {/* Split: one header row carries both groups' strips, cut at the split line.
+                  The session tools sit in the focused group's segment, so they visibly belong to it. */}
+              <div
+                data-header-segment="primary"
+                style={{ display: "flex", alignItems: "stretch", width: `${chatSplitRatio * 100}%`, flexShrink: 0, minWidth: 0, height: "100%" }}
+              >
+                {sidebarToggleButton}
+                <div
+                  onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}
+                  style={{ flex: 1, minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}
+                >
+                  <ChatTabBar
+                    tabs={primaryTabs}
+                    activeTabId={activeChatTabId ?? ""}
+                    splitTabId={splitChatTabId}
+                    activePane={activeChatPane === "primary" ? "primary" : "secondary"}
+                    runningSessionIds={runningSessionIds}
+                    onSelectTab={handleSelectPrimaryTab}
+                    onCloseTab={handleCloseChatTab}
+                    onCloseTabs={handleCloseChatTabs}
+                    onPinTab={promotePreviewSession}
+                    onNewTab={() => handleNewChatTab("primary")}
+                    onToggleSplit={handleToggleSplit}
+                    onMoveTab={handleMoveChatTab}
+                    canMoveToOtherPane
+                    canSplit={canSplitChat}
+                    unifiedHeader={true}
+                  />
+                </div>
+                {activeChatPane === "primary" && renderDesktopHeaderActions()}
+              </div>
+              <div
+                data-header-segment="secondary"
+                style={{ display: "flex", alignItems: "stretch", flex: 1, minWidth: 0, height: "100%", borderLeft: "1px solid var(--border)" }}
+              >
+                <div
+                  onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}
+                  style={{ flex: 1, minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}
+                >
+                  <ChatTabBar
+                    tabs={secondaryTabs}
+                    activeTabId={splitChatTabId ?? ""}
+                    activePane={activeChatPane === "secondary" ? "primary" : "secondary"}
+                    runningSessionIds={runningSessionIds}
+                    onSelectTab={handleSelectSecondaryTab}
+                    onCloseTab={handleCloseChatTab}
+                    onCloseTabs={handleCloseChatTabs}
+                    onPinTab={promotePreviewSession}
+                    onNewTab={() => handleNewChatTab("secondary")}
+                    onMoveTab={handleMoveChatTab}
+                    pane="secondary"
+                    canMoveToOtherPane
+                    isSecondaryPane={true}
+                    unifiedHeader={true}
+                  />
+                </div>
+                {activeChatPane === "secondary" && renderDesktopHeaderActions()}
+                {renderMainFileToggle(false)}
+              </div>
+            </>
+          ) : (
             <>
               {/* Single-Row Unified Tabs (when NOT split) */}
               {!isSplitActive && showChat && chatTabs.length > 0 && (
@@ -2603,32 +2742,22 @@ export function AppShell() {
                     runningSessionIds={runningSessionIds}
                     onSelectTab={handleSelectChatTab}
                     onCloseTab={handleCloseChatTab}
+                    onCloseTabs={handleCloseChatTabs}
                     onPinTab={promotePreviewSession}
                     onNewTab={handleNewChatTab}
                     onToggleSplit={handleToggleSplit}
+                    onMoveTab={handleMoveChatTab}
+                    canMoveToOtherPane={canSplitChat && chatTabs.length > 1}
                     canSplit={canSplitChat}
                     unifiedHeader={true}
                   />
                 </div>
               )}
               {renderCollapsedSessionTitle()}
-              <div
-                data-desktop-header-actions="true"
-                style={{
-                  marginLeft: "auto",
-                  display: "flex",
-                  alignItems: "stretch",
-                  height: "100%",
-                  flexShrink: 0,
-                }}
-              >
-                {renderProjectTrustWarning(false)}
-                {renderSessionStatsButton(false)}
-                {renderChatToolbarActions(false, { sessionTools: sessionHeaderReady })}
-              </div>
+              {renderDesktopHeaderActions()}
             </>
-          )}
-          {!isMobile && renderMainFileToggle(false)}
+          ))}
+          {!isMobile && !isSplitActive && renderMainFileToggle(false)}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
             <div
@@ -2975,31 +3104,11 @@ export function AppShell() {
               display: "grid",
               minHeight: 0,
               gridTemplateColumns: isSplitActive ? `${chatSplitRatio * 100}% 0 minmax(0, 1fr)` : "minmax(0, 1fr)",
-              gridTemplateRows: isSplitActive ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)",
+              gridTemplateRows: "minmax(0, 1fr)",
             }}
           >
             {showChat ? (
               <>
-                {isSplitActive && (
-                  <div
-                    style={{ gridColumn: 1, gridRow: 1, minWidth: 0, overflow: "hidden" }}
-                    onPointerDownCapture={() => handleFocusPane("primary")}
-                  >
-                    <ChatTabBar
-                      tabs={primaryTabs}
-                      activeTabId={activeChatTabId ?? ""}
-                      activePane={activeChatPane === "primary" ? "primary" : "secondary"}
-                      runningSessionIds={runningSessionIds}
-                      onSelectTab={handleSelectPrimaryTab}
-                      onCloseTab={handleCloseChatTab}
-                      onPinTab={promotePreviewSession}
-                      onNewTab={() => handleNewChatTab("primary")}
-                      onToggleSplit={handleToggleSplit}
-                      canSplit={false}
-                    />
-                  </div>
-                )}
-
                 {/* Every ChatWindow stays under the same parent across split/merge.
                     Group ownership changes grid placement, never component identity. */}
                 {chatTabs.length > 0 ? chatTabs.map((tab) => {
@@ -3014,7 +3123,7 @@ export function AppShell() {
                       onPointerDownCapture={() => { if (isCurrent && isSplitActive) handleFocusPane(pane); }}
                       style={{
                         gridColumn: pane === "secondary" ? 3 : 1,
-                        gridRow: isSplitActive ? 2 : 1,
+                        gridRow: 1,
                         display: isCurrent ? "flex" : "none",
                         flexDirection: "column",
                         minWidth: 0,
@@ -3035,7 +3144,7 @@ export function AppShell() {
                     </div>
                   );
                 }) : (
-                  <div style={{ gridColumn: 1, gridRow: isSplitActive ? 2 : 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                  <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, undefined, true)}
                   </div>
                 )}
@@ -3044,7 +3153,7 @@ export function AppShell() {
                 {isSplitActive && (
                   <div
                     className="split-chat-resize-handle"
-                    style={{ gridColumn: 2, gridRow: "1 / 3" }}
+                    style={{ gridColumn: 2, gridRow: 1 }}
                     role="separator"
                     aria-orientation="vertical"
                     aria-valuemin={Math.round(getChatSplitRatioBounds(chatPanesWidth).min * 100)}
@@ -3059,27 +3168,6 @@ export function AppShell() {
                     onKeyDown={handleSplitResizeKeyDown}
                     onDoubleClick={() => setChatSplitRatio(0.5)}
                   />
-                )}
-
-                {/* Secondary group header; its content shares the keyed list above. */}
-                {isSplitActive && secondaryTab && (
-                  <div
-                    style={{ gridColumn: 3, gridRow: 1, minWidth: 0, overflow: "hidden", borderLeft: "1px solid var(--border)" }}
-                    onPointerDownCapture={() => handleFocusPane("secondary")}
-                  >
-                    <ChatTabBar
-                      tabs={secondaryTabs}
-                      activeTabId={splitChatTabId ?? ""}
-                      activePane={activeChatPane === "secondary" ? "primary" : "secondary"}
-                      runningSessionIds={runningSessionIds}
-                      onSelectTab={handleSelectSecondaryTab}
-                      onCloseTab={handleCloseChatTab}
-                      onPinTab={promotePreviewSession}
-                      onNewTab={() => handleNewChatTab("secondary")}
-                      onClosePane={handleToggleSplit}
-                      isSecondaryPane={true}
-                    />
-                  </div>
                 )}
               </>
             ) : initialCwdStatus === "validating" ? (

@@ -35,7 +35,10 @@ test("supports split view with resizer and secondary pane", () => {
   assert.match(source, /onPointerCancel=\{handleSplitResizeEnd\}/);
   assert.match(source, /onKeyDown=\{handleSplitResizeKeyDown\}/);
   assert.match(source, /onDoubleClick=\{\(\) => setChatSplitRatio\(0\.5\)\}/);
-  assert.match(source, /\{isSplitActive && secondaryTab && \(/);
+  // Both groups' strips live in the one header row, cut at the split ratio; tools follow the focused group.
+  assert.match(source, /data-header-segment="primary"[^>]*\n?[^>]*chatSplitRatio \* 100/);
+  assert.match(source, /activeChatPane === "primary" && renderDesktopHeaderActions\(\)/);
+  assert.match(source, /activeChatPane === "secondary" && renderDesktopHeaderActions\(\)/);
 });
 
 test("split pane plus buttons create a tab in that pane", () => {
@@ -127,7 +130,8 @@ test("pane membership is independent of active pointers; close-tab and merge-pan
   assert.match(source, /chatTabsInPane\(chatTabs, "primary"\)/);
   assert.match(source, /chatTabsInPane\(chatTabs, "secondary"\)/);
   assert.match(source, /tabs=\{primaryTabs\}/);
-  assert.match(source, /tabs=\{secondaryTabs\}[\s\S]*?onCloseTab=\{handleCloseChatTab\}[\s\S]*?onClosePane=\{handleToggleSplit\}/);
+  assert.match(source, /tabs=\{secondaryTabs\}[\s\S]*?onCloseTab=\{handleCloseChatTab\}[\s\S]*?onMoveTab=\{handleMoveChatTab\}/);
+  assert.doesNotMatch(source, /onClosePane/);
   assert.doesNotMatch(source, /moveTabToEnd|prevSplitTabIdRef|replaceableIds/);
   assert.match(source, /mergeChatTabPanes\(tabs, retainedTab\?\.id \?\? null\)/);
 });
@@ -199,3 +203,16 @@ test("seamlessly joins split chat panes with a zero-gap resize handle matching s
   assert.match(globalCss, /\.split-chat-resize-handle:hover::after[\s\S]*?background:\s*color-mix\(in srgb, var\(--text-muted\) 70%, var\(--border\)\)/);
 });
 
+
+test("only a primary press on a header tab strip focuses its group; context/middle presses leave focus alone", () => {
+  assert.match(source, /const isPrimaryPointerPress = \(event: React\.PointerEvent\) => event\.button === 0 && !event\.ctrlKey;/);
+  assert.match(source, /onPointerDownCapture=\{\(event\) => \{ if \(isPrimaryPointerPress\(event\)\) handleFocusPane\("primary"\); \}\}/);
+  assert.match(source, /onPointerDownCapture=\{\(event\) => \{ if \(isPrimaryPointerPress\(event\)\) handleFocusPane\("secondary"\); \}\}/);
+});
+
+test("batch close confirms once for unsent drafts, then re-points only the focused pane", () => {
+  assert.match(source, /translate\("chatTabs\.discardDrafts", \{ count: unsent\.length \}\)/);
+  assert.match(source, /closeChatTabs\(chatTabsRef\.current, tabIds, activeChatTabId \?\? "", splitChatTabId\)/);
+  assert.match(source, /if \(focusedId && tabIds\.includes\(focusedId\)\)/);
+  assert.equal((source.match(/onCloseTabs=\{handleCloseChatTabs\}/g) ?? []).length, 3);
+});

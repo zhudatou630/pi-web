@@ -174,6 +174,51 @@ export function mergeChatTabPanes(tabs: ChatTabItem[], focusedTabId: string | nu
   }));
 }
 
+/** Reorder inside a group, or move a tab to the other group, inserting before `beforeTabId`
+ * (null = end of the target group). A moved tab becomes the target group's current tab.
+ * Moving the last tab out of a group collapses the split like closing it does. */
+export function moveChatTab(
+  tabs: ChatTabItem[],
+  tabId: string,
+  targetPane: ChatPane,
+  beforeTabId: string | null,
+  activeTabId: string | null,
+  splitTabId: string | null,
+): { tabs: ChatTabItem[]; nextActiveTabId: string | null; nextSplitTabId: string | null } {
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab || beforeTabId === tabId) return { tabs, nextActiveTabId: activeTabId, nextSplitTabId: splitTabId };
+  const fromPane = chatTabPane(tab);
+  const rest = tabs.filter((t) => t.id !== tabId);
+  // A group holds one preview; a preview moving into a group that has its own gets pinned.
+  const keepsPreview = tab.preview === true
+    && (fromPane === targetPane || !rest.some((t) => t.preview === true && chatTabPane(t) === targetPane));
+  const moved: ChatTabItem = { ...tab, pane: targetPane, preview: tab.preview === true ? keepsPreview : tab.preview };
+  const beforeIndex = beforeTabId ? rest.findIndex((t) => t.id === beforeTabId && chatTabPane(t) === targetPane) : -1;
+  const lastInTarget = rest.map((t) => chatTabPane(t)).lastIndexOf(targetPane);
+  const at = beforeIndex >= 0 ? beforeIndex : lastInTarget + 1;
+  const nextTabs = [...rest.slice(0, at), moved, ...rest.slice(at)];
+
+  if (fromPane === targetPane) {
+    const same = nextTabs.every((t, i) => t.id === tabs[i].id);
+    return { tabs: same ? tabs : nextTabs, nextActiveTabId: activeTabId, nextSplitTabId: splitTabId };
+  }
+
+  const groupBefore = chatTabsInPane(tabs, fromPane);
+  const groupAfter = chatTabsInPane(nextTabs, fromPane);
+  if (groupAfter.length === 0) {
+    return { tabs: mergeChatTabPanes(nextTabs, tabId), nextActiveTabId: tabId, nextSplitTabId: null };
+  }
+  const fromCurrent = fromPane === "primary" ? activeTabId : splitTabId;
+  const adjacentId = fromCurrent === tabId
+    ? groupAfter[Math.min(groupBefore.findIndex((t) => t.id === tabId), groupAfter.length - 1)].id
+    : fromCurrent;
+  return {
+    tabs: nextTabs,
+    nextActiveTabId: targetPane === "primary" ? tabId : adjacentId,
+    nextSplitTabId: targetPane === "secondary" ? tabId : adjacentId,
+  };
+}
+
 /**
  * 显式在新标签中打开（中键 / 双击固定 / “在新标签打开”）：
  * 若已打开则固定并切换过去；若未打开则在末尾追加新 Tab。
@@ -273,6 +318,21 @@ export function closeChatTab(
   }
 
   return { tabs: remaining, nextActiveTabId, nextSplitTabId };
+}
+
+/** Close several tabs at once by applying closeChatTab in order, so the current-tab fallbacks
+ * and the split collapse follow exactly the single-close rules. */
+export function closeChatTabs(
+  tabs: ChatTabItem[],
+  tabIdsToClose: string[],
+  activeTabId: string,
+  splitTabId: string | null = null,
+): ReturnType<typeof closeChatTab> {
+  let state: ReturnType<typeof closeChatTab> = { tabs, nextActiveTabId: activeTabId, nextSplitTabId: splitTabId };
+  for (const id of tabIdsToClose) {
+    state = closeChatTab(state.tabs, id, state.nextActiveTabId ?? "", state.nextSplitTabId);
+  }
+  return state;
 }
 
 export function promoteDraftToSession(

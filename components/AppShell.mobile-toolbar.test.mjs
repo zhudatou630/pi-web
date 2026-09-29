@@ -101,13 +101,13 @@ test("keeps statistics and file controls directly interactive on mobile", () => 
   for (const block of [stats, fileToggle]) {
     assert.doesNotMatch(block, /\bcovered\b|visibility: covered|pointerEvents: covered|aria-hidden=\{covered|tabIndex=\{covered/);
   }
-  assert.match(stats, /disabled=\{!showChat\}/);
+  assert.match(stats, /disabled=\{!showChat \|\| statsPending\}/);
   assert.doesNotMatch(fileToggle, /disabled=/);
 });
 
 test("keeps the top session status limited to cost", () => {
   const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
-  assert.match(stats, /const costText = cost >= 0\.01/);
+  assert.match(stats, /const costText = statsPending \? "" : cost >= 0\.01/);
   assert.doesNotMatch(stats, /mobileContextText|desktopContextText|desktopCacheText|contextMeterFillColor/);
   assert.doesNotMatch(source, /mobile-session-stat-cost|mobile-session-stats/);
 });
@@ -135,20 +135,22 @@ test("keeps the collapsed session title desktop-only without mobile overlay logi
 
 test("desktop titlebar shows session tools only after the session header is ready", () => {
   assert.match(source, /const sessionHeaderReady = Boolean\(selectedSession && sessionStats\?\.sessionId === selectedSession\.id\)/);
-  assert.match(source, /renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady \}\)/);
-  assert.match(source, /if \(!mobile && \(!showChat \|\| !sessionHeaderReady\)\) return null/);
+  assert.match(source, /renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady, pending: sessionToolsPending \}\)/);
+  assert.match(source, /if \(!mobile && !sessionHeaderReady && !statsPending\) return null;/);
 });
 
 test("desktop header keeps tabs left and actions right without theme or language", () => {
   const desktop = source.slice(source.indexOf("{!isMobile && ("));
-  assert.match(desktop, /data-desktop-header-actions="true"/);
+  const actions = functionSource("renderDesktopHeaderActions", "return (\n    <>\n    <style>");
   assert.match(
-    desktop,
-    /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false\)[\s\S]*?renderSessionStatsButton\(false\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady \}\)/,
+    actions,
+    /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false\)[\s\S]*?renderSessionStatsButton\(false\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: sessionHeaderReady, pending: sessionToolsPending \}\)/,
   );
+  // The tools sit in the focused group's header segment when split, after the tabs otherwise.
+  assert.match(desktop, /renderDesktopHeaderActions\(\)/);
   assert.doesNotMatch(desktop, /renderThemeButton\(false\)/);
   assert.doesNotMatch(desktop, /renderLanguageButton\(false\)/);
-  assert.match(desktop, /renderCollapsedSessionTitle\(\)[\s\S]*?data-desktop-header-actions="true"/);
+  assert.match(desktop, /renderCollapsedSessionTitle\(\)[\s\S]*?renderDesktopHeaderActions\(\)/);
 });
 
 test("desktop chat toolbar actions are icon-only", () => {
@@ -220,4 +222,21 @@ test("top-bar sheets animate a wrapper, not the content nodes", async () => {
   assert.doesNotMatch(cssSource, /\.tool-definitions-panel,\s*\.session-info-popover/);
   const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");
   assert.match(branchNavigator, /className="branch-dropdown"/);
+});
+
+test("a loading session keeps its header tool slots identical so the tab strip does not reflow", () => {
+  assert.match(source, /const sessionToolsPending = Boolean\(showChat && selectedSession && !sessionHeaderReady\);/);
+  const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
+  assert.match(actions, /const sessionTools = \(options\?\.sessionTools \?\? true\) \|\| pending;/);
+  // Session-independent buttons keep their normal look while pending; they just ignore clicks.
+  assert.match(actions, /const toolsUnavailable = mobile && !showChat;/);
+  assert.match(actions, /if \(!pending\) handleSystemInfoToggle\("system"\)/);
+  assert.match(actions, /if \(!pending\) handleSystemInfoToggle\("tools"\)/);
+  assert.match(actions, /disabled=\{!selectedSession\}/);
+  // The cost slot is the same button before and after; only its text differs.
+  const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
+  assert.match(stats, /const statsPending = !mobile && sessionToolsPending;/);
+  assert.match(stats, /statsPending \? ""/);
+  assert.doesNotMatch(stats, /\{costText &&/); // the slot must render even when empty
+  assert.match(stats, /minWidth: COST_MIN_WIDTH/);
 });

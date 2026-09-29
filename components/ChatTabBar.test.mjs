@@ -221,3 +221,51 @@ test("a visible tab is ruled off on both sides", () => {
   // Mobile: the last tab keeps its right rule while visible.
   assert.match(render({ activeTabId: "s2", isMobile: true })[1], /border-right:1px solid var\(--border\)/);
 });
+
+test("tabs are draggable only when the parent handles moves and not on mobile", () => {
+  const tabs = [
+    { id: "s1", kind: "session", title: "One", session: { id: "s1" } },
+    { id: "s2", kind: "session", title: "Two", session: { id: "s2" } },
+  ];
+  const html = (props) => renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(ChatTabBar, { tabs, activeTabId: "s1", onSelectTab() {}, onCloseTab() {}, onNewTab() {}, ...props }),
+  ));
+  assert.equal(tabNodes(html({ onMoveTab() {} })).filter((node) => node.includes('draggable="true"')).length, 2);
+  assert.equal(html({}).includes('draggable="true"'), false);
+  assert.equal(html({ onMoveTab() {}, isMobile: true }).includes('draggable="true"'), false);
+});
+
+test("desktop tabs compress evenly before the strip scrolls, whatever is selected; mobile keeps natural width", () => {
+  const tabs = [
+    { id: "s1", kind: "session", title: "One", session: { id: "s1" } },
+    { id: "s2", kind: "session", title: "Two", session: { id: "s2" } },
+  ];
+  const nodes = (props) => tabNodes(renderToStaticMarkup(React.createElement(
+    I18nProvider,
+    null,
+    React.createElement(ChatTabBar, { tabs, activeTabId: "s1", onSelectTab() {}, onCloseTab() {}, onNewTab() {}, ...props }),
+  )));
+  const desktop = nodes({});
+  assert.match(desktop[0], /flex-shrink:1;/);
+  assert.match(desktop[1], /flex-shrink:1;/);
+  assert.match(desktop[0], /min-width:96px/);
+  assert.match(nodes({ isMobile: true })[1], /flex-shrink:0;/);
+});
+
+test("overflow button reports how many tabs are hidden; the context menu can batch-close", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /hiddenTabs\.length > 0 \? \(\s*<span aria-hidden="true">\+\{hiddenTabs\.length\}<\/span>/);
+  assert.match(source, /t\("chatTabs\.hiddenCount", \{ count: hiddenTabs\.length \}\)/);
+  assert.match(source, /onCloseTabs && otherIds\.length > 0[\s\S]*?onCloseTabs\(otherIds\)/);
+  assert.match(source, /onCloseTabs && rightIds\.length > 0[\s\S]*?onCloseTabs\(rightIds\)/);
+  assert.match(source, /const rightIds = tabs\.slice\(tabs\.indexOf\(menuTab\) \+ 1\)/);
+});
+
+test("the pressed split toggle stays quiet: no accent color and no selected background", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /color: isSplitActive \? "var\(--text\)" : "var\(--text-muted\)"/);
+  assert.doesNotMatch(source, /isSplitActive \? "var\(--accent\)"/);
+  assert.doesNotMatch(source, /background: isSplitActive \?/); // no selected background either
+});
