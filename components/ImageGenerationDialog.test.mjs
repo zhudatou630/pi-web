@@ -6,7 +6,9 @@ const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconf
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
-const { ImageGenerationDialog } = await jiti.import("./ImageGenerationDialog.tsx");
+const { ImageGenerationDialog, ratioLabel, resolutionLabel, qualityLabel } = await jiti.import("./ImageGenerationDialog.tsx");
+const { enLocale } = await jiti.import("@/lib/i18n/messages/en");
+const tr = (key) => enLocale.messages[key];
 
 function render(capabilities) {
   return renderToStaticMarkup(React.createElement(
@@ -30,17 +32,24 @@ test("the direct image dialog exposes declared ratios, resolution, and quality",
     qualities: ["auto", "low", "medium"],
   });
   assert.doesNotMatch(html, />Studio</);
-  assert.match(html, /Auto/);
-  assert.match(html, /Square 1:1/);
-  assert.match(html, /Portrait 9:16/);
-  assert.match(html, /Landscape 16:9/);
-  assert.match(html, /1K/);
-  assert.match(html, /2K/);
-  assert.match(html, /Low/);
-  assert.match(html, /Medium/);
+  // The pickers are menu-surface Selects: closed, they render only their trigger and selected label.
+  assert.match(html, /aria-label="Aspect"[\s\S]*?>Auto</);
+  assert.match(html, /aria-label="Resolution"[\s\S]*?>1K</);
+  assert.match(html, /aria-label="Quality"[\s\S]*?>Auto</);
   assert.doesNotMatch(html, /1024x1536/);
   assert.doesNotMatch(html, /Choose target/);
   assert.doesNotMatch(html, /Add reference/);
+});
+
+test("option labels for ratios, resolution, and quality", () => {
+  assert.equal(ratioLabel(tr, "auto"), "Auto");
+  assert.equal(ratioLabel(tr, "1:1"), "Square 1:1");
+  assert.equal(ratioLabel(tr, "9:16"), "Portrait 9:16");
+  assert.equal(ratioLabel(tr, "16:9"), "Landscape 16:9");
+  assert.equal(resolutionLabel("1k"), "1K");
+  assert.equal(resolutionLabel("2k"), "2K");
+  assert.equal(qualityLabel(tr, "low"), "Low");
+  assert.equal(qualityLabel(tr, "medium"), "Medium");
 });
 
 test("the edit dialog binds the original image", () => {
@@ -106,7 +115,7 @@ test("a source image turns the direct dialog into an edit on editing connections
   const edit = renderWith([painter, editor], [source]);
   assert.match(edit, /Edit image/);
   assert.match(edit, /data:image\/png;base64,iVBORw0KGgo=/);
-  assert.match(edit, /Remove source image/);
+  assert.match(edit, /class="chat-input-image-remove"/);
   assert.doesNotMatch(edit, />Painter</);
 
   assert.doesNotMatch(edit, />1</);
@@ -116,7 +125,7 @@ test("a source image turns the direct dialog into an edit on editing connections
   const result = { type: "pi-image-result", version: 1, path: ".pi/generated-images/result.png", mimeType: "image/png", width: 1, height: 1, prompt: "result", connection: "editor", model: "image" };
   const combined = renderWith([editor], [source, source], result);
   assert.match(combined, /result\.png[\s\S]*>1<[\s\S]*>2<[\s\S]*>3</);
-  assert.equal(combined.match(/Remove source image/g).length, 2 * 2); // title + aria-label per removable source
+  assert.equal(combined.match(/class="chat-input-image-remove"/g).length, 2); // one remove button per removable source
   assert.match(combined, /Add source image/);
   // The reference limit hides the add button.
   assert.doesNotMatch(renderWith([editor], [source, source, source, source], result), /Add source image/);

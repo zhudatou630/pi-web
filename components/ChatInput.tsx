@@ -27,6 +27,7 @@ import {
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
 import { ImageMentionChip } from "./GeneratedImageResult";
+import { ImageAttachmentStrip } from "./ImageAttachmentStrip";
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { ThinkingIcon } from "./ThinkingIcon";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -854,6 +855,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       pendingImageCountRef.current -= imageFiles.length;
     }
   }, [compact]);
+
+  const moveImage = useCallback((from: number, to: number) => {
+    setAttachedImages((prev) => {
+      if (from === to || to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      next.splice(to, 0, ...next.splice(from, 1));
+      attachedImagesRef.current = next;
+      return next;
+    });
+  }, []);
 
   const removeImage = useCallback((index: number) => {
     setAttachedImages((prev) => {
@@ -2307,8 +2318,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           )}
           {/* Image previews */}
           {(attachedImages.length > 0 || mentionedImages.length > 0) && (
-            <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              {mentionedImages.map((path) => (
+            <ImageAttachmentStrip
+              images={attachedImages.map((img) => ({ src: img.previewUrl }))}
+              onMove={moveImage}
+              onRemove={removeImage}
+              leading={mentionedImages.map((path) => (
                 <ImageMentionChip
                   key={path}
                   path={path}
@@ -2316,24 +2330,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   onRemove={() => setMentionedImages((prev) => prev.filter((item) => item !== path))}
                 />
               ))}
-              {attachedImages.map((img, i) => (
-                <div key={i} className="chat-input-image-preview">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img.previewUrl} alt="" />
-                  <button
-                    type="button"
-                    className="chat-input-image-remove"
-                    onClick={() => removeImage(i)}
-                    title={t("i18n.close")}
-                    aria-label={t("i18n.close")}
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
-                      <path d="M18 6 6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
+            />
           )}
           {bashMode && (
             <div

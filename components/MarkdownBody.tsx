@@ -5,6 +5,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { ImagePreview } from "./ImagePreview";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
 
 /** Session whose messages are rendered; lets the file API serve images the session references outside allowed roots. */
@@ -88,8 +89,12 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
         ? `/api/files/${encodeFilePathForApi(filePath)}?type=read${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`
         : src;
       // Dynamic local paths are served directly by the file API.
-      // eslint-disable-next-line @next/next/no-img-element
-      return <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />;
+      return (
+        <ImagePreview src={typeof imageSrc === "string" ? imageSrc : ""} alt={alt ?? ""} style={{ width: "fit-content", maxWidth: "100%" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />
+        </ImagePreview>
+      );
     },
     table({ children }) {
       return (

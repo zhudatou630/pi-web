@@ -130,6 +130,11 @@ components/
   BranchNavigator.tsx in-session branch switcher
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
+  ImageViewer.tsx     modal image viewer (gallery, zoom, touch gestures); the only image lightbox
+  ImagePreview.tsx    one image as a button that opens ImageViewer (markdown/generated images)
+  ImageThumbs.tsx     uniform square thumbnails of one message's images (+N fold)
+  ImageGallery.tsx    size-capped assistant / tool-result images sharing one viewer
+  ImageAttachmentStrip.tsx  composer + image-dialog attachment row (numbered, reorder, remove)
   ModelsConfig.tsx    modal for editing models.json (opened from sidebar bottom)
   AgentsConfig.tsx    built-in subagent toggle + agent list (global + project view)
   AgentEditor.tsx     shared agent editor: useAgentEditor hook, AgentDetail form, AgentSaveFooter (used by the Agents and Project pages)
@@ -260,6 +265,17 @@ Newer pi emits `compaction_start` / `compaction_end`; older versions emitted `au
 - Forks and context-inheriting subagents copy parent history; only messages at or after the file header's timestamp count.
 - `GET /api/usage` starts an incremental scan, waits for its stat pass, then at most 1.5s more; a longer (cold/upgrade) scan returns the cached rows with `scan: { done, total }` and the page polls until it is null.
 - Cost is repriced at current rates like tokscale: pi's `ModelRuntime` model cost (exact provider/model, then same id), then models.dev, then the recorded cost; otherwise the message is reported as unpriced. Flat rates, no long-context tiers. Model ids drop a router's `vendor/` prefix after pricing. The response is priced day × hour × model × project records; `lib/usage-view.ts` does all range/grouping/drill-down in the browser.
+
+### Images
+
+- Two kinds of image, two treatments. **Context the user gave the model** (composer attachments, `@` image files, user-message images, the image dialog's sources) is a numbered row of uniform 64px square thumbnails (`.image-thumb`, cover, top-aligned, `+N` after 6): the composer and the sent message look the same on purpose. **Content to read** (assistant markdown images, assistant image blocks, tool-result images, generated images) is shown size-capped (`min(60vh, 420–520px)`, never the natural size) and opens the viewer on click. Do not render a raw `<img>` in a message; use one of the components in the file map.
+- Order matters: images go to the model in array order and `generate_image` refers to them as `attachment:N`, so the composer and the image dialog show the index and keep the array order the user sees. The dialog's edited result is `lockedCount` (fixed first, not movable or removable). `ImageAttachmentStrip` keys items by `src` length + tail + occurrence, never by index.
+- `ImageViewer` is one component for mouse and touch (Pointer Events, `touch-action: none` on the stage). Mouse: wheel/±/0 zoom, drag to pan, click the image or backdrop to close, `←/→`; keys are bound on `document` (capture) because the focused button disables on the last image and focus falls to `<body>`. Touch: swipe switches (previous/current/next are rendered as a track, and the swipe target is one slide pitch = width + `SLIDE_GAP`, so the neighbour lands exactly on the centre slot; any mismatch shows as a jump at the end), pinch and double-tap zoom, drag down closes, a tap toggles the controls, and the controls start hidden with an opaque black, edge-to-edge picture. Arrows and zoom buttons are hidden under `pointer: coarse`. There is no double-click zoom on desktop because click closes.
+- Zoom is shown as real scale: `zoom × fit`, where `fit` is displayed size over natural pixels (`fitOf`, the tighter axis), so 100% is the natural size. The minimum is fit-to-window, the maximum 400% of natural. Clicking the percentage toggles fit and 1:1.
+- Touch reorder is done in the viewer, not by dragging thumbnails: an editable set (`edit` prop) shows move earlier / remove / move later there. A long-press drag among 64px thumbnails was hard to aim and fought scrolling. Desktop reorders by dragging thumbnails or `Alt+←/→`.
+- Enter and exit are one plain fade of the whole overlay (0.25s / 0.2s); the full-screen touch motions are slower (340ms) than menu-surface-in (0.12s) because travel distance changes the perceived speed. All closes go through `requestClose()` so the exit plays before the parent unmounts.
+- Not done, by decision: user-message images are still inline base64 in the history payload (tool-result images already load lazily through `/entries/[entryId]/tool-result-image`). Thumbnails use `loading="lazy"` and `decoding="async"`. Deferring user images to URLs would break `getUserMessageDraftImages` (edit/restore reads base64 from the message), the optimistic local message, forks and export; do it only if a measured payload problem justifies it.
+- Dev note: after editing `app/globals.css`, Turbopack has repeatedly kept serving the old CSS (HTML links a stale chunk). Confirm with `document.styleSheets`; appending and removing a comment forces a rebuild, and a restart with `.next` backed up (see troubleshooting) fixes a persistent case.
 
 ### Completion sound
 - `hooks/useAudio.ts` stores the toggle in `localStorage` as `pi-sound-enabled` and reuses one `AudioContext`.

@@ -1,5 +1,6 @@
 "use client";
 
+import { ImageAttachmentStrip } from "./ImageAttachmentStrip";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Select, type SelectOption } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
@@ -17,7 +18,7 @@ function selectedOption(connection: ImageConnectionView | undefined, list: "size
   return values?.[0] ?? "";
 }
 
-function ratioLabel(t: (key: string) => string, value: string): string {
+export function ratioLabel(t: (key: string) => string, value: string): string {
   const kind = imageRatioKind(value);
   if (kind === "auto") return t("image.aspectAuto");
   if (kind === "square") return `${t("image.aspectSquare")} ${value}`;
@@ -26,11 +27,11 @@ function ratioLabel(t: (key: string) => string, value: string): string {
   return value;
 }
 
-function resolutionLabel(value: string): string {
+export function resolutionLabel(value: string): string {
   return value.toUpperCase();
 }
 
-function qualityLabel(t: (key: string) => string, value: string): string {
+export function qualityLabel(t: (key: string) => string, value: string): string {
   if (value === "auto") return t("image.qualityAuto");
   if (value === "low") return t("image.qualityLow");
   if (value === "medium") return t("image.qualityMedium");
@@ -97,8 +98,8 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
   const qualityChoices = connection?.capabilities.qualities ?? [];
   const showConnection = connections.length > 1;
   const previews = [
-    ...(edit && editPreviewUrl ? [{ url: editPreviewUrl, alt: edit.prompt }] : []),
-    ...sourceImages.map((image, index) => ({ url: `data:${image.mimeType};base64,${image.data}`, alt: t("image.editSource"), remove: () => setSourceImages((current) => current.filter((_, i) => i !== index)) })),
+    ...(edit && editPreviewUrl ? [{ src: editPreviewUrl, alt: edit.prompt }] : []),
+    ...sourceImages.map((image) => ({ src: `data:${image.mimeType};base64,${image.data}`, alt: t("image.editSource") })),
   ];
 
   const resizePrompt = () => {
@@ -182,23 +183,17 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
 
         <div className="min-h-0 overflow-y-auto px-4">
           {previews.length ? (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {previews.map((preview, index) => (
-                <div key={index} className="relative overflow-hidden rounded-[10px]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={preview.url} alt={preview.alt} className="block h-20 w-20 object-cover" />
-                  {/* Numbered in request order, so the prompt can say "image 1" / "image 2". */}
-                  {previews.length > 1 ? (
-                    <span className="absolute left-1 top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-black/60 px-1 text-[10px] text-white tabular-nums">{index + 1}</span>
-                  ) : null}
-                  {"remove" in preview ? (
-                    <button type="button" onClick={preview.remove} className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full border-0 bg-black/60 text-white hover:bg-black/80" title={t("image.removeSource")} aria-label={t("image.removeSource")}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
+            <ImageAttachmentStrip
+              images={previews}
+              lockedCount={edit && editPreviewUrl ? 1 : 0}
+              onMove={(from, to) => setSourceImages((current) => {
+                const offset = edit && editPreviewUrl ? 1 : 0;
+                const next = [...current];
+                next.splice(to - offset, 0, ...next.splice(from - offset, 1));
+                return next;
+              })}
+              onRemove={(index) => setSourceImages((current) => current.filter((_, i) => i !== index - (edit && editPreviewUrl ? 1 : 0)))}
+            />
           ) : null}
           <textarea
             ref={promptRef}

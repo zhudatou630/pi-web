@@ -3,8 +3,9 @@
 import { memo, useState, useRef, useEffect, useMemo, useId, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
-import { ImagePreview } from "./ImagePreview";
-import { ImageMentionChip } from "./GeneratedImageResult";
+import { ImageGallery } from "./ImageGallery";
+import { ImageThumbs } from "./ImageThumbs";
+import { mentionImageUrl } from "./GeneratedImageResult";
 import { imageToolDisplayKind, splitImageMentions } from "@/lib/image-generation";
 import { ThinkingIcon } from "./ThinkingIcon";
 import { ToolIcon } from "./ToolIcon";
@@ -302,9 +303,10 @@ function UserTextWithMentions({ text, cwd, onOpenFile }: { text: string; cwd?: s
   }
   return (
     <>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: rest ? 8 : 0 }}>
-        {mentions.map((part) => <ImageMentionChip key={part.path} path={part.path} cwd={cwd} />)}
-      </div>
+      <ImageThumbs
+        images={mentions.map((part) => ({ src: mentionImageUrl(part.path, cwd) }))}
+        style={{ marginBottom: rest ? 8 : 0 }}
+      />
       {rest ? <SafeMarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{rest}</SafeMarkdownBody> : null}
     </>
   );
@@ -368,30 +370,10 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
   const editTarget = commandText ? replaceUserMessageText(message, commandText) : message;
 
   const imageBlocksNode = imageBlocks.length > 0 && (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: content ? 8 : 0 }}>
-      {imageBlocks.map((img, i) => {
-        // lib/types.ts ImageContent uses {source:{type,data,media_type,url}}
-        // pi-ai on-disk format uses flat {data, mimeType} — handle both
-        const flat = img as unknown as { data?: string; mimeType?: string };
-        const src = img.source
-          ? img.source.type === "base64"
-            ? `data:${img.source.media_type};base64,${img.source.data}`
-            : img.source.url ?? ""
-          : flat.data
-            ? `data:${flat.mimeType};base64,${flat.data}`
-            : "";
-        return (
-          <ImagePreview key={i} src={src}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={src}
-              alt=""
-              style={{ maxWidth: 240, maxHeight: 240, borderRadius: 8, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
-            />
-          </ImagePreview>
-        );
-      })}
-    </div>
+    <ImageThumbs
+      images={imageBlocks.map((img) => ({ src: imageSource(img) })).filter((img) => img.src)}
+      style={{ marginBottom: content ? 8 : 0 }}
+    />
   );
   const canNavigate = !!prevAssistantEntryId && !!onNavigate;
 
@@ -939,14 +921,7 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
     if (!src) return null;
     return (
       <div data-search-target={searchTarget || undefined} style={{ margin: "8px 0" }}>
-        <ImagePreview src={src}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt=""
-            style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
-          />
-        </ImagePreview>
+        <ImageGallery images={[{ src }]} />
       </div>
     );
   }
@@ -1339,34 +1314,8 @@ export function extractStreamedPatchArgument(rawInput: string | undefined): stri
 }
 
 function ToolResultImages({ images, thumbnails = false }: { images: ImageContent[]; thumbnails?: boolean }) {
-  return (
-    <>
-      {images.map((image, index) => {
-        const src = imageSource(image);
-        if (!src) return null;
-        return (
-          <ImagePreview key={`${src}-${index}`} src={src} style={{ maxWidth: "100%" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={src}
-              alt=""
-              loading="lazy"
-              style={{
-                display: "block",
-                borderRadius: 6,
-                objectFit: "contain",
-                border: "1px solid var(--border)",
-                // A collapsed card shows a thumbnail; expanding shows full size.
-                ...(thumbnails
-                  ? { maxWidth: 220, maxHeight: 150 }
-                  : { maxWidth: "min(100%, 720px)", maxHeight: 520 }),
-              }}
-            />
-          </ImagePreview>
-        );
-      })}
-    </>
-  );
+  const items = images.map((image) => ({ src: imageSource(image) })).filter((image) => image.src);
+  return <ImageGallery images={items} variant={thumbnails ? "thumb" : "figure"} />;
 }
 
 interface ResultDiff {
@@ -1915,24 +1864,10 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
 
         {contentExpanded ? (
           <div style={{ padding: "6px 9px" }}>
-            {images.length > 0 && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: text ? 8 : 0 }}>
-                {images.map((img, i) => {
-                  const src = imageSource(img);
-                  if (!src) return null;
-                  return (
-                    <ImagePreview key={i} src={src}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={src}
-                        alt=""
-                        style={{ maxWidth: 240, maxHeight: 240, borderRadius: 6, objectFit: "contain", display: "block", border: "1px solid var(--border)" }}
-                      />
-                    </ImagePreview>
-                  );
-                })}
-              </div>
-            )}
+            <ImageThumbs
+              images={images.map((img) => ({ src: imageSource(img) })).filter((img) => img.src)}
+              style={{ marginBottom: text ? 8 : 0 }}
+            />
              {text ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody> : <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noMessage")}</span>}
           </div>
         ) : (

@@ -1040,6 +1040,8 @@ pre, code {
 .markdown-body img {
   display: block;
   max-width: 100%;
+  max-height: min(60vh, 420px);
+  width: auto;
   height: auto;
   margin: 6px 0;
   border-radius: 6px;
@@ -1687,8 +1689,39 @@ pre, code {
   justify-content: center;
 }
 
+@property --viewer-fade {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
+/* Enter and exit are one plain fade of the whole overlay (backdrop, image, toolbar together). */
+@keyframes viewer-fade-in { from { opacity: 0; } }
+
+.image-preview-dialog[open],
+.image-preview-dialog[open]::backdrop {
+  animation: viewer-fade-in 0.25s ease-out;
+}
+
+.image-preview-dialog.is-closing,
+.image-preview-dialog.is-closing::backdrop {
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-preview-dialog[open],
+  .image-preview-dialog[open]::backdrop,
+  .image-preview-dialog.is-closing,
+  .image-preview-dialog.is-closing::backdrop {
+    animation: none;
+    transition: none;
+  }
+}
+
 .image-preview-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.72);
+  /* --viewer-fade dims the backdrop while a touch drag-to-close is in progress. */
+  background: rgba(0, 0, 0, calc(0.72 * var(--viewer-fade, 1)));
 }
 
 .image-preview-image {
@@ -1698,14 +1731,50 @@ pre, code {
   object-fit: contain;
   border-radius: 8px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-  cursor: zoom-out;
 }
 
-.image-preview-close {
+.image-viewer-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.image-viewer-slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 16px;
+  will-change: transform;
+}
+
+.image-preview-image {
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.image-viewer-toolbar {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   right: max(12px, env(safe-area-inset-right));
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+}
+
+.image-viewer-button,
+.image-viewer-nav {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1713,28 +1782,219 @@ pre, code {
   height: 32px;
   padding: 0;
   border: 0;
+  border-radius: 50%;
   background: transparent;
   color: #fff;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85));
   cursor: pointer;
   touch-action: manipulation;
-  transition: color 0.12s;
+  transition: background 0.12s, opacity 0.12s;
 }
 
-.image-preview-close:hover {
-  color: rgba(255, 255, 255, 0.75);
+.image-viewer-button:hover:not(:disabled),
+.image-viewer-nav:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
 }
 
-.image-preview-close:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.image-viewer-button:disabled,
+.image-viewer-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
+.image-viewer-button:focus-visible,
+.image-viewer-nav:focus-visible,
+.image-viewer-percent:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.image-viewer-percent {
+  min-width: 44px;
+  height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.image-viewer-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.image-viewer-counter {
+  position: absolute;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.image-viewer-toolbar,
+.image-viewer-counter {
+  transition: opacity 0.2s ease-out;
+}
+
+/* Move/remove buttons for an editable set; touch only, desktop reorders by dragging the thumbnails. */
+.image-viewer-edit {
+  display: none;
+  position: absolute;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  transition: opacity 0.2s ease-out;
+}
+
+.image-viewer-edit button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.image-viewer-edit button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.image-viewer-edit button:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.image-viewer-toolbar.is-hidden,
+.image-viewer-edit.is-hidden,
+.image-viewer-counter.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Touch: swipe / pinch replace the side arrows and zoom buttons. */
 @media (pointer: coarse) {
-  .image-preview-close {
-    width: 40px;
-    height: 40px;
+  .image-viewer-button { width: 40px; height: 40px; }
+  .image-viewer-nav,
+  .image-viewer-zoom { display: none; }
+  .image-viewer-edit { display: flex; }
+  /* Immersive: opaque black, the picture fills the screen edge to edge. */
+  .image-preview-dialog { padding: 0; }
+  .image-preview-dialog::backdrop { background: rgb(0 0 0 / var(--viewer-fade, 1)); }
+  .image-viewer-slide { padding: 0; }
+  .image-preview-image {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
   }
+  .image-viewer-counter { top: max(20px, env(safe-area-inset-top)); bottom: auto; left: max(12px, env(safe-area-inset-left)); transform: none; }
+}
+
+/* Assistant / tool-result pictures: capped in size, click opens the viewer. */
+.image-gallery-item {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: zoom-in;
+}
+
+.image-gallery-image {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.image-gallery-image.is-figure {
+  max-width: min(100%, 720px);
+  max-height: min(60vh, 520px);
+}
+
+.image-gallery-image.is-thumb {
+  max-width: 220px;
+  max-height: 150px;
+}
+
+/* Uniform square thumbnail shared by the composer and sent user messages. */
+.image-thumb {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-panel);
+  cursor: zoom-in;
+}
+
+.image-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+.image-thumb-more {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 12px;
+}
+
+.image-thumb-index {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .mermaid-zoom-dialog {
@@ -3691,13 +3951,8 @@ span.token.table {
   flex-shrink: 0;
 }
 
-.chat-input-image-preview img {
-  display: block;
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.chat-input-image-preview[data-drop="true"] .image-thumb {
+  outline: 2px solid var(--accent);
 }
 
 /* Remove sits outside the corner as a small neutral dot; it appears on hover so it never

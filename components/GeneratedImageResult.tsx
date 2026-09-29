@@ -14,23 +14,30 @@ function absoluteImagePath(path: string, cwd?: string): string {
   return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path) ? path : cwd ? joinFilePath(cwd, path) : path;
 }
 
+export function mentionImageUrl(path: string, cwd?: string): string {
+  return fileUrl(absoluteImagePath(path, cwd), "read");
+}
+
+/** Composer chip for an @-mentioned image file: same thumbnail as an attachment, click to preview. */
 export function ImageMentionChip({ path, cwd, onRemove }: {
   path: string;
   cwd?: string;
   onRemove?: () => void;
 }) {
   const { t } = useI18n();
-  const src = fileUrl(absoluteImagePath(path, cwd), "read");
+  const src = mentionImageUrl(path, cwd);
   return (
-    <span className="relative inline-block shrink-0 overflow-hidden rounded-md border border-border align-middle" style={{ width: 56, height: 56 }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" className="block h-full w-full object-cover" />
+    <div className="chat-input-image-preview">
+      <ImagePreview src={src} className="image-thumb">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="" decoding="async" />
+      </ImagePreview>
       {onRemove ? (
-        <button type="button" onClick={onRemove} className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-0 bg-black/55 text-white" aria-label={t("i18n.close")}>
+        <button type="button" className="chat-input-image-remove" onClick={onRemove} title={t("i18n.close")} aria-label={t("i18n.close")}>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       ) : null}
-    </span>
+    </div>
   );
 }
 

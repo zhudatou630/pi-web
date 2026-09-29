@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { ImageViewer } from "./ImageViewer";
 
 interface ImagePreviewProps {
   src: string;
@@ -11,42 +12,13 @@ interface ImagePreviewProps {
   style?: React.CSSProperties;
 }
 
+/** Wraps a single image as a button that opens it in the viewer. */
 export function ImagePreview({ src, alt = "", children, className, style }: ImagePreviewProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const trigger = triggerRef.current;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialog.showModal();
-    closeButtonRef.current?.focus({ preventScroll: true });
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      if (dialog.open) dialog.close();
-      if (trigger?.isConnected) {
-        trigger.focus({ preventScroll: true });
-      }
-    };
-  }, [open]);
-
-  const closePreview = () => {
-    if (dialogRef.current?.open) dialogRef.current.close();
-    setOpen(false);
-  };
-
   return (
     <>
       <button
-        ref={triggerRef}
         type="button"
         className={className}
         style={{
@@ -66,40 +38,7 @@ export function ImagePreview({ src, alt = "", children, className, style }: Imag
       >
         {children}
       </button>
-      {open && (
-        <dialog
-          ref={dialogRef}
-          className="image-preview-dialog"
-          aria-label={t("chat.previewImage")}
-          onCancel={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            closePreview();
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            closePreview();
-          }}
-          onClick={closePreview}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="image-preview-image" src={src} alt={alt} />
-          <button
-            ref={closeButtonRef}
-            type="button"
-            className="image-preview-close"
-            onClick={closePreview}
-            aria-label={t("chat.close")}
-            title={t("chat.close")}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
-          </button>
-        </dialog>
-      )}
+      {open && <ImageViewer items={[{ src, alt }]} index={0} onIndexChange={() => {}} onClose={() => setOpen(false)} />}
     </>
   );
 }
