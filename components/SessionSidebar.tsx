@@ -1297,23 +1297,16 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       const isCurrent = wt.path === currentWorktreePath;
                       if (wtConfirmRemove === wt.path) {
                         return (
-                          <div key={wt.path} style={{ display: "flex", alignItems: "center", gap: 6, height: 28, padding: "0 4px 0 8px", borderRadius: 4, background: "color-mix(in srgb, var(--danger) 7%, transparent)" }}>
-                            <span style={{ flex: 1, fontSize: 11, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {t("sidebar.forceRemoveCheckout")}
-                            </span>
-                            <button
-                              onClick={() => void handleRemoveWorktree(wt.path, true)}
-                              disabled={wtBusy}
-                              style={{ padding: "3px 9px", background: "var(--danger)", border: "none", borderRadius: 4, color: "#fff", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
-                            >
-                              {t("sidebar.force")}
-                            </button>
-                            <button
-                              onClick={() => setWtConfirmRemove(null)}
-                              style={{ padding: "3px 9px", background: "var(--bg-hover)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-muted)", fontSize: 11, cursor: "pointer", flexShrink: 0 }}
-                            >
-                              {t("sidebar.cancel")}
-                            </button>
+                          <div key={wt.path} className="wt-confirm-row">
+                            <span>{t("sidebar.forceRemoveCheckout")}</span>
+                            <div className="project-confirm-actions">
+                              <button type="button" className="is-danger" onClick={() => void handleRemoveWorktree(wt.path, true)} disabled={wtBusy}>
+                                {t("sidebar.force")}
+                              </button>
+                              <button type="button" onClick={() => setWtConfirmRemove(null)}>
+                                {t("sidebar.cancel")}
+                              </button>
+                            </div>
                           </div>
                         );
                       }
@@ -1401,71 +1394,35 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     </button>
                   ) : (
                     <div style={{ marginTop: 4, padding: "6px 4px 2px", borderTop: "1px solid var(--border)" }}>
-                      <input
-                        ref={wtNewInputRef}
-                        className="sidebar-dropdown-filter-input"
-                        value={wtNewBranch}
-                        onChange={(e) => {
-                          setWtNewBranch(e.target.value);
-                          setWtError(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void handleCreateWorktree();
-                          }
-                          if (e.key === "Escape") {
-                            setWtNewOpen(false);
-                            setWtNewBranch("");
+                      <label className="sidebar-search-field">
+                        <input
+                          ref={wtNewInputRef}
+                          value={wtNewBranch}
+                          onChange={(e) => {
+                            setWtNewBranch(e.target.value);
                             setWtError(null);
-                          }
-                        }}
-                         placeholder={t("sidebar.branchName")}
-                        style={{
-                          width: "100%",
-                          fontSize: 11,
-                          fontFamily: "var(--font-mono)",
-                          padding: "5px 8px",
-                          border: "1px solid var(--accent)",
-                          borderRadius: 4,
-                          outline: "none",
-                          background: "var(--bg)",
-                          color: "var(--text)",
-                          boxSizing: "border-box",
-                        }}
-                      />
-                      <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
-                        <button
-                          onClick={() => void handleCreateWorktree()}
-                          disabled={wtBusy || !wtNewBranch.trim()}
-                          style={{
-                            flex: 1,
-                            padding: "4px 0",
-                            background: "var(--primary)",
-                            border: "none",
-                            borderRadius: 4,
-                            color: "var(--primary-contrast)",
-                            fontSize: 11,
-                            cursor: wtBusy || !wtNewBranch.trim() ? "not-allowed" : "pointer",
-                            opacity: wtBusy || !wtNewBranch.trim() ? 0.65 : 1,
                           }}
-                        >
-                           {wtBusy ? t("sidebar.creating") : t("sidebar.create")}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void handleCreateWorktree();
+                            }
+                            if (e.key === "Escape") {
+                              setWtNewOpen(false);
+                              setWtNewBranch("");
+                              setWtError(null);
+                            }
+                          }}
+                          placeholder={t("sidebar.branchName")}
+                          aria-label={t("sidebar.branchName")}
+                        />
+                      </label>
+                      <div className="project-confirm-actions" style={{ marginTop: 4 }}>
+                        <button type="button" onClick={() => { setWtNewOpen(false); setWtNewBranch(""); setWtError(null); }}>
+                          {t("sidebar.cancel")}
                         </button>
-                        <button
-                          onClick={() => { setWtNewOpen(false); setWtNewBranch(""); setWtError(null); }}
-                          style={{
-                            flex: 1,
-                            padding: "4px 0",
-                            background: "var(--bg-hover)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 4,
-                            color: "var(--text-muted)",
-                            fontSize: 11,
-                            cursor: "pointer",
-                          }}
-                        >
-                           {t("sidebar.cancel")}
+                        <button type="button" onClick={() => void handleCreateWorktree()} disabled={wtBusy || !wtNewBranch.trim()}>
+                          {wtBusy ? t("sidebar.creating") : t("sidebar.create")}
                         </button>
                       </div>
                     </div>
@@ -1722,7 +1679,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             role="menuitem"
             onClick={(event) => { event.stopPropagation(); handleCustomPathClick(); }}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true" style={{ flexShrink: 0 }}><line x1="5" y1="1" x2="5" y2="9" /><line x1="1" y1="5" x2="9" y2="5" /></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             <span>{t("sidebar.customPath")}</span>
           </button>
         </div>
@@ -1730,24 +1687,45 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       </div>
 
       {sessionSearchOpen && projectsOpen && (
-        <div style={{ padding: "4px 8px 6px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-          <input
-            id="session-search-input"
-            type="search"
-            autoFocus
-            value={sessionSearchQuery}
-            maxLength={200}
-            aria-label={t("sidebar.searchSessions")}
-            placeholder={t("sidebar.searchSessions")}
-            onChange={(event) => setSessionSearchQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.stopPropagation();
-                setSessionSearchQuery("");
-              }
-            }}
-            className="block h-[29px] w-full min-w-0 rounded-[4px] border border-border bg-bg px-[10px] text-xs text-text focus:outline-2 focus:outline-accent"
-          />
+        <div className="sidebar-search-container">
+          <label className="sidebar-search-field" htmlFor="session-search-input">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+            </svg>
+            <input
+              id="session-search-input"
+              type="text"
+              autoFocus
+              value={sessionSearchQuery}
+              maxLength={200}
+              aria-label={t("sidebar.searchSessions")}
+              placeholder={t("sidebar.searchSessions")}
+              onChange={(event) => setSessionSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  if (sessionSearchQuery) {
+                    setSessionSearchQuery("");
+                  } else {
+                    setSessionSearchOpen(false);
+                  }
+                }
+              }}
+            />
+            {sessionSearchQuery && (
+              <button
+                type="button"
+                className="sidebar-search-clear"
+                onClick={() => setSessionSearchQuery("")}
+                title={t("sidebar.clearSearch")}
+                aria-label={t("sidebar.clearSearch")}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+                </svg>
+              </button>
+            )}
+          </label>
         </div>
       )}
 

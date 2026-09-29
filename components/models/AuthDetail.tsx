@@ -222,7 +222,7 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
           <div className="models-inline-form">
             <input
               ref={inputRef}
-              className="models-input is-mono"
+              className="models-input"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") submitCode(loginState.token, inputValue); }}
@@ -345,7 +345,6 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
           onChange={setApiKey}
           onKeyDown={(e) => { if (e.key === "Enter" && apiKey.trim()) void handleSave(); }}
           placeholder={provider.configured ? t("models.replaceKeyPlaceholder") : "sk-…"}
-          mono
         />
         <ConfigButton
           variant="primary"

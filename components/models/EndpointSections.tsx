@@ -51,12 +51,12 @@ export function EndpointForm({ providerId, provider, builtIn, namePlaceholder, o
 
       <ConfigField label={t("models.baseUrl")}>
         <TextInput value={provider.baseUrl ?? ""} onChange={(v) => set("baseUrl", v || undefined)}
-          placeholder={builtIn ? t("models.builtInDefault") : "https://api.example.com/v1"} mono />
+          placeholder={builtIn ? t("models.builtInDefault") : "https://api.example.com/v1"} />
       </ConfigField>
 
       <ConfigField label={t("models.apiKeyTitle")}>
         <SecretTextInput value={provider.apiKey ?? ""} onChange={(v) => set("apiKey", v || undefined)}
-          placeholder={builtIn ? t("models.builtInKeyPlaceholder") : t("models.endpointKeyPlaceholder")} mono />
+          placeholder={builtIn ? t("models.builtInKeyPlaceholder") : t("models.endpointKeyPlaceholder")} />
         <Hint>{t("models.endpointKeyHint")}</Hint>
       </ConfigField>
 

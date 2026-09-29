@@ -5,6 +5,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { imageRatioKind, MAX_REFERENCE_IMAGES, type ImageConfigView, type ImageConnectionView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { Base64ImageAttachment } from "@/lib/image-attachments";
 import { compressImageFile } from "./ChatInput";
+import { ConfigButton } from "./SettingsUi";
 
 function selectedOption(connection: ImageConnectionView | undefined, list: "sizes" | "resolutions" | "qualities", fallback: "size" | "resolution" | "quality", preferred?: string): string {
   const values = connection?.capabilities[list];
@@ -150,7 +151,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
   };
 
   return (
-    <div role="presentation" className="fixed inset-0 z-[1100] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div role="presentation" className="fixed inset-0 z-[1100] flex items-end justify-center bg-[var(--settings-scrim,rgba(0,0,0,0.32))] p-0 sm:items-center sm:p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div
         ref={dialogRef}
         role="dialog"
@@ -159,7 +160,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
         tabIndex={-1}
         onDragOver={(event) => { if (canAttachSource && event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => { if (canAttachSource && attachSource(event.dataTransfer.files)) event.preventDefault(); }}
-        className="flex max-h-[min(92dvh,100%)] w-full max-w-full flex-col overflow-hidden rounded-t-[16px] border border-border/80 bg-bg-panel shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:w-[480px] sm:rounded-[12px]"
+        className="flex max-h-[min(92dvh,100%)] w-full max-w-full flex-col overflow-hidden rounded-t-[16px] border border-border bg-[var(--bg-elevated)] [box-shadow:var(--ui-shadow-dialog)] sm:max-h-[calc(100dvh-2rem)] sm:w-[480px] sm:rounded-[10px]"
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
@@ -185,7 +186,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
         </div>
         <header className="flex h-10 shrink-0 items-center px-4 sm:h-11">
           <h2 id="image-generation-title" className="text-[14px] font-semibold text-text">{editing ? t("image.editTitle") : t("image.title")}</h2>
-          <button type="button" onClick={onClose} className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-text-muted hover:bg-bg-hover hover:text-text" title={t("trust.cancel")} aria-label={t("trust.cancel")}>
+          <button type="button" onClick={onClose} className="ghost-icon-button ml-auto" title={t("trust.cancel")} aria-label={t("trust.cancel")}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </header>
@@ -220,7 +221,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
             onChange={(event) => setPrompt(event.target.value)}
             onPaste={(event) => { if (canAttachSource && attachSource(event.clipboardData.files)) event.preventDefault(); }}
             placeholder={editing ? t("image.editPromptPlaceholder") : t("image.promptPlaceholder")}
-            className="image-generation-prompt w-full resize-none rounded-[10px] border-0 bg-bg px-3 py-2.5 leading-[1.5] text-text outline-none ring-1 ring-inset ring-transparent placeholder:text-text-dim focus:ring-accent/50"
+            className="image-generation-prompt w-full resize-none rounded-[10px] border-0 bg-[var(--ui-field-bg)] px-3 py-2.5 leading-[1.5] text-text outline-none placeholder:text-text-dim focus:[box-shadow:var(--ui-field-ring)]"
             style={{ fontFamily: "var(--font-chat)", fontSize: "var(--chat-content-font-size, 14px)" }}
           />
         </div>
@@ -229,7 +230,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-0.5">
             {canAttachSource ? (
               <>
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex h-7 w-7 flex-none items-center justify-center rounded-md border-0 bg-transparent text-text-muted hover:bg-bg-hover hover:text-text" title={t("image.addSource")} aria-label={t("image.addSource")}>
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="ghost-icon-button" title={t("image.addSource")} aria-label={t("image.addSource")}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={(event) => { attachSource(event.target.files ?? []); event.target.value = ""; }} />
@@ -256,7 +257,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
               </CompactSelect>
             ) : null}
           </div>
-          <button type="button" disabled={!prompt.trim()} onClick={submit} className="h-8 shrink-0 rounded-md border-0 bg-[var(--primary)] px-3 text-[12px] text-[var(--primary-contrast)] disabled:cursor-not-allowed disabled:opacity-50">{editing ? t("image.edit") : t("image.generate")}</button>
+          <ConfigButton variant="primary" className="shrink-0" disabled={!prompt.trim()} onClick={submit}>{editing ? t("image.edit") : t("image.generate")}</ConfigButton>
         </footer>
       </div>
     </div>

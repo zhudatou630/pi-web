@@ -333,17 +333,19 @@ function AddSkillPanel({
     >
       <SettingsGroup>
         <div className="settings-search">
-          <input
-            ref={inputRef}
-            className="settings-search-input"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") search(query);
-            }}
-            placeholder={t("i18n.skillSearchPlaceholder")}
-            aria-label={t("i18n.skillSearchPlaceholder")}
-          />
+          <label className="settings-search-field settings-search-field-wide">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") search(query);
+              }}
+              placeholder={t("i18n.skillSearchPlaceholder")}
+              aria-label={t("i18n.skillSearchPlaceholder")}
+            />
+          </label>
           <ConfigButton
             variant="primary"
             onClick={() => search(query)}

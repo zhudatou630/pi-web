@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "@/hooks/useI18n";
+import { ConfigButton } from "./SettingsUi";
 
 interface DirectoryEntry {
   name: string;
@@ -27,18 +28,18 @@ async function loadDirectories(directory?: string): Promise<BrowseResponse> {
 
 function FolderIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-      <path d="M1.5 3h4l1.5 2h7.5v7.5h-13z" />
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
     </svg>
   );
 }
 
 function DriveIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="3" width="12" height="10" rx="1.5" />
-      <path d="M2 9h12" />
-      <circle cx="11.5" cy="11" r="0.6" fill="currentColor" stroke="none" />
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="3" y1="14" x2="21" y2="14" />
+      <circle cx="7" cy="17" r="0.75" fill="currentColor" />
     </svg>
   );
 }
@@ -102,7 +103,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
 
   return createPortal(
     <div
-      className="directory-picker-backdrop"
+      className="models-dialog-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label={t("directoryPicker.selectDirectory")}
@@ -112,61 +113,45 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
       onKeyDown={(event) => {
         if (event.key === "Escape" && !busy) onCancel();
       }}
-      style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)" }}
     >
-      <div className="directory-picker-panel" style={{ width: 520, maxWidth: "calc(100vw - 16px)", height: "min(620px, calc(100dvh - 16px))", maxHeight: "calc(100dvh - 16px)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, padding: "12px 18px", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ color: "var(--text)", fontWeight: 600, fontSize: 14 }}>{t("directoryPicker.selectDirectory")}</div>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={busy}
-            title={t("i18n.close")}
-            aria-label={t("i18n.close")}
-            style={{ padding: "2px 6px", border: 0, background: "none", color: "var(--text-muted)", fontSize: 20, lineHeight: 1, cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1 }}
-          >
-            ×
-          </button>
+      <div className="models-dialog directory-picker-panel">
+        <div className="models-dialog-header">
+          <strong>{t("directoryPicker.selectDirectory")}</strong>
         </div>
 
-        <form onSubmit={handlePathSubmit} style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, padding: "10px 14px", borderBottom: "1px solid var(--border)" }}>
-          <button className="directory-picker-back" type="button" onClick={() => void navigateTo(parentDirectory ?? undefined)} disabled={loading || !canNavigateUp} title={t("directoryPicker.goToParent")} aria-label={t("directoryPicker.goToParent")} style={{ width: 36, height: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-hover)", color: "var(--text-muted)", cursor: canNavigateUp ? "pointer" : "default", opacity: canNavigateUp ? 1 : 0.45 }}>
+        <form onSubmit={handlePathSubmit} className="models-dialog-search directory-picker-nav">
+          <button
+            className="ghost-icon-button directory-picker-back"
+            type="button"
+            onClick={() => void navigateTo(parentDirectory ?? undefined)}
+            disabled={loading || !canNavigateUp}
+            title={t("directoryPicker.goToParent")}
+            aria-label={t("directoryPicker.goToParent")}
+          >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m18 15-6-6-6 6" />
             </svg>
           </button>
-          <label htmlFor="directory-path" style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 }}>
-            {t("directoryPicker.directoryPath")}
+          <label className="settings-search-field">
+            <input
+              id="directory-path"
+              type="text"
+              value={pathInput}
+              placeholder="/path/to/project or ~/project"
+              aria-label={t("directoryPicker.directoryPath")}
+              title={t("directoryPicker.goToDirectory")}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => {
+                setPathInput(event.target.value);
+                setLoadError(null);
+              }}
+            />
           </label>
-          <input
-            className="directory-picker-path"
-            id="directory-path"
-            type="text"
-            value={pathInput}
-            placeholder="/path/to/project or ~/project"
-            autoFocus
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setPathInput(event.target.value);
-              setLoadError(null);
-            }}
-            style={{ minWidth: 0, flex: 1, height: 36, padding: "0 10px", border: "1px solid var(--border)", borderRadius: 6, outline: "none", background: "var(--bg-panel)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 12 }}
-          />
-          <button
-            className="directory-picker-action"
-            type="submit"
-            disabled={loading || !pathInput.trim()}
-            title={t("directoryPicker.goToDirectory")}
-            style={{ minWidth: 58, height: 36, padding: "0 12px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-hover)", color: "var(--text-muted)", cursor: loading || !pathInput.trim() ? "default" : "pointer", opacity: loading || !pathInput.trim() ? 0.6 : 1 }}
-          >
-            {t("directoryPicker.go")}
-          </button>
         </form>
 
-        <div className="directory-picker-list" style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "8px 10px" }}>
+        <div className="directory-picker-list">
           {loading ? (
             <div style={{ padding: 8, color: "var(--text-dim)", fontSize: 11 }}>{t("directoryPicker.loadingDirectories")}</div>
           ) : drives !== null ? (
@@ -179,7 +164,6 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
                     type="button"
                     onClick={() => void navigateTo(drive.path)}
                     title={drive.path}
-                    style={{ width: "100%", minHeight: 34, display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", border: 0, borderRadius: 5, background: "none", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}
                   >
                     <DriveIcon />
                     <span>{drive.name}</span>
@@ -197,7 +181,6 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
                 type="button"
                 onClick={() => void navigateTo(entry.path)}
                 title={entry.path}
-                style={{ width: "100%", minHeight: 30, display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", border: 0, borderRadius: 5, background: "none", color: "var(--text-muted)", cursor: "pointer", textAlign: "left", fontSize: 11 }}
               >
                 <FolderIcon />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.name}</span>
@@ -209,18 +192,19 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
           {(loadError || error) && <div style={{ padding: "8px", color: "var(--danger)", fontSize: 11 }}>{loadError ?? error}</div>}
         </div>
 
-        <div className="directory-picker-footer" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, flexShrink: 0, padding: "10px 18px", borderTop: "1px solid var(--border)" }}>
-          <button className="directory-picker-action" type="button" onClick={onCancel} disabled={busy} style={{ padding: "6px 14px", border: "1px solid var(--border)", borderRadius: 6, background: "none", color: "var(--text-muted)", cursor: busy ? "default" : "pointer", fontSize: 12 }}>{t("i18n.cancel")}</button>
-          <button
+        <div className="models-dialog-footer directory-picker-footer">
+          <ConfigButton variant="ghost" className="directory-picker-action" onClick={onCancel} disabled={busy}>
+            {t("i18n.cancel")}
+          </ConfigButton>
+          <ConfigButton
+            variant="primary"
             className="directory-picker-action"
-            type="button"
             onClick={() => onSelect(currentPath)}
             disabled={!canSelect}
             title={hasUncommittedPath ? t("directoryPicker.openBeforeSelecting") : t("directoryPicker.selectCurrentDirectory")}
-            style={{ padding: "6px 16px", border: 0, borderRadius: 6, background: "var(--primary)", color: "var(--primary-contrast)", fontSize: 12, opacity: canSelect ? 1 : 0.6, cursor: canSelect ? "pointer" : "default" }}
           >
             {busy ? t("i18n.checking") : t("directoryPicker.selectThisFolder")}
-          </button>
+          </ConfigButton>
         </div>
       </div>
     </div>,

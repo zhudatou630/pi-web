@@ -98,7 +98,7 @@ export function AddProviderPicker({
               <input
                 id="custom-provider-id"
                 autoFocus
-                className="models-input is-mono"
+                className="models-input"
                 value={customId}
                 onChange={(event) => setCustomId(event.target.value)}
                 placeholder="my-provider"

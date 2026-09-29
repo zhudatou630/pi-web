@@ -9,13 +9,13 @@ import { ConfigButton, ConfigSwitch, SettingsRow } from "../SettingsUi";
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
 
-export function TextInput({ value, onChange, placeholder, mono, disabled, id }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean; disabled?: boolean; id?: string;
+export function TextInput({ value, onChange, placeholder, disabled, id }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; disabled?: boolean; id?: string;
 }) {
   return (
     <input
       id={id}
-      className={`models-input${mono ? " is-mono" : ""}`}
+      className="models-input"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
@@ -24,11 +24,10 @@ export function TextInput({ value, onChange, placeholder, mono, disabled, id }: 
   );
 }
 
-export function SecretTextInput({ value, onChange, placeholder, mono, onKeyDown }: {
+export function SecretTextInput({ value, onChange, placeholder, onKeyDown }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  mono?: boolean;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
 }) {
   const [visible, setVisible] = useState(false);
@@ -42,7 +41,7 @@ export function SecretTextInput({ value, onChange, placeholder, mono, onKeyDown 
     <div className="models-secret">
       <input
         type={visible ? "text" : "password"}
-        className={`models-input${mono ? " is-mono" : ""}`}
+        className="models-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
@@ -157,8 +156,8 @@ export function HeaderListEditor({ headers, onChange }: {
     <div className="models-header-list">
       {rows.map((row) => (
         <div key={row.id} className="models-header-row">
-          <input className="models-input is-mono" value={row.name} onChange={(e) => setEntry(row.id, { name: e.target.value })} placeholder="Header-Name" />
-          <input className="models-input is-mono" value={row.value} onChange={(e) => setEntry(row.id, { value: e.target.value })} placeholder="value" />
+          <input className="models-input" value={row.name} onChange={(e) => setEntry(row.id, { name: e.target.value })} placeholder="Header-Name" />
+          <input className="models-input" value={row.value} onChange={(e) => setEntry(row.id, { value: e.target.value })} placeholder="value" />
           <button type="button" className="models-icon-button is-danger" onClick={() => removeEntry(row.id)} aria-label={t("i18n.remove")} title={t("i18n.remove")}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
@@ -216,7 +215,7 @@ export function ThinkingLevelMapEditor({
               </button>
             </div>
             <input
-              className="models-input is-mono models-thinking-input"
+              className="models-input models-thinking-input"
               value={strVal}
               onChange={(e) => setLevel(level, e.target.value)}
               onFocus={() => { if (state !== "string") setLevel(level, strVal || level); }}

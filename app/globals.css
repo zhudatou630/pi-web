@@ -156,6 +156,10 @@ html {
   --ui-radius-lg: 10px;
   --ui-control-height-sm: 28px;
   --ui-control-height: 32px;
+  /* Text fields are a quiet tint with no resting outline; focus adds a neutral 1px ring. */
+  --ui-field-bg: color-mix(in srgb, var(--text) 5%, transparent);
+  --ui-field-bg-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  --ui-field-ring: inset 0 0 0 1px color-mix(in srgb, var(--text) 30%, transparent);
   /* On-state of selection controls (switches, checkboxes, sliders): the text color, not
      the accent. Accent stays for links, primary actions, and focus rings. */
   --control-on: var(--text);
@@ -349,6 +353,73 @@ html.dark {
 .sidebar-footer-item:hover {
   color: var(--text);
   background: var(--bg-hover);
+}
+
+.sidebar-search-container {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-search-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: var(--ui-control-height-sm);
+  padding: 0 6px 0 8px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-field-bg);
+  color: var(--text-dim);
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sidebar-search-field:hover {
+  background: var(--ui-field-bg-hover);
+}
+
+.sidebar-search-field:focus-within {
+  box-shadow: var(--ui-field-ring);
+}
+
+.sidebar-search-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.sidebar-search-field input::placeholder {
+  color: var(--text-dim);
+}
+
+.sidebar-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 .split-chat-resize-handle {
@@ -570,10 +641,9 @@ button, input, select, textarea {
 }
 
 /* Focused text fields and selects match :focus-visible even after a tap, so the
-   UA ring (a thick black box on Android) sticks until blur. Drop it: a text
-   field marks focus with the accent border while typing; a select shows none,
-   since its picker already shows the interaction. Checkboxes, radios, and
-   ranges keep the UA ring. */
+   UA ring (a thick black box on Android) sticks until blur. Drop it: fields draw their
+   own focus ring (--ui-field-ring); a select shows none, since its picker already shows
+   the interaction. Checkboxes, radios, and ranges keep the UA ring. */
 select:focus-visible,
 textarea:focus-visible,
 input:not([type="checkbox"], [type="radio"], [type="range"]):focus-visible {
@@ -2000,9 +2070,234 @@ button.file-outline-fold:hover {
   outline-offset: -2px;
 }
 
-.directory-picker-path:focus-visible {
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+/* 28px borderless icon button: the shared close/collapse/up control inside dialogs. */
+.ghost-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--ui-control-height-sm);
+  height: var(--ui-control-height-sm);
+  padding: 0;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.ghost-icon-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.ghost-icon-button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+/* Extension-driven dialogs (confirm/select/input/editor/custom) float over the chat. */
+.models-dialog.extension-dialog {
+  min-height: 0;
+}
+
+.extension-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 12px 12px 6px 16px;
+}
+
+.extension-dialog-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.extension-dialog-heading strong,
+.extension-dialog-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.extension-dialog-heading strong {
+  line-height: 1.4;
+}
+
+.extension-dialog-heading span {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.extension-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.extension-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 16px 14px;
+}
+
+.extension-dialog-footer {
+  justify-content: flex-end;
+}
+
+.extension-options {
+  display: grid;
+  gap: 4px;
+}
+
+.extension-option {
+  padding: 8px 10px;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-field-bg);
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.extension-option:hover {
+  background: var(--ui-field-bg-hover);
+}
+
+.extension-option:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.models-input.extension-editor {
+  min-height: 220px;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.extension-custom-output {
+  margin: 0;
+  padding: 14px 16px;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.extension-collapsed-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: var(--ui-control-height);
+  padding: 0 12px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.extension-collapsed-bar:hover {
+  background: var(--bg-hover);
+}
+
+.extension-collapsed-tag {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.extension-collapsed-title,
+.extension-collapsed-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.extension-collapsed-title {
+  flex: 1;
+}
+
+.extension-collapsed-summary {
+  max-width: 34%;
+  color: var(--text-dim);
+}
+
+.extension-collapsed-action {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* DirectoryPicker reuses the shared dialog (.models-dialog-*), field (.settings-search-field)
+   and button (.config-button-*) styles; only its fixed size and menu-style rows live here. */
+.models-dialog.directory-picker-panel {
+  width: 520px;
+  height: min(560px, calc(100dvh - 32px));
+}
+
+.directory-picker-nav {
+  gap: 6px;
+}
+
+.directory-picker-nav .settings-search-field {
+  flex: 1;
+}
+
+.directory-picker-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+/* Same row as a .menu-surface item. */
+.directory-picker-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--ui-control-height-sm);
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+}
+
+.directory-picker-entry:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.models-dialog-footer.directory-picker-footer {
+  justify-content: flex-end;
 }
 
 @media (max-width: 640px) {
@@ -2528,6 +2823,32 @@ span.token.table {
 .project-confirm-actions button:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+.wt-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--ui-control-height-sm);
+  padding-left: 8px;
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+
+.wt-confirm-row > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-confirm-actions button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+  background: none;
 }
 
 .project-confirm-actions button.is-danger {
@@ -3075,6 +3396,8 @@ span.token.table {
 .composer-send:focus-visible,
 .chat-input-queue-recall:focus-visible,
 .menu-surface button:focus-visible,
+.directory-picker-entry:focus-visible,
+.ghost-icon-button:focus-visible,
 .chat-input-image-remove:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
   outline-offset: 1px;

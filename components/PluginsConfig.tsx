@@ -207,7 +207,7 @@ function AddPluginPanel({
           <input
             id="plugin-source"
             ref={inputRef}
-            className="settings-search-input is-mono"
+            className="settings-search-input"
             aria-label={t("plugins.source")}
             value={source}
             onChange={(e) => onSourceChange(e.target.value)}

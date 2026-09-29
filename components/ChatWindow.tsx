@@ -31,6 +31,7 @@ import { DirectoryPicker } from "./DirectoryPicker";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { MobileOutlineSync, type MobileOutlineView } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
+import { ConfigButton } from "./SettingsUi";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
 import { formatDuration } from "@/lib/i18n/format";
@@ -2590,95 +2591,45 @@ function ExtensionDialog({
           type="button"
           onClick={() => setCollapsed(false)}
           aria-expanded={false}
-          style={{
-            pointerEvents: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            maxWidth: "min(560px, 100%)",
-            width: "100%",
-            padding: "10px 12px",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            background: "var(--bg)",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
-            color: "var(--text)",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
+          className="popover-surface extension-collapsed-bar"
+          style={{ pointerEvents: "auto", maxWidth: "min(560px, 100%)" }}
         >
-          <span style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>
-            {t("chat.extensionPending")}
-          </span>
-          <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-            {request.title}
-          </span>
-          {summary && (
-            <span style={{ fontSize: 12, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "34%", flexShrink: 1 }}>
-              {summary}
-            </span>
-          )}
+          <span className="extension-collapsed-tag">{t("chat.extensionPending")}</span>
+          <span className="extension-collapsed-title">{request.title}</span>
+          {summary && <span className="extension-collapsed-summary">{summary}</span>}
           {countdown}
-          <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>
-            {t("chat.extensionExpand")}
-          </span>
+          <span className="extension-collapsed-action">{t("chat.extensionExpand")}</span>
         </button>
       ) : (
       <div
         role="dialog"
         aria-label={request.title}
-        style={{
-          pointerEvents: "auto",
-          width: "min(560px, 100%)",
-          maxHeight: "min(760px, 100%)",
-          display: "flex",
-          flexDirection: "column",
-          border: "1px solid var(--border)",
-          borderRadius: 4,
-          background: "var(--bg)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
-          overflow: "hidden",
-        }}
+        className="models-dialog extension-dialog"
+        style={{ pointerEvents: "auto", width: "min(560px, 100%)", maxHeight: "min(760px, 100%)" }}
       >
-        <div style={{ flexShrink: 0, display: "flex", alignItems: "flex-start", gap: 8, padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 600 }}>{request.title}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 3, color: "var(--text-dim)", fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
-              <span>{t("chat.extensionRequest")}</span>
+        <div className="extension-dialog-header">
+          <div className="extension-dialog-heading">
+            <strong>{request.title}</strong>
+            <span>
+              {t("chat.extensionRequest")}
               {countdown}
-            </div>
+            </span>
           </div>
           <button
             type="button"
+            className="ghost-icon-button"
             onClick={() => setCollapsed(true)}
             aria-expanded={true}
             title={t("chat.extensionCollapse")}
             aria-label={t("chat.extensionCollapse")}
-            style={{
-              display: "grid",
-              placeItems: "center",
-              width: 28,
-              height: 28,
-              borderRadius: 4,
-              border: "1px solid var(--border)",
-              background: "var(--bg-panel)",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              flexShrink: 0,
-            }}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="2 3.5 5 6.5 8 3.5" />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
             </svg>
           </button>
         </div>
 
-        <div
-          style={{
-            padding: 14,
-            flex: "1 1 auto", minHeight: 0, overflowY: "auto",
-          }}
-        >
+        <div className="extension-dialog-body">
           {request.method === "confirm" && (
             <MarkdownBody>{request.message}</MarkdownBody>
           )}
@@ -2696,7 +2647,7 @@ function ExtensionDialog({
                 buttons[next].focus({ preventScroll: true });
                 buttons[next].scrollIntoView({ block: "nearest" });
               }}
-              style={{ display: "grid", gap: 8 }}
+              className="extension-options"
             >
               {request.options.map((option, index) => (
                 <div
@@ -2706,23 +2657,12 @@ function ExtensionDialog({
                   data-extension-option
                   aria-label={option}
                   ref={index === 0 ? focusFirstOption : undefined}
+                  className="extension-option"
                   onClick={() => onRespond(request, { value: option })}
                   onKeyDown={(event) => {
                     if (event.key !== "Enter" && event.key !== " ") return;
                     event.preventDefault();
                     onRespond(request, { value: option });
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "9px 10px",
-                    borderRadius: 4,
-                    border: "1px solid var(--border)",
-                    background: "var(--bg-panel)",
-                    color: "var(--text)",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontSize: 12,
-                    overflowWrap: "anywhere",
                   }}
                 >
                   <div inert>
@@ -2735,93 +2675,40 @@ function ExtensionDialog({
           {request.method === "input" && (
             <input
               autoFocus
+              className="models-input"
               value={value}
               placeholder={request.placeholder}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) submitValue();
               }}
-              style={{
-                width: "100%",
-                padding: "9px 10px",
-                borderRadius: 4,
-                border: "1px solid var(--border)",
-                background: "var(--bg-panel)",
-                color: "var(--text)",
-                outline: "none",
-                fontSize: 12,
-              }}
             />
           )}
           {request.method === "editor" && (
             <textarea
               autoFocus
+              className="models-input extension-editor"
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.nativeEvent.isComposing) submitValue();
               }}
-              style={{
-                width: "100%",
-                minHeight: 220,
-                padding: 10,
-                borderRadius: 4,
-                border: "1px solid var(--border)",
-                background: "var(--bg-panel)",
-                color: "var(--text)",
-                outline: "none",
-                resize: "vertical",
-                fontSize: 13,
-                lineHeight: 1.55,
-                fontFamily: "var(--font-mono)",
-              }}
             />
           )}
         </div>
 
-        <div style={{ flexShrink: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "10px 14px", borderTop: "1px solid var(--border)", background: "var(--bg-panel)" }}>
-          <button
+        <div className="models-dialog-footer extension-dialog-footer">
+          <ConfigButton
+            variant="ghost"
             autoFocus={request.method === "confirm" || (request.method === "select" && request.options.length === 0)}
             onClick={() => onRespond(request, { cancelled: true })}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 4,
-              border: "1px solid var(--border)",
-              background: "var(--bg)",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-            }}
           >
-             {t("chat.cancel")}
-          </button>
+            {t("chat.cancel")}
+          </ConfigButton>
           {request.method === "confirm" ? (
-            <button
-              onClick={submitValue}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 4,
-                border: "1px solid var(--primary)",
-                background: "var(--primary)",
-                color: "var(--primary-contrast)",
-                cursor: "pointer",
-              }}
-            >
-               {t("chat.confirm")}
-            </button>
+            <ConfigButton variant="primary" onClick={submitValue}>{t("chat.confirm")}</ConfigButton>
           ) : request.method !== "select" ? (
-            <button
-              onClick={submitValue}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 4,
-                border: "1px solid var(--primary)",
-                background: "var(--primary)",
-                color: "var(--primary-contrast)",
-                cursor: "pointer",
-              }}
-            >
-               {t("chat.submit")}
-            </button>
+            <ConfigButton variant="primary" onClick={submitValue}>{t("chat.submit")}</ConfigButton>
           ) : null}
         </div>
       </div>
@@ -2868,37 +2755,13 @@ function ExtensionCustomPanel({
           type="button"
           onClick={() => setCollapsed(false)}
           aria-expanded={false}
-          style={{
-            pointerEvents: "auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            maxWidth: "min(920px, 100%)",
-            width: "100%",
-            padding: "10px 12px",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            background: "var(--bg)",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
-            color: "var(--text)",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
+          className="popover-surface extension-collapsed-bar"
+          style={{ pointerEvents: "auto", maxWidth: "min(920px, 100%)" }}
         >
-          <span style={{ fontSize: 11, color: "var(--accent)", flexShrink: 0 }}>
-            {t("chat.extensionPending")}
-          </span>
-          <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-            {t("chat.extensionPanel")}
-          </span>
-          {summary && (
-            <span style={{ fontSize: 12, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "34%", flexShrink: 1 }}>
-              {summary}
-            </span>
-          )}
-          <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>
-            {t("chat.extensionExpand")}
-          </span>
+          <span className="extension-collapsed-tag">{t("chat.extensionPending")}</span>
+          <span className="extension-collapsed-title">{t("chat.extensionPanel")}</span>
+          {summary && <span className="extension-collapsed-summary">{summary}</span>}
+          <span className="extension-collapsed-action">{t("chat.extensionExpand")}</span>
         </button>
       ) : (
       <div
@@ -2906,19 +2769,12 @@ function ExtensionCustomPanel({
         onClick={(event) => {
           if (!(event.target as HTMLElement).closest("button")) inputRef.current?.focus();
         }}
+        className="models-dialog extension-dialog"
         style={{
           pointerEvents: "auto",
           position: "relative",
           width: "min(920px, 100%)",
           maxHeight: "min(760px, 100%)",
-          display: "flex",
-          flexDirection: "column",
-          border: "1px solid var(--border)",
-          borderRadius: 4,
-          background: "var(--bg)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.28)",
-          overflow: "hidden",
-          outline: "none",
         }}
       >
         <textarea
@@ -2969,61 +2825,27 @@ function ExtensionCustomPanel({
             pointerEvents: "none",
           }}
         />
-        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderBottom: "1px solid var(--border)" }}>
-           <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 600 }}>{t("chat.extensionPanel")}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="extension-dialog-header">
+          <strong className="extension-dialog-title">{t("chat.extensionPanel")}</strong>
+          <div className="extension-dialog-actions">
             <button
               type="button"
+              className="ghost-icon-button"
               onClick={() => setCollapsed(true)}
               aria-expanded={true}
               title={t("chat.extensionCollapse")}
               aria-label={t("chat.extensionCollapse")}
-              style={{
-                display: "grid",
-                placeItems: "center",
-                width: 28,
-                height: 28,
-                borderRadius: 4,
-                border: "1px solid var(--border)",
-                background: "var(--bg-panel)",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="2 3.5 5 6.5 8 3.5" />
-              </svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
             </button>
-            <button
-              onClick={() => onInput(request, "\x03")}
-              style={{
-                padding: "5px 9px",
-                borderRadius: 4,
-                border: "1px solid var(--border)",
-                background: "var(--bg-panel)",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-               {t("chat.close")}
-            </button>
+            <ConfigButton variant="ghost" size="small" onClick={() => onInput(request, "\x03")}>
+              {t("chat.close")}
+            </ConfigButton>
           </div>
         </div>
-        <pre
-          style={{
-            margin: 0,
-            padding: 14,
-            minHeight: 0,
-            overflow: "auto",
-            background: "var(--bg-panel)",
-            color: "var(--text)",
-            fontFamily: "var(--font-mono)",
-            fontSize: 13,
-            lineHeight: 1.45,
-            whiteSpace: "pre",
-          }}
+        <pre className="extension-custom-output"
         >
           <AnsiText text={displayLines.join("\n")} />
         </pre>

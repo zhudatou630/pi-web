@@ -357,7 +357,7 @@ export function ModelDetail({
       )}
 
       <div className="models-form-grid">
-        <ConfigField label={t("models.modelId")}><TextInput value={model.id} onChange={(v) => set("id", v)} placeholder="model-id" mono disabled={lockId} /></ConfigField>
+        <ConfigField label={t("models.modelId")}><TextInput value={model.id} onChange={(v) => set("id", v)} placeholder="model-id" disabled={lockId} /></ConfigField>
         <ConfigField label={t("models.displayName")}><TextInput value={model.name ?? ""} onChange={(v) => set("name", v || undefined)} placeholder={model.id || t("models.displayName")} /></ConfigField>
       </div>
 

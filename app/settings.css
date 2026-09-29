@@ -41,7 +41,7 @@
   width: min(var(--config-panel-width), calc(100vw - 16px));
   height: min(var(--config-panel-height), calc(100dvh - 16px));
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg);
   background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
@@ -1120,11 +1120,19 @@
 .settings-field select {
   height: var(--ui-control-height-sm);
   padding: 0 8px;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--ui-radius-md);
-  background: var(--bg);
+  background: var(--ui-field-bg);
   color: var(--text);
   font-size: 13px;
+}
+
+.settings-select:focus-visible,
+.settings-inline-input:focus-visible,
+.settings-field input:focus-visible,
+.settings-field select:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-field-ring);
 }
 
 .settings-select {
@@ -1223,13 +1231,23 @@
   min-width: 0;
   height: var(--ui-control-height-sm);
   padding: 0 8px;
-  border: 1px solid var(--border);
   border-radius: var(--ui-radius-md);
+  background: var(--ui-field-bg);
   color: var(--text-dim);
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.settings-search-field.settings-search-field-wide {
+  flex: 1;
+  height: var(--ui-control-height);
+}
+
+.settings-search-field:hover {
+  background: var(--ui-field-bg-hover);
 }
 
 .settings-search-field:focus-within {
-  border-color: var(--accent);
+  box-shadow: var(--ui-field-ring);
 }
 
 .settings-search-field input {
@@ -1365,15 +1383,16 @@
   min-width: 0;
   height: var(--ui-control-height);
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--ui-radius-md);
-  background: var(--bg);
+  background: var(--ui-field-bg);
   color: var(--text);
   font-size: 13px;
 }
 
-.settings-search-input.is-mono {
-  font-family: var(--font-mono);
+.settings-search-input:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-field-ring);
 }
 
 .settings-row-status.is-success {
@@ -1454,11 +1473,16 @@
   min-width: 0;
   height: var(--ui-control-height);
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--ui-radius-md);
-  background: var(--bg);
+  background: var(--ui-field-bg);
   color: var(--text);
   font-size: 13px;
+}
+
+.settings-form .config-field :is(input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--ui-field-ring);
 }
 
 .settings-form .config-field :is(input, select, textarea):disabled {
@@ -1483,6 +1507,7 @@
 
 .settings-form-value {
   display: flex;
+  font-family: inherit;
   align-items: center;
   min-height: var(--ui-control-height);
   overflow: hidden;
@@ -2094,28 +2119,23 @@ a.models-hint:hover {
   min-width: 0;
   height: var(--ui-control-height);
   padding: 0 10px;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--ui-radius-md);
   outline: none;
-  background: var(--bg);
+  background: var(--ui-field-bg);
   color: var(--text);
   font-family: inherit;
   font-size: 12px;
   box-sizing: border-box;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
-}
-
-.models-input.is-mono {
-  font-family: var(--font-mono);
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .models-input:hover:not(:disabled):not(:focus) {
-  border-color: color-mix(in srgb, var(--text-dim) 45%, var(--border));
+  background: var(--ui-field-bg-hover);
 }
 
 .models-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: var(--ui-field-ring);
 }
 
 .models-input:disabled {
@@ -2578,6 +2598,28 @@ a.models-hint:hover {
   gap: 10px;
   padding: 10px 18px;
   border-top: 1px solid var(--border);
+}
+
+.models-dialog.trust-dialog {
+  width: 440px;
+}
+
+.trust-dialog-body {
+  padding: 4px 18px 16px;
+}
+
+.trust-dialog-path {
+  padding: 7px 10px;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-field-bg);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.models-dialog-footer.trust-dialog-footer {
+  justify-content: flex-end;
 }
 
 .models-picker-group {
