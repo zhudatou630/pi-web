@@ -11,7 +11,9 @@ const zhSource = await readFile(new URL("../lib/i18n/messages/zh-CN.ts", import.
 const configSources = await Promise.all(
   ["ModelsConfig", "SkillsConfig", "AgentsConfig", "PluginsConfig"].map(async (name) => [
     name,
-    await readFile(new URL(`./${name}.tsx`, import.meta.url), "utf8"),
+    await readFile(new URL(`./${name}.tsx`, import.meta.url), "utf8")
+      // The agent detail page lives in the editor shared with the Project page.
+      + (name === "AgentsConfig" ? await readFile(new URL("./AgentEditor.tsx", import.meta.url), "utf8") : ""),
   ]),
 );
 
@@ -145,7 +147,7 @@ test("save actions are primary; list maintenance actions stay secondary in the t
   assert.match(cssSource, /\.config-footer-actions \{[\s\S]*?justify-content: flex-end/);
   assert.match(cssSource, /\.config-button \{[\s\S]*?font-family: inherit/);
   assert.match(sources.ModelsConfig, /<ConfigButton\s+variant="primary"[\s\S]*?onClick=\{handleSave\}/);
-  assert.match(sources.AgentsConfig, /<ConfigButton\s+variant="primary"[\s\S]*?onClick=\{\(\) => void save\(\)\}/);
+  assert.match(sources.AgentsConfig, /<ConfigButton\s+variant="primary"[\s\S]*?onClick=\{\(\) => void editor\.save\(\)\}/);
   assert.match(sources.SkillsConfig, /className="settings-toolbar"[\s\S]*?<ConfigButton size="small" variant="ghost" onClick=\{\(\) => void checkForUpdates\(\)\}/);
   assert.match(sources.PluginsConfig, /className="settings-toolbar"[\s\S]*?<ConfigButton size="small" variant="ghost" onClick=\{\(\) => void loadPlugins\(\)\}/);
 });

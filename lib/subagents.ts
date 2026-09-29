@@ -4,6 +4,9 @@ import { dump as stringifyYaml } from "js-yaml";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { parseFrontmatter } from "./frontmatter";
+import { subagentProfileSources } from "./subagent-profile-precedence";
+import { ProjectNotTrustedError } from "./project-resource-overrides";
+import { getProjectTrustStatus } from "./project-trust";
 import { THINKING_LEVELS as VALID_THINKING_LEVELS } from "./thinking-levels";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { isExistingPathWithinRoots } from "./path-security";
@@ -477,11 +480,39 @@ function assertWritableProfileDirectory(cwd: string, scope: SubagentWritableScop
   return dir;
 }
 
+/**
+ * Writing `.pi/agents` or `.agents/agents` makes the next session load repository-authored
+ * definitions, the same way writing project overrides does, so it rides the same trust gate.
+ */
+function assertProjectScopeTrusted(cwd: string): void {
+  const status = getProjectTrustStatus(cwd, getAgentDir());
+  if (status.requiresTrust && !status.trusted) {
+    throw new ProjectNotTrustedError("Project resources must be trusted before changing project agents");
+  }
+}
+
+/**
+ * A project copy of an inherited agent starts from the definition it replaces, so frontmatter
+ * this app does not model (prompt_mode, allowed_subagents, ext: selectors, ...) carries over.
+ * An existing project definition is its own source; a disable stub has nothing worth keeping.
+ */
+function frontmatterSeedPath(cwd: string, scope: SubagentWritableScope, name: string, filePath: string): string {
+  if (scope !== "project") return filePath;
+  const sources = subagentProfileSources(listSubagentProfileSources(cwd), name);
+  const own = sources.find((source) => source.scope === "project");
+  if (own && !own.disableStub) return filePath;
+  const inherited = sources.find((source) => source.scope !== "project" && source.filePath && !source.disableStub && !source.configurationError);
+  return inherited?.filePath ?? filePath;
+}
+
 export function saveSubagentProfile(
   cwd: string,
   scope: SubagentWritableScope,
   profile: Omit<SubagentProfile, "scope" | "filePath">,
+  /** Override the write path: a hand-written file's basename may differ from its frontmatter name. */
+  targetPath?: string,
 ): SubagentProfile {
+  if (scope !== "global") assertProjectScopeTrusted(cwd);
   const name = assertProfileName(profile.name);
   if (!Array.isArray(profile.tools)) throw new Error("Subagent tools must be an array of strings");
   assertKnownProfileTools(profile.tools);
@@ -507,8 +538,8 @@ export function saveSubagentProfile(
   if (scope !== "global" && !isProjectProfilePathAllowed(cwd, dir)) {
     throw new Error("Agent profile directory is outside the project root");
   }
-  const filePath = join(dir, `${name}.md`);
-  const stored = readStoredFrontmatter(filePath);
+  const filePath = targetPath ?? join(dir, `${name}.md`);
+  const stored = readStoredFrontmatter(frontmatterSeedPath(cwd, scope, name, filePath));
   const managed: Record<string, unknown> = {
     description,
     display_name: displayName,
@@ -551,9 +582,169 @@ export function saveSubagentProfile(
 }
 
 export function deleteSubagentProfile(cwd: string, scope: SubagentWritableScope, name: string): void {
+  if (scope !== "global") assertProjectScopeTrusted(cwd);
   const safeName = assertProfileName(name);
-  const filePath = join(assertWritableProfileDirectory(cwd, scope), `${safeName}.md`);
+  const dir = assertWritableProfileDirectory(cwd, scope);
+  // Locate the file by parse, not by `${name}.md`: a hand-written file's basename can differ from its name.
+  const parsed = listSubagentProfileSources(cwd)
+    .find((item) => item.scope === scope && item.name.toLowerCase() === safeName.toLowerCase())?.filePath;
+  const filePath = parsed ?? join(dir, `${safeName}.md`);
   if (existsSync(filePath)) unlinkSync(filePath);
+}
+
+/**
+ * Project-page switch: is this agent available in this project? Project state wins over the
+ * global default, and flipping back to the inherited state drops the project file again —
+ * a global agent is disabled here by a disable stub, a project definition is toggled in place.
+ */
+export function setSubagentProjectAvailability(cwd: string, name: string, enabled: boolean): void {
+  assertProjectScopeTrusted(cwd);
+  const top = subagentProfileSources(listSubagentProfileSources(cwd), name)[0];
+  if (!top) throw new Error("Agent profile not found");
+  if (top.configurationError) throw new Error(`Invalid subagent profile "${top.name}": ${top.configurationError}`);
+  const dir = assertWritableProfileDirectory(cwd, "project");
+  // The project scope has the highest precedence, so a project file, if any, is the top one.
+  // It is located by parse, not by `${name}.md`: a hand-written file's basename can differ
+  // from its frontmatter name, and a wrong path would fork the definition instead of toggling it.
+  const project = top.scope === "project" ? top : null;
+  if (project && !project.disableStub) {
+    if (project.enabled !== enabled) saveSubagentProfile(cwd, "project", { ...project, enabled }, project.filePath);
+    return;
+  }
+  if (enabled) {
+    // The stub that hid the inherited definition comes off; with no stub there is nothing to enable.
+    if (project) unlinkSync(project.filePath!);
+    return;
+  }
+  // An inherited agent that still runs here is switched off by a stub; already off needs nothing.
+  if (!project && top.enabled) {
+    mkdirSync(dir, { recursive: true });
+    writePrivateFileAtomicSync(join(dir, `${top.name}.md`), DISABLE_STUB);
+  }
+}
+
+export type ImportScope = "global" | "project";
+
+export interface ImportableAgentFile {
+  file: string;
+  name: string;
+  displayName: string;
+  description: string;
+  /** Only `enabled: false`; importing it would hide the inherited definition. */
+  disableStub: boolean;
+  /** Present when the file cannot be imported at all. */
+  error?: string;
+  /** An agent of this name (or file) already exists in that target. */
+  existsIn: Record<ImportScope, boolean>;
+}
+
+/** Agent definition files (`.pi/agents/*.md`) of another checkout; a folder that links out of it counts as empty. */
+function sourceAgentFiles(sourceDir: string): string[] {
+  const dir = join(sourceDir, ".pi", "agents");
+  if (!existsSync(dir) || !isExistingPathWithinRoots(dir, new Set([sourceDir]))) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+export function countImportableAgentFiles(sourceDir: string): number {
+  return sourceAgentFiles(sourceDir).length;
+}
+
+/** Logical agent names already defined in a directory, matched case-insensitively. */
+function definedAgentNames(dir: string): Set<string> {
+  const names = new Set<string>();
+  if (!existsSync(dir)) return names;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    const parsed = parseProfileFile(join(dir, entry.name), "global");
+    if (parsed?.name) names.add(parsed.name.toLowerCase());
+  }
+  return names;
+}
+
+/** Same file name, or the same logical agent under a different name, counts as existing. */
+function importTaken(dir: string, names: ReadonlySet<string>, file: string, name: string): boolean {
+  return existsSync(join(dir, file)) || names.has(name.toLowerCase());
+}
+
+/** What the import dialog offers from another checkout's `.pi/agents`. */
+export function listImportableAgentFiles(cwd: string, sourceDir: string): ImportableAgentFile[] {
+  const agentsDir = join(sourceDir, ".pi", "agents");
+  const targets = (["global", "project"] as const).map((scope) => {
+    const dir = writableProfileDirectory(cwd, scope);
+    return { scope, dir, names: definedAgentNames(dir) };
+  });
+  return sourceAgentFiles(sourceDir).map((file): ImportableAgentFile => {
+    const stem = basename(file, ".md");
+    const parsed = parseProfileFile(join(agentsDir, file), "global");
+    const name = parsed?.name ?? stem;
+    const error = parsed ? parsed.configurationError : "Invalid agent definition";
+    return {
+      file,
+      name,
+      displayName: parsed?.displayName ?? stem,
+      description: parsed?.description ?? "",
+      disableStub: parsed?.disableStub === true,
+      ...(error ? { error } : {}),
+      existsIn: Object.fromEntries(
+        targets.map((target) => [target.scope, importTaken(target.dir, target.names, file, name)]),
+      ) as Record<ImportScope, boolean>,
+    };
+  }).sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+/**
+ * Byte-copy picked agent definition files from another checkout into the target scope. Definitions may carry
+ * frontmatter this app does not model, so import never round-trips through the profile form.
+ */
+export function importAgentProfiles(
+  cwd: string,
+  sourceDir: string,
+  scope: ImportScope,
+  files: readonly unknown[],
+): { imported: string[]; skipped: { file: string; reason: string }[] } {
+  if (scope !== "global") assertProjectScopeTrusted(cwd);
+  const available = new Set(sourceAgentFiles(sourceDir));
+  const dir = assertWritableProfileDirectory(cwd, scope);
+  const names = definedAgentNames(dir);
+  const imported: string[] = [];
+  const skipped: { file: string; reason: string }[] = [];
+  for (const file of files) {
+    if (typeof file !== "string") continue;
+    if (!file.endsWith(".md") || /[\\/]/.test(file) || !isProfileName(basename(file, ".md"))) {
+      skipped.push({ file, reason: "Invalid file name" });
+      continue;
+    }
+    // Same visibility rule as the preview: symlinks are not regular files, so a link pointing
+    // outside the source can never be imported behind the dialog's back.
+    if (!available.has(file)) {
+      skipped.push({ file, reason: "Not a regular file" });
+      continue;
+    }
+    const sourcePath = join(sourceDir, ".pi", "agents", file);
+    try {
+      const parsed = parseProfileFile(sourcePath, "global");
+      if (!parsed || parsed.configurationError) {
+        skipped.push({ file, reason: parsed?.configurationError ?? "Invalid agent definition" });
+        continue;
+      }
+      if (importTaken(dir, names, file, parsed.name)) {
+        skipped.push({ file, reason: "Already exists" });
+        continue;
+      }
+      mkdirSync(dir, { recursive: true });
+      // Copy verbatim with private permissions, like every other agent file write.
+      writePrivateFileAtomicSync(join(dir, file), readFileSync(sourcePath));
+      imported.push(file);
+      names.add(parsed.name.toLowerCase());
+    } catch (error) {
+      // A file that vanished or became unreadable between preview and import skips alone.
+      skipped.push({ file, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { imported, skipped };
 }
 
 /**
@@ -566,6 +757,7 @@ export function setSubagentProfileEnabled(cwd: string, name: string, enabled: bo
   const profile = listSubagentProfiles(cwd).find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
   if (!profile) throw new Error("Agent profile not found");
   if (profile.configurationError) throw new Error(`Invalid subagent profile "${profile.name}": ${profile.configurationError}`);
+  if (profile.scope === "project" || profile.scope === "workspace") assertProjectScopeTrusted(cwd);
   if (profile.enabled === enabled) return;
   if (profile.scope === "builtin") {
     const dir = assertWritableProfileDirectory(cwd, "global");
@@ -577,7 +769,7 @@ export function setSubagentProfileEnabled(cwd: string, name: string, enabled: bo
     unlinkSync(profile.filePath!);
     return;
   }
-  saveSubagentProfile(cwd, profile.scope, { ...profile, enabled });
+  saveSubagentProfile(cwd, profile.scope, { ...profile, enabled }, profile.filePath);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

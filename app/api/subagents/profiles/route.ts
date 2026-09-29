@@ -1,22 +1,16 @@
 import { NextResponse } from "next/server";
-import { existsSync } from "fs";
-import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { errorResponse, validateCwd } from "@/lib/subagent-route";
 import {
   deleteSubagentProfile,
   listSubagentProfileSources,
   saveSubagentProfile,
   setSubagentProfileEnabled,
+  setSubagentProjectAvailability,
   type SubagentProfile,
   type SubagentWritableScope,
 } from "@/lib/subagents";
 
 export const dynamic = "force-dynamic";
-
-async function validateCwd(cwd: unknown): Promise<string> {
-  if (typeof cwd !== "string" || !cwd || !existsSync(cwd)) throw new Error("Valid cwd required");
-  if (!isExistingFilePathAllowed(cwd, await getAllowedFileRoots())) throw new Error("Access denied");
-  return cwd;
-}
 
 function validateScope(scope: unknown): SubagentWritableScope {
   if (scope !== "global" && scope !== "workspace" && scope !== "project") {
@@ -30,8 +24,7 @@ export async function GET(req: Request) {
     const cwd = await validateCwd(new URL(req.url).searchParams.get("cwd"));
     return NextResponse.json({ profiles: listSubagentProfileSources(cwd) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: message === "Access denied" ? 403 : 400 });
+    return errorResponse(error);
   }
 }
 
@@ -49,23 +42,28 @@ export async function PUT(req: Request) {
     }
     return NextResponse.json({ profile: saveSubagentProfile(cwd, scope, body.profile) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: message === "Access denied" ? 403 : 400 });
+    return errorResponse(error);
   }
 }
 
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json() as { cwd?: unknown; name?: unknown; enabled?: unknown };
+    const body = await req.json() as { cwd?: unknown; name?: unknown; enabled?: unknown; projectEnabled?: unknown };
     const cwd = await validateCwd(body.cwd);
     if (typeof body.name !== "string") return NextResponse.json({ error: "name required" }, { status: 400 });
+    // projectEnabled is the Project-page switch (available here?); enabled toggles the effective file.
+    if (typeof body.projectEnabled === "boolean") {
+      if (typeof body.enabled === "boolean") {
+        return NextResponse.json({ error: "enabled and projectEnabled are mutually exclusive" }, { status: 400 });
+      }
+      setSubagentProjectAvailability(cwd, body.name, body.projectEnabled);
+      return NextResponse.json({ ok: true });
+    }
     if (typeof body.enabled !== "boolean") return NextResponse.json({ error: "enabled required" }, { status: 400 });
     setSubagentProfileEnabled(cwd, body.name, body.enabled);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const status = message === "Access denied" ? 403 : message === "Agent profile not found" ? 404 : 400;
-    return NextResponse.json({ error: message }, { status });
+    return errorResponse(error);
   }
 }
 
@@ -78,7 +76,6 @@ export async function DELETE(req: Request) {
     deleteSubagentProfile(cwd, scope, body.name);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: message === "Access denied" ? 403 : 400 });
+    return errorResponse(error);
   }
 }

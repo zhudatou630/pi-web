@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
@@ -175,4 +176,30 @@ test("profiles route rejects missing paths, malformed profiles, and unsafe names
   response = await PATCH(jsonRequest("PATCH", { cwd, name: "api-test-agent" }));
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "enabled required" });
+});
+
+test("PATCH projectEnabled records project availability without touching the global file", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "pi-web-subagent-route-avail-"));
+  allowFileRoot(cwd);
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+
+  let response = await PUT(jsonRequest("PUT", { cwd, scope: "global", profile: profile({ name: "avail-agent" }) }));
+  assert.equal(response.status, 200);
+  const globalPath = join(testAgentDir, "agents", "avail-agent.md");
+  const globalBefore = await readFile(globalPath, "utf8");
+
+  response = await PATCH(jsonRequest("PATCH", { cwd, name: "avail-agent", projectEnabled: false }));
+  assert.equal(response.status, 200);
+  const stubPath = join(cwd, ".pi", "agents", "avail-agent.md");
+  assert.equal(await readFile(stubPath, "utf8"), "---\nenabled: false\n---\n");
+  assert.equal(await readFile(globalPath, "utf8"), globalBefore);
+
+  response = await PATCH(jsonRequest("PATCH", { cwd, name: "avail-agent", projectEnabled: true }));
+  assert.equal(response.status, 200);
+  assert.equal(existsSync(stubPath), false);
+
+  // The two switch semantics are mutually exclusive; a request carrying both is rejected.
+  response = await PATCH(jsonRequest("PATCH", { cwd, name: "avail-agent", enabled: true, projectEnabled: true }));
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /mutually exclusive/);
 });

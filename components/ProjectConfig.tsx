@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   ProjectOverridesWriteResponse,
   ProjectResourceGroup,
   ProjectResourceItem,
   ProjectFeatureState,
   ProjectResourcesResponse,
+  SubagentProfilesResponse,
 } from "@/lib/api-types";
+import type { SubagentProfile } from "@/lib/subagents";
+import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import {
@@ -15,6 +18,7 @@ import {
   ConfigPanelShell,
   ConfigSwitch,
   CountedTitle,
+  SettingsBackLink,
   SettingsGroup,
   SettingsLinkRow,
   SettingsLoading,
@@ -22,6 +26,8 @@ import {
   SettingsSearch,
 } from "./SettingsUi";
 import { ReloadNotice } from "./ReloadNotice";
+import { AgentDetail, AgentSaveFooter, useAgentEditor } from "./AgentEditor";
+import { AgentsImportDialog } from "./AgentsImportDialog";
 
 function shortenPath(path: string): string {
   return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
@@ -72,6 +78,12 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
       return reply?.ok && !reply.data.error ? [[feature.id, reply.data]] : [];
     }),
   ));
+  const [agentPage, setAgentPage] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [agentProfiles, setAgentProfiles] = useState<SubagentProfile[] | null>(() => {
+    const reply = peekJson<SubagentProfilesResponse & { error?: string }>(settingsUrls.subagentProfiles(cwd));
+    return reply?.ok && !reply.data.error ? reply.data.profiles ?? null : null;
+  });
 
   const load = useCallback(async () => {
     try {
@@ -92,10 +104,31 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     setFeatures(Object.fromEntries(replies));
   }, [cwd]);
 
+  const loadAgentProfiles = useCallback(async () => {
+    const res = await getJson<SubagentProfilesResponse & { error?: string }>(settingsUrls.subagentProfiles(cwd));
+    if (!res.ok || res.data.error) throw new Error(res.data.error ?? `HTTP ${res.status}`);
+    const next = res.data.profiles ?? [];
+    setAgentProfiles(next);
+    return next;
+  }, [cwd]);
+
+  // The same editor as the Agents page, limited to this project's files.
+  const editor = useAgentEditor({
+    cwd,
+    profiles: agentProfiles ?? [],
+    refresh: loadAgentProfiles,
+    onChanged: () => { setReloadNeeded(true); onChanged?.(); },
+    fixedScope: "project",
+    onGone: () => setAgentPage(false),
+  });
+
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     loadFeatures().catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [loadFeatures]);
+  useEffect(() => {
+    loadAgentProfiles().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [loadAgentProfiles]);
 
   // Every change is saved immediately; an open session picks it up only after a reload.
   const run = useCallback(async (action: () => Promise<void>, needsReload: boolean) => {
@@ -104,7 +137,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     setSyncFailures([]);
     try {
       await action();
-      await Promise.all([load(), loadFeatures()]);
+      await Promise.all([load(), loadFeatures(), loadAgentProfiles()]);
       setReloadNeeded(needsReload);
       onChanged?.();
     } catch (err) {
@@ -112,7 +145,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     } finally {
       setBusy(false);
     }
-  }, [load, loadFeatures, onChanged]);
+  }, [load, loadFeatures, loadAgentProfiles, onChanged]);
 
   const post = async (targets: Target[], enabled: boolean) => {
     const res = await fetch("/api/project-overrides", {
@@ -138,13 +171,73 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
   };
   const featuresOverridden = FEATURES.filter((feature) => features[feature.id]?.project?.overridden);
 
+  /** One row per agent name: is it available in this project? Project state wins over global. */
+  const agentRows = useMemo(() => {
+    const profiles = agentProfiles ?? [];
+    return [...new Set(profiles.map((profile) => profile.name.toLowerCase()))]
+      .map((key) => {
+        const sources = subagentProfileSources(profiles, key);
+        const top = sources[0];
+        const project = sources.find((source) => source.scope === "project");
+        const inherited = sources.find((source) => source.scope !== "project");
+        // A stub has no definition of its own; show the one it hides (same rule as AgentsConfig).
+        const shown = top.disableStub ? sources[1] ?? top : top;
+        return {
+          // Original case: DELETE resolves files by exact name, not case-folded.
+          name: top.name,
+          label: shown.displayName,
+          description: shown.description,
+          available: top.enabled,
+          // Inherited definition is off and no project definition exists: only creating one enables it.
+          enableBlocked: project == null && !top.enabled,
+          // The two ways a project differs from global: hidden here, or keeping its own copy.
+          stub: project?.disableStub === true,
+          customized: project != null && !project.disableStub && inherited != null,
+          projectOnly: project != null && !project.disableStub && inherited == null,
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [agentProfiles]);
+  const agentDiffs = agentRows.filter((row) => row.stub || row.customized);
+  const agentCustomized = agentRows.filter((row) => row.customized);
+
+  const patchAgentAvailability = async (name: string, enabled: boolean) => {
+    const res = await fetch("/api/subagents/profiles", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, name, projectEnabled: enabled }),
+    });
+    const body = await res.json() as { error?: string };
+    if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
+  };
+  const setAgentAvailability = (name: string, enabled: boolean) => run(() => patchAgentAvailability(name, enabled), true);
+  /** Back to following global: a stub comes off, a project copy of an inherited agent is deleted. */
+  const followGlobal = async (row: (typeof agentRows)[number]) => {
+    if (!row.customized) return patchAgentAvailability(row.name, true);
+    const res = await fetch("/api/subagents/profiles", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, scope: "project", name: row.name }),
+    });
+    const body = await res.json() as { error?: string };
+    if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
+  };
+  const restoreAgent = (row: (typeof agentRows)[number]) => {
+    if (window.confirm(t("agents.restoreGlobalConfirm", { name: row.label }))) void run(() => followGlobal(row), true);
+  };
+
   const groups = data?.groups ?? [];
   const overridden = groups.flatMap((group) => group.items.filter((item) => item.overridden));
   const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0);
   const enabledCount = groups.reduce((sum, group) => sum + group.items.filter((item) => item.enabled).length, 0);
   // Everything this project does differently from global: resource overrides plus the sub-agent switch.
-  const differences = overridden.length + featuresOverridden.length;
-  const resetAll = () => run(async () => {
+  const differences = overridden.length + featuresOverridden.length + agentDiffs.length;
+  const resetAll = () => {
+    // A project copy is content, not just a switch: deleting it needs a yes.
+    if (agentCustomized.length > 0 && !window.confirm(t("project.resetAgentsConfirm", { count: agentCustomized.length }))) return;
+    return resetAllNow();
+  };
+  const resetAllNow = () => run(async () => {
     const back = (item: ProjectResourceItem) => item.globalEnabled ?? true;
     const on = overridden.filter(back);
     const off = overridden.filter((item) => !back(item));
@@ -152,6 +245,8 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     if (off.length) await post(off, false);
     // Setting a project back to the global default drops its override.
     for (const feature of featuresOverridden) await putFeatureEnabled(feature.putUrl, features[feature.id]!.enabled);
+    // Project-only agents have no global counterpart to follow, so they stay.
+    for (const row of agentDiffs) await followGlobal(row);
   }, true);
 
   // Same endpoint as the trust dialog; it also drops runtimes built without project resources.
@@ -175,9 +270,12 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     .filter((group) => group.origin === "package")
     .sort((a, b) => a.label.localeCompare(b.label));
   const standalone = visible.filter((group) => group.origin === "top-level");
+  const visibleAgentRows = agentRows.filter((row) => !needle || `${row.label} ${row.name}`.toLowerCase().includes(needle));
+  /** The whole feature can be off in this project; the rows still show what would apply. */
+  const subagentsInactive = features.subagents ? !(features.subagents.project?.enabled ?? features.subagents.enabled) : false;
   const trusted = data?.projectResourcesLoaded ?? true;
   const locked = busy || !trusted;
-  const resetLocked = busy || (!trusted && overridden.length > 0);
+  const resetLocked = busy || (!trusted && (overridden.length > 0 || agentDiffs.length > 0));
   const projectName = cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
   const sync = data?.sync;
   const syncHint = !sync ? null
@@ -215,6 +313,21 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
       </div>
     );
   };
+
+  if (agentPage) {
+    return (
+      <ConfigPanelShell embedded title={t("project.title")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={() => {}}>
+        {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
+        <div className="settings-scroll">
+          <div className="settings-page">
+            <SettingsBackLink label={t("project.title")} onClick={() => { setAgentPage(false); editor.setError(null); }} />
+            <AgentDetail editor={editor} />
+          </div>
+        </div>
+        <AgentSaveFooter editor={editor} />
+      </ConfigPanelShell>
+    );
+  }
 
   return (
     <ConfigPanelShell embedded title={t("project.title")} subtitle={shortenPath(cwd)} closeLabel={t("i18n.close")} onClose={() => {}}>
@@ -283,6 +396,49 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
                   })}
                 </SettingsGroup>
               )}
+              {agentRows.length > 0 && (
+                <SettingsGroup
+                  title={<CountedTitle label={t("project.group.subagents")} count={visibleAgentRows.length} />}
+                  action={(
+                    <span className="settings-group-actions">
+                      <ConfigButton size="small" onClick={() => setImportOpen(true)} disabled={locked}>{t("agents.import")}</ConfigButton>
+                      <ConfigButton size="small" onClick={() => { editor.beginCreate(); setAgentPage(true); }} disabled={locked}>{t("agents.new")}</ConfigButton>
+                    </span>
+                  )}
+                >
+                  {subagentsInactive && <p role="status" className="settings-row-message">{t("agents.inactiveNotice")}</p>}
+                  {visibleAgentRows.map((row) => {
+                    const state = row.stub ? t("project.agent.state.stub")
+                      : row.customized ? t("project.agent.state.overridesGlobal")
+                      : row.projectOnly ? t("project.agent.state.projectOnly")
+                      : !row.available ? t("project.agent.state.globalOff")
+                      : null;
+                    return (
+                      <SettingsLinkRow
+                        key={row.name}
+                        label={row.label}
+                        description={<>{row.description}{state && <> · {state}</>}</>}
+                        muted={!row.available}
+                        title={row.name}
+                        onOpen={() => { editor.open(row.name); setAgentPage(true); }}
+                      >
+                        {row.stub && <span className="settings-row-status">{t("project.tag.override")}</span>}
+                        {row.customized && (
+                          <ConfigButton size="small" variant="ghost" onClick={() => restoreAgent(row)} disabled={locked}>
+                            {t("agents.restoreGlobal")}
+                          </ConfigButton>
+                        )}
+                        <ConfigSwitch
+                          checked={row.available}
+                          disabled={locked || row.enableBlocked}
+                          label={row.label}
+                          onChange={(enabled) => void setAgentAvailability(row.name, enabled)}
+                        />
+                      </SettingsLinkRow>
+                    );
+                  })}
+                </SettingsGroup>
+              )}
               {packages.length > 0 && (
                 <SettingsGroup title={<CountedTitle label={t("project.group.packages")} count={packages.length} />}>
                   {packages.flatMap((group) => {
@@ -334,11 +490,19 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
                   {group.items.filter((item) => matches(group, item)).map((item) => itemRow(item, false))}
                 </SettingsGroup>
               ))}
-              {visible.length === 0 && <p className="settings-row-message">{t("skills.noResults")}</p>}
+              {visible.length === 0 && visibleAgentRows.length === 0 && <p className="settings-row-message">{t("skills.noResults")}</p>}
             </>
           )}
         </div>
       </div>
+      {importOpen && (
+        <AgentsImportDialog
+          cwd={cwd}
+          fixedScope="project"
+          onClose={() => setImportOpen(false)}
+          onImported={() => { void loadAgentProfiles(); setReloadNeeded(true); onChanged?.(); }}
+        />
+      )}
     </ConfigPanelShell>
   );
 }

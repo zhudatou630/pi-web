@@ -3284,3 +3284,93 @@ button.usage-cell:not(:disabled) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* AgentsImportDialog: copy agent definition files from a picked folder. */
+.agents-import-dialog {
+  width: min(520px, 92vw);
+}
+
+/* Title, message, rows and the button edge share one 18px inset, like .trust-dialog. */
+.agents-import-body {
+  padding: 4px 18px 16px;
+}
+
+.agents-import-body .settings-row-message {
+  margin: 0;
+}
+
+.models-dialog-footer.agents-import-footer {
+  justify-content: flex-end;
+}
+
+.agents-import-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.agents-import-scope select {
+  width: 62%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.agents-import-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.agents-import-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.agents-import-row:hover {
+  background: var(--bg-hover);
+}
+
+.agents-import-row.is-unavailable .agents-import-name {
+  color: var(--text-dim);
+}
+
+.agents-import-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agents-import-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.agents-import-description {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
