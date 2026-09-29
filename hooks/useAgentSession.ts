@@ -375,7 +375,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   streamStateRef.current = streamState;
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
-  const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean } | null>(null);
+  const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean; startedAt: number } | null>(null);
   const [directImageRunning, setDirectImageRunning] = useState(false);
   const directImageRunningRef = useRef(false);
   const directImageRequestIdRef = useRef<string | null>(null);
@@ -1785,7 +1785,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const inputText = `${excludeFromContext ? "!!" : "!"}${command}`;
     bashAbortRequestedRef.current = false;
     bashRunningRef.current = true;
-    setPendingBash({ command, excludeFromContext });
+    setPendingBash({ command, excludeFromContext, startedAt: Date.now() });
     setBashRunning(true);
     try {
       const result = await dispatchBashRun({

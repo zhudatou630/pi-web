@@ -133,7 +133,7 @@ test("expanded step bodies stay flat inside the process list", async () => {
   assert.match(css, /\[aria-expanded="true"\]\) > :first-child::before[\s\S]*?inset: 0 -8px;/);
   assert.match(
     css,
-    /\.process-details-list \[data-step-card\] > pre,[\s\S]*?background: transparent !important;[\s\S]*?box-shadow: none !important;/,
+    /\.step-flat\) \[data-step-card\] > pre,[\s\S]*?background: transparent !important;[\s\S]*?box-shadow: none !important;/,
   );
 });
 

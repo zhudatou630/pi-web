@@ -1916,6 +1916,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
                     onEditContent={handleEditContent}
                     isTurnEnd={options.isTurnEnd}
+                    expandOutput={idx === messages.length - 1}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
                     turnDurationSeconds={options.turnDurationSeconds}
@@ -2251,9 +2252,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   command: pendingBash.command,
                   output: "",
                   excludeFromContext: pendingBash.excludeFromContext,
+                  timestamp: pendingBash.startedAt,
                 } as BashExecutionMessage}
                 sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                 onOpenSession={onOpenSession}
+                expandOutput
               />
             )}
 

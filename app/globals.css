@@ -1172,7 +1172,7 @@ pre, code {
 .process-details-list > div {
   margin: 0 !important;
 }
-.process-details-list [data-step-card] {
+:is(.process-details-list, .step-flat) [data-step-card] {
   border: none !important;
   background: transparent !important;
   border-radius: var(--ui-radius-sm) !important;
@@ -1180,7 +1180,7 @@ pre, code {
   padding: 0 8px !important;
   transition: background 0.1s ease;
 }
-.process-details-list [data-step-trigger] {
+:is(.process-details-list, .step-flat) [data-step-trigger] {
   padding-left: 0 !important;
 }
 .process-details-list [data-message-text] {
@@ -1194,18 +1194,18 @@ pre, code {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .process-details-list [data-step-card]:hover:not(:has([aria-expanded="true"])),
+  :is(.process-details-list, .step-flat) [data-step-card]:hover:not(:has([aria-expanded="true"])),
   .process-details-list [data-message-text]:hover {
     background: color-mix(in srgb, var(--bg-hover) 50%, transparent) !important;
   }
 }
 
 /* Open row: same flat wash as hover, on the header only. Body stays page-colored. */
-.process-details-list [data-step-card]:has([aria-expanded="true"]) > :first-child {
+:is(.process-details-list, .step-flat) [data-step-card]:has([aria-expanded="true"]) > :first-child {
   position: relative;
   z-index: 0;
 }
-.process-details-list [data-step-card]:has([aria-expanded="true"]) > :first-child::before {
+:is(.process-details-list, .step-flat) [data-step-card]:has([aria-expanded="true"]) > :first-child::before {
   content: "";
   position: absolute;
   z-index: -1;
@@ -1215,23 +1215,23 @@ pre, code {
   background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
   pointer-events: none;
 }
-.process-details-list [data-step-card] > pre,
-.process-details-list [data-step-card] > div:not(:first-child) {
+:is(.process-details-list, .step-flat) [data-step-card] > pre,
+:is(.process-details-list, .step-flat) [data-step-card] > div:not(:first-child) {
   background: transparent !important;
   border-top: none !important;
   box-shadow: none !important;
 }
 
-.process-details-list [data-step-chevron] {
+:is(.process-details-list, .step-flat) [data-step-chevron] {
   opacity: 0.25 !important;
   transition: opacity 0.15s ease, transform 0.15s ease !important;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .process-details-list [data-step-chevron] {
+  :is(.process-details-list, .step-flat) [data-step-chevron] {
     opacity: 0 !important;
   }
-  .process-details-list [data-step-card]:hover [data-step-chevron] {
+  :is(.process-details-list, .step-flat) [data-step-card]:hover [data-step-chevron] {
     opacity: 0.5 !important;
   }
 }
@@ -1245,17 +1245,17 @@ pre, code {
   color: var(--text);
 }
 @media (hover: hover) and (pointer: fine) {
-  .process-details-list [data-step-action] {
+  :is(.process-details-list, .step-flat) [data-step-action] {
     opacity: 0;
   }
-  .process-details-list [data-step-card]:hover [data-step-action],
-  .process-details-list [data-step-action]:focus-visible {
+  :is(.process-details-list, .step-flat) [data-step-card]:hover [data-step-action],
+  :is(.process-details-list, .step-flat) [data-step-action]:focus-visible {
     opacity: 1;
   }
 }
 
-.process-details-list [data-step-trigger]:focus-visible [data-step-chevron],
-.process-details-list [data-step-card] [data-step-trigger][aria-expanded="true"] [data-step-chevron] {
+:is(.process-details-list, .step-flat) [data-step-trigger]:focus-visible [data-step-chevron],
+:is(.process-details-list, .step-flat) [data-step-card] [data-step-trigger][aria-expanded="true"] [data-step-chevron] {
   opacity: 0.6 !important;
 }
 
@@ -1530,6 +1530,34 @@ pre, code {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
   opacity: 1;
+}
+
+/* Text link at the metadata tier: muted at rest, full text colour on hover. */
+.meta-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.meta-link:hover:not(:disabled) {
+  color: var(--text);
+}
+.meta-link:disabled {
+  cursor: default;
+}
+
+/* Message cards (compaction, extension messages): actions appear on hover, like a user message. */
+@media (hover: hover) and (pointer: fine) {
+  .message-card .message-action-group {
+    opacity: 0;
+  }
+  .message-card:hover .message-action-group {
+    opacity: 1;
+  }
 }
 
 .message-action-group {

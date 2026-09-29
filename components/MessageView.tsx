@@ -9,6 +9,7 @@ import { imageToolDisplayKind, splitImageMentions } from "@/lib/image-generation
 import { ThinkingIcon } from "./ThinkingIcon";
 import { ToolIcon } from "./ToolIcon";
 import { SubagentIcon } from "./SubagentIcon";
+import { LivePulseBeacon } from "./LivePulseBeacon";
 import { copyText } from "@/lib/clipboard";
 import { exportMessageImage, type MessageImageResult } from "@/lib/message-image";
 import { useI18n } from "@/hooks/useI18n";
@@ -155,6 +156,8 @@ interface Props {
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage) => void;
   isTurnEnd?: boolean;
+  /** Open a `!` command's output on first render; only the newest one is, older ones start folded. */
+  expandOutput?: boolean;
   sessionId?: string;
   /**
    * Files this turn wrote, derived by the caller from the whole turn's
@@ -242,7 +245,7 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
@@ -264,7 +267,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     return <CustomMessageView message={customMessage} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (message.role === "bashExecution") {
-    return <BashExecutionView message={message as BashExecutionMessage} sessionId={sessionId} />;
+    return <BashExecutionView message={message as BashExecutionMessage} sessionId={sessionId} expanded={expandOutput} />;
   }
   return null;
 }, (prev, next) => {
@@ -282,6 +285,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.prevAssistantEntryId === next.prevAssistantEntryId
     && prev.onEditContent === next.onEditContent
     && prev.isTurnEnd === next.isTurnEnd
+    && prev.expandOutput === next.expandOutput
     && prev.modelName === next.modelName
     && prev.writtenFiles === next.writtenFiles
     && prev.turnDurationSeconds === next.turnDurationSeconds
@@ -833,7 +837,7 @@ function ProcessErrorCard({ error }: { error: string }) {
     <div
       data-step-card=""
       style={{
-        borderRadius: 6,
+        borderRadius: "var(--ui-radius-md)",
         overflow: "hidden",
         fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
         border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
@@ -1109,11 +1113,13 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
-function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFile, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void }) {
+function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
   const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const inputStr = getToolCallInputText(block);
   const isStreamingInput = block.rawInput !== undefined;
+  // A command-only input is already the header preview; the expanded body shows it as typed, not as JSON.
+  const shellCommand = isStreamingInput ? undefined : getShellCommand(block);
   const isEditTool = isEditToolName(block.toolName);
   // Codex-style patch tools carry the whole edit in a `patch` argument instead of
   // a `file_path`, so they render through the same split diff as `edit`.
@@ -1127,7 +1133,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
         : extractStreamedPatchArgument(block.rawInput))
     : undefined;
   const imageKind = imageToolDisplayKind(block.toolName, block.input, result?.details);
-  const toolLabel = imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : block.toolName;
+  const toolLabel = label ?? (imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : block.toolName);
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
 
   // Result display
@@ -1148,7 +1154,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
     <div
       data-step-card=""
       style={{
-        borderRadius: 6,
+        borderRadius: "var(--ui-radius-md)",
         overflow: "hidden",
         fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
         border: isError ? "1px solid color-mix(in srgb, var(--danger) 45%, transparent)" : "1px solid var(--border)",
@@ -1182,7 +1188,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, color: isError ? "var(--danger)" : undefined }}>
             <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
-          <span style={{ color: isError ? "var(--danger)" : "var(--text)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span title={labelTitle} style={{ color: isError ? "var(--danger)" : "var(--text)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {toolLabel}
           </span>
           {isStreamingInput ? (
@@ -1196,6 +1202,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
               {preview.text}
             </span>
           )}
+          {headerExtra}
           <StepDuration seconds={duration} startTime={startTime} live={live} />
           <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
@@ -1231,8 +1238,8 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
         <pre
           style={{
             margin: 0,
-            padding: "8px 10px",
-            color: "var(--text-muted)",
+            padding: shellCommand === undefined ? "8px 10px" : "6px 10px 0",
+            color: shellCommand === undefined ? "var(--text-muted)" : "var(--text)",
             fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
@@ -1242,7 +1249,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
             wordBreak: "break-all",
           }}
         >
-          {inputStr}
+          {shellCommand === undefined ? inputStr : (<><span style={{ color: "var(--text-dim)", userSelect: "none" }}>$ </span>{shellCommand}</>)}
         </pre>
       )}
 
@@ -1284,6 +1291,8 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
           />
         )
       )}
+
+      {expanded && footer}
 
       {/* ── Tool-result images stay visible while the card is collapsed ──
           They are the point of the call (reading a screenshot, a generated
@@ -1690,9 +1699,10 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div
+        className="message-card"
         style={{
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: "var(--ui-radius-md)",
           overflow: "hidden",
           background: "var(--bg)",
         }}
@@ -1702,16 +1712,17 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
             display: "flex",
             alignItems: "center",
             gap: 8,
-            padding: "7px 10px",
+            minHeight: 28,
+            padding: "0 10px",
             borderBottom: "1px solid var(--border)",
             background: "var(--bg-panel)",
             color: "var(--text-muted)",
           }}
         >
-          <span style={{ fontSize: 11 }}>
-            compaction
+          <span style={{ fontSize: 11, lineHeight: 1.35 }}>
+            {t("chat.compaction")}
           </span>
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 11 }}>{time}</span>}
+          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontVariantNumeric: "tabular-nums" }}>{time}</span>}
         </div>
 
         <div style={{ padding: "11px 13px 12px" }}>
@@ -1779,7 +1790,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
   const text = getMessageText(message.content);
 
   return (
-    <div data-step-card="" style={{ overflow: "hidden", borderRadius: 4 }}>
+    <div data-step-card="" style={{ overflow: "hidden", borderRadius: "var(--ui-radius-md)" }}>
       <button
         type="button"
         aria-expanded={expanded}
@@ -1842,9 +1853,10 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   return (
     <div style={{ marginBottom: 16 }}>
       <div
+        className="message-card"
         style={{
           border: "1px solid var(--border)",
-          borderRadius: 8,
+          borderRadius: "var(--ui-radius-md)",
           overflow: "hidden",
           background: isHiddenDisplay ? "var(--bg-subtle)" : "var(--bg)",
         }}
@@ -1854,18 +1866,51 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
             display: "flex",
             alignItems: "center",
             gap: 8,
-            padding: "7px 10px",
+            minHeight: 28,
+            padding: "0 4px 0 10px",
             borderBottom: "1px solid var(--border)",
             background: "var(--bg-panel)",
             color: "var(--text-muted)",
-            fontSize: 12,
           }}
         >
-          <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 11, lineHeight: 1.35 }}>
             {title}
           </span>
-           {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11 }}>{t("i18n.hiddenExtensionMessage")}</span>}
-          {time && <span style={{ marginLeft: "auto", color: "var(--text-dim)", fontSize: 11 }}>{time}</span>}
+          {isHiddenDisplay && <span style={{ color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>{t("i18n.hiddenExtensionMessage")}</span>}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            {(hasDetails || isHiddenDisplay) && (
+              <button
+                type="button"
+                className="meta-link"
+                style={{ fontSize: 11, lineHeight: 1.35 }}
+                onClick={() => {
+                  if (isHiddenDisplay) setContentExpanded((v) => !v);
+                  else setDetailsExpanded((v) => !v);
+                }}
+              >
+                {isHiddenDisplay
+                  ? (contentExpanded ? t("i18n.collapse") : t("i18n.expand"))
+                  : (detailsExpanded ? t("i18n.hideDetails") : t("i18n.showDetails"))}
+              </button>
+            )}
+            {time && <span style={{ color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontVariantNumeric: "tabular-nums" }}>{time}</span>}
+            {(text || detailsText) && (
+              <div className="message-action-group">
+                <button
+                  type="button"
+                  className="message-action-button"
+                  data-copied={copied ? "true" : undefined}
+                  onClick={copyContent}
+                  title={copied ? t("i18n.copied") : t("i18n.copyMessage")}
+                  aria-label={copied ? t("i18n.copied") : t("i18n.copy")}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    {copied ? <polyline points="20 6 9 17 4 12" /> : <CopyGlyph />}
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {contentExpanded ? (
@@ -1908,54 +1953,6 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
              {text ? previewText(text) : t("i18n.showExtensionMessage")}
           </button>
         )}
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "4px 9px",
-            borderTop: "1px solid var(--border)",
-            background: "var(--bg-subtle)",
-          }}
-        >
-          {text || detailsText ? (
-            <button
-              onClick={copyContent}
-              style={{
-                padding: "3px 7px",
-                border: "none",
-                background: "none",
-                color: copied ? "var(--accent)" : "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-               {copied ? t("i18n.copied") : t("i18n.copy")}
-            </button>
-          ) : null}
-          {(hasDetails || isHiddenDisplay) && (
-            <button
-              onClick={() => {
-                if (isHiddenDisplay) setContentExpanded((v) => !v);
-                else setDetailsExpanded((v) => !v);
-              }}
-              style={{
-                marginLeft: "auto",
-                padding: "3px 7px",
-                border: "none",
-                background: "none",
-                color: "var(--text-dim)",
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-              {isHiddenDisplay
-                 ? (contentExpanded ? t("i18n.collapse") : t("i18n.expand"))
-                 : (detailsExpanded ? t("i18n.hideDetails") : t("i18n.showDetails"))}
-            </button>
-          )}
-        </div>
 
         {hasDetails && ((isHiddenDisplay && contentExpanded) || (!isHiddenDisplay && detailsExpanded)) && (
           <pre
@@ -2017,6 +2014,12 @@ export function getToolCallInputText(block: ToolCallContent): string {
   return block.rawInput ?? JSON.stringify(block.input, null, 2);
 }
 
+/** The command of a call whose only argument is `command`; anything richer (timeout, cwd) keeps the JSON view. */
+export function getShellCommand(block: ToolCallContent): string | undefined {
+  const keys = Object.keys(block.input ?? {});
+  return keys.length === 1 && keys[0] === "command" && typeof block.input.command === "string" ? block.input.command : undefined;
+}
+
 function formatCustomType(type: string): string {
   return type || "extension";
 }
@@ -2067,13 +2070,14 @@ function ToolPathPreview({ path, cwd }: { path: string; cwd?: string }) {
   );
 }
 
-function BashExecutionView({ message, sessionId }: { message: BashExecutionMessage; sessionId?: string }) {
+function BashExecutionView({ message, sessionId, expanded }: { message: BashExecutionMessage; sessionId?: string; expanded?: boolean }) {
+  const { t } = useI18n();
   const [fullOutput, setFullOutput] = useState<string | null>(null);
   const [loadingFull, setLoadingFull] = useState(false);
   const [fullError, setFullError] = useState<string | null>(null);
 
   const isPending = !message.output && message.exitCode === undefined && !message.cancelled;
-  const isError = message.cancelled || (message.exitCode !== undefined && message.exitCode !== 0);
+  const failed = !message.cancelled && message.exitCode !== undefined && message.exitCode !== 0;
   const fullOutputUrl = sessionId && message.fullOutputPath
     ? `/api/agent/${encodeURIComponent(sessionId)}/bash-output?path=${encodeURIComponent(message.fullOutputPath)}`
     : null;
@@ -2099,14 +2103,12 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
     }
   }
 
-  // Reuse the existing ToolCallBlock so user-run bash looks identical to an
-  // agent-run bash tool call: same header, collapse behavior, result pane.
-  // Synthesize an equivalent ToolCallContent + ToolResultMessage pair.
-  const toolName = message.excludeFromContext ? "bash (local)" : "bash";
+  // Reuse ToolCallBlock so a user-run command reads like an agent step: a flat row that
+  // is already open, since the output is why the user typed it.
   const block: ToolCallContent = {
     type: "toolCall",
     toolCallId: `bash-${message.timestamp ?? ""}`,
-    toolName,
+    toolName: "bash",
     input: { command: message.command },
   };
   const result: ToolResultMessage | undefined = isPending
@@ -2114,35 +2116,46 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
     : {
         role: "toolResult",
         toolCallId: block.toolCallId,
-        toolName,
+        toolName: block.toolName,
         content: displayOutput ? [{ type: "text", text: displayOutput }] : [],
-        isError,
+        isError: failed,
         timestamp: message.timestamp,
       };
+  const headerExtra = (
+    <>
+      {isPending && <LivePulseBeacon size={12} />}
+      {failed && <BashTag danger>{t("chat.bashExitCode", { code: message.exitCode ?? "" })}</BashTag>}
+      {message.cancelled && <BashTag>{t("chat.bashCancelled")}</BashTag>}
+    </>
+  );
+  const footer = message.truncated && fullOutputUrl ? (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px 6px", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>
+      {showFullButton && (
+        <>
+          <span>{t("chat.bashTruncated")}</span>
+          <span aria-hidden="true">·</span>
+          <button type="button" className="meta-link" onClick={loadFullOutput} disabled={loadingFull}>
+            {loadingFull ? t("chat.bashLoading") : t("chat.bashViewFull")}
+          </button>
+        </>
+      )}
+      <a className="meta-link" href={`${fullOutputUrl}&download=1`}>{t("chat.bashDownloadFull")}</a>
+      {fullError && <span>({fullError})</span>}
+    </div>
+  ) : undefined;
 
   return (
-    <div style={{ margin: "6px 0" }}>
-      <ToolCallBlock block={block} result={result} />
-      {message.truncated && fullOutputUrl && (
-        <div style={{ padding: "4px 10px", fontSize: 11, marginTop: -1 }}>
-          {showFullButton && (
-            <button
-              onClick={loadFullOutput}
-              disabled={loadingFull}
-              style={{ background: "none", border: "none", color: "var(--accent)", cursor: loadingFull ? "default" : "pointer", fontSize: 11, padding: 0, textDecoration: "underline" }}
-            >
-              {loadingFull ? "loading…" : "view full output"}
-            </button>
-          )}
-          <a
-            href={`${fullOutputUrl}&download=1`}
-            style={{ marginLeft: showFullButton ? 10 : 0, color: "var(--accent)", fontSize: 11, textDecoration: "underline" }}
-          >
-            download full output
-          </a>
-          {fullError && <span style={{ marginLeft: 6, color: "var(--text-dim)", fontSize: 11 }}>({fullError})</span>}
-        </div>
-      )}
+    <div className="step-flat" style={{ margin: "4px 0 8px" }}>
+      <ToolCallBlock block={block} result={result} startTime={message.timestamp} live={isPending} defaultExpanded={expanded} label={<BashTag>{message.excludeFromContext ? t("chat.local") : t("chat.shell")}</BashTag>} labelTitle={message.excludeFromContext ? t("chat.outputLocal") : t("chat.outputModel")} headerExtra={headerExtra} footer={footer} />
     </div>
+  );
+}
+
+function BashTag({ children, danger }: { children: ReactNode; danger?: boolean }) {
+  const color = danger ? "var(--danger)" : "var(--text-dim)";
+  return (
+    <span style={{ flexShrink: 0, padding: "0 5px", borderRadius: "var(--ui-radius-sm)", fontSize: 10, lineHeight: "16px", color, background: `color-mix(in srgb, ${color} 12%, transparent)` }}>
+      {children}
+    </span>
   );
 }

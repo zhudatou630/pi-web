@@ -2341,7 +2341,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <polyline points="4 17 10 11 4 5" />
                 <line x1="12" y1="19" x2="20" y2="19" />
               </svg>
-              <span style={{ lineHeight: 1 }}>{bashExcluded ? "Local" : "Shell"}</span>
+              <span style={{ lineHeight: 1 }}>{t("chat.shell")} · {bashExcluded ? t("chat.outputLocal") : t("chat.outputModel")}</span>
             </div>
           )}
           <div className="chat-input-field-row">
@@ -2605,13 +2605,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           )}
           </div>
         </div>
-
-        {/* Bash mode status label */}
-        {bashMode && (
-          <div className="text-xs px-2 py-1" style={{ color: bashExcluded ? "var(--text-muted)" : "var(--accent)", marginTop: 4 }}>
-             {t("chat.shell")} · {bashExcluded ? t("chat.outputLocal") : t("chat.outputModel")}
-          </div>
-        )}
 
       </div>
     </fieldset>
