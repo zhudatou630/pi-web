@@ -134,3 +134,36 @@ test("downloadMermaidSvg downloads XML-serialized SVG and releases its URL", asy
     URL.revokeObjectURL = originalRevokeObjectURL;
   }
 });
+
+test("downloadMermaidSvg HTML-parses a string before serializing", async () => {
+  const originalDocument = globalThis.document;
+  const originalXMLSerializer = globalThis.XMLSerializer;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const parsedSvg = { nodeName: "svg" };
+  const wrap = { innerHTML: "", querySelector(selector) { assert.equal(selector, "svg"); return parsedSvg; } };
+  const link = { href: "", download: "", click() {} };
+  globalThis.document = {
+    createElement(tag) { return tag === "div" ? wrap : link; },
+  };
+  globalThis.XMLSerializer = class {
+    serializeToString(element) {
+      assert.equal(element, parsedSvg);
+      return "<svg/>";
+    }
+  };
+  URL.createObjectURL = () => "blob:mermaid";
+  URL.revokeObjectURL = () => {};
+
+  try {
+    downloadMermaidSvg("<svg><br></svg>");
+    assert.equal(wrap.innerHTML, "<svg><br></svg>");
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+    if (originalXMLSerializer === undefined) delete globalThis.XMLSerializer;
+    else globalThis.XMLSerializer = originalXMLSerializer;
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+  }
+});

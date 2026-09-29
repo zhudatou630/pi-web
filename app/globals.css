@@ -1605,7 +1605,8 @@ pre, code {
 }
 .mermaid-block svg {
   display: block;
-  max-width: none;
+  max-width: 100%;
+  height: auto;
 }
 .mermaid-block-loading {
   min-height: 120px;
@@ -1624,6 +1625,7 @@ pre, code {
   color: inherit;
   cursor: zoom-in;
   text-align: left;
+  -webkit-overflow-scrolling: touch;
 }
 .mermaid-preview-button:hover {
   opacity: 0.85;

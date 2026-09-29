@@ -3,6 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { useFontScheme } from "@/hooks/useFontScheme";
 import { useTheme } from "@/hooks/useTheme";
 import { claudeCodeStyle, claudeDarkCodeStyle, claudeDarkMermaidVariables, claudeMermaidVariables } from "@/lib/claude-theme";
 import { useI18n } from "@/hooks/useI18n";
@@ -20,15 +21,32 @@ const ZOOM_STEP = 0.25;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 
-export function downloadMermaidSvg(svg: SVGSVGElement): void {
+function parseMermaidSvg(svg: string): SVGSVGElement | null {
+  const wrap = document.createElement("div");
+  wrap.innerHTML = svg;
+  return wrap.querySelector("svg");
+}
+
+export function downloadMermaidSvg(svg: SVGSVGElement | string): void {
   // Mermaid's HTML serialization can leave void tags such as <br> unclosed.
-  const xml = new XMLSerializer().serializeToString(svg);
+  const el = typeof svg === "string" ? parseMermaidSvg(svg) : svg;
+  if (!el) return;
+  const xml = new XMLSerializer().serializeToString(el);
   const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
   link.download = "mermaid-diagram.svg";
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function mermaidFontFamily(): string {
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:fixed;left:-99px;font-family:var(--font-chat)";
+  document.documentElement.appendChild(probe);
+  const family = getComputedStyle(probe).fontFamily;
+  probe.remove();
+  return family || '"Sarasa UI SC Web", sans-serif';
 }
 
 type RenderState =
@@ -38,13 +56,14 @@ type RenderState =
 
 export function MermaidBlock({ code, isStreaming, defaultPreview = false }: MermaidBlockProps) {
   const { isDark, palette } = useTheme();
+  const { scheme } = useFontScheme();
   const isClaude = palette === "claude";
   const { t } = useI18n();
   const [showPreview, setShowPreview] = useState(defaultPreview);
   const [renderState, setRenderState] = useState<RenderState | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
-  const previewRef = useRef<HTMLButtonElement>(null);
-  const currentKey = `${palette}-${isDark ? "dark" : "light"}\n${code}`;
+  const pointerStart = useRef<{ x: number; y: number } | null>(null);
+  const currentKey = `${palette}-${isDark ? "dark" : "light"}-${scheme}\n${code}`;
   const previewVisible = showPreview && !isStreaming;
 
   useEffect(() => {
@@ -54,14 +73,22 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
     setRenderState({ key: currentKey, status: "loading" });
 
     const render = async () => {
+      if (document.fonts?.ready) await document.fonts.ready;
+      if (cancelled) return;
+      const fontFamily = mermaidFontFamily();
       const { default: mermaid } = await import("mermaid");
+      const themeVariables = {
+        ...(isClaude ? (isDark ? claudeDarkMermaidVariables : claudeMermaidVariables) : null),
+        fontFamily,
+      };
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
         suppressErrorRendering: true,
+        fontFamily,
         ...(isClaude
-          ? { theme: "base" as const, themeVariables: isDark ? claudeDarkMermaidVariables : claudeMermaidVariables }
-          : { theme: isDark ? "dark" as const : "default" as const }),
+          ? { theme: "base" as const, themeVariables }
+          : { theme: isDark ? "dark" as const : "default" as const, themeVariables }),
       });
 
       const parsed = await mermaid.parse(code, { suppressErrors: true });
@@ -109,13 +136,26 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
     ) : (
       <>
         {!zoomOpen && (
-          <button
-            ref={previewRef}
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             className="mermaid-block mermaid-preview-button"
             title={t("i18n.openMermaidViewer")}
             aria-label={t("i18n.openMermaidViewer")}
-            onClick={() => setZoomOpen(true)}
+            onPointerDown={(event) => {
+              pointerStart.current = { x: event.clientX, y: event.clientY };
+            }}
+            onClick={(event) => {
+              const start = pointerStart.current;
+              pointerStart.current = null;
+              if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) return;
+              setZoomOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              setZoomOpen(true);
+            }}
             dangerouslySetInnerHTML={{ __html: renderState.svg }}
           />
         )}
@@ -134,10 +174,7 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
               className="markdown-code-action"
               title={`${t("i18n.downloadFile")} (SVG)`}
               aria-label={`${t("i18n.downloadFile")} (SVG)`}
-              onClick={() => {
-                const svg = previewRef.current?.querySelector("svg");
-                if (svg) downloadMermaidSvg(svg);
-              }}
+              onClick={() => downloadMermaidSvg(renderState.svg)}
             >
               SVG
             </button>
