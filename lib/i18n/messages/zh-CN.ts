@@ -221,6 +221,7 @@ export const zhCNLocale: LocalePlugin = {
     "usage.profileSummary": "{from} – {to} · {hours} 小时 · {tokens} Token · {cost}",
     "usage.whenYouWork": "什么时候用得最多",
     "usage.byWeekday": "星期分布",
+    "usage.weekHour": "星期 × 时段",
     "usage.part.morning": "上午",
     "usage.part.daytime": "下午",
     "usage.part.evening": "晚上",

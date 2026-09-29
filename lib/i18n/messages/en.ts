@@ -221,6 +221,7 @@ export const enLocale: LocalePlugin = {
     "usage.profileSummary": "{from} – {to} · {hours} hours · {tokens} tokens · {cost}",
     "usage.whenYouWork": "When you work most",
     "usage.byWeekday": "By weekday",
+    "usage.weekHour": "Weekday × hour",
     "usage.part.morning": "Morning",
     "usage.part.daytime": "Daytime",
     "usage.part.evening": "Evening",

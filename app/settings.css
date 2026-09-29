@@ -2851,6 +2851,12 @@ a.models-hint:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* A tapped cell's figures take the place of the summary line, one tier up so the swap reads as a result. */
+.usage-chart-peak[data-selected],
+.usage-caption[data-selected] {
+  color: var(--text-muted);
+}
+
 .usage-chart-axis {
   display: flex;
   justify-content: space-between;
@@ -2983,6 +2989,29 @@ button.usage-bar:hover::after,
 
 .usage-table td.usage-table-name {
   color: var(--text);
+}
+
+/* Row bar under the name: the sorted metric scaled to the largest row; the top row in full accent. */
+.usage-row-bar {
+  display: block;
+  width: 120px;
+  max-width: 100%;
+  height: 3px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 1.5px;
+  background: var(--bg-hover);
+}
+
+.usage-row-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 55%, var(--bg-hover));
+}
+
+.usage-row-bar[data-top] > span {
+  background: var(--accent);
 }
 
 .usage-badge {
@@ -3127,6 +3156,32 @@ button.usage-cell:not(:disabled) {
   outline-offset: 1px;
 }
 
+/* Weekday × hour: the same cells as the year heatmap, stretched to wide blocks. */
+.usage-hours {
+  display: grid;
+  grid-template-columns: auto repeat(24, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.usage-hours > .usage-cell {
+  aspect-ratio: auto;
+  height: 20px;
+}
+
+.usage-hours > .usage-cell[aria-pressed="true"],
+.usage-hours > button.usage-cell:not(:disabled):hover {
+  outline: 1px solid var(--text-muted);
+  outline-offset: 1px;
+}
+
+.usage-hour {
+  padding-top: 2px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .usage-caption {
   margin: 8px 0 0;
   color: var(--text-dim);
@@ -3141,6 +3196,14 @@ button.usage-cell:not(:disabled) {
 
   .usage-table .is-secondary {
     display: none;
+  }
+
+  .usage-hours {
+    gap: 2px;
+  }
+
+  .usage-hours > .usage-cell {
+    height: 16px;
   }
 
   .usage-table tr.usage-period-detail > td {

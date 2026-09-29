@@ -45,6 +45,7 @@ function useFormat(locale: string) {
     const month = new Intl.DateTimeFormat(locale, { year: "numeric", month: "short" });
     const monthName = new Intl.DateTimeFormat(locale, { month: "short" });
     const weekday = new Intl.DateTimeFormat(locale, { weekday: "narrow" });
+    const weekdayShort = new Intl.DateTimeFormat(locale, { weekday: "short" });
     const weekdayLong = new Intl.DateTimeFormat(locale, { weekday: "long" });
     return {
       cost: (v: number) => (v > 0 && v < 0.05 ? `<${currency.format(0.1)}` : currency.format(v)),
@@ -60,6 +61,7 @@ function useFormat(locale: string) {
       month: (key: string) => month.format(parseDay(key)),
       monthName: (d: Date) => monthName.format(d),
       weekday: (d: Date) => weekday.format(d),
+      weekdayShort: (d: Date) => weekdayShort.format(d),
       weekdayLong: (d: Date) => weekdayLong.format(d),
     };
   }, [locale]);
@@ -210,9 +212,11 @@ function Bars({ points, selected, onSelect, start, end, peakLabel }: {
   peakLabel: string;
 }) {
   const max = Math.max(...points.map((p) => p.value), 0);
+  const selectedPoint = points.find((p) => p.key === selected);
   return (
     <div className="usage-chart">
-      <span className="usage-chart-peak">{peakLabel}</span>
+      {/* A tapped bar's figures replace the peak line: touch has no hover title. */}
+      <span className="usage-chart-peak" data-selected={selectedPoint ? "" : undefined}>{selectedPoint?.title ?? peakLabel}</span>
       <div className="usage-bars" style={{ "--usage-bar-count": points.length } as CSSProperties}>
         {points.map((point) => (
           <button
@@ -349,6 +353,9 @@ function UsageTable({ groups, nameLabel, name = (key) => key || "—", limit = I
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const totalCost = groups.reduce((sum, g) => sum + g.cost, 0);
   const totalTokens = groups.reduce((sum, g) => sum + g.tokens, 0);
+  // The row bars follow the sorted metric (tokens, else cost), scaled to the largest row so they compare at a glance.
+  const barOf = (g: UsageGroup) => (sort.key === "tokens" ? g.tokens : g.cost);
+  const barMax = Math.max(...groups.map(barOf), 0);
   // Mobile hides the token-share column; its one share column follows the sort, token % only while sorted by tokens.
   const tokenShareOnly = useIsMobile() && sort.key === "tokens";
   const sorted = [...groups].sort((a, b) => {
@@ -439,6 +446,11 @@ function UsageTable({ groups, nameLabel, name = (key) => key || "—", limit = I
                       </button>
                     ) : <span>{name(group.key)}</span>}
                     {group.unpriced > 0 && <span className="usage-badge" title={t("usage.unpricedNote", { count: group.unpriced })}>{t("usage.unpriced")}</span>}
+                    {groups.length > 1 && (
+                      <span className="usage-row-bar" data-top={barOf(group) === barMax && barMax > 0 ? "" : undefined} aria-hidden="true">
+                        <span style={{ width: `${barMax > 0 ? (barOf(group) / barMax) * 100 : 0}%` }} />
+                      </span>
+                    )}
                   </td>
                   {columns.map((column, index) => (
                     <td key={index} className={[column.secondary && "is-secondary", column.strong && "is-strong"].filter(Boolean).join(" ") || undefined}>
@@ -548,11 +560,7 @@ function Activity({ records, today, scanning, format, t }: { records: UsageRecor
       <SettingsGroup
         title={t("usage.dailyCost")}
         action={(
-          <span className="usage-legend" aria-hidden="true">
-            {t("usage.less")}
-            {[0, 1, 2, 3, 4].map((level) => <span key={level} className="usage-cell" data-level={level} />)}
-            {t("usage.more")}
-          </span>
+          <Legend t={t} />
         )}
       >
         <div ref={scrollRef} className="usage-heatmap-scroll">
@@ -585,7 +593,11 @@ function Activity({ records, today, scanning, format, t }: { records: UsageRecor
             })}
           </div>
         </div>
-        <p className="usage-caption">{t("usage.yearSummary", { cost: format.cost(view.yearCost), days: view.days.size })}</p>
+        <p className="usage-caption" data-selected={selectedDay ? "" : undefined}>
+          {selectedDay
+            ? t("usage.cell", { date: format.day(selectedDay.key), cost: format.cost(selectedDay.cost), tokens: format.tokens(selectedDay.tokens) })
+            : t("usage.yearSummary", { cost: format.cost(view.yearCost), days: view.days.size })}
+        </p>
       </SettingsGroup>
 
       {selectedDay && (
@@ -599,6 +611,16 @@ function Activity({ records, today, scanning, format, t }: { records: UsageRecor
 
       <HourlyProfile records={records} scanning={scanning} format={format} t={t} />
     </>
+  );
+}
+
+function Legend({ t }: { t: T }) {
+  return (
+    <span className="usage-legend" aria-hidden="true">
+      {t("usage.less")}
+      {[0, 1, 2, 3, 4].map((level) => <span key={level} className="usage-cell" data-level={level} />)}
+      {t("usage.more")}
+    </span>
   );
 }
 
@@ -634,25 +656,37 @@ function ShareRows({ rows, percent }: { rows: { key: string; label: string; span
 
 /** When the work happens, by tokens like tokscale's Hourly Profile: day parts, weekdays, the peak hour. */
 function HourlyProfile({ records, scanning, format, t }: { records: UsageRecord[]; scanning: boolean; format: Format; t: T }) {
+  const [selected, setSelected] = useState<number | null>(null);
   const timed = records.filter((r) => r.hour !== null);
   if (timed.length === 0) return null;
   const tokensOf = (r: UsageRecord) => r.input + r.output + r.cacheRead + r.cacheWrite;
   const parts = [0, 0, 0, 0];
   const weekdays = [0, 0, 0, 0, 0, 0, 0];
+  // Monday-first weekday × hour, flat: index = weekday * 24 + hour.
+  const grid = Array.from({ length: 7 * 24 }, () => ({ tokens: 0, cost: 0 }));
   const byHour = groupRecords(timed, (r) => String(r.hour));
   for (const r of timed) {
+    const weekday = (parseDay(r.day).getDay() + 6) % 7;
     parts[dayPartOf(r.hour!)] += tokensOf(r);
-    weekdays[(parseDay(r.day).getDay() + 6) % 7] += tokensOf(r);
+    weekdays[weekday] += tokensOf(r);
+    grid[weekday * 24 + r.hour!].tokens += tokensOf(r);
+    grid[weekday * 24 + r.hour!].cost += r.cost;
   }
+  const level = levelScale(grid.map((cell) => cell.tokens));
   const peak = byHour.reduce((best, g) => (g.tokens > best.tokens ? g : best));
   const peakHour = Number(peak.key);
   const totals = sumRecords(timed);
   const hours = new Set(timed.map((r) => `${r.day} ${r.hour}`)).size;
   const days = timed.map((r) => r.day).sort();
   const monday = new Date(2024, 0, 1);
+  const cellTitle = (index: number) => t("usage.cell", {
+    date: `${format.weekdayShort(addDays(monday, Math.floor(index / 24)))} ${clock(index % 24, "00")}`,
+    cost: format.cost(grid[index].cost),
+    tokens: format.tokens(grid[index].tokens),
+  });
 
   return (
-    <SettingsGroup title={t("usage.hourProfile")}>
+    <SettingsGroup title={t("usage.hourProfile")} action={<Legend t={t} />}>
       <p className="usage-caption usage-profile-summary">
         {t("usage.profileSummary", {
           from: format.day(days[0]),
@@ -683,8 +717,37 @@ function HourlyProfile({ records, scanning, format, t }: { records: UsageRecord[
           }))} />
         </section>
       </div>
-      <p className="usage-caption">
-        {t("usage.peakHour", { span: `${clock(peakHour, "00")}–${clock(peakHour, "59")}`, tokens: format.tokens(peak.tokens), cost: format.cost(peak.cost) })}
+      <h4 className="usage-subtitle">{t("usage.weekHour")}</h4>
+      <div className="usage-hours">
+        {[0, 1, 2, 3, 4, 5, 6].map((row) => (
+          <span key={row} className="usage-weekday" style={{ gridRow: row + 1 }}>{format.weekdayShort(addDays(monday, row))}</span>
+        ))}
+        {grid.map((cell, index) => {
+          const row = Math.floor(index / 24);
+          const hour = index % 24;
+          return (
+            <button
+              key={index}
+              type="button"
+              className="usage-cell"
+              data-level={level(cell.tokens)}
+              aria-pressed={selected === index}
+              disabled={cell.tokens === 0}
+              style={{ gridRow: row + 1, gridColumn: hour + 2 }}
+              title={cellTitle(index)}
+              aria-label={cellTitle(index)}
+              onClick={() => setSelected((current) => (current === index ? null : index))}
+            />
+          );
+        })}
+        {[0, 6, 12, 18].map((hour) => (
+          <span key={hour} className="usage-hour" style={{ gridRow: 8, gridColumn: `${hour + 2} / span 6` }}>{clock(hour, "00")}</span>
+        ))}
+      </div>
+      <p className="usage-caption" data-selected={selected !== null ? "" : undefined}>
+        {selected !== null
+          ? cellTitle(selected)
+          : t("usage.peakHour", { span: `${clock(peakHour, "00")}–${clock(peakHour, "59")}`, tokens: format.tokens(peak.tokens), cost: format.cost(peak.cost) })}
       </p>
     </SettingsGroup>
   );
