@@ -5,6 +5,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { useI18n } from "@/hooks/useI18n";
 import { THINKING_LEVELS } from "@/lib/thinking-levels";
 import { serializeHeaderRows, updateHeaderRow, type HeaderRow } from "../models-config-helpers";
+import { Select as SelectField } from "../Select";
 import { ConfigButton, ConfigSwitch, SettingsRow } from "../SettingsUi";
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
@@ -81,10 +82,11 @@ export function NumInput({ value, onChange, placeholder }: { value: string; onCh
 export function Select({ value, onChange, options, required }: { value: string; onChange: (v: string) => void; options: readonly string[]; required?: boolean }) {
   const { t } = useI18n();
   return (
-    <select className="models-input" value={value} onChange={(e) => onChange(e.target.value)}>
-      {!required && <option value="">{t("models.useDefault")}</option>}
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
+    <SelectField
+      value={value}
+      onChange={onChange}
+      options={[...(required ? [] : [{ value: "", label: t("models.useDefault") }]), ...options.map((o) => ({ value: o, label: o }))]}
+    />
   );
 }
 

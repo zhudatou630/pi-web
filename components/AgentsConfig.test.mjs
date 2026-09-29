@@ -51,7 +51,7 @@ test("uses the same form controls for editable and readonly profiles", () => {
   assert.match(editorSource, /<input aria-label=\{t\("agents\.description"\)\}[\s\S]*?disabled=\{disabled\}/);
   assert.match(editorSource, /<textarea className="agents-system-prompt"[\s\S]*?disabled=\{disabled\}/);
   assert.match(editorSource, /<Toggle key=\{tool\}[\s\S]*?disabled=\{disabled\}/);
-  assert.match(editorSource, /<select aria-label=\{t\("agents\.thinking"\)\}[\s\S]*?disabled=\{disabled\}/);
+  assert.match(editorSource, /<Select\s+ariaLabel=\{t\("agents\.thinking"\)\}[\s\S]*?disabled=\{disabled\}/);
   assert.match(editorSource, /<input aria-label=\{t\("agents\.maxTurns"\)[\s\S]*?disabled=\{disabled\}/);
   assert.match(editorSource, /<Toggle label=\{t\("agents\.inheritContext"\)\} disabled=\{disabled\}/);
   assert.match(editorSource, /<Toggle label=\{t\("agents\.background"\)\} disabled=\{disabled\}/);

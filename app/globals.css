@@ -2324,7 +2324,7 @@ button.file-outline-fold:hover {
   color: var(--text-muted);
   font: inherit;
   font-size: 12px;
-  line-height: 1;
+  line-height: 1.4;
   text-align: left;
   cursor: pointer;
 }
@@ -3527,7 +3527,7 @@ span.token.table {
   color: var(--text-muted);
   font: inherit;
   font-size: 12px;
-  line-height: 1;
+  line-height: 1.4; /* the ellipsis span clips at its line box; 1 cut g/p/y */
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
@@ -3581,6 +3581,16 @@ span.token.table {
 /* Provider groups: caption belongs to the rows below; one 6px gap, no stacked padding. */
 .menu-surface-group + .menu-surface-group {
   margin-top: 6px;
+}
+
+/* The "inherit / default" row is not a provider's model: its own group, ruled off from the providers. */
+.menu-surface-group.is-lead {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.menu-surface-group.is-lead + .menu-surface-group {
+  margin-top: 8px;
 }
 
 .menu-surface-group [role="option"] {

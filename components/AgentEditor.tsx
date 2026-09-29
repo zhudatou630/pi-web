@@ -18,6 +18,7 @@ import {
   SettingsRow,
 } from "./SettingsUi";
 import { ModelSelector } from "./ModelSelector";
+import { Select } from "./Select";
 
 const TOOL_OPTIONS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const THINKING_OPTIONS = ["", ...THINKING_LEVEL_VALUES] as const;
@@ -500,15 +501,16 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
         <div className="settings-form">
           {canPickScope && (
             <Field label={t("agents.saveLocation")}>
-              <select
-                aria-label={t("agents.saveLocation")}
+              <Select
+                ariaLabel={t("agents.saveLocation")}
                 value={editor.targetScope}
                 disabled={disabled}
-                onChange={(event) => editor.setTargetScope(event.target.value as SubagentWritableScope)}
-              >
-                <option value="global">{t("agents.saveLocation.global")}</option>
-                <option value="project">{writing ? t("agents.saveLocation.project") : t("agents.saveLocation.override")}</option>
-              </select>
+                onChange={(value) => editor.setTargetScope(value as SubagentWritableScope)}
+                options={[
+                  { value: "global", label: t("agents.saveLocation.global") },
+                  { value: "project", label: writing ? t("agents.saveLocation.project") : t("agents.saveLocation.override") },
+                ]}
+              />
               {overriding && <span className="settings-row-message">{t("agents.overrideNote")}</span>}
             </Field>
           )}
@@ -570,9 +572,13 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
               {models.error && <span className="settings-row-message is-error">{models.error}</span>}
             </Field>
             <Field label={t("agents.thinking")}>
-              <select aria-label={t("agents.thinking")} value={draft.thinking ?? ""} disabled={disabled} onChange={(event) => update("thinking", (event.target.value || undefined) as EditableProfile["thinking"])}>
-                {THINKING_OPTIONS.map((value) => <option key={value || "default"} value={value}>{value || t("agents.inherit")}</option>)}
-              </select>
+              <Select
+                ariaLabel={t("agents.thinking")}
+                value={draft.thinking ?? ""}
+                disabled={disabled}
+                onChange={(value) => update("thinking", (value || undefined) as EditableProfile["thinking"])}
+                options={THINKING_OPTIONS.map((value) => ({ value, label: value || t("agents.inherit") }))}
+              />
             </Field>
             <Field label={t("agents.maxTurns")}>
               <input aria-label={t("agents.maxTurns")} type="number" min={1} value={draft.maxTurns ?? ""} disabled={disabled} onChange={(event) => update("maxTurns", event.target.value ? Number(event.target.value) : undefined)} />

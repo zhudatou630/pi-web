@@ -151,3 +151,23 @@ test("static SVG icons stay on the icon scale", async () => {
   }
   assert.deepEqual(violations, []);
 });
+
+// Text that clips (overflow hidden / ellipsis) is cut at its line box, and Sarasa descenders reach
+// ~0.24em: a line-height under 1.3 on the clipping element or on an ancestor it inherits from
+// (`.menu-surface` rows held `line-height: 1` around ellipsis spans) shears g/p/y.
+test("clipped text never inherits a line-height under 1.3", async () => {
+  const violations = [];
+  for (const css of ["app/globals.css", "app/settings.css"]) {
+    const text = await readFile(join(root, css), "utf8");
+    for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const lh = m[2].match(/line-height:\s*([\d.]+)\s*;/);
+      if (lh && Number(lh[1]) < 1.3 && /overflow(-x)?:\s*hidden|text-overflow/.test(m[2])) violations.push(`${css} ${m[1].trim().split("\n").pop()}`);
+    }
+  }
+  const globals = await readFile(join(root, "app/globals.css"), "utf8");
+  const row = globals.match(/\.menu-surface :is\(\[role="menuitem"\][^{]*\{([^}]*)\}/)?.[1] ?? "";
+  if (Number(row.match(/line-height:\s*([\d.]+)/)?.[1]) < 1.3) violations.push("menu-surface option rows");
+  const entry = globals.match(/\.directory-picker-entry \{([^}]*)\}/)?.[1] ?? "";
+  if (Number(entry.match(/line-height:\s*([\d.]+)/)?.[1]) < 1.3) violations.push("directory-picker-entry");
+  assert.deepEqual(violations, []);
+});

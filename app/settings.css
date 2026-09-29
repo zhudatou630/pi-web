@@ -3374,3 +3374,66 @@ button.usage-cell:not(:disabled) {
   align-items: center;
   gap: 6px;
 }
+
+/* Select.tsx trigger: a field-height button with the same fill as text fields. */
+.select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: var(--ui-control-height);
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-field-bg);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-trigger:focus-visible,
+.select-trigger[aria-expanded="true"] {
+  outline: none;
+  box-shadow: var(--ui-field-ring);
+}
+
+.select-trigger:disabled {
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.select-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.select-trigger-chevron {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.select-trigger.settings-select {
+  width: auto;
+  min-width: 120px;
+}
+
+.select-trigger.is-inline {
+  width: auto;
+  height: auto;
+  padding: 4px 4px 4px 6px;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.select-trigger.is-inline:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  color: var(--text);
+}

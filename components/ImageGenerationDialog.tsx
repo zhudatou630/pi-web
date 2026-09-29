@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Select, type SelectOption } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
 import { imageRatioKind, MAX_REFERENCE_IMAGES, type ImageConfigView, type ImageConnectionView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { Base64ImageAttachment } from "@/lib/image-attachments";
@@ -37,26 +38,14 @@ function qualityLabel(t: (key: string) => string, value: string): string {
   return value;
 }
 
-function CompactSelect({ value, label, onChange, children }: {
+function CompactSelect({ value, label, onChange, options }: {
   value: string;
   label: string;
   onChange: (value: string) => void;
-  children: ReactNode;
+  options: SelectOption[];
 }) {
   return (
-    <label className="relative inline-flex flex-none items-center">
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="image-generation-select appearance-none bg-transparent py-1 pl-1.5 pr-5 text-[12px] text-text-muted outline-none hover:text-text focus:text-text"
-      >
-        {children}
-      </select>
-      <svg className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-text-dim" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </label>
+    <Select ariaLabel={label} value={value} onChange={onChange} options={options} className="select-trigger is-inline image-generation-select" />
   );
 }
 
@@ -237,24 +226,20 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
               </>
             ) : null}
             {showConnection ? (
-              <CompactSelect value={connectionId} label={t("image.connection")} onChange={setConnectionId}>
-                {config.connections.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-              </CompactSelect>
+              <CompactSelect value={connectionId} label={t("image.connection")} onChange={setConnectionId} options={config.connections.map((item) => ({ value: item.id, label: item.label }))}>
+                </CompactSelect>
             ) : null}
             {sizeChoices.length ? (
-              <CompactSelect value={size} label={t("image.aspect")} onChange={setSize}>
-                {sizeChoices.map((value) => <option key={value} value={value}>{ratioLabel(t, value)}</option>)}
-              </CompactSelect>
+              <CompactSelect value={size} label={t("image.aspect")} onChange={setSize} options={sizeChoices.map((value) => ({ value, label: ratioLabel(t, value) }))}>
+                </CompactSelect>
             ) : null}
             {resolutionChoices.length ? (
-              <CompactSelect value={resolution} label={t("image.resolution")} onChange={setResolution}>
-                {resolutionChoices.map((value) => <option key={value} value={value}>{resolutionLabel(value)}</option>)}
-              </CompactSelect>
+              <CompactSelect value={resolution} label={t("image.resolution")} onChange={setResolution} options={resolutionChoices.map((value) => ({ value, label: resolutionLabel(value) }))}>
+                </CompactSelect>
             ) : null}
             {qualityChoices.length ? (
-              <CompactSelect value={quality} label={t("image.quality")} onChange={setQuality}>
-                {qualityChoices.map((value) => <option key={value} value={value}>{qualityLabel(t, value)}</option>)}
-              </CompactSelect>
+              <CompactSelect value={quality} label={t("image.quality")} onChange={setQuality} options={qualityChoices.map((value) => ({ value, label: qualityLabel(t, value) }))}>
+                </CompactSelect>
             ) : null}
           </div>
           <ConfigButton variant="primary" className="shrink-0" disabled={!prompt.trim()} onClick={submit}>{editing ? t("image.edit") : t("image.generate")}</ConfigButton>

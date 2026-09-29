@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { Select } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import { IMAGE_CUSTOM_MODEL_PRESETS } from "@/lib/image-generation";
@@ -190,17 +191,15 @@ export function ImagesConfig({
                 </label>
                 <label className="settings-field">
                   <span>{t("settings.imagesProvider")}</span>
-                  <select
+                  <Select
+                    ariaLabel={t("settings.imagesProvider")}
                     value={draft.provider}
-                    onChange={(event) => setDraft({ ...draft, provider: event.target.value })}
-                    required
-                  >
-                    {providers.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
-                        {provider.name === provider.id ? provider.id : `${provider.name} (${provider.id})`}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(provider) => setDraft({ ...draft, provider })}
+                    options={providers.map((provider) => ({
+                      value: provider.id,
+                      label: provider.name === provider.id ? provider.id : `${provider.name} (${provider.id})`,
+                    }))}
+                  />
                 </label>
                 <label className="settings-field">
                   <span>{t("settings.imagesModel")}</span>
@@ -270,18 +269,19 @@ export function ImagesConfig({
         )}
         {activeHere && settings && settings.connections.some((connection) => connection.enabled) && (
           <SettingsRow label={t("settings.imagesDefault")} description={t("settings.imagesDefaultDescription")}>
-            <select
-              className="settings-select"
+            <Select
+              className="select-trigger settings-select"
+              ariaLabel={t("settings.imagesDefault")}
+              align="end"
               value={settings.defaultConnection}
               disabled={loading || saving}
-              onChange={(event) => void save({ default: event.target.value })}
-            >
-              {settings.connections.filter((connection) => connection.enabled).map((connection) => (
-                <option key={connection.id} value={connection.id} disabled={!connection.signedIn}>
-                  {connection.label}{connection.signedIn ? "" : ` (${t("settings.imagesSignedOut")})`}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => void save({ default: value })}
+              options={settings.connections.filter((connection) => connection.enabled).map((connection) => ({
+                value: connection.id,
+                disabled: !connection.signedIn,
+                label: `${connection.label}${connection.signedIn ? "" : ` (${t("settings.imagesSignedOut")})`}`,
+              }))}
+            />
           </SettingsRow>
         )}
         {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
@@ -474,10 +474,14 @@ function ModelPicker({
   const selected = manual || !known ? OTHER_MODEL : value;
   return (
     <>
-      <select
+      <Select
+        ariaLabel={t("settings.imagesModel")}
         value={selected}
-        onChange={(event) => {
-          const next = event.target.value;
+        options={[
+          ...IMAGE_CUSTOM_MODEL_PRESETS.map((item) => ({ value: item.model, label: `${item.label} · ${item.model}` })),
+          { value: OTHER_MODEL, label: t("settings.imagesOtherModel") },
+        ]}
+        onChange={(next) => {
           if (next === OTHER_MODEL) {
             setManual(true);
             return;
@@ -485,14 +489,7 @@ function ModelPicker({
           setManual(false);
           onChange(next);
         }}
-      >
-        {IMAGE_CUSTOM_MODEL_PRESETS.map((item) => (
-          <option key={item.model} value={item.model}>
-            {item.label} · {item.model}
-          </option>
-        ))}
-        <option value={OTHER_MODEL}>{t("settings.imagesOtherModel")}</option>
-      </select>
+      />
       {selected === OTHER_MODEL ? (
         <input value={value} onChange={(event) => onChange(event.target.value)} required />
       ) : null}

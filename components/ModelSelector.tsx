@@ -243,7 +243,7 @@ export function ModelSelector({
             <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
           </svg>
         ) : null}
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.25 }}>{currentName}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4 }}>{currentName}</span>
         {variant === "field" && (
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, color: "var(--text-dim)" }}>
             <polyline points="6 9 12 15 18 9" />
@@ -286,17 +286,19 @@ export function ModelSelector({
           >
             <div className="menu-surface-scroll">
               {onClear && (
-                <ModelOptionButton
-                  id={`${listboxId}-option-0`}
-                  active={!value}
-                  highlighted={activeOptionIndex === 0}
-                  label={emptyLabel ?? "Default"}
-                  onActive={() => setActiveIndex(0)}
-                  onClick={() => {
-                    setOpen(false);
-                    onClear();
-                  }}
-                />
+                <div className="menu-surface-group is-lead">
+                  <ModelOptionButton
+                    id={`${listboxId}-option-0`}
+                    active={!value}
+                    highlighted={activeOptionIndex === 0}
+                    label={emptyLabel ?? "Default"}
+                    onActive={() => setActiveIndex(0)}
+                    onClick={() => {
+                      setOpen(false);
+                      onClear();
+                    }}
+                  />
+                </div>
               )}
               {modelsByProvider.length === 0 ? (
                 <div style={{ padding: "7px 8px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>

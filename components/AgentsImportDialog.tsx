@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Select } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
 import type { ImportSource } from "@/lib/subagent-route";
 import type { ImportableAgentFile, ImportScope } from "@/lib/subagents";
@@ -128,32 +129,32 @@ export function AgentsImportDialog({ cwd, fixedScope, onClose, onImported }: {
             <>
               <label className="agents-import-scope">
                 <span>{t("agents.importSource")}</span>
-                <select
-                  aria-label={t("agents.importSource")}
+                <Select
+                  ariaLabel={t("agents.importSource")}
                   value={sourceDir ?? ""}
                   disabled={importing}
-                  onChange={(event) => setSourceDir(event.target.value)}
-                >
-                  {sources.map((source) => (
-                    // The project name leads (a native select clips the tail); a shared name falls back to the path.
-                    <option key={source.dir} value={source.dir} title={source.dir}>
-                      {sources.some((other) => other !== source && other.name === source.name) ? shortenPath(source.dir) : source.name} ({source.count})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSourceDir}
+                  options={sources.map((source) => ({
+                    value: source.dir,
+                    title: source.dir,
+                    // The project name leads; a shared name falls back to the path.
+                    label: `${sources.some((other) => other !== source && other.name === source.name) ? shortenPath(source.dir) : source.name} (${source.count})`,
+                  }))}
+                />
               </label>
               {!fixedScope && (
                 <label className="agents-import-scope">
                   <span>{t("agents.saveLocation")}</span>
-                  <select
-                    aria-label={t("agents.saveLocation")}
+                  <Select
+                    ariaLabel={t("agents.saveLocation")}
                     value={scope}
                     disabled={importing}
-                    onChange={(event) => setScope(event.target.value as ImportScope)}
-                  >
-                    <option value="global">{t("agents.saveLocation.global")}</option>
-                    <option value="project">{t("agents.saveLocation.project")}</option>
-                  </select>
+                    onChange={(value) => setScope(value as ImportScope)}
+                    options={[
+                      { value: "global", label: t("agents.saveLocation.global") },
+                      { value: "project", label: t("agents.saveLocation.project") },
+                    ]}
+                  />
                 </label>
               )}
               <div className="agents-import-list">

@@ -148,7 +148,7 @@ test("keeps image generation on its own settings page", async () => {
   assert.match(imagesSource, /t\("settings\.imagesAddConnection"\)/);
   assert.match(imagesSource, /<ModelPicker/);
   assert.match(imagesSource, /t\("settings\.imagesDefault"\)/);
-  assert.match(imagesSource, /save\(\{ default: event\.target\.value \}\)/);
+  assert.match(imagesSource, /save\(\{ default: value \}\)/);
   assert.doesNotMatch(imagesSource, /settings-image-presets|addPreset|missingPresets/);
   assert.match(enSource, /"settings\.imagesEnabled": "On by default"/);
   assert.match(zhSource, /"settings\.imagesEnabled": "默认启用"/);
