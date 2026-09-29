@@ -1154,6 +1154,14 @@ pre, code {
 .markdown-body .katex {
   font-size: 1.05em;
 }
+/* KaTeX tags non-Latin runs with `cjk_fallback` (and sibling `*_fallback`
+   classes) and ships no rule for them, so CJK inside math fell through to the
+   generic `serif` tail of `.katex` — the reader's system Chinese face, not one
+   of our bundled web fonts. TeX's `\text` means "use the document text font",
+   so the prose face is the right hook. Latin is untouched: KaTeX_Main owns it. */
+.markdown-body .katex .cjk_fallback {
+  font-family: var(--font-chat), serif;
+}
 
 .process-details-list [data-message-role="assistant"] {
   margin-bottom: 0 !important;
