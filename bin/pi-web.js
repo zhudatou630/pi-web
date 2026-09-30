@@ -84,9 +84,15 @@ nextArgs.push("-H", hostname);
 const npmUpdate = getGlobalNpmCli(pkgDir);
 const npmCli = npmUpdate?.npmCli;
 
-function installUpdate() {
-  console.log("[pi-web] Installing the latest version…");
-  const installer = spawn(process.execPath, [npmCli, "install", "-g", "@calmabacus/pi-web@latest"], {
+const OFFICIAL_REGISTRY = "https://registry.npmjs.org";
+
+// Try the user's configured registry (often a mirror) first; if it fails, e.g. the
+// mirror has not synced the new version yet, retry once against the official one.
+function installUpdate(version = "latest", registry) {
+  console.log(`[pi-web] Installing ${version}${registry ? ` from ${registry}` : ""}…`);
+  const args = [npmCli, "install", "-g", `@calmabacus/pi-web@${version}`];
+  if (registry) args.push(`--registry=${registry}`);
+  const installer = spawn(process.execPath, args, {
     cwd: path.dirname(pkgDir),
     stdio: "inherit",
     env: process.env,
@@ -95,6 +101,9 @@ function installUpdate() {
     if (shuttingDown) return false;
     if (code === 0 && !signal) {
       startServer(false);
+    } else if (!registry) {
+      console.error("[pi-web] Install failed; retrying with the official npm registry.");
+      installUpdate(version, OFFICIAL_REGISTRY);
     } else {
       // npm usually fails before touching the installed files (network), so
       // the old version is still intact — keep serving it instead of leaving
@@ -110,6 +119,7 @@ function installUpdate() {
 
 function startServer(shouldOpenBrowser) {
   let updating = false;
+  let updateVersion;
   let stopTimer;
   // Always run next's JS entry with node directly — avoids .bin symlink issues
   // and path-with-spaces problems on Windows when shell: true is used.
@@ -126,12 +136,13 @@ function startServer(shouldOpenBrowser) {
   wireChildProcessLifecycle(child, process, 5000, console.error, (_code, _signal, shuttingDown) => {
     clearTimeout(stopTimer);
     if (!updating || shuttingDown) return false;
-    installUpdate();
+    installUpdate(updateVersion);
     return true;
   });
   child.on("message", (message) => {
     if (!npmCli || message?.type !== "pi-web:update" || updating) return;
     updating = true;
+    updateVersion = message.version;
     child.kill("SIGTERM");
     stopTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
     stopTimer.unref();

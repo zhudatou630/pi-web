@@ -112,6 +112,8 @@ export async function POST() {
     import("@/lib/rpc-manager"),
     import("@/lib/terminal-manager"),
   ]);
+  // Exact version: a lagging mirror then fails (ETARGET) instead of reinstalling the old one.
+  const version = await loadUpdateStatus(false).then((s) => s.latestVersion, () => undefined);
   if (globalThis.__piWebUpdating) {
     return NextResponse.json({ error: "Pi Web is already updating." }, { status: 409 });
   }
@@ -121,7 +123,7 @@ export async function POST() {
   // No await between checking active work and blocking new work.
   globalThis.__piWebUpdating = true;
   after(() => {
-    process.send!({ type: "pi-web:update" }, (error: Error | null) => {
+    process.send!({ type: "pi-web:update", version }, (error: Error | null) => {
       if (error) {
         globalThis.__piWebUpdating = false;
         console.error("[pi-web] Could not request update:", error);
