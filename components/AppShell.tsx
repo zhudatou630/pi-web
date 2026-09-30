@@ -2496,7 +2496,7 @@ export function AppShell() {
         className="workspace-header-action"
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
-          marginLeft: !sessionStats && !contextUsage ? "auto" : 0,
+          marginLeft: mobile && !sessionStats && !contextUsage ? "auto" : 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
           background: "none",
