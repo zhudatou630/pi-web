@@ -1477,7 +1477,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const name = event.toolName as string;
         const partialResult = event.partialResult as Partial<ToolResultMessage> | undefined;
         const content = partialResult?.content;
-        if ((name === "bash" || name === "powershell") && Array.isArray(content)) {
+        if ((name === "bash" || name === "powershell" || name === "Agent") && Array.isArray(content)) {
           setActiveToolResults((prev) => {
             const next = new Map(prev);
             next.set(id, {
