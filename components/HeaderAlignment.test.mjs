@@ -69,7 +69,7 @@ test("selection marks and svg baselines do not shift original icon sizes", () =>
 
 test("inline branch controls keep identical geometry when their panel opens", () => {
   for (const open of [false, true]) {
-    const html = render(BranchNavigator, { tree: [], activeLeafId: null, onLeafChange() {}, inline: true, open, onToggle() {}, hasSession: true });
+    const html = render(BranchNavigator, { tree: [], open, onToggle() {}, hasSession: true });
     const button = html.match(/<button\b[^>]*>/)?.[0];
     assert.ok(button);
     assert.match(button, /class="workspace-header-action"/);

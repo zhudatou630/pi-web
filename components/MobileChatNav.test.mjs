@@ -28,7 +28,8 @@ test("syncs mobile outline data into the shared top panel instead of a portal sh
   assert.match(mobileNavSource, /chatMinimap\.empty/);
   assert.match(mobileNavSource, /root\.scrollTop \+= row\.bottom - box\.bottom/);
   assert.doesNotMatch(mobileNavSource, /\.scrollIntoView\(/);
-  assert.match(mobileNavSource, /maxHeight: "inherit"/);
+  // The list is the one scroller in the card (flex child), so no inherited max-height and no second scrollbar.
+  assert.match(mobileNavSource, /min-h-0 flex-1 overflow-y-auto/);
   assert.doesNotMatch(mobileNavSource, /block: "center"/);
   assert.doesNotMatch(mobileNavSource, /createPortal|pi-toggle-outline|session-sheet-pop/);
 });
@@ -43,7 +44,9 @@ test("provides outline trigger in mobile toolbar actions", () => {
 
 test("enables context usage stats in the composer dock on mobile and desktop", () => {
   assert.match(chatInputSource, /\{renderContextUsageWidget\(\)\}/);
-  assert.match(chatInputSource, /if \(!contextUsage \|\| contextPercent === null\) return null;/);
+  // Unknown reading (just after compaction) still renders the pill: it is the only way to the stats panel.
+  assert.match(chatInputSource, /if \(!contextUsage \|\| contextUsage\.contextWindow <= 0\) return null;/);
+  assert.match(chatInputSource, /aria-pressed=\{onOpenSessionStats \? Boolean\(statsOpen\) : undefined\}/);
 });
 
 test("keeps outline on the shared session sheet with session", () => {

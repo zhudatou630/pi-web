@@ -103,11 +103,11 @@
   flex-direction: column;
   padding: 4px;
   border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-md);
   background: color-mix(in srgb, var(--bg-panel) 95%, var(--bg));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--ui-shadow-popover);
   color: var(--text);
   font-family: inherit;
   overflow: hidden;

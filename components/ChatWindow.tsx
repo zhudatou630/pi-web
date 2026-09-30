@@ -90,6 +90,8 @@ interface Props {
   onOutlineViewChange?: (view: MobileOutlineView | null) => void;
   onSessionStatsChange?: (stats: SessionStatsInfo | null) => void;
   onSessionStatsPanelOpen?: () => void;
+  /** The stats panel is open for this pane: drives the pill's pressed state. */
+  sessionStatsOpen?: boolean;
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string, sourceSessionId: string | null, page?: number) => void;
   onOpenSession?: (sessionId: string) => void;
@@ -745,7 +747,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, recentProjectPaths = [], pinnedCwds = [], homeDir = "", worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, recentProjectPaths = [], pinnedCwds = [], homeDir = "", worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -1731,6 +1733,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       cacheHitRate={isSessionLoading ? null : cacheHitRate}
       sessionCost={isSessionLoading ? null : sessionStats?.cost}
       onOpenSessionStats={onSessionStatsPanelOpen}
+      statsOpen={sessionStatsOpen}
       toolPreset={toolPreset}
       onToolPresetChange={!isQueuedSubagent && (session || isNew) ? handleToolPresetChange : undefined}
       thinkingLevel={isSessionLoading ? undefined : thinkingLevel ?? undefined}
@@ -2521,7 +2524,7 @@ function NoticeShelf({ notices, floating = false, onPauseChange, onOpenMcpSettin
             color: "var(--text)",
             width: "fit-content",
             maxWidth: "min(100%, 540px)",
-            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06)",
+            boxShadow: "var(--ui-shadow-popover)",
             fontSize: 12,
             lineHeight: 1.45,
             transformOrigin: "top right",

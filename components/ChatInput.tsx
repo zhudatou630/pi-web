@@ -71,6 +71,8 @@ interface Props {
   /** Session spend; shown beside context when the window has stats. */
   sessionCost?: number | null;
   onOpenSessionStats?: () => void;
+  /** The usage panel this pill opens is showing. */
+  statsOpen?: boolean;
   toolPreset?: ToolPreset;
   onToolPresetChange?: (preset: ToolPreset) => void;
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -562,7 +564,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
-  contextUsage, cacheHitRate, sessionCost, onOpenSessionStats,
+  contextUsage, cacheHitRate, sessionCost, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
   retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
@@ -586,7 +588,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [value, setValue] = useState(() => (draftKey ? getDraft(draftKey)?.value ?? "" : ""));
   const [controlsView, setControlsView] = useState<"root" | "tools" | "compact">("root");
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
-  const [statsActive, setStatsActive] = useState(false);
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
@@ -635,7 +636,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const controlsMenuRef = useRef<HTMLDivElement>(null);
   const sendMenuRef = useRef<HTMLDivElement>(null);
   const composerBoxRef = useRef<HTMLDivElement>(null);
-  const statsButtonRef = useRef<HTMLButtonElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
@@ -1602,9 +1602,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (sendMenuRef.current && !sendMenuRef.current.contains(target)) {
         setSendMenuOpen(false);
       }
-      if (statsButtonRef.current && !statsButtonRef.current.contains(target)) {
-        setStatsActive(false);
-      }
       if (slashMenuRef.current && !slashMenuRef.current.contains(target) && !textareaRef.current?.contains(target)) {
         setSlashMenuOpen(false);
       }
@@ -1627,17 +1624,19 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   // Context usage is a readout: it opens the usage panel, never compacts. Color only past 70%.
   const renderContextUsageWidget = () => {
-    if (!contextUsage || contextPercent === null) return null;
+    if (!contextUsage || contextUsage.contextWindow <= 0) return null;
     const windowTokens = contextUsage.contextWindow;
     const tokens = contextUsage.tokens;
-    const isHigh = contextPercent >= 85;
-    const isWarning = contextPercent >= 70 && !isHigh;
+    // Reading unknown (right after a compaction): empty ring, "?" tokens; the pill still opens the panel.
+    const percent = contextPercent ?? 0;
+    const isHigh = percent >= 85;
+    const isWarning = percent >= 70 && !isHigh;
     const remaining = tokens !== null ? Math.max(0, windowTokens - tokens) : null;
     const costLabel = sessionCost == null
       ? null
       : sessionCost >= 0.01 ? `$${sessionCost.toFixed(2)}` : sessionCost > 0 ? `<$0.01` : "$0.00";
     const tooltip = [
-      `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${contextPercent.toFixed(1)}%)`,
+      `${t("chat.contextUsage")}: ${tokens !== null ? formatTokensK(tokens) : "?"} / ${formatTokensK(windowTokens)} (${contextPercent !== null ? `${contextPercent.toFixed(1)}%` : "?"})`,
       remaining !== null ? `${t("chat.contextRemaining")}: ${formatTokensK(remaining)}` : null,
       cacheHitRate !== null && cacheHitRate !== undefined
         ? `${t("session.cacheHitRate")}: ${cacheHitRate.toFixed(1)}%`
@@ -1648,14 +1647,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
     return (
       <button
-        ref={statsButtonRef}
         type="button"
         className={`composer-btn chat-input-context${isHigh ? " is-high" : isWarning ? " is-warning" : ""}`}
-        aria-pressed={onOpenSessionStats ? statsActive : undefined}
-        onClick={() => {
-          setStatsActive((v) => !v);
-          onOpenSessionStats?.();
-        }}
+        aria-pressed={onOpenSessionStats ? Boolean(statsOpen) : undefined}
+        onClick={onOpenSessionStats}
         title={tooltip}
         aria-label={tooltip}
         data-top-panel-trigger={onOpenSessionStats ? "session" : undefined}
@@ -1663,7 +1658,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       >
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ transform: "rotate(-90deg)" }}>
           <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" opacity="0.3" />
-          <circle cx="8" cy="8" r="6" pathLength="100" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeDasharray={`${Math.min(100, Math.round(contextPercent))} 100`} />
+          <circle cx="8" cy="8" r="6" pathLength="100" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeDasharray={`${Math.min(100, Math.round(percent))} 100`} />
         </svg>
         <span>{tokens !== null ? formatTokensK(tokens) : "?"}/{formatTokensK(windowTokens)}</span>
         {cacheHitRate !== null && cacheHitRate !== undefined && (
@@ -1938,7 +1933,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 background: "var(--bg)",
                 border: "1px solid var(--border)",
                 borderRadius: 4,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                boxShadow: "var(--ui-shadow-popover)",
                 fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 lineHeight: 1,

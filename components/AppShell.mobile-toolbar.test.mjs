@@ -8,7 +8,7 @@ const cssSource = await readFile(new URL("../app/globals.css", import.meta.url),
 
 test("keeps session actions inline at every mobile width", () => {
   const toolbar = mobileToolbarSource();
-  assert.match(toolbar, /\{renderChatToolbarActions\(true\)\}[\s\S]*?\{renderSessionStatsButton\(true\)\}[\s\S]*?\{renderMainFileToggle\(true\)\}/);
+  assert.match(toolbar, /\{renderChatToolbarActions\(true\)\}[\s\S]*?\{renderMainFileToggle\(true\)\}/);
   assert.doesNotMatch(source, /useIsNarrowMobile|mobileToolbarMoreOpen|data-mobile-toolbar-more|data-mobile-toolbar-actions/);
 });
 
@@ -59,7 +59,7 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
   assert.match(source, /const AGENT_PANEL_WIDTH = 420/);
   assert.match(
     source,
-    /if \(activeTopPanel === "agents" \|\| \(activeTopPanel === "branches" && !isMobile\)\)[\s\S]*?Math\.min\(activeTopPanel === "agents" \? AGENT_PANEL_WIDTH[\s\S]*?anchor\.getBoundingClientRect\(\)/,
+    /if \(activeTopPanel === "agents" \|\| activeTopPanel === "session" \|\| \(!isMobile && activeTopPanel === "branches"\)\)[\s\S]*?Math\.min\(wantedWidth[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
   assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSwitchFamilySession\}/);
   assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);
@@ -95,21 +95,16 @@ function mobileToolbarSource() {
   return source.slice(start, end);
 }
 
-test("keeps statistics and file controls directly interactive on mobile", () => {
-  const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
+test("keeps the file control directly interactive on mobile", () => {
   const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
-  for (const block of [stats, fileToggle]) {
-    assert.doesNotMatch(block, /\bcovered\b|visibility: covered|pointerEvents: covered|aria-hidden=\{covered|tabIndex=\{covered/);
-  }
-  assert.match(stats, /disabled=\{!showChat\}/);
+  assert.doesNotMatch(fileToggle, /\bcovered\b|visibility: covered|pointerEvents: covered|aria-hidden=\{covered|tabIndex=\{covered/);
   assert.doesNotMatch(fileToggle, /disabled=/);
 });
 
-test("keeps the top session status limited to cost", () => {
-  const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
-  assert.match(stats, /const costText = cost >= 0\.01/);
-  assert.doesNotMatch(stats, /mobileContextText|desktopContextText|desktopCacheText|contextMeterFillColor/);
-  assert.doesNotMatch(source, /mobile-session-stat-cost|mobile-session-stats/);
+test("spend and context have one entry on every platform: the composer pill", () => {
+  // No top-bar stats button; phones keep the pill's ring and context reading; cache rate and cost live in the panel.
+  assert.doesNotMatch(source, /renderSessionStatsButton|mobile-session-stat-cost|mobile-session-stats/);
+  assert.match(cssSource, /\.chat-input-context-cache \{\s*display: none;/);
 });
 
 test("keeps mobile toolbar free of session titles and overflow layers", () => {
@@ -126,7 +121,7 @@ test("keeps the collapsed session title desktop-only without mobile overlay logi
   const desktop = source.slice(source.indexOf("{!isMobile && ("));
   assert.match(desktop, /renderCollapsedSessionTitle\(\)/);
   assert.equal((source.match(/\{renderCollapsedSessionTitle\(\)\}/g) ?? []).length, 1);
-  const title = functionSource("renderCollapsedSessionTitle", "const renderSessionStatsButton");
+  const title = functionSource("renderCollapsedSessionTitle", "const renderMainFileToggle");
   assert.match(title, /if \(sidebarOpen \|\| !showChat\) return null;/);
   assert.match(title, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
   assert.match(title, /overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"/);
@@ -135,7 +130,7 @@ test("keeps the collapsed session title desktop-only without mobile overlay logi
 
 test("desktop titlebar shows session tools whenever chat is showing; spend is in the composer", () => {
   assert.match(source, /renderChatToolbarActions\(false, \{ sessionTools: showChat, interactive: !options\?\.inert \}\)/);
-  assert.match(source, /if \(!mobile\) return null;/);
+  assert.doesNotMatch(source, /renderSessionStatsButton/);
 });
 
 test("desktop header keeps tabs left and actions right without theme or language", () => {
@@ -156,7 +151,7 @@ test("desktop chat toolbar actions are icon-only", () => {
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   assert.doesNotMatch(actions, /\{!mobile && <span>/);
   assert.match(actions, /width: TOP_BAR_ICON_BUTTON_SIZE/);
-  assert.match(actions, /inline\s+compact\s+open=\{interactive && activeTopPanel === "branches"\}/);
+  assert.match(actions, /<BranchNavigator[\s\S]*?compact\s+open=\{interactive && activeTopPanel === "branches"\}/);
 });
 
 test("desktop session controls follow the task-first order", () => {
@@ -192,33 +187,38 @@ test("places trust warnings below the mobile toolbar and the file toggle in tool
   assert.doesNotMatch(source, /position: "fixed", top: "env\(safe-area-inset-top\)"/);
 });
 
-test("keeps the file panel toggle right-aligned when session stats are absent", () => {
-  const fileToggle = functionSource("renderMainFileToggle", "{/* Mobile overlay backdrop */}");
-  assert.match(fileToggle, /marginLeft: !sessionStats && !contextUsage \? "auto" : 0/);
-  assert.doesNotMatch(fileToggle, /!mobile && !sessionStats/);
+test("mobile toolbar packs its whole group at the right end, fixed tools last", () => {
+  const toolbar = mobileToolbarSource();
+  assert.match(toolbar, /justifyContent: "flex-end"/);
+  const fileToggle = functionSource("renderMainFileToggle", "const sidebarToggleButton");
+  assert.doesNotMatch(fileToggle, /marginLeft/);
+  // Conditional tools (back, agents, branches) come first and grow leftwards; outline, menu, files never move.
+  const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
+  const order = [
+    'data-mobile-toolbar-action={mobile ? "agents"',
+    'data-mobile-toolbar-action="branches"',
+    'data-mobile-toolbar-action="outline"',
+    "<SessionMenu",
+  ].map((needle) => actions.indexOf(needle));
+  assert.ok(order.every((index) => index >= 0));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
 });
 
-test("mobile session stats aligns with desktop to keep top session status limited to cost", () => {
-  const stats = functionSource("renderSessionStatsButton", "const renderMainFileToggle");
-  assert.match(stats, /costText/);
-  assert.doesNotMatch(stats, /contextLabel/);
-});
-
-test("top-bar sheets animate a wrapper, not the content nodes", async () => {
-  assert.match(
-    cssSource,
-    /\.session-sheet-pop,\s*\.branch-dropdown \{[\s\S]*?animation: menu-surface-in 0\.12s ease-out;/,
-  );
+test("top-bar panels are cards that animate a wrapper, not the content nodes", async () => {
+  assert.match(cssSource, /\.popover-surface,\s*\.menu-surface \{[\s\S]*?animation: menu-surface-in 0\.12s ease-out;/);
+  assert.doesNotMatch(cssSource, /branch-dropdown/);
   assert.doesNotMatch(cssSource, /session-info-pop\b/);
   // Reduced motion keeps the fade; only the travel goes.
   assert.match(
     cssSource,
-    /prefers-reduced-motion: reduce\) \{\s*\.popover-surface,\s*\.menu-surface,\s*\.session-sheet-pop,\s*\.branch-dropdown \{\s*animation-name: menu-surface-fade;/,
+    /prefers-reduced-motion: reduce\) \{\s*\.popover-surface,\s*\.menu-surface \{\s*animation-name: menu-surface-fade;/,
   );
-  assert.match(source, /className="session-sheet-pop"/);
+  // Every top-bar panel, phone included, is one popover-surface card.
+  assert.doesNotMatch(source, /session-sheet-pop/);
+  assert.match(source, /id="workspace-top-panel"[\s\S]*?className="popover-surface"/);
   assert.doesNotMatch(cssSource, /\.tool-definitions-panel,\s*\.session-info-popover/);
   const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");
-  assert.match(branchNavigator, /className="branch-dropdown"/);
+  assert.doesNotMatch(branchNavigator, /branch-dropdown/);
 });
 
 test("split header keeps an inert copy of the tools on the unfocused group", () => {

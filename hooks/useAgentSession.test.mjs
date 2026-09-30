@@ -193,7 +193,8 @@ test("recognizes the same transcript message across history and live state", () 
   const hookHelper = source.slice(
     source.indexOf("function hasTranscriptMessage"),
     source.indexOf("function assistantUsageTokens"),
-  ).replace("(messages: AgentMessage[], message: AgentMessage): boolean", "(messages, message)");
+  ).replace("(messages: AgentMessage[], message: AgentMessage): boolean", "(messages, message)")
+    .replace("(message as typeof existing)", "message"); // strip the TS cast: the helper is evaluated as plain JS
   const chatHelper = chatWindowSource.slice(
     chatWindowSource.indexOf("function hasSameTranscriptIdentity"),
     chatWindowSource.indexOf("function hasFinalAssistantAnswer"),
@@ -243,8 +244,9 @@ test("opening System or Tools lazily starts a dormant session without sending a 
   assert.match(loadSystemInfoSource, /setSystemPrompt\(state\.systemPrompt \?\? ""\)/);
   assert.match(loaderEffectSource, /onSystemInfoLoaderChange\?\.\(loadSystemInfo\)/);
   assert.match(loaderEffectSource, /onSystemInfoLoaderChange\?\.\(null\)/);
-  assert.match(appShellSource, /onClick=\{\(\) => handleSystemInfoToggle\("system"\)\}/);
-  assert.match(appShellSource, /onClick=\{\(\) => handleSystemInfoToggle\("tools"\)\}/);
+  // The ⋯ session menu opens System / Tools through the info dialogs.
+  assert.match(appShellSource, /onOpenSystem=\{\(\) => void openInfoDialog\("system"\)\}/);
+  assert.match(appShellSource, /onOpenTools=\{\(\) => void openInfoDialog\("tools"\)\}/);
   assert.match(appShellSource, /systemInfoLoaderRef\.current/);
   assert.doesNotMatch(appShellSource, /systemPrompt !== null \|\| systemInfoLoading/);
   assert.match(appShellSource, /const loadId = \+\+systemInfoLoadIdRef\.current/);

@@ -89,7 +89,7 @@ export function MobileOutlineList({ view, onClose }: { view: MobileOutlineView; 
   }, [activeEntryId]);
 
   return (
-    <div ref={listRef} className="overflow-y-auto overscroll-contain border-b border-[var(--border)] py-1.5" style={{ maxHeight: "inherit" }}>
+    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1">
       {items.length === 0 ? (
         <div style={{ padding: "12px 16px", color: "var(--text-muted)", fontSize: 12 }}>
           {t("chatMinimap.empty")}

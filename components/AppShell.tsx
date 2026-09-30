@@ -110,6 +110,7 @@ const isPrimaryPointerPress = (event: React.PointerEvent) => event.button === 0 
 
 const AGENT_PANEL_WIDTH = 420;
 const BRANCH_PANEL_WIDTH = 520;
+const SESSION_PANEL_WIDTH = 400;
 const DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs";
 
 function filenameFromContentDisposition(header: string | null): string | null {
@@ -606,7 +607,8 @@ export function AppShell() {
     return () => { cancelled = true; };
   }, [subagentUsageRootId, subagentUsageKey]);
   const [outlineView, setOutlineView] = useState<MobileOutlineView | null>(null);
-  const [topPanelPos, setTopPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  // `bottom` (distance from the viewport bottom) replaces `top` for panels that open upward.
+  const [topPanelPos, setTopPanelPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
 
   const closeTopPanel = useCallback((restoreFocus = false) => {
     const panel = activeTopPanel;
@@ -764,18 +766,29 @@ export function AppShell() {
     if (!activeTopPanel || !topBarRef.current) return;
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
-      // Agents and (on desktop) branches float under their trigger; other panels are full-width sheets.
-      if (activeTopPanel === "agents" || (activeTopPanel === "branches" && !isMobile)) {
+      // Agents and (on desktop) branches/session float under their trigger; other panels are full-width sheets.
+      if (activeTopPanel === "agents" || activeTopPanel === "session" || (!isMobile && activeTopPanel === "branches")) {
+        // Session's trigger is the composer's stats pill (one per chat pane; the clicked one is focused).
+        // The collapsed session title shares the trigger name but is not the pill.
+        const triggerSelector = `[data-top-panel-trigger="${activeTopPanel}"]`;
         const anchor = activeTopPanel === "agents"
           ? agentsAnchorRef.current ?? agentsButtonRef.current
-          : document.querySelector<HTMLElement>('[data-top-panel-trigger="branches"]');
-        const panelWidth = Math.min(activeTopPanel === "agents" ? AGENT_PANEL_WIDTH : BRANCH_PANEL_WIDTH, (typeof window !== "undefined" ? window.innerWidth : 800) - 16);
+          : document.activeElement?.closest<HTMLElement>(triggerSelector)
+            ?? document.querySelector<HTMLElement>(`${triggerSelector}:not([data-collapsed-session-title])`);
+        const wantedWidth = activeTopPanel === "agents" ? AGENT_PANEL_WIDTH : activeTopPanel === "session" ? SESSION_PANEL_WIDTH : BRANCH_PANEL_WIDTH;
+        const panelWidth = Math.min(wantedWidth, (typeof window !== "undefined" ? window.innerWidth : 800) - 16);
         if (anchor) {
           const rect = anchor.getBoundingClientRect();
-          const idealLeft = rect.right - panelWidth;
-          const left = Math.max(8, Math.min(idealLeft, (typeof window !== "undefined" ? window.innerWidth : 800) - panelWidth - 8));
-          const top = rect.bottom + 4;
-          setTopPanelPos({ top, left, width: panelWidth });
+          // A trigger in the lower half (the composer pill) opens upward, docked to the composer box:
+          // right edges aligned, and never wider than the box (chat content width varies with panes/settings).
+          if (rect.top > window.innerHeight / 2) {
+            const box = (anchor.closest(".chat-input-composer") ?? anchor).getBoundingClientRect();
+            const width = Math.min(panelWidth, box.width);
+            setTopPanelPos({ bottom: window.innerHeight - box.top + 4, left: box.right - width, width });
+            return;
+          }
+          const left = Math.max(8, Math.min(rect.right - panelWidth, window.innerWidth - panelWidth - 8));
+          setTopPanelPos({ top: rect.bottom + 4, left, width: panelWidth });
           return;
         }
         const idealLeft = topBarRect.right - panelWidth - 8;
@@ -784,7 +797,8 @@ export function AppShell() {
         setTopPanelPos({ top, left, width: panelWidth });
         return;
       }
-      setTopPanelPos({ top: topBarRect.bottom, left: topBarRect.left, width: topBarRect.width });
+      // Phone sheets are cards too: inset 8px from the screen edges, 4px under the bar.
+      setTopPanelPos({ top: topBarRect.bottom + 4, left: topBarRect.left + 8, width: topBarRect.width - 16 });
     };
     update();
     const ro = new ResizeObserver(update);
@@ -1907,6 +1921,7 @@ export function AppShell() {
         onOutlineViewChange={isFocusedPane ? handleOutlineViewChange : undefined}
         onSessionStatsChange={isFocusedPane ? handleSessionStatsChange : undefined}
         onSessionStatsPanelOpen={openSessionStatsPanel}
+        sessionStatsOpen={isFocusedPane && activeTopPanel === "session"}
         onContextUsageChange={isFocusedPane ? handleContextUsageChange : undefined}
         onOpenFile={handleOpenLinkedFile}
         onOpenSession={handleOpenSession}
@@ -2244,15 +2259,46 @@ export function AppShell() {
         ) : (
           <BranchNavigator
             tree={branchTree}
-            activeLeafId={branchActiveLeafId}
-            onLeafChange={handleBranchLeafChange}
-            inline
             compact
             open={interactive && activeTopPanel === "branches"}
             onToggle={() => toggleTopPanel("branches")}
             hasSession
           />
         ))}
+        {sessionTools && mobile && (
+          <button
+            type="button"
+            onClick={() => toggleTopPanel("outline")}
+            title={translate("chatMinimap.userOutline") || "Outline"}
+            aria-label={translate("chatMinimap.userOutline") || "Outline"}
+            aria-pressed={activeTopPanel === "outline"}
+            aria-expanded={activeTopPanel === "outline"}
+            aria-controls="workspace-top-panel"
+            data-top-panel-trigger="outline"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+              background: activeTopPanel === "outline" ? "var(--bg-selected)" : "none",
+              border: "none",
+              color: activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)",
+              cursor: "pointer", flexShrink: 0,
+              transition: "color 0.1s, background 0.1s",
+            }}
+            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.color = activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)";
+            }}
+            className="workspace-header-action"
+            data-mobile-toolbar-action="outline"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 4v16" />
+              <path d="M15 4v16" />
+              <path d="M4 9h16" />
+              <path d="M4 15h16" />
+            </svg>
+          </button>
+        )}
         {sessionTools && <SessionMenu
           mobile={mobile}
           infoDisabled={toolsUnavailable}
@@ -2282,39 +2328,6 @@ export function AppShell() {
             void handleExportMarkdown();
           }}
         />}
-        {sessionTools && mobile && (
-          <button
-            type="button"
-            onClick={() => toggleTopPanel("outline")}
-            title={translate("chatMinimap.userOutline") || "Outline"}
-            aria-label={translate("chatMinimap.userOutline") || "Outline"}
-            aria-pressed={activeTopPanel === "outline"}
-            aria-expanded={activeTopPanel === "outline"}
-            aria-controls="workspace-top-panel"
-            data-top-panel-trigger="outline"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: activeTopPanel === "outline" ? "var(--bg-selected)" : "none",
-              border: "none",
-              color: activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-              transition: "color 0.1s, background 0.1s",
-            }}
-            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.color = activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)";
-            }}
-            className="workspace-header-action"
-            data-mobile-toolbar-action="outline"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="4" y1="12" x2="14" y2="12" />
-              <line x1="4" y1="18" x2="17" y2="18" />
-            </svg>
-          </button>
-        )}
       </div>
     );
   };
@@ -2361,87 +2374,6 @@ export function AppShell() {
     );
   };
 
-  const renderSessionStatsButton = (mobile: boolean) => {
-    // Desktop spend lives in the composer next to context/cache; this button is mobile-only.
-    if (!mobile) return null;
-    const ctx = contextUsage ?? sessionStats?.contextUsage;
-    if (!sessionStats && !ctx) return null;
-
-    const tokens = sessionStats?.tokens;
-    const cost = sessionStats?.cost ?? 0;
-    const costText = cost >= 0.01
-      ? `$${cost.toFixed(2)}`
-      : cost > 0
-        ? `<$0.01`
-        : "$0.00";
-    const cacheTotal = (tokens?.cacheRead ?? 0) + (tokens?.cacheWrite ?? 0);
-    const promptTotal = cacheTotal + (tokens?.input ?? 0);
-    const cacheHitRateVal = promptTotal > 0
-      ? (((tokens?.cacheRead ?? 0) / promptTotal) * 100)
-      : null;
-
-    const tooltipParts: string[] = [];
-    if (tokens) {
-      tooltipParts.push(`in: ${tokens.input.toLocaleString(locale)}`);
-      tooltipParts.push(`out: ${tokens.output.toLocaleString(locale)}`);
-      tooltipParts.push(`cache read: ${tokens.cacheRead.toLocaleString(locale)}`);
-      tooltipParts.push(`cache write: ${tokens.cacheWrite.toLocaleString(locale)}`);
-      if (cacheHitRateVal !== null) {
-        tooltipParts.push(`${translate("session.cacheHitRate")}: ${cacheHitRateVal.toFixed(1)}%`);
-      }
-      if (cost > 0) tooltipParts.push(`cost: $${cost.toFixed(4)}`);
-    }
-    if (ctx?.contextWindow) {
-      const pct = ctx.percent;
-      tooltipParts.push(`context: ${pct !== null ? pct.toFixed(1) + "%" : "unknown"} of ${ctx.contextWindow.toLocaleString()} tokens`);
-    }
-    const tooltip = tooltipParts.join("  |  ");
-
-    return (
-      <button
-        type="button"
-        onClick={() => toggleTopPanel("session")}
-        disabled={!showChat}
-        title={tooltip || translate("session.title")}
-        aria-label={tooltip || translate("session.title")}
-        aria-pressed={activeTopPanel === "session"}
-        aria-expanded={activeTopPanel === "session"}
-        aria-controls="workspace-top-panel"
-        data-top-panel-trigger="session"
-        className="workspace-header-action"
-        data-mobile-toolbar-stats={mobile ? "true" : undefined}
-        style={{
-          marginLeft: "auto",
-          display: "flex", alignItems: "center", justifyContent: "flex-end",
-          minWidth: 0,
-          gap: mobile ? 8 : 10,
-          paddingLeft: mobile ? 6 : 8,
-          paddingRight: mobile ? 6 : 8,
-          height: "100%",
-          overflow: "hidden",
-          background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
-          border: "none",
-          fontSize: 11, color: "var(--text-muted)",
-          whiteSpace: "nowrap", cursor: showChat ? "pointer" : "default",
-          fontVariantNumeric: "tabular-nums",
-          transition: "color 0.1s, background 0.1s",
-        }}
-        onMouseEnter={(event) => {
-          if (showChat) event.currentTarget.style.color = "var(--text)";
-        }}
-        onMouseLeave={(event) => {
-          event.currentTarget.style.color = activeTopPanel === "session" ? "var(--text)" : "var(--text-muted)";
-        }}
-      >
-        {costText && (
-          <span style={{ display: "flex", alignItems: "center", color: "var(--text-muted)", fontWeight: 400, flexShrink: 0, lineHeight: 1 }}>
-            {costText}
-          </span>
-        )}
-      </button>
-    );
-  };
-
   const renderMainFileToggle = (mobile: boolean) => {
     return (
       <button
@@ -2455,7 +2387,6 @@ export function AppShell() {
         className="workspace-header-action"
         data-mobile-toolbar-file={mobile ? "true" : undefined}
         style={{
-          marginLeft: mobile && !sessionStats && !contextUsage ? "auto" : 0,
           display: "flex", alignItems: "center", justifyContent: "center",
           width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
           background: "none",
@@ -2612,13 +2543,13 @@ export function AppShell() {
               style={{
                 display: "flex",
                 alignItems: "stretch",
+                justifyContent: "flex-end",
                 flex: 1,
                 minWidth: 0,
                 height: "100%",
               }}
             >
               {renderChatToolbarActions(true)}
-              {renderSessionStatsButton(true)}
               {renderMainFileToggle(true)}
             </div>
           )}
@@ -2735,10 +2666,11 @@ export function AppShell() {
               style={{
                 position: "fixed",
                 top: topPanelPos.top,
+                bottom: topPanelPos.bottom,
                 left: topPanelPos.left,
                 width: topPanelPos.width,
-                maxHeight: `calc(100dvh - ${topPanelPos.top}px - 16px)`,
-                overflowY: activeTopPanel === "agents" ? "visible" : "auto",
+                maxHeight: `calc(100dvh - ${topPanelPos.top ?? topPanelPos.bottom}px - 16px)`,
+                // Never clip here: the card inside owns its shadow, and an overflow box would cut it to a rectangle.
                 zIndex: 520,
               }}
             >
@@ -2758,24 +2690,17 @@ export function AppShell() {
                 </div>
               )}
               {(activeTopPanel === "session" || activeTopPanel === "outline" || (activeTopPanel === "branches" && isMobile)) && (
-              // max-height is inherited down to the outline list so it scrolls itself and can reveal its active row.
-              <div className="session-sheet-pop" style={{ maxHeight: "inherit", overflowY: "auto" }}>
+              // The card is a flex column that inherits the panel's max-height: exactly one child scrolls
+              // (the outline list, the branch tree, or the stats body), so there is never a second scrollbar.
+              <div className="popover-surface" style={{ maxHeight: "inherit", display: "flex", flexDirection: "column", overflow: "hidden" }}>
               {activeTopPanel === "branches" && (
-                <div style={{ borderBottom: "1px solid var(--border)" }}>
-                  <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} hasSession={showChat} />
-                </div>
+                <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} hasSession={showChat} />
               )}
               {activeTopPanel === "outline" && (
                 <MobileOutlineList view={outlineView ?? { items: [], onJumpToEntry: async () => {} }} onClose={closeTopPanel} />
               )}
               {activeTopPanel === "session" && (
-                <div className="session-info-popover" style={{
-                  position: "relative",
-                  background: "var(--bg-panel)",
-                  borderBottom: "1px solid var(--border)",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-                  padding: isMobile ? "12px 14px 14px" : "14px 20px 16px",
-                }}>
+                <div style={{ padding: "12px 14px", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}>
                   {sessionStats ? (() => {
                     const formatDuration = (ms: number) => {
                       if (ms <= 0) return "0s";
@@ -2828,8 +2753,8 @@ export function AppShell() {
 
                     // Shared section grammar: heading (+ optional key figure), then label/value rows.
                     const label = (text: string) => <div className="session-stats-label">{text}</div>;
-                    const num = (value: string, strong = false) => (
-                      <div className="session-stats-num" style={strong ? { color: "var(--text)" } : undefined}>{value}</div>
+                    const num = (value: string, extraClass = "") => (
+                      <div className={`session-stats-num ${extraClass}`}>{value}</div>
                     );
                     const section = (title: string, aside: React.ReactNode, body: React.ReactNode) => (
                       <section className="session-stats-section">
@@ -2848,27 +2773,25 @@ export function AppShell() {
                     const isHigh = pct !== null && pct >= 85;
                     const isWarning = pct !== null && pct >= 70 && pct < 85;
                     const barColor = isHigh ? "var(--danger)" : isWarning ? "var(--warning)" : "var(--accent)";
-                    const remaining = ctx?.tokens !== null && ctx?.contextWindow ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
+                    const remaining = ctx?.tokens != null && ctx.contextWindow ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
 
+                    // Used / window, headroom and percent all sit in the heading row; the bar is the only other line.
                     const activeContextBlock = ctx?.contextWindow ? section(
                       translate("session.activeContext"),
-                      pct !== null && (
-                        <span style={{ fontWeight: 400, color: isHigh ? "var(--danger)" : isWarning ? "color-mix(in srgb, var(--warning) 95%, transparent)" : "var(--text)" }}>
-                          {pct.toFixed(1)}%
+                      <span className="session-stats-num" style={{ fontWeight: 400 }}>
+                        <span>
+                          {ctx.tokens !== null ? formatTokensK(ctx.tokens, locale) : "?"} / {formatTokensK(ctx.contextWindow, locale)}
+                          {remaining !== null && <span className="session-stats-free">{` · ${translate("session.contextRemaining", { n: formatTokensK(remaining, locale) })}`}</span>}
                         </span>
-                      ),
+                        {pct !== null && (
+                          <span style={{ marginLeft: 8, color: isHigh ? "var(--danger)" : isWarning ? "color-mix(in srgb, var(--warning) 95%, transparent)" : undefined }}>
+                            {pct.toFixed(1)}%
+                          </span>
+                        )}
+                      </span>,
                       <>
-                        <div style={{ height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden", margin: "2px 0 10px" }}>
-                          <div style={{ width: `${clampedPct}%`, height: "100%", background: barColor, borderRadius: 2, transition: "width 0.3s ease" }} />
-                        </div>
-                        <div className="session-stats-table">
-                          {ctx.tokens !== null && (
-                            <>{label(translate("session.contextUsed"))}{num(formatTokensK(ctx.tokens, locale), true)}</>
-                          )}
-                          {remaining !== null && (
-                            <>{label(translate("session.contextRemaining"))}{num(formatTokensK(remaining, locale))}</>
-                          )}
-                          {label(translate("session.contextWindow"))}{num(formatTokensK(ctx.contextWindow, locale))}
+                        <div className="session-stats-meter" style={{ "--pct": `${clampedPct}%`, "--fill": barColor } as React.CSSProperties}>
+                          <div className="session-stats-meter-fill" />
                         </div>
                         {isHigh && (
                           <div className="session-stats-note" style={{ color: "var(--danger)" }}>
@@ -2910,10 +2833,10 @@ export function AppShell() {
                               {showCost && num(hasCostSplit && cost !== undefined ? money(cost) : "")}
                             </Fragment>
                           ))}
-                          <div className="session-stats-rule" />
+                          {/* Total keeps the row pitch of every other row; the sum rule is drawn over its number cells. */}
                           {label(translate("session.total"))}
-                          {num(formatTokensK(tk.total, locale), true)}
-                          {showCost && num(money(sessionStats.cost), true)}
+                          {num(formatTokensK(tk.total, locale), showCost ? "session-stats-sum session-stats-sum-join" : "session-stats-sum")}
+                          {showCost && num(money(sessionStats.cost), "session-stats-sum")}
                           {/* One row, same columns as above: hit rate is a token figure, price a money figure. */}
                           {(cacheHitRate || (showCost && tk.total > 0)) && (
                             <>
@@ -2924,7 +2847,6 @@ export function AppShell() {
                           )}
                           {subagentRow && (
                             <>
-                              <div className="session-stats-rule" />
                               {label(translate("session.subagents", { count: subagentRow.count }))}
                               {num(formatTokensK(subagentRow.tokens, locale))}
                               {showCost && num(money(subagentRow.cost))}
@@ -2948,10 +2870,14 @@ export function AppShell() {
                     );
                     const sessionBlock = section(
                       translate("session.infoSection"),
-                      null,
+                      totalActiveMs > 0 && (
+                        <span style={{ fontWeight: 400 }}>
+                          {translate("session.activeTime")} {formatDuration(totalActiveMs)}
+                        </span>
+                      ),
                       <div className="session-stats-table" style={{ gridTemplateColumns: "max-content minmax(0, 1fr)" }}>
                         {sessionStats.sessionName && (
-                          <>{label(translate("session.name"))}{text(<span style={{ color: "var(--text)" }}>{sessionStats.sessionName}</span>, sessionStats.sessionName)}</>
+                          <>{label(translate("session.name"))}{text(sessionStats.sessionName, sessionStats.sessionName)}</>
                         )}
                         {selectedSession && displayWorkspacePath && (
                           <>
@@ -2961,12 +2887,15 @@ export function AppShell() {
                               <span title={selectedSession.cwd} className="session-stats-ellipsis" style={{ direction: "rtl", textAlign: "left" }}>
                                 <span style={{ unicodeBidi: "plaintext" }}>{displayWorkspacePath}</span>
                               </span>
+                              {/* Branch shares the directory row: it is a property of the checkout. */}
+                              {selectedSession.branch && (
+                                <span title={`${translate("session.branch")}: ${selectedSession.branch}`} className="session-stats-ellipsis" style={{ flex: "0 1 auto", maxWidth: "45%" }}>
+                                  · {selectedSession.branch}
+                                </span>
+                              )}
                               {copyButton(selectedSession.isWorktree ? "gitWorktree" : "projectDir", selectedSession.cwd)}
                             </div>
                           </>
-                        )}
-                        {selectedSession?.branch && (
-                          <>{label(translate("session.branch"))}{text(selectedSession.branch, selectedSession.branch)}</>
                         )}
                         {label(translate("session.id"))}
                         {text(
@@ -2975,15 +2904,11 @@ export function AppShell() {
                           sessionStats.sessionId ? <Fragment key="i">{copyButton("id", sessionStats.sessionId)}</Fragment> : null,
                           sessionStats.sessionFile ? <Fragment key="f">{copyButton("file", sessionStats.sessionFile, "file")}</Fragment> : null,
                         )}
-                        <div className="session-stats-rule" />
                         {label(translate("session.messages"))}
                         {/* Wraps instead of truncating: on phones the three counts exceed one line. */}
                         <div style={{ color: "var(--text-muted)" }}>
                           {sessionStats.userMessages} {translate("session.user").toLowerCase()} · {sessionStats.assistantMessages} {translate("session.assistant").toLowerCase()} · <span style={{ whiteSpace: "nowrap" }}>{sessionStats.toolCalls} {translate("session.toolCalls").toLowerCase()}</span>
                         </div>
-                        {totalActiveMs > 0 && (
-                          <>{label(translate("session.activeTime"))}{text(formatDuration(totalActiveMs))}</>
-                        )}
                       </div>,
                     );
 

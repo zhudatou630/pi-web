@@ -131,6 +131,7 @@ components/
   MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
   BranchNavigator.tsx in-session branch switcher (top-bar popover; rows from lib/branch-rows.ts)
   SessionMenu.tsx     top-bar "⋯" menu: tool definitions, system prompt, full history, export
+  MobileChatNav.tsx   mobile outline list (the `#` top-bar panel)
   InfoDialog.tsx      read-only dialog shell (full-screen sheet on phones) for system prompt / tool definitions
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
@@ -207,6 +208,13 @@ The `enabledModels` setting uses pi's `--models` syntax: minimatch globs against
 - The built-in extensions are `builtin:<name>` resources in `lib/project-resource-overrides.ts` (pi's config-selector rules: the path is its own pattern, no plain entry is added). Their global switches live on the MCP page, per-project ones on the Project page; the Plugins page hides them.
 - Notices naming `/mcp` (startup "MCP servers need attention", `/mcp` status) get an "MCP settings" link (text match on pi's English copy, URLs excluded). URLs in notices render as "Open link (host)"; notices with a URL stay 60s, ones with 3+ lines 15s. Notices emitted while no view is attached (MCP's startup report before a new session's SSE connects) are replayed to the next view if under 2 minutes old. An expanded tool card lists the result's `nestedCalls` (the tools a codemode script called; pi records no results for them). MCP tools share one plug icon (`ToolIcon`), since server tool names defeat the name heuristics. `/mcp` argument completions are TUI-only; the composer shows its usage signature instead.
 - `defaultTools` may be a `+name`/`-name` delta; read it through `SettingsManager.getDefaultTools()` or `resolveDefaultTools()` in `lib/powershell-settings.ts`, never as a plain list.
+
+### Top bar and composer panels
+- One panel at a time (`activeTopPanel` in `AppShell`), always a `popover-surface` card that sits next to its trigger: top-bar triggers (agents, branches, mobile outline) open downward under the bar, the composer's context pill (`session`, the only entry to usage/cost/session info on every platform) opens upward, docked to `.chat-input-composer` (right edges aligned, never wider than the box). Phones use the same cards, inset 8px; there is no full-width sheet.
+- Top-bar order is the same on both platforms: conditional tools first (back to parent, agents, branches), then the fixed ones at the right end (mobile only: `#` outline), `⋯` menu, file panel. Conditional tools grow leftwards so the fixed ones never move; the outline is mobile-only because desktop has `ChatMinimap`.
+- The pill shows ring + tokens + cache + cost on desktop; phones show ring + tokens only (cost and cache are in the panel). It stays rendered when the reading is unknown (after compaction) because it is the only way to the panel. Its pressed state comes from `activeTopPanel` (`sessionStatsOpen`), never from local state.
+- Panel content is one column: heading rows carry their key figures (Context window: used / size · free, percent), rules are only between the three sections and above the Total number cells. Text has two tiers: labels `--text-dim`, values `--text-muted`; only the percentage takes a state color.
+- After editing `app/globals.css`, check the served chunk really has the new rule (see the Images dev note): a stale CSS chunk renames classes without their rules and breaks grid layouts.
 
 ### Extension UI (no persistent widgets)
 - Web does not display persistent TUI widgets. `setWidget` remains as a compatibility RPC method: string arrays are fire-and-forget `extension_ui_request` events the browser ignores; factories are not invoked; nothing is cached or rendered.
