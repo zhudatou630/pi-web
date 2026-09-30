@@ -129,7 +129,10 @@ function keepContextUsage(prev: ContextUsage | null, next: ContextUsage | null):
 
 function hasTranscriptMessage(messages: AgentMessage[], message: AgentMessage): boolean {
   return typeof message.timestamp === "number"
-    && messages.some((existing) => existing.role === message.role && existing.timestamp === message.timestamp);
+    && messages.some((existing) => existing.role === message.role
+      && existing.timestamp === message.timestamp
+      // Parallel tool results share one timestamp; only the call id tells them apart.
+      && (existing.role !== "toolResult" || existing.toolCallId === (message as typeof existing).toolCallId));
 }
 
 function assistantUsageTokens(message: AgentMessage): number | null {
