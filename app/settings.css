@@ -651,6 +651,10 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  /* Reserve the scrollbar gutter: sections whose height crosses the viewport
+     otherwise drop the bar when switching tabs, widening the pane and nudging
+     right-aligned toolbar controls. */
+  scrollbar-gutter: stable;
 }
 
 /* Pages without their own scroll pane (Images) keep the reload banner in view. */
