@@ -3500,3 +3500,35 @@ button.usage-cell:not(:disabled) {
 .select-trigger.is-inline:is(:hover, :focus-visible, [aria-expanded="true"]) {
   color: var(--text);
 }
+
+/* MCP page: a server config is verbatim JSON, the log is verbatim text. */
+.settings-form .config-field textarea.mcp-config-json {
+  font-family: var(--font-mono);
+  height: 160px;
+}
+
+.mcp-server-description {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.mcp-log summary {
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mcp-log pre {
+  max-height: 320px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: var(--ui-radius-md);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

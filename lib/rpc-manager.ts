@@ -48,6 +48,8 @@ import { createSubagentController, getActiveSubagentRuns, isSubagentQueued } fro
 import { isSubagentsEnabledForProject } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
+import { readOnlyToolGuard } from "./read-only-tool-guard";
+import { createBuiltinExtensions } from "./builtin-extensions";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, reservePiWebImageTool } from "./image-generation-extension";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES } from "./image-generation";
@@ -166,6 +168,9 @@ export interface RpcSessionStartOptions {
   cwdOverride?: string;
 }
 
+const MAX_UNDELIVERED_NOTICES = 10;
+const UNDELIVERED_NOTICE_MAX_AGE_MS = 2 * 60_000;
+
 const CODING_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
 // Pi SDK's built-in selection when `defaultTools` is unset.
 const PI_DEFAULT_TOOL_NAMES = ["read", "bash", "edit", "write"];
@@ -270,6 +275,11 @@ export class AgentSessionWrapper {
   private closeListeners = new Set<() => void>();
   private pendingUiResponses = new Map<string, PendingUiResponse>();
   private pendingUiRequests = new Map<string, AgentEvent>();
+  /**
+   * Notices emitted while no view was attached, e.g. MCP's startup report right after a new
+   * session is created and before its SSE connects. The next view gets the recent ones.
+   */
+  private undeliveredNotices: { event: AgentEvent; at: number }[] = [];
   private activeCustomUis = new Map<string, ActiveCustomUi>();
   private extensionUiAbortController = new AbortController();
   private pendingPromptCount = 0;
@@ -564,8 +574,8 @@ export class AgentSessionWrapper {
       .join("\n") + "\n";
     writeFileSync(sessionFile, content, { encoding: "utf8", flag: "wx" });
 
-    // Pi normally delays the first flush until an assistant message exists.
-    // Leading commands have no assistant message, so mark this SDK manager as
+    // Pi delays the first flush until a user or assistant message exists.
+    // Leading commands have no such message, so mark this SDK manager as
     // flushed after writing its generated entries.
     (manager as unknown as { flushed: boolean }).flushed = true;
     cacheSessionPath(this.inner.sessionId, sessionFile);
@@ -578,6 +588,9 @@ export class AgentSessionWrapper {
     };
     this.subscriptions.push(subscription);
     for (const event of this.pendingUiRequests.values()) listener(event);
+    const noticeCutoff = Date.now() - UNDELIVERED_NOTICE_MAX_AGE_MS;
+    for (const { event, at } of this.undeliveredNotices) if (at >= noticeCutoff) listener(event);
+    this.undeliveredNotices = [];
     for (const event of this.activeToolEvents.values()) listener(event);
     this.resetIdleTimer();
     return () => {
@@ -715,9 +728,7 @@ export class AgentSessionWrapper {
               source: "rpc",
               // Match pi's RPC contract: acknowledge only after synchronous prompt
               // validation and extension preflight have accepted the submission.
-              preflightResult: (success) => {
-                if (success) acceptPreflight();
-              },
+              preflightResult: () => acceptPreflight(),
             });
           } catch (error) {
             finishPrompt();
@@ -1512,13 +1523,17 @@ export class AgentSessionWrapper {
         opts?.signal,
       ),
       notify: (message, type) => {
-        this.emit({
+        const event = {
           type: "extension_ui_request",
           id: randomUUID(),
           method: "notify",
           message: stripAnsi(message),
           notifyType: type,
-        } as ExtensionUiRequest as AgentEvent);
+        } as ExtensionUiRequest as AgentEvent;
+        if (this.subscriptions.length === 0) {
+          this.undeliveredNotices = [...this.undeliveredNotices, { event, at: Date.now() }].slice(-MAX_UNDELIVERED_NOTICES);
+        }
+        this.emit(event);
       },
       onTerminalInput: () => () => {},
       setStatus: (key, text) => {
@@ -1986,7 +2001,7 @@ function runtimeMessageActivityMs(entry: SessionMessageEntry): number | undefine
 
 /**
  * Return live sessions that should be visible in the session list. Pi delays
- * the first JSONL flush until an assistant message exists, so an accepted new
+ * the first JSONL flush until a user or assistant message exists, so an accepted new
  * prompt must temporarily be described from its in-memory SessionManager.
  */
 export function getRpcSessionInfos(): SessionInfo[] {
@@ -2256,6 +2271,9 @@ export async function startRpcSession(
             }
         : {
             extensionFactories: [
+              // ponytail: sub-agents are left out; their `tools:` allow-list would hide MCP tools anyway.
+              ...createBuiltinExtensions(),
+              { name: "read-only-guard", factory: readOnlyToolGuard, hidden: true },
               createProjectCommandBashExtension({
                 cwd: sessionCwd,
                 settings: settingsManager,

@@ -19,7 +19,7 @@ import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { parseApplyPatch } from "@/lib/apply-patch";
-import { isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
+import { displayToolName, isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
 import { resolveLocalFilePath } from "@/lib/file-links";
 import { getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
@@ -40,6 +40,7 @@ import type {
   ImageContent,
   ToolCallContent,
   ThinkingContent,
+  NestedToolCalls,
 } from "@/lib/types";
 import { CopyGlyph } from "./CopyGlyph";
 
@@ -1095,6 +1096,8 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
   const isStreamingInput = block.rawInput !== undefined;
   // A command-only input is already the header preview; the expanded body shows it as typed, not as JSON.
   const shellCommand = isStreamingInput ? undefined : getShellCommand(block);
+  // A codemode script is shown as written, not as an escaped JSON string.
+  const codemodeCode = !isStreamingInput && block.toolName === "codemode" && typeof block.input?.code === "string" ? block.input.code : undefined;
   const isEditTool = isEditToolName(block.toolName);
   // Codex-style patch tools carry the whole edit in a `patch` argument instead of
   // a `file_path`, so they render through the same split diff as `edit`.
@@ -1108,7 +1111,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
         : extractStreamedPatchArgument(block.rawInput))
     : undefined;
   const imageKind = imageToolDisplayKind(block.toolName, block.input, result?.details);
-  const toolLabel = label ?? (imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : block.toolName);
+  const toolLabel = label ?? (imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : displayToolName(block.toolName));
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
 
   // Result display
@@ -1163,7 +1166,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, color: isError ? "var(--danger)" : undefined }}>
             <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
-          <span title={labelTitle} style={{ color: isError ? "var(--danger)" : "var(--text)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span title={labelTitle ?? (displayToolName(block.toolName) === block.toolName ? undefined : block.toolName)} style={{ color: isError ? "var(--danger)" : "var(--text)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
             {toolLabel}
           </span>
           {isStreamingInput ? (
@@ -1214,7 +1217,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
           style={{
             margin: 0,
             padding: shellCommand === undefined ? "8px 10px" : "6px 10px 0",
-            color: shellCommand === undefined ? "var(--text-muted)" : "var(--text)",
+            color: shellCommand === undefined && codemodeCode === undefined ? "var(--text-muted)" : "var(--text)",
             fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
@@ -1224,7 +1227,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
             wordBreak: "break-all",
           }}
         >
-          {shellCommand === undefined ? inputStr : (<><span style={{ color: "var(--text-dim)", userSelect: "none" }}>$ </span>{shellCommand}</>)}
+          {codemodeCode ?? (shellCommand === undefined ? inputStr : (<><span style={{ color: "var(--text-dim)", userSelect: "none" }}>$ </span>{shellCommand}</>))}
         </pre>
       )}
 
@@ -1251,6 +1254,9 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
         >
           {t("chat.generatingToolInput")}
         </pre>
+      )}
+      {expanded && result?.nestedCalls && result.nestedCalls.calls.length > 0 && (
+        <NestedCallList nested={result.nestedCalls} cwd={cwd} />
       )}
       {expanded && result && !(isApplyPatchTool && applyPatchText !== undefined) && (
         resultDiff ? (
@@ -1285,6 +1291,47 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The tools a codemode script called, in order, as one-line rows like the step list. */
+function NestedCallList({ nested, cwd }: { nested: NestedToolCalls; cwd?: string }) {
+  const { t } = useI18n();
+  return (
+    <div
+      data-nested-calls=""
+      style={{
+        padding: "6px 10px",
+        background: "var(--bg)",
+        borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
+        fontSize: 11,
+        lineHeight: 1.35,
+        color: "var(--text-muted)",
+      }}
+    >
+      <div style={{ color: "var(--text-dim)", marginBottom: 4 }}>
+        {t(nested.complete ? "chat.nestedCalls" : "chat.nestedCallsPartial", { count: nested.calls.length })}
+      </div>
+      {nested.calls.map((call) => {
+        const failed = call.status === "error";
+        const preview = call.arguments ? getToolPreview({ type: "toolCall", toolCallId: call.id, toolName: call.name, input: call.arguments }) : { text: "" };
+        return (
+          <div key={call.id} title={call.error} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 20, minWidth: 0, color: failed ? "var(--danger)" : undefined }}>
+            <span style={{ display: "flex", width: 14, justifyContent: "center", flexShrink: 0 }}>
+              <ToolIcon toolName={call.name} isError={failed} size={12} />
+            </span>
+            <span style={{ color: failed ? "var(--danger)" : "var(--text)", flexShrink: 0 }}>{displayToolName(call.name)}</span>
+            {preview.path ? <ToolPathPreview path={preview.path} cwd={cwd} /> : (
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {failed && call.error ? call.error : preview.text}
+              </span>
+            )}
+            {call.status === "unfinished" && <span style={{ color: "var(--text-dim)", flexShrink: 0 }}>{t("chat.nestedCallUnfinished")}</span>}
+            {call.durationMs !== undefined && call.durationMs >= 1000 && <StepDuration seconds={Math.round(call.durationMs / 1000)} />}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -36,3 +36,9 @@ export function isApplyPatchToolName(toolName: string): boolean {
     name.endsWith("/apply_patch") ||
     name.endsWith("_apply_patch");
 }
+
+/** Pi names MCP tools `mcp__<server>__<tool>`; show them as `server/tool` like the TUI. */
+export function displayToolName(toolName: string): string {
+  const match = /^mcp__([A-Za-z0-9_-]+?)__(.+)$/.exec(toolName);
+  return match ? `${match[1]}/${match[2]}` : toolName;
+}

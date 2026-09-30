@@ -5,6 +5,7 @@ export const SETTINGS_SECTION_VALUES = [
   "images",
   "skills",
   "plugins",
+  "mcp",
   "project",
   "usage",
 ] as const;

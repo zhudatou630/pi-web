@@ -302,6 +302,8 @@ const BUILTIN_SIGNATURES: Record<string, string> = {
   name: "<session-title>",
   session: "[session-id]",
   clone: "[new-title]",
+  // pi's built-in MCP extension; its argument completions are TUI-only, so the forms are listed here.
+  mcp: "[login | logout | reconnect] [server]",
 };
 
 function highlightText(text: string, query: string | null): React.ReactNode {

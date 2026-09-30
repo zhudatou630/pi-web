@@ -21,3 +21,10 @@ test("renders specific icons for bash, read, and error states", () => {
   const readHtml = renderToStaticMarkup(React.createElement(ToolIcon, { toolName: "read" }));
   assert.ok(readHtml.includes("<svg"));
 });
+
+test("MCP tools get the plug glyph whatever their name; codemode gets braces", () => {
+  const icon = (toolName) => renderToStaticMarkup(React.createElement(ToolIcon, { toolName }));
+  assert.equal(icon("mcp__notes__publish_note"), icon("mcp__fake__echo"));
+  assert.notEqual(icon("mcp__notes__publish_note"), icon("bash"));
+  assert.ok(icon("codemode").includes("M8 3H7"));
+});

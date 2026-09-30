@@ -42,6 +42,7 @@ import { SkillsConfig } from "./SkillsConfig";
 import { AgentsConfig } from "./AgentsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { ProjectConfig } from "./ProjectConfig";
+import { McpConfig } from "./McpConfig";
 import { ImagesConfig } from "./ImagesConfig";
 import { UsageStats } from "./UsageStats";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
@@ -69,6 +70,7 @@ const SECTION_ICON_PATHS: Record<Exclude<SettingsSection, "agents">, ReactNode> 
   images: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21" /></>,
   skills: <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z" />,
   plugins: <path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z" />,
+  mcp: <><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><path d="M6 6h.01M6 18h.01" /></>,
   project: <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />,
   usage: <path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />,
 };
@@ -397,15 +399,16 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessionReloaded, onModelsChanged, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
-  // Agents, Images, Skills, Plugins, and Project show each other's state (global switches, project
+  // Agents, Images, Skills, Plugins, MCP, and Project show each other's state (global switches, project
   // overrides, the sub-agent project switch). A page bumps its own version on a change and is
   // keyed by the others', so the mounted pages refetch without losing the one being edited.
-  const [versions, setVersions] = useState({ agents: 0, images: 0, skills: 0, plugins: 0, project: 0 });
+  const [versions, setVersions] = useState({ agents: 0, images: 0, skills: 0, plugins: 0, mcp: 0, project: 0 });
   const bump = useCallback((page: keyof typeof versions) => setVersions((v) => ({ ...v, [page]: v[page] + 1 })), []);
   const handleAgentsChanged = useCallback(() => bump("agents"), [bump]);
   const handleImagesChanged = useCallback(() => bump("images"), [bump]);
   const handleSkillsChanged = useCallback(() => bump("skills"), [bump]);
   const handlePluginsChanged = useCallback(() => bump("plugins"), [bump]);
+  const handleMcpChanged = useCallback(() => bump("mcp"), [bump]);
   const handleProjectResourcesChanged = useCallback(() => bump("project"), [bump]);
   const keyWithout = (page: keyof typeof versions) =>
     `${cwd}:${Object.entries(versions).filter(([name]) => name !== page).map(([, v]) => v).join(":")}`;
@@ -425,6 +428,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
       { id: "images", label: t("settings.images"), requiresProject: false },
       { id: "skills", label: t("common.skills"), requiresProject: true },
       { id: "plugins", label: t("common.plugins"), requiresProject: true },
+      { id: "mcp", label: t("settings.mcp"), requiresProject: false },
       { id: "project", label: t("project.title"), requiresProject: true },
     ] },
   ];
@@ -540,6 +544,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
             {sectionHost("images", <ImagesConfig key={keyWithout("images")} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleImagesChanged} />)}
             {cwd && sectionHost("skills", <SkillsConfig embedded key={keyWithout("skills")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handleSkillsChanged} />)}
             {cwd && sectionHost("plugins", <PluginsConfig embedded key={keyWithout("plugins")} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} onChanged={handlePluginsChanged} />)}
+            {sectionHost("mcp", <McpConfig key={keyWithout("mcp")} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleMcpChanged} />)}
             {cwd && sectionHost("project", <ProjectConfig key={keyWithout("project")} cwd={cwd} sessionId={sessionId} onReloaded={onSessionReloaded} onChanged={handleProjectResourcesChanged} />)}
             {sectionHost("usage", <UsageStats />)}
           </main>

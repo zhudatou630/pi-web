@@ -182,7 +182,8 @@ export interface AgentSessionLike {
     images?: Array<{ type: "image"; data: string; mimeType: string }>;
     streamingBehavior?: "steer" | "followUp";
     source?: "interactive" | "rpc";
-    preflightResult?: (success: boolean) => void;
+    /** Called only when the prompt is accepted; the value says how it was dispatched. */
+    preflightResult?: (disposition: "started" | "queued" | "handled") => void;
   }): Promise<void>;
   sendCustomMessage<T = unknown>(message: {
     customType: string;
@@ -209,8 +210,8 @@ export interface AgentSessionLike {
   getLastAssistantText(): string | undefined;
   setAutoCompactionEnabled(enabled: boolean): void;
   setAutoRetryEnabled(enabled: boolean): void;
-  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, options?: { source?: "interactive" | "rpc" }): Promise<void>;
-  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, options?: { source?: "interactive" | "rpc" }): Promise<void>;
+  steer(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, options?: { source?: "interactive" | "rpc" }): Promise<unknown>;
+  followUp(text: string, images?: Array<{ type: "image"; data: string; mimeType: string }>, options?: { source?: "interactive" | "rpc" }): Promise<unknown>;
   readonly pendingMessageCount: number;
   getSteeringMessages(): readonly string[];
   getFollowUpMessages(): readonly string[];

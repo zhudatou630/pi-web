@@ -20,6 +20,7 @@ import {
   type PathMetadata,
   type ResolvedPaths,
 } from "@earendil-works/pi-coding-agent";
+import { BUILTIN_EXTENSION_NAMES } from "./builtin-extensions";
 import { getProjectTrustStatus, trustProject } from "./project-trust";
 import { realPathOrSelf } from "./worktree";
 
@@ -58,6 +59,11 @@ interface Ctx {
   inherited: Map<string, { enabled: boolean; metadata: PathMetadata }>;
 }
 
+// `builtin:<name>` extensions are named by that path in every settings scope (pi's config selector).
+const isBuiltin = (item: Item) => item.metadata.source === "builtin";
+const packageManager = (cwd: string, agentDir: string, settingsManager: SettingsManager) =>
+  new DefaultPackageManager({ cwd, agentDir, settingsManager, builtinExtensions: [...BUILTIN_EXTENSION_NAMES] });
+
 const keyOf = (type: ResourceType, path: string) => `${type}:${realPathOrSelf(path)}`;
 const target = (entry: string) => (/^[!+-]/.test(entry) ? entry.slice(1) : entry);
 const sourceOf = (pkg: PackageSource) => (typeof pkg === "string" ? pkg : pkg.source);
@@ -89,7 +95,7 @@ function packagePattern(item: Item): string {
 }
 
 function patternForProject(ctx: Ctx, item: Item): string {
-  if (scopeOf(item) !== "project") return item.path;
+  if (scopeOf(item) !== "project" || isBuiltin(item)) return item.path;
   return relative(item.metadata.baseDir ?? baseDirFor(ctx, "project"), item.path);
 }
 
@@ -154,7 +160,8 @@ function setTopLevelOverride(ctx: Ctx, item: Item, state: OverrideState): void {
     return !(state === "inherit" && inherited && target(entry) === pattern);
   });
   if (state !== "inherit") {
-    if (inherited && !updated.includes(pattern)) updated.push(pattern);
+    // Project entries name inherited files to override them; built-in paths need no entry.
+    if (inherited && !isBuiltin(item) && !updated.includes(pattern)) updated.push(pattern);
     updated.push(`${state === "load" ? "+" : "-"}${pattern}`);
   }
   if (item.type === "extensions") ctx.sm.setProjectExtensionPaths(updated);
@@ -197,10 +204,10 @@ async function loadScope(cwd: string, agentDir: string, onMissing: OnMissing) {
   const trust = getProjectTrustStatus(cwd, agentDir);
   // Same split as `pi config`: global view ignores project settings entirely.
   const globalSm = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
-  const global = await new DefaultPackageManager({ cwd, agentDir, settingsManager: globalSm }).resolve(onMissing);
+  const global = await packageManager(cwd, agentDir, globalSm).resolve(onMissing);
   const sm = SettingsManager.create(cwd, agentDir, { projectTrusted: trust.trusted });
   const project = trust.trusted
-    ? await new DefaultPackageManager({ cwd, agentDir, settingsManager: sm }).resolve(onMissing)
+    ? await packageManager(cwd, agentDir, sm).resolve(onMissing)
     : global;
   const inherited = new Map(toItems(global).map((item) => [keyOf(item.type, item.path), item] as const));
   const ctx: Ctx = { sm, cwd, agentDir, inherited };
@@ -243,7 +250,7 @@ export async function setGlobalResourceEnabled(
   const sm = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
   const loadError = sm.drainErrors()[0];
   if (loadError) throw new Error(`Cannot read ${loadError.path ?? "global settings"}: ${loadError.error.message}`);
-  const paths = await new DefaultPackageManager({ cwd, agentDir, settingsManager: sm }).resolve(async () => "skip");
+  const paths = await packageManager(cwd, agentDir, sm).resolve(async () => "skip");
   const key = keyOf(resource.type, resource.path);
   const item = toItems(paths).find((entry) => keyOf(entry.type, entry.path) === key && entry.metadata.scope === "user");
   if (!item) throw new Error(`Not a global resource: ${resource.path}`);
@@ -253,7 +260,8 @@ export async function setGlobalResourceEnabled(
     `${enabled ? "+" : "-"}${pattern}`,
   ];
   if (item.metadata.origin === "top-level") {
-    const updated = withEntry(settings[item.type] ?? [], relative(item.metadata.baseDir ?? agentDir, item.path));
+    const pattern = isBuiltin(item) ? item.path : relative(item.metadata.baseDir ?? agentDir, item.path);
+    const updated = withEntry(settings[item.type] ?? [], pattern);
     if (item.type === "extensions") sm.setExtensionPaths(updated);
     else if (item.type === "skills") sm.setSkillPaths(updated);
     else if (item.type === "prompts") sm.setPromptTemplatePaths(updated);

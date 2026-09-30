@@ -62,6 +62,22 @@ function configuredTools(settings: Record<string, unknown>): string[] | undefine
   return settings.defaultTools as string[];
 }
 
+const isToolModifier = (entry: string) => entry.startsWith("+") || entry.startsWith("-");
+
+/** Pi's `defaultTools` resolution (not exported by the SDK): `+name`/`-name` edit the defaults or the plain list. */
+export function resolveDefaultTools(entries: readonly string[]): string[] {
+  const plain = entries.filter((entry) => !isToolModifier(entry));
+  const tools = plain.length > 0 || entries.length === 0 ? plain : [...DEFAULT_TOOLS];
+  for (const entry of entries) {
+    if (!isToolModifier(entry)) continue;
+    const name = entry.slice(1);
+    const index = tools.indexOf(name);
+    if (entry.startsWith("+") && index === -1 && name) tools.push(name);
+    else if (entry.startsWith("-") && index !== -1) tools.splice(index, 1);
+  }
+  return tools;
+}
+
 export async function readPowerShellToolEnabled(
   settingsPath = getPowerShellSettingsPath(),
   platform: NodeJS.Platform = process.platform,
@@ -69,7 +85,8 @@ export async function readPowerShellToolEnabled(
   if (!existsSync(settingsPath)) return false;
   const release = await lockfile.lock(settingsPath, { realpath: false, retries: 10 });
   try {
-    return isPowerShellToolEnabled(configuredTools(parseSettings(settingsPath)), platform);
+    const raw = configuredTools(parseSettings(settingsPath));
+    return isPowerShellToolEnabled(raw && resolveDefaultTools(raw), platform);
   } finally {
     await release();
   }
@@ -91,12 +108,21 @@ export async function writePowerShellToolEnabled(
   const release = await lockfile.lock(settingsPath, { realpath: false, retries: 10 });
   try {
     const settings = parseSettings(settingsPath);
-    const currentTools = configuredTools(settings) ?? DEFAULT_TOOLS;
-    const nextTools = replaceShellTool(currentTools, enabled);
-    if (!currentTools.some((name) => SHELL_TOOLS.has(name))) {
-      nextTools.push(enabled ? "powershell" : "bash");
+    const raw = configuredTools(settings);
+    if (raw?.length && raw.every(isToolModifier)) {
+      // Keep a delta-only list (e.g. ["+codemode"]) a delta, so later changes to pi's defaults still apply.
+      settings.defaultTools = [
+        ...raw.filter((entry) => !SHELL_TOOLS.has(entry.slice(1))),
+        ...(enabled ? ["-bash", "+powershell"] : []),
+      ];
+    } else {
+      const currentTools = raw ?? DEFAULT_TOOLS;
+      const nextTools = replaceShellTool(currentTools, enabled);
+      if (!currentTools.some((name) => SHELL_TOOLS.has(name))) {
+        nextTools.push(enabled ? "powershell" : "bash");
+      }
+      settings.defaultTools = nextTools;
     }
-    settings.defaultTools = nextTools;
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
     chmodSync(settingsPath, 0o600);
   } finally {

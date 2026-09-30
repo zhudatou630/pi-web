@@ -1885,6 +1885,7 @@ export function AppShell() {
         onContextUsageChange={isFocusedPane ? handleContextUsageChange : undefined}
         onOpenFile={handleOpenLinkedFile}
         onOpenSession={handleOpenSession}
+        onOpenMcpSettings={() => setSettingsSection("mcp")}
         onAskInNewChat={handleAskInNewChat}
         quoteSelectionEnabled={quoteSelectionEnabled}
         initialPrompt={pendingQuotePrompt?.sessionId === tabSession?.id ? pendingQuotePrompt?.text : undefined}

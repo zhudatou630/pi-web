@@ -23,6 +23,25 @@ export function ToolIcon({
 
   const name = toolName.toLowerCase();
 
+  // MCP tools (`mcp__<server>__<tool>`): server-chosen names say nothing reliable about
+  // what they do (`publish` would match "sh"), so they share one plug glyph.
+  if (name.startsWith("mcp__")) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(size)} strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ display: "block" }} aria-hidden="true">
+        <path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z" />
+      </svg>
+    );
+  }
+
+  // codemode: a script
+  if (name === "codemode") {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(size)} strokeLinecap="round" strokeLinejoin="round" className="shrink-0" style={{ display: "block" }} aria-hidden="true">
+        <path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" />
+      </svg>
+    );
+  }
+
   // Terminal / Shell tools
   if (name.includes("bash") || name.includes("sh") || name.includes("terminal") || name.includes("powershell") || name.includes("command")) {
     return (

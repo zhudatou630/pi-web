@@ -236,6 +236,8 @@ const EVENT_STREAM_RECONNECT_DELAY_MS = 1_000;
 const MODELS_RETRY_DELAYS_MS = [2_000, 5_000, 10_000];
 const MAX_NOTICES = 5;
 const NOTICE_VISIBLE_MS = 5000;
+const NOTICE_LINK_VISIBLE_MS = 60_000;
+const NOTICE_LONG_VISIBLE_MS = 15_000;
 const NOTICE_EXIT_ANIMATION_MS = 180;
 function createNoticeId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -2500,7 +2502,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     // Oldest visible notice changed; restart the countdown
     if (noticeOldestIdRef.current !== oldest.id) {
       noticeOldestIdRef.current = oldest.id;
-      noticeRemainingMsRef.current = NOTICE_VISIBLE_MS;
+      // A link (an MCP sign-in URL) has to be opened, so it stays long enough to reach it.
+      // A multi-line report (the /mcp status) needs time to read.
+      noticeRemainingMsRef.current = /https?:\/\//.test(oldest.message)
+        ? NOTICE_LINK_VISIBLE_MS
+        : oldest.message.split("\n").length >= 3 ? NOTICE_LONG_VISIBLE_MS : NOTICE_VISIBLE_MS;
     }
     if (noticeState.visible.some((notice) => notice.id === pausedNoticeId)) return;
     noticeTimerStartedAtRef.current = Date.now();

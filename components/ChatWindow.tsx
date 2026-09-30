@@ -1,6 +1,7 @@
 "use client";
 import { GeneratedImageResult, PendingGeneratedImage } from "./GeneratedImageResult";
 import { ImageGenerationDialog } from "./ImageGenerationDialog";
+import { displayToolName } from "@/lib/tool-names";
 import { encodeFilePathForApi, joinFilePath } from "@/lib/file-paths";
 import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
@@ -92,6 +93,8 @@ interface Props {
   onContextUsageChange?: (usage: { percent: number | null; contextWindow: number; tokens: number | null } | null) => void;
   onOpenFile?: (filePath: string, sourceSessionId: string | null, page?: number) => void;
   onOpenSession?: (sessionId: string) => void;
+  /** Pi's MCP extension points to `/mcp`, whose manager is the Settings > MCP page here. */
+  onOpenMcpSettings?: () => void;
   onAskInNewChat?: (prompt: string, sourceSessionId: string, sourceEntryId: string) => Promise<void>;
   quoteSelectionEnabled?: boolean;
   initialPrompt?: string;
@@ -479,12 +482,12 @@ function liveProcessSummary(
 ): string | null {
   if (phase?.kind === "running_tools") {
     const name = phase.tools[phase.tools.length - 1]?.name ?? null;
-    return imageStepLabel(name, undefined, t) ?? name;
+    return imageStepLabel(name, undefined, t) ?? (name && displayToolName(name));
   }
   const lastBlock = lastStreamingBlock(streamingMessage);
   if (lastBlock?.type === "thinking") return t("chat.thinking");
   if (lastBlock?.type === "toolCall") {
-    return imageStepLabel(lastBlock.toolName, lastBlock.input, t) ?? lastBlock.toolName ?? null;
+    return imageStepLabel(lastBlock.toolName, lastBlock.input, t) ?? (lastBlock.toolName ? displayToolName(lastBlock.toolName) : null);
   }
   return null;
 }
@@ -742,7 +745,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, recentProjectPaths = [], pinnedCwds = [], homeDir = "", worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, recentProjectPaths = [], pinnedCwds = [], homeDir = "", worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -1818,7 +1821,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           pointerEvents: "none",
         }}
       >
-        <NoticeShelf notices={notices} floating onPauseChange={setNoticePaused} />
+        <NoticeShelf notices={notices} floating onPauseChange={setNoticePaused} onOpenMcpSettings={onOpenMcpSettings} />
       </div>
 
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -2454,7 +2457,22 @@ function NoticeIcon({ type }: { type: NoticeItem["type"] }) {
   );
 }
 
-function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: NoticeItem[]; floating?: boolean; onPauseChange?: (id: string | null) => void }) {
+/** Links in a notice (an MCP sign-in URL) open in a new tab, shown by host: sign-in URLs run to hundreds of characters. */
+function NoticeText({ text }: { text: string }) {
+  const { t } = useI18n();
+  return text.split(/(https?:\/\/\S+)/).map((part, index) => {
+    if (index % 2 === 0) return part;
+    let host = part;
+    try { host = new URL(part).host; } catch { /* keep the raw text */ }
+    return <a key={index} href={part} target="_blank" rel="noreferrer" title={part} className="notice-link">{t("chat.noticeOpenLink", { host })}</a>;
+  });
+}
+
+// ponytail: matches pi's English "Run /mcp to fix." text; a structured MCP status event would replace this.
+const MCP_NOTICE_PATTERN = /^MCP servers need attention|\/mcp\b/;
+
+function NoticeShelf({ notices, floating = false, onPauseChange, onOpenMcpSettings }: { notices: NoticeItem[]; floating?: boolean; onPauseChange?: (id: string | null) => void; onOpenMcpSettings?: () => void }) {
+  const { t } = useI18n();
   if (notices.length === 0) return null;
   return (
     <div
@@ -2514,7 +2532,15 @@ function NoticeShelf({ notices, floating = false, onPauseChange }: { notices: No
             tabIndex={0}
             style={{ minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", whiteSpace: "pre-line", wordBreak: "break-word" }}
           >
-            {notice.message}
+            <NoticeText text={notice.message} />
+            {onOpenMcpSettings && MCP_NOTICE_PATTERN.test(notice.message.replace(/https?:\/\/\S+/g, "")) && (
+              <>
+                {" "}
+                <button type="button" onClick={onOpenMcpSettings} className="notice-link">
+                  {t("mcp.openSettings")}
+                </button>
+              </>
+            )}
           </span>
         </div>
       ))}

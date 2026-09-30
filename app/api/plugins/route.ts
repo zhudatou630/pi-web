@@ -213,7 +213,8 @@ async function readPlugins(cwd: string): Promise<PluginsResponse> {
     });
     for (const resource of resources) {
       if (resource.owner.origin === "top-level") {
-        if (resource.type !== "extensions") continue;
+        // Built-in extensions (builtin:mcp, ...) are switched on the MCP page.
+        if (resource.type !== "extensions" || resource.metadata.source === "builtin") continue;
         standaloneExtensions.push({
           ...toResourceInfo(resource),
           kind: "extension",

@@ -104,6 +104,22 @@ export interface ToolResultMessage {
   details?: unknown;
   timestamp?: number;
   usage?: AgentUsage;
+  /** Calls this tool made to other tools (codemode scripts); results are not recorded. */
+  nestedCalls?: NestedToolCalls;
+}
+
+export interface NestedToolCalls {
+  calls: {
+    id: string;
+    name: string;
+    /** Omitted when over pi's size limits. */
+    arguments?: Record<string, unknown>;
+    status: "ok" | "error" | "unfinished";
+    durationMs?: number;
+    error?: string;
+  }[];
+  /** False when calls were dropped, arguments omitted, or calls had not finished. */
+  complete: boolean;
 }
 
 export interface CustomMessage {

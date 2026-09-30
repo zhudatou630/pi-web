@@ -247,3 +247,41 @@ export interface ProjectOverridesWriteResponse {
   /** Other worktrees that could not take the change (untrusted, hand-written entry, …). */
   failures: { path: string; error: string }[];
 }
+
+export interface McpServerView {
+  name: string;
+  scope: "global" | "project";
+  /** The entry as written in mcp.json, for editing. */
+  config: Record<string, unknown>;
+  enabled: boolean;
+  exposure: string;
+  /** Command line or URL. */
+  transport: string;
+  /** A global entry replaced by a project entry of the same name. */
+  overridden?: boolean;
+}
+
+export interface McpSettingsResponse {
+  /** Pi's built-in `mcp`, `codemode`, `tool-search` extensions: effective here and global. */
+  builtins: { name: string; enabled: boolean; globalEnabled: boolean }[];
+  globalPath: string;
+  /** `ignored`: the project has an mcp.json that pi does not read because the project is untrusted. */
+  project: { path: string; trusted: boolean; ignored: boolean } | null;
+  servers: McpServerView[];
+  errors: string[];
+  logTail: string;
+}
+
+/** `pi mcp list --json`. */
+export interface McpCheckResponse {
+  servers: {
+    name: string;
+    scope: "global" | "project";
+    enabled: boolean;
+    state: string;
+    tools: string[];
+    error?: string;
+  }[];
+  errors: string[];
+  note?: string;
+}

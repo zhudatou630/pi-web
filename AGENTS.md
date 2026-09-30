@@ -91,6 +91,8 @@ app/api/
   models-config/discover/route.ts POST fetch a configured provider's upstream model list
   models-config/test/route.ts     POST test a configured model/provider
   plugins/route.ts                GET/POST package plugin management
+  mcp/route.ts                    GET/PUT/PATCH/DELETE mcp.json servers + built-in extension switches
+  mcp/check/route.ts              POST `pi mcp list --json` (connects each enabled server once)
   projects/route.ts               DELETE { projectKey } — delete every session of one sidebar project
   skills/route.ts                 GET/PATCH loaded skills and disable-model-invocation
   skills/install/route.ts         POST install skills through npx skills add
@@ -140,6 +142,7 @@ components/
   AgentEditor.tsx     shared agent editor: useAgentEditor hook, AgentDetail form, AgentSaveFooter (used by the Agents and Project pages)
   AgentsImportDialog.tsx  copy agent definition files from another known project (byte-for-byte)
   PluginsConfig.tsx   modal for installed package plugins
+  McpConfig.tsx       Settings > MCP: servers of global/project mcp.json, check, built-in switches, log
   SkillsConfig.tsx    modal for loaded/search/installable skills
   FileExplorer.tsx    file tree inside sidebar
   FileIcons.tsx       file icon helpers
@@ -193,6 +196,15 @@ The last preset explicitly selected by the user is stored in browser `localStora
 
 ### `enabledModels` scoping
 The `enabledModels` setting uses pi's `--models` syntax: minimatch globs against `provider/modelId` or a bare `modelId`, fuzzy matching for non-glob patterns, and an optional `:thinkingLevel` suffix. Never compare those patterns as literal strings — `lib/model-scope.ts` delegates to the SDK's `resolveModelScopeWithDiagnostics()` so pi-web and the TUI agree on the visible model list, and falls back to all available models when patterns resolve to nothing. `startRpcSession()` resolves that scope before creating an AgentSession and passes the selected initial model, thinking pin, and SDK-native `scopedModels` atomically; `GET /api/models` reuses the helper only for selector data, `thinkingLevelPins`, and `modelScopeWarnings` display.
+
+### Built-in MCP, codemode, tool search
+- SDK sessions get none of pi's built-in extensions, so `startRpcSession()` adds `mcp`, `codemode`, and `tool-search` to normal sessions as `{ builtin: true, replaceable: true }` entries. That keeps CLI semantics: `-builtin:<name>` in `extensions` disables one, and an installed extension that registers `/mcp` (pi-mcp-adapter) replaces it. `llama.cpp` is not exported by the SDK and is not loaded. Chat only and sub-agents load none of them (a sub-agent's `tools:` allow-list would hide MCP tools anyway).
+- The MCP extension gets `openUrl: () => {}`: OAuth URLs are shown through `ui.notify` and the redirect URL is pasted back through `ui.input`, since the browser is not on the server.
+- MCP tools with `codemode`/`deferred` exposure stay callable whatever the active set, so `lib/read-only-tool-guard.ts` blocks every MCP tool call while no write-capable built-in is active (read-only preset). `readOnlyHint` is not trusted: pi does not verify it.
+- Settings > MCP (`lib/mcp-config.ts`) edits `mcp.json` through pi's own `extensions/mcp/config.js` helpers and runs `pi mcp list --json` in-process through `extensions/mcp/cli.js`. The SDK does not export them, so they load by file path with `webpackIgnore`/`turbopackIgnore` (a computed import is otherwise rejected by Turbopack). After an SDK upgrade restart the dev server: a server started before `npm install` keeps the old modules and fails these imports with missing-export errors. The list goes through pi's `validateMcpServerConfig` (invalid entries are errors, not rows) and, like pi, skips an untrusted project's `mcp.json` (`project.ignored`). Project `mcp.json` writes are trust-gated like project agents and record trust for the project the user just authored. Sign-in stays in the session (`/mcp login <name>`): the OAuth redirect only reaches the server machine.
+- The built-in extensions are `builtin:<name>` resources in `lib/project-resource-overrides.ts` (pi's config-selector rules: the path is its own pattern, no plain entry is added). Their global switches live on the MCP page, per-project ones on the Project page; the Plugins page hides them.
+- Notices naming `/mcp` (startup "MCP servers need attention", `/mcp` status) get an "MCP settings" link (text match on pi's English copy, URLs excluded). URLs in notices render as "Open link (host)"; notices with a URL stay 60s, ones with 3+ lines 15s. Notices emitted while no view is attached (MCP's startup report before a new session's SSE connects) are replayed to the next view if under 2 minutes old. An expanded tool card lists the result's `nestedCalls` (the tools a codemode script called; pi records no results for them). MCP tools share one plug icon (`ToolIcon`), since server tool names defeat the name heuristics. `/mcp` argument completions are TUI-only; the composer shows its usage signature instead.
+- `defaultTools` may be a `+name`/`-name` delta; read it through `SettingsManager.getDefaultTools()` or `resolveDefaultTools()` in `lib/powershell-settings.ts`, never as a plain list.
 
 ### Extension UI (no persistent widgets)
 - Web does not display persistent TUI widgets. `setWidget` remains as a compatibility RPC method: string arrays are fire-and-forget `extension_ui_request` events the browser ignores; factories are not invoked; nothing is cached or rendered.
