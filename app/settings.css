@@ -2890,7 +2890,8 @@ a.models-hint:hover {
   right: 0;
   bottom: 0;
   left: 0;
-  max-width: 28px;
+  width: 60%;
+  max-width: 64px;
   height: var(--usage-bar);
   min-height: 0;
   margin: 0 auto;
@@ -2947,13 +2948,14 @@ button.usage-bar:hover::after,
   color: var(--text);
 }
 
-/* The sorted column: an accent bar under its label, on the header rule. The
-   label itself never moves, so the numbers below stay aligned with it. */
-.usage-table th[aria-sort] > .usage-sort {
+/* A column the user sorted by (not the default order): an accent bar under its
+   label, on the header rule. The label itself never moves, so the numbers below
+   stay aligned with it. */
+.usage-table th[data-sorted] > .usage-sort {
   position: relative;
 }
 
-.usage-table th[aria-sort] > .usage-sort::after {
+.usage-table th[data-sorted] > .usage-sort::after {
   content: "";
   position: absolute;
   right: 0;
