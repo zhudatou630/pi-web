@@ -365,7 +365,7 @@ export const zhCNLocale: LocalePlugin = {
     "appUpdate.upToDate": "已是最新",
     "appUpdate.checkFailed": "检查失败",
     "appUpdate.checkNow": "检查更新",
-    "appUpdate.checkDisabled": "版本检查已关闭",
+    "appUpdate.checkDisabled": "版本检查已关闭（PI_WEB_SKIP_VERSION_CHECK=1）",
     "appUpdate.manualUpdate": "当前安装方式不支持一键更新，请按安装说明手动更新。",
     "appUpdate.manualCommand": "npm 全局目录没有写权限，请用以下命令手动更新：",
     "appUpdate.releaseNotes": "Pi Web v{version} 可用，查看更新说明",
