@@ -34,6 +34,7 @@ test("closes shared top panels consistently and restores their trigger on Escape
   assert.match(source, /if \(!activeTopPanel \|\| activeTopPanel === "language"\) return/);
   assert.match(source, /topPanelRef\.current\?\.contains\(target\)/);
   assert.match(source, /target\.closest\("\[data-top-panel-trigger\]"\)/);
+  assert.match(source, /find\(\(candidate\) => !candidate\.closest\("\[inert\]"\)\)/);
   assert.match(source, /event\.stopPropagation\(\);\s*closeTopPanel\(true\)/);
   assert.match(source, /data-top-panel-trigger="session"/);
   assert.match(source, /data-top-panel-trigger="outline"/);
@@ -49,9 +50,11 @@ test("uses a single inline mobile toolbar", () => {
   }
 });
 
-test("only renders the Agents switcher when the active session family has subagents", () => {
-  assert.match(source, /const hasSubagentSessions = Boolean\(activeSessionFamily\?\.subagents\.length\)/);
-  assert.match(source, /\{hasSubagentSessions && \(\s*<button[\s\S]*?toggleTopPanel\("agents"\)/);
+test("only renders the Agents switcher for the header pane's session family", () => {
+  assert.match(source, /const hasSubagentSessionsForSession = Boolean\(sessionFamily\?\.subagents\.length\)/);
+  assert.match(source, /\{hasSubagentSessionsForSession && \(\s*<button[\s\S]*?toggleTopPanel\("agents"\)/);
+  assert.match(source, /session: primaryTab\?\.kind === "session" \? primaryTab\.session : null/);
+  assert.match(source, /session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null/);
   assert.match(source, /activeTopPanel === "agents" && activeSessionFamily && selectedSession/);
 });
 
@@ -64,14 +67,15 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
   assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSwitchFamilySession\}/);
   assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);
   assert.match(source, /handleSelectSession\(session, false, undefined, undefined, false, true\)/);
-  assert.match(source, /selectedSession\?\.relation\?\.kind === "subagent"/);
+  assert.match(source, /session\?\.relation\?\.kind === "subagent"/);
   assert.match(source, /agentSwitcher\.backToMain/);
 });
 
 test("only renders branch toolbar controls for sessions with branches on mobile and disables desktop button without branches", () => {
   assert.match(source, /const sessionHasBranches = hasSessionBranches\(branchTree\)/);
+  assert.match(source, /const sessionHasBranchesForSession = Boolean\(branchData && hasSessionBranches\(branchData\.tree\)\)/);
   // Neither platform renders a branch control until the session has forks.
-  assert.match(source, /sessionTools && sessionHasBranches && \(mobile \?/);
+  assert.match(source, /sessionTools && sessionHasBranchesForSession && \(mobile \?/);
   // Mobile: branches render in the shared full-width sheet. Desktop: a popover under the trigger.
   assert.match(source, /activeTopPanel === "branches" && !isMobile && \([\s\S]*?popover-surface[\s\S]*?<BranchTreeList/);
   assert.match(source, /activeTopPanel === "branches" && \([\s\S]*?<BranchTreeList/);
@@ -129,7 +133,7 @@ test("keeps the collapsed session title desktop-only without mobile overlay logi
 });
 
 test("desktop titlebar shows session tools whenever chat is showing; spend is in the composer", () => {
-  assert.match(source, /renderChatToolbarActions\(false, \{ sessionTools: showChat, interactive: !options\?\.inert \}\)/);
+  assert.match(source, /renderChatToolbarActions\(false, \{ sessionTools: showChat, interactive: !options\?\.inert, session: options\?\.session \}\)/);
   assert.doesNotMatch(source, /renderSessionStatsButton/);
 });
 
@@ -138,7 +142,7 @@ test("desktop header keeps tabs left and actions right without theme or language
   const actions = functionSource("renderDesktopHeaderActions", "return (\n    <>\n    <style>");
   assert.match(
     actions,
-    /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: showChat, interactive: !options\?\.inert \}\)/,
+    /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false, !options\?\.inert\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: showChat, interactive: !options\?\.inert, session: options\?\.session \}\)/,
   );
   // The tools sit in the focused group's header segment when split, after the tabs otherwise.
   assert.match(desktop, /renderDesktopHeaderActions\(\)/);
@@ -221,9 +225,9 @@ test("top-bar panels are cards that animate a wrapper, not the content nodes", a
   assert.doesNotMatch(branchNavigator, /branch-dropdown/);
 });
 
-test("split header keeps an inert copy of the tools on the unfocused group", () => {
-  assert.match(source, /renderDesktopHeaderActions\(\{ inert: activeChatPane !== "primary" \}\)/);
-  assert.match(source, /renderDesktopHeaderActions\(\{ inert: activeChatPane !== "secondary" \}\)/);
+test("split header keeps an inert, pane-specific copy of the tools on the unfocused group", () => {
+  assert.match(source, /renderDesktopHeaderActions\(\{[\s\S]*?inert: activeChatPane !== "primary",[\s\S]*?session: primaryTab\?\.kind === "session" \? primaryTab\.session : null,[\s\S]*?\}\)/);
+  assert.match(source, /renderDesktopHeaderActions\(\{[\s\S]*?inert: activeChatPane !== "secondary",[\s\S]*?session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null,[\s\S]*?\}\)/);
   const actions = functionSource("renderDesktopHeaderActions", "return (\n    <>\n    <style>");
   assert.match(actions, /inert=\{options\?\.inert \|\| undefined\}/);
   assert.match(actions, /pointerEvents: options\?\.inert \? "none" : undefined/);

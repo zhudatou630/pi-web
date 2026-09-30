@@ -487,10 +487,11 @@ export function AppShell() {
   const contextUsageCacheRef = useRef<Map<string, { percent: number | null; contextWindow: number; tokens: number | null }>>(new Map());
   const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null }>>(new Map());
 
-  const handleBranchDataChange = useCallback((tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => {
-    if (activeSessionIdRef.current) {
-      branchDataCacheRef.current.set(activeSessionIdRef.current, { tree, activeLeafId });
+  const handleBranchDataChange = useCallback((sessionId: string | null, tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => {
+    if (sessionId) {
+      branchDataCacheRef.current.set(sessionId, { tree, activeLeafId });
     }
+    if (sessionId !== activeSessionIdRef.current) return;
     setBranchTree(tree);
     setBranchActiveLeafId(activeLeafId);
     branchLeafChangeFnRef.current = onLeafChange;
@@ -615,9 +616,11 @@ export function AppShell() {
     setActiveTopPanel(null);
     if (!restoreFocus || !panel) return;
     requestAnimationFrame(() => {
-      const trigger = document.querySelector<HTMLElement>(`[data-top-panel-trigger="${panel}"]`)
-        ?? sidebarToggleRef.current;
-      trigger?.focus();
+      const trigger = panel === "agents"
+        ? agentsAnchorRef.current
+        : [...document.querySelectorAll<HTMLElement>(`[data-top-panel-trigger="${panel}"]`)]
+          .find((candidate) => !candidate.closest("[inert]"));
+      (trigger ?? sidebarToggleRef.current)?.focus();
     });
   }, [activeTopPanel]);
 
@@ -1914,7 +1917,9 @@ export function AppShell() {
         chatInputRef={isFocusedPane ? chatInputRef : undefined}
         isFocusedPane={isFocusedPane}
         isVisiblePane={isVisiblePane}
-        onBranchDataChange={isFocusedPane ? handleBranchDataChange : undefined}
+        onBranchDataChange={isVisiblePane && tabSession
+          ? (tree, activeLeafId, onLeafChange) => handleBranchDataChange(tabSession.id, tree, activeLeafId, onLeafChange)
+          : undefined}
         onSystemPromptChange={isFocusedPane ? handleSystemPromptChange : undefined}
         onSystemToolsChange={isFocusedPane ? handleSystemToolsChange : undefined}
         onSystemInfoLoaderChange={isFocusedPane ? handleSystemInfoLoaderChange : undefined}
@@ -2102,8 +2107,16 @@ export function AppShell() {
     </>
   );
 
-  const renderProjectTrustWarning = (mobileBanner: boolean) => {
-    if (!showChat || !projectTrust?.requiresTrust || projectTrust.trusted) return null;
+  const getBranchDataForSession = (session: SessionInfo | null) => {
+    if (!session) return null;
+    if (session.id === selectedSession?.id) {
+      return { tree: branchTree, activeLeafId: branchActiveLeafId };
+    }
+    return branchDataCacheRef.current.get(session.id) ?? null;
+  };
+
+  const renderProjectTrustWarning = (mobileBanner: boolean, visible = true) => {
+    if (!visible || !showChat || !projectTrust?.requiresTrust || projectTrust.trusted) return null;
     return (
       <button
         type="button"
@@ -2157,18 +2170,23 @@ export function AppShell() {
     );
   };
 
-  const renderChatToolbarActions = (mobile: boolean, options?: { sessionTools?: boolean; interactive?: boolean }) => {
+  const renderChatToolbarActions = (mobile: boolean, options?: { sessionTools?: boolean; interactive?: boolean; session?: SessionInfo | null }) => {
     const interactive = options?.interactive ?? true;
     const sessionTools = options?.sessionTools ?? true;
-    const toolsUnavailable = mobile && !showChat;
+    const session = options?.session === undefined ? selectedSession : options.session;
+    const sessionFamily = getSessionFamily(sessionsWithSelection, session?.id);
+    const hasSubagentSessionsForSession = Boolean(sessionFamily?.subagents.length);
+    const branchData = getBranchDataForSession(session);
+    const sessionHasBranchesForSession = Boolean(branchData && hasSessionBranches(branchData.tree));
+    const toolsUnavailable = mobile && !session;
     if (!mobile && !showChat) return null;
-    if (!mobile && !sessionTools && !hasSubagentSessions) return null;
+    if (!mobile && !sessionTools && !hasSubagentSessionsForSession) return null;
     return (
       <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
-        {hasSubagentSessions && selectedSession?.relation?.kind === "subagent" && (
+        {hasSubagentSessionsForSession && session?.relation?.kind === "subagent" && (
           <button
             type="button"
-            onClick={() => handleSwitchFamilySession(activeSessionFamily!.root)}
+            onClick={() => sessionFamily && handleSwitchFamilySession(sessionFamily.root)}
             title={translate("agentSwitcher.backToMain")}
             aria-label={translate("agentSwitcher.backToMain")}
             style={{
@@ -2187,7 +2205,7 @@ export function AppShell() {
             </svg>
           </button>
         )}
-        {hasSubagentSessions && (
+        {hasSubagentSessionsForSession && (
           <button
             ref={!mobile && interactive ? agentsButtonRef : undefined}
             type="button"
@@ -2225,11 +2243,11 @@ export function AppShell() {
                 fontSize: 10, lineHeight: 1, fontVariantNumeric: "tabular-nums",
               }}
             >
-              {activeSessionFamily!.subagents.length}
+              {sessionFamily!.subagents.length}
             </span>
           </button>
         )}
-        {sessionTools && sessionHasBranches && (mobile ? (
+        {sessionTools && sessionHasBranchesForSession && (mobile ? (
           <button
             type="button"
             onClick={() => toggleTopPanel("branches")}
@@ -2302,7 +2320,7 @@ export function AppShell() {
         {sessionTools && <SessionMenu
           mobile={mobile}
           infoDisabled={toolsUnavailable}
-          historyDisabled={!selectedSession}
+          historyDisabled={!session}
           menuOpen={interactive && historyMenuOpen}
           exporting={historyExporting}
           error={historyExportError}
@@ -2439,7 +2457,7 @@ export function AppShell() {
       </button>
   );
 
-  const renderDesktopHeaderActions = (options?: { inert?: boolean }) => (
+  const renderDesktopHeaderActions = (options?: { inert?: boolean; session?: SessionInfo | null }) => (
     <div
       data-desktop-header-actions="true"
       inert={options?.inert || undefined}
@@ -2453,8 +2471,8 @@ export function AppShell() {
         pointerEvents: options?.inert ? "none" : undefined,
       }}
     >
-      {renderProjectTrustWarning(false)}
-      {renderChatToolbarActions(false, { sessionTools: showChat, interactive: !options?.inert })}
+      {renderProjectTrustWarning(false, !options?.inert)}
+      {renderChatToolbarActions(false, { sessionTools: showChat, interactive: !options?.inert, session: options?.session })}
     </div>
   );
 
@@ -2586,7 +2604,10 @@ export function AppShell() {
                   />
                 </div>
                 <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}>
-                  {renderDesktopHeaderActions({ inert: activeChatPane !== "primary" })}
+                  {renderDesktopHeaderActions({
+                    inert: activeChatPane !== "primary",
+                    session: primaryTab?.kind === "session" ? primaryTab.session : null,
+                  })}
                 </div>
               </div>
               <div
@@ -2616,7 +2637,10 @@ export function AppShell() {
                   />
                 </div>
                 <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}>
-                  {renderDesktopHeaderActions({ inert: activeChatPane !== "secondary" })}
+                  {renderDesktopHeaderActions({
+                    inert: activeChatPane !== "secondary",
+                    session: secondaryTab?.kind === "session" ? secondaryTab.session : null,
+                  })}
                 </div>
                 {renderMainFileToggle(false)}
               </div>
