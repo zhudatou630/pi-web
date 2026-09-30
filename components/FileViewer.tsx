@@ -78,6 +78,8 @@ interface FileData {
 }
 
 const PREVIEW_AUTOLOAD_MAX_BYTES = 4 * 1024 * 1024;
+// "Load more" reads to the end; past this size the whole file stays in page state, so ask first.
+const LOAD_ALL_CONFIRM_BYTES = 16 * 1024 * 1024;
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
 const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;
 const FILE_CODE_STYLE: CSSProperties = {
@@ -1255,6 +1257,11 @@ function TextFileViewer({
     }
     return chunk;
   }, [fetchContent]);
+  // Continue from the current offset to the end. A superseded request returns null, which ends the loop.
+  const loadRest = useCallback(async (filePath: string, offset: number) => {
+    let chunk = await fetchContent(filePath, offset);
+    while (chunk?.truncated) chunk = await fetchContent(filePath, chunk.nextOffset);
+  }, [fetchContent]);
   // Markdown/HTML preview needs the whole document, so read those in full up to a cap.
   const autoLoadBytes = isFilePreviewPath(filePath) ? PREVIEW_AUTOLOAD_MAX_BYTES : 0;
 
@@ -1756,8 +1763,9 @@ function TextFileViewer({
             className="file-viewer-mode-button"
             disabled={loadingMore}
             onClick={() => {
+              if (data.size > LOAD_ALL_CONFIRM_BYTES && !window.confirm(t("i18n.loadAllConfirm", { size: formatSize(data.size) }))) return;
               setLoadingMore(true);
-              void fetchContent(filePath, data.nextOffset).finally(() => setLoadingMore(false));
+              void loadRest(filePath, data.nextOffset).finally(() => setLoadingMore(false));
             }}
           >
             {loadingMore ? t("i18n.loading") : t("i18n.loadMore")}

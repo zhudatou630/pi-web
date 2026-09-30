@@ -839,6 +839,7 @@ export const enLocale: LocalePlugin = {
     "i18n.disableWrap": "Disable word wrap",
     "i18n.enableWrap": "Enable word wrap",
     "i18n.loadMore": "Load more",
+    "i18n.loadAllConfirm": "This file is {size} and will be loaded into the page in full, which may use a lot of memory. Continue?",
     "i18n.htmlPreview": "HTML preview",
     "i18n.previewFile": "Preview {file}",
     "i18n.invalidMermaid": "Invalid Mermaid diagram",

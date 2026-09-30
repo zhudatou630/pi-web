@@ -839,6 +839,7 @@ export const zhCNLocale: LocalePlugin = {
     "i18n.disableWrap": "禁用自动换行",
     "i18n.enableWrap": "启用自动换行",
     "i18n.loadMore": "加载更多",
+    "i18n.loadAllConfirm": "文件大小 {size}，将全部载入页面，可能占用较多内存。继续？",
     "i18n.htmlPreview": "HTML 预览",
     "i18n.previewFile": "预览 {file}",
     "i18n.invalidMermaid": "Mermaid 图表无效",
