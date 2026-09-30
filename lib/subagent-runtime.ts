@@ -1214,7 +1214,9 @@ export function createSubagentController(
         wrapper.sessionFile,
       );
       if (run && wrapper.isRunning()) return { ...run, status: "running" };
-      if (run) return run;
+      // A live manager already has the full history, including subagent metadata.
+      // Keep the disk fallback during shutdown, when this wrapper is being retired.
+      if (run || !wrapper.isClosing()) return run;
     }
     const sessionPath = await dependencies.resolveSessionPath(sessionId);
     if (!sessionPath || !existsSync(sessionPath)) return null;
