@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import type { ChatPane, ChatTabItem } from "@/lib/chat-tab-state";
+import { chatTabCwd, type ChatPane, type ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 
@@ -22,6 +22,8 @@ interface Props {
   /** Batch close for the context menu (close others / close to the right). */
   onCloseTabs?: (tabIds: string[]) => boolean | void;
   onPinTab?: (tabId: string) => void;
+  /** Context menu: point the sidebar project and explorer at this tab's cwd. */
+  onRevealTabCwd?: (cwd: string) => void;
   onNewTab: () => void;
   onToggleSplit?: () => void;
   /** Drag-reorder, cross-group drag and the context menu's move item. Absent = tabs stay put. */
@@ -45,6 +47,7 @@ export function ChatTabBar({
   onCloseTab,
   onCloseTabs,
   onPinTab,
+  onRevealTabCwd,
   onNewTab,
   onToggleSplit,
   onMoveTab,
@@ -638,7 +641,7 @@ export function ChatTabBar({
             style={{
               position: "fixed",
               left: Math.min(contextMenu.x + 2, window.innerWidth - 168),
-              top: Math.min(contextMenu.y + 2, window.innerHeight - 156),
+              top: Math.min(contextMenu.y + 2, window.innerHeight - 186),
               minWidth: 160,
               zIndex: 700,
             }}
@@ -655,6 +658,11 @@ export function ChatTabBar({
                 onClick={run(() => onMoveTab(menuTab.id, pane === "primary" ? "secondary" : "primary", null))}
               >
                 {moveLabel}
+              </button>
+            )}
+            {onRevealTabCwd && chatTabCwd(menuTab) && (
+              <button type="button" role="menuitem" onClick={run(() => onRevealTabCwd(chatTabCwd(menuTab)!))}>
+                {t("chatTabs.revealCwd")}
               </button>
             )}
             <button type="button" role="menuitem" onClick={run(() => { onCloseTab(menuTab.id); })}>

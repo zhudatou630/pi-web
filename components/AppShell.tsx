@@ -2686,6 +2686,7 @@ export function AppShell() {
                     onCloseTab={handleCloseChatTab}
                     onCloseTabs={handleCloseChatTabs}
                     onPinTab={promotePreviewSession}
+                    onRevealTabCwd={setActiveCwd}
                     onNewTab={() => handleNewChatTab("primary")}
                     onToggleSplit={handleToggleSplit}
                     onMoveTab={handleMoveChatTab}
@@ -2715,6 +2716,7 @@ export function AppShell() {
                     onCloseTab={handleCloseChatTab}
                     onCloseTabs={handleCloseChatTabs}
                     onPinTab={promotePreviewSession}
+                    onRevealTabCwd={setActiveCwd}
                     onNewTab={() => handleNewChatTab("secondary")}
                     onMoveTab={handleMoveChatTab}
                     pane="secondary"
@@ -2743,6 +2745,7 @@ export function AppShell() {
                     onCloseTab={handleCloseChatTab}
                     onCloseTabs={handleCloseChatTabs}
                     onPinTab={promotePreviewSession}
+                    onRevealTabCwd={setActiveCwd}
                     onNewTab={handleNewChatTab}
                     onToggleSplit={handleToggleSplit}
                     onMoveTab={handleMoveChatTab}
@@ -3082,6 +3085,7 @@ export function AppShell() {
               onSelectTab={handleSelectChatTab}
               onCloseTab={handleCloseChatTab}
               onPinTab={promotePreviewSession}
+                    onRevealTabCwd={setActiveCwd}
               onNewTab={handleNewChatTab}
               canSplit={false}
               isMobile={true}

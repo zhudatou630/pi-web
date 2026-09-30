@@ -699,6 +699,7 @@ export const enLocale: LocalePlugin = {
     "chatTabs.hiddenRunning": "Running tab hidden",
     "chatTabs.closeOthers": "Close other tabs",
     "chatTabs.closeRight": "Close tabs to the right",
+    "chatTabs.revealCwd": "Show project in sidebar",
     "chatTabs.discardDrafts": "Discard {count} unsent drafts?",
     "chatTabs.hiddenCount": "{count} hidden",
     "chat.draftPageOnly": "This draft is only saved on this page; refreshing will discard it.",

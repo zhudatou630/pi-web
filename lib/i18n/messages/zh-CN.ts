@@ -699,6 +699,7 @@ export const zhCNLocale: LocalePlugin = {
     "chatTabs.hiddenRunning": "有运行中的标签被隐藏",
     "chatTabs.closeOthers": "关闭其他标签",
     "chatTabs.closeRight": "关闭右侧标签",
+    "chatTabs.revealCwd": "在侧栏定位到此项目",
     "chatTabs.discardDrafts": "要丢弃这 {count} 个未发送草稿吗？",
     "chatTabs.hiddenCount": "{count} 个被隐藏",
     "chat.draftPageOnly": "此草稿目前仅保存在本页，刷新后会丢失。",
