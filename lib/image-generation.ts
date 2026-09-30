@@ -7,18 +7,20 @@ export const MAX_REFERENCE_IMAGES = 5;
 
 type ImageAspect = "square" | "portrait" | "landscape";
 
-export type ImageConnectionTransport = "codex" | "antigravity" | "xai" | "openai-images";
+export type ImageConnectionTransport = "codex" | "antigravity" | "xai" | "gemini" | "openai-images";
 
 export const IMAGE_CUSTOM_MODEL_PRESETS = [
   { model: "gpt-image-2.5-flare", label: "Flare" },
   { model: "gpt-image-2.5-sunburst", label: "Sunburst" },
   { model: "grok-imagine-image-2.0", label: "Grok" },
+  { model: "gemini-3.1-flash-image", label: "Banana 2" },
 ] as const;
 
 export function imageConnectionTransport(connection: { provider: string; model: string }): ImageConnectionTransport {
   if (connection.provider === "openai-codex") return "codex";
   if (connection.provider === "antigravity") return "antigravity";
   if (connection.model.startsWith("grok-imagine")) return "xai";
+  if (connection.model.startsWith("gemini-")) return "gemini";
   return "openai-images";
 }
 

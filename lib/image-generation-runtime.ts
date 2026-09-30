@@ -5,7 +5,7 @@ import { Buffer } from "node:buffer";
 import { getImageDimensions } from "@earendil-works/pi-tui";
 import { resizeImage } from "@earendil-works/pi-coding-agent";
 import { getBase64DecodedByteLength } from "./image-attachments";
-import { requestAntigravityImage } from "./image-generation-antigravity";
+import { requestAntigravityImage, requestGeminiImage } from "./image-generation-antigravity";
 import { requestCodexImage } from "./image-generation-codex";
 import { requestOpenAIImagesImage } from "./image-generation-openai-images";
 import { requestXaiImage } from "./image-generation-xai";
@@ -260,6 +260,8 @@ export async function executeImageGeneration(agentDir: string, rawRequest: unkno
         image = checkedImage(await requestCodexImage(connection, ctx, request.prompt, inputs, size, quality, signal), "generated-image");
       } else if (transport === "antigravity") {
         image = checkedImage(await requestAntigravityImage(connection, ctx, request.prompt, inputs, size, resolution, signal), "generated-image");
+      } else if (transport === "gemini") {
+        image = checkedImage(await requestGeminiImage(connection, ctx, request.prompt, inputs, size, resolution, signal), "generated-image");
       } else if (transport === "openai-images") {
         image = checkedImage(await requestOpenAIImagesImage(connection, ctx, request.prompt, inputs, size, quality, signal), "generated-image");
       } else {

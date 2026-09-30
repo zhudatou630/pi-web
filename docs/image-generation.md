@@ -41,9 +41,9 @@ ChatGPT 按所选比例发送像素：`1:1`→`1024x1024`，`16:9`→`1536x864`�
 
 ## 自定义连接
 
-在 Images 页添加：选 `models.json` 里已有的 provider。Flare / Sunburst / Grok 一键带上模型 id 和方言；其他模型仍可手填。密钥和 baseUrl 仍在 Models 里，不在 Images 再存一套。
+在 Images 页添加：选 `models.json` 里已有的 provider。Flare / Sunburst / Grok / Banana 2 一键带上模型 id 和方言；其他模型仍可手填。密钥和 baseUrl 仍在 Models 里，不在 Images 再存一套。
 
-方言按模型名：`grok-imagine*` 走 xAI 体，其余走 OpenAI Images 体。不要把中转写成第四个品牌。
+方言按模型名：`grok-imagine*` 走 xAI 体，`gemini-*` 走 Gemini API 体（`{baseUrl}/models/{model}:streamGenerateContent?alt=sse`，`x-goog-api-key`，baseUrl 填到 `v1beta`，例如 sub2api 的 `/antigravity/v1beta`；请求体与内置 Banana 2 相同，只是不包 Antigravity 的 project 外壳），其余走 OpenAI Images 体。不要把中转写成新品牌。
 
 旧 `images.json` 里不在内置 id 上的条目（例如 Relay Flare / Sunburst / Grok）会在第一次写入 settings 时进 `custom`，之后可在 Images 页改或删。
 

@@ -44,7 +44,9 @@ export function ImageMentionChip({ path, cwd, onRemove }: {
 function imageFrameStyle(width: number, height: number) {
   return {
     aspectRatio: `${width} / ${height}`,
-    width: `min(100%, calc(28rem * ${width / height}))`,
+    width: "100%",
+    maxWidth: "520px",
+    maxHeight: "min(60vh, 520px)",
   };
 }
 
@@ -114,7 +116,7 @@ export function GeneratedImageResult({ value, cwd, onEdit, onMention, showPrompt
   ].filter(Boolean).join(" \u00b7 ");
 
   return (
-    <article className="mb-3 mt-2 w-fit max-w-full">
+    <article className="mb-3 mt-2 w-full max-w-[520px]">
       <div className="relative max-w-full overflow-hidden rounded-[10px] border border-border/80 bg-bg-panel" style={imageFrameStyle(details.width, details.height)}>
         {failed ? (
           <div className="flex h-full min-h-28 items-center justify-center px-4 text-xs text-text-muted">{t("chat.imagePreviewUnavailable")}</div>
@@ -163,7 +165,7 @@ function pendingAspect(size?: string, fallback?: { width?: number; height?: numb
     if (pixels) return { w: Number(pixels[1]), h: Number(pixels[2]) };
   }
   if (fallback?.width && fallback.height) return { w: fallback.width, h: fallback.height };
-  return { w: 1, h: 1 };
+  return { w: 4, h: 3 };
 }
 
 export function PendingGeneratedImage({ prompt, size, width, height, previewUrl }: {
@@ -176,7 +178,7 @@ export function PendingGeneratedImage({ prompt, size, width, height, previewUrl 
   const { t } = useI18n();
   const { w, h } = pendingAspect(size, { width, height });
   return (
-    <article className="mb-3 mt-2 w-fit max-w-full">
+    <article className="mb-3 mt-2 w-full max-w-[520px]">
       <div
         role="status"
         aria-label={t("image.generating")}
@@ -187,6 +189,7 @@ export function PendingGeneratedImage({ prompt, size, width, height, previewUrl 
           // eslint-disable-next-line @next/next/no-img-element
           <img src={previewUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-35" />
         ) : null}
+        <div className="image-pending-grid" aria-hidden="true" />
         <div className="image-pending-sheen" aria-hidden="true" />
       </div>
       {prompt ? <p className="mt-1.5 line-clamp-3 text-[12px] leading-snug text-text-muted">{prompt}</p> : null}

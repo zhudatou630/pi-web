@@ -33,9 +33,8 @@ export function antigravityImageSize(resolution?: string): string | undefined {
   throw new Error(`Unsupported image resolution: ${resolution}`);
 }
 
-export function buildAntigravityImageBody(
-  model: string,
-  projectId: string,
+/** The Gemini `generateContent` request shared by Antigravity (wrapped) and Gemini API relays (bare). */
+export function buildGeminiImageRequest(
   prompt: string,
   size?: string,
   resolution?: string,
@@ -49,15 +48,26 @@ export function buildAntigravityImageBody(
   const parts: Array<Record<string, unknown>> = [{ text: prompt }];
   for (const input of inputs) parts.push({ inlineData: { mimeType: input.mimeType, data: input.bytes.toString("base64") } });
   return {
+    contents: [{ role: "user", parts }],
+    generationConfig: {
+      ...(Object.keys(imageConfig).length ? { imageConfig } : {}),
+      candidateCount: 1,
+    },
+  };
+}
+
+export function buildAntigravityImageBody(
+  model: string,
+  projectId: string,
+  prompt: string,
+  size?: string,
+  resolution?: string,
+  inputs: readonly { bytes: Buffer; mimeType: string }[] = [],
+): Record<string, unknown> {
+  return {
     project: projectId,
     model,
-    request: {
-      contents: [{ role: "user", parts }],
-      generationConfig: {
-        ...(Object.keys(imageConfig).length ? { imageConfig } : {}),
-        candidateCount: 1,
-      },
-    },
+    request: buildGeminiImageRequest(prompt, size, resolution, inputs),
     requestType: "agent",
     userAgent: "antigravity",
     requestId: `agent/${crypto.randomUUID()}/${Date.now()}/${crypto.randomUUID()}/2`,
@@ -194,9 +204,40 @@ export async function requestAntigravityImage(
   const { token, projectId } = await antigravityCredentials(ctx.modelRegistry.getProviderAuth);
   const body = JSON.stringify(buildAntigravityImageBody(connection.model, projectId, prompt, size, resolution, inputs));
   return requestImageFromEndpoints(
-    endpointCandidates(ctx.modelRegistry.getProvider(connection.provider)?.baseUrl),
+    endpointCandidates(ctx.modelRegistry.getProvider(connection.provider)?.baseUrl).map((endpoint) => `${endpoint}/v1internal:streamGenerateContent?alt=sse`),
     antigravityHeaders(token),
     body,
+    signal,
+  );
+}
+
+/** A Gemini API relay (e.g. sub2api's `/antigravity/v1beta`): the provider's baseUrl is the v1beta root. */
+export function geminiImageUrl(baseUrl: string | undefined, model: string): string {
+  if (!baseUrl?.trim()) throw new Error("No base URL configured for this image connection");
+  return `${baseUrl.trim().replace(/\/+$/, "")}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
+}
+
+export async function requestGeminiImage(
+  connection: { provider: string; model: string },
+  ctx: {
+    modelRegistry: {
+      getProviderAuth(provider: string): Promise<{ auth: { baseUrl?: string; apiKey?: string } } | undefined>;
+      getProvider(provider: string): { baseUrl?: string } | undefined;
+    };
+  },
+  prompt: string,
+  inputs: readonly { bytes: Buffer; mimeType: string }[],
+  size?: string,
+  resolution?: string,
+  signal?: AbortSignal,
+): Promise<Buffer> {
+  const auth = await ctx.modelRegistry.getProviderAuth(connection.provider);
+  if (!auth?.auth.apiKey) throw new Error(`No credentials configured for image provider ${connection.provider}`);
+  const baseUrl = auth.auth.baseUrl ?? ctx.modelRegistry.getProvider(connection.provider)?.baseUrl;
+  return requestImageFromEndpoints(
+    [geminiImageUrl(baseUrl, connection.model)],
+    { "x-goog-api-key": auth.auth.apiKey, "Content-Type": "application/json", Accept: "text/event-stream" },
+    JSON.stringify(buildGeminiImageRequest(prompt, size, resolution, inputs)),
     signal,
   );
 }
@@ -206,7 +247,7 @@ export async function requestAntigravityImage(
  * once headers arrive, the image stream shares one total budget and is never re-sent.
  */
 export async function requestImageFromEndpoints(
-  endpoints: string[],
+  urls: string[],
   headers: Record<string, string>,
   body: string,
   signal?: AbortSignal,
@@ -216,16 +257,16 @@ export async function requestImageFromEndpoints(
   const requestSignal = signal ? AbortSignal.any([signal, total]) : total;
   const timedOut = (endpoint: string, phase: string) => {
     signal?.throwIfAborted();
-    return total.aborted ? new Error(`Antigravity image request to ${endpoint} timed out after ${totalMs / 1000}s while ${phase}`) : undefined;
+    return total.aborted ? new Error(`Image request to ${endpoint} timed out after ${totalMs / 1000}s while ${phase}`) : undefined;
   };
-  let lastError = "no Antigravity image endpoint available";
-  for (const endpoint of endpoints) {
+  let lastError = "no image endpoint available";
+  for (const endpoint of urls) {
     requestSignal.throwIfAborted();
     const connect = new AbortController();
     const timer = setTimeout(() => connect.abort(), connectMs);
     let response: Response;
     try {
-      response = await fetch(`${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
+      response = await fetch(endpoint, {
         method: "POST",
         headers,
         body,
@@ -235,7 +276,7 @@ export async function requestImageFromEndpoints(
       const fatal = timedOut(endpoint, "connecting");
       if (fatal) throw fatal;
       lastError = connect.signal.aborted
-        ? `Antigravity image endpoint ${endpoint} sent no response within ${connectMs / 1000}s`
+        ? `Image endpoint ${endpoint} sent no response within ${connectMs / 1000}s`
         : `${endpoint}: ${sanitized(error instanceof Error ? error.message : String(error), 400)}`;
       continue;
     } finally {

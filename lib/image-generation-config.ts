@@ -570,7 +570,8 @@ export function renameImageConnection(id: string, label: string, agentDir: strin
 }
 
 function customImageConnection(id: string, label: string, provider: string, model: string): ImageConnection {
-  const template = BUILTIN_IMAGE_CONNECTIONS.find((connection) => connection.id === (model.startsWith("grok-imagine") ? "grok-imagine" : "chatgpt-flare"));
+  const templateId = model.startsWith("grok-imagine") ? "grok-imagine" : model.startsWith("gemini-") ? "banana-2" : "chatgpt-flare";
+  const template = BUILTIN_IMAGE_CONNECTIONS.find((connection) => connection.id === templateId);
   if (!template) throw new Error("Missing built-in image template");
   return { ...copyBuiltin(template), id, label, provider, model };
 }

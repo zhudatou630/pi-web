@@ -3256,15 +3256,37 @@ span.token.table {
   animation: image-pending-sheen 2.8s ease-in-out infinite;
 }
 
+.image-pending-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 18%, transparent) 1px, transparent 1.5px);
+  background-size: 18px 18px;
+  mask-image: radial-gradient(ellipse at center, #000 0%, transparent 78%);
+  opacity: 0.2;
+  animation: image-pending-grid 5s ease-in-out infinite;
+}
+
 @keyframes image-pending-sheen {
   0% { background-position: 120% 0; }
   100% { background-position: -120% 0; }
 }
 
+@keyframes image-pending-grid {
+  0%, 100% { opacity: 0.12; transform: scale(0.98); }
+  50% { opacity: 0.28; transform: scale(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .image-pending-sheen {
+  .image-pending-sheen,
+  .image-pending-grid {
     animation: none;
+  }
+  .image-pending-sheen {
     opacity: 0;
+  }
+  .image-pending-grid {
+    opacity: 0.18;
   }
 }
 
