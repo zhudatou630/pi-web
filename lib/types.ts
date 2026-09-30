@@ -329,6 +329,8 @@ export type SessionEntry =
   | SessionInfoEntry;
 
 export interface BranchPreview {
+  /** Entry the preview was read from. */
+  entryId?: string;
   role?: "user" | "assistant";
   text: string;
 }
@@ -348,6 +350,8 @@ export interface SessionTreeNode {
   label?: string;
   compressedEntryIds?: string[];
   branchPreview?: BranchPreview;
+  /** User messages in this node plus the entries contracted into it (server projection). */
+  userTurns?: number;
 }
 
 export interface SessionInfo {

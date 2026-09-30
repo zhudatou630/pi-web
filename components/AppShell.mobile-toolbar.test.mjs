@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
-const historySource = await readFile(new URL("./SessionHistoryControl.tsx", import.meta.url), "utf8");
+const menuSource = await readFile(new URL("./SessionMenu.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("keeps session actions inline at every mobile width", () => {
@@ -35,8 +35,6 @@ test("closes shared top panels consistently and restores their trigger on Escape
   assert.match(source, /topPanelRef\.current\?\.contains\(target\)/);
   assert.match(source, /target\.closest\("\[data-top-panel-trigger\]"\)/);
   assert.match(source, /event\.stopPropagation\(\);\s*closeTopPanel\(true\)/);
-  assert.match(source, /data-top-panel-trigger=\{interactive \? "system" : undefined\}/);
-  assert.match(source, /data-top-panel-trigger=\{interactive \? "tools" : undefined\}/);
   assert.match(source, /data-top-panel-trigger="session"/);
   assert.match(source, /data-top-panel-trigger="outline"/);
   assert.match(source, /id="workspace-top-panel"/);
@@ -45,8 +43,8 @@ test("closes shared top panels consistently and restores their trigger on Escape
 test("uses a single inline mobile toolbar", () => {
   assert.match(source, /data-mobile-toolbar="true"[\s\S]*?flex: 1,[\s\S]*?minWidth: 0/);
 
-  assert.match(historySource, /data-mobile-toolbar-action=\{mobile \? "history"/);
-  for (const action of ["agents", "branches", "system", "tools"]) {
+  assert.match(menuSource, /data-mobile-toolbar-action=\{mobile \? "session-menu"/);
+  for (const action of ["agents", "branches"]) {
     assert.match(source, new RegExp(`data-mobile-toolbar-action=(?:\\{mobile \\? )?"${action}"`));
   }
 });
@@ -61,7 +59,7 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
   assert.match(source, /const AGENT_PANEL_WIDTH = 420/);
   assert.match(
     source,
-    /if \(activeTopPanel === "agents"\)[\s\S]*?Math\.min\(AGENT_PANEL_WIDTH[\s\S]*?anchor\.getBoundingClientRect\(\)/,
+    /if \(activeTopPanel === "agents" \|\| \(activeTopPanel === "branches" && !isMobile\)\)[\s\S]*?Math\.min\(activeTopPanel === "agents" \? AGENT_PANEL_WIDTH[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
   assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSwitchFamilySession\}/);
   assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);
@@ -72,8 +70,10 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
 
 test("only renders branch toolbar controls for sessions with branches on mobile and disables desktop button without branches", () => {
   assert.match(source, /const sessionHasBranches = hasSessionBranches\(branchTree\)/);
-  assert.match(source, /disabled=\{!sessionHasBranches\}/);
-  // Branches render in the shared sheet like every other full-width panel.
+  // Neither platform renders a branch control until the session has forks.
+  assert.match(source, /sessionTools && sessionHasBranches && \(mobile \?/);
+  // Mobile: branches render in the shared full-width sheet. Desktop: a popover under the trigger.
+  assert.match(source, /activeTopPanel === "branches" && !isMobile && \([\s\S]*?popover-surface[\s\S]*?<BranchTreeList/);
   assert.match(source, /activeTopPanel === "branches" && \([\s\S]*?<BranchTreeList/);
   assert.equal(source.match(/<BranchNavigator/g).length, 1);
   assert.match(source, /panel === "branches" \? null : panel/);
@@ -164,9 +164,7 @@ test("desktop session controls follow the task-first order", () => {
   const order = [
     'data-top-panel-trigger={interactive ? "agents" : undefined}',
     "<BranchNavigator",
-    "<SessionHistoryControl",
-    'data-top-panel-trigger={interactive ? "system" : undefined}',
-    'data-top-panel-trigger={interactive ? "tools" : undefined}',
+    "<SessionMenu",
   ].map((needle) => actions.indexOf(needle));
 
   assert.ok(order.every((index) => index >= 0));

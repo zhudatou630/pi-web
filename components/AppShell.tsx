@@ -33,10 +33,11 @@ import { SettingsPanel } from "./SettingsPanel";
 import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
-import { SessionHistoryControl } from "./SessionHistoryControl";
+import { SessionMenu } from "./SessionMenu";
+import { InfoDialog } from "./InfoDialog";
 import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
 import { SystemPromptPanel } from "./SystemPromptPanel";
-import { ToolDefinitionsPanel } from "./ToolDefinitionsPanel";
+import { ToolDefinitionsDialog } from "./ToolDefinitionsPanel";
 import { AgentSessionPanel } from "./AgentSessionPanel";
 import { TerminalPanel } from "./TerminalPanel";
 import { newTerminalTab, restoreTerminalTabs, TERMINAL_TABS_KEY, type TerminalTab } from "./terminal-tab-state";
@@ -108,6 +109,7 @@ const TOP_BAR_ICON_BUTTON_SIZE = 30;
 const isPrimaryPointerPress = (event: React.PointerEvent) => event.button === 0 && !event.ctrlKey;
 
 const AGENT_PANEL_WIDTH = 420;
+const BRANCH_PANEL_WIDTH = 520;
 const DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs";
 
 function filenameFromContentDisposition(header: string | null): string | null {
@@ -476,7 +478,7 @@ export function AppShell() {
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyExporting, setHistoryExporting] = useState(false);
   const [historyExportError, setHistoryExportError] = useState<string | null>(null);
-  const branchLeafChangeFnRef = useRef<((leafId: string | null) => void) | null>(null);
+  const branchLeafChangeFnRef = useRef<((leafId: string | null, anchorEntryId?: string) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
 
   // Session-keyed metadata caches — enables instant flicker-free switching between split panes and tabs
@@ -484,7 +486,7 @@ export function AppShell() {
   const contextUsageCacheRef = useRef<Map<string, { percent: number | null; contextWindow: number; tokens: number | null }>>(new Map());
   const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null }>>(new Map());
 
-  const handleBranchDataChange = useCallback((tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => {
+  const handleBranchDataChange = useCallback((tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => {
     if (activeSessionIdRef.current) {
       branchDataCacheRef.current.set(activeSessionIdRef.current, { tree, activeLeafId });
     }
@@ -493,8 +495,8 @@ export function AppShell() {
     branchLeafChangeFnRef.current = onLeafChange;
   }, []);
 
-  const handleBranchLeafChange = useCallback((leafId: string | null) => {
-    branchLeafChangeFnRef.current?.(leafId);
+  const handleBranchLeafChange = useCallback((leafId: string | null, anchorEntryId?: string) => {
+    branchLeafChangeFnRef.current?.(leafId, anchorEntryId);
   }, []);
 
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -502,7 +504,6 @@ export function AppShell() {
   const [systemInfoLoading, setSystemInfoLoading] = useState(false);
   const systemInfoLoaderRef = useRef<(() => Promise<void>) | null>(null);
   const systemInfoLoadIdRef = useRef(0);
-  const systemBtnRef = useRef<HTMLButtonElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
   const filePanelToggleRef = useRef<HTMLButtonElement>(null);
   const agentsButtonRef = useRef<HTMLButtonElement>(null);
@@ -520,6 +521,7 @@ export function AppShell() {
 
   const handleSystemInfoLoaderChange = useCallback((loader: (() => Promise<void>) | null) => {
     systemInfoLoadIdRef.current += 1;
+    systemInfoPromiseRef.current = null;
     systemInfoLoaderRef.current = loader;
     setSystemInfoLoading(false);
   }, []);
@@ -579,7 +581,8 @@ export function AppShell() {
   }, [selectedSession, syncSessionMetadata]);
 
   // Single active panel — only one dropdown open at a time
-  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "system" | "tools" | "session" | "language" | "outline" | null>(null);
+  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "session" | "language" | "outline" | null>(null);
+  const [infoDialog, setInfoDialog] = useState<"system" | "tools" | null>(null);
   // Subagent totals shown beside, never folded into, the parent's own usage.
   const [subagentUsage, setSubagentUsage] = useState<{ sessionId: string; count: number; tokens: number; cost: number } | null>(null);
   const subagentUsageRootId = activeTopPanel === "session"
@@ -633,30 +636,49 @@ export function AppShell() {
     if (!view) setActiveTopPanel((panel) => panel === "outline" ? null : panel);
   }, []);
 
-  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "system" | "tools" | "session" | "language" | "outline") => {
+  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "session" | "language" | "outline") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
 
-  const handleSystemInfoToggle = useCallback((panel: "system" | "tools") => {
-    const opening = activeTopPanel !== panel;
-    toggleTopPanel(panel);
-    if (!opening || systemInfoLoading) return;
-    if (panel === "system" && systemPrompt !== null) return;
-    if (panel === "tools" && systemTools !== null) return;
-
+  // One in-flight load, shared by the menu's prefetch and an explicit open.
+  const systemInfoPromiseRef = useRef<Promise<void> | null>(null);
+  const loadSystemInfo = useCallback((): Promise<void> => {
     const load = systemInfoLoaderRef.current;
-    if (!load) return;
+    if (!load) return Promise.resolve();
+    if (systemInfoPromiseRef.current) return systemInfoPromiseRef.current;
     const loadId = ++systemInfoLoadIdRef.current;
     setSystemInfoLoading(true);
-    void load().catch((error) => {
+    const promise: Promise<void> = load().catch((error) => {
       console.error("Failed to load system information:", error);
     }).finally(() => {
-      if (systemInfoLoadIdRef.current === loadId) {
-        setSystemInfoLoading(false);
-      }
+      if (systemInfoPromiseRef.current === promise) systemInfoPromiseRef.current = null;
+      if (systemInfoLoadIdRef.current === loadId) setSystemInfoLoading(false);
     });
-  }, [activeTopPanel, systemInfoLoading, systemPrompt, systemTools, toggleTopPanel]);
+    systemInfoPromiseRef.current = promise;
+    return promise;
+  }, []);
+
+  const [infoPending, setInfoPending] = useState<"system" | "tools" | null>(null);
+  const infoRequestRef = useRef(0);
+
+  // Opens only once the data is loaded, so the dialog animates in with its content already there
+  // (like settings) instead of showing "loading" and then swapping. The menu stays open with a
+  // spinner on the item while it waits.
+  const openInfoDialog = useCallback(async (panel: "system" | "tools") => {
+    const requestId = ++infoRequestRef.current;
+    const ready = panel === "system" ? systemPrompt !== null : systemTools !== null;
+    if (!ready) {
+      setInfoPending(panel);
+      await loadSystemInfo();
+      if (infoRequestRef.current !== requestId) return; // menu closed, or superseded meanwhile
+      setInfoPending(null);
+    }
+    if (isMobile) setSidebarOpen(false);
+    setActiveTopPanel(null);
+    setHistoryMenuOpen(false);
+    setInfoDialog(panel);
+  }, [isMobile, loadSystemInfo, systemPrompt, systemTools]);
 
   const openSessionStatsPanel = useCallback(() => {
     if (isMobile) setSidebarOpen(false);
@@ -742,9 +764,12 @@ export function AppShell() {
     if (!activeTopPanel || !topBarRef.current) return;
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
-      if (activeTopPanel === "agents") {
-        const anchor = agentsAnchorRef.current ?? agentsButtonRef.current;
-        const panelWidth = Math.min(AGENT_PANEL_WIDTH, (typeof window !== "undefined" ? window.innerWidth : 800) - 16);
+      // Agents and (on desktop) branches float under their trigger; other panels are full-width sheets.
+      if (activeTopPanel === "agents" || (activeTopPanel === "branches" && !isMobile)) {
+        const anchor = activeTopPanel === "agents"
+          ? agentsAnchorRef.current ?? agentsButtonRef.current
+          : document.querySelector<HTMLElement>('[data-top-panel-trigger="branches"]');
+        const panelWidth = Math.min(activeTopPanel === "agents" ? AGENT_PANEL_WIDTH : BRANCH_PANEL_WIDTH, (typeof window !== "undefined" ? window.innerWidth : 800) - 16);
         if (anchor) {
           const rect = anchor.getBoundingClientRect();
           const idealLeft = rect.right - panelWidth;
@@ -1898,9 +1923,14 @@ export function AppShell() {
   };
 
   const handleHistoryMenuOpenChange = useCallback((open: boolean) => {
-    if (open) setActiveTopPanel(null);
+    if (open) {
+      setActiveTopPanel(null);
+    } else {
+      infoRequestRef.current += 1; // cancels a pending open
+      setInfoPending(null);
+      setHistoryExportError(null);
+    }
     setHistoryMenuOpen(open);
-    if (!open) setHistoryExportError(null);
   }, []);
 
   const handleExportMarkdown = useCallback(async () => {
@@ -2184,7 +2214,7 @@ export function AppShell() {
             </span>
           </button>
         )}
-        {sessionTools && (mobile ? (sessionHasBranches && (
+        {sessionTools && sessionHasBranches && (mobile ? (
           <button
             type="button"
             onClick={() => toggleTopPanel("branches")}
@@ -2211,7 +2241,7 @@ export function AppShell() {
               <path d="M18 9a9 9 0 0 1-9 9" />
             </svg>
           </button>
-        )) : (
+        ) : (
           <BranchNavigator
             tree={branchTree}
             activeLeafId={branchActiveLeafId}
@@ -2220,26 +2250,31 @@ export function AppShell() {
             compact
             open={interactive && activeTopPanel === "branches"}
             onToggle={() => toggleTopPanel("branches")}
-            disabled={!sessionHasBranches}
             hasSession
           />
         ))}
-        {sessionTools && <SessionHistoryControl
+        {sessionTools && <SessionMenu
           mobile={mobile}
-          disabled={!selectedSession}
+          infoDisabled={toolsUnavailable}
+          historyDisabled={!selectedSession}
           menuOpen={interactive && historyMenuOpen}
           exporting={historyExporting}
           error={historyExportError}
           labels={{
+            tools: translate("tools.title"),
+            system: translate("system.prompt"),
             full: translate("history.full"),
             unsaved: translate("history.unsaved"),
-            menu: translate("history.menu"),
+            menu: translate("session.moreActions"),
             exportMarkdown: translate("history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
           }}
           onMenuOpenChange={(open) => {
             handleHistoryMenuOpenChange(open);
           }}
+          infoPending={infoPending}
+          onOpenTools={() => void openInfoDialog("tools")}
+          onOpenSystem={() => void openInfoDialog("system")}
           onViewFullHistory={() => {
             handleViewFullHistory();
           }}
@@ -2247,81 +2282,6 @@ export function AppShell() {
             void handleExportMarkdown();
           }}
         />}
-        {sessionTools && <>
-        <button
-          ref={interactive ? systemBtnRef : undefined}
-          type="button"
-          onClick={() => handleSystemInfoToggle("system")}
-          disabled={toolsUnavailable}
-          title={translate("system.prompt")}
-          aria-label={translate("system.prompt")}
-          aria-pressed={interactive && activeTopPanel === "system"}
-          aria-expanded={interactive && activeTopPanel === "system"}
-          aria-controls="workspace-top-panel"
-          data-top-panel-trigger={interactive ? "system" : undefined}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: TOP_BAR_ICON_BUTTON_SIZE,
-            height: "100%", padding: 0,
-            background: interactive && activeTopPanel === "system" ? "var(--bg-selected)" : "none",
-            border: "none",
-            cursor: toolsUnavailable ? "not-allowed" : "pointer",
-            color: interactive && activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)",
-            opacity: toolsUnavailable ? 0.45 : 1,
-            transition: "color 0.1s, background 0.1s",
-          }}
-          onMouseEnter={(event) => {
-            if (toolsUnavailable) return;
-            event.currentTarget.style.color = "var(--text)";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.color = interactive && activeTopPanel === "system" ? "var(--text)" : "var(--text-muted)";
-          }}
-          className="workspace-header-action"
-          data-mobile-toolbar-action={mobile ? "system" : undefined}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="8" y1="13" x2="16" y2="13" />
-            <line x1="8" y1="17" x2="13" y2="17" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSystemInfoToggle("tools")}
-          disabled={toolsUnavailable}
-          title={translate("tools.title")}
-          aria-label={translate("tools.title")}
-          aria-pressed={interactive && activeTopPanel === "tools"}
-          aria-expanded={interactive && activeTopPanel === "tools"}
-          aria-controls="workspace-top-panel"
-          data-top-panel-trigger={interactive ? "tools" : undefined}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: TOP_BAR_ICON_BUTTON_SIZE,
-            height: "100%", padding: 0,
-            background: interactive && activeTopPanel === "tools" ? "var(--bg-selected)" : "none",
-            border: "none",
-            cursor: toolsUnavailable ? "not-allowed" : "pointer",
-            color: interactive && activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)",
-            opacity: toolsUnavailable ? 0.45 : 1,
-            transition: "color 0.1s, background 0.1s",
-          }}
-          onMouseEnter={(event) => {
-            if (toolsUnavailable) return;
-            event.currentTarget.style.color = "var(--text)";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.color = interactive && activeTopPanel === "tools" ? "var(--text)" : "var(--text-muted)";
-          }}
-          className="workspace-header-action"
-          data-mobile-toolbar-action={mobile ? "tools" : undefined}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} aria-hidden="true">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
-          </svg>
-        </button>
         {sessionTools && mobile && (
           <button
             type="button"
@@ -2355,7 +2315,6 @@ export function AppShell() {
             </svg>
           </button>
         )}
-        </>}
       </div>
     );
   };
@@ -2768,15 +2727,11 @@ export function AppShell() {
               role="region"
               aria-label={activeTopPanel === "agents"
                 ? translate("agentSwitcher.title")
-                : activeTopPanel === "system"
-                  ? translate("system.prompt")
-                  : activeTopPanel === "tools"
-                    ? translate("tools.title")
-                    : activeTopPanel === "outline"
-                      ? translate("chatMinimap.userOutline")
-                      : activeTopPanel === "branches"
-                        ? translate("i18n.branches")
-                        : translate("session.title")}
+                : activeTopPanel === "outline"
+                  ? translate("chatMinimap.userOutline")
+                  : activeTopPanel === "branches"
+                    ? translate("i18n.branches")
+                    : translate("session.title")}
               style={{
                 position: "fixed",
                 top: topPanelPos.top,
@@ -2797,23 +2752,14 @@ export function AppShell() {
                   onOpenInNewTab={handlePinSession}
                 />
               )}
-              {(activeTopPanel === "system" || activeTopPanel === "tools" || activeTopPanel === "session" || activeTopPanel === "outline" || activeTopPanel === "branches") && (
+              {activeTopPanel === "branches" && !isMobile && (
+                <div className="popover-surface" style={{ overflow: "hidden" }}>
+                  <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} hasSession={showChat} />
+                </div>
+              )}
+              {(activeTopPanel === "session" || activeTopPanel === "outline" || (activeTopPanel === "branches" && isMobile)) && (
               // max-height is inherited down to the outline list so it scrolls itself and can reveal its active row.
               <div className="session-sheet-pop" style={{ maxHeight: "inherit", overflowY: "auto" }}>
-              {activeTopPanel === "system" && (
-                <SystemPromptPanel
-                  loading={systemInfoLoading}
-                  prompt={systemPrompt}
-                  translate={translate}
-                />
-              )}
-              {activeTopPanel === "tools" && (
-                <ToolDefinitionsPanel
-                  loading={systemInfoLoading}
-                  tools={systemTools}
-                  translate={translate}
-                />
-              )}
               {activeTopPanel === "branches" && (
                 <div style={{ borderBottom: "1px solid var(--border)" }}>
                   <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} hasSession={showChat} />
@@ -3058,6 +3004,14 @@ export function AppShell() {
               </div>
               )}
             </div>
+          )}
+          {infoDialog === "system" && (
+            <InfoDialog title={translate("system.prompt")} onClose={() => setInfoDialog(null)}>
+              <SystemPromptPanel loading={systemInfoLoading} prompt={systemPrompt} translate={translate} />
+            </InfoDialog>
+          )}
+          {infoDialog === "tools" && (
+            <ToolDefinitionsDialog loading={systemInfoLoading} tools={systemTools} translate={translate} onClose={() => setInfoDialog(null)} />
           )}
 
         </div>

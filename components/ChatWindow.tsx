@@ -83,7 +83,7 @@ interface Props {
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
   isFocusedPane?: boolean;
   isVisiblePane?: boolean;
-  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
+  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
   onSystemInfoLoaderChange?: (loader: (() => Promise<void>) | null) => void;
@@ -800,6 +800,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return position && !position.atBottom ? position : null;
   });
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
+  // Branch panel click: switch branch (when needed), then scroll to the row's first message.
+  const [pendingBranchJump, setPendingBranchJump] = useState<string | null>(null);
+  const branchDataChange = useCallback<NonNullable<Props["onBranchDataChange"]>>((tree, leafId, switchLeaf) => {
+    onBranchDataChange?.(tree, leafId, async (targetLeafId, anchorEntryId) => {
+      if (targetLeafId) await (switchLeaf as (leafId: string | null) => Promise<void> | void)(targetLeafId);
+      if (anchorEntryId) setPendingBranchJump(anchorEntryId);
+    });
+  }, [onBranchDataChange]);
 
   const {
     data, loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, streamState,
@@ -820,7 +828,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     loadContext, activeLeafId, scrollToBottom, scrollToMessage,
   } = useAgentSession({
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded: wrappedOnAttentionNeeded, onSessionCreated, onSessionForked: wrappedOnSessionForked,
-    modelsRefreshKey, chatInputRef: ownChatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
+    modelsRefreshKey, chatInputRef: ownChatInputRef, onBranchDataChange: onBranchDataChange ? branchDataChange : undefined, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
     deferInitialScroll: Boolean(pendingScrollRestore),
     isVisiblePane,
   });
@@ -1598,6 +1606,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       }
     }
   }, [addNotice, locateHistoryEntry, session?.id, sessionIdRef, t]);
+  // Runs after the switched branch has committed, so the jump sees the new leaf and entries.
+  useEffect(() => {
+    if (!pendingBranchJump) return;
+    setPendingBranchJump(null);
+    void jumpToOutlineEntry(pendingBranchJump);
+  }, [pendingBranchJump, jumpToOutlineEntry]);
   useLayoutEffect(() => {
     if (!pendingOutlineJump || pendingOutlineJump.signal.aborted) return;
     const element = messageContentRef.current?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(pendingOutlineJump.entryId)}"]`);
@@ -2448,13 +2462,7 @@ function NoticeIcon({ type }: { type: NoticeItem["type"] }) {
       </svg>
     );
   }
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="16" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12.01" y2="8" />
-    </svg>
-  );
+  return null;
 }
 
 /** Links in a notice (an MCP sign-in URL) open in a new tab, shown by host: sign-in URLs run to hundreds of characters. */
@@ -2507,17 +2515,13 @@ function NoticeShelf({ notices, floating = false, onPauseChange, onOpenMcpSettin
             pointerEvents: "auto",
             marginBottom: index === notices.length - 1 ? 0 : 6,
             overflow: "hidden",
-            borderRadius: 8,
+            borderRadius: 6,
             border: "1px solid var(--border)",
-            background: "color-mix(in srgb, var(--bg) 95%, var(--bg-panel))",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
+            background: "var(--bg-elevated)",
             color: "var(--text)",
             width: "fit-content",
             maxWidth: "min(100%, 540px)",
-            boxShadow: floating
-              ? "0 4px 16px -2px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.06)"
-              : "0 2px 8px -2px rgba(0, 0, 0, 0.08)",
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06)",
             fontSize: 12,
             lineHeight: 1.45,
             transformOrigin: "top right",

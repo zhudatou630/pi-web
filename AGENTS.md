@@ -129,7 +129,9 @@ components/
   ChatInput.tsx       input bar + model/thinking/tools/compact controls
   ChatTabBar.tsx      chat session tab strip & multi-tab navigation
   MessageView.tsx     renders one message (user/assistant/toolCall/toolResult)
-  BranchNavigator.tsx in-session branch switcher
+  BranchNavigator.tsx in-session branch switcher (top-bar popover; rows from lib/branch-rows.ts)
+  SessionMenu.tsx     top-bar "⋯" menu: tool definitions, system prompt, full history, export
+  InfoDialog.tsx      read-only dialog shell (full-screen sheet on phones) for system prompt / tool definitions
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
   ImageViewer.tsx     modal image viewer (gallery, zoom, touch gestures); the only image lightbox

@@ -6,29 +6,42 @@ const ICON_BUTTON_SIZE = 30;
 
 type Props = {
   mobile: boolean;
-  disabled: boolean;
+  /** Tools and system prompt need a loaded chat. */
+  infoDisabled: boolean;
+  /** Full history and export need a saved session. */
+  historyDisabled: boolean;
+  /** The info item whose data is still loading: it shows a spinner and the menu stays open. */
+  infoPending?: "tools" | "system" | null;
   menuOpen: boolean;
   exporting?: boolean;
   error?: string | null;
   labels: {
+    tools: string;
+    system: string;
     full: string;
     unsaved: string;
     menu: string;
     exportMarkdown: string;
     exportMarkdownTitle: string;
   };
+  onOpenTools: () => void;
+  onOpenSystem: () => void;
   onViewFullHistory: () => void;
   onExportMarkdown: () => void;
   onMenuOpenChange: (open: boolean) => void;
 };
 
-export function SessionHistoryControl({
+export function SessionMenu({
   mobile,
-  disabled,
+  infoDisabled,
+  historyDisabled,
+  infoPending = null,
   menuOpen,
   exporting = false,
   error,
   labels,
+  onOpenTools,
+  onOpenSystem,
   onViewFullHistory,
   onExportMarkdown,
   onMenuOpenChange,
@@ -65,6 +78,7 @@ export function SessionHistoryControl({
     };
   }, [menuOpen, onMenuOpenChange]);
 
+  const disabled = infoDisabled && historyDisabled;
   const color = disabled ? "var(--text-dim)" : "var(--text-muted)";
   const hover = (event: MouseEvent<HTMLButtonElement>, on: boolean) => {
     if (disabled) return;
@@ -80,7 +94,7 @@ export function SessionHistoryControl({
           onMenuOpenChange(!menuOpen);
         }}
         disabled={disabled}
-        title={disabled ? labels.unsaved : labels.menu}
+        title={labels.menu}
         aria-label={labels.menu}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
@@ -103,7 +117,8 @@ export function SessionHistoryControl({
         onMouseEnter={(event) => hover(event, true)}
         onMouseLeave={(event) => hover(event, false)}
         className="workspace-header-action"
-        data-mobile-toolbar-action={mobile ? "history" : undefined}
+        data-mobile-toolbar-action={mobile ? "session-menu" : undefined}
+        data-session-menu-trigger
       >
         <svg
           width="13"
@@ -114,12 +129,12 @@ export function SessionHistoryControl({
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          style={{ color: menuOpen ? "var(--text)" : color, flexShrink: 0 }}
+          style={{ flexShrink: 0 }}
           aria-hidden="true"
         >
-          <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
-          <path d="M3 3v5h5" />
-          <path d="M12 7v5l3 2" />
+          <circle cx="5" cy="12" r="1" />
+          <circle cx="12" cy="12" r="1" />
+          <circle cx="19" cy="12" r="1" />
         </svg>
       </button>
       {menuOpen && !disabled && menuPos && (
@@ -138,6 +153,46 @@ export function SessionHistoryControl({
           <button
             type="button"
             role="menuitem"
+            disabled={infoDisabled || infoPending !== null}
+            onClick={onOpenTools}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z" />
+            </svg>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{labels.tools}</span>
+            {infoPending === "tools" && (
+              <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginLeft: 6, flexShrink: 0 }} aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.2" opacity="0.25" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={infoDisabled || infoPending !== null}
+            onClick={onOpenSystem}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="8" y1="13" x2="16" y2="13" />
+              <line x1="8" y1="17" x2="13" y2="17" />
+            </svg>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{labels.system}</span>
+            {infoPending === "system" && (
+              <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginLeft: 6, flexShrink: 0 }} aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.2" opacity="0.25" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
+          <div role="separator" style={{ height: 1, margin: "4px 0", background: "var(--border)" }} />
+          <button
+            type="button"
+            role="menuitem"
+            disabled={historyDisabled}
+            title={historyDisabled ? labels.unsaved : undefined}
             onClick={() => {
               onMenuOpenChange(false);
               onViewFullHistory();
@@ -155,8 +210,8 @@ export function SessionHistoryControl({
           <button
             type="button"
             role="menuitem"
-            title={labels.exportMarkdownTitle}
-            disabled={exporting}
+            title={historyDisabled ? labels.unsaved : labels.exportMarkdownTitle}
+            disabled={historyDisabled || exporting}
             onClick={() => {
               onExportMarkdown();
             }}

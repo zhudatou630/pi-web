@@ -6,10 +6,10 @@ const panelSource = await readFile(new URL("./ToolDefinitionsPanel.tsx", import.
 const systemSource = await readFile(new URL("./SystemPromptPanel.tsx", import.meta.url), "utf8");
 const appShellSource = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 
-test("keeps System and Tools in separate adjacent toolbar actions", () => {
-  assert.match(appShellSource, /handleSystemInfoToggle\("system"\)[\s\S]*?handleSystemInfoToggle\("tools"\)/);
-  assert.match(appShellSource, /activeTopPanel === "system"[\s\S]*?<SystemPromptPanel/);
-  assert.match(appShellSource, /activeTopPanel === "tools"[\s\S]*?<ToolDefinitionsPanel/);
+test("opens Tools and System from the session menu into dialogs", () => {
+  assert.match(appShellSource, /onOpenTools=\{\(\) => void openInfoDialog\("tools"\)\}[\s\S]*?onOpenSystem=\{\(\) => void openInfoDialog\("system"\)\}/);
+  assert.match(appShellSource, /infoDialog === "system"[\s\S]*?<InfoDialog[\s\S]*?<SystemPromptPanel/);
+  assert.match(appShellSource, /infoDialog === "tools"[\s\S]*?<ToolDefinitionsDialog/);
   assert.doesNotMatch(systemSource, /ToolEntry|tools/);
   assert.doesNotMatch(systemSource, /system-prompt-heading/);
   assert.doesNotMatch(panelSource, /tool-definitions-heading/);
@@ -17,11 +17,11 @@ test("keeps System and Tools in separate adjacent toolbar actions", () => {
 
 test("renders active tool definitions in a selectable master-detail layout", () => {
   assert.match(panelSource, /tools\?\.filter\(\(tool\) => tool\.active\)/);
-  assert.match(panelSource, /setSelectedToolName\(tool\.name\)/);
+  assert.match(panelSource, /browser\.select\(tool\.name\)/);
   assert.match(panelSource, /activeTools\?\.some\(\(tool\) => tool\.name === current\)/);
   assert.match(panelSource, /className="tool-definitions-sidebar"/);
   assert.match(panelSource, /className="tool-definition-detail"/);
-  assert.match(panelSource, /grid-template-columns: clamp\(112px, 26%, 220px\) minmax\(0, 1fr\)/);
+  assert.match(panelSource, /grid-template-columns: clamp\(112px, 30%, 260px\) minmax\(0, 1fr\)/);
 });
 
 test("shows schema fields and metadata in the detail form", () => {
@@ -32,10 +32,13 @@ test("shows schema fields and metadata in the detail form", () => {
   assert.match(panelSource, /selectedTool\.promptGuidelines/);
 });
 
-test("preserves the two-column layout on narrow screens", () => {
-  assert.match(
-    panelSource,
-    /@media \(max-width: 640px\)[\s\S]*?\.tool-definitions-panel \{[\s\S]*?grid-template-columns: 112px minmax\(0, 1fr\)/,
-  );
-  assert.doesNotMatch(panelSource, /@media \(max-width: 640px\)[\s\S]*?\.tool-definitions-panel \{[\s\S]*?display: block/);
+test("phone shows the tool list and one tool's details as pushed panes, like the settings sheet", () => {
+  assert.match(panelSource, /@media \(max-width: 640px\)[\s\S]*?\.tool-definitions-panel \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(panelSource, /data-pane="list"\] \.tool-definition-detail,[\s\S]*?data-pane="detail"\] \.tool-definitions-sidebar \{[\s\S]*?display: none/);
+  assert.match(panelSource, /select: \(name: string\) => \{ setSelectedToolName\(name\); setPane\("detail"\); \}/);
+  // Entering a tool replays the settings motion; no sideways slide.
+  assert.match(panelSource, /data-pane="list"\]\[data-returned\] \.tool-definitions-sidebar \{[\s\S]*?menu-surface-in 0\.12s/);
+  assert.match(panelSource, /padding: 16px 16px 32px;\s*animation: menu-surface-in 0\.12s/);
+  assert.doesNotMatch(panelSource, /tool-pane-(push|pop)/);
+  assert.match(panelSource, /onBack=\{showingDetail \? browser\.back : undefined\}/);
 });

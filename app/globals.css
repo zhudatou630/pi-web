@@ -2409,6 +2409,113 @@ button.file-outline-fold:hover {
   cursor: default;
 }
 
+/* Read-only info dialogs (system prompt, tool definitions): fixed size, the body scrolls itself. */
+.models-dialog.info-dialog {
+  width: 720px;
+  height: min(640px, calc(100dvh - 32px));
+  max-height: none;
+}
+
+.models-dialog.info-dialog.is-wide {
+  width: 900px;
+}
+
+/* Same open motion as the settings dialog: backdrop fade, surface menu-surface-in. Closing is instant. */
+.info-dialog-backdrop {
+  animation: settings-backdrop-in 0.12s ease-out;
+}
+
+.models-dialog.info-dialog {
+  animation: menu-surface-in 0.12s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .models-dialog.info-dialog {
+    animation-name: menu-surface-fade;
+  }
+}
+
+.info-dialog:focus {
+  outline: none;
+}
+
+.info-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 10px 10px 10px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.info-dialog-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The back button and the phone title only exist on the phone sheet. */
+.info-dialog-back,
+.info-dialog-title.is-phone {
+  display: none;
+}
+
+/* Phone: full-screen sheet, the same shape as the settings sheet. */
+@media (max-width: 640px) {
+  /* Two classes: settings.css loads after this file and its `.models-dialog-backdrop` scrim
+     would otherwise win, dimming the screen on open instead of the opaque sheet background. */
+  .models-dialog-backdrop.info-dialog-backdrop {
+    background: var(--bg);
+  }
+
+  .models-dialog.info-dialog,
+  .models-dialog.info-dialog.is-wide {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .info-dialog-header {
+    height: 52px;
+    padding: 0 6px 0 16px;
+  }
+
+  .info-dialog-back {
+    display: flex;
+    margin-left: -10px;
+  }
+
+  .info-dialog-header .ghost-icon-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .info-dialog-title.is-desktop {
+    display: none;
+  }
+
+  .info-dialog-title.is-phone {
+    display: block;
+  }
+}
+
+.info-dialog-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* Extension-driven dialogs (confirm/select/input/editor/custom) float over the chat. */
 .models-dialog.extension-dialog {
   min-height: 0;

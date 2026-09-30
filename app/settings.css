@@ -1751,6 +1751,7 @@
 @supports (-webkit-touch-callout: none) {
   @media (display-mode: standalone) {
     .settings-dialog-backdrop,
+    .info-dialog-backdrop,
     .config-panel-root.is-modal {
       padding-top: max(59px, env(safe-area-inset-top));
       padding-right: max(8px, env(safe-area-inset-right));
@@ -1759,6 +1760,7 @@
     }
 
     .settings-dialog-surface,
+    .models-dialog.info-dialog,
     .config-panel-root.is-modal > .config-panel-surface {
       max-width: 100%;
       max-height: 100%;
@@ -1767,6 +1769,7 @@
 
   @media (display-mode: standalone) and (orientation: landscape) {
     .settings-dialog-backdrop,
+    .info-dialog-backdrop,
     .config-panel-root.is-modal {
       padding-top: max(8px, env(safe-area-inset-top));
       padding-right: max(59px, env(safe-area-inset-right));

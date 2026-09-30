@@ -15,7 +15,12 @@ type ProjectableTreeNode<T> = {
   children: T[];
   compressedEntryIds?: string[];
   branchPreview?: BranchPreview;
+  userTurns?: number;
 };
+
+function isUserEntry(entry: ProjectableEntry): boolean {
+  return entry.type === "message" && isRecord(entry.message) && entry.message.role === "user";
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -68,7 +73,7 @@ function previewForEntry(entry: ProjectableEntry): BranchPreview | undefined {
   const role = entry.message.role === "user" || entry.message.role === "assistant"
     ? entry.message.role
     : undefined;
-  return { ...(role ? { role } : {}), text };
+  return { entryId: entry.id, ...(role ? { role } : {}), text };
 }
 
 /**
@@ -102,9 +107,10 @@ export function projectTreeForResponse<T extends ProjectableTreeNode<T>>(
     }
   }
 
-  const cloneNode = (node: T, compressedEntryIds?: string[], branchPreview?: BranchPreview): T => ({
+  const cloneNode = (node: T, compressedEntryIds?: string[], branchPreview?: BranchPreview, compressedUserTurns = 0): T => ({
     ...node,
     children: [],
+    userTurns: compressedUserTurns + (isUserEntry(node.entry) ? 1 : 0),
     ...(compressedEntryIds?.length ? { compressedEntryIds } : {}),
     ...(branchPreview ? { branchPreview } : {}),
   });
@@ -120,17 +126,18 @@ export function projectTreeForResponse<T extends ProjectableTreeNode<T>>(
       node: source,
       compressedEntryIds: [] as string[],
       branchPreview: undefined as BranchPreview | undefined,
+      compressedUserTurns: 0,
     }];
     const flattenedSeen = new Set<T>();
 
     while (pending.length > 0) {
-      const { node, compressedEntryIds, branchPreview } = pending.pop()!;
+      const { node, compressedEntryIds, branchPreview, compressedUserTurns } = pending.pop()!;
       if (flattenedSeen.has(node)) continue;
       flattenedSeen.add(node);
       const nextPreview = branchPreview ?? previewForEntry(node.entry);
 
       if (keep.has(node)) {
-        projectedParent.children.push(cloneNode(node, compressedEntryIds, nextPreview));
+        projectedParent.children.push(cloneNode(node, compressedEntryIds, nextPreview, compressedUserTurns));
       }
 
       for (let i = node.children.length - 1; i >= 0; i--) {
@@ -140,6 +147,9 @@ export function projectTreeForResponse<T extends ProjectableTreeNode<T>>(
             ? []
             : [...compressedEntryIds, node.entry.id],
           branchPreview: keep.has(node) ? undefined : nextPreview,
+          compressedUserTurns: keep.has(node)
+            ? 0
+            : compressedUserTurns + (isUserEntry(node.entry) ? 1 : 0),
         });
       }
     }
@@ -157,9 +167,11 @@ export function projectTreeForResponse<T extends ProjectableTreeNode<T>>(
       }
 
       const compressedEntryIds: string[] = [];
+      let compressedUserTurns = 0;
       let branchPreview = previewForEntry(child.entry);
       while (!keep.has(child) && child.children.length === 1) {
         compressedEntryIds.push(child.entry.id);
+        if (isUserEntry(child.entry)) compressedUserTurns++;
         child = child.children[0];
         branchPreview ??= previewForEntry(child.entry);
       }
@@ -168,7 +180,7 @@ export function projectTreeForResponse<T extends ProjectableTreeNode<T>>(
         continue;
       }
 
-      const projectedChild = cloneNode(child, compressedEntryIds, branchPreview);
+      const projectedChild = cloneNode(child, compressedEntryIds, branchPreview, compressedUserTurns);
       projected.children.push(projectedChild);
       tasks.push({ source: child, projected: projectedChild, depth: depth + 1 });
     }

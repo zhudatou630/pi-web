@@ -46,9 +46,9 @@ test("enables context usage stats in the composer dock on mobile and desktop", (
   assert.match(chatInputSource, /if \(!contextUsage \|\| contextPercent === null\) return null;/);
 });
 
-test("keeps outline on the shared session sheet with system tools and session", () => {
+test("keeps outline on the shared session sheet with session", () => {
   assert.match(
     appShellSource,
-    /activeTopPanel === "system" \|\| activeTopPanel === "tools" \|\| activeTopPanel === "session" \|\| activeTopPanel === "outline"/,
+    /activeTopPanel === "session" \|\| activeTopPanel === "outline"/,
   );
 });
