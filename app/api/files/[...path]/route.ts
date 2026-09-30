@@ -231,6 +231,40 @@ export async function POST(
   }
 }
 
+/** Deletes one file (or symlink). Directories are refused on purpose: recursive deletes stay with the terminal/agent. */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  if (!isApiRequestAllowed(request)) {
+    return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
+  }
+  try {
+    const filePath = filePathFromApiSegments((await params).path);
+    const allowedRoots = await getAllowedFileRoots();
+    // unlink removes the entry itself, so the resolved parent is what must stay inside a root.
+    if (
+      !isFilePathAllowed(filePath, allowedRoots)
+      || !isExistingFilePathAllowed(path.dirname(filePath), allowedRoots)
+    ) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+    let stat: fs.Stats;
+    try {
+      stat = fs.lstatSync(filePath);
+    } catch {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (stat.isDirectory()) {
+      return NextResponse.json({ error: "Directories cannot be deleted here" }, { status: 400 });
+    }
+    fs.unlinkSync(filePath);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+
 function createFileBodyStream(filePath: string, range?: { start: number; end: number }): ReadableStream<Uint8Array> {
   const fileStream = fs.createReadStream(filePath, range);
   let closed = false;

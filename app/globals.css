@@ -3105,7 +3105,8 @@ span.token.table {
   gap: 2px;
 }
 
-#delete-project-title {
+#delete-project-title,
+#delete-file-title {
   padding: 0 4px;
   color: var(--text);
   font-size: 12px;
@@ -3113,7 +3114,8 @@ span.token.table {
   line-height: 1.4;
 }
 
-#delete-project-detail {
+#delete-project-detail,
+#delete-file-detail {
   padding: 0 4px;
   color: var(--text-muted);
   font-size: 11px;

@@ -224,6 +224,8 @@ function TreeNode({
   highlightedPaths,
   gitStatusByPath,
   changedDirectoryPaths,
+  onFileMenu,
+  deleteMark,
   t,
 }: {
   node: FileNode;
@@ -237,10 +239,21 @@ function TreeNode({
   highlightedPaths: Set<string>;
   gitStatusByPath: Map<string, GitFileStatus>;
   changedDirectoryPaths: Set<string>;
+  onFileMenu: (node: FileNode, x: number, y: number) => void;
+  /** Same row feedback as sidebar session deletes: tint while confirming, dimmed while deleting. */
+  deleteMark: { path: string; phase: "pending" | "deleting" } | null;
   t: Translate;
 }) {
   const open = expandedPaths.has(node.fullPath);
+  // Long press opens the file menu on touch (iOS fires no contextmenu); same 400ms/10px as project rows.
+  const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const longPressedRef = useRef(false);
+  const cancelLongPress = () => {
+    if (longPressRef.current) clearTimeout(longPressRef.current.timer);
+    longPressRef.current = null;
+  };
   const highlighted = highlightedPaths.has(node.fullPath);
+  const markPhase = deleteMark?.path === node.fullPath ? deleteMark.phase : null;
   const normalizedPath = normalizeFilePathSlashes(node.fullPath);
   const gitStatus = gitStatusByPath.get(normalizedPath);
   const containsGitChanges = node.isDir && (
@@ -276,6 +289,10 @@ function TreeNode({
   }, [refreshToken]);
 
   const handleClick = useCallback(() => {
+    if (longPressedRef.current) {
+      longPressedRef.current = false;
+      return;
+    }
     if (node.isDir) {
       const next = !open;
       onToggleExpanded(node.fullPath, next);
@@ -292,6 +309,34 @@ function TreeNode({
     <div>
       <div
         onClick={handleClick}
+        onContextMenu={node.isDir ? undefined : (event) => {
+          event.preventDefault();
+          if (longPressedRef.current) return;
+          onFileMenu(node, event.clientX, event.clientY);
+        }}
+        onTouchStart={node.isDir ? undefined : (event) => {
+          if ((event.target as HTMLElement | null)?.closest(".file-row-action")) return;
+          const { clientX: x, clientY: y } = event.touches[0];
+          longPressedRef.current = false;
+          cancelLongPress();
+          longPressRef.current = {
+            x,
+            y,
+            timer: setTimeout(() => {
+              longPressedRef.current = true;
+              longPressRef.current = null;
+              onFileMenu(node, x, y);
+              navigator.vibrate?.(15);
+            }, 400),
+          };
+        }}
+        onTouchMove={(event) => {
+          const start = longPressRef.current;
+          const touch = event.touches[0];
+          if (start && (Math.abs(touch.clientX - start.x) > 10 || Math.abs(touch.clientY - start.y) > 10)) cancelLongPress();
+        }}
+        onTouchEnd={cancelLongPress}
+        onTouchCancel={cancelLongPress}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
@@ -304,9 +349,14 @@ function TreeNode({
           height: 26,
           boxSizing: "border-box",
           cursor: "pointer",
-          background: hovered ? "var(--bg-hover)" : "transparent",
+          background: markPhase === "pending"
+            ? "color-mix(in srgb, var(--danger) 6%, transparent)"
+            : hovered ? "var(--bg-hover)" : "transparent",
+          transition: "background 0.1s",
+          opacity: markPhase === "deleting" ? 0.5 : 1,
           borderRadius: 4,
           userSelect: "none",
+          WebkitTouchCallout: "none",
         }}
       >
         {/* The chevron is a folder's icon and shares the sidebar's glyph slot. Its ink is
@@ -420,6 +470,8 @@ function TreeNode({
               highlightedPaths={highlightedPaths}
               gitStatusByPath={gitStatusByPath}
               changedDirectoryPaths={changedDirectoryPaths}
+              onFileMenu={onFileMenu}
+              deleteMark={deleteMark}
               t={t}
             />
           ))}
@@ -530,6 +582,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [pendingConflict, setPendingConflict] = useState<PendingConflict | null>(null);
+  const [fileMenu, setFileMenu] = useState<{ node: FileNode; x: number; y: number; confirm: boolean } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchPaths, setSearchPaths] = useState<string[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -630,6 +685,51 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     }
     return directories;
   }, [cwd, gitFiles]);
+
+  const openFileMenu = useCallback((node: FileNode, x: number, y: number) => {
+    setDeletingPath(null);
+    setFileMenu({ node, x, y, confirm: false });
+  }, []);
+
+  // Dismiss the file menu on outside press or Escape, like the sidebar's row menus.
+  useEffect(() => {
+    if (!fileMenu) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target as HTMLElement | null)?.closest(".file-context-menu")) setFileMenu(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFileMenu(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [fileMenu]);
+
+  const deleteFile = useCallback(async (node: FileNode) => {
+    setFileMenu(null);
+    setDeleteError(null);
+    // Stays dimmed until the refreshed listing drops the row, like session deletes.
+    setDeletingPath(node.fullPath);
+    try {
+      const res = await fetch(`/api/files/${encodeFilePathForApi(node.fullPath)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+    } catch (failure) {
+      setDeletingPath(null);
+      setDeleteError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setTreeRefreshKey((key) => key + 1);
+    }
+  }, []);
+
+  const deleteMark = fileMenu?.confirm
+    ? { path: fileMenu.node.fullPath, phase: "pending" as const }
+    : deletingPath ? { path: deletingPath, phase: "deleting" as const } : null;
 
   const handleToggleExpanded = useCallback((fullPath: string, open: boolean) => {
     setExpandedPaths((prev) => {
@@ -988,6 +1088,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
                     highlightedPaths={highlightedPaths}
                     gitStatusByPath={gitStatusByPath}
                     changedDirectoryPaths={changedDirectoryPaths}
+                    onFileMenu={openFileMenu}
+                    deleteMark={deleteMark}
                     t={t}
                   />
                 ))}
@@ -996,6 +1098,74 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           </div>
         )}
       </div>
+      )}
+
+      {fileMenu && (
+        <div
+          key={fileMenu.confirm ? "confirm" : "menu"}
+          role={fileMenu.confirm ? undefined : "menu"}
+          className="project-context-menu menu-surface file-context-menu"
+          style={{
+            left: Math.min(fileMenu.x + 2, window.innerWidth - 232),
+            top: Math.min(fileMenu.y + 2, window.innerHeight - 148),
+          }}
+        >
+          {fileMenu.confirm ? (
+            <div role="alertdialog" aria-labelledby="delete-file-title" aria-describedby="delete-file-detail" className="project-confirm">
+              <div id="delete-file-title">{t("files.deleteConfirm")}</div>
+              <div id="delete-file-detail" style={{ overflowWrap: "anywhere" }}>{getRelativeFilePath(fileMenu.node.fullPath, cwd)}</div>
+              <div className="project-confirm-actions">
+                <button type="button" autoFocus onClick={() => setFileMenu(null)}>{t("files.cancel")}</button>
+                <button type="button" className="is-danger" onClick={() => void deleteFile(fileMenu.node)}>{t("files.delete")}</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {onAtMention && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setFileMenu(null);
+                    onAtMention(getRelativeFilePath(fileMenu.node.fullPath, cwd), false, cwd);
+                  }}
+                >
+                  <MentionIcon size={13} />
+                  {t("files.insertPath")}
+                </button>
+              )}
+              <a
+                role="menuitem"
+                href={`/api/files/${encodeFilePathForApi(fileMenu.node.fullPath)}?type=download`}
+                download
+                onClick={() => setFileMenu(null)}
+                style={{ textDecoration: "none" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                {t("files.download")}
+              </a>
+              <button
+                type="button"
+                role="menuitem"
+                className="is-danger"
+                onClick={() => setFileMenu((menu) => menu && { ...menu, confirm: true })}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                {t("files.delete")}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {deleteError && (
+        <div role="alert" title={deleteError} onClick={() => setDeleteError(null)} style={{ padding: "6px 12px", fontSize: 11, color: "var(--danger)", cursor: "pointer" }}>
+          {t("files.deleteFailed", { error: deleteError })}
+        </div>
       )}
 
       {gitError && (
@@ -1047,6 +1217,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
                 highlightedPaths={highlightedPaths}
                 gitStatusByPath={gitStatusByPath}
                 changedDirectoryPaths={changedDirectoryPaths}
+                onFileMenu={openFileMenu}
+                deleteMark={deleteMark}
                 t={t}
               />
             ))
