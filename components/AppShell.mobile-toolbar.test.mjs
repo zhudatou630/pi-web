@@ -43,6 +43,8 @@ test("closes shared top panels consistently and restores their trigger on Escape
 
 test("uses a single inline mobile toolbar", () => {
   assert.match(source, /data-mobile-toolbar="true"[\s\S]*?flex: 1,[\s\S]*?minWidth: 0/);
+  // A new-session draft can open tools and system prompt; only history needs a saved session.
+  assert.match(source, /const toolsUnavailable = mobile && !showChat;/);
 
   assert.match(menuSource, /data-mobile-toolbar-action=\{mobile \? "session-menu"/);
   for (const action of ["agents", "branches"]) {

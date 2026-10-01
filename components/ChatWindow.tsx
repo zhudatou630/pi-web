@@ -83,7 +83,7 @@ interface Props {
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
   isFocusedPane?: boolean;
   isVisiblePane?: boolean;
-  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => void;
+  onBranchDataChange?: (sessionId: string | null, tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
   onSystemInfoLoaderChange?: (loader: (() => Promise<void>) | null) => void;
@@ -804,12 +804,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
   // Branch panel click: switch branch (when needed), then scroll to the row's first message.
   const [pendingBranchJump, setPendingBranchJump] = useState<string | null>(null);
-  const branchDataChange = useCallback<NonNullable<Props["onBranchDataChange"]>>((tree, leafId, switchLeaf) => {
-    onBranchDataChange?.(tree, leafId, async (targetLeafId, anchorEntryId) => {
+  const branchSessionId = session?.id ?? null;
+  const branchDataChange = useCallback((tree: SessionTreeNode[], leafId: string | null, switchLeaf: (leafId: string | null) => void) => {
+    onBranchDataChange?.(branchSessionId, tree, leafId, async (targetLeafId, anchorEntryId) => {
       if (targetLeafId) await (switchLeaf as (leafId: string | null) => Promise<void> | void)(targetLeafId);
       if (anchorEntryId) setPendingBranchJump(anchorEntryId);
     });
-  }, [onBranchDataChange]);
+  }, [onBranchDataChange, branchSessionId]);
 
   const {
     data, loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, streamState,

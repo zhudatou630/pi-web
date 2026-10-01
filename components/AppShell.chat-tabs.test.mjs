@@ -41,6 +41,17 @@ test("supports split view with resizer and secondary pane", () => {
   assert.match(source, /renderDesktopHeaderActions\(\{[\s\S]*?inert: activeChatPane !== "secondary",[\s\S]*?session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null,[\s\S]*?\}\)/);
 });
 
+test("branch data callback stays stable across AppShell renders", () => {
+  // useAgentSession reports `data?.tree ?? []` from an effect keyed on this callback: an inline
+  // closure re-ran it on every AppShell render and looped while history loaded (1.4.0).
+  assert.match(source, /onBranchDataChange=\{isVisiblePane && tabSession \? handleBranchDataChange : undefined\}/);
+  assert.match(chatWindowSource, /onBranchDataChange\?\.\(branchSessionId, tree, leafId,/);
+  // A stable callback means an already-visible split pane does not re-report on focus,
+  // so the per-session cache must restore its leaf switcher.
+  assert.match(source, /branchDataCacheRef\.current\.set\(sessionId, \{ tree, activeLeafId, onLeafChange \}\)/);
+  assert.match(source, /branchLeafChangeFnRef\.current = cachedBranches\?\.onLeafChange \?\? null;/);
+});
+
 test("split pane plus buttons create a tab in that pane", () => {
   assert.match(source, /const handleNewChatTab = useCallback\(\(pane\?: "primary" \| "secondary"\) => \{/);
   assert.match(source, /onNewTab=\{\(\) => handleNewChatTab\("primary"\)\}/);

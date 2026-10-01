@@ -485,11 +485,11 @@ export function AppShell() {
   // Session-keyed metadata caches — enables instant flicker-free switching between split panes and tabs
   const sessionStatsCacheRef = useRef<Map<string, SessionStatsInfo>>(new Map());
   const contextUsageCacheRef = useRef<Map<string, { percent: number | null; contextWindow: number; tokens: number | null }>>(new Map());
-  const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null }>>(new Map());
+  const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null; onLeafChange: (leafId: string | null, anchorEntryId?: string) => void }>>(new Map());
 
   const handleBranchDataChange = useCallback((sessionId: string | null, tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => {
     if (sessionId) {
-      branchDataCacheRef.current.set(sessionId, { tree, activeLeafId });
+      branchDataCacheRef.current.set(sessionId, { tree, activeLeafId, onLeafChange });
     }
     if (sessionId !== activeSessionIdRef.current) return;
     setBranchTree(tree);
@@ -571,6 +571,8 @@ export function AppShell() {
     const cachedBranches = branchDataCacheRef.current.get(sessionId);
     setBranchTree(cachedBranches?.tree ?? []);
     setBranchActiveLeafId(cachedBranches?.activeLeafId ?? null);
+    // A split pane that is already showing does not report again when it gains focus.
+    branchLeafChangeFnRef.current = cachedBranches?.onLeafChange ?? null;
   }, []);
 
   useEffect(() => {
@@ -1475,7 +1477,6 @@ export function AppShell() {
     if (tab.kind === "session" && tab.session) {
       activeNewSessionDraftKeyRef.current = null;
       if (activeSessionIdRef.current !== tab.session.id) {
-        branchLeafChangeFnRef.current = null;
         syncSessionMetadata(tab.session.id);
         setSystemPrompt(null);
         setSystemTools(null);
@@ -1917,9 +1918,7 @@ export function AppShell() {
         chatInputRef={isFocusedPane ? chatInputRef : undefined}
         isFocusedPane={isFocusedPane}
         isVisiblePane={isVisiblePane}
-        onBranchDataChange={isVisiblePane && tabSession
-          ? (tree, activeLeafId, onLeafChange) => handleBranchDataChange(tabSession.id, tree, activeLeafId, onLeafChange)
-          : undefined}
+        onBranchDataChange={isVisiblePane && tabSession ? handleBranchDataChange : undefined}
         onSystemPromptChange={isFocusedPane ? handleSystemPromptChange : undefined}
         onSystemToolsChange={isFocusedPane ? handleSystemToolsChange : undefined}
         onSystemInfoLoaderChange={isFocusedPane ? handleSystemInfoLoaderChange : undefined}
@@ -2178,7 +2177,7 @@ export function AppShell() {
     const hasSubagentSessionsForSession = Boolean(sessionFamily?.subagents.length);
     const branchData = getBranchDataForSession(session);
     const sessionHasBranchesForSession = Boolean(branchData && hasSessionBranches(branchData.tree));
-    const toolsUnavailable = mobile && !session;
+    const toolsUnavailable = mobile && !showChat;
     if (!mobile && !showChat) return null;
     if (!mobile && !sessionTools && !hasSubagentSessionsForSession) return null;
     return (
@@ -2333,9 +2332,7 @@ export function AppShell() {
             exportMarkdown: translate("history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
           }}
-          onMenuOpenChange={(open) => {
-            handleHistoryMenuOpenChange(open);
-          }}
+          onMenuOpenChange={handleHistoryMenuOpenChange}
           infoPending={infoPending}
           onOpenTools={() => void openInfoDialog("tools")}
           onOpenSystem={() => void openInfoDialog("system")}
