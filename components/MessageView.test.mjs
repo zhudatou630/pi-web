@@ -227,7 +227,7 @@ test("omits model labels, usage and copy footers from assistant replies", () => 
       assert.doesNotMatch(html, /test-model|title="Copy message"/);
       assert.match(html, content[0].type === "text" ? /Visible reply/ : /read/);
       assert.doesNotMatch(html, /246 in|267 out|cache R|cache W|\$0\.0774|Estimated token count| t\/s/);
-      assert.match(html, /data-message-role="assistant"[^>]*style="margin-bottom:8px"/);
+      assert.doesNotMatch(html, /data-message-role="assistant"[^>]*class="is-turn-end"/);
     }
   }
 });
@@ -248,7 +248,7 @@ test("restores copy and time only on a completed final answer", () => {
   const fallbackHtml = renderMessage(message, { isTurnEnd: true });
   assert.match(fallbackHtml, /data-answer-footer[\s\S]*data-answer-model[^>]*>hidden-model<\/span>/);
   assert.doesNotMatch(fallbackHtml, /47s/);
-  assert.match(html, /margin-bottom:16px/);
+  assert.match(html, /data-message-role="assistant"[^>]*class="is-turn-end"/);
   assert.doesNotMatch(source, /toLocale(?:Date|Time)?String\(\[\]/, "dates follow the app locale, not the browser's");
   assert.match(html, /title="Copy message"/);
   assert.ok(html.includes(new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
@@ -295,7 +295,7 @@ test("renders subagents as standard tool calls with only an extra session button
     onOpenSession() {},
   });
 
-  assert.match(html, /border:1px solid var\(--border\)/);
+  assert.match(html, /data-step-card=""/);
   assert.match(html, />Agent</);
   assert.match(html, />Explore</);
   assert.match(html, /aria-label="Open sub-agent session"/);
@@ -332,11 +332,11 @@ test("keeps pending and successful tools neutral while retaining error emphasis"
       toolResults: new Map(result ? [[block.toolCallId, result]] : []),
     });
     if (state === "error") {
-      assert.match(html, /border:1px solid color-mix\(in srgb, var\(--danger\) 45%, transparent\)/);
+      assert.match(html, /data-step-card="" class="is-error"/);
       assert.match(html, /color:var\(--danger\)/);
     } else {
-      assert.match(html, /border:1px solid var\(--border\);background:var\(--bg-subtle\)/);
-      assert.doesNotMatch(html, /--success|--danger/);
+      assert.match(html, /data-step-card=""><div class="step-head">/);
+      assert.doesNotMatch(html, /--success|--danger|is-error/);
     }
     const preview = state === "generating" ? "Generating parameters" : "src/example.ts";
     assert.ok(html.includes(preview));

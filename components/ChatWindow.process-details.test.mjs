@@ -131,17 +131,23 @@ test("expanded step bodies stay flat inside the process list", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /\[data-step-card\]:hover:not\(:has\(\[aria-expanded="true"\]\)\)/);
   assert.match(css, /\[aria-expanded="true"\]\) > :first-child::before[\s\S]*?inset: 0 -8px;/);
-  assert.match(
-    css,
-    /\.step-flat\) \[data-step-card\] > pre,[\s\S]*?background: transparent !important;[\s\S]*?box-shadow: none !important;/,
-  );
+  assert.match(css, /:is\(\.process-details-list, \.step-flat\) \.step-body \{\s*border-top: none;\s*background: transparent;/);
+});
+
+test("step rows are styled by CSS, so the process list needs no !important", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const steps = css.slice(css.indexOf("/* Step cards:"), css.indexOf(".answer-copy-button {"));
+  assert.ok(steps.length > 1000);
+  assert.doesNotMatch(steps, /!important/);
+  const view = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(view, /data-step-card=""\s+style=/);
 });
 
 test("matches process detail text paragraph font size to 11px to align with step items", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(
     css,
-    /\.process-details-list \[data-message-text\] \.markdown-body \{\s*font-size: 11px !important;/,
+    /\.process-details-list \[data-message-text\] \.markdown-body \{\s*font-size: 11px;/,
   );
   assert.doesNotMatch(
     css,

@@ -1241,25 +1241,124 @@ pre, code {
   font-family: var(--font-chat), serif;
 }
 
+/* Assistant message: blocks stack 4px apart; a turn's last message keeps 16px below it. */
+[data-message-role="assistant"] {
+  margin-bottom: 8px;
+}
+[data-message-role="assistant"].is-turn-end {
+  margin-bottom: 16px;
+}
+.assistant-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Step cards: thinking, a tool call, a provider error, a sub-agent notice. A bordered card where
+   one stands alone (an error in an answer); a flat row in the process list and in a user shell
+   run (.step-flat), which is where thinking and tool calls always render. */
+[data-step-card] {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-md);
+  background: var(--bg-subtle);
+  font-size: calc(11px + var(--chat-font-size-offset, 0px));
+  transition: border-color 0.15s ease;
+}
+[data-step-card].is-error {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 5%, transparent);
+}
+[data-step-card].is-plain {
+  border: none;
+  background: none;
+}
+.step-head {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+[data-step-trigger] {
+  display: flex;
+  flex: 1;
+  width: 100%; /* a button sizes to its content even as a flex container */
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.step-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+.step-label {
+  flex-shrink: 0;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.is-error > .step-head .step-label {
+  color: var(--danger);
+}
+.step-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-step-chevron] {
+  display: block;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: transform 0.15s, opacity 0.15s;
+}
+[aria-expanded="true"] > [data-step-chevron] {
+  transform: rotate(180deg);
+}
+/* An expanded section under the header. */
+.step-body {
+  border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: var(--bg);
+}
+[data-step-card].is-error > .step-body {
+  border-top-color: color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
 .process-details-list [data-message-role="assistant"] {
-  margin-bottom: 0 !important;
+  margin-bottom: 0;
 }
-.process-details-list [data-message-role="assistant"] > div {
-  gap: 1px !important;
-}
-.process-details-list > div {
-  margin: 0 !important;
+.process-details-list .assistant-blocks {
+  gap: 1px;
 }
 :is(.process-details-list, .step-flat) [data-step-card] {
-  border: none !important;
-  background: transparent !important;
-  border-radius: var(--ui-radius-sm) !important;
-  margin: 0 -8px !important;
-  padding: 0 8px !important;
+  margin: 0 -8px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
   transition: background 0.1s ease;
 }
 :is(.process-details-list, .step-flat) [data-step-trigger] {
-  padding-left: 0 !important;
+  padding-left: 0;
+}
+:is(.process-details-list, .step-flat) .step-body {
+  border-top: none;
+  background: transparent;
 }
 .process-details-list [data-message-text] {
   padding: 3px 8px 3px 28px;
@@ -1268,13 +1367,13 @@ pre, code {
   transition: background 0.1s ease;
 }
 .process-details-list [data-message-text]:empty {
-  display: none !important;
+  display: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
   :is(.process-details-list, .step-flat) [data-step-card]:hover:not(:has([aria-expanded="true"])),
   .process-details-list [data-message-text]:hover {
-    background: color-mix(in srgb, var(--bg-hover) 50%, transparent) !important;
+    background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
   }
 }
 
@@ -1293,24 +1392,17 @@ pre, code {
   background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
   pointer-events: none;
 }
-:is(.process-details-list, .step-flat) [data-step-card] > pre,
-:is(.process-details-list, .step-flat) [data-step-card] > div:not(:first-child) {
-  background: transparent !important;
-  border-top: none !important;
-  box-shadow: none !important;
-}
 
 :is(.process-details-list, .step-flat) [data-step-chevron] {
-  opacity: 0.25 !important;
-  transition: opacity 0.15s ease, transform 0.15s ease !important;
+  opacity: 0.25;
 }
 
 @media (hover: hover) and (pointer: fine) {
   :is(.process-details-list, .step-flat) [data-step-chevron] {
-    opacity: 0 !important;
+    opacity: 0;
   }
   :is(.process-details-list, .step-flat) [data-step-card]:hover [data-step-chevron] {
-    opacity: 0.5 !important;
+    opacity: 0.5;
   }
 }
 
@@ -1334,45 +1426,49 @@ pre, code {
 
 :is(.process-details-list, .step-flat) [data-step-trigger]:focus-visible [data-step-chevron],
 :is(.process-details-list, .step-flat) [data-step-card] [data-step-trigger][aria-expanded="true"] [data-step-chevron] {
-  opacity: 0.6 !important;
+  opacity: 0.6;
 }
 
+.process-details-summary {
+  color: var(--text-dim);
+  transition: color 0.12s ease;
+}
 @media (hover: hover) and (pointer: fine) {
   .process-details-summary:hover {
-    color: var(--text-muted) !important;
+    color: var(--text-muted);
   }
 }
 
 .process-details-list [data-message-text] .markdown-body {
-  font-size: 11px !important;
-  line-height: 1.48 !important;
-  color: var(--text-muted) !important;
+  font-size: 11px;
+  line-height: 1.48;
+  color: var(--text-muted);
 }
 .process-details-list [data-message-text] .markdown-body :is(h1, h2, h3, h4, h5, h6) {
-  margin: 2px 0 !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
+  margin: 2px 0;
+  font-size: 11px;
+  font-weight: 600;
 }
 .process-details-list [data-message-text] .markdown-body p {
-  margin: 2px 0 !important;
+  margin: 2px 0;
 }
 .process-details-list [data-message-text] .markdown-body p:first-child {
-  margin-top: 0 !important;
+  margin-top: 0;
 }
 .process-details-list [data-message-text] .markdown-body p:last-child {
-  margin-bottom: 0 !important;
+  margin-bottom: 0;
 }
 .process-details-list [data-message-text] .markdown-body .markdown-inline-code {
-  font-size: 11px !important;
-  padding: 0.05em 0.3em !important;
+  font-size: 11px;
+  padding: 0.05em 0.3em;
 }
 .process-details-list [data-message-text] .markdown-body ul,
 .process-details-list [data-message-text] .markdown-body ol {
-  margin: 2px 0 !important;
-  padding-left: 18px !important;
+  margin: 2px 0;
+  padding-left: 18px;
 }
 .process-details-list [data-message-text] .markdown-body li {
-  margin: 1px 0 !important;
+  margin: 1px 0;
 }
 @media (hover: hover) and (pointer: fine) {
   .answer-copy-button {

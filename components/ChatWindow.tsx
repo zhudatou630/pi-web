@@ -650,13 +650,11 @@ function ProcessDetailsGroup({
           padding: "2px 0",
           border: "none",
           background: "none",
-          color: "var(--text-dim)",
           cursor: "pointer",
           fontSize: 11,
           fontFamily: "var(--font-ui)",
           fontWeight: 400,
           textAlign: "left",
-          transition: "color 0.12s ease",
         }}
         title={isPanelOpen ? t("chat.collapseProcess") : t("chat.expandProcess")}
       >

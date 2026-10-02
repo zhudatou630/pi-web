@@ -650,9 +650,9 @@ function AssistantMessageView({
       ref={rootRef}
       data-message-role="assistant"
       data-entry-id={entryId}
-      style={{ marginBottom: isTurnEnd ? 16 : 8 }}
+      className={isTurnEnd ? "is-turn-end" : undefined}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div className="assistant-blocks">
         {blockItems.map(({ block, originalIndex }, displayIndex) => {
           const thinking = block.type === "thinking" ? block as ThinkingContent : null;
           const thinkingStart = thinking ? thinking.startedAt ?? message.timestamp : undefined;
@@ -822,17 +822,8 @@ function ProcessErrorCard({ error }: { error: string }) {
   }, [error]);
 
   return (
-    <div
-      data-step-card=""
-      style={{
-        borderRadius: "var(--ui-radius-md)",
-        overflow: "hidden",
-        fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
-        border: "1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
-        background: "color-mix(in srgb, var(--danger) 5%, transparent)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
+    <div data-step-card="" className="is-error">
+      <div className="step-head">
         <button
           type="button"
           aria-expanded={expanded}
@@ -840,36 +831,17 @@ function ProcessErrorCard({ error }: { error: string }) {
           aria-controls={detailId}
           title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
           onClick={() => setExpanded((v) => !v)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flex: 1,
-            minWidth: 0,
-            padding: "3px 8px",
-            minHeight: 24,
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontSize: "inherit",
-            textAlign: "left",
-          }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0 }}>
+          <div className="step-icon">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           </div>
-          <span style={{ color: "var(--danger)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
-            {t("chat.modelError")}
-          </span>
-          <span style={{ color: "var(--text-muted)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
-            {preview}
-          </span>
-          <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
+          <span className="step-label">{t("chat.modelError")}</span>
+          <span className="step-preview">{preview}</span>
+          <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
@@ -877,11 +849,9 @@ function ProcessErrorCard({ error }: { error: string }) {
       {expanded && (
         <div
           id={detailId}
+          className="step-body"
           style={{
             padding: "8px 10px",
-            background: "var(--bg)",
-            borderTop: "1px solid color-mix(in srgb, var(--danger) 20%, transparent)",
-            fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.55,
             color: "var(--danger)",
             whiteSpace: "pre-wrap",
@@ -1004,17 +974,8 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
   }, [expanded, block.deferred, content, sessionId, entryId, blockIndex]);
 
   return (
-    <div
-      data-step-card=""
-      style={{
-        borderRadius: 6,
-        overflow: "hidden",
-        border: "1px solid var(--border)",
-        background: "var(--bg-subtle)",
-        transition: "border-color 0.15s ease",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
+    <div data-step-card="">
+      <div className="step-head">
         <button
           type="button"
           aria-expanded={expanded}
@@ -1022,29 +983,13 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
           aria-label={`${t("i18n.thinking")}${preview ? `: ${preview}` : ""}`}
           title={t("i18n.thinking")}
           onClick={() => setExpanded((v) => !v)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flex: 1,
-            minWidth: 0,
-            padding: "3px 8px",
-            minHeight: 24,
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0 }}>
+          <div className="step-icon">
             <ThinkingIcon active={expanded} size={12} />
           </div>
-          <span style={{ color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
-            {t("i18n.thinking")}
-          </span>
+          <span className="step-label">{t("i18n.thinking")}</span>
           {!expanded && (
-            <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-ui)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
+            <span className="step-preview">
               {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
             </span>
           )}
@@ -1060,7 +1005,6 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
             strokeWidth="1.3"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }}
             aria-hidden="true"
           >
             <polyline points="2 3.5 5 6.5 8 3.5" />
@@ -1069,12 +1013,9 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
       </div>
       {expanded && (
         <div
+          className="step-body"
           style={{
             padding: "8px 10px",
-            background: "var(--bg)",
-            borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
-            fontFamily: "var(--font-ui)",
-            fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.55,
             color: error ? "var(--danger)" : "var(--text-muted)",
             whiteSpace: "pre-wrap",
@@ -1134,60 +1075,31 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
   const openablePath = previewPath && opensFile && !isError ? resolveLocalFilePath(previewPath, cwd) : null;
 
   return (
-    <div
-      data-step-card=""
-      style={{
-        borderRadius: "var(--ui-radius-md)",
-        overflow: "hidden",
-        fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
-        border: isError ? "1px solid color-mix(in srgb, var(--danger) 45%, transparent)" : "1px solid var(--border)",
-        background: isError ? "color-mix(in srgb, var(--danger) 5%, transparent)" : "var(--bg-subtle)",
-        transition: "border-color 0.15s ease",
-      }}
-    >
+    <div data-step-card="" className={isError ? "is-error" : undefined}>
       {/* ── Tool call header ── */}
-      <div style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}>
+      <div className="step-head">
         <button
           type="button"
           aria-expanded={expanded}
           data-step-trigger=""
           onClick={() => setExpanded((v) => !v)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flex: 1,
-            minWidth: 0,
-            padding: "3px 8px",
-            minHeight: 24,
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontSize: "inherit",
-            textAlign: "left",
-          }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, flexShrink: 0, color: isError ? "var(--danger)" : undefined }}>
+          <div className="step-icon" style={isError ? { color: "var(--danger)" } : undefined}>
             <ToolIcon toolName={block.toolName} isError={isError} size={12} />
           </div>
-          <span title={labelTitle ?? (displayToolName(block.toolName) === block.toolName ? undefined : block.toolName)} style={{ color: isError ? "var(--danger)" : "var(--text)", fontSize: 11, lineHeight: 1.35, flexShrink: 0 }}>
+          <span className="step-label" title={labelTitle ?? (displayToolName(block.toolName) === block.toolName ? undefined : block.toolName)}>
             {toolLabel}
           </span>
           {isStreamingInput ? (
-            <span style={{ color: "var(--text-muted)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
-              {t("chat.generatingToolInput")}
-            </span>
+            <span className="step-preview">{t("chat.generatingToolInput")}</span>
           ) : previewPath ? (
             <ToolPathPreview path={previewPath} cwd={cwd} />
           ) : (
-            <span style={{ color: "var(--text-muted)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0, lineHeight: 1.35 }}>
-              {preview.text}
-            </span>
+            <span className="step-preview">{preview.text}</span>
           )}
           {headerExtra}
           <StepDuration seconds={duration} startTime={startTime} live={live} />
-          <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, display: "block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s, opacity 0.15s" }} aria-hidden="true">
+          <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
@@ -1219,6 +1131,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
       {/* ── Expanded: input args ── */}
       {expanded && (isStreamingInput || !isEditTool) && !isApplyPatchTool && (
         <pre
+          className="step-body"
           style={{
             margin: 0,
             padding: shellCommand === undefined ? "8px 10px" : "6px 10px 0",
@@ -1226,8 +1139,6 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
             fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
-            background: "var(--bg)",
-            borderTop: isError ? "1px solid color-mix(in srgb, var(--danger) 25%, transparent)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -1238,12 +1149,13 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
 
       {/* ── Paired result — only shown when expanded ── */}
       {expanded && isApplyPatchTool && applyPatchText !== undefined && (
-        <div style={{ borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)", background: "var(--bg)" }}>
+        <div className="step-body">
           <ApplyPatchView patch={applyPatchText} />
         </div>
       )}
       {expanded && isApplyPatchTool && applyPatchText === undefined && (
         <pre
+          className="step-body"
           style={{
             margin: 0,
             padding: "8px 10px",
@@ -1251,8 +1163,6 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
             fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
-            background: "var(--bg)",
-            borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-all",
           }}
@@ -1284,13 +1194,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
           They are the point of the call (reading a screenshot, a generated
           image), and hiding them behind the toggle meant reopening every card. */}
       {!expanded && resultImages.length > 0 && (
-        <div
-          style={{
-            padding: "6px 10px 8px",
-            borderTop: isError ? "1px solid color-mix(in srgb, var(--danger) 25%, transparent)" : "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
-            background: "var(--bg)",
-          }}
-        >
+        <div className="step-body" style={{ padding: "6px 10px 8px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <ToolResultImages images={resultImages} thumbnails />
           </div>
@@ -1306,10 +1210,9 @@ function NestedCallList({ nested, cwd }: { nested: NestedToolCalls; cwd?: string
   return (
     <div
       data-nested-calls=""
+      className="step-body"
       style={{
         padding: "6px 10px",
-        background: "var(--bg)",
-        borderTop: "1px solid color-mix(in srgb, var(--border) 80%, transparent)",
         fontSize: 11,
         lineHeight: 1.35,
         color: "var(--text-muted)",
@@ -1378,12 +1281,7 @@ function PairedDiffResult({ diff }: {
   diff: ResultDiff;
 }) {
   return (
-    <div
-      style={{
-        borderTop: "1px solid color-mix(in srgb, var(--success) 15%, transparent)",
-        background: "var(--bg)",
-      }}
-    >
+    <div className="step-body">
       <SplitPatchView text={diff.text} />
     </div>
   );
@@ -1658,12 +1556,7 @@ function PairedResult({ text, images, isEmpty, isError }: {
   const { t } = useI18n();
   const showText = !isEmpty || images.length === 0;
   return (
-    <div
-      style={{
-        borderTop: `1px solid ${isError ? "color-mix(in srgb, var(--danger) 30%, transparent)" : "color-mix(in srgb, var(--success) 15%, transparent)"}`,
-        background: isError ? "color-mix(in srgb, var(--danger) 4%, transparent)" : "var(--bg-subtle)",
-      }}
-    >
+    <div className="step-body">
       {images.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "10px", background: "var(--bg)" }}>
           <ToolResultImages images={images} />
@@ -1791,39 +1684,24 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
   const text = getMessageText(message.content);
 
   return (
-    <div data-step-card="" style={{ overflow: "hidden", borderRadius: "var(--ui-radius-md)" }}>
+    <div data-step-card="" className="is-plain">
       <button
         type="button"
         aria-expanded={expanded}
         data-step-trigger=""
         title={label}
         onClick={() => setExpanded((value) => !value)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          width: "100%",
-          minHeight: 24,
-          padding: "3px 8px",
-          border: "none",
-          background: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
       >
-        <span style={{ width: 14, height: 14, display: "grid", placeItems: "center", flexShrink: 0 }}>
+        <span className="step-icon">
           <SubagentIcon size={12} />
         </span>
-        <span style={{ minWidth: 0, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 11 }}>
-          {label}
-        </span>
-        <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4, transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} aria-hidden="true">
+        <span className="step-preview" style={{ color: "var(--text)" }}>{label}</span>
+        <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="2 3.5 5 6.5 8 3.5" />
         </svg>
       </button>
       {expanded && text && (
-        <div style={{ padding: "7px 10px 8px 28px", borderTop: "1px solid color-mix(in srgb, var(--border) 65%, transparent)", color: "var(--text-muted)", fontSize: "calc(11px + var(--chat-font-size-offset, 0px))", lineHeight: 1.48 }}>
+        <div className="step-body" style={{ padding: "7px 10px 8px 28px", color: "var(--text-muted)", lineHeight: 1.48 }}>
           <SafeMarkdownBody className="markdown-subagent-notification" cwd={cwd} onOpenFile={onOpenFile}>{text}</SafeMarkdownBody>
         </div>
       )}
