@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import type {
   SkillInfo as Skill,
@@ -430,6 +431,7 @@ export function SkillsConfig({
   embedded?: boolean;
 }) {
   const { t } = useI18n();
+  const confirm = useConfirm();
   // The last reply paints at once; the mount load then revalidates it.
   const [seed] = useState(() => {
     const reply = peekJson<Partial<SkillsResponse> & { error?: string }>(settingsUrls.skills(cwd));
@@ -606,7 +608,7 @@ export function SkillsConfig({
       skill.install ? t("skills.deleteViaSkillsSh") : null,
       t("skills.deleteReloadHint"),
     ].filter(Boolean).join("\n\n");
-    if (!window.confirm(message)) return;
+    if (!(await confirm(message, { danger: true }))) return;
     setDeletingSkill(skill.filePath);
     setDeleteError(null);
     try {
@@ -626,7 +628,7 @@ export function SkillsConfig({
     } finally {
       setDeletingSkill(null);
     }
-  }, [cwd, loadSkills, t]);
+  }, [confirm, cwd, loadSkills, t]);
 
   const selectedSkill = skills.find((s) => s.filePath === selected) ?? null;
   const openList = () => { setView("list"); setDeleteError(null); };

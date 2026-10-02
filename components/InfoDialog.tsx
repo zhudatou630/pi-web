@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { ModalDialog } from "./ModalDialog";
 
 /** Read-only dialog on the shared `.models-dialog` shell: title, close, one scrolling body. */
 export function InfoDialog({ title, phoneTitle, onBack, wide = false, onClose, children }: {
@@ -15,51 +16,15 @@ export function InfoDialog({ title, phoneTitle, onBack, wide = false, onClose, c
   children: ReactNode;
 }) {
   const { t } = useI18n();
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    dialogRef.current?.focus();
-    return () => {
-      if (previousFocus?.isConnected) previousFocus.focus();
-      else document.querySelector<HTMLElement>("[data-session-menu-trigger]")?.focus();
-    };
-  }, []);
 
   return (
-    <div
-      role="presentation"
+    <ModalDialog
+      aria-label={title}
       className="models-dialog-backdrop info-dialog-backdrop"
-      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onClose={onClose}
+      focusFallback="[data-session-menu-trigger]"
     >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        tabIndex={-1}
-        className={`models-dialog info-dialog${wide ? " is-wide" : ""}`}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            onClose();
-            return;
-          }
-          if (event.key !== "Tab") return;
-          const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled)") ?? []);
-          if (focusable.length === 0) return;
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
-            event.preventDefault();
-            last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-          }
-        }}
-      >
+      <div className={`models-dialog info-dialog${wide ? " is-wide" : ""}`}>
         <div className="info-dialog-header">
           {onBack && (
             <button type="button" className="ghost-icon-button info-dialog-back" onClick={onBack} aria-label={t("i18n.back")}>
@@ -76,6 +41,6 @@ export function InfoDialog({ title, phoneTitle, onBack, wide = false, onClose, c
         </div>
         <div className="info-dialog-body">{children}</div>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "@/hooks/useI18n";
+import { ModalDialog } from "./ModalDialog";
 import { ConfigButton } from "./SettingsUi";
 
 interface DirectoryEntry {
@@ -102,17 +103,10 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
   if (!portalTarget) return null;
 
   return createPortal(
-    <div
+    <ModalDialog
       className="models-dialog-backdrop"
-      role="dialog"
-      aria-modal="true"
       aria-label={t("directoryPicker.selectDirectory")}
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !busy) onCancel();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !busy) onCancel();
-      }}
+      onClose={busy ? undefined : onCancel}
     >
       <div className="models-dialog directory-picker-panel">
         <div className="models-dialog-header">
@@ -207,7 +201,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
           </ConfigButton>
         </div>
       </div>
-    </div>,
+    </ModalDialog>,
     portalTarget,
   );
 }

@@ -133,6 +133,7 @@ components/
   SessionMenu.tsx     top-bar "⋯" menu: tool definitions, system prompt, full history, export
   MobileChatNav.tsx   mobile outline list (the `#` top-bar panel)
   InfoDialog.tsx      read-only dialog shell (full-screen sheet on phones) for system prompt / tool definitions
+  ModalDialog.tsx     every modal shell: native <dialog> + showModal (top layer, inert background, focus restore)
   ChatMinimap.tsx     scroll minimap alongside the message list
   MarkdownBody.tsx    markdown renderer
   ImageViewer.tsx     modal image viewer (gallery, zoom, touch gestures); the only image lightbox
@@ -161,6 +162,7 @@ hooks/
   useAudio.ts         completion sound + browser AudioContext unlock
   useDragDrop.ts      shared drag/drop state
   useIsMobile.ts      responsive breakpoint hook
+  useConfirm.ts       app-styled confirm/alert on a native <dialog>; never window.confirm/alert
   useTheme.ts         theme state
 ```
 
@@ -208,6 +210,12 @@ The `enabledModels` setting uses pi's `--models` syntax: minimatch globs against
 - The built-in extensions are `builtin:<name>` resources in `lib/project-resource-overrides.ts` (pi's config-selector rules: the path is its own pattern, no plain entry is added). Their global switches live on the MCP page, per-project ones on the Project page; the Plugins page hides them.
 - Notices naming `/mcp` (startup "MCP servers need attention", `/mcp` status) get an "MCP settings" link (text match on pi's English copy, URLs excluded). URLs in notices render as "Open link (host)"; notices with a URL stay 60s, ones with 3+ lines 15s. Notices emitted while no view is attached (MCP's startup report before a new session's SSE connects) are replayed to the next view if under 2 minutes old. An expanded tool card lists the result's `nestedCalls` (the tools a codemode script called; pi records no results for them). MCP tools share one plug icon (`ToolIcon`), since server tool names defeat the name heuristics. `/mcp` argument completions are TUI-only; the composer shows its usage signature instead.
 - `defaultTools` may be a `+name`/`-name` delta; read it through `SettingsManager.getDefaultTools()` or `resolveDefaultTools()` in `lib/powershell-settings.ts`, never as a plain list.
+
+### Modal dialogs and confirms
+- Modal shells (Settings, its nested dialogs, info, trust, directory picker, agent import, image generation) render through `components/ModalDialog.tsx`: the `<dialog>` element is the full-viewport scrim (the caller's backdrop class), its children are the surface. Layering is the browser's top layer, so no z-index; the latest `showModal()` is on top and everything else is inert.
+- Escape belongs to the topmost dialog: `ModalDialog` handles it on keydown (preventDefault + stopPropagation, so an outer dialog stays open) unless a nested control already prevented it (a select menu, a rename field). Pass no `onClose` while the dialog must stay open (busy); if the browser still closes it, it is reopened.
+- Confirmations use `useConfirm()` (`hooks/useConfirm.ts`): resolves a boolean, `{ danger: true }` starts on Cancel, `{ alert: true }` shows OK only. `window.confirm`/`window.alert` are banned (guarded by `components/ModalDialog.test.mjs`). In-place confirms anchored to a context menu (delete project/session/file) stay as popovers.
+- Pane-scoped extension UI (`ExtensionDialog`, custom panels) is deliberately not modal: it can be collapsed while the chat stays usable.
 
 ### Top bar and composer panels
 - One panel at a time (`activeTopPanel` in `AppShell`), always a `popover-surface` card that sits next to its trigger: top-bar triggers (agents, branches, mobile outline) open downward under the bar, the composer's context pill (`session`, the only entry to usage/cost/session info on every platform) opens upward, docked to `.chat-input-composer` (right edges aligned, never wider than the box). Phones use the same cards, inset 8px; there is no full-width sheet.

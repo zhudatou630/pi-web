@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { isModalDialogOpen } from "./ModalDialog";
 
 const ICON_BUTTON_SIZE = 30;
 
@@ -65,7 +66,7 @@ export function SessionMenu({
       onMenuOpenChange(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || isModalDialogOpen()) return;
       onMenuOpenChange(false);
     };
     window.addEventListener("resize", update);

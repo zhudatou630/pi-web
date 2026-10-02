@@ -54,11 +54,12 @@ test("keeps visited settings sections mounted and contains nested Escape handlin
   const modelsSource = await readFile(new URL("./ModelsConfig.tsx", import.meta.url), "utf8");
   assert.match(panelSource, /mountedSections\.has\(id\)/);
   assert.match(panelSource, /hidden=\{section !== id\}/);
-  assert.match(panelSource, /event\.defaultPrevented/);
+  // Escape belongs to the topmost ModalDialog; nested controls that handle it prevent it first.
+  assert.match(panelSource, /<ModalDialog aria-label=\{t\("settings\.title"\)\} className="settings-dialog-backdrop" onClose=\{requestClose\}>/);
   const dialogSource = await readFile(new URL("./models/fields.tsx", import.meta.url), "utf8");
   assert.match(modelsSource, /<ModelPickerDialog/);
-  assert.match(dialogSource, /e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*onClose\(\);/);
-  assert.match(panelSource, /modelsDirtyRef\.current && !window\.confirm\(t\("models\.discardConfirm"\)\)/);
+  assert.match(dialogSource, /<ModalDialog className="models-dialog-backdrop" aria-label=\{title\} onClose=\{onClose\}>/);
+  assert.match(panelSource, /confirm\(t\("models\.discardConfirm"\), \{ danger: true \}\)/);
 });
 
 test("offers direct light, dark, and system theme selection", () => {

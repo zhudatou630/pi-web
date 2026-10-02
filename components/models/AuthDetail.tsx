@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { ConfigButton } from "../SettingsUi";
 import { Notice, SecretTextInput } from "./fields";
 import type { ApiKeyProvider, OAuthProvider } from "./types";
@@ -17,15 +18,9 @@ type OAuthLoginState =
   | { phase: "success" }
   | { phase: "error"; message: string };
 
-type Translate = (key: string, params?: Record<string, string | number>) => string;
-
 /** Auth routes describe providers from the same composed runtime as chat, which needs the cwd. */
 function authCwdQuery(cwd: string | null): string {
   return cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
-}
-
-function confirmProviderDisconnect(t: Translate, name: string): boolean {
-  return window.confirm(t("models.disconnectConfirm", { name }));
 }
 
 export function StatusPill({ tone, children }: { tone: "success" | "muted" | "danger"; children: React.ReactNode }) {
@@ -46,6 +41,7 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
 }) {
   const [loginState, setLoginState] = useState<OAuthLoginState>({ phase: "idle" });
   const { t } = useI18n();
+  const confirm = useConfirm();
   const [inputValue, setInputValue] = useState("");
   const eventSourceRef = useRef<EventSource | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -120,7 +116,7 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
   }, [provider.id, onRefresh, cwd, t]);
 
   const handleLogout = useCallback(async () => {
-    if (!confirmProviderDisconnect(t, provider.name)) return;
+    if (!(await confirm(t("models.disconnectConfirm", { name: provider.name }), { danger: true }))) return;
     await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -128,7 +124,7 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
     });
     setLoginState({ phase: "idle" });
     onRefresh();
-  }, [provider.id, provider.name, onRefresh, t, cwd]);
+  }, [confirm, provider.id, provider.name, onRefresh, t, cwd]);
 
   const postLoginInput = useCallback(async (token: string, code: string, progress: string) => {
     setLoginState({ phase: "progress", message: progress });
@@ -266,6 +262,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
   const [error, setError] = useState<string | null>(null);
   const [savedOk, setSavedOk] = useState(false);
   const { t } = useI18n();
+  const confirm = useConfirm();
 
   // Reset state when provider changes
   useEffect(() => {
@@ -302,7 +299,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
   }, [apiKey, provider.id, onRefresh, cwd]);
 
   const handleRemove = useCallback(async () => {
-    if (!confirmProviderDisconnect(t, provider.displayName)) return;
+    if (!(await confirm(t("models.disconnectConfirm", { name: provider.displayName }), { danger: true }))) return;
     setRemoving(true);
     setError(null);
     try {
@@ -319,7 +316,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
     } finally {
       setRemoving(false);
     }
-  }, [provider.id, provider.displayName, onRefresh, t, cwd]);
+  }, [confirm, provider.id, provider.displayName, onRefresh, t, cwd]);
 
   return (
     <div className="models-auth">

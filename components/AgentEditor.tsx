@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import type { ModelsData } from "@/lib/models-cache";
 import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
@@ -149,6 +150,7 @@ export interface AgentEditorOptions {
 /** Everything one agent's editor needs: which agent, the draft, and what Save/Delete/switch write. */
 export function useAgentEditor({ cwd, profiles, refresh, onChanged, fixedScope, onGone }: AgentEditorOptions) {
   const { t } = useI18n();
+  const confirm = useConfirm();
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditableProfile>(EMPTY_PROFILE);
   const [mode, setMode] = useState<EditorMode>("view");
@@ -297,7 +299,7 @@ export function useAgentEditor({ cwd, profiles, refresh, onChanged, fixedScope, 
       : effective.scope !== "project" && fallback.scope === "builtin"
         ? t("agents.restoreDefaultConfirm", { name: shown.displayName })
         : t("agents.restoreGlobalConfirm", { name: shown.displayName });
-    if (!window.confirm(message)) return;
+    if (!(await confirm(message, { danger: true }))) return;
     setSaving(true);
     setError(null);
     try {

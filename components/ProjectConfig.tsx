@@ -12,6 +12,7 @@ import type {
 import type { SubagentProfile } from "@/lib/subagents";
 import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import {
   ConfigButton,
@@ -61,6 +62,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
   onChanged?: () => void;
 }) {
   const { t } = useI18n();
+  const confirm = useConfirm();
   const url = settingsUrls.projectResources(cwd);
   const [data, setData] = useState<ProjectResourcesResponse | null>(() => {
     const reply = peekJson<ProjectResourcesResponse & { error?: string }>(url);
@@ -223,7 +225,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
     if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
   };
   const restoreAgent = (row: (typeof agentRows)[number]) => {
-    if (window.confirm(t("agents.restoreGlobalConfirm", { name: row.label }))) void run(() => followGlobal(row), true);
+    void confirm(t("agents.restoreGlobalConfirm", { name: row.label }), { danger: true }).then((ok) => {
+      if (ok) void run(() => followGlobal(row), true);
+    });
   };
 
   const groups = data?.groups ?? [];
@@ -232,9 +236,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged }: {
   const enabledCount = groups.reduce((sum, group) => sum + group.items.filter((item) => item.enabled).length, 0);
   // Everything this project does differently from global: resource overrides plus the sub-agent switch.
   const differences = overridden.length + featuresOverridden.length + agentDiffs.length;
-  const resetAll = () => {
+  const resetAll = async () => {
     // A project copy is content, not just a switch: deleting it needs a yes.
-    if (agentCustomized.length > 0 && !window.confirm(t("project.resetAgentsConfirm", { count: agentCustomized.length }))) return;
+    if (agentCustomized.length > 0 && !(await confirm(t("project.resetAgentsConfirm", { count: agentCustomized.length }), { danger: true }))) return;
     return resetAllNow();
   };
   const resetAllNow = () => run(async () => {

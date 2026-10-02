@@ -174,7 +174,7 @@ test("updates draft tab titles and confirms before discarding unsent content", (
   assert.match(source, /getDraftTabTitle\(value, translate\("i18n\.newSession"\)\)/);
   assert.match(source, /tab\.kind !== "draft" \|\| tab\.newSessionDraftKey !== draftKey/);
   assert.match(source, /const draft = getDraft\(closingTab\.newSessionDraftKey\)/);
-  assert.match(source, /window\.confirm\(translate\("chatTabs\.discardDraft"\)\)/);
+  assert.match(source, /confirm\(translate\("chatTabs\.discardDraft"\), \{ danger: true \}\)\.then\(\(ok\) => \{ if \(ok\) closeTab\(tabId, true\); \}\)/);
   assert.match(source, /DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs"/);
   assert.match(source, /window\.sessionStorage\.getItem\(DRAFT_TABS_STORAGE_KEY\)/);
   assert.match(source, /window\.sessionStorage\.setItem\(DRAFT_TABS_STORAGE_KEY/);

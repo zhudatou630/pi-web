@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import type { AppUpdateResponse } from "@/lib/api-types";
 import { SettingsRow } from "./SettingsUi";
 
 export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVersion?: boolean }) {
   const { t } = useI18n();
+  const confirm = useConfirm();
   const [update, setUpdate] = useState<AppUpdateResponse | null>(null);
   const [checkFailed, setCheckFailed] = useState(false);
   const [manualChecking, setManualChecking] = useState(false);
@@ -56,7 +58,7 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
   }, [status, currentVersion]);
 
   const startUpdate = async () => {
-    if (requesting.current || !window.confirm(t("appUpdate.confirm"))) return;
+    if (requesting.current || !(await confirm(t("appUpdate.confirm")))) return;
     requesting.current = true;
     setError(null);
     setStatus("requesting");

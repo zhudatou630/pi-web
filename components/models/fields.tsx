@@ -5,6 +5,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { useI18n } from "@/hooks/useI18n";
 import { THINKING_LEVELS } from "@/lib/thinking-levels";
 import { serializeHeaderRows, updateHeaderRow, type HeaderRow } from "../models-config-helpers";
+import { ModalDialog } from "../ModalDialog";
 import { Select as SelectField } from "../Select";
 import { ConfigButton, ConfigSwitch, SettingsRow } from "../SettingsUi";
 
@@ -246,17 +247,8 @@ export function ModelsDialog({ title, description, width = 560, onClose, childre
   header?: ReactNode;
 }) {
   return (
-    <div
-      className="models-dialog-backdrop"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
-        e.preventDefault();
-        e.stopPropagation();
-        onClose();
-      }}
-    >
-      <div role="dialog" aria-modal="true" aria-label={title} className="models-dialog" style={{ width }}>
+    <ModalDialog className="models-dialog-backdrop" aria-label={title} onClose={onClose}>
+      <div className="models-dialog" style={{ width }}>
         {header ?? (
           <div className="models-dialog-header">
             <strong>{title}</strong>
@@ -266,6 +258,6 @@ export function ModelsDialog({ title, description, width = 560, onClose, childre
         <div className="models-dialog-body">{children}</div>
         {footer && <div className="models-dialog-footer">{footer}</div>}
       </div>
-    </div>
+    </ModalDialog>
   );
 }

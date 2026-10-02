@@ -14,6 +14,7 @@ import { LivePulseBeacon } from "./LivePulseBeacon";
 import { copyText } from "@/lib/clipboard";
 import { exportMessageImage, type MessageImageResult } from "@/lib/message-image";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
@@ -580,6 +581,7 @@ function AssistantMessageView({
   runningToolIds?: ReadonlySet<string>;
 }) {
   const { t, locale } = useI18n();
+  const confirm = useConfirm();
   const [copied, setCopied] = useState(false);
   const [imageState, setImageState] = useState<"idle" | "busy" | MessageImageResult>("idle");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -634,7 +636,7 @@ function AssistantMessageView({
       (error) => {
         console.error(error);
         setImageState("idle");
-        window.alert(t("i18n.exportImageFailed"));
+        void confirm(t("i18n.exportImageFailed"), { alert: true });
       },
     );
   };

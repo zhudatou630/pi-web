@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { ModalDialog } from "./ModalDialog";
 import { Select } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
 import type { ImportSource } from "@/lib/subagent-route";
@@ -99,17 +100,10 @@ export function AgentsImportDialog({ cwd, fixedScope, onClose, onImported }: {
   if (!portalTarget) return null;
 
   return createPortal(
-    <div
+    <ModalDialog
       className="models-dialog-backdrop"
-      role="dialog"
-      aria-modal="true"
       aria-label={t("agents.importTitle")}
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !importing) onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !importing) onClose();
-      }}
+      onClose={importing ? undefined : onClose}
     >
       <div className="models-dialog agents-import-dialog">
         <div className="models-dialog-header">
@@ -198,7 +192,7 @@ export function AgentsImportDialog({ cwd, fixedScope, onClose, onImported }: {
           )}
         </div>
       </div>
-    </div>,
+    </ModalDialog>,
     portalTarget,
   );
 }

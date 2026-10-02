@@ -20,6 +20,28 @@
   --font-mono: var(--font-mono);
 }
 
+/* Modal shells (components/ModalDialog.tsx) are native <dialog>s that fill the viewport and
+   carry the scrim through the caller's backdrop class. This only clears the UA dialog box, in
+   the base layer so those classes and Tailwind utilities override it. */
+@layer base {
+  dialog.modal-shell {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background: transparent;
+    color: inherit;
+    outline: none;
+  }
+  dialog.modal-shell::backdrop {
+    background: transparent;
+  }
+}
+
 /* The UI uses exactly two weights, 400 and 600, and both have a real face;
    there is no italic face. Synthesis is disabled below.
    Anything else (500, 650, 700) either collapses to Regular or asks the

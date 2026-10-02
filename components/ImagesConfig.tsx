@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Select } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import { IMAGE_CUSTOM_MODEL_PRESETS } from "@/lib/image-generation";
 import type {
@@ -36,6 +37,7 @@ export function ImagesConfig({
   onChanged?: () => void;
 }) {
   const { t } = useI18n();
+  const confirm = useConfirm();
   const url = settingsUrls.imageSettings(cwd);
   // The last reply paints at once; the mount load then revalidates it.
   const [settings, setSettings] = useState<ImageGenerationSettingsResponse | null>(() => {
@@ -149,7 +151,7 @@ export function ImagesConfig({
   };
 
   const removeCustom = async (connection: ImageGenerationSettingsConnection) => {
-    if (!window.confirm(t("agents.deleteConfirm", { name: connection.label }))) return;
+    if (!(await confirm(t("agents.deleteConfirm", { name: connection.label }), { danger: true }))) return;
     setSaving(true);
     setError(null);
     try {

@@ -42,6 +42,7 @@ import { AgentSessionPanel } from "./AgentSessionPanel";
 import { TerminalPanel } from "./TerminalPanel";
 import { newTerminalTab, restoreTerminalTabs, TERMINAL_TABS_KEY, type TerminalTab } from "./terminal-tab-state";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useTheme } from "@/hooks/useTheme";
 import { useViewportHeight } from "@/hooks/useViewportHeight";
@@ -100,6 +101,7 @@ import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-nav
 import { prefetchSettings } from "@/lib/settings-cache";
 import { formatTokensK } from "@/lib/token-display";
 import { iconStroke } from "./iconStroke";
+import { isModalDialogOpen } from "./ModalDialog";
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 
@@ -155,6 +157,7 @@ export function AppShell() {
   const searchParams = useSearchParams();
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
   const { locale, t: translate } = useI18n();
+  const confirm = useConfirm();
   const isMobile = useIsMobile();
   useViewportHeight();
   // Keep browser/PWA theme-color aligned with the workspace header even when
@@ -711,7 +714,7 @@ export function AppShell() {
       panel?.querySelector<HTMLElement>('[aria-current="page"], button:not(:disabled)')?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || isModalDialogOpen()) return;
       event.preventDefault();
       dismissMobileSidebar();
     };
@@ -745,7 +748,7 @@ export function AppShell() {
         ?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || (!isMobile && window.innerWidth >= 960)) return;
+      if (event.key !== "Escape" || (!isMobile && window.innerWidth >= 960) || isModalDialogOpen()) return;
       event.preventDefault();
       event.stopPropagation();
       closeRightPanel(true);
@@ -825,7 +828,7 @@ export function AppShell() {
       closeTopPanel();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !isModalDialogOpen()) {
         event.preventDefault();
         event.stopPropagation();
         closeTopPanel(true);
@@ -1574,76 +1577,83 @@ export function AppShell() {
     if (moved) focusChatTab(moved, result.nextSplitTabId ? targetPane : "primary");
   }, [activeChatTabId, focusChatTab, splitChatTabId]);
 
-  const handleCloseChatTab = useCallback((tabId: string): boolean => {
+  // Returns false when the tab stays open for now: an unsent draft asks first and closes on OK.
+  const handleCloseChatTab = useCallback(function closeTab(tabId: string, confirmed = false): boolean {
     const closingTab = chatTabsRef.current.find((tab) => tab.id === tabId);
     if (closingTab?.kind === "draft" && closingTab.newSessionDraftKey) {
       const draft = getDraft(closingTab.newSessionDraftKey);
       const hasContent = closingTab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
-      if (hasContent && !window.confirm(translate("chatTabs.discardDraft"))) return false;
+      if (hasContent && !confirmed) {
+        void confirm(translate("chatTabs.discardDraft"), { danger: true }).then((ok) => { if (ok) closeTab(tabId, true); });
+        return false;
+      }
       clearDraft(closingTab.newSessionDraftKey);
     }
-    setChatTabs((prevTabs) => {
-      const { tabs: nextTabs, nextActiveTabId, nextSplitTabId } = closeChatTab(
-        prevTabs,
-        tabId,
-        activeChatTabId ?? "",
-        splitChatTabId,
-      );
+    // From the committed tabs, not inside a setChatTabs updater: the router call and the setters
+    // below are side effects, and an updater may run during a later render (React warns there).
+    const { tabs: nextTabs, nextActiveTabId, nextSplitTabId } = closeChatTab(
+      chatTabsRef.current,
+      tabId,
+      activeChatTabId ?? "",
+      splitChatTabId,
+    );
 
-      if (nextTabs.length === 0) {
-        const draftId = typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-        const effectiveCwd = activeCwd;
-        const defaultDraftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
-        rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), defaultDraftKey);
-        activeNewSessionDraftKeyRef.current = defaultDraftKey;
-        setNewSessionDraftId(draftId);
+    if (nextTabs.length === 0) {
+      const draftId = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      const effectiveCwd = activeCwd;
+      const defaultDraftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
+      rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), defaultDraftKey);
+      activeNewSessionDraftKeyRef.current = defaultDraftKey;
+      setNewSessionDraftId(draftId);
 
-        const draftRes = openDraftInTabs([], effectiveCwd, defaultDraftKey, translate("i18n.newSession"));
-        setActiveChatTabId(draftRes.tabId);
-        setSplitChatTabId(null);
-        setActiveChatPane("primary");
-        setSelectedSession(null);
-        setNewSessionCwd(effectiveCwd);
-        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-        return draftRes.tabs;
-      }
+      const draftRes = openDraftInTabs([], effectiveCwd, defaultDraftKey, translate("i18n.newSession"));
+      setChatTabs(draftRes.tabs);
+      setActiveChatTabId(draftRes.tabId);
+      setSplitChatTabId(null);
+      setActiveChatPane("primary");
+      setSelectedSession(null);
+      setNewSessionCwd(effectiveCwd);
+      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+      return true;
+    }
 
-      setActiveChatTabId(nextActiveTabId);
-      setSplitChatTabId(nextSplitTabId);
+    setChatTabs(nextTabs);
+    setActiveChatTabId(nextActiveTabId);
+    setSplitChatTabId(nextSplitTabId);
 
-      if (!nextSplitTabId && activeChatPane === "secondary") {
-        setActiveChatPane("primary");
-      }
+    if (!nextSplitTabId && activeChatPane === "secondary") {
+      setActiveChatPane("primary");
+    }
 
-      const targetId = (activeChatPane === "secondary" && nextSplitTabId) ? nextSplitTabId : nextActiveTabId;
-      const targetTab = nextTabs.find((t) => t.id === targetId) ?? nextTabs.find((t) => t.id === nextActiveTabId);
-      if (targetTab?.kind === "session" && targetTab.session) {
-        setSelectedSession(targetTab.session);
-        setNewSessionCwd(null);
-        router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
-      } else if (targetTab?.kind === "draft") {
-        setSelectedSession(null);
-        setNewSessionCwd(targetTab.newSessionCwd);
-        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-      }
-
-      return nextTabs;
-    });
+    const targetId = (activeChatPane === "secondary" && nextSplitTabId) ? nextSplitTabId : nextActiveTabId;
+    const targetTab = nextTabs.find((t) => t.id === targetId) ?? nextTabs.find((t) => t.id === nextActiveTabId);
+    if (targetTab?.kind === "session" && targetTab.session) {
+      setSelectedSession(targetTab.session);
+      setNewSessionCwd(null);
+      router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
+    } else if (targetTab?.kind === "draft") {
+      setSelectedSession(null);
+      setNewSessionCwd(targetTab.newSessionCwd);
+      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+    }
     return true;
-  }, [activeChatPane, activeChatTabId, activeCwd, router, splitChatTabId, translate]);
+  }, [activeChatPane, activeChatTabId, activeCwd, confirm, router, splitChatTabId, translate]);
 
   // Batch close from a tab's context menu. The caller always leaves at least one tab in the group,
   // so there is no empty-workspace fallback here; only the focused pane needs re-pointing.
-  const handleCloseChatTabs = useCallback((tabIds: string[]): boolean => {
+  const handleCloseChatTabs = useCallback(function closeTabs(tabIds: string[], confirmed = false): boolean {
     const closing = chatTabsRef.current.filter((tab) => tabIds.includes(tab.id));
     const unsent = closing.filter((tab) => {
       if (tab.kind !== "draft" || !tab.newSessionDraftKey) return false;
       const draft = getDraft(tab.newSessionDraftKey);
       return tab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
     });
-    if (unsent.length > 0 && !window.confirm(translate("chatTabs.discardDrafts", { count: unsent.length }))) return false;
+    if (unsent.length > 0 && !confirmed) {
+      void confirm(translate("chatTabs.discardDrafts", { count: unsent.length }), { danger: true }).then((ok) => { if (ok) closeTabs(tabIds, true); });
+      return false;
+    }
     for (const tab of closing) {
       if (tab.kind === "draft" && tab.newSessionDraftKey) clearDraft(tab.newSessionDraftKey);
     }
@@ -1658,7 +1668,7 @@ export function AppShell() {
       if (target) focusChatTab(target, pane);
     }
     return true;
-  }, [activeChatPane, activeChatTabId, focusChatTab, splitChatTabId, translate]);
+  }, [activeChatPane, activeChatTabId, confirm, focusChatTab, splitChatTabId, translate]);
 
   const handleNewChatTab = useCallback((pane?: "primary" | "secondary") => {
     const openInSecondary = isSplitActive && (

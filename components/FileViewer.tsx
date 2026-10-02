@@ -32,6 +32,7 @@ import { MarkdownOutlineMenu } from "./MarkdownOutlineMenu";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import {
   resolveInitialFileDisplayMode,
   type FileViewerDisplayMode as DisplayMode,
@@ -1133,6 +1134,7 @@ function TextFileViewer({
 }: Props) {
   const { isDark, palette } = useTheme();
   const { t } = useI18n();
+  const confirm = useConfirm();
   const [data, setData] = useState<FileData | null>(null);
   const [gitDiff, setGitDiff] = useState<GitFileDiffResponse | null>(null);
   const [gitDiffLoading, setGitDiffLoading] = useState(false);
@@ -1762,8 +1764,8 @@ function TextFileViewer({
             type="button"
             className="file-viewer-mode-button"
             disabled={loadingMore}
-            onClick={() => {
-              if (data.size > LOAD_ALL_CONFIRM_BYTES && !window.confirm(t("i18n.loadAllConfirm", { size: formatSize(data.size) }))) return;
+            onClick={async () => {
+              if (data.size > LOAD_ALL_CONFIRM_BYTES && !(await confirm(t("i18n.loadAllConfirm", { size: formatSize(data.size) })))) return;
               setLoadingMore(true);
               void loadRest(filePath, data.nextOffset).finally(() => setLoadingMore(false));
             }}

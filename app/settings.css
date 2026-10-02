@@ -2619,6 +2619,36 @@ a.models-hint:hover {
   width: 440px;
 }
 
+/* hooks/useConfirm.ts: the <dialog> is the surface itself and the UA ::backdrop is the scrim. */
+.models-dialog.confirm-dialog {
+  width: 400px;
+  margin: auto; /* Tailwind's preflight zeroes the UA centering */
+  padding: 0;
+  color: var(--text);
+}
+
+/* .models-dialog's display: flex would otherwise show it between close() and removal. */
+.confirm-dialog:not([open]) {
+  display: none;
+}
+
+.confirm-dialog::backdrop {
+  background: var(--settings-scrim, rgba(0, 0, 0, 0.32));
+}
+
+.confirm-dialog-message {
+  margin: 0;
+  padding: 18px 18px 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.models-dialog-footer.confirm-dialog-footer {
+  justify-content: flex-end;
+}
+
 .trust-dialog-body {
   padding: 4px 18px 16px;
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useTheme, type ThemePalette, type ThemePreference } from "@/hooks/useTheme";
 import { useFontScheme, type FontScheme } from "@/hooks/useFontScheme";
 import {
@@ -43,6 +44,7 @@ import { AgentsConfig } from "./AgentsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { ProjectConfig } from "./ProjectConfig";
 import { McpConfig } from "./McpConfig";
+import { ModalDialog } from "./ModalDialog";
 import { ImagesConfig } from "./ImagesConfig";
 import { UsageStats } from "./UsageStats";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
@@ -437,26 +439,19 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   // Unsaved models.json edits live only in the Models section; closing drops them.
   const modelsDirtyRef = useRef(false);
   const handleModelsDirty = useCallback((dirty: boolean) => { modelsDirtyRef.current = dirty; }, []);
+  const confirm = useConfirm();
   const requestClose = useCallback(() => {
-    if (modelsDirtyRef.current && !window.confirm(t("models.discardConfirm"))) return;
-    onClose();
-  }, [onClose, t]);
+    if (!modelsDirtyRef.current) {
+      onClose();
+      return;
+    }
+    void confirm(t("models.discardConfirm"), { danger: true }).then((ok) => { if (ok) onClose(); });
+  }, [confirm, onClose, t]);
 
   useEffect(() => setLastSettingsSection(initialSection), [initialSection]);
   // Sections not visited yet load in the background, so switching to them paints at once.
   useEffect(() => prefetchSettings(cwd), [cwd]);
   useEffect(() => revalidateSettings, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      event.preventDefault();
-      event.stopPropagation();
-      requestClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [requestClose]);
 
   useEffect(() => {
     if (cwd || (section !== "skills" && section !== "agents" && section !== "plugins" && section !== "project")) return;
@@ -494,13 +489,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   ) : null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("settings.title")}
-      onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}
-      className="settings-dialog-backdrop"
-    >
+    <ModalDialog aria-label={t("settings.title")} className="settings-dialog-backdrop" onClose={requestClose}>
       <div className="settings-dialog-surface" data-pane={pane}>
         <nav aria-label={t("settings.title")} className="settings-nav">
           <strong className="settings-nav-title">{t("settings.title")}</strong>
@@ -551,6 +540,6 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
         </div>
         <button type="button" onClick={requestClose} title={t("i18n.close")} aria-label={t("i18n.close")} className="config-close-button settings-dialog-close">×</button>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

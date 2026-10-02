@@ -2,6 +2,7 @@
 
 import { ImageAttachmentStrip } from "./ImageAttachmentStrip";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ModalDialog } from "./ModalDialog";
 import { Select, type SelectOption } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
 import { imageRatioKind, MAX_REFERENCE_IMAGES, type ImageConfigView, type ImageConnectionView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
@@ -60,7 +61,6 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
   onSubmit: (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[]) => Promise<unknown>;
 }) {
   const { t } = useI18n();
-  const dialogRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState("");
@@ -111,12 +111,9 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
 
   useLayoutEffect(resizePrompt, [prompt]);
 
+  // Phones keep the dialog's default focus so the keyboard does not cover the sheet on open.
   useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
     if (!window.matchMedia("(max-width: 640px)").matches) promptRef.current?.focus();
-    return () => {
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
   }, []);
 
   useEffect(() => {
@@ -141,34 +138,16 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
   };
 
   return (
-    <div role="presentation" className="fixed inset-0 z-[1100] flex items-end justify-center bg-[var(--settings-scrim,rgba(0,0,0,0.32))] p-0 sm:items-center sm:p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <ModalDialog aria-labelledby="image-generation-title" className="fixed inset-0 flex items-end justify-center bg-[var(--settings-scrim,rgba(0,0,0,0.32))] p-0 sm:items-center sm:p-4" onClose={onClose}>
       <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="image-generation-title"
-        tabIndex={-1}
         onDragOver={(event) => { if (canAttachSource && event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => { if (canAttachSource && attachSource(event.dataTransfer.files)) event.preventDefault(); }}
         className="flex max-h-[min(92dvh,100%)] w-full max-w-full flex-col overflow-hidden rounded-t-[16px] border border-border bg-[var(--bg-elevated)] [box-shadow:var(--ui-shadow-dialog)] sm:max-h-[calc(100dvh-2rem)] sm:w-[480px] sm:rounded-[10px]"
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            onClose();
-            return;
-          }
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
             submit();
-            return;
           }
-          if (event.key !== "Tab") return;
-          const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), textarea:not(:disabled), select:not(:disabled), input:not(:disabled)") ?? []).filter((element) => element.offsetParent !== null);
-          if (!focusable.length) return;
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
         }}
       >
         <div className="flex justify-center pt-2 sm:hidden" aria-hidden="true">
@@ -240,6 +219,6 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
           <ConfigButton variant="primary" className="shrink-0" disabled={!prompt.trim()} onClick={submit}>{editing ? t("image.edit") : t("image.generate")}</ConfigButton>
         </footer>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

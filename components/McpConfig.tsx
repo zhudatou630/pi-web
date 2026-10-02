@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useConfirm } from "@/hooks/useConfirm";
 import type { McpCheckResponse, McpServerView, McpSettingsResponse } from "@/lib/api-types";
 import { parseMcpDraft } from "@/lib/mcp-draft";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
@@ -25,6 +26,7 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
   onChanged?: () => void;
 }) {
   const { t } = useI18n();
+  const confirm = useConfirm();
   const url = settingsUrls.mcp(cwd);
   const [settings, setSettings] = useState<McpSettingsResponse | null>(() => {
     const reply = peekJson<McpSettingsResponse & { error?: string }>(url);
@@ -176,10 +178,12 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
             disabled={saving}
             onClick={() => {
               const previous = draft.previous!;
-              if (!window.confirm(t("agents.deleteConfirm", { name: previous.name }))) return;
-              void run(async () => {
-                await request("DELETE", { scope: previous.scope, name: previous.name });
-                setDraft(null);
+              void confirm(t("agents.deleteConfirm", { name: previous.name }), { danger: true }).then((ok) => {
+                if (!ok) return;
+                void run(async () => {
+                  await request("DELETE", { scope: previous.scope, name: previous.name });
+                  setDraft(null);
+                });
               });
             }}
           >

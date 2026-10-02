@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { chatTabCwd, type ChatPane, type ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
 import { LivePulseBeacon } from "./LivePulseBeacon";
+import { isModalDialogOpen } from "./ModalDialog";
 
 const TAB_DRAG_MIME = "application/x-pi-chat-tab";
 // Shared by every bar: dataTransfer data is unreadable during dragover, and a tab dragged
@@ -123,7 +124,7 @@ export function ChatTabBar({
       setTabsMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || isModalDialogOpen()) return;
       event.preventDefault();
       event.stopPropagation();
       setTabsMenuOpen(false);
@@ -152,7 +153,7 @@ export function ChatTabBar({
       close();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || isModalDialogOpen()) return;
       event.preventDefault();
       event.stopPropagation();
       close();
