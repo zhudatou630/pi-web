@@ -736,7 +736,7 @@ function AssistantMessageView({
         // Who answered, how long the turn took, when it ended; copy sits right after them.
         <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>
           {modelLabel && (
-            <span data-answer-model style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
+            <span data-answer-model style={{ fontVariantNumeric: "normal", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
           )}
           {duration && (
             <span data-answer-duration title={t("chat.turnDuration")} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>

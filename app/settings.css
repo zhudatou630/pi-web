@@ -830,6 +830,14 @@
   text-decoration: underline;
 }
 
+/* One accent per notice: the action. The version is information, so it stays a quiet link. */
+.app-update-link {
+  color: var(--text-dim);
+}
+.app-update-link:hover {
+  color: var(--text);
+}
+
 .app-update-action:disabled,
 .app-update-icon:disabled {
   color: var(--text-dim);
@@ -2998,6 +3006,8 @@ button.usage-bar:hover::after,
 
 .usage-table td.usage-table-name {
   color: var(--text);
+  /* Sarasa's tnum also widens hyphens: "gpt-6-astra" would read "gpt - 6 - astra". */
+  font-variant-numeric: normal;
 }
 
 /* Row bar under the name: the sorted metric scaled to the largest row; the top row in full accent. */

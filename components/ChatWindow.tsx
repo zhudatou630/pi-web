@@ -1862,7 +1862,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         {!isEmptyNew && <>
         <div
           ref={scrollContainerRef}
-          className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 [scrollbar-width:none]"
+          className="chat-scroll-fade min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 pb-2 [scrollbar-width:none]"
           style={{
             overflowAnchor: "none",
             overscrollBehaviorY: "contain",
