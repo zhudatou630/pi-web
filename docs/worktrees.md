@@ -85,3 +85,12 @@ Git 有时会保留 prunable worktree 记录。Pi Web 会过滤这些记录，�
 
 **Explorer 和当前聊天看起来不在同一个分支？**
 Explorer 跟随当前选择的 worktree；聊天跟随打开的会话。如果点开的会话在另一个还活着的 worktree 里，侧边栏会切到那个 checkout。同一 checkout 里点历史会话不会改 Explorer，已删除 worktree 的会话也不会把 Explorer 拽走。
+
+## Implementation notes
+
+- `lib/worktree.ts` resolves linked worktree top-levels back to the main repo `projectRoot`; `listAllSessions()` attaches that to each `SessionInfo` so all worktrees for one repo are grouped together in the sidebar.
+- Worktree operations are served by `/api/worktrees` and guarded by the same allowed-root rules as `/api/files`.
+- New worktrees are created under `<repoRoot>-worktrees/<sanitized-branch>`. Existing branches are reused; otherwise `git worktree add -b` creates the branch.
+- Removing a dirty worktree returns `409` with `{ dirty: true }` so the UI can ask before retrying with `force`.
+- Sessions whose cwd points at a removed worktree are inferred back into the main project instead of becoming a phantom project row.
+- git prints POSIX-style absolute paths even on Windows, so every path read out of git goes through `toNativePath()` (`lib/paths.ts`) before it is compared or returned. Compare paths with `samePath()`, never `===` — raw equality made `isTopLevel` permanently false on Windows and hid the worktree switcher entirely. Branch names are not paths and must keep their forward slashes. Browser code cannot apply Node path rules, so `/api/worktrees` resolves `currentWorktreePath` server-side; the sidebar must use that identity for highlighting and removal fallback.

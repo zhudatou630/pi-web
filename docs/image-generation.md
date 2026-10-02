@@ -90,3 +90,7 @@ ChatGPT 按所选比例发送像素：`1:1`→`1024x1024`，`16:9`→`1536x864`�
 - 结果卡「改图」打开同一弹窗，该结果固定为第 1 张，可再添加原图。引用会把该图作为芯片放进输入栏。
 
 `generate_image` 出现在除“仅聊天”以外的工具预设中；输入栏按钮在所有预设中都可以用。Chat-only 会话仍可通过按钮走直接生成命令。
+
+## 按项目开关与工具名保留
+
+Image generation has the same per-project override: `projects` in `~/.pi/agent/images/settings.json` (writing it first materializes a missing file so a legacy `images.json` keeps its state; switching a project on with no live connection enables the signed-in built-ins). Where it is off, the session's inline image extension registers no tool, `GET /api/image-generation?cwd=` hides the composer button, and `executeImageGeneration()` (`resolveImageConfig(agentDir, projectRoot)`) refuses both the tool and the button. Both features share `lib/project-feature-switch.ts` (override helpers plus cwd validation → project root). `generate_image` is reserved for Pi Web: `reservePiWebImageTool()` drops a package tool of that name (pi-antigravity ships one) in every session and loaded-extension sub-agent, whether or not Pi Web images are on there, so "off" never falls back to a package tool; the package's provider and other tools stay.
