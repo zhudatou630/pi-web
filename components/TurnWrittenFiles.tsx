@@ -39,7 +39,7 @@ export function TurnWrittenFiles({ files, onOpenFile }: {
               color: "var(--text-muted)",
               background: "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))",
               border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
-              borderRadius: 5,
+              borderRadius: "var(--ui-radius-md)",
               cursor: "pointer",
               transition: "background 0.12s ease, color 0.12s ease",
             }}

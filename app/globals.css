@@ -367,7 +367,7 @@ html.dark {
   padding: 0 8px 0 8px;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
@@ -607,7 +607,7 @@ html.dark {
   height: 20px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -897,7 +897,7 @@ body {
   flex-shrink: 0;
   padding: 0 8px;
   border: 1px solid #343a46;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: transparent;
   color: #9ca3af;
   cursor: pointer;
@@ -1120,12 +1120,12 @@ pre, code {
   width: auto;
   height: auto;
   margin: 6px 0;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
 }
 .markdown-body .markdown-inline-code {
   background: color-mix(in srgb, var(--bg-panel) 80%, var(--bg));
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   padding: 0.08em 0.35em;
   margin: 0 0.1em;
   color: var(--text);
@@ -1155,7 +1155,7 @@ pre, code {
   height: 13px;
   margin: 0;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--ui-radius-sm);
   background: var(--bg);
   display: inline-grid;
   place-content: center;
@@ -1190,7 +1190,7 @@ pre, code {
   overflow-x: auto;
   overflow-y: hidden;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
 }
 .markdown-body table {
   border-collapse: separate;
@@ -1618,7 +1618,7 @@ pre, code {
   padding: 7px 8px;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-panel);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1639,7 +1639,7 @@ pre, code {
   max-width: 100%;
   margin: 8px 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   overflow: hidden;
   isolation: isolate;
   background: color-mix(in srgb, var(--bg-subtle) 40%, var(--bg));
@@ -1681,7 +1681,7 @@ pre, code {
   align-items: center;
   gap: 3.5px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   padding: 2px 5px;
   background: transparent;
   color: var(--text-dim);
@@ -1760,7 +1760,7 @@ pre, code {
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
@@ -1902,7 +1902,7 @@ pre, code {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-md);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
 }
 
@@ -2106,7 +2106,7 @@ pre, code {
   display: block;
   max-width: 100%;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   object-fit: contain;
 }
 
@@ -2129,7 +2129,7 @@ pre, code {
   height: 64px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   overflow: hidden;
   background: var(--bg-panel);
   cursor: zoom-in;
@@ -2161,7 +2161,7 @@ pre, code {
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 8px;
+  border-radius: 999px;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   font-size: 10px;
@@ -2220,7 +2220,7 @@ pre, code {
   height: 24px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg);
 }
 .mermaid-zoom-stepper button,
@@ -2247,7 +2247,7 @@ pre, code {
 .mermaid-zoom-icon-button {
   flex: 0 0 24px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
 }
 .mermaid-zoom-stepper button:hover:not(:disabled),
 .mermaid-zoom-icon-button:hover {
@@ -2285,7 +2285,7 @@ pre, code {
 .mermaid-zoom-canvas {
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-panel);
   margin: 0 auto;
   transition: width 0.15s ease;
@@ -2363,7 +2363,7 @@ pre, code {
   height: 24px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
 }
 
 .file-viewer-mode-button {
@@ -2398,7 +2398,7 @@ pre, code {
   max-width: calc(100% - 24px);
   padding: 5px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-panel);
   box-shadow: var(--ui-shadow-popover);
   color: var(--text-dim);
@@ -2426,7 +2426,7 @@ pre, code {
   box-sizing: border-box;
   flex: 0 0 24px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -2476,7 +2476,7 @@ pre, code {
   gap: 2px;
   width: 100%;
   padding: 5px 8px;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
 }
 
 .file-outline-item:hover {
@@ -2504,7 +2504,7 @@ pre, code {
   height: 16px;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -2916,7 +2916,7 @@ button.file-outline-fold:hover {
 .markdown-file-preview pre {
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   padding: 12px 16px;
   overflow-x: auto;
   font-family: var(--font-mono);
@@ -2928,7 +2928,7 @@ button.file-outline-fold:hover {
   font-size: 0.9em;
   background: var(--bg-panel);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--ui-radius-sm);
 }
 .markdown-file-preview pre code {
   background: none;
@@ -2940,7 +2940,7 @@ button.file-outline-fold:hover {
   margin-bottom: 20px;
   padding: 14px 16px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-panel);
 }
 .markdown-frontmatter-title {
@@ -3227,7 +3227,7 @@ span.token.table {
 /* Sidebar items share the section-heading gray; hover and the current item
    step up to --text. */
 .workspace-list-row {
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   color: var(--text-muted);
   transition: background 0.1s, color 0.1s;
 }
@@ -3263,7 +3263,7 @@ span.token.table {
   gap: 4px;
   padding: 0 8px 0 24px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
@@ -3338,7 +3338,7 @@ span.token.table {
   height: 20px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -3392,7 +3392,7 @@ span.token.table {
   height: 28px;
   padding: 0 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: none;
   color: var(--text-muted);
   font: inherit;
@@ -3692,7 +3692,7 @@ span.token.table {
 .chat-input:not(.is-compact) .chat-input-composer {
   padding: 5px 5px 3px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg);
   transition: border-color 0.15s, background 0.15s;
 }
@@ -3795,7 +3795,7 @@ span.token.table {
   margin: -1px 0;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: none;
   color: var(--text-muted);
   cursor: pointer;
@@ -3839,7 +3839,7 @@ span.token.table {
   height: 24px;
   padding: 0 6px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: none;
   color: var(--text-muted);
   font-size: 12px;
@@ -3924,7 +3924,7 @@ span.token.table {
    reads as an empty checkbox. */
 .composer-btn.is-icon.chat-input-queue-action {
   max-width: 0;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-hover);
   color: var(--text);
   opacity: 0;
@@ -3968,7 +3968,7 @@ span.token.table {
   height: 24px;
   padding: 0;
   border: 1px solid var(--primary);
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: var(--primary);
   color: var(--primary-contrast);
   cursor: pointer;
@@ -4025,7 +4025,7 @@ span.token.table {
 }
 
 .mobile-outline-row {
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -4077,7 +4077,7 @@ span.token.table {
   height: 28px;
   padding: 0 10px 0 8px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: none;
   color: var(--text-muted);
   font: inherit;
@@ -4202,7 +4202,7 @@ span.token.table {
   margin-bottom: 8px;
   padding: 5px 10px;
   border: 1px solid color-mix(in srgb, var(--feedback-color) 24%, var(--border));
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: color-mix(in srgb, var(--feedback-color) 7%, transparent);
   color: var(--text-muted);
   font-size: 12px;

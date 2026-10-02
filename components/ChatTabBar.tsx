@@ -467,7 +467,7 @@ export function ChatTabBar({
                     height: isMobile ? 22 : 20,
                     background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
                     border: "none",
-                    borderRadius: 3,
+                    borderRadius: "var(--ui-radius-sm)",
                     color: hoveredClose === tab.id ? "var(--text)" : "var(--text-muted)",
                     cursor: "pointer",
                     padding: 0,

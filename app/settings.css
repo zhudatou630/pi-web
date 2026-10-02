@@ -79,7 +79,7 @@
   margin-left: auto;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -143,7 +143,7 @@
   margin: -6px 0 -2px -8px;
   padding: 0 8px 0 4px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-md);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -467,9 +467,9 @@
 }
 
 .settings-dialog-backdrop {
+  /* A ModalDialog <dialog>: the top layer stacks it, no z-index. */
   position: fixed;
   inset: 0;
-  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1795,7 +1795,7 @@
   flex-shrink: 0;
   min-width: 16px;
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--bg-hover);
   color: var(--text-dim);
   font-size: 10px;
@@ -1836,7 +1836,7 @@
   gap: 8px;
   min-height: 40px;
   padding: 4px 6px 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   color: var(--text);
   font-size: 12px;
   transition: background-color 0.12s ease;
@@ -1881,7 +1881,7 @@ label.models-row {
   margin: -4px 0 -4px -10px;
   padding: 4px 0 4px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -2035,7 +2035,7 @@ a.models-hint:hover {
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: color-mix(in srgb, var(--notice-color) 9%, transparent);
   color: var(--text);
   font-size: 12px;
@@ -2179,7 +2179,7 @@ a.models-hint:hover {
   height: 26px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -2218,7 +2218,7 @@ a.models-hint:hover {
   height: 32px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
@@ -2304,7 +2304,7 @@ a.models-hint:hover {
 .models-device-code {
   align-self: flex-start;
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-panel);
   color: var(--text);
   font-family: var(--font-mono);
@@ -2337,7 +2337,7 @@ a.models-hint:hover {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg);
   background: var(--bg-panel);
 }
 
@@ -2398,7 +2398,7 @@ a.models-hint:hover {
   margin: 0 -8px;
   padding: 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: transparent;
   color: var(--text);
   cursor: pointer;
@@ -2481,7 +2481,7 @@ a.models-hint:hover {
   flex-shrink: 0;
   gap: 2px;
   padding: 2px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-panel);
 }
 
@@ -2489,7 +2489,7 @@ a.models-hint:hover {
   height: 24px;
   padding: 0 10px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -2528,9 +2528,9 @@ a.models-hint:hover {
 
 /* Nested dialogs */
 .models-dialog-backdrop {
+  /* A ModalDialog <dialog>: the top layer stacks it, no z-index. */
   position: fixed;
   inset: 0;
-  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2544,7 +2544,7 @@ a.models-hint:hover {
   max-height: min(76vh, calc(100dvh - 32px));
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--ui-radius-lg);
   background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
@@ -2712,7 +2712,7 @@ a.models-hint:hover {
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg);
   background: var(--bg-panel);
   cursor: pointer;
   text-align: left;
@@ -2754,7 +2754,7 @@ a.models-hint:hover {
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   background: var(--bg-hover);
   color: var(--text-muted);
   font-size: 16px;
@@ -2766,7 +2766,7 @@ a.models-hint:hover {
   grid-column: 1 / -1;
   gap: 8px;
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg);
   background: var(--bg-panel);
 }
 
@@ -3436,7 +3436,7 @@ button.usage-cell:not(:disabled) {
   max-height: 300px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-lg);
   padding: 4px;
 }
 
@@ -3444,7 +3444,7 @@ button.usage-cell:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-md);
   padding: 6px 8px;
 }
 

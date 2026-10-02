@@ -355,4 +355,7 @@ Location: `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<uuid>.jsonl`
 --text --text-muted --text-dim
 --accent --user-bg --tool-bg
 --font-mono
+--ui-radius-sm (4px) --ui-radius-md (6px) --ui-radius-lg (10px)
 ```
+
+Corners come from the three radius tokens: sm for chips, small icon buttons, inline code; md for controls, rows, menus, code blocks, images; lg for dialogs and the cards/forms inside Settings. Pills (badges, counts) are `999px`, dots `50%`. Scrollbar thumbs and 1-2px bars keep their own small radii.
