@@ -585,7 +585,10 @@ function AssistantMessageView({
   const rootRef = useRef<HTMLDivElement>(null);
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
-    .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
+    // No row for content-less thinking even while streaming: the settled message drops it
+    // (encrypted reasoning), and a row that vanishes at message_end bounces the live tail.
+    // The group header already says "Thinking…".
+    .filter(({ block }) => !isEmptyThinkingBlock(block)), [message.content]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
   // ponytail: parallel tools start when the assistant message ends and their results share
   // the batch-end timestamp, so history shows the batch duration per card. Persist
@@ -914,7 +917,7 @@ function StepDuration({ seconds, startTime, live }: { seconds?: number; startTim
 function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, startTime, live, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     const text = (block as TextContent).text;
-    if (!isStreaming && (!text || text.trim() === "")) return null;
+    if (!text?.trim()) return null;
     return <div data-message-text data-search-target={searchTarget || undefined}><TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} /></div>;
   }
   if (block.type === "image") {

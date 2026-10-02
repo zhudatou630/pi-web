@@ -57,6 +57,20 @@ test("renders generated image mentions as chips in user messages", () => {
   assert.doesNotMatch(html, /@&quot;\.pi\/generated-images/);
 });
 
+test("streams the same step rows the settled message keeps", () => {
+  // GPT/Grok encrypted reasoning: thinking_start with no summary, then a tool call.
+  const content = [
+    { type: "thinking", thinking: "", thinkingSignature: "enc" },
+    { type: "toolCall", toolCallId: "call-1", toolName: "bash", input: { command: "ls" } },
+    { type: "text", text: "" },
+  ];
+  const message = { role: "assistant", provider: "openai", model: "gpt-test", content };
+  const rows = (html) => html.match(/data-step-card=""|data-message-text=""/g) ?? [];
+  const live = renderMessage(message, { isStreaming: true, isProcess: true });
+  assert.deepEqual(rows(live), rows(renderMessage(message, { isProcess: true })));
+  assert.equal(rows(live).length, 1);
+});
+
 test("keeps the user send time out of the resting view", () => {
   const html = renderMessage({ role: "user", content: "hi", timestamp: Date.now() });
   assert.match(html, /data-user-time[^>]*opacity:0/);

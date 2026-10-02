@@ -41,8 +41,10 @@ export function isEmptyThinkingBlock(block: AssistantContentBlock, options: Disp
   return block.type === "thinking" && !block.deferred && !options.isStreaming && block.thinking.trim() === "";
 }
 
-export function isEmptyTextBlock(block: AssistantContentBlock, options: DisplayOptions = {}): boolean {
-  return block.type === "text" && !options.isStreaming && block.text.trim() === "";
+// Whitespace text is dropped while streaming too: settled messages drop it, so a
+// streamed-then-dropped row would shrink the live tail and bounce the scroll.
+export function isEmptyTextBlock(block: AssistantContentBlock): boolean {
+  return block.type === "text" && block.text.trim() === "";
 }
 
 export function getDisplayableAssistantBlocks(
@@ -50,7 +52,7 @@ export function getDisplayableAssistantBlocks(
   options: DisplayOptions = {},
 ): AssistantContentBlock[] {
   return (message.content ?? []).filter((block) => (
-    !isEmptyThinkingBlock(block, options) && !isEmptyTextBlock(block, options)
+    !isEmptyThinkingBlock(block, options) && !isEmptyTextBlock(block)
   ));
 }
 
