@@ -948,7 +948,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       setQuotedSelection(null);
       return;
     }
-    const text = selection.toString().trim();
+    // KaTeX renders MathML + HTML twice; selection.toString() would duplicate and split formulas.
+    const fragment = range.cloneContents();
+    fragment.querySelectorAll(".katex").forEach((el) => {
+      const tex = el.querySelector("annotation[encoding=\"application/x-tex\"]")?.textContent;
+      if (!tex) return;
+      const display = el.closest(".katex-display") != null;
+      el.replaceWith(display ? `\n$$\n${tex}\n$$\n` : `$${tex}$`);
+    });
+    const holder = document.createElement("div");
+    holder.style.cssText = "position:fixed;left:-9999px;white-space:pre-wrap";
+    holder.append(fragment);
+    document.body.append(holder);
+    const text = holder.innerText.trim();
+    holder.remove();
     if (!text) {
       setQuotedSelection(null);
       return;
