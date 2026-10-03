@@ -10,7 +10,7 @@ import { ReloadNotice } from "./ReloadNotice";
 import { Select } from "./Select";
 import { ConfigButton, ConfigField, ConfigSwitch, CountedTitle, SettingsGroup, SettingsLoading, SettingsRow, SettingsSegmented } from "./SettingsUi";
 
-const EXPOSURES = ["codemode", "codemode-deferred", "deferred", "direct", "hidden"] as const;
+const EXPOSURES = ["codemode", "deferred", "direct", "hidden"] as const;
 
 type Scope = McpServerView["scope"];
 type Draft = { name: string; scope: Scope; json: string; previous?: { name: string; scope: Scope } };

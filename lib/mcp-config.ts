@@ -6,14 +6,13 @@
 import { existsSync, openSync, readFileSync, readSync, closeSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import { CONFIG_DIR_NAME, getAgentDir, getPackageDir } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { McpCheckResponse, McpServerView, McpSettingsResponse } from "./api-types";
-import { BUILTIN_EXTENSION_NAMES, BUILTIN_EXTENSION_PREFIX } from "./builtin-extensions";
-import { getProjectTrustStatus, trustProject } from "./project-trust";
+import { BUILTIN_EXTENSION_NAMES, BUILTIN_EXTENSION_PREFIX, importSdkFile } from "./builtin-extensions";
+import { assertAutoTrustable, getProjectTrustStatus, trustProject } from "./project-trust";
 import { ProjectNotTrustedError, resolveScopedResources } from "./project-resource-overrides";
 
-export const MCP_EXPOSURES = ["codemode", "codemode-deferred", "deferred", "direct", "hidden"] as const;
+export const MCP_EXPOSURES = ["codemode", "deferred", "direct", "hidden"] as const;
 export type McpExposure = (typeof MCP_EXPOSURES)[number];
 export type McpScope = "global" | "project";
 
@@ -37,8 +36,7 @@ let modulesPromise: Promise<McpModules> | null = null;
 // Available since pi 0.99.0.
 function loadModules(): Promise<McpModules> {
   modulesPromise ??= (async () => {
-    // Loaded at runtime from the installed SDK, not bundled: the bundler cannot follow a computed path.
-    const load = (file: string) => import(/* webpackIgnore: true */ /* turbopackIgnore: true */ pathToFileURL(join(getPackageDir(), "dist", file)).href);
+    const load = (file: string) => importSdkFile<unknown>(file);
     const [config, servers, cli] = await Promise.all([
       load("extensions/mcp/config.js"),
       load("core/mcp-servers.js"),
@@ -91,7 +89,8 @@ function readServers(path: string, scope: McpScope, errors: string[], validate: 
     scope,
     config,
     enabled: config.enabled !== false,
-    exposure: typeof config.exposure === "string" ? config.exposure : "codemode",
+    // pi 1.0 folded `codemode-deferred` into `codemode` and still accepts the old name.
+    exposure: typeof config.exposure === "string" && config.exposure !== "codemode-deferred" ? config.exposure : "codemode",
     transport: describeTransport(config),
     }];
   });
@@ -149,13 +148,15 @@ export async function readMcpSettings(cwd: string | null, agentDir = getAgentDir
 }
 
 /** Project `mcp.json` runs commands, so it is only written where the project is trusted or needs no trust yet. */
-function assertWritable(scope: McpScope, cwd: string | null, agentDir: string): void {
+async function assertWritable(scope: McpScope, cwd: string | null, agentDir: string): Promise<void> {
   if (scope !== "project") return;
   if (!cwd) throw new Error("cwd required for project MCP servers");
   const status = getProjectTrustStatus(cwd, agentDir);
   if (status.requiresTrust && !status.trusted) {
     throw new ProjectNotTrustedError("Trust this project before changing its MCP servers");
   }
+  // A fresh folder gets trusted by saveMcpServer below; refuse folders where that trust would spread.
+  if (!status.requiresTrust) await assertAutoTrustable(cwd, (message) => new McpConfigError(message));
 }
 
 
@@ -164,7 +165,7 @@ export async function saveMcpServer(
   agentDir = getAgentDir(),
 ): Promise<void> {
   const { cwd, scope, name, config, previousName } = input;
-  assertWritable(scope, cwd, agentDir);
+  await assertWritable(scope, cwd, agentDir);
   const { config: helpers, servers } = await loadModules();
   const validated = servers.validateMcpServerConfig(name, config);
   if (typeof validated === "string") throw new McpConfigError(validated);
@@ -181,7 +182,7 @@ export async function updateMcpServer(
   input: { cwd: string | null; scope: McpScope; name: string; enabled?: boolean; exposure?: McpExposure },
   agentDir = getAgentDir(),
 ): Promise<void> {
-  assertWritable(input.scope, input.cwd, agentDir);
+  await assertWritable(input.scope, input.cwd, agentDir);
   const { config } = await loadModules();
   config.updateMcpServerConfig(mcpConfigPath(input.scope, input.cwd, agentDir), input.name, {
     ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
@@ -193,7 +194,7 @@ export async function removeMcpServer(
   input: { cwd: string | null; scope: McpScope; name: string },
   agentDir = getAgentDir(),
 ): Promise<void> {
-  assertWritable(input.scope, input.cwd, agentDir);
+  await assertWritable(input.scope, input.cwd, agentDir);
   const { config } = await loadModules();
   if (!config.removeMcpServerConfig(mcpConfigPath(input.scope, input.cwd, agentDir), input.name)) {
     throw new Error(`No MCP server named "${input.name}"`);

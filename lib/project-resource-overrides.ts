@@ -21,7 +21,7 @@ import {
   type ResolvedPaths,
 } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_EXTENSION_NAMES } from "./builtin-extensions";
-import { getProjectTrustStatus, trustProject } from "./project-trust";
+import { assertAutoTrustable, getProjectTrustStatus, trustProject } from "./project-trust";
 import { realPathOrSelf } from "./worktree";
 
 export const RESOURCE_TYPES = ["extensions", "skills", "prompts", "themes"] as const;
@@ -296,6 +296,8 @@ export async function setProjectOverrides(
 ): Promise<void> {
   const { ctx, trust, items } = await loadScope(cwd, agentDir, async () => "skip");
   if (!trust.trusted) throw new ProjectNotTrustedError("Project resources must be trusted before changing project overrides");
+  // A fresh folder gets trusted after the write below; refuse folders where that trust would spread.
+  if (!trust.requiresTrust) await assertAutoTrustable(cwd, (message) => new ProjectNotTrustedError(message));
   // An unreadable settings file loads as {}; writing on top of that would replace the user's file.
   const loadError = ctx.sm.drainErrors()[0];
   if (loadError) throw new Error(`Cannot read ${loadError.path ?? `${loadError.scope} settings`}: ${loadError.error.message}`);

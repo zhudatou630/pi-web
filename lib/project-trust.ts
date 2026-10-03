@@ -1,5 +1,40 @@
+import { homedir } from "node:os";
+import { parse, resolve } from "node:path";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "@earendil-works/pi-coding-agent";
 import type { ProjectTrustStatus } from "./api-types";
+import { isPathWithinRoots } from "./path-security";
+import { samePath } from "./paths";
+import { realPathOrSelf } from "./worktree";
+
+/**
+ * Why writing project config in `cwd` must not trust it as a side effect, or null.
+ * A trust decision is inherited by every folder below it (the SDK's
+ * `findNearestTrustEntry`), so trusting home, a filesystem root, or a folder that
+ * holds another project would silently trust every repository cloned under it.
+ * Paths are compared after resolving symlinks, as the trust store records them.
+ * ponytail: "another project" means a Pi Web session's project root, not a disk scan.
+ */
+export function autoTrustRefusal(cwd: string, knownProjectRoots: Iterable<string>, home = homedir()): string | null {
+  const target = realPathOrSelf(resolve(cwd));
+  if (target === parse(target).root || isPathWithinRoots(realPathOrSelf(home), new Set([target]))) {
+    return `${target} is your home folder or contains it; trust is inherited by every folder below, so use the global settings instead`;
+  }
+  for (const known of knownProjectRoots) {
+    const root = realPathOrSelf(known);
+    if (!samePath(root, target) && isPathWithinRoots(root, new Set([target]))) {
+      return `${target} contains another project (${root}); trust is inherited by every folder below, so use the global settings or that project instead`;
+    }
+  }
+  return null;
+}
+
+export async function assertAutoTrustable(cwd: string, makeError: (message: string) => Error): Promise<void> {
+  // Loaded on use: session-reader imports modules that import this one.
+  const { listAllSessions } = await import("./session-reader");
+  const sessions = await listAllSessions();
+  const refusal = autoTrustRefusal(cwd, sessions.map((session) => session.projectRoot ?? session.cwd));
+  if (refusal) throw makeError(refusal);
+}
 
 export function getProjectTrustStatus(cwd: string, agentDir: string): ProjectTrustStatus {
   const requiresTrust = Boolean(cwd) && hasTrustRequiringProjectResources(cwd);

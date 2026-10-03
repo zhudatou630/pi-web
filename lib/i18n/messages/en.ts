@@ -1116,7 +1116,6 @@ export const enLocale: LocalePlugin = {
     "mcp.configHint": "stdio servers take command and args, HTTP servers url and headers. Reference secrets as ${NAME} environment variables. You can also paste an mcpServers block from another client.",
     "mcp.exposure": "Exposure",
     "mcp.exposure.codemode": "codemode",
-    "mcp.exposure.codemode-deferred": "codemode-deferred",
     "mcp.exposure.deferred": "deferred",
     "mcp.exposure.direct": "direct",
     "mcp.exposure.hidden": "hidden",

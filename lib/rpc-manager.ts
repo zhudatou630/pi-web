@@ -238,6 +238,24 @@ class WebExtensionTheme extends Theme {
 
 const WEB_EXTENSION_THEME = new WebExtensionTheme();
 
+const SESSION_SHUTDOWN_DEADLINE_MS = 5_000;
+
+/** Closing an MCP connection has no upper bound (HTTP close, a token refresh), so shutdown handlers get one. */
+async function withShutdownDeadline(work: unknown): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      console.error(`[pi-web] session_shutdown handlers still running after ${SESSION_SHUTDOWN_DEADLINE_MS} ms; disposing anyway`);
+      resolve();
+    }, SESSION_SHUTDOWN_DEADLINE_MS);
+  });
+  try {
+    await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
   if (toolNames.length === 0) return [];
 
@@ -1249,10 +1267,10 @@ export class AgentSessionWrapper {
       return;
     }
 
-    void (async () => emit.call(
+    void withShutdownDeadline((async () => emit.call(
       this.inner.extensionRunner,
       { type: "session_shutdown", reason: "quit" },
-    ))()
+    ))())
       .catch((error) => {
         console.error(
           "[pi-web] session_shutdown before dispose failed:",
@@ -1281,7 +1299,7 @@ export class AgentSessionWrapper {
         }
         if (!this.sessionShutdownEmitted) {
           this.sessionShutdownEmitted = true;
-          await this.inner.extensionRunner.emit?.({ type: "session_shutdown", reason: "quit" });
+          await withShutdownDeadline(this.inner.extensionRunner.emit?.({ type: "session_shutdown", reason: "quit" }));
         }
       } finally {
         this.destroy();
@@ -2272,7 +2290,7 @@ export async function startRpcSession(
         : {
             extensionFactories: [
               // ponytail: sub-agents are left out; their `tools:` allow-list would hide MCP tools anyway.
-              ...createBuiltinExtensions(),
+              ...(await createBuiltinExtensions()),
               { name: "read-only-guard", factory: readOnlyToolGuard, hidden: true },
               createProjectCommandBashExtension({
                 cwd: sessionCwd,

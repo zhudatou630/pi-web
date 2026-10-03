@@ -415,7 +415,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [slashCommandsLoading, setSlashCommandsLoading] = useState(false);
   const [noticeState, dispatchNotice] = useReducer(noticeReducer, { visible: [], pending: [] });
   const [sessionStatsOverride, setSessionStatsOverride] = useState<SessionStatsInfo | null>(null);
-  const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
+  // Queued by id: a codemode script or parallel tools can ask several at once; the first is shown.
+  const [extensionDialogs, setExtensionDialogs] = useState<ExtensionUiDialogRequest[]>([]);
+  const extensionDialog = extensionDialogs[0] ?? null;
   const [extensionCustomUi, setExtensionCustomUi] = useState<ExtensionUiCustomRequest | null>(null);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({ steering: [], followUp: [] });
 
@@ -873,6 +875,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     closeEvents();
     sessionIdRef.current = null;
     ensuringNewSessionRef.current = null;
+    setExtensionDialogs([]);
     setSlashCommands([]);
     setSystemPrompt(null);
     setContextUsage(null);
@@ -933,7 +936,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     response: { value: string } | { confirmed: boolean } | { cancelled: true },
   ) => {
     const sid = sessionIdRef.current;
-    setExtensionDialog((current) => current?.id === request.id ? null : current);
+    setExtensionDialogs((queue) => queue.filter((dialog) => dialog.id !== request.id));
     if (!sid) return;
     try {
       await sendAgentCommand(sid, {
@@ -981,7 +984,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "confirm":
       case "input":
       case "editor":
-        setExtensionDialog(request);
+        setExtensionDialogs((queue) => queue.some((dialog) => dialog.id === request.id) ? queue : [...queue, request]);
         break;
       case "notify": {
         addNotice({
@@ -1557,7 +1560,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
       case "extension_ui_closed":
-        setExtensionDialog((current) => current?.id === event.id ? null : current);
+        setExtensionDialogs((queue) => queue.filter((dialog) => dialog.id !== event.id));
         break;
     }
   }, [addNotice, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage]);
@@ -2309,6 +2312,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         cancelEventStreamGrace();
         closeEvents();
         sessionIdRef.current = activeSessionId;
+        // Dialogs of the replaced runtime can no longer be answered.
+        setExtensionDialogs([]);
       }
       setSlashCommands([]);
       if (visiblePaneRef.current && (recreated || activeSessionId !== sid)) {

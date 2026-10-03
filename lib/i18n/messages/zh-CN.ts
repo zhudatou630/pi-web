@@ -1116,7 +1116,6 @@ export const zhCNLocale: LocalePlugin = {
     "mcp.configHint": "stdio 服务器写 command 和 args，HTTP 服务器写 url 和 headers。密钥用 ${NAME} 引用环境变量。也可以直接粘贴其他客户端的 mcpServers 配置块。",
     "mcp.exposure": "暴露方式",
     "mcp.exposure.codemode": "codemode",
-    "mcp.exposure.codemode-deferred": "codemode-deferred",
     "mcp.exposure.deferred": "deferred",
     "mcp.exposure.direct": "direct",
     "mcp.exposure.hidden": "hidden",

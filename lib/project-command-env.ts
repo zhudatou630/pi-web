@@ -28,6 +28,7 @@ function isHostRuntimeVariable(name: string, platform: NodeJS.Platform): boolean
   const comparableName = platform === "win32" ? name.toUpperCase() : name;
   return comparableName === "PORT"
     || comparableName === "NODE_ENV"
+    || comparableName === "PI_WEB_PASSWORD"
     || comparableName.startsWith("NEXT_");
 }
 
