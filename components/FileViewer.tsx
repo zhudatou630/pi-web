@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent } from "react";
 import {
   Prism as SyntaxHighlighter,
   createElement as renderSyntaxNode,
@@ -1119,6 +1119,108 @@ export function FileViewer({
   );
 }
 
+const MarkdownFilePreview = memo(function MarkdownFilePreview({
+  markdownPreview,
+  frontmatterData,
+  markdownDirectory,
+  onOpenFile,
+  sourceSessionId,
+}: {
+  markdownPreview: string;
+  frontmatterData: ReturnType<typeof parseFrontmatter>["data"];
+  markdownDirectory: string;
+  onOpenFile?: (filePath: string, page?: number) => void;
+  sourceSessionId?: string | null;
+}) {
+  return (
+    <div
+      className="markdown-body markdown-file-preview"
+      style={{ padding: "24px 32px" }}
+    >
+      {frontmatterData && <FrontmatterCard data={frontmatterData} />}
+      <ReactMarkdown
+        remarkPlugins={markdownPreviewRemarkPlugins}
+        rehypePlugins={markdownPreviewRehypePlugins}
+        urlTransform={onOpenFile ? markdownUrlTransform : undefined}
+        components={{
+          code({ className, children, ...props }) {
+            const lang = className?.replace("language-", "").toLowerCase() ?? "";
+            const raw = String(children);
+            const isBlock = className?.includes("language-") || raw.includes("\n");
+            if (isBlock) {
+              if (lang === "mermaid") {
+                return <MermaidBlock code={raw.replace(/\n$/, "")} defaultPreview />;
+              }
+              return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
+            }
+            return (
+              <code className={["markdown-inline-code", className].filter(Boolean).join(" ")} {...props}>
+                {children}
+              </code>
+            );
+          },
+          table({ children }) {
+            return (
+              <div className="markdown-table-wrap">
+                <table>{children}</table>
+              </div>
+            );
+          },
+          pre({ children }) {
+            // Render the code block directly — CodeBlock provides its own wrapping.
+            // For non-mermaid blocks, pass through to default pre rendering.
+            return <>{children}</>;
+          },
+          a({ href, children, ...props }) {
+            delete props.node;
+            if (href?.startsWith("#")) {
+              // In-document anchor (e.g. a TOC): scroll inside the preview instead of opening a tab.
+              const handleAnchorClick = (event: MouseEvent<HTMLAnchorElement>) => {
+                event.preventDefault();
+                const slug = decodeURIComponent(href.slice(1));
+                const root = event.currentTarget.closest(".markdown-file-preview");
+                const headings = [...(root?.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? [])];
+                const target = root?.querySelector<HTMLElement>(`[id="user-content-${CSS.escape(slug)}"]`)
+                  ?? headings[findHeadingBySlug(headings.map((el) => el.textContent ?? ""), slug)];
+                target?.scrollIntoView({ block: "start", inline: "nearest" });
+              };
+              return <a href={href} {...props} onClick={handleAnchorClick}>{children}</a>;
+            }
+            const linkedFile = onOpenFile
+              ? resolveLocalFileHref(href, markdownDirectory)
+              : null;
+            if (!linkedFile || !onOpenFile) {
+              return <a href={href} {...props} target="_blank" rel="noopener noreferrer">{children}</a>;
+            }
+
+            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+              if (!shouldOpenLocalFileInApp(event)) return;
+              event.preventDefault();
+              onOpenFile(linkedFile, pdfPageFromHref(href) ?? undefined);
+            };
+
+            return <a href={href} {...props} onClick={handleClick}>{children}</a>;
+          },
+          img({ src, alt, ...props }) {
+            delete props.node;
+            const imagePath = typeof src === "string"
+              ? resolveLocalFileHref(src, markdownDirectory)
+              : null;
+            const imageSrc = imagePath
+              ? getFileApiUrl(imagePath, "read", sourceSessionId)
+              : src;
+            // Dynamic local paths are served directly by the file API.
+            // eslint-disable-next-line @next/next/no-img-element
+            return <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />;
+          },
+        }}
+      >
+        {markdownPreview}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
 function TextFileViewer({
   filePath,
   cwd,
@@ -1803,91 +1905,13 @@ function TextFileViewer({
              title={t("i18n.htmlPreview")}
           />
         ) : isMarkdown && effectiveDisplayMode === "preview" ? (
-          <div
-            className="markdown-body markdown-file-preview"
-            style={{ padding: "24px 32px" }}
-          >
-            {frontmatter?.data && <FrontmatterCard data={frontmatter.data} />}
-            <ReactMarkdown
-              remarkPlugins={markdownPreviewRemarkPlugins}
-              rehypePlugins={markdownPreviewRehypePlugins}
-              urlTransform={onOpenFile ? markdownUrlTransform : undefined}
-              components={{
-                code({ className, children, ...props }) {
-                  const lang = className?.replace("language-", "").toLowerCase() ?? "";
-                  const raw = String(children);
-                  const isBlock = className?.includes("language-") || raw.includes("\n");
-                  if (isBlock) {
-                    if (lang === "mermaid") {
-                      return <MermaidBlock code={raw.replace(/\n$/, "")} defaultPreview />;
-                    }
-                    return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
-                  }
-                  return (
-                    <code className={["markdown-inline-code", className].filter(Boolean).join(" ")} {...props}>
-                      {children}
-                    </code>
-                  );
-                },
-                table({ children }) {
-                  return (
-                    <div className="markdown-table-wrap">
-                      <table>{children}</table>
-                    </div>
-                  );
-                },
-                pre({ children }) {
-                  // Render the code block directly — CodeBlock provides its own wrapping.
-                  // For non-mermaid blocks, pass through to default pre rendering.
-                  return <>{children}</>;
-                },
-                a({ href, children, ...props }) {
-                  delete props.node;
-                  if (href?.startsWith("#")) {
-                    // In-document anchor (e.g. a TOC): scroll inside the preview instead of opening a tab.
-                    const handleAnchorClick = (event: MouseEvent<HTMLAnchorElement>) => {
-                      event.preventDefault();
-                      const slug = decodeURIComponent(href.slice(1));
-                      const root = event.currentTarget.closest(".markdown-file-preview");
-                      const headings = [...(root?.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? [])];
-                      const target = root?.querySelector<HTMLElement>(`[id="user-content-${CSS.escape(slug)}"]`)
-                        ?? headings[findHeadingBySlug(headings.map((el) => el.textContent ?? ""), slug)];
-                      target?.scrollIntoView({ block: "start", inline: "nearest" });
-                    };
-                    return <a href={href} {...props} onClick={handleAnchorClick}>{children}</a>;
-                  }
-                  const linkedFile = onOpenFile
-                    ? resolveLocalFileHref(href, markdownDirectory)
-                    : null;
-                  if (!linkedFile || !onOpenFile) {
-                    return <a href={href} {...props} target="_blank" rel="noopener noreferrer">{children}</a>;
-                  }
-
-                  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-                    if (!shouldOpenLocalFileInApp(event)) return;
-                    event.preventDefault();
-                    onOpenFile(linkedFile, pdfPageFromHref(href) ?? undefined);
-                  };
-
-                  return <a href={href} {...props} onClick={handleClick}>{children}</a>;
-                },
-                img({ src, alt, ...props }) {
-                  delete props.node;
-                  const imagePath = typeof src === "string"
-                    ? resolveLocalFileHref(src, markdownDirectory)
-                    : null;
-                  const imageSrc = imagePath
-                    ? getFileApiUrl(imagePath, "read", sourceSessionId)
-                    : src;
-                  // Dynamic local paths are served directly by the file API.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  return <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />;
-                },
-              }}
-            >
-              {markdownPreview}
-            </ReactMarkdown>
-          </div>
+          <MarkdownFilePreview
+            markdownPreview={markdownPreview}
+            frontmatterData={frontmatter?.data ?? null}
+            markdownDirectory={markdownDirectory}
+            onOpenFile={onOpenFile}
+            sourceSessionId={sourceSessionId}
+          />
         ) : useLightweightSource ? (
           <div
             className="file-source-view is-lightweight"

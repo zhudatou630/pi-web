@@ -2056,6 +2056,13 @@ export function AppShell() {
   }, [projectTrustBusy, projectTrustCwd]);
 
   const activeFileTab = fileTabs.find((tab) => tab.id === activeFileTabId) ?? null;
+  const handleActiveFileOpen = useCallback((filePath: string, page?: number) => {
+    handleOpenFile(filePath, getFileName(filePath), {
+      sourceSessionId: activeFileTab?.sourceSessionId,
+      cwd: activeFileTab?.cwd,
+      page,
+    });
+  }, [activeFileTab?.cwd, activeFileTab?.sourceSessionId, handleOpenFile]);
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
   const windowTitle = activeCwdName ? `${activeCwdName} - Pi Web` : "Pi Web";
 
@@ -3192,11 +3199,7 @@ export function AppShell() {
               )}
               onMentionLines={rightPanelOpen ? handleFileLineMention : undefined}
               onAtMention={handleAtMention}
-              onOpenFile={(filePath, page) => handleOpenFile(
-                filePath,
-                getFileName(filePath),
-                { sourceSessionId: activeFileTab.sourceSessionId, cwd: activeFileTab.cwd, page },
-              )}
+              onOpenFile={handleActiveFileOpen}
             />
           ) : !terminalTabs.some((tab) => tab.id === activeFileTabId) ? (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
