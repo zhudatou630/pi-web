@@ -1262,7 +1262,9 @@ pre, code {
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-md);
   background: var(--bg-subtle);
-  font-size: calc(11px + var(--chat-font-size-offset, 0px));
+  /* Headers are a fixed 11px; zero the offset so expanded content never follows the prose size. */
+  --chat-font-size-offset: 0px;
+  font-size: 11px;
   transition: border-color 0.15s ease;
 }
 [data-step-card].is-error {
@@ -1334,6 +1336,11 @@ pre, code {
 .step-body {
   border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   background: var(--bg);
+}
+/* Expanded content keeps the header's size instead of the prose size. */
+[data-step-card] .step-body .markdown-body,
+[data-step-card] .step-body .markdown-body table {
+  font-size: inherit;
 }
 [data-step-card].is-error > .step-body {
   border-top-color: color-mix(in srgb, var(--danger) 25%, transparent);
