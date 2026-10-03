@@ -138,6 +138,8 @@ export interface AgentSessionLike {
   readonly autoCompactionEnabled: boolean;
   readonly autoRetryEnabled: boolean;
   readonly model: ModelLike | undefined;
+  /** Resolved `enabledModels` scope; empty when unscoped. */
+  readonly scopedModels?: ReadonlyArray<{ model: { provider: string; id: string } }>;
   readonly thinkingLevel: string;
   readonly messages: PiAgentMessage[];
   readonly modelRuntime: {

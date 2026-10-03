@@ -427,6 +427,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                     border: "none",
                     cursor: "pointer",
                     color: "var(--accent)",
+                    fontFamily: "var(--font-chat)",
                     fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
                     textAlign: "left",
                   }}
@@ -452,6 +453,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 {commandArgs && (
                   <span style={{
                     color: "var(--text)",
+                    fontFamily: "var(--font-chat)",
                     fontSize: "calc(14px + var(--chat-font-size-offset, 0px))",
                     lineHeight: 1.58,
                     whiteSpace: "pre-wrap",

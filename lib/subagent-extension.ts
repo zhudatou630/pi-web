@@ -83,9 +83,33 @@ function agentTypeDescription(profiles: readonly SubagentProfile[]): string {
   if (available.length === 0) return "No subagent profiles are currently enabled.";
   return available.map((profile) => {
     const details = [`Tools: ${profile.tools.length > 0 ? profile.tools.join(", ") : "none"}`];
-    if (profile.model) details.push(`Model: ${profile.model}`);
+    if (profile.model) details.push(`Default model: ${profile.model}, overridable with model`);
     return `- ${profile.name}: ${profile.description} (${details.join("; ")})`;
   }).join("\n");
+}
+
+/** Models an agent may pass as `model`: the session's `enabledModels` scope, else every model with auth. */
+export function subagentModelChoices<T extends { provider: string; id: string }>(
+  scoped: ReadonlyArray<{ model: T }>,
+  available: readonly T[],
+): readonly T[] {
+  return scoped.length > 0 ? scoped.map((entry) => entry.model) : available;
+}
+
+const MAX_LISTED_MODELS = 40;
+
+/** System prompt section naming the models the Agent tool accepts, so a user's model choice is never guessed. */
+export function subagentModelsSection(models: ReadonlyArray<{ provider: string; id: string; name?: string }>): string {
+  const listed = models.slice(0, MAX_LISTED_MODELS).map((model) => (
+    `- ${model.provider}/${model.id}${model.name && model.name !== model.id ? ` (${model.name})` : ""}`
+  ));
+  if (models.length > MAX_LISTED_MODELS) {
+    listed.push(`- ...${models.length - MAX_LISTED_MODELS} more; an exact provider/modelId the user gives is also accepted`);
+  }
+  return [
+    "Models for the Agent tool's `model` parameter. When the user names one, pass its provider/modelId; pass any effort level (e.g. \"medium\") as `thinking`.",
+    ...listed,
+  ].join("\n");
 }
 
 export function subagentToolDetails(run: SubagentRunInfo): SubagentToolDetails {
@@ -149,6 +173,12 @@ export function createSubagentExtension(
         const details = event.details as Partial<SubagentToolDetails> | undefined;
         return details?.kind === "pi-web-subagent" && details.status === "failed" ? { isError: true } : undefined;
       });
+      // Tool descriptions are fixed at load time, before the session's model scope exists, so the list rides in the prompt.
+      pi.on("before_agent_start", (event, ctx) => {
+        if (!event.systemPromptOptions.selectedTools.includes("Agent")) return;
+        const models = subagentModelChoices(ctx.scopedModels, ctx.modelRegistry.getAvailable());
+        if (models.length > 0) event.systemPromptOptions.sections.subagent_models = subagentModelsSection(models);
+      });
       pi.registerTool(defineTool({
         name: "Agent",
         label: "Agent",
@@ -173,14 +203,17 @@ export function createSubagentExtension(
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
           run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results notify the parent after its current run settles." })),
-          model: Type.Optional(Type.String({ description: "Optional provider/modelId override." })),
-          thinking: Type.Optional(Type.String({ description: "Optional thinking level override." })),
+          model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>." })),
+          thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max." })),
           max_turns: Type.Optional(Type.Number({ description: "Optional positive agent turn limit." })),
           inherit_context: Type.Optional(Type.Boolean({ description: "Include the parent session's active conversation context." })),
           isolation: Type.Optional(Type.String({ description: "Run the subagent in an isolated git worktree copy." })),
         }),
         async execute(toolCallId, params, signal, onUpdate, ctx) {
           const resume = params.resume?.trim();
+          if (resume && (params.model || params.thinking)) {
+            throw new Error("resume keeps the subagent's model and thinking level; omit model/thinking, or start a new subagent to change them.");
+          }
           const execution = resume
             ? await runtime.resume({
                 parentContext: ctx,

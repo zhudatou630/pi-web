@@ -120,9 +120,12 @@ test("sidebar single-click opens a preview tab while explicit new tab action app
   assert.match(sidebarSource, /onDoubleClick=\{\(\) => \{[\s\S]*?onOpenInNewTab\?\.\(\);/);
 });
 
-test("explicit opens are pinned: restore, notifications, subagent cards, send-promote", () => {
+test("subagent cards switch in place like the agent panel", () => {
+  assert.match(source, /handleSwitchFamilySession\(data\.info\)/);
+});
+
+test("explicit opens are pinned: restore, notifications, send-promote", () => {
   assert.match(source, /isRestore \|\| pinned\s*\? openSessionInNewTab\(prev, session, pane\)/);
-  assert.match(source, /handlePinSession\(data\.info\)/);
   assert.match(source, /handlePinSession\(targetSession\)/);
   assert.match(source, /handleSelectSession\(session, false, undefined, undefined, true\)/);
   assert.match(source, /onKeepTabOpen=\{promotePreviewSession\}/);

@@ -1,5 +1,5 @@
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { THINKING_LEVELS as VALID_THINKING_LEVELS } from "./thinking-levels";
+import { THINKING_LEVELS as VALID_THINKING_LEVELS, THINKING_SUFFIX } from "./thinking-levels";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentSessionLike } from "./pi-types";
 import {
   subagentFinalText,
+  subagentModelChoices,
   type ResumeSubagentRequest,
   type StartSubagentRequest,
   type SubagentExecution,
@@ -256,22 +257,34 @@ function persistSessionFile(sessionManager: SessionManager): void {
   (sessionManager as unknown as { flushed: boolean }).flushed = true;
 }
 
-function parseSubagentModel(runtime: ModelRuntime, value: string | undefined) {
-  if (!value?.trim()) return undefined;
-  const requested = value.trim();
-  const slash = requested.indexOf("/");
-  if (slash > 0) {
-    const provider = requested.slice(0, slash);
-    const modelId = requested.slice(slash + 1);
-    const model = runtime.getModel(provider, modelId);
-    if (model) return model;
-    const sameId = runtime.getModels().filter((candidate) => candidate.id === modelId);
-    throw new Error(`Subagent model not found: ${requested}${sameId.length > 0 ? `. Same model id is available as: ${modelRefs(sameId)}` : ""}`);
+/**
+ * Resolve `provider/modelId` or a bare unique `modelId` among `models`, with pi's
+ * optional `:thinkingLevel` suffix. A miss lists `choices` so the calling agent
+ * can correct itself in one retry instead of giving up on the user's choice.
+ */
+export function parseSubagentModel<T extends { provider: string; id: string }>(
+  models: readonly T[],
+  value: string | undefined,
+  choices: ReadonlyArray<{ provider: string; id: string }> = models,
+): { model?: T; thinking?: ThinkingLevel } {
+  if (!value?.trim()) return {};
+  const full = value.trim();
+  const suffix = THINKING_SUFFIX.exec(full);
+  const attempts: Array<[string, ThinkingLevel | undefined]> = [[full, undefined]];
+  if (suffix) attempts.push([full.slice(0, suffix.index), suffix[1] as ThinkingLevel]);
+  for (const [requested, thinking] of attempts) {
+    const slash = requested.indexOf("/");
+    const matches = models.filter((model) => (
+      slash > 0 ? `${model.provider}/${model.id}` === requested : model.id === requested
+    ));
+    if (matches.length === 1) return { model: matches[0], ...(thinking ? { thinking } : {}) };
+    if (matches.length > 1) throw new Error(`Subagent model is ambiguous: ${requested}. Use one of: ${modelRefs(matches)}`);
   }
-  const matches = runtime.getModels().filter((model) => model.id === requested);
-  if (matches.length === 1) return matches[0];
-  if (matches.length === 0) throw new Error(`Subagent model not found: ${requested}`);
-  throw new Error(`Subagent model is ambiguous: ${requested}. Use one of: ${modelRefs(matches)}`);
+  throw new Error(
+    `Subagent model not found: ${full}. Use an exact provider/modelId`
+    + (choices.length > 0 ? ` from: ${modelRefs(choices)}` : "")
+    + ". Pass reasoning effort with the thinking parameter, not inside the model name.",
+  );
 }
 
 function modelRefs(models: ReadonlyArray<{ provider: string; id: string }>): string {
@@ -856,13 +869,23 @@ export function createSubagentController(
       throw new Error("max_turns must be a non-negative number");
     }
     const turnLimit = maxTurns && maxTurns > 0 ? Math.floor(maxTurns) : undefined;
-    const thinking = request.thinking ?? profile.thinking ?? parent.inner.agent.state?.thinkingLevel;
+    const parentModelRuntime = (parent.inner as unknown as { modelRuntime: ModelRuntime }).modelRuntime;
+    // Resolve before creating the child session so a bad name fails without leaving an empty run behind.
+    // The agent may only pick from the user's enabledModels scope (what <subagent_models> lists);
+    // a profile's own model is user configuration and resolves against every configured model.
+    const choices = subagentModelChoices(
+      (parent.inner.scopedModels ?? []) as ReadonlyArray<{ model: ReturnType<ModelRuntime["getAvailableSnapshot"]>[number] }>,
+      parentModelRuntime.getAvailableSnapshot(),
+    );
+    const requestedModel = request.model
+      ? parseSubagentModel(choices, request.model)
+      : parseSubagentModel(parentModelRuntime.getModels(), profile.model, choices);
+    const thinking = request.thinking ?? requestedModel.thinking ?? profile.thinking ?? parent.inner.agent.state?.thinkingLevel;
     if (thinking && !THINKING_LEVELS.has(thinking as ThinkingLevel)) {
-      throw new Error(`Invalid subagent thinking level: ${thinking}`);
+      throw new Error(`Invalid subagent thinking level: ${thinking}. Use one of: ${VALID_THINKING_LEVELS.join(", ")}`);
     }
 
     const agentDir = getAgentDir();
-    const parentModelRuntime = (parent.inner as unknown as { modelRuntime: ModelRuntime }).modelRuntime;
     const inheritedParentContext = inheritContext
       ? `The following is the active conversation context from the parent session. Use it only as background for the delegated task:\n${parentContextText(parent)}`
       : undefined;
@@ -996,12 +1019,11 @@ export function createSubagentController(
           };
           context.manager.appendCustomEntry(SUBAGENT_META_TYPE, runtimeMetadata);
           currentMetadata = runtimeMetadata;
-          const requestedModel = parseSubagentModel(parentModelRuntime, request.model ?? profile.model);
           const parentModel = parent.inner.model as ReturnType<ModelRuntime["getModel"]>;
           const { session: inner } = await createAgentSessionFromServices({
             services,
             sessionManager: context.manager,
-            model: requestedModel ?? parentModel,
+            model: requestedModel.model ?? parentModel,
             ...(thinking ? { thinkingLevel: thinking as ThinkingLevel } : {}),
             tools: activeTools,
             excludeTools: [...SUBAGENT_CONTROL_TOOL_NAMES],
