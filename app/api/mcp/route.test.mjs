@@ -90,3 +90,32 @@ test("invalid entries are reported, not listed; an untrusted project's mcp.json 
   assert.deepEqual({ trusted: body.project.trusted, ignored: body.project.ignored }, { trusted: false, ignored: true });
   assert.equal((await send(PUT, "PUT", { cwd: untrusted, scope: "project", name: "x", config: { command: "y" } })).status, 403);
 });
+
+test("a project override changes only enabled/exposure of a global server (pi 1.0.1+)", async () => {
+  const project = join(root, "override-project");
+  mkdirSync(project, { recursive: true });
+  allowFileRoot(project);
+  const projectFile = join(project, ".pi", "mcp.json");
+  writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { shared: { url: "https://x/mcp", headers: { A: "${TOKEN}" } } } }));
+  const list = async () => (await GET(new Request(`http://localhost/api/mcp?cwd=${encodeURIComponent(project)}`))).json();
+
+  // "Disable in this project" adds an override entry and trusts the project.
+  let response = await send(PATCH, "PATCH", { cwd: project, scope: "project", name: "shared", override: true, enabled: false });
+  assert.equal(response.status, 200);
+  assert.deepEqual(read(projectFile).mcpServers, { shared: { enabled: false } });
+  let body = await list();
+  assert.deepEqual(body.errors, []);
+  assert.deepEqual(body.servers.map((s) => [s.scope, s.name, s.enabled, s.projectOverride === true]), [["global", "shared", false, true]]);
+  assert.deepEqual(body.servers[0].config, { url: "https://x/mcp", headers: { A: "${TOKEN}" } });
+
+  // Later changes go to the override; the global entry stays untouched.
+  await send(PATCH, "PATCH", { cwd: project, scope: "project", name: "shared", override: true, exposure: "direct" });
+  assert.deepEqual(read(projectFile).mcpServers.shared, { enabled: false, exposure: "direct" });
+  assert.equal(read(join(agentDir, "mcp.json")).mcpServers.shared.exposure, undefined);
+
+  // Overrides need a global server; resetting removes the override.
+  assert.equal((await send(PATCH, "PATCH", { cwd: project, scope: "project", name: "missing", override: true, enabled: false })).status, 400);
+  await send(DELETE, "DELETE", { cwd: project, scope: "project", name: "shared" });
+  body = await list();
+  assert.deepEqual(body.servers.map((s) => [s.enabled, s.projectOverride === true]), [[true, false]]);
+});

@@ -19,11 +19,26 @@ export type McpScope = "global" | "project";
 /** An invalid server entry, reported by pi's own validation. */
 export class McpConfigError extends Error {}
 
+/** A server as pi loads it: project overrides are already merged into the global entry. */
+interface LoadedMcpServer {
+  name: string;
+  config: Record<string, unknown>;
+  scope?: "global" | "project" | "extension";
+  /** Project `mcp.json` that overrides this global server's `enabled`/`exposure`/`toolExposure` (pi 1.0.1+). */
+  override?: string;
+}
+
 interface McpModules {
   config: {
+    loadMcpConfig(options: { agentDir: string; cwd: string; projectTrusted: boolean }): { servers: LoadedMcpServer[]; errors: string[] };
     addMcpServerConfig(path: string, name: string, config: unknown): boolean;
     removeMcpServerConfig(path: string, name: string): boolean;
-    updateMcpServerConfig(path: string, name: string, patch: { enabled?: boolean; exposure?: McpExposure }): void;
+    updateMcpServerConfig(
+      path: string,
+      name: string,
+      patch: { enabled?: boolean; exposure?: McpExposure },
+      options?: { override?: boolean },
+    ): void;
   };
   servers: { validateMcpServerConfig(name: string, value: unknown): unknown };
   cli: {
@@ -62,38 +77,29 @@ function describeTransport(config: Record<string, unknown>): string {
   return [String(config.command ?? ""), ...args].join(" ").trim();
 }
 
-type Validate = McpModules["servers"]["validateMcpServerConfig"];
-
-/** Entries pi would load; invalid ones are reported like pi does, not listed as servers. */
-function readServers(path: string, scope: McpScope, errors: string[], validate: Validate): McpServerView[] {
-  if (!existsSync(path)) return [];
-  let parsed: unknown;
+/** `mcpServers` entries as written (unresolved `${NAME}` references), for editing. Errors come from pi's loader. */
+function readRawServers(path: string): Record<string, unknown> {
+  if (!existsSync(path)) return {};
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
-  } catch (error) {
-    errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
-    return [];
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    return isRecord(parsed) && isRecord(parsed.mcpServers) ? parsed.mcpServers : {};
+  } catch {
+    return {};
   }
-  if (!isRecord(parsed) || (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers))) {
-    errors.push(`${path}: expected an object with an "mcpServers" object`);
-    return [];
-  }
-  return Object.entries(parsed.mcpServers ?? {}).flatMap(([name, config]) => {
-    const problem = validate(name, config);
-    if (typeof problem === "string" || !isRecord(config)) {
-      errors.push(`${path}: ${typeof problem === "string" ? problem : `invalid MCP server "${name}"`}`);
-      return [];
-    }
-    return [{
-    name,
+}
+
+function toView(server: LoadedMcpServer, scope: McpScope, raw: Record<string, unknown>): McpServerView {
+  const written = raw[server.name];
+  const config = isRecord(written) ? written : server.config;
+  return {
+    name: server.name,
     scope,
     config,
-    enabled: config.enabled !== false,
+    enabled: server.config.enabled !== false,
     // pi 1.0 folded `codemode-deferred` into `codemode` and still accepts the old name.
-    exposure: typeof config.exposure === "string" && config.exposure !== "codemode-deferred" ? config.exposure : "codemode",
+    exposure: typeof server.config.exposure === "string" && server.config.exposure !== "codemode-deferred" ? server.config.exposure : "codemode",
     transport: describeTransport(config),
-    }];
-  });
+  };
 }
 
 /** The last lines of `mcp.log`, where servers' logging notifications go. */
@@ -114,35 +120,47 @@ function readLogTail(path: string, maxBytes = 8192): string {
 }
 
 export async function readMcpSettings(cwd: string | null, agentDir = getAgentDir()): Promise<McpSettingsResponse> {
-  const errors: string[] = [];
-  const validate = (await loadModules()).servers.validateMcpServerConfig;
+  const { config: helpers } = await loadModules();
   const { resources } = await resolveScopedResources(cwd ?? homedir(), agentDir);
   const builtins = BUILTIN_EXTENSION_NAMES.map((name) => {
     const resource = resources.find((r) => r.type === "extensions" && r.path === `${BUILTIN_EXTENSION_PREFIX}${name}`);
     return { name, enabled: resource?.enabled ?? true, globalEnabled: resource?.globalEnabled ?? true };
   });
-  const globalServers = readServers(mcpConfigPath("global", null, agentDir), "global", errors, validate);
+  const globalPath = mcpConfigPath("global", null, agentDir);
+  // pi's own loader decides validity, precedence, and project overrides; invalid entries become errors.
+  const globalOnly = helpers.loadMcpConfig({ agentDir, cwd: cwd ?? homedir(), projectTrusted: false });
+  let loaded = globalOnly;
   let project: McpSettingsResponse["project"] = null;
-  let projectServers: McpServerView[] = [];
+  let rawProject: Record<string, unknown> = {};
   if (cwd) {
     const path = mcpConfigPath("project", cwd, agentDir);
     const trust = getProjectTrustStatus(cwd, agentDir);
     project = { path, trusted: trust.trusted, ignored: !trust.trusted && existsSync(path) };
     // Like pi, an untrusted project's mcp.json is not read at all.
-    if (trust.trusted) projectServers = readServers(path, "project", errors, validate);
+    if (trust.trusted) {
+      loaded = helpers.loadMcpConfig({ agentDir, cwd, projectTrusted: true });
+      rawProject = readRawServers(path);
+    }
   }
-  // Project entries replace global entries with the same name (pi's precedence).
-  const projectNames = new Set(projectServers.map((server) => server.name));
-  const servers = [
-    ...globalServers.map((server) => projectNames.has(server.name) ? { ...server, overridden: true } : server),
-    ...projectServers,
+  const rawGlobal = readRawServers(globalPath);
+  const effective = new Map(loaded.servers.map((server) => [server.name, server]));
+  const servers: McpServerView[] = [
+    ...globalOnly.servers.map((base) => {
+      const current = effective.get(base.name);
+      // A full project entry with the same name replaces the global one.
+      if (current?.scope === "project") return { ...toView(base, "global", rawGlobal), overridden: true };
+      // A project entry without command/url only changes enabled/exposure of the global server.
+      if (current?.override) return { ...toView(current, "global", rawGlobal), projectOverride: true };
+      return toView(base, "global", rawGlobal);
+    }),
+    ...loaded.servers.filter((server) => server.scope === "project").map((server) => toView(server, "project", rawProject)),
   ];
   return {
     builtins,
-    globalPath: mcpConfigPath("global", null, agentDir),
+    globalPath,
     project,
     servers,
-    errors,
+    errors: loaded.errors,
     logTail: readLogTail(join(agentDir, "mcp.log")),
   };
 }
@@ -178,16 +196,28 @@ export async function saveMcpServer(
   if (scope === "project" && cwd) trustProject(cwd, agentDir);
 }
 
+/**
+ * `override` (project scope only) writes a project override of the global server with this name,
+ * adding the entry when missing, like pi's "Enable/Disable in this project".
+ */
 export async function updateMcpServer(
-  input: { cwd: string | null; scope: McpScope; name: string; enabled?: boolean; exposure?: McpExposure },
+  input: { cwd: string | null; scope: McpScope; name: string; enabled?: boolean; exposure?: McpExposure; override?: boolean },
   agentDir = getAgentDir(),
 ): Promise<void> {
+  if (input.override) {
+    if (input.scope !== "project") throw new McpConfigError("override requires the project scope");
+    if (!isRecord(readRawServers(mcpConfigPath("global", null, agentDir))[input.name])) {
+      throw new McpConfigError(`No global MCP server named "${input.name}" to override`);
+    }
+  }
   await assertWritable(input.scope, input.cwd, agentDir);
   const { config } = await loadModules();
   config.updateMcpServerConfig(mcpConfigPath(input.scope, input.cwd, agentDir), input.name, {
     ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     ...(input.exposure !== undefined ? { exposure: input.exposure } : {}),
-  });
+  }, input.override ? { override: true } : {});
+  // An override may have just created the project mcp.json: record trust like saveMcpServer.
+  if (input.override && input.cwd) trustProject(input.cwd, agentDir);
 }
 
 export async function removeMcpServer(

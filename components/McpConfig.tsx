@@ -122,6 +122,7 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
     const lines = [server.transport];
     if (/\/sse\/?(\?|$)/.test(server.transport)) lines.push(t("mcp.sseHint"));
     if (server.overridden) lines.push(t("mcp.overridden"));
+    if (server.projectOverride) lines.push(t("mcp.projectOverride"));
     const report = reports.get(serverKey(server));
     if (report) lines.push(reportText(report));
     return lines.join("\n");
@@ -219,8 +220,13 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
         >
           {mcpBuiltin && !mcpBuiltin.enabled && <p className="settings-row-message is-warning">{t("mcp.builtinOff")}</p>}
           {settings.servers.length === 0 && !draft && <p className="settings-row-message">{t("mcp.empty")}</p>}
-          {settings.servers.map((server) => (
-            draft?.previous && serverKey(draft.previous) === serverKey(server) ? <div key={serverKey(server)}>{form}</div> : (
+          {settings.servers.map((server) => {
+            // A project override takes the switches; the global entry itself stays editable.
+            const target = server.projectOverride
+              ? { scope: "project" as const, name: server.name, override: true }
+              : { scope: server.scope, name: server.name };
+            const canOverride = server.scope === "global" && !server.overridden && settings.project?.trusted === true;
+            return draft?.previous && serverKey(draft.previous) === serverKey(server) ? <div key={serverKey(server)}>{form}</div> : (
               <SettingsRow
                 key={serverKey(server)}
                 stacked
@@ -242,26 +248,38 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
                   >
                     {t("i18n.edit")}
                   </ConfigButton>
+                  {canOverride && (
+                    <ConfigButton
+                      size="small"
+                      variant="ghost"
+                      disabled={saving}
+                      onClick={() => void run(() => server.projectOverride
+                        ? request("DELETE", { scope: "project", name: server.name })
+                        : request("PATCH", { scope: "project", name: server.name, override: true, enabled: !server.enabled }))}
+                    >
+                      {server.projectOverride ? t("mcp.resetInProject") : server.enabled ? t("mcp.disableInProject") : t("mcp.enableInProject")}
+                    </ConfigButton>
+                  )}
                 </span>
-                {server.scope === "project" && <span className="settings-row-status">{t("project.tag.override")}</span>}
+                {(server.scope === "project" || server.projectOverride) && <span className="settings-row-status">{t("project.tag.override")}</span>}
                 <Select
                   className="select-trigger settings-select"
                   ariaLabel={t("mcp.exposure")}
                   align="end"
                   value={server.exposure}
                   disabled={saving}
-                  onChange={(exposure) => void run(() => request("PATCH", { scope: server.scope, name: server.name, exposure }))}
+                  onChange={(exposure) => void run(() => request("PATCH", { ...target, exposure }))}
                   options={EXPOSURES.map((value) => ({ value, label: t(`mcp.exposure.${value}`) }))}
                 />
                 <ConfigSwitch
                   checked={server.enabled}
                   disabled={saving}
                   label={server.name}
-                  onChange={(enabled) => void run(() => request("PATCH", { scope: server.scope, name: server.name, enabled }))}
+                  onChange={(enabled) => void run(() => request("PATCH", { ...target, enabled }))}
                 />
               </SettingsRow>
-            )
-          ))}
+            );
+          })}
           {draft && !draft.previous && form}
           {settings.errors.concat(check?.errors ?? []).map((message) => (
             <p key={message} role="alert" className="settings-row-message is-error">{message}</p>

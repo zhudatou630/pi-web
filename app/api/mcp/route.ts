@@ -71,7 +71,8 @@ export async function PUT(req: Request) {
   }
 }
 
-// PATCH /api/mcp { cwd?, scope, name, enabled?, exposure? } — the switches pi's /mcp manager changes.
+// PATCH /api/mcp { cwd?, scope, name, enabled?, exposure?, override? } — the switches pi's /mcp manager changes.
+// `override: true` (project scope) writes a project override of the global server instead.
 // PATCH /api/mcp { cwd?, builtin, enabled } — load a built-in extension globally (`-builtin:<name>`).
 export async function PATCH(req: Request) {
   try {
@@ -99,6 +100,7 @@ export async function PATCH(req: Request) {
       name: body.name,
       ...(body.enabled !== undefined ? { enabled: body.enabled as boolean } : {}),
       ...(body.exposure !== undefined ? { exposure: body.exposure as McpExposure } : {}),
+      ...(body.override === true ? { override: true } : {}),
     });
     return NextResponse.json(await readMcpSettings(cwd));
   } catch (error) {

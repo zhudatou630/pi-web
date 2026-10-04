@@ -259,6 +259,11 @@ export interface McpServerView {
   transport: string;
   /** A global entry replaced by a project entry of the same name. */
   overridden?: boolean;
+  /**
+   * A global entry whose `enabled`/`exposure` the project's mcp.json overrides (an entry without
+   * command/url, pi 1.0.1+). `enabled`/`exposure` are the effective values; changes go to the override.
+   */
+  projectOverride?: boolean;
 }
 
 export interface McpSettingsResponse {
