@@ -66,7 +66,7 @@ function resolveTheme(preference: ThemePreference): ResolvedTheme {
 // Match --bg-panel so the PWA status bar blends into the workspace header.
 const THEME_COLOR: Record<ThemePalette, Record<ResolvedTheme, string>> = {
   default: { light: "#f5f5f5", dark: "#242424" },
-  claude: { light: "#fafaf4", dark: "#191917" },
+  claude: { light: "#fafaf4", dark: "#191918" },
 };
 
 function applyThemeColor(palette: ThemePalette, theme: ResolvedTheme): void {

@@ -36,12 +36,12 @@ export const claudeCodeStyle: PrismStyle = Object.fromEntries(
 // literals, sand functions, muted teal types; identifiers (VS Code's light
 // blue) fall back to the base ink to keep dense code calm.
 const DARK_COLORS: Record<string, string> = {
-  "#d4d4d4": "#d9d5c9", "#9cdcfe": "#d9d5c9",
+  "#d4d4d4": "#d8d7d2", "#9cdcfe": "#d8d7d2",
   "#569cd6": "#e08a6d", "#c586c0": "#e08a6d", "#db4c69": "#e08a6d",
   "#ce9178": "#b3c78f", "#b5cea8": "#e0b36a", "#d7ba7d": "#e0b36a",
   "#dcdcaa": "#e6d3a3", "#4ec9b0": "#7fb8ad", "#d16969": "#e86b6b",
-  "#6a9955": "#9c9991", "#808080": "#9c9991",
-  "#1e1e1e": "#262623", "#264f78": "#5a3a2e",
+  "#6a9955": "#9a9994", "#808080": "#9a9994",
+  "#1e1e1e": "#252524", "#264f78": "#5a3a2e",
 };
 
 export const claudeDarkCodeStyle: PrismStyle = Object.fromEntries(
@@ -68,16 +68,16 @@ export const claudeMermaidVariables = {
 
 export const claudeDarkMermaidVariables = {
   darkMode: true,
-  background: "#20201d",
-  primaryColor: "#2e2d2a",
-  primaryTextColor: "#e6e1d4",
-  primaryBorderColor: "#4d4b46",
+  background: "#1f1f1e",
+  primaryColor: "#2e2e2c",
+  primaryTextColor: "#e3e2de",
+  primaryBorderColor: "#4b4b48",
   secondaryColor: "#3d2e27",
-  tertiaryColor: "#262623",
-  lineColor: "#98968d",
-  edgeLabelBackground: "#20201d",
-  textColor: "#e6e1d4",
+  tertiaryColor: "#252524",
+  lineColor: "#979691",
+  edgeLabelBackground: "#1f1f1e",
+  textColor: "#e3e2de",
   noteBkgColor: "#33291c",
   noteBorderColor: "#6b5a3a",
-  noteTextColor: "#e6e1d4",
+  noteTextColor: "#e3e2de",
 };

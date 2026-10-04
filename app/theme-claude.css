@@ -37,41 +37,43 @@ html[data-theme="claude"] {
    about as deep as Omarchy's dark themes (e.g. Tokyo Night #1a1b26) so it sits
    calmly next to them. Claude Desktop's near-black #111111 with #f8f7f4 ink
    measured ~17.6:1 and glared on long reads.
-   Surfaces are one hue family, claude.ai's paper-olive hsl(48, ~5%, L), so
-   the warmth reads as paper rather than brown; only lightness changes:
-   sidebar 9.4% #191917, canvas 12% #20201d, floating surfaces (dialogs,
-   menus, tool output, code) 14.4% #262623, user bubble and hover 16%
-   #2b2a27, selected rows 20.5% #363632. Ink is cream hsl(46 26% 86%)
-   #e6e1d4 (~13.5:1); secondary #bbb8ac and metadata #98968d keep the app's
-   ~9:1 and ~6:1 tiers. Nothing turns pure white, not even hovered controls.
+   Surfaces are one hue family, claude.ai's paper-olive hue at only ~2%
+   saturation, hsl(48, 2%, L): enough to read as paper, close enough to
+   neutral that it sits beside neutral-grey desktops (Omarchy mac-dark
+   #1e1e1e/#191919) without looking yellow. Only lightness changes:
+   sidebar 9.6% #191918, canvas 12% #1f1f1e, floating surfaces (dialogs,
+   menus, tool output, code) 14.3% #252524, user bubble and hover 16%
+   #2a2928, selected rows 20.4% #353533. Ink is a soft off-white
+   hsl(45 8% 88%) #e3e2de (~13.6:1), not cream; secondary #b9b7b1 and
+   metadata #979691 keep the app's ~9:1 and ~6:1 tiers. Nothing turns pure white, not even hovered controls.
    Clay accent #d97757 and shape stay as before. */
 html[data-theme="claude"].dark {
-  --bg: #20201d;
-  --bg-panel: #191917;
-  --bg-hover: #2b2a27;
-  --bg-selected: #363632;
-  --border: #33322e;
-  --text: #e6e1d4;
-  --text-muted: #bbb8ac;
-  --text-dim: #98968d;
+  --bg: #1f1f1e;
+  --bg-panel: #191918;
+  --bg-hover: #2a2928;
+  --bg-selected: #353533;
+  --border: #31312f;
+  --text: #e3e2de;
+  --text-muted: #b9b7b1;
+  --text-dim: #979691;
   --accent: #d97757;
   --accent-hover: #e08a6d;
   --accent-contrast: #141413;
   --danger: #e07070;
   --warning: #d9a54e;
   --success: #8fb573;
-  --user-bg: #2b2a27;
-  --assistant-bg: #20201d;
-  --bg-elevated: #262623;
+  --user-bg: #2a2928;
+  --assistant-bg: #1f1f1e;
+  --bg-elevated: #252524;
   /* Dim the app behind settings so the lifted dialog reads. */
   --settings-scrim: rgba(0,0,0,0.5);
-  --tool-bg: #262623;
+  --tool-bg: #252524;
   --bg-subtle: rgba(255,255,255,0.03);
-  --control-on-hover: #f3f0e8;
+  --control-on-hover: #f0efeb;
   --primary: var(--accent);
   --primary-hover: var(--accent-hover);
   --primary-contrast: #ffffff;
-  --switch-track-off: #45443f;
-  --segmented-track: #2b2a27;
-  --segmented-thumb: #41403c;
+  --switch-track-off: #444442;
+  --segmented-track: #2a2928;
+  --segmented-thumb: #40403e;
 }
