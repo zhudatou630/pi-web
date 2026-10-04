@@ -117,6 +117,24 @@ test("unclosed display math does not swallow later headings", () => {
   assert.doesNotMatch(html, /katex-error/);
 });
 
+test("renders a multiline formula whose operators sit on their own lines", () => {
+  const html = renderMarkdown(String.raw`$$
+\Delta_{\mathrm{auth}}
+=
+\beta_0^\star(\alpha)
+-
+\beta_{\mathrm{WG}}^\star(\alpha,\epsilon_{\mathrm{pay}}).
+$$
+
+- after`);
+
+  assert.match(html, /class="katex-display"/);
+  assert.match(html, /<li>after<\/li>/);
+  assert.doesNotMatch(html, /<h1/);
+  assert.doesNotMatch(html, /<h2/);
+  assert.doesNotMatch(html, /katex-error/);
+});
+
 test("nested list display math still renders", () => {
   const html = renderMarkdown("1. item\n   - nested\n     $$a + b$$\n2. next");
 
