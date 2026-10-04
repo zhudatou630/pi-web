@@ -572,24 +572,61 @@ html.dark {
   right: -16px;
 }
 
-/* Segmented meter: 4px cells (3 + 1 gap) cut out of a track and its fill by one shared mask.
-   The fill snaps up to whole cells, so any non-zero usage shows at least one. */
+/* Cell meter (components/ContextMeter.tsx): a canvas drawn in device pixels, so cells stay
+   even at fractional scales. Colors come from the cascade around it. */
 .session-stats-meter {
+  display: block;
+  width: 100%;
   height: 8px;
-  background: var(--border);
-  -webkit-mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 4px);
-  mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 4px);
 }
 
-.session-stats-meter-fill {
-  width: var(--pct);
-  height: 100%;
-  background: var(--fill);
-  transition: width 0.3s ease;
+.session-stats-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  column-gap: 16px;
+  margin-top: 8px;
+  line-height: 20px;
 }
 
-@supports (width: round(up, 1%, 4px)) {
-  .session-stats-meter-fill { width: round(up, var(--pct), 4px); }
+@container (max-width: 300px) {
+  .session-stats-breakdown {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-flow: row;
+  }
+}
+
+.session-stats-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--ui-radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.session-stats-breakdown-row .session-stats-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button.session-stats-breakdown-row {
+  cursor: pointer;
+}
+
+button.session-stats-breakdown-row:hover,
+button.session-stats-breakdown-row:focus-visible {
+  background: var(--bg-hover);
 }
 
 .session-stats-note {

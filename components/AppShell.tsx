@@ -26,6 +26,7 @@ import {
   type ChatTabItem,
 } from "@/lib/chat-tab-state";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
+import type { ContextBreakdown } from "@/lib/context-breakdown";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { getAdjacentTabId, openFileTab, saveFileViewerState } from "./file-tab-state";
@@ -39,6 +40,7 @@ import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
 import { SystemPromptPanel } from "./SystemPromptPanel";
 import { ToolDefinitionsDialog } from "./ToolDefinitionsPanel";
 import { AgentSessionPanel } from "./AgentSessionPanel";
+import { ContextMeter } from "./ContextMeter";
 import { TerminalPanel } from "./TerminalPanel";
 import { newTerminalTab, restoreTerminalTabs, TERMINAL_TABS_KEY, type TerminalTab } from "./terminal-tab-state";
 import { useI18n } from "@/hooks/useI18n";
@@ -612,6 +614,28 @@ export function AppShell() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [subagentUsageRootId, subagentUsageKey]);
+  // Context composition, fetched only while the session panel is open. The last result per
+  // session is kept so reopening shows segments at once while a refresh runs.
+  const contextBreakdownCacheRef = useRef<Map<string, ContextBreakdown>>(new Map());
+  const [contextBreakdown, setContextBreakdown] = useState<{ sessionId: string; value: ContextBreakdown } | null>(null);
+  const contextBreakdownSessionId = activeTopPanel === "session" ? selectedSession?.id ?? null : null;
+  // Reported usage changes once per model response, which is when the composition changes too.
+  const contextBreakdownKey = contextUsage?.tokens ?? null;
+  useEffect(() => {
+    if (!contextBreakdownSessionId) return;
+    const cached = contextBreakdownCacheRef.current.get(contextBreakdownSessionId);
+    if (cached) setContextBreakdown({ sessionId: contextBreakdownSessionId, value: cached });
+    let cancelled = false;
+    void fetch(`/api/sessions/${encodeURIComponent(contextBreakdownSessionId)}/context-breakdown`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((value: ContextBreakdown | null) => {
+        if (!value) return;
+        contextBreakdownCacheRef.current.set(contextBreakdownSessionId, value);
+        if (!cancelled) setContextBreakdown({ sessionId: contextBreakdownSessionId, value });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [contextBreakdownSessionId, contextBreakdownKey]);
   const [outlineView, setOutlineView] = useState<MobileOutlineView | null>(null);
   // `bottom` (distance from the viewport bottom) replaces `top` for panels that open upward.
   const [topPanelPos, setTopPanelPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
@@ -2813,6 +2837,23 @@ export function AppShell() {
                     const barColor = isHigh ? "var(--danger)" : isWarning ? "var(--warning)" : "var(--accent)";
                     const remaining = ctx?.tokens != null && ctx.contextWindow ? Math.max(0, ctx.contextWindow - ctx.tokens) : null;
 
+                    // Estimated composition, scaled so the parts add up to the reported total.
+                    // Listed under the meter only: one-color shades on the meter were too close to read.
+                    // Column-major 2×2: fixed overhead left, what grows with work right. All four stay
+                    // so the grid never reflows; a session without a recorded prompt shows "—".
+                    const breakdown = contextBreakdown?.sessionId === sessionStats.sessionId ? contextBreakdown.value : null;
+                    const breakdownParts = breakdown ? ([
+                      ["systemPrompt", "system.prompt", breakdown.systemPrompt, "system"],
+                      ["tools", "session.contextTools", breakdown.tools, "tools"],
+                      ["conversation", "session.contextConversation", breakdown.conversation, null],
+                      ["toolResults", "session.contextToolResults", breakdown.toolResults, null],
+                    ] as const) : [];
+                    const estimatedTotal = breakdownParts.reduce((sum, part) => sum + part[2], 0);
+                    const reported = ctx?.tokens ?? null;
+                    const breakdownRows = estimatedTotal > 0 ? breakdownParts.map(([key, labelKey, estimate, dialog]) => (
+                      { key, labelKey, dialog: estimate > 0 ? dialog : null, tokens: estimate > 0 ? (reported !== null ? (estimate / estimatedTotal) * reported : estimate) : null }
+                    )) : [];
+
                     // Used / window, headroom and percent all sit in the heading row; the bar is the only other line.
                     const activeContextBlock = ctx?.contextWindow ? section(
                       translate("session.activeContext"),
@@ -2828,9 +2869,39 @@ export function AppShell() {
                         )}
                       </span>,
                       <>
-                        <div className="session-stats-meter" style={{ "--pct": `${clampedPct}%`, "--fill": barColor } as React.CSSProperties}>
-                          <div className="session-stats-meter-fill" />
-                        </div>
+                        <ContextMeter
+                          percent={clampedPct}
+                          fill={barColor}
+                          label={translate("session.activeContext")}
+                        />
+                        {breakdownRows.length > 0 && (
+                          <div className="session-stats-breakdown">
+                            {breakdownRows.map((segment) => {
+                              const content = (
+                                <>
+                                  <span className="session-stats-label">{translate(segment.labelKey)}</span>
+                                  <span className="session-stats-num">
+                                    {segment.tokens === null ? "—" : `${reported === null ? "~" : ""}${formatTokensK(Math.round(segment.tokens), locale)}`}
+                                  </span>
+                                </>
+                              );
+                              const dialog = segment.dialog;
+                              return dialog ? (
+                                <button
+                                  key={segment.key}
+                                  type="button"
+                                  className="session-stats-breakdown-row"
+                                  title={translate(dialog === "system" ? "system.prompt" : "tools.title")}
+                                  onClick={() => void openInfoDialog(dialog)}
+                                >
+                                  {content}
+                                </button>
+                              ) : (
+                                <div key={segment.key} className="session-stats-breakdown-row">{content}</div>
+                              );
+                            })}
+                          </div>
+                        )}
                         {isHigh && (
                           <div className="session-stats-note" style={{ color: "var(--danger)" }}>
                             {translate("chat.contextHighWarning")}
