@@ -484,6 +484,9 @@ export function AppShell() {
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyExporting, setHistoryExporting] = useState(false);
   const [historyExportError, setHistoryExportError] = useState<string | null>(null);
+  const [sessionForkError, setSessionForkError] = useState<string | null>(null);
+  const [forkingSessionId, setForkingSessionId] = useState<string | null>(null);
+  const forkingSessionIdRef = useRef<string | null>(null);
   const branchLeafChangeFnRef = useRef<((leafId: string | null, anchorEntryId?: string) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
 
@@ -1343,16 +1346,26 @@ export function AppShell() {
     setExplorerRefreshKey((k) => k + 1);
   }, []);
 
-  const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null) => {
+  const handleSessionForked = useCallback((
+    newSessionId: string,
+    sourceSessionId?: string | null,
+    options?: { focus?: boolean; source?: SessionInfo | null },
+  ) => {
     const sourceTab = chatTabsRef.current.find((tab) => tab.id === (sourceSessionId ?? selectedSession?.id));
-    const sourceSession = sourceSessionId ? sourceTab?.session : selectedSession;
-    const pane = isSplitActiveRef.current && sourceTab ? chatTabPane(sourceTab) : "primary";
+    const sourceSession = options?.source ?? (sourceSessionId ? sourceTab?.session : selectedSession);
+    const pane = sourceTab
+      ? (isSplitActiveRef.current ? chatTabPane(sourceTab) : "primary")
+      : (isSplitActiveRef.current ? activeChatPaneRef.current : "primary");
     const forkedSession: SessionInfo = {
       ...(sourceSession ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
       transient: false,
+      ...(sourceSession?.id ? {
+        parentSessionId: sourceSession.id,
+        relation: { kind: "fork" as const, originSessionId: sourceSession.id },
+      } : { relation: { kind: "fork" as const } }),
     };
-    const shouldFocus = !sourceSessionId || activeSessionIdRef.current === sourceSessionId;
+    const shouldFocus = options?.focus ?? (!sourceSessionId || activeSessionIdRef.current === sourceSessionId);
 
     setRefreshKey((k) => k + 1);
     setChatTabs((prev) => openSessionInNewTab(prev, forkedSession, pane).tabs);
@@ -1368,6 +1381,37 @@ export function AppShell() {
     setActiveChatPane(pane);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [hydrateSelectedSession, router, selectedSession]);
+
+  const forkExistingSession = useCallback(async (session: SessionInfo) => {
+    if (!session.id || session.transient) throw new Error(translate("history.unsaved"));
+    if (session.relation?.kind === "subagent") throw new Error(translate("session.forkSubagent"));
+    if (runningSessionIds.has(session.id)) throw new Error(translate("session.forkRunning"));
+    if (forkingSessionIdRef.current) throw new Error(translate("session.forking"));
+    forkingSessionIdRef.current = session.id;
+    setForkingSessionId(session.id);
+    try {
+      const leafId = session.id === selectedSession?.id
+        ? branchActiveLeafId
+        : branchDataCacheRef.current.get(session.id)?.activeLeafId ?? null;
+      const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}/fork`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(leafId ? { leafId } : {}),
+      });
+      const body = await response.json().catch(() => ({})) as { sessionId?: string; error?: string; code?: string };
+      if (!response.ok || !body.sessionId) {
+        if (body.code === "busy") throw new Error(translate("session.forkRunning"));
+        if (body.code === "empty") throw new Error(translate("session.forkEmpty"));
+        if (body.code === "subagent") throw new Error(translate("session.forkSubagent"));
+        throw new Error(translate("session.forkFailed", { error: body.error || `HTTP ${response.status}` }));
+      }
+      setChatTabs((tabs) => pinSessionTab(tabs, session.id));
+      handleSessionForked(body.sessionId, session.id, { focus: true, source: session });
+    } finally {
+      if (forkingSessionIdRef.current === session.id) forkingSessionIdRef.current = null;
+      setForkingSessionId((current) => current === session.id ? null : current);
+    }
+  }, [branchActiveLeafId, handleSessionForked, runningSessionIds, selectedSession?.id, translate]);
 
   const handleAskInNewChat = useCallback(async (
     prompt: string,
@@ -1982,6 +2026,7 @@ export function AppShell() {
       infoRequestRef.current += 1; // cancels a pending open
       setInfoPending(null);
       setHistoryExportError(null);
+      setSessionForkError(null);
     }
     setHistoryMenuOpen(open);
   }, []);
@@ -2107,6 +2152,7 @@ export function AppShell() {
         selectedSessionId={selectedSession?.id ?? null}
         onSelectSession={handleSelectSession}
         onOpenSessionInNewTab={handlePinSession}
+        onForkSession={forkExistingSession}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
@@ -2361,9 +2407,11 @@ export function AppShell() {
           mobile={mobile}
           infoDisabled={toolsUnavailable}
           historyDisabled={!session}
+          forkDisabled={!session || Boolean(session.transient) || session.relation?.kind === "subagent" || runningSessionIds.has(session.id)}
+          forking={Boolean(session && forkingSessionId === session.id)}
           menuOpen={interactive && historyMenuOpen}
           exporting={historyExporting}
-          error={historyExportError}
+          error={sessionForkError ?? historyExportError}
           labels={{
             tools: translate("tools.title"),
             system: translate("system.prompt"),
@@ -2372,11 +2420,30 @@ export function AppShell() {
             menu: translate("session.moreActions"),
             exportMarkdown: translate("history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
+            fork: translate("session.fork"),
+            forking: translate("session.forking"),
+            forkTitle: !session || session.transient
+              ? translate("history.unsaved")
+              : session.relation?.kind === "subagent"
+                ? translate("session.forkSubagent")
+                : runningSessionIds.has(session.id)
+                  ? translate("session.forkRunning")
+                  : translate("session.forkTitle"),
           }}
           onMenuOpenChange={handleHistoryMenuOpenChange}
           infoPending={infoPending}
           onOpenTools={() => void openInfoDialog("tools")}
           onOpenSystem={() => void openInfoDialog("system")}
+          onForkSession={() => {
+            if (!session) return;
+            setSessionForkError(null);
+            setHistoryExportError(null);
+            void forkExistingSession(session).then(() => {
+              handleHistoryMenuOpenChange(false);
+            }).catch((error: unknown) => {
+              setSessionForkError(error instanceof Error ? error.message : String(error));
+            });
+          }}
           onViewFullHistory={() => {
             handleViewFullHistory();
           }}

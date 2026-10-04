@@ -168,6 +168,8 @@ test("right-click and mobile long-press open one session menu with every row act
   assert.match(sessionItemSource, /if \(!handled\) onOpenMenu\?\.\(e\.clientX, e\.clientY\)/);
   assert.match(sessionItemSource, /t\("chatTabs\.openInNewTab"\)/);
   assert.match(sessionItemSource, /t\(isPinned \? "sidebar\.unpinSession" : "sidebar\.pinSession"\)/);
+  assert.match(sessionItemSource, /t\("session\.fork"\)/);
+  assert.match(sessionItemSource, /disabled=\{forkDisabled \|\| forking\}/);
   assert.match(sessionItemSource, /menuItem\(startRename\)/);
   assert.match(sessionItemSource, /onRequestDelete\?\.\(menuAt\.x, menuAt\.y\)/);
   assert.match(source, /setSessionMenu\(null\)/);

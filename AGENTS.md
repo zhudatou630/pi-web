@@ -66,7 +66,7 @@ Browser                Next.js Server              AgentSession (in-process)
 `AgentSession.fork()` mutates the wrapper in place: afterwards `inner.sessionId` is the *new* id. Left in the registry under the old id, the next request gets forked state and later forks corrupt the `parentSession` chain. `send("fork")` captures `newSessionId`, then calls `this.destroy()`.
 
 ### Two kinds of branching
-- **Fork** (user message Fork button): new `.jsonl` file, shown as a sidebar child via the `parentSession` header field. `parentSession` is display metadata only, so rewriting the whole file (cascade-reparenting on delete) is safe.
+- **Fork** (new `.jsonl`; `parentSession` is display metadata only, so rewriting the whole file on delete is safe). The user-message button forks *before* that message. `⋯` / sidebar Fork session and `POST /api/sessions/[id]/fork` copy the viewed branch *through* the leaf (`lib/session-fork.ts` opens a fresh `SessionManager`; never call `createBranchedSession` on a live wrapper). Forks stay top-level in the sidebar.
 - **In-session branch** (Continue / BranchNavigator): `navigate_tree` within the same file; siblings share `parentId`; switching loads `/api/sessions/[id]/context?leafId=`.
 
 ### ToolCall field normalization

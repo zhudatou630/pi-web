@@ -1773,6 +1773,15 @@ export function getRpcSession(sessionId: string): AgentSessionWrapper | undefine
   return getRegistry().get(sessionId);
 }
 
+/** True while this process owns the session file: starting, running, queued, or reserved. */
+export function isRpcSessionForkBlocked(sessionId: string): boolean {
+  if (getLocks().has(sessionId) || getSessionFileMutations().has(sessionId)) return true;
+  const wrapper = getRegistry().get(sessionId);
+  if (!wrapper?.isAlive()) return false;
+  const pending = wrapper.inner?.pendingMessageCount ?? 0;
+  return wrapper.isBusyForFileMutation() || pending > 0;
+}
+
 /**
  * Drop an idle wrapper whose session file was written by another process, so the
  * next read rebuilds it from disk.

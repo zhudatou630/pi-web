@@ -13,7 +13,7 @@ test("session menu is one icon button opening a dropdown of info and history act
 });
 
 test("menu lists tools, system prompt, a divider, then history and export", () => {
-  const order = ["labels.tools", "labels.system", 'role="separator"', "labels.full", "labels.exportMarkdown"]
+  const order = ["labels.tools", "labels.system", 'role="separator"', "labels.fork", "labels.full", "labels.exportMarkdown"]
     .map((needle) => source.indexOf(needle, source.indexOf('role="menu"')));
   assert.ok(order.every((index) => index >= 0));
   assert.deepEqual(order, [...order].sort((a, b) => a - b));

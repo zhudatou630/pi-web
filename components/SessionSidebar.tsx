@@ -124,6 +124,8 @@ interface Props {
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
   onOpenSessionInNewTab?: (session: SessionInfo) => void;
+  /** Copy this saved session into a new one. Rejected errors are already translated. */
+  onForkSession?: (session: SessionInfo) => Promise<void>;
   onNewSession?: (sessionId: string, cwd: string) => void;
   initialSessionId?: string | null;
   skipInitialProjectSelection?: boolean;
@@ -295,7 +297,7 @@ function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
+export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onForkSession, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -364,6 +366,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [deletingProjectKey, setDeletingProjectKey] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deleteProjectError, setDeleteProjectError] = useState<string | null>(null);
+  const [forkingSessionId, setForkingSessionId] = useState<string | null>(null);
+  const [forkError, setForkError] = useState<string | null>(null);
   const workspaceLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const workspaceTouchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const workspaceLongPressTriggeredRef = useRef(false);
@@ -1094,6 +1098,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     }
   }, [loadSessions, onSessionDeleted]);
 
+  const forkSession = useCallback(async (session: SessionInfo) => {
+    if (!onForkSession || forkingSessionId) return;
+    setForkError(null);
+    setForkingSessionId(session.id);
+    try {
+      await onForkSession(session);
+    } catch (error) {
+      setForkError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setForkingSessionId((current) => current === session.id ? null : current);
+    }
+  }, [forkingSessionId, onForkSession]);
+
   const showWorktreeSwitcher = Boolean(
     worktreeState?.isGit
     && worktreeState.isTopLevel
@@ -1468,6 +1485,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           pendingDelete={deleteConfirm?.kind === "session" && deleteConfirm.id === family.root.id}
           deleting={deletingSessionId === family.root.id}
           onRequestDelete={(x, y) => setDeleteConfirm({ kind: "session", id: family.root.id, x, y })}
+          onForkSession={onForkSession ? () => { void forkSession(family.root); } : undefined}
+          forkDisabled={runningSessionIds.has(family.root.id) || Boolean(family.root.transient)}
+          forking={forkingSessionId === family.root.id}
         />
       </div>
     );
@@ -1785,6 +1805,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             {t("sidebar.deleteProjectSessionsFailed", { error: deleteProjectError })}
           </div>
         )}
+        {forkError && (
+          <div role="alert" onClick={() => setForkError(null)} style={{ padding: "6px 14px", color: "var(--danger)", fontSize: 12, cursor: "pointer" }}>
+            {forkError}
+          </div>
+        )}
         {!loading && !error && !showSelectProjectPrompt && workspaceProjects.length === 0 && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>{t("sidebar.noSessions")}</div>
         )}
@@ -2098,6 +2123,9 @@ export function SessionItem({
   pendingDelete = false,
   deleting = false,
   onRequestDelete,
+  onForkSession,
+  forkDisabled = false,
+  forking = false,
   indent = 0,
   depth = 0,
   hasChildren = false,
@@ -2122,6 +2150,9 @@ export function SessionItem({
   pendingDelete?: boolean;
   deleting?: boolean;
   onRequestDelete?: (x: number, y: number) => void;
+  onForkSession?: () => void;
+  forkDisabled?: boolean;
+  forking?: boolean;
   indent?: number;
   depth?: number;
   hasChildren?: boolean;
@@ -2475,7 +2506,7 @@ export function SessionItem({
         className="project-context-menu menu-surface"
         style={{
           left: Math.min(menuAt.x + 2, window.innerWidth - 168),
-          top: Math.min(menuAt.y + 2, window.innerHeight - 128),
+          top: Math.min(menuAt.y + 2, window.innerHeight - 196),
         }}
       >
         {onOpenInNewTab && (
@@ -2488,6 +2519,18 @@ export function SessionItem({
           <button type="button" role="menuitem" onClick={menuItem(onTogglePin)}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
             {t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
+          </button>
+        )}
+        {onForkSession && (
+          <button
+            type="button"
+            role="menuitem"
+            disabled={forkDisabled || forking}
+            title={forking ? t("session.forking") : forkDisabled ? (session.transient ? t("history.unsaved") : t("session.forkRunning")) : t("session.forkTitle")}
+            onClick={menuItem(onForkSession)}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" /></svg>
+            {forking ? t("session.forking") : t("session.fork")}
           </button>
         )}
         <button type="button" role="menuitem" onClick={menuItem(startRename)}>

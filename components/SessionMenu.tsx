@@ -11,6 +11,9 @@ type Props = {
   infoDisabled: boolean;
   /** Full history and export need a saved session. */
   historyDisabled: boolean;
+  /** Fork needs a saved, idle, non-subagent session. */
+  forkDisabled: boolean;
+  forking?: boolean;
   /** The info item whose data is still loading: it shows a spinner and the menu stays open. */
   infoPending?: "tools" | "system" | null;
   menuOpen: boolean;
@@ -24,9 +27,13 @@ type Props = {
     menu: string;
     exportMarkdown: string;
     exportMarkdownTitle: string;
+    fork: string;
+    forkTitle: string;
+    forking: string;
   };
   onOpenTools: () => void;
   onOpenSystem: () => void;
+  onForkSession: () => void;
   onViewFullHistory: () => void;
   onExportMarkdown: () => void;
   onMenuOpenChange: (open: boolean) => void;
@@ -36,6 +43,8 @@ export function SessionMenu({
   mobile,
   infoDisabled,
   historyDisabled,
+  forkDisabled,
+  forking = false,
   infoPending = null,
   menuOpen,
   exporting = false,
@@ -43,6 +52,7 @@ export function SessionMenu({
   labels,
   onOpenTools,
   onOpenSystem,
+  onForkSession,
   onViewFullHistory,
   onExportMarkdown,
   onMenuOpenChange,
@@ -189,6 +199,29 @@ export function SessionMenu({
             )}
           </button>
           <div role="separator" style={{ height: 1, margin: "4px 0", background: "var(--border)" }} />
+          <button
+            type="button"
+            role="menuitem"
+            disabled={forkDisabled || forking}
+            title={labels.forkTitle}
+            onClick={onForkSession}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-hidden="true">
+              <line x1="6" y1="3" x2="6" y2="15" />
+              <circle cx="18" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <path d="M18 9a9 9 0 0 1-9 9" />
+            </svg>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {forking ? labels.forking : labels.fork}
+            </span>
+            {forking && (
+              <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ marginLeft: 6, flexShrink: 0 }} aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.2" opacity="0.25" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            )}
+          </button>
           <button
             type="button"
             role="menuitem"
