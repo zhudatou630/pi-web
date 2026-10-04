@@ -312,13 +312,41 @@ function isDisplayMathOpeningLine(line: string): boolean {
 }
 
 function isDisplayMathBlockBoundary(line: string): boolean {
-  return (
+  if (
     /^ {0,3}(`{3,}|~{3,})/.test(line) ||
-    /^[ \t]*(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)/.test(line) ||
     /^ {0,3}#{1,6}(?:[ \t]+|$)/.test(line) ||
-    /^ {0,3}>/.test(line) ||
     /<(code|pre|script|style)\b/i.test(line)
+  ) {
+    return true;
+  }
+  // Models pretty-print equations with `+`, `-`, or `*` on their own line, and
+  // with a leading `>` inside cases. Those lines match list/blockquote markers,
+  // but they are still formula text. A prose item (`- second`) must still stop
+  // the scan so a later sibling cannot close this block.
+  if (isMathShapedDelimiterLine(line)) return false;
+  return (
+    /^[ \t]*(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)/.test(line) ||
+    /^ {0,3}>/.test(line)
   );
+}
+
+function isMathShapedDelimiterLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (/^[-+*]$/.test(trimmed)) return true;
+
+  const marked = trimmed.match(/^(?:[-+*]|\d{1,9}[.)])[ \t]*(.*)$/);
+  if (marked) return isMathOperand(marked[1]);
+
+  const quoted = trimmed.match(/^>(.*)$/);
+  if (quoted) return isMathOperand(quoted[1].trim());
+  return false;
+}
+
+function isMathOperand(rest: string): boolean {
+  if (!rest || /[\u3400-\u9fff]/.test(rest)) return false;
+  // A list item can contain inline math and then prose: `- $x$ is the gain`.
+  if (/\$[^$\n]+\$\s*[A-Za-z]/.test(rest)) return false;
+  return /^\\[A-Za-z]+|^[0-9({[^_=<>|\\+-]|^[A-Za-z](?:_|\^|\{)/.test(rest);
 }
 
 function indentDisplayMathContent(line: string, indent: string): string {
