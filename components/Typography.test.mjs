@@ -63,9 +63,7 @@ test("text tiers hit the same contrast targets in light and dark themes", async 
     const panel = token(body, "bg-panel");
     const at = (name) => ratio(token(body, name), panel);
     assert.ok(at("text") >= 12, `${selector} --text ${at("text")}`);
-    // Claude dark follows Claude Desktop's measured secondary tier (~11:1).
-    const [mutedLo, mutedHi] = selector.includes("claude") && selector.endsWith("dark") ? [10.5, 12] : [8.5, 9.5];
-    assert.ok(at("text-muted") >= mutedLo && at("text-muted") <= mutedHi, `${selector} --text-muted ${at("text-muted")}`);
+    assert.ok(at("text-muted") >= 8.5 && at("text-muted") <= 9.5, `${selector} --text-muted ${at("text-muted")}`);
     assert.ok(at("text-dim") >= 5.5 && at("text-dim") <= 6.5, `${selector} --text-dim ${at("text-dim")}`);
   }
 });

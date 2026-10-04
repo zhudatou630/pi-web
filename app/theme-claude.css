@@ -33,42 +33,45 @@ html[data-theme="claude"] {
   --segmented-thumb: #ffffff;
 }
 
-/* Claude dark: sampled from Claude Desktop's dark window, a near-neutral
-   black rather than claude.ai's older warm charcoal: sidebar #111111, main
-   #151515, hairline #232323, user bubble #212121, composer #20201f with a
-   #363635 edge. Depth reads as lightness: dialogs and menus float at
-   #1a1a19, selected rows #343434-#383838, segmented #262625/#3c3c3b. Text is
-   two strong tiers and a quiet one, as Claude Desktop draws it: ink #f8f7f4,
-   secondary #cdccc1 (~11:1, brighter than this app's usual 9:1), metadata
-   #8d8b85 (~5.6:1). One --border serves hairlines and control outlines, so it
-   sits between the two (#2c2c2b). Shape stays html.dark's. */
+/* Claude dark: a warm charcoal in the spirit of claude.ai's dark mode, kept
+   about as deep as Omarchy's dark themes (e.g. Tokyo Night #1a1b26) so it sits
+   calmly next to them. Claude Desktop's near-black #111111 with #f8f7f4 ink
+   measured ~17.6:1 and glared on long reads.
+   Surfaces are one hue family, claude.ai's paper-olive hsl(48, ~5%, L), so
+   the warmth reads as paper rather than brown; only lightness changes:
+   sidebar 9.4% #191917, canvas 12% #20201d, floating surfaces (dialogs,
+   menus, tool output, code) 14.4% #262623, user bubble and hover 16%
+   #2b2a27, selected rows 20.5% #363632. Ink is cream hsl(46 26% 86%)
+   #e6e1d4 (~13.5:1); secondary #bbb8ac and metadata #98968d keep the app's
+   ~9:1 and ~6:1 tiers. Nothing turns pure white, not even hovered controls.
+   Clay accent #d97757 and shape stay as before. */
 html[data-theme="claude"].dark {
-  --bg: #151515;
-  --bg-panel: #111111;
-  --bg-hover: #222221;
-  --bg-selected: #353534;
-  --border: #2c2c2b;
-  --text: #f8f7f4;
-  --text-muted: #cdccc1;
-  --text-dim: #8d8b85;
+  --bg: #20201d;
+  --bg-panel: #191917;
+  --bg-hover: #2b2a27;
+  --bg-selected: #363632;
+  --border: #33322e;
+  --text: #e6e1d4;
+  --text-muted: #bbb8ac;
+  --text-dim: #98968d;
   --accent: #d97757;
   --accent-hover: #e08a6d;
   --accent-contrast: #141413;
-  --danger: #e86b6b;
-  --warning: #e0a94a;
+  --danger: #e07070;
+  --warning: #d9a54e;
   --success: #8fb573;
-  --user-bg: #212121;
-  --assistant-bg: #151515;
-  --bg-elevated: #1a1a19;
-  /* Claude Desktop dims the app hard behind settings so the lifted dialog reads. */
-  --settings-scrim: rgba(0,0,0,0.6);
-  --tool-bg: #1a1a19;
+  --user-bg: #2b2a27;
+  --assistant-bg: #20201d;
+  --bg-elevated: #262623;
+  /* Dim the app behind settings so the lifted dialog reads. */
+  --settings-scrim: rgba(0,0,0,0.5);
+  --tool-bg: #262623;
   --bg-subtle: rgba(255,255,255,0.03);
-  --control-on-hover: #ffffff;
+  --control-on-hover: #f3f0e8;
   --primary: var(--accent);
   --primary-hover: var(--accent-hover);
   --primary-contrast: #ffffff;
-  --switch-track-off: #3a3a39;
-  --segmented-track: #262625;
-  --segmented-thumb: #3c3c3b;
+  --switch-track-off: #45443f;
+  --segmented-track: #2b2a27;
+  --segmented-thumb: #41403c;
 }
