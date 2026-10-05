@@ -280,12 +280,23 @@ html.dark {
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
+/* Sidebar lists (Pinned, Projects, Explorer) reserve the scrollbar gutter on
+   both edges, so row highlights keep equal side gaps whether or not a list
+   scrolls. --sidebar-scrollbar-gutter is that measured width (SessionSidebar);
+   chrome outside the lists takes the same inset to stay aligned with them. */
+.sidebar-list-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
 .sidebar-section-row {
   display: flex;
   align-items: center;
   flex-shrink: 0;
   box-sizing: border-box;
   height: var(--workspace-header-height, 30px);
+  padding-inline: var(--sidebar-scrollbar-gutter, 0px);
 }
 
 .sidebar-section-label {
@@ -352,7 +363,7 @@ html.dark {
 
 .sidebar-footer {
   flex-shrink: 0;
-  padding: 4px 8px 4px 0;
+  padding: 4px calc(8px + var(--sidebar-scrollbar-gutter, 0px)) 4px var(--sidebar-scrollbar-gutter, 0px);
   border-top: 1px solid var(--border);
 }
 
@@ -382,8 +393,14 @@ html.dark {
 
 .sidebar-search-container {
   padding: 6px 8px;
+  padding-inline: calc(8px + var(--sidebar-scrollbar-gutter, 0px));
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+/* Inside a list the gutter is already reserved by the scroller. */
+.sidebar-list-scroll .sidebar-search-container {
+  padding-inline: 8px;
 }
 
 .sidebar-search-field {

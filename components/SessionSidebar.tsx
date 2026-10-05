@@ -350,6 +350,25 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
 
   // Virtualized session list: only the visible window of rows is mounted.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  // The sidebar lists reserve their scrollbar gutter on both edges so row
+  // highlights sit symmetrically. Its width depends on the platform and pointer
+  // (5px fine, 0 coarse, browser default otherwise), so measure it and let the
+  // headers, search box, and footer take the same inset to stay aligned.
+  const gutterProbeRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const probe = gutterProbeRef.current;
+    if (!probe) return;
+    const root = document.documentElement;
+    const update = () => root.style.setProperty("--sidebar-scrollbar-gutter", `${probe.offsetWidth - probe.clientWidth}px`);
+    update();
+    const pointer = window.matchMedia("(pointer: coarse)");
+    pointer.addEventListener("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      pointer.removeEventListener("change", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
   const [listViewportH, setListViewportH] = useState(0);
   const [listScrollTop, setListScrollTop] = useState(0);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
@@ -1474,7 +1493,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", position: "relative" }}>
+      {/* Same mechanism as .sidebar-list-scroll, so it reports exactly the gutter the lists reserve. */}
+      <div ref={gutterProbeRef} aria-hidden="true" style={{ position: "absolute", top: 0, left: 0, width: 40, height: 40, overflow: "hidden", scrollbarGutter: "stable", visibility: "hidden", pointerEvents: "none" }} />
       {customPathOpen && (
         <DirectoryPicker
           initialPath={customPathValue}
@@ -1539,7 +1560,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             </button>
           </div>
           {pinnedOpen && (
-            <div style={{ padding: "0 4px" }}>
+            <div className="sidebar-list-scroll" style={{ padding: "0 4px" }}>
               {pinnedFamilies.map((family) => <div key={family.root.id}>{renderSessionFamily(family, true)}</div>)}
             </div>
           )}
@@ -1777,7 +1798,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       <div
         ref={listScrollRef}
         onScroll={handleListScroll}
-        style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", scrollbarGutter: "stable", padding: "0", minHeight: 80 }}
+        className="sidebar-list-scroll"
+        style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", padding: "0", minHeight: 80 }}
       >
         {error && <div style={{ padding: "12px 14px", color: "var(--danger)", fontSize: 12 }}>{error}</div>}
         {deleteProjectError && (
@@ -2025,7 +2047,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             </div>
           </div>
           {explorerOpen && (
-            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarGutter: "stable" }}>
+            <div className="sidebar-list-scroll" style={{ flex: 1 }}>
               <FileExplorer
                 ref={fileExplorerRef}
                 cwd={selectedCwd ?? selectedCwdProp!}
