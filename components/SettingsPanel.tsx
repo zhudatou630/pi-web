@@ -105,7 +105,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
-  const [exportImageFooter, setExportImageFooter] = useState(true);
+  const [exportImageFooter, setExportImageFooter] = useState(false);
   const [autoSessionTitle, setAutoSessionTitle] = useState(true);
   const [singleProject, setSingleProject] = useState(false);
   const [shiftEnterToSend, setShiftEnterToSendState] = useState(false);

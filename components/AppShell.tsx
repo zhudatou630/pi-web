@@ -175,10 +175,10 @@ export function AppShell() {
   // also fire for tasks finishing in a non-active workspace whose ChatWindow
   // is not mounted. ChatWindow receives the audio callbacks as props.
   const { soundEnabled, onSoundToggle, playDoneSound, unlockAudio, soundEnabledRef } = useAudio();
-  const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(false);
+  const [quoteSelectionEnabled, setQuoteSelectionEnabled] = useState(true);
   useEffect(() => {
     try {
-      setQuoteSelectionEnabled(localStorage.getItem("pi-quote-selection-enabled") === "true");
+      setQuoteSelectionEnabled(localStorage.getItem("pi-quote-selection-enabled") !== "false");
     } catch {
       // Browser storage is best-effort.
     }

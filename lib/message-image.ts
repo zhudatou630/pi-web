@@ -15,7 +15,7 @@ const FOOTER_KEY = "pi-export-image-footer";
 const BASE_CHARS = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join("") + "•";
 
 export function isExportImageFooterEnabled(): boolean {
-  return typeof window === "undefined" || window.localStorage.getItem(FOOTER_KEY) !== "false";
+  return typeof window !== "undefined" && window.localStorage.getItem(FOOTER_KEY) === "true";
 }
 
 export function setExportImageFooterEnabled(enabled: boolean): void {
