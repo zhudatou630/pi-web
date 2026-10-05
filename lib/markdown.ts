@@ -237,7 +237,7 @@ export function normalizeDisplayMath(markdown: string): string {
       continue;
     }
 
-    normalized.push(normalizeInlineLatexMath(line));
+    normalized.push(escapeTableMathPipes(normalizeInlineLatexMath(line)));
   }
 
   return normalized.join(lineBreak);
@@ -379,6 +379,17 @@ function normalizeInlineLatexMath(line: string): string {
   return line.replace(
     /(?<!\\)\\\(([^`\r\n$]+?)(?<!\\)\\\)/g,
     (match, math: string) => (math.trim() ? `$${math}$` : match),
+  );
+}
+
+// GFM splits table cells on `|` before inline math is parsed, so `$|x|$` in a
+// row breaks the column count and the whole table renders as a paragraph.
+// `\|` would survive the split but means `‖` in TeX; `\vert` renders as `|`.
+function escapeTableMathPipes(line: string): string {
+  if (!/^ {0,3}\|/.test(line)) return line;
+  return line.replace(
+    /(?<![\\$])\$(?!\$)(\S(?:[^$\n]*?\S)?)(?<![\\$])\$(?!\$)/g,
+    (match, math: string) => `$${math.replace(/(?<!\\)\|/g, "\\vert ")}$`,
   );
 }
 
