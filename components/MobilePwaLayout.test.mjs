@@ -22,9 +22,9 @@ test("configures iOS standalone mode to use the full screen", () => {
 test("keeps the PWA status bar color in sync with the resolved theme", () => {
   assert.match(manifestSource, /theme_color: "#f5f5f5"/);
   assert.match(layoutSource, /themeColor: "#f5f5f5"/);
-  assert.match(layoutSource, /var c=claude\?\(dark\?"#111111":"#fafaf4"\):\(dark\?"#242424":"#f5f5f5"\)/);
+  assert.match(layoutSource, /var c=claude\?\(dark\?"#191918":"#fafaf4"\):\(dark\?"#242424":"#f5f5f5"\)/);
   assert.match(themeHookSource, /default: \{ light: "#f5f5f5", dark: "#242424" \}/);
-  assert.match(themeHookSource, /claude: \{ light: "#fafaf4", dark: "#111111" \}/);
+  assert.match(themeHookSource, /claude: \{ light: "#fafaf4", dark: "#191918" \}/);
   assert.doesNotMatch(layoutSource, /themeColor:\s*\[/);
   assert.match(layoutSource, /meta\[name="theme-color"\]/);
   assert.match(themeHookSource, /function applyThemeColor\(palette: ThemePalette, theme: ResolvedTheme\)/);
