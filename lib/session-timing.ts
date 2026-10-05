@@ -11,6 +11,8 @@ interface TimingEntry {
  * once. Gaps ending at user messages are treated as human idle. User-initiated
  * bash entries are also boundaries because the log records only their finish
  * time, so counting the incoming gap could include arbitrary human idle.
+ * System-prompt snapshots are skipped: they are written at prompt time just
+ * before the user message, so counting them would bill the preceding idle.
  */
 export function computeSessionTotalActiveMs(entries: readonly TimingEntry[]): number {
   let totalActiveMs = 0;
@@ -23,6 +25,7 @@ export function computeSessionTotalActiveMs(entries: readonly TimingEntry[]): nu
     if (!Number.isFinite(timestamp)) continue;
 
     const role = entry.type === "message" ? entry.message?.role : undefined;
+    if (role === "system") continue;
     if (role === "user" || role === "bashExecution") {
       previousTimestamp = timestamp;
       continue;
