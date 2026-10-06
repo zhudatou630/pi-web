@@ -55,6 +55,7 @@ import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
+import { downloadBlob, prefersShareSheet, shareFile } from "@/lib/save-file";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
   claimExtensionAttentionNotification,
@@ -1881,8 +1882,21 @@ export function AppShell() {
 
   const handleViewFullHistory = useCallback(() => {
     if (!selectedSession) return;
+    const root = document.documentElement;
+    const styles = getComputedStyle(root);
+    const keys = [
+      "bg", "bg-panel", "bg-hover", "bg-selected", "border", "text", "text-muted",
+      "text-dim", "accent", "danger", "warning", "success", "user-bg", "tool-bg",
+      "bg-subtle", "font-ui", "font-chat", "font-mono", "chat-content-font-size",
+      "ui-radius-sm", "ui-radius-md", "ui-radius-lg",
+    ];
+    const skin = {
+      vars: Object.fromEntries(keys.map((key) => [key, styles.getPropertyValue(`--${key}`).trim()])),
+      dark: root.classList.contains("dark"),
+      font: root.dataset.font,
+    };
     window.open(
-      `/api/sessions/${encodeURIComponent(selectedSession.id)}/export?inline=1`,
+      `/api/sessions/${encodeURIComponent(selectedSession.id)}/export?inline=1#${encodeURIComponent(JSON.stringify(skin))}`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -1994,6 +2008,7 @@ export function AppShell() {
       const params = new URLSearchParams({ format: "md" });
       if (branchActiveLeafId) params.set("leafId", branchActiveLeafId);
       params.set("tz", String(-new Date().getTimezoneOffset()));
+      params.set("lang", locale);
       const response = await fetch(`/api/sessions/${encodeURIComponent(selectedSession.id)}/export?${params}`);
       if (!response.ok) {
         const data = await response.json().catch(() => null) as { error?: string } | null;
@@ -2003,21 +2018,18 @@ export function AppShell() {
         return;
       }
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filenameFromContentDisposition(response.headers.get("Content-Disposition")) ?? "session.md";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      const fileName = filenameFromContentDisposition(response.headers.get("Content-Disposition")) ?? "session.md";
+      const shared = prefersShareSheet()
+        ? await shareFile(new File([blob], fileName, { type: "text/markdown" }))
+        : "unavailable";
+      if (shared === "unavailable") downloadBlob(blob, fileName);
       setHistoryMenuOpen(false);
     } catch {
       setHistoryExportError(translate("history.exportFailed"));
     } finally {
       setHistoryExporting(false);
     }
-  }, [branchActiveLeafId, selectedSession, translate]);
+  }, [branchActiveLeafId, locale, selectedSession, translate]);
 
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
   const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useMemo, useId, type ReactNode } from "react";
+import { createContext, memo, useContext, useState, useRef, useEffect, useMemo, useId, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImageGallery } from "./ImageGallery";
@@ -15,6 +15,7 @@ import { copyText } from "@/lib/clipboard";
 import { exportMessageImage, type MessageImageResult } from "@/lib/message-image";
 import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
+import type { NoticeType } from "@/hooks/useAgentSession";
 import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage } from "@/lib/message-display";
@@ -247,6 +248,9 @@ function haveSameRelevantToolResults(
   }
   return true;
 }
+
+/** Chat-level toasts; message actions report their outcome through it. */
+export const MessageNoticeContext = createContext<((notice: { message: string; type?: NoticeType }) => void) | null>(null);
 
 export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds }: Props) {
   if (message.role === "user") {
@@ -584,6 +588,7 @@ function AssistantMessageView({
 }) {
   const { t, locale } = useI18n();
   const confirm = useConfirm();
+  const addNotice = useContext(MessageNoticeContext);
   const [copied, setCopied] = useState(false);
   const [imageState, setImageState] = useState<"idle" | "busy" | MessageImageResult>("idle");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -634,11 +639,15 @@ function AssistantMessageView({
         if (result === "canceled") return setImageState("idle");
         setImageState(result);
         setTimeout(() => setImageState("idle"), 1500);
+        // The share sheet is its own feedback; copy and download happen silently.
+        if (result === "copied") addNotice?.({ type: "success", message: t("i18n.imageCopied") });
+        if (result === "downloaded") addNotice?.({ type: "success", message: t("i18n.imageDownloaded") });
       },
       (error) => {
         console.error(error);
         setImageState("idle");
-        void confirm(t("i18n.exportImageFailed"), { alert: true });
+        if (addNotice) addNotice({ type: "error", message: t("i18n.exportImageFailed") });
+        else void confirm(t("i18n.exportImageFailed"), { alert: true });
       },
     );
   };

@@ -1,9 +1,13 @@
 // Renders a chat answer to PNG in the browser (html-to-image snapshots the live DOM).
+import { downloadBlob, prefersShareSheet, shareFile } from "./save-file";
+
 export type MessageImageResult = "copied" | "shared" | "downloaded" | "canceled";
 
 const PADDING = 24;
-// Chrome's canvas stops rendering past ~16k px per side; drop to 1x before hitting it.
+// Canvas limits: Chrome stops rendering past ~16k px per side, iOS Safari past
+// 16.7M px in total. Scale down just enough to stay under both.
 const MAX_CANVAS_SIDE = 16000;
+const MAX_CANVAS_AREA = 16_000_000;
 // Interactive chrome that means nothing in a picture.
 const EXCLUDE = ".markdown-code-actions, .message-action-button, [data-export-exclude]";
 // html-to-image freezes every element's computed size. A sub-pixel overflow in the clone
@@ -61,14 +65,31 @@ async function buildFontEmbedCSS(el: HTMLElement): Promise<string> {
   return css.join("\n");
 }
 
+export function exportPixelRatio(width: number, height: number): number {
+  return Math.min(2, MAX_CANVAS_SIDE / Math.max(width, height), Math.sqrt(MAX_CANVAS_AREA / (width * height)));
+}
+
+// The filter drops nodes from the clone, which reflows without them, but the canvas
+// size is fixed up front: subtract the dropped rows. Never hide them in the live DOM
+// to measure: the shorter layout clamps the chat's scrollTop and the view jumps.
+// Only direct children take up rows; nested excluded nodes (code actions, footer
+// buttons) are overlays or sit inside a row that stays.
+function exportedHeight(el: HTMLElement, footer: HTMLElement | null): number {
+  let height = el.offsetHeight;
+  for (const child of el.children) {
+    if (!(child instanceof HTMLElement) || (child !== footer && !child.matches(EXCLUDE))) continue;
+    const style = getComputedStyle(child);
+    height -= child.offsetHeight + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+  }
+  return height;
+}
+
 async function renderPng(el: HTMLElement): Promise<Blob> {
   const { toBlob } = await import("html-to-image");
   const footer = isExportImageFooterEnabled() ? null : el.querySelector<HTMLElement>("[data-answer-footer]");
-  const contentHeight = footer ? footer.getBoundingClientRect().top - el.getBoundingClientRect().top : el.offsetHeight;
   const width = el.offsetWidth + PADDING * 2;
-  const height = Math.ceil(contentHeight) + PADDING * 2;
-  // ponytail: messages taller than ~16k px still fail at 1x; slice into pages if that shows up.
-  const pixelRatio = Math.max(width, height) * 2 > MAX_CANVAS_SIDE ? 1 : 2;
+  const height = exportedHeight(el, footer) + PADDING * 2;
+  const pixelRatio = exportPixelRatio(width, height);
   const blob = await toBlob(el, {
     width,
     height,
@@ -83,29 +104,12 @@ async function renderPng(el: HTMLElement): Promise<Blob> {
   return blob;
 }
 
-function download(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
 // Touch devices get the share sheet; desktops get the clipboard; download is the fallback.
 export async function exportMessageImage(el: HTMLElement, fileName: string): Promise<MessageImageResult> {
   const png = renderPng(el);
-  if (matchMedia("(pointer: coarse)").matches && navigator.canShare) {
-    const file = new File([await png], fileName, { type: "image/png" });
-    if (navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file] });
-        return "shared";
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return "canceled";
-        // Share activation may expire during rendering; fall through to download.
-      }
-    }
+  if (prefersShareSheet()) {
+    const shared = await shareFile(new File([await png], fileName, { type: "image/png" }));
+    if (shared !== "unavailable") return shared;
   } else if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
     try {
       // Pass the pending blob so Safari still sees the write inside the click gesture.
@@ -115,6 +119,6 @@ export async function exportMessageImage(el: HTMLElement, fileName: string): Pro
       // Clipboard denied or unsupported (insecure context); download instead.
     }
   }
-  download(await png, fileName);
+  downloadBlob(await png, fileName);
   return "downloaded";
 }

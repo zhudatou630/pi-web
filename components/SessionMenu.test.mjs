@@ -36,6 +36,6 @@ test("info dialogs open only after their data is loaded, so nothing swaps while 
 test("markdown export downloads the current leaf without writing a server path", () => {
   assert.match(appShell, /params\.set\("format", "md"\)|format: "md"/);
   assert.match(appShell, /if \(branchActiveLeafId\) params\.set\("leafId", branchActiveLeafId\)/);
-  assert.match(appShell, /URL\.createObjectURL\(blob\)/);
+  assert.match(appShell, /downloadBlob\(blob, fileName\)/);
   assert.doesNotMatch(appShell, /pi-session-exports/);
 });

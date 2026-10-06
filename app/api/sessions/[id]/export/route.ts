@@ -6,8 +6,9 @@ import { basename, dirname, join } from "path";
 import { promisify } from "util";
 import { fileURLToPath, pathToFileURL } from "url";
 import { NextResponse } from "next/server";
-import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
+import { getSessionEntries, readSessionHeader, resolveSessionPath } from "@/lib/session-reader";
 import { buildSessionMarkdown } from "@/lib/session-export-markdown";
+import { skinExportHtml } from "@/lib/export-html-skin";
 
 const execFileAsync = promisify(execFile);
 
@@ -212,7 +213,7 @@ function patchExportHtml(html: string): string {
         }`
   );
 
-  return html;
+  return skinExportHtml(html);
 }
 
 async function exportSession(filePath: string, outputPath: string): Promise<void> {
@@ -258,9 +259,13 @@ export async function GET(
       const leafId = searchParams.get("leafId") || undefined;
       const tzParam = searchParams.get("tz");
       const timezoneOffsetMinutes = tzParam && tzParam.trim() !== "" ? Number(tzParam) : null;
+      const header = readSessionHeader(filePath);
       const result = buildSessionMarkdown(getSessionEntries(filePath), {
         leafId,
         timezoneOffsetMinutes,
+        sessionId: header?.id,
+        createdAt: header?.timestamp,
+        locale: searchParams.get("lang") ?? undefined,
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 422 });

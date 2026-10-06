@@ -1,3 +1,6 @@
+import { partitionAssistantMessage } from "./message-display";
+import type { AssistantMessage } from "./types";
+
 export const MARKDOWN_IMAGE_PLACEHOLDER = "[image]";
 
 export type SessionMarkdownExportEntry = {
@@ -18,6 +21,11 @@ export type SessionMarkdownExportOptions = {
   leafId?: string | null;
   title?: string;
   exportedAt?: Date;
+  sessionId?: string;
+  /** Session header timestamp. */
+  createdAt?: string;
+  /** UI locale; picks the question label. */
+  locale?: string;
   /** Minutes east of UTC (e.g. 480 for UTC+8). Null/invalid falls back to UTC. */
   timezoneOffsetMinutes?: number | null;
 };
@@ -64,11 +72,19 @@ export function buildSessionMarkdown(
   const model = lastModelOf(branch);
 
   const markdown = normalizeMarkdown([
-    renderFrontmatter({ title, exportedAt, timezoneOffsetMinutes, model, turns: rounds.length }),
+    renderFrontmatter({
+      title,
+      exportedAt,
+      createdAt: parseDate(options.createdAt),
+      sessionId: options.sessionId,
+      timezoneOffsetMinutes,
+      model,
+      turns: rounds.length,
+    }),
     "",
     `# ${title}`,
     "",
-    rounds.map((round, index) => renderRound(round, index + 1)).join("\n\n"),
+    rounds.map((round, index) => renderRound(round, index + 1, questionLabel(options.locale))).join("\n\n---\n\n"),
   ].join("\n")) + "\n";
 
   const date = localDatePart(exportedAt, timezoneOffsetMinutes);
@@ -84,6 +100,8 @@ export function buildSessionMarkdown(
 function renderFrontmatter(fields: {
   title: string;
   exportedAt: Date;
+  createdAt?: Date;
+  sessionId?: string;
   timezoneOffsetMinutes: number | null;
   model: string;
   turns: number;
@@ -93,9 +111,20 @@ function renderFrontmatter(fields: {
     `title: ${yamlScalar(fields.title)}`,
     `date: ${formatYamlTimestamp(fields.exportedAt, fields.timezoneOffsetMinutes)}`,
   ];
+  if (fields.createdAt) lines.push(`created: ${formatYamlTimestamp(fields.createdAt, fields.timezoneOffsetMinutes)}`);
+  if (fields.sessionId) lines.push(`session: ${yamlScalar(fields.sessionId)}`);
   if (fields.model) lines.push(`model: ${yamlScalar(fields.model)}`);
   lines.push(`turns: ${fields.turns}`, "---");
   return lines.join("\n");
+}
+
+function parseDate(value: string | undefined): Date | undefined {
+  const date = value ? new Date(value) : undefined;
+  return date && Number.isFinite(date.getTime()) ? date : undefined;
+}
+
+function questionLabel(locale: string | undefined): string {
+  return locale?.toLowerCase().startsWith("zh") ? "问：" : "Q:";
 }
 
 function yamlScalar(value: string): string {
@@ -179,7 +208,13 @@ function buildRounds(entries: readonly SessionMarkdownExportEntry[]): DialogueRo
       continue;
     }
     if (role !== "assistant" || !current) continue;
-    const text = extractText(entry.message?.content);
+    // Same answer the chat shows: trailing text plus long process notes, never the
+    // short narration between tool calls that the UI folds away.
+    const content = entry.message?.content;
+    const answer = Array.isArray(content)
+      ? partitionAssistantMessage(entry.message as unknown as AssistantMessage).answerMessage?.content
+      : content;
+    const text = extractText(answer);
     if (!text.trim()) continue;
     current.answer = current.answer
       ? `${current.answer}\n\n${text}`
@@ -223,11 +258,15 @@ function dialogueTitle(markdown: string): string {
   return markdown.includes(MARKDOWN_IMAGE_PLACEHOLDER) ? "image" : "Untitled";
 }
 
-function renderRound(round: DialogueRound, index: number): string {
+function renderRound(round: DialogueRound, index: number, label: string): string {
   const lines = [`## ${index}. ${round.title}`, ""];
   const question = normalizeMarkdown(round.question);
   if (question && question !== round.title) {
-    lines.push(toBlockquote(question), "");
+    const firstLine = question.split("\n")[0]!;
+    const secondLine = question.split("\n")[1] ?? "";
+    const startsWithBlock = /^(?: {4}|\t| {0,3}(?:#{1,6}\s|`{3,}|~{3,}|[-+*]\s|\d+[.)]\s|>|\||\[[^\]]+\]:|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$))/.test(firstLine)
+      || (firstLine.includes("|") && /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$/.test(secondLine));
+    lines.push(toBlockquote(`**${label}**${startsWithBlock ? "\n\n" : " "}${question}`), "");
   }
   lines.push(rebaseHeadings(round.answer, 2));
   return lines.join("\n");
@@ -242,96 +281,36 @@ function toBlockquote(markdown: string): string {
 
 export function rebaseHeadings(markdown: string, wrapperLevel = 2): string {
   const lines = normalizeMarkdown(markdown).split("\n");
+  let fenceMarker = "";
+  const headings = new Map<number, RegExpExecArray>();
   let minLevel = 7;
-  let inFence = false;
-  let fenceChar: string | undefined;
-
-  for (const line of lines) {
-    const fence = FENCE_LINE.exec(line);
-    if (fence) {
-      const character = fence[1]![0]!;
-      if (!inFence) {
-        inFence = true;
-        fenceChar = character;
-      } else if (character === fenceChar) {
-        inFence = false;
-        fenceChar = undefined;
-      }
-      continue;
+  lines.forEach((line, index) => {
+    const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fenceMarker) {
+      if (fence && fence[1]![0] === fenceMarker[0]
+        && fence[1]!.length >= fenceMarker.length && !fence[2]!.trim()) fenceMarker = "";
+      return;
     }
-    if (inFence) continue;
+    if (fence) {
+      fenceMarker = fence[1]!;
+      return;
+    }
     const heading = /^(#{1,6})(\s+.*)$/.exec(line);
-    if (heading) minLevel = Math.min(minLevel, heading[1]!.length);
-  }
-  if (minLevel === 7) return markdown;
-
+    if (heading) {
+      headings.set(index, heading);
+      minLevel = Math.min(minLevel, heading[1]!.length);
+    }
+  });
   const firstChild = Math.min(6, wrapperLevel + 1);
-  const out: string[] = [];
-  inFence = false;
-  fenceChar = undefined;
-  for (const line of lines) {
-    const fence = FENCE_LINE.exec(line);
-    if (fence) {
-      const character = fence[1]![0]!;
-      if (!inFence) {
-        inFence = true;
-        fenceChar = character;
-      } else if (character === fenceChar) {
-        inFence = false;
-        fenceChar = undefined;
-      }
-      out.push(line);
-      continue;
-    }
-    if (inFence) {
-      out.push(line);
-      continue;
-    }
-    const heading = /^(#{1,6})(\s+.*)$/.exec(line);
-    if (!heading) {
-      out.push(line);
-      continue;
-    }
+  return lines.map((line, index) => {
+    const heading = headings.get(index);
+    if (!heading) return line;
     const level = Math.min(6, firstChild + heading[1]!.length - minLevel);
-    out.push(`${"#".repeat(level)}${heading[2]}`);
-  }
-  return out.join("\n");
+    return `${"#".repeat(level)}${heading[2]}`;
+  }).join("\n");
 }
 
 export function normalizeMarkdown(markdown: string): string {
-  const lines = markdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const out: string[] = [];
-  let pendingBlank = false;
-  let inFence = false;
-  let fenceChar: string | undefined;
-
-  for (const line of lines) {
-    const fence = FENCE_LINE.exec(line);
-    if (fence) {
-      const character = fence[1]![0]!;
-      if (!inFence) {
-        inFence = true;
-        fenceChar = character;
-      } else if (character === fenceChar) {
-        inFence = false;
-        fenceChar = undefined;
-      }
-      out.push(line);
-      pendingBlank = false;
-      continue;
-    }
-    if (inFence) {
-      out.push(line);
-      continue;
-    }
-    if (!line.trim()) {
-      if (pendingBlank) continue;
-      pendingBlank = true;
-      out.push(line);
-      continue;
-    }
-    pendingBlank = false;
-    out.push(line);
-  }
-  return out.join("\n").trim();
+  // Blank lines can be significant inside code and quoted code; preserve them.
+  return markdown.replace(/\r\n?/g, "\n").trim();
 }
