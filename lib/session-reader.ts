@@ -730,12 +730,14 @@ function base64ImageInfo(block: unknown): { bytes: number; mime?: string } | nul
   return { bytes: Math.max(0, Math.floor(data.length * 3 / 4) - padding), mime };
 }
 
-function deferToolResultBase64Images(
+function deferHistoryBase64Images(
   message: AgentMessage,
   sessionId: string | undefined,
   entryId: string,
 ): AgentMessage {
-  if (message.role !== "toolResult") return message;
+  if (message.role !== "toolResult" && message.role !== "user") return message;
+  if (!Array.isArray(message.content)) return message;
+  const isUser = message.role === "user";
 
   let omitted = 0;
   let bytes = 0;
@@ -761,6 +763,8 @@ function deferToolResultBase64Images(
       return [{ type: "image", source } satisfies ImageContent];
     }
 
+    // User images are part of what the user sent: never drop them, keep them inline.
+    if (isUser) return [block];
     // Retain the old bounded fallback for callers that do not have a session id.
     omitted += 1;
     bytes += image.bytes;
@@ -792,7 +796,7 @@ function entryToUiMessage(
       // They are provider input, not conversation, so they never render.
       if (entry.message.role === "system") return null;
       let message = options.deferToolResultImages
-        ? deferToolResultBase64Images(normalizeToolCalls(entry.message), options.sessionId, entry.id)
+        ? deferHistoryBase64Images(normalizeToolCalls(entry.message), options.sessionId, entry.id)
         : normalizeToolCalls(entry.message);
       const legacyContent = message.role === "assistant" ? (message as { content: unknown }).content : undefined;
       if (typeof legacyContent === "string") {

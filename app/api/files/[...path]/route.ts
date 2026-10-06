@@ -319,10 +319,14 @@ function getContentDisposition(filePath: string, asDownload = false): string {
   return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeHeaderValue(fileName)}`;
 }
 
-function streamFile(filePath: string, stat: fs.Stats, contentType: string, rangeHeader: string | null, asDownload = false): Response {
+function streamFile(filePath: string, stat: fs.Stats, contentType: string, requestHeaders: Headers, asDownload = false): Response {
+  const rangeHeader = requestHeaders.get("range");
+  // Files can change in place, so revalidate every time; the ETag turns an unchanged file into a 304.
+  const etag = `W/"${stat.size}-${Math.trunc(stat.mtimeMs)}"`;
   const headers: Record<string, string> = {
     "Content-Type": contentType,
     "Cache-Control": "no-cache",
+    ETag: etag,
     "Accept-Ranges": "bytes",
     "Content-Disposition": getContentDisposition(filePath, asDownload),
     "X-Content-Type-Options": "nosniff",
@@ -336,6 +340,10 @@ function streamFile(filePath: string, stat: fs.Stats, contentType: string, range
     headers["Content-Security-Policy"] =
       "default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
     headers["Referrer-Policy"] = "no-referrer";
+  }
+
+  if (requestHeaders.get("if-none-match")?.split(",").some((tag) => tag.trim() === etag)) {
+    return new Response(null, { status: 304, headers });
   }
 
   if (!rangeHeader) {
@@ -496,19 +504,19 @@ export async function GET(
         if (stat.size > IMAGE_PREVIEW_MAX_BYTES) {
           return NextResponse.json({ error: "Image too large (>10MB)" }, { status: 413 });
         }
-        return streamFile(filePath, stat, imageMime, request.headers.get("range"));
+        return streamFile(filePath, stat, imageMime, request.headers);
       }
       const audioMime = getAudioMime(filePath);
       if (audioMime) {
-        return streamFile(filePath, stat, audioMime, request.headers.get("range"));
+        return streamFile(filePath, stat, audioMime, request.headers);
       }
       const videoMime = getVideoMime(filePath);
       if (videoMime) {
-        return streamFile(filePath, stat, videoMime, request.headers.get("range"));
+        return streamFile(filePath, stat, videoMime, request.headers);
       }
       const documentMime = getDocumentMime(filePath);
       if (documentMime) {
-        return streamFile(filePath, stat, documentMime, request.headers.get("range"));
+        return streamFile(filePath, stat, documentMime, request.headers);
       }
       const rawOffset = request.nextUrl.searchParams.get("offset");
       if (rawOffset !== null && !/^\d+$/.test(rawOffset)) {
@@ -536,7 +544,7 @@ export async function GET(
         return NextResponse.json({ error: "Not a file" }, { status: 400 });
       }
       const mime = getImageMime(filePath) || getAudioMime(filePath) || getVideoMime(filePath) || getDocumentMime(filePath) || "application/octet-stream";
-      return streamFile(filePath, stat, mime, request.headers.get("range"), true);
+      return streamFile(filePath, stat, mime, request.headers, true);
     }
 
     if (type === "meta") {

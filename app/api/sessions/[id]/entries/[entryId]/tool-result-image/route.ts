@@ -57,11 +57,14 @@ export async function GET(
     if (!filePath) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
     const entry = getSessionEntries(filePath).find((candidate) => candidate.id === entryId);
-    if (!entry || entry.type !== "message" || entry.message.role !== "toolResult") {
-      return NextResponse.json({ error: "Tool result not found" }, { status: 404 });
+    // Serves deferred history images of tool results and user messages (original bytes).
+    const message = entry?.type === "message" ? entry.message : undefined;
+    if (!message || (message.role !== "toolResult" && message.role !== "user")) {
+      return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }
 
-    const image = readBase64Image(entry.message.content[blockIndex]);
+    const content = message.content;
+    const image = Array.isArray(content) ? readBase64Image(content[blockIndex]) : null;
     if (!image) return NextResponse.json({ error: "Tool result image not found" }, { status: 404 });
     if (!TOOL_RESULT_IMAGE_MIMES.has(image.mime)) {
       return NextResponse.json({ error: "Unsupported image type" }, { status: 415 });
@@ -76,7 +79,8 @@ export async function GET(
       headers: {
         "Content-Type": image.mime,
         "Content-Length": String(bytes.byteLength),
-        "Cache-Control": "private, no-cache",
+        // Entry ids are unique and entries are append-only, so a URL's bytes never change.
+        "Cache-Control": "private, max-age=31536000, immutable",
         "X-Content-Type-Options": "nosniff",
       },
     });

@@ -350,7 +350,8 @@ export function buildSlashCommandLayout(
 }
 
 const CLIENT_IMAGE_COMPRESSION_THRESHOLD_BYTES = 1024 * 1024;
-const CLIENT_MAX_IMAGE_SIDE = 1024;
+// Matches Pi's own prompt-image cap (2000px): compression must not go below what the model would get.
+const CLIENT_MAX_IMAGE_SIDE = 2000;
 const CLIENT_JPEG_QUALITY = 0.85;
 
 export function shouldCompressImageFile(file: Pick<File, "size" | "type">): boolean {
@@ -432,10 +433,23 @@ export function getUserMessageText(message: UserMessage): string {
     .join("\n");
 }
 
-export function getUserMessageDraftImages(message: UserMessage): ChatDraftImage[] {
+export async function getUserMessageDraftImages(message: UserMessage): Promise<ChatDraftImage[]> {
   if (typeof message.content === "string") return [];
-  return message.content.flatMap((block) => {
+  const images = await Promise.all(message.content.map(async (block): Promise<ChatDraftImage[]> => {
     if (block.type !== "image") return [];
+
+    // History defers user images to a URL (deferMedia); fetch the original bytes back.
+    if (block.source?.type === "url" && block.source.url) {
+      try {
+        const response = await fetch(block.source.url);
+        if (!response.ok) return [];
+        const blob = await response.blob();
+        const image = await readImageFile(blob, block.source.media_type || blob.type);
+        return isBase64ImageWithinLimits(image) ? [image] : [];
+      } catch {
+        return [];
+      }
+    }
 
     // Support both the current nested image format and older flat pi-ai entries.
     const flat = block as unknown as { data?: unknown; mimeType?: unknown };
@@ -445,7 +459,8 @@ export function getUserMessageDraftImages(message: UserMessage): ChatDraftImage[
 
     const image = { data, mimeType };
     return isBase64ImageWithinLimits(image) ? [image] : [];
-  });
+  }));
+  return images.flat();
 }
 
 function revokeImagePreview(image: AttachedImage): void {
@@ -670,13 +685,16 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         ta.focus();
       });
     },
-    replaceMessage(message: UserMessage) {
+    async replaceMessage(message: UserMessage) {
       const ta = textareaRef.current;
-      const current = ta ? ta.value : value;
-      if (!canRestoreUserMessage(current, attachedImagesRef.current.length, pendingImageCountRef.current)) return;
+      const canRestore = () => canRestoreUserMessage(ta ? ta.value : valueRef.current, attachedImagesRef.current.length, pendingImageCountRef.current);
+      if (!canRestore()) return;
 
       const restoredText = getUserMessageText(message);
-      const restoredImages = draftImagesToAttachedImages(getUserMessageDraftImages(message));
+      const draftImages = await getUserMessageDraftImages(message);
+      // The user may have started typing or attaching while deferred images loaded.
+      if (!canRestore()) return;
+      const restoredImages = draftImagesToAttachedImages(draftImages);
       valueRef.current = restoredText;
       attachedImagesRef.current = restoredImages;
       setValue(restoredText);

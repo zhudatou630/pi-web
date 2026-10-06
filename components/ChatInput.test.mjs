@@ -649,8 +649,8 @@ test("compresses large images while preserving small images and GIFs", async () 
       mimeType: "image/jpeg",
     });
     assert.equal(bitmapCalls, 1);
-    assert.equal(canvas.width, 1024);
-    assert.equal(canvas.height, 512);
+    assert.equal(canvas.width, 2000);
+    assert.equal(canvas.height, 1000);
     assert.equal(closed, true);
   } finally {
     globalThis.FileReader = originals.FileReader;
@@ -681,7 +681,7 @@ test("keeps only read-only built-ins available while a run is active", () => {
   assert.equal(canRunBuiltinSlashCommandWhileStreaming("/reload"), false);
 });
 
-test("restores text and base64 images when editing a user message", () => {
+test("restores text and base64 images when editing a user message", async () => {
   const message = {
     role: "user",
     content: [
@@ -691,12 +691,12 @@ test("restores text and base64 images when editing a user message", () => {
   };
 
   assert.equal(getUserMessageText(message), "Review this image @src/example.ts ");
-  assert.deepEqual(getUserMessageDraftImages(message), [
+  assert.deepEqual(await getUserMessageDraftImages(message), [
     { data: "AQID", mimeType: "image/png" },
   ]);
 });
 
-test("restores legacy flat image entries when editing a user message", () => {
+test("restores legacy flat image entries when editing a user message", async () => {
   const message = {
     role: "user",
     content: [
@@ -704,9 +704,34 @@ test("restores legacy flat image entries when editing a user message", () => {
     ],
   };
 
-  assert.deepEqual(getUserMessageDraftImages(message), [
+  assert.deepEqual(await getUserMessageDraftImages(message), [
     { data: "AQID", mimeType: "image/jpeg" },
   ]);
+});
+
+test("restores deferred URL images when editing a user message", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalFileReader = globalThis.FileReader;
+  globalThis.FileReader = class {
+    async readAsDataURL(blob) {
+      this.result = `data:${blob.type};base64,${Buffer.from(await blob.arrayBuffer()).toString("base64")}`;
+      this.onload();
+    }
+  };
+  globalThis.fetch = async (url) => {
+    assert.equal(url, "/api/sessions/s/entries/u1/tool-result-image?blockIndex=0");
+    return new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "image/png" } });
+  };
+  try {
+    const message = {
+      role: "user",
+      content: [{ type: "image", source: { type: "url", media_type: "image/png", url: "/api/sessions/s/entries/u1/tool-result-image?blockIndex=0" } }],
+    };
+    assert.deepEqual(await getUserMessageDraftImages(message), [{ data: "AQID", mimeType: "image/png" }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.FileReader = originalFileReader;
+  }
 });
 
 test("does not restore a historical message over a pending image attachment", () => {
