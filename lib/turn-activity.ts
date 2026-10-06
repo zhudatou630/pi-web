@@ -16,8 +16,8 @@ export interface TurnActivity {
 
 const EXPLORE_TOOLS = new Set(["read", "grep", "find", "ls"]);
 const COMMAND_TOOLS = new Set(["bash", "powershell"]);
-// ponytail: pi-web-access default names only; renamed or third-party web tools stay uncounted.
-const WEB_TOOLS = new Set(["web_search", "fetch_content", "get_search_content", "source_check", "code_search", "x_search"]);
+// ponytail: pi-web-access and pi-kit web.ts names only; other web tools stay uncounted.
+const WEB_TOOLS = new Set(["web_search", "web_fetch", "fetch_content", "get_search_content", "source_check", "code_search", "x_search"]);
 
 /**
  * What a settled turn did, from tool calls that returned. Commands, subagents
