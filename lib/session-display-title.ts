@@ -30,3 +30,9 @@ export function getSessionDisplayTitle(session: SessionTitleSource): string {
   const preview = truncateText(getSessionFirstMessagePreview(session.firstMessage), 50);
   return preview || session.id.slice(0, 12);
 }
+
+/** Name for a session forked from `source`: its title with `prefix`, never prefixed twice. */
+export function getForkSessionName(source: SessionTitleSource, prefix: string): string {
+  const title = getSessionDisplayTitle(source);
+  return title.startsWith(prefix) ? title : `${prefix}${title}`;
+}

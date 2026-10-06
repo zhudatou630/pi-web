@@ -874,6 +874,9 @@ export class AgentSessionWrapper {
             if (!forkedPath) throw new Error("Failed to create forked session");
             newSessionFile = forkedPath;
           }
+          // Before the fallback write below, so an unflushed copy still keeps its name.
+          const name = (command.name as string | undefined)?.trim();
+          if (name) forkedManager.appendSessionInfo(name);
 
           if (!existsSync(newSessionFile)) {
             const header = forkedManager.getHeader();
@@ -896,8 +899,10 @@ export class AgentSessionWrapper {
         if (this.isSessionRunningForReplacement()) {
           throw new Error("Cannot fork while the session is running");
         }
-        const entryId = command.entryId as string;
         const sessionManager = this.inner.sessionManager;
+        // No entryId: copy through the current leaf (session menu "Fork session").
+        const entryId = (command.entryId as string | undefined) ?? sessionManager.getLeafId();
+        if (!entryId) return { cancelled: true };
         const currentSessionFile = this.inner.sessionFile;
         if (!sessionManager.isPersisted()) return { cancelled: true };
         if (!currentSessionFile) throw new Error("Persisted session is missing a session file");
@@ -908,7 +913,10 @@ export class AgentSessionWrapper {
         const forkedPath = sourceManager.createBranchedSession(entryId);
         if (!forkedPath) throw new Error("Failed to create forked session");
 
-        const newSessionId = SessionManager.open(forkedPath, sessionDir).getSessionId();
+        const forkedManager = SessionManager.open(forkedPath, sessionDir);
+        const name = (command.name as string | undefined)?.trim();
+        if (name) forkedManager.appendSessionInfo(name);
+        const newSessionId = forkedManager.getSessionId();
         cacheSessionPath(newSessionId, forkedPath);
         invalidateSessionListCache();
         return { cancelled: false, newSessionId };

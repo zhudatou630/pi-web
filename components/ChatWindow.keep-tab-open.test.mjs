@@ -54,6 +54,8 @@ function bindingsFor(events, overrides = {}) {
     onKeepTabOpen: (id) => events.push(["keep", id]),
     handleFork() {}, handleSend() {}, handleSteer() {}, handleFollowUp() {},
     handlePromptWithStreamingBehavior() {},
+    t: (key) => key,
+    getForkSessionName: (source, prefix) => `${prefix}${source.id}`,
     outlineJumpControllerRef: { current: null },
     setPendingOutlineJump() {}, setPendingSearchScroll() {},
     setUnmountedNewerCount() {}, setMountLimit() {}, MOUNTED_GROUP_LIMIT: 80,
@@ -89,13 +91,13 @@ for (const hasCallback of [true, false]) {
       const { handleChatFork } = callbackRenderer()(bindingsFor(events, {
         sessionRef: { current: session },
         onKeepTabOpen: hasCallback ? (id) => events.push(["keep", id]) : undefined,
-        handleFork(entryId) { events.push(["fork", entryId]); return promise; },
+        handleFork(entryId, name) { events.push(["fork", entryId, name]); return promise; },
       }));
       const result = handleChatFork("original-entry-id");
       assert.equal(result, promise);
       assert.deepEqual(events, [
         ...(hasCallback && session ? [["keep", "own-tab"]] : []),
-        ["fork", "original-entry-id"],
+        ["fork", "original-entry-id", session ? "session.forkNamePrefixown-tab" : undefined],
       ]);
       assert.equal(await result, "forked-session");
     });
@@ -117,21 +119,21 @@ test("fork forwards failure through the original promise after keeping the sourc
 
 const images = [{ data: "aW1hZ2U=", mimeType: "image/png" }];
 const entrances = [
-  ["handleChatFork", "handleFork", ["entry-id"]],
+  ["handleChatFork", "handleFork", ["entry-id"], ["entry-id", "session.forkNamePrefixown-tab"]],
   ["handleChatSend", "handleSend", ["ordinary message", images]],
   ["handleSteerWithSubmit", "handleSteer", ["steer message", images]],
   ["handleFollowUpWithSubmit", "handleFollowUp", ["follow-up message", images]],
   ["handlePromptWithStreamingBehaviorWithSubmit", "handlePromptWithStreamingBehavior", ["streaming steer", "steer", images]],
   ["handlePromptWithStreamingBehaviorWithSubmit", "handlePromptWithStreamingBehavior", ["streaming follow-up", "followUp", images]],
 ];
-for (const [name, delegate, args] of entrances) {
+for (const [name, delegate, args, delegatedArgs = args] of entrances) {
   test(`${name} ${args[0]} keeps first, forwards arguments, and follows callback dependency changes`, async () => {
     const events = [];
     const promise = Promise.resolve("accepted");
     const bindings = bindingsFor(events, {
       [delegate](...received) {
-        assert.deepEqual(received, args);
-        received.forEach((value, i) => assert.equal(value, args[i]));
+        assert.deepEqual(received, delegatedArgs);
+        received.forEach((value, i) => assert.equal(value, delegatedArgs[i]));
         events.push(["work", delegate]);
         return promise;
       },

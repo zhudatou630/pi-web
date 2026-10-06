@@ -1890,7 +1890,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     await sendStop(command === "abort_bash" ? "abort_bash" : "abort");
   }, [addNotice, composerDraftKey, restoreSubmission, session]);
 
-  const handleFork = useCallback(async (entryId: string) => {
+  const handleFork = useCallback(async (entryId: string, name?: string) => {
     if (bashRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
@@ -1899,6 +1899,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const result = await sendAgentCommand<{ cancelled?: boolean; newSessionId?: string }>(sid, {
         type: "fork",
         entryId,
+        ...(name ? { name } : {}),
       });
       const { cancelled, newSessionId } = result ?? {};
       if (!cancelled && newSessionId) {

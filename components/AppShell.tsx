@@ -54,7 +54,7 @@ import { useOpenSessionLeases } from "@/hooks/useOpenSessionLeases";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
-import { getSessionDisplayTitle } from "@/lib/session-display-title";
+import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
 import { downloadBlob, prefersShareSheet, shareFile } from "@/lib/save-file";
 import { buildAtMentionText, buildFileAtMentionsText, buildFileLineMentionText } from "@/lib/file-fuzzy";
 import {
@@ -484,6 +484,7 @@ export function AppShell() {
   const [branchActiveLeafId, setBranchActiveLeafId] = useState<string | null>(null);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyExporting, setHistoryExporting] = useState(false);
+  const [sessionForking, setSessionForking] = useState(false);
   const [historyExportError, setHistoryExportError] = useState<string | null>(null);
   const branchLeafChangeFnRef = useRef<((leafId: string | null, anchorEntryId?: string) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
@@ -1375,10 +1376,12 @@ export function AppShell() {
     sourceSessionId: string,
     sourceEntryId: string,
   ) => {
+    const source = chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session;
     setChatTabs((tabs) => pinSessionTab(tabs, sourceSessionId));
     const result = await sendAgentCommand<{ newSessionId?: string }>(sourceSessionId, {
       type: "fork_branch",
       entryId: sourceEntryId,
+      ...(source ? { name: getForkSessionName(source, translate("session.forkNamePrefix")) } : {}),
     });
     if (!result?.newSessionId) throw new Error(translate("chat.quoteForkFailed"));
     setPendingQuotePrompt({ sessionId: result.newSessionId, text: prompt });
@@ -2031,6 +2034,29 @@ export function AppShell() {
     }
   }, [branchActiveLeafId, locale, selectedSession, translate]);
 
+  // Copies the viewed branch through its leaf into a new session; the source runtime stays alive.
+  const handleForkSession = useCallback(async () => {
+    if (!selectedSession) return;
+    const sourceId = selectedSession.id;
+    setHistoryExportError(null);
+    setSessionForking(true);
+    try {
+      const result = await sendAgentCommand<{ newSessionId?: string }>(sourceId, {
+        type: "fork_branch",
+        ...(branchActiveLeafId ? { entryId: branchActiveLeafId } : {}),
+        name: getForkSessionName(selectedSession, translate("session.forkNamePrefix")),
+      });
+      if (!result?.newSessionId) throw new Error(translate("session.forkFailed"));
+      setChatTabs((tabs) => pinSessionTab(tabs, sourceId));
+      setHistoryMenuOpen(false);
+      handleSessionForked(result.newSessionId, sourceId);
+    } catch (error) {
+      setHistoryExportError(error instanceof Error ? error.message : translate("session.forkFailed"));
+    } finally {
+      setSessionForking(false);
+    }
+  }, [branchActiveLeafId, handleSessionForked, selectedSession, translate]);
+
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
   const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
   const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd
@@ -2373,6 +2399,8 @@ export function AppShell() {
           mobile={mobile}
           infoDisabled={toolsUnavailable}
           historyDisabled={!session}
+          forkDisabled={!session || Boolean(session.transient) || runningSessionIds.has(session.id)}
+          forking={sessionForking}
           menuOpen={interactive && historyMenuOpen}
           exporting={historyExporting}
           error={historyExportError}
@@ -2384,11 +2412,18 @@ export function AppShell() {
             menu: translate("session.moreActions"),
             exportMarkdown: translate("history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
+            fork: translate("session.fork"),
+            forkTitle: session && runningSessionIds.has(session.id)
+              ? translate("session.forkRunning")
+              : translate("session.forkTitle"),
           }}
           onMenuOpenChange={handleHistoryMenuOpenChange}
           infoPending={infoPending}
           onOpenTools={() => void openInfoDialog("tools")}
           onOpenSystem={() => void openInfoDialog("system")}
+          onForkSession={() => {
+            void handleForkSession();
+          }}
           onViewFullHistory={() => {
             handleViewFullHistory();
           }}

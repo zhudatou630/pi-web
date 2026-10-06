@@ -35,6 +35,7 @@ import { AnsiText } from "./AnsiText";
 import { ConfigButton } from "./SettingsUi";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
+import { getForkSessionName } from "@/lib/session-display-title";
 import { formatDuration } from "@/lib/i18n/format";
 import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -1697,8 +1698,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const handleChatFork = useCallback((entryId: string) => {
     keepTabOpen();
-    return handleFork(entryId);
-  }, [handleFork, keepTabOpen]);
+    const source = sessionRef.current;
+    return handleFork(entryId, source ? getForkSessionName(source, t("session.forkNamePrefix")) : undefined);
+  }, [handleFork, keepTabOpen, sessionRef, t]);
 
   const handleSteerWithSubmit = useCallback((message: string, images?: AttachedImage[]) => {
     keepTabOpen();
