@@ -331,7 +331,7 @@ interface Column {
   /** Hidden on phones. */
   secondary?: boolean;
   strong?: boolean;
-  cell: (group: UsageGroup) => string;
+  cell: (group: UsageGroup) => ReactNode;
 }
 
 /**
@@ -379,7 +379,13 @@ function UsageTable({ groups, nameLabel, name = (key) => key || "—", limit = I
     { sort: "cacheWrite", label: t("usage.cacheWrite"), width: 68, secondary: true, cell: (g) => format.tokens(g.cacheWrite) },
     {
       sort: "cacheRatio", label: t("usage.cacheRatio"), hint: t("usage.cacheRatioHint"), width: 64, secondary: true,
-      cell: (g) => { const ratio = cacheRatio(g); return ratio === null ? "—" : `${ratio.toFixed(1)}×`; },
+      // The ratio separates high hit rates better (95% = 19×, 97.5% = 39×); the tooltip
+      // gives the familiar hit rate h = r / (1 + r), as on the session page.
+      cell: (g) => {
+        const ratio = cacheRatio(g);
+        if (ratio === null) return "—";
+        return <span title={format.percent(ratio / (1 + ratio))}>{`${ratio.toFixed(1)}×`}</span>;
+      },
     },
     { sort: "tokens", label: t("usage.tokensColumn"), width: 68, cell: (g) => format.tokens(g.tokens) },
     { sort: "cost", label: t("usage.cost"), width: 68, strong: true, cell: (g) => format.cost(g.cost) },
