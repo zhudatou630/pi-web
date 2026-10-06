@@ -264,7 +264,10 @@ function findDisplayMathClose(
 
     // A new Markdown block cannot belong to the preceding formula. In particular,
     // do not let a later sibling list item provide a closing `$$` for this block.
-    if (isDisplayMathBlockBoundary(line) || isDisplayMathOpeningLine(line)) {
+    if (
+      isDisplayMathBlockBoundary(line, lines[index - 1], indent) ||
+      isDisplayMathOpeningLine(line)
+    ) {
       unmatchedUntil.set(indent, index);
       return null;
     }
@@ -311,7 +314,7 @@ function isDisplayMathOpeningLine(line: string): boolean {
   return /^[ \t]*\$\$(?:\S|[ \t]+\S)/.test(line);
 }
 
-function isDisplayMathBlockBoundary(line: string): boolean {
+function isDisplayMathBlockBoundary(line: string, previous: string, indent: string): boolean {
   if (
     /^ {0,3}(`{3,}|~{3,})/.test(line) ||
     /^ {0,3}#{1,6}(?:[ \t]+|$)/.test(line) ||
@@ -319,34 +322,13 @@ function isDisplayMathBlockBoundary(line: string): boolean {
   ) {
     return true;
   }
-  // Models pretty-print equations with `+`, `-`, or `*` on their own line, and
-  // with a leading `>` inside cases. Those lines match list/blockquote markers,
-  // but they are still formula text. A prose item (`- second`) must still stop
-  // the scan so a later sibling cannot close this block.
-  if (isMathShapedDelimiterLine(line)) return false;
-  return (
-    /^[ \t]*(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)/.test(line) ||
-    /^ {0,3}>/.test(line)
-  );
-}
 
-function isMathShapedDelimiterLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (/^[-+*]$/.test(trimmed)) return true;
-
-  const marked = trimmed.match(/^(?:[-+*]|\d{1,9}[.)])[ \t]*(.*)$/);
-  if (marked) return isMathOperand(marked[1]);
-
-  const quoted = trimmed.match(/^>(.*)$/);
-  if (quoted) return isMathOperand(quoted[1].trim());
-  return false;
-}
-
-function isMathOperand(rest: string): boolean {
-  if (!rest || /[\u3400-\u9fff]/.test(rest)) return false;
-  // A list item can contain inline math and then prose: `- $x$ is the gain`.
-  if (/\$[^$\n]+\$\s*[A-Za-z]/.test(rest)) return false;
-  return /^\\[A-Za-z]+|^[0-9({[^_=<>|\\+-]|^[A-Za-z](?:_|\^|\{)/.test(rest);
+  // Pretty-printed formulas put `-`/`+` on their own line, start a line with
+  // `- \beta`, or with `>0` inside cases. Such a line only starts a list item or
+  // blockquote when it leaves the formula's container (a sibling list item) or
+  // follows a blank line.
+  if (!/^[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+\S|^ {0,3}>/.test(line)) return false;
+  return (line.match(/^[ \t]*/)?.[0].length ?? 0) < indent.length || previous.trim() === "";
 }
 
 function indentDisplayMathContent(line: string, indent: string): string {
