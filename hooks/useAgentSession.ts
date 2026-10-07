@@ -1359,7 +1359,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const runId = promptRunIdRef.current;
           const promptWasPending = rpcPromptPendingRef.current;
           rpcPromptPendingRef.current = false;
-          optimisticUserMessageKeyRef.current = null;
+          // Keep optimisticUserMessageKeyRef: an extension command's
+          // pi.sendUserMessage() run starts after prompt_done, and its user
+          // message_end must replace the command bubble (/x -> /skill:x).
           const firstNotification = notifyPromptStage(runId);
           if (!promptWasPending && !firstNotification) break;
 
