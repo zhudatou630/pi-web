@@ -175,6 +175,9 @@ interface Props {
   isProcess?: boolean;
   /** Tool calls still executing (from `tool_execution_start/end`); their cards tick live. */
   runningToolIds?: ReadonlySet<string>;
+  /** Set on the session's last message when its turn stopped unfinished; sent by the Continue action. */
+  continuePrompt?: string;
+  onContinue?: (prompt: string) => void;
 }
 
 export function getModelDisplayName(
@@ -252,12 +255,12 @@ function haveSameRelevantToolResults(
 /** Chat-level toasts; message actions report their outcome through it. */
 export const MessageNoticeContext = createContext<((notice: { message: string; type?: NoticeType }) => void) | null>(null);
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds, continuePrompt, onContinue }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationSeconds={turnDurationSeconds} isProcess={isProcess} runningToolIds={runningToolIds} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationSeconds={turnDurationSeconds} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -297,7 +300,9 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.writtenFiles === next.writtenFiles
     && prev.turnDurationSeconds === next.turnDurationSeconds
     && prev.sessionId === next.sessionId
-    && prev.isProcess === next.isProcess;
+    && prev.isProcess === next.isProcess
+    && prev.continuePrompt === next.continuePrompt
+    && prev.onContinue === next.onContinue;
 });
 
 function UserTextWithMentions({ text, cwd, onOpenFile }: { text: string; cwd?: string; onOpenFile?: (filePath: string) => void }) {
@@ -569,6 +574,8 @@ function AssistantMessageView({
   turnDurationSeconds,
   isProcess,
   runningToolIds,
+  continuePrompt,
+  onContinue,
 }: {
   message: AssistantMessage;
   modelName?: string;
@@ -585,6 +592,8 @@ function AssistantMessageView({
   turnDurationSeconds?: number;
   isProcess?: boolean;
   runningToolIds?: ReadonlySet<string>;
+  continuePrompt?: string;
+  onContinue?: (prompt: string) => void;
 }) {
   const { t, locale } = useI18n();
   const confirm = useConfirm();
@@ -741,6 +750,10 @@ function AssistantMessageView({
         </div>
       )}
 
+      {continuePrompt && onContinue && (providerError || truncated) && (
+        <TurnContinueAction prompt={continuePrompt} onContinue={onContinue} />
+      )}
+
       {writtenFiles && writtenFiles.length > 0 && (
         <TurnWrittenFiles files={writtenFiles} onOpenFile={onOpenFile} />
       )}
@@ -820,6 +833,37 @@ function AssistantMessageView({
       )}
 
     </div>
+  );
+}
+
+/** A quiet follow-up under the notice that ended the turn, styled like the answer's meta row. */
+function TurnContinueAction({ prompt, onContinue }: { prompt: string; onContinue: (prompt: string) => void }) {
+  const { t } = useI18n();
+  const ref = useRef<HTMLButtonElement>(null);
+  // Appears when the run settles; inside the capped process list it may land below the fold.
+  useEffect(() => {
+    const button = ref.current;
+    const box = button?.closest<HTMLElement>(".process-details-list");
+    if (!button || !box) return;
+    const overflow = button.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom;
+    if (overflow > 0) box.scrollTop += overflow + 4;
+  }, []);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="turn-continue"
+      title={t("chat.continueTurnTitle", { prompt })}
+      onClick={() => onContinue(prompt)}
+    >
+      <span className="step-icon">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="15 10 20 15 15 20" />
+          <path d="M4 4v7a4 4 0 0 0 4 4h12" />
+        </svg>
+      </span>
+      {t("chat.continueTurn")}
+    </button>
   );
 }
 
@@ -1036,7 +1080,32 @@ export function ThinkingBlock({ block, duration, startTime, live, sessionId, ent
            {loading ? t("i18n.loadingThinking") : error ?? (block.deferred ? content : block.thinking)}
         </div>
       )}
+      {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
     </div>
+  );
+}
+
+/**
+ * The left gutter of an open step: click anywhere along it to fold the step without
+ * scrolling back to its header. Focus and view then return to the header row.
+ */
+function StepCollapseRail({ onCollapse }: { onCollapse: () => void }) {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      className="step-collapse-rail"
+      title={t("chat.collapseStep")}
+      aria-label={t("chat.collapseStep")}
+      onClick={(event) => {
+        const trigger = event.currentTarget.closest("[data-step-card]")?.querySelector<HTMLElement>("[data-step-trigger]");
+        onCollapse();
+        requestAnimationFrame(() => {
+          trigger?.focus({ preventScroll: true });
+          trigger?.scrollIntoView({ block: "nearest" });
+        });
+      }}
+    />
   );
 }
 
@@ -1049,8 +1118,18 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
 function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [commandCopied, setCommandCopied] = useState(false);
   const inputStr = getToolCallInputText(block);
   const isStreamingInput = block.rawInput !== undefined;
+  // The full command, not the clipped header preview; copyable while the row stays folded.
+  const commandText = !isStreamingInput && typeof block.input?.command === "string" && block.input.command.trim() ? block.input.command : undefined;
+  const copyCommand = () => {
+    if (!commandText) return;
+    copyText(commandText).then(() => {
+      setCommandCopied(true);
+      setTimeout(() => setCommandCopied(false), 1500);
+    });
+  };
   // A command-only input is already the header preview; the expanded body shows it as typed, not as JSON.
   const shellCommand = isStreamingInput ? undefined : getShellCommand(block);
   // A codemode script is shown as written, not as an escaped JSON string.
@@ -1114,6 +1193,21 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>
         </button>
+        {commandText && (
+          <button
+            type="button"
+            data-step-action=""
+            data-copied={commandCopied ? "true" : undefined}
+            onClick={copyCommand}
+            title={commandCopied ? t("i18n.copied") : t("chat.copyCommand")}
+            aria-label={commandCopied ? t("i18n.copied") : t("chat.copyCommand")}
+            style={{ width: 30, display: "grid", placeItems: "center", border: "none", background: "none", cursor: "pointer", flexShrink: 0 }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {commandCopied ? <polyline points="20 6 9 17 4 12" /> : <CopyGlyph />}
+            </svg>
+          </button>
+        )}
         {openablePath && onOpenFile && (
           <button
             type="button"
@@ -1200,6 +1294,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
       )}
 
       {expanded && footer}
+      {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
 
       {/* ── Tool-result images stay visible while the card is collapsed ──
           They are the point of the call (reading a screenshot, a generated

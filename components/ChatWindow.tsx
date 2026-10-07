@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
+import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { summarizeTurnActivity, type TurnActivity } from "@/lib/turn-activity";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
@@ -823,6 +823,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     isNew,
     sessionIdRef, scrollContainerRef, isNearBottomRef,
     handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
+    retryLoadSession,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
@@ -1197,7 +1198,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   useEffect(() => {
     const position = pendingScrollRestore;
     const sessionId = session?.id;
-    if (!position || !sessionId || loading || searchTarget || restoreStartedRef.current) return;
+    if (!position || !sessionId || loading || (error && !data) || searchTarget || restoreStartedRef.current) return;
     restoreStartedRef.current = true;
     outlineJumpControllerRef.current?.abort();
     const controller = new AbortController();
@@ -1236,7 +1237,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       setPendingScrollRestore(null);
       setRestoreAnchorReady(false);
     };
-  }, [loading, pendingScrollRestore, scrollToBottom, searchTarget, session?.id]);
+  }, [data, error, loading, pendingScrollRestore, scrollToBottom, searchTarget, session?.id]);
 
   useLayoutEffect(() => {
     const position = pendingScrollRestore;
@@ -1718,6 +1719,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const isSessionLoading = !isNew && loading;
   const isQueuedSubagent = session?.relation?.kind === "subagent"
     && session.relation.status === "queued";
+  // A turn that stopped on a provider error or the output limit offers one click to pick it back up.
+  const lastMessage = messages.at(-1);
+  const continuePrompt = session && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent && lastMessage?.role === "assistant"
+    ? (lastMessage.stopReason === "error" && !isAbortedAssistantError(lastMessage) ? t("chat.continuePromptError") : lastMessage.stopReason === "length" ? t("chat.continuePromptTruncated") : null)
+    : null;
+  const handleContinue = useCallback((prompt: string) => { void handleChatSend(prompt); }, [handleChatSend]);
 
   const chatInputElement = (
     <ChatInput
@@ -1787,10 +1794,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     );
   }
 
-  if (error) {
+  // A failed background refresh keeps the loaded chat and its controls; the next reconcile retries.
+  if (error && !data) {
     return (
-      <div className="flex h-full items-center justify-center text-red-400">
-        {error}
+      <div role="alert" className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+        <div className="text-sm text-text">{t("chat.loadSessionFailed")}</div>
+        <div className="max-w-[480px] text-xs text-text-dim [overflow-wrap:anywhere]">{error}</div>
+        {session && (
+          <ConfigButton size="small" className="mt-2" onClick={retryLoadSession}>{t("chat.retryLoadSession")}</ConfigButton>
+        )}
       </div>
     );
   }
@@ -1957,6 +1969,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     writtenFiles={options.writtenFiles}
                     turnDurationSeconds={options.turnDurationSeconds}
                     isProcess={options.isProcess}
+                    // A provider error is kept on one side of a split message, but a truncation shows on both:
+                    // offer Continue once, under the answer.
+                    continuePrompt={idx === messages.length - 1 && !(options.isProcess && msg.role === "assistant" && msg.stopReason === "length" && completedAssistantParts[idx]?.answerMessage) ? continuePrompt ?? undefined : undefined}
+                    onContinue={handleContinue}
                     runningToolIds={msg.role === "assistant" && msg.content.some((block) => block.type === "toolCall" && runningToolIds.has(block.toolCallId)) ? runningToolIds : undefined}
                   />
                 );

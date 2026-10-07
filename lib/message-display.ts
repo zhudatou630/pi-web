@@ -65,6 +65,16 @@ export function getAssistantErrorMessage(
 }
 
 /**
+ * A user Stop can be saved as `stopReason: "error"` carrying the fetch AbortError text
+ * instead of `"aborted"` (seen with an openai-completions provider after Stop during a tool).
+ * Only the exact abort messages count: a timeout ("...aborted due to timeout") is a real failure.
+ */
+export function isAbortedAssistantError(message: AssistantMessage): boolean {
+  return message.stopReason === "error"
+    && /^(?:(?:This|The) operation was aborted|Request was aborted)\.?$/.test(message.errorMessage?.trim() ?? "");
+}
+
+/**
  * A response cut off by the model's output limit ends with `stopReason: "length"`.
  * Without a notice it looks exactly like a normally finished reply.
  */

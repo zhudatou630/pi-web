@@ -1,6 +1,10 @@
 "use client";
 
-import { createContext, useContext, useMemo, type MouseEvent } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { copyText } from "@/lib/clipboard";
+import { useI18n } from "@/hooks/useI18n";
+import { iconStroke } from "./iconStroke";
+import { CopyGlyph } from "./CopyGlyph";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
@@ -22,6 +26,9 @@ interface MarkdownBodyProps {
 export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
   const sessionId = useContext(MarkdownSessionContext);
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
+  // Read at click time so the renderers below keep their identity while text streams.
+  const sourceRef = useRef(normalizedMarkdown);
+  useEffect(() => { sourceRef.current = normalizedMarkdown; }, [normalizedMarkdown]);
   // Stable renderer identities keep stateful blocks mounted across message hover updates.
   const components = useMemo<Components>(() => ({
     code({ className, children, ...props }) {
@@ -96,10 +103,18 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
         </ImagePreview>
       );
     },
-    table({ children }) {
+    table({ children, node }) {
+      const start = node?.position?.start.offset;
+      const end = node?.position?.end.offset;
       return (
-        <div className="markdown-table-wrap">
-          <table>{children}</table>
+        <div className="markdown-table-block">
+          <div className="markdown-table-wrap">
+            <table>{children}</table>
+          </div>
+          {!isStreaming && start !== undefined && end !== undefined && (
+            // The table exactly as written in the message, so a paste keeps its Markdown.
+            <TableCopyButton getSource={() => tableSource(sourceRef.current, start, end)} />
+          )}
         </div>
       );
     },
@@ -116,5 +131,39 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
         {normalizedMarkdown}
       </ReactMarkdown>
     </div>
+  );
+}
+
+/** A table's Markdown, without the quote or list prefix it carries when nested. */
+export function tableSource(markdown: string, start: number, end: number): string {
+  // Continuation lines repeat the first line's prefix with list markers ("- ", "12. ") turned into indentation.
+  const prefix = markdown.slice(markdown.lastIndexOf("\n", start - 1) + 1, start)
+    .replace(/[-*+]|\d+[.)]/g, (marker) => " ".repeat(marker.length));
+  const lines = markdown.slice(start, end).split("\n");
+  return prefix ? lines.map((line, index) => (index > 0 && line.startsWith(prefix) ? line.slice(prefix.length) : line)).join("\n") : lines.join("\n");
+}
+
+function TableCopyButton({ getSource }: { getSource: () => string }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const label = copied ? t("i18n.copied") : t("chat.copyTable");
+  return (
+    <button
+      type="button"
+      className="markdown-table-copy"
+      data-copied={copied ? "true" : undefined}
+      title={label}
+      aria-label={label}
+      onClick={() => {
+        copyText(getSource()).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {copied ? <polyline points="20 6 9 17 4 12" /> : <CopyGlyph />}
+      </svg>
+    </button>
   );
 }

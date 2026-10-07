@@ -16,3 +16,9 @@ test("withholds model, effort, and context controls while an existing session is
   );
   assert.match(source, /contextUsage=\{isSessionLoading \? null : contextUsage\}/);
 });
+
+test("only a load that produced nothing replaces the chat; a failed refresh keeps it", () => {
+  assert.match(source, /if \(error && !data\) \{\n\s+return \(\n\s+<div role="alert"/);
+  assert.match(source, /onClick=\{retryLoadSession\}/);
+  assert.doesNotMatch(source, /if \(error\) \{\n\s+return/);
+});

@@ -8,7 +8,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MarkdownBody } = await jiti.import("./MarkdownBody.tsx");
+const { MarkdownBody, tableSource } = await jiti.import("./MarkdownBody.tsx");
 const { normalizeDisplayMath } = await jiti.import("../lib/markdown.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
@@ -183,4 +183,24 @@ test("renders CJK emphasis closed before a following character", () => {
   const html = renderMarkdown("**第一，工控主逻辑没坏。**Q2 证明。");
 
   assert.match(html, /<strong>第一，工控主逻辑没坏。<\/strong>Q2/);
+});
+
+test("table copy returns the table's Markdown without a quote or list prefix", () => {
+  const plain = "Intro\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAfter";
+  const start = plain.indexOf("| a");
+  const end = plain.indexOf("\n\nAfter");
+  assert.equal(tableSource(plain, start, end), "| a | b |\n| - | - |\n| 1 | 2 |");
+
+  const quoted = "> | a |\n> | - |\n> | 1 |";
+  assert.equal(tableSource(quoted, 2, quoted.length), "| a |\n| - |\n| 1 |");
+
+  const quotedList = "> - | a |\n>   | - |\n>   | 1 |";
+  assert.equal(tableSource(quotedList, 4, quotedList.length), "| a |\n| - |\n| 1 |");
+
+  const numbered = "12. | a |\n    | - |\n    | 1 |";
+  assert.equal(tableSource(numbered, 4, numbered.length), "| a |\n| - |\n| 1 |");
+
+  const html = renderMarkdown("| a |\n| - |\n| 1 |");
+  assert.match(html, /markdown-table-copy/);
+  assert.doesNotMatch(renderMarkdown("| a |\n| - |\n| 1 |", { isStreaming: true }), /markdown-table-copy/);
 });

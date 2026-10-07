@@ -2374,15 +2374,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [scrollToBottom]);
 
-  // Load session on mount
+  // Load session on mount; a failed load can rerun the same open via retryLoadSession.
+  const openSessionRef = useRef<() => void>(() => {});
+  const retryLoadSession = useCallback(() => openSessionRef.current(), []);
   useEffect(() => {
     sessionHookMountedRef.current = true;
     if (session) {
       sessionIdRef.current = session.id;
-      loadSession(session.id, true, true).then((agentState) => {
+      const openSession = () => void loadSession(session.id, true, true).then((agentState) => {
         if (agentState?.running) {
           loadTools(session.id);
-          if (agentState.state?.isStreaming || agentState.state?.isPromptRunning) {
+          // A retry after a later refresh failed must not attach a second time to a run already tracked.
+          if (!agentRunningRef.current && (agentState.state?.isStreaming || agentState.state?.isPromptRunning)) {
             sdkAgentActiveRef.current = Boolean(agentState.state.isStreaming);
             rpcPromptPendingRef.current = Boolean(agentState.state.isPromptRunning);
             agentRunningRef.current = true;
@@ -2409,6 +2412,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
         }
       });
+      openSessionRef.current = openSession;
+      openSession();
     }
     return () => {
       sessionHookMountedRef.current = false;
@@ -2558,6 +2563,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     initialScrollDoneRef, isNearBottomRef,
     // Actions
     handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
+    retryLoadSession,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
     handleBuiltinSlashCommand,
