@@ -6,13 +6,16 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 const {
   diffModelOverride,
+  findInvalidSamplingParams,
   hasModelCostDraftValue,
   mergeRuntimeModel,
   modelCostToDraft,
   parseCompleteModelCost,
+  parseSamplingParamsDraft,
   serializeHeaderRows,
   setCompatBool,
   updateHeaderRow,
+  withoutSavedSamplingParams,
 } = await jiti.import("./models-config-helpers.ts");
 
 // The panel is split across ModelsConfig.tsx and components/models/; the
@@ -418,4 +421,32 @@ test("a definition that shadows a shipped model says so and offers the built-in 
   assert.match(source, /model\.definition && builtInRefs\.has\(ref\)/);
   assert.match(source, /shadowsBuiltIn=\{builtInRefs\.has\(`\$\{row\.id\}\/\$\{model\.id\}`\)\}/);
   assert.match(source, /t\("models\.restoreBuiltIn"\)/);
+});
+
+test("samplingParams drafts: objects pass, blank deletes, anything else blocks save", () => {
+  assert.deepEqual(parseSamplingParamsDraft('{"instructions":"x","n":1,"b":true,"o":{"k":[1]}}'),
+    { instructions: "x", n: 1, b: true, o: { k: [1] } });
+  assert.equal(parseSamplingParamsDraft("  "), undefined);
+  for (const bad of ["[1]", "null", "3", '"s"', "{bad"]) assert.equal(parseSamplingParamsDraft(bad), bad);
+  assert.equal(findInvalidSamplingParams({ p: { models: [{ id: "m", samplingParams: { a: 1 } }] } }), undefined);
+  assert.equal(findInvalidSamplingParams({ p: { models: [{ id: "m", samplingParams: "{bad" }] } }), "p/m");
+  assert.equal(findInvalidSamplingParams({ p: { modelOverrides: { m: { samplingParams: "[1]" } } } }), "p/m");
+  for (const malformed of [undefined, null, [], { p: null }, { p: { models: [null], modelOverrides: [] } }]) {
+    assert.equal(findInvalidSamplingParams(malformed), undefined);
+  }
+  assert.equal(findInvalidSamplingParams({ p: { models: null, modelOverrides: { m: { samplingParams: null } } } }), "p/m");
+});
+
+test("override samplingParams survive later edits, clear cleanly, and keep unmanaged keys", () => {
+  const saved = { samplingParams: { instructions: "x" }, samplingParamsByThinkingLevel: { high: { t: 1 } } };
+  // The catalog already merged the saved override.
+  const runtime = withoutSavedSamplingParams({ id: "g", name: "G", samplingParams: { instructions: "x" } }, saved);
+  assert.equal(runtime.samplingParams, undefined);
+  const shown = mergeRuntimeModel(runtime, saved);
+  assert.deepEqual(diffModelOverride(runtime, { ...shown, name: "G2" }, saved),
+    { ...saved, name: "G2" });
+  const cleared = diffModelOverride(runtime, { ...shown, samplingParams: undefined }, saved);
+  assert.deepEqual(cleared, { samplingParamsByThinkingLevel: { high: { t: 1 } } });
+  assert.equal(mergeRuntimeModel(runtime, cleared).samplingParams, undefined);
+  assert.deepEqual(diffModelOverride({ name: "G" }, { name: "G" }, { id: "g", name: "Old", custom: true }), { custom: true });
 });

@@ -4,9 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { ModelCatalogPreset, ModelCatalogRecommendation } from "@/lib/model-catalog";
 import {
+  formatSamplingParams,
   hasModelCostDraftValue,
   modelCostToDraft,
   parseCompleteModelCost,
+  parseSamplingParamsDraft,
+  SAMPLING_PARAMS_APIS,
   setCompatBool,
   type ModelCostDraft,
   type ModelCostKey,
@@ -132,6 +135,15 @@ export function ModelDetail({
   const [costDraft, setCostDraft] = useState<ModelCostDraft>(() => modelCostToDraft(model.cost));
   const costDraftRef = useRef(costDraft);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Local text keeps the user's formatting; it resyncs only when the model's
+  // value changes from elsewhere (discard, catalog undo).
+  const [samplingText, setSamplingText] = useState(() => formatSamplingParams(model.samplingParams));
+  const samplingShown = JSON.stringify(parseSamplingParamsDraft(samplingText)) === JSON.stringify(model.samplingParams)
+    ? samplingText
+    : formatSamplingParams(model.samplingParams);
+  const samplingInvalid = typeof model.samplingParams === "string";
+  const effectiveApi = model.api || provider.api;
+  const samplingApiSupported = effectiveApi ? (SAMPLING_PARAMS_APIS as readonly string[]).includes(effectiveApi) : undefined;
   const catalogRequestIdRef = useRef(0);
   const catalogUndoRef = useRef<ModelEntry | null>(null);
   const costTemplateRef = useRef(model.cost);
@@ -189,6 +201,10 @@ export function ModelDetail({
 
   const handleTest = useCallback(async () => {
     if (!model.id.trim() || testState.phase === "testing") return;
+    if (typeof model.samplingParams === "string") {
+      setTestState({ phase: "error", message: t("models.samplingParamsInvalid") });
+      return;
+    }
     setTestState({ phase: "testing" });
     try {
       const res = await fetch("/api/models-config/test", {
@@ -221,7 +237,7 @@ export function ModelDetail({
     } catch (e) {
       setTestState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [model, provider, providerName, testState.phase, cwd]);
+  }, [model, provider, providerName, testState.phase, cwd, t]);
 
   const handleCatalogFill = useCallback(async () => {
     const query = model.id.trim();
@@ -327,6 +343,11 @@ export function ModelDetail({
     Object.keys(model.thinkingLevelMap ?? {}).length
       ? t("models.thinkingSummary", { count: Object.keys(model.thinkingLevelMap ?? {}).length })
       : null,
+    samplingInvalid
+      ? t("models.samplingParamsInvalid")
+      : Object.keys(model.samplingParams ?? {}).length
+        ? t("models.samplingParamsSummary", { count: Object.keys(model.samplingParams ?? {}).length })
+        : null,
   ].filter((part): part is string => Boolean(part));
   const advancedSummary = advancedSummaryParts.length
     ? advancedSummaryParts.join(" · ")
@@ -484,6 +505,28 @@ export function ModelDetail({
                 onChange={(headers) => set("headers", headers)}
               />
               <Hint>{t("models.headersHelp")}</Hint>
+            </ConfigField>
+
+            <ConfigField label={t("models.samplingParams")}>
+              <textarea
+                className="models-input models-json-input"
+                aria-label={t("models.samplingParams")}
+                aria-invalid={samplingInvalid || undefined}
+                spellCheck={false}
+                value={samplingShown}
+                onChange={(event) => {
+                  setSamplingText(event.target.value);
+                  set("samplingParams", parseSamplingParamsDraft(event.target.value));
+                }}
+                placeholder={'{\n  "temperature": 0.2\n}'}
+              />
+              {samplingInvalid && (
+                <span aria-live="polite" className="models-hint is-warning">{t("models.samplingParamsInvalid")}</span>
+              )}
+              <Hint>{t("models.samplingParamsHelp", { apis: SAMPLING_PARAMS_APIS.join(", ") })}</Hint>
+              {samplingApiSupported === false && (
+                <span className="models-hint is-warning">{t("models.samplingParamsUnsupported", { api: effectiveApi ?? "" })}</span>
+              )}
             </ConfigField>
 
             {model.reasoning && (

@@ -31,6 +31,8 @@ export interface ModelEntry {
   cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; tiers?: unknown };
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
+  /** A string is an unparsed editor draft; save refuses it. */
+  samplingParams?: Record<string, unknown> | string;
 }
 
 export interface ProviderEntry {
@@ -65,5 +67,6 @@ export function runtimeToEntry(model: RuntimeCatalogModel): ModelEntry {
     cost: model.cost,
     headers: model.headers,
     compat: model.compat,
+    samplingParams: model.samplingParams,
   };
 }

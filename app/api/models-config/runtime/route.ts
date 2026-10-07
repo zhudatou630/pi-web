@@ -25,6 +25,7 @@ function serializeRuntimeModel(model: Model<Api>): RuntimeCatalogModel {
     },
     ...(model.headers ? { headers: model.headers } : {}),
     ...(model.compat ? { compat: model.compat as Record<string, unknown> } : {}),
+    ...(model.samplingParams ? { samplingParams: model.samplingParams } : {}),
   };
 }
 

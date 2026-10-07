@@ -13,6 +13,7 @@ export interface RuntimeCatalogModel {
   cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number };
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
+  samplingParams?: Record<string, unknown>;
 }
 
 export type EnabledModelsSource = "none" | "global" | "project";

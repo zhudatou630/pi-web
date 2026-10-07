@@ -4,12 +4,9 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import stripJsonComments from "strip-json-comments";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { invalidateModelsCache } from "./models-cache";
+import { findInvalidSamplingParams, isRecord } from "./model-config-validation";
 
 const MODEL_COST_KEYS = ["input", "output", "cacheRead", "cacheWrite"] as const;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function normalizeModelCost(value: unknown): Record<string, unknown> | undefined {
   if (!isRecord(value)) return undefined;
@@ -120,6 +117,8 @@ export function writeModelsConfig(
   if (existsSync(modelsPath) && readModelsConfigResult(modelsPath).error) {
     throw new ModelsConfigReadError();
   }
+  const invalidSampling = findInvalidSamplingParams(data.providers);
+  if (invalidSampling) throw new Error(`samplingParams of ${invalidSampling} must be a JSON object`);
   const dir = dirname(modelsPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const normalized = normalizeModelsConfigCosts(sanitizeModelsConfig(reconcileModelOverrides(data)));

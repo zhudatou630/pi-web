@@ -1,3 +1,6 @@
+import { isRecord } from "../lib/model-config-validation";
+export { findInvalidSamplingParams } from "../lib/model-config-validation";
+
 export interface CompatEntry {
   compat?: Record<string, unknown>;
 }
@@ -76,8 +79,31 @@ const MODEL_OVERRIDE_KEYS = [
   // `api` and `baseUrl` are definition-only: an override carrying them would be
   // written to models.json and then silently ignored at runtime.
   "name", "reasoning", "thinkingLevelMap", "input",
-  "contextWindow", "maxTokens", "cost", "headers", "compat",
+  "contextWindow", "maxTokens", "cost", "headers", "compat", "samplingParams",
 ] as const;
+
+/** APIs whose SDK request builders apply `samplingParams` today. */
+export const SAMPLING_PARAMS_APIS = ["openai-completions", "openai-responses", "azure-openai-responses"] as const;
+
+/**
+ * Editor text for `samplingParams`: blank deletes the key, a JSON object is
+ * stored as is, anything else stays the raw text. A string in the draft marks
+ * it invalid; save refuses it (client and `writeModelsConfig`), so it is never
+ * silently dropped, and the dirty draft keeps the text across navigation.
+ */
+export function parseSamplingParamsDraft(text: string): Record<string, unknown> | string | undefined {
+  if (!text.trim()) return undefined;
+  try {
+    const value: unknown = JSON.parse(text);
+    if (isRecord(value)) return value;
+  } catch {}
+  return text;
+}
+
+export function formatSamplingParams(value: Record<string, unknown> | string | undefined): string {
+  if (value === undefined) return "";
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
 
 export type ModelOverrideFields = {
   id?: string;
@@ -92,6 +118,8 @@ export type ModelOverrideFields = {
   cost?: Partial<ModelCostRates>;
   headers?: Record<string, string>;
   compat?: Record<string, unknown>;
+  /** A string is an unparsed editor draft; see `parseSamplingParamsDraft`. */
+  samplingParams?: Record<string, unknown> | string;
 };
 
 function overrideValueEqual(a: unknown, b: unknown): boolean {
@@ -111,6 +139,21 @@ export function mergeRuntimeModel<T extends ModelOverrideFields>(
   };
 }
 
+/**
+ * The catalog entry already merged the *saved* override's `samplingParams`
+ * (SDK: `{ ...base, ...override }`). Strip those keys so a cleared draft shows
+ * what remains without the override instead of the old saved object.
+ * ponytail: a base key the saved override also sets is hidden too; no shipped
+ * model has samplingParams today, expose the pre-override model if one does.
+ */
+export function withoutSavedSamplingParams<T extends ModelOverrideFields>(runtime: T, saved?: ModelOverrideFields): T {
+  const savedParams = saved?.samplingParams;
+  if (!runtime.samplingParams || typeof runtime.samplingParams === "string" || !savedParams || typeof savedParams === "string") return runtime;
+  const rest = { ...runtime.samplingParams };
+  for (const key of Object.keys(savedParams)) delete rest[key];
+  return { ...runtime, samplingParams: Object.keys(rest).length ? rest : undefined };
+}
+
 export function assignRuntimeOverride(
   overrides: Record<string, unknown> | undefined,
   runtimeId: string,
@@ -122,16 +165,27 @@ export function assignRuntimeOverride(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
+/**
+ * `runtime` comes from the composed catalog, which already contains the saved
+ * override. A key from `previous` that this edit left untouched is kept even
+ * when it equals `runtime`; otherwise the next unrelated edit after a save
+ * would drop every saved override field. Keys this editor does not manage
+ * (`samplingParamsByThinkingLevel`, hand-written extras) are carried over.
+ */
 export function diffModelOverride(
   runtime: ModelOverrideFields,
   edited: ModelOverrideFields,
+  previous?: ModelOverrideFields,
 ): ModelOverrideFields | undefined {
-  const next: ModelOverrideFields = {};
+  const next: ModelOverrideFields = { ...previous };
+  delete next.id;
   for (const key of MODEL_OVERRIDE_KEYS) {
     const value = edited[key];
-    if (value === undefined) continue;
-    if (!overrideValueEqual(value, runtime[key])) {
+    const kept = previous?.[key] !== undefined && overrideValueEqual(value, previous[key]);
+    if (value !== undefined && (kept || !overrideValueEqual(value, runtime[key]))) {
       (next as Record<string, unknown>)[key] = value;
+    } else {
+      delete next[key];
     }
   }
   return Object.keys(next).length > 0 ? next : undefined;

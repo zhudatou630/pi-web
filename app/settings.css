@@ -2153,6 +2153,15 @@ a.models-hint:hover {
   box-shadow: var(--ui-field-ring);
 }
 
+/* samplingParams is verbatim JSON. */
+.models-input.models-json-input {
+  height: 120px;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  resize: vertical;
+}
+
 .models-input:disabled {
   background: var(--bg-panel);
   color: var(--text-muted);

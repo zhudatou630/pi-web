@@ -7,7 +7,9 @@ import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   assignRuntimeOverride,
   diffModelOverride,
+  findInvalidSamplingParams,
   mergeRuntimeModel,
+  withoutSavedSamplingParams,
   type ModelOverrideFields,
 } from "./models-config-helpers";
 import {
@@ -279,10 +281,14 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     });
   }, []);
 
-  const updateOverride = useCallback((providerName: string, runtime: RuntimeCatalogModel, edited: ModelEntry) => {
-    const override = diffModelOverride(runtimeToEntry(runtime), { ...edited, id: runtime.id });
+  const updateOverride = useCallback((providerName: string, runtime: ModelEntry, edited: ModelEntry) => {
     setConfig((prev) => {
       const provider = prev.providers?.[providerName] ?? {};
+      const override = diffModelOverride(
+        runtime,
+        { ...edited, id: runtime.id },
+        provider.modelOverrides?.[runtime.id] as ModelOverrideFields | undefined,
+      );
       const nextProvider: ProviderEntry = { ...provider };
       const modelOverrides = assignRuntimeOverride(
         provider.modelOverrides,
@@ -411,9 +417,14 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
    * removed the override.
    */
   const handleSave = useCallback(async () => {
+    setSavedOk(false);
+    const invalidSampling = findInvalidSamplingParams(config.providers);
+    if (invalidSampling) {
+      setSaveError(t("models.samplingParamsInvalidSave", { model: invalidSampling }));
+      return;
+    }
     setSaving(true);
     setSaveError(null);
-    setSavedOk(false);
     try {
       const res = await fetch("/api/models-config", {
         method: "PUT",
@@ -772,7 +783,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       if (!runtime) return null;
       const provider = config.providers?.[row.id] ?? {};
       const override = provider.modelOverrides?.[runtime.id] as ModelOverrideFields | undefined;
-      const model = mergeRuntimeModel(runtimeToEntry(runtime), override);
+      const savedOverride = savedConfig.providers?.[row.id]?.modelOverrides?.[runtime.id] as ModelOverrideFields | undefined;
+      const runtimeEntry = withoutSavedSamplingParams(runtimeToEntry(runtime), savedOverride);
+      const model = mergeRuntimeModel(runtimeEntry, override);
       return (
         <>
           {back}
@@ -783,7 +796,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             model={model}
             lockId
             cwd={cwd}
-            onChange={(next) => updateOverride(row.id, runtime, next)}
+            onChange={(next) => updateOverride(row.id, runtimeEntry, next)}
           />
         </>
       );
