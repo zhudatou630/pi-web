@@ -122,6 +122,23 @@ test("shows thinking duration from completedAt minus start, not the previous mes
   assert.doesNotMatch(html, />0s</);
 });
 
+test("prefers per-tool recorded durations, including zero, and falls back for old or invalid history", () => {
+  const message = {
+    role: "assistant", provider: "test", model: "test", timestamp: 1_000, completedAt: 5_000,
+    content: [{ type: "toolCall", toolCallId: "bash-1", toolName: "bash", input: { command: "ls" } }],
+  };
+  for (const [durationMs, expected] of [[2_000, "2s"], [undefined, "8s"], [NaN, "8s"], [-1, "8s"], [Infinity, "8s"], [0, null]]) {
+    const result = { role: "toolResult", toolCallId: "bash-1", timestamp: 13_000, durationMs, content: [] };
+    const html = renderMessage(message, { toolResults: new Map([["bash-1", result]]) });
+    if (expected) assert.ok(html.includes(`>${expected}</`));
+    if (durationMs === 2_000 || durationMs === 0) assert.doesNotMatch(html, />8s</);
+  }
+  const html = renderMessage({ ...message, timestamp: undefined, completedAt: undefined }, {
+    toolResults: new Map([["bash-1", { role: "toolResult", toolCallId: "bash-1", durationMs: 2_000, content: [] }]]),
+  });
+  assert.match(html, />2s</);
+});
+
 test("shows per-thinking durations from block start and end times", () => {
   const html = renderMessage({
     role: "assistant",
@@ -129,6 +146,7 @@ test("shows per-thinking durations from block start and end times", () => {
     model: "test-model",
     timestamp: 1_000,
     completedAt: 189_000,
+    durationMs: 188_000, // Whole-response time must not replace client per-block thinking timing.
     content: [
       { type: "thinking", thinking: "First thought", startedAt: 1_000, endedAt: 4_000 },
       { type: "thinking", thinking: "Second thought", startedAt: 4_000, endedAt: 9_000 },

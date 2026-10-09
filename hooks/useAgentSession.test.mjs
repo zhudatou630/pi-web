@@ -47,8 +47,8 @@ test("keeps the session event stream open through the idle grace window", () => 
   assert.doesNotMatch(agentEndSource, /closeEvents\(\)/);
   assert.match(agentStartSource, /cancelEventStreamGrace\(\)/);
   assert.match(agentSettledSource, /scheduleEventStreamClose\(sid\)/);
-  assert.match(agentSettledSource, /onAgentEnd\?\.\(\)/);
-  assert.match(promptDoneSource, /notifyPromptStage\(runId\)/);
+  assert.match(agentSettledSource, /onAgentEnd\?\.\(\{ aborted: event\.aborted === true \}\)/);
+  assert.match(promptDoneSource, /notifyPromptStage\(runId, event\.aborted === true\)/);
   assert.match(promptDoneSource, /scheduleEventStreamClose\(sid\)/);
   assert.match(sendSource, /const definitivelyRejected = !promptRequestStarted/);
   assert.match(sendSource, /if \(!definitivelyRejected && sentSessionId\) \{[\s\S]*?waitForPromptSettlement/);
@@ -59,6 +59,42 @@ test("keeps the session event stream open through the idle grace window", () => 
     sendSource,
     /rpcPromptPendingRef\.current = false;\s*agentRunningRef\.current = false;\s*closeEvents\(\)/,
   );
+});
+
+test("stopped runs still refresh the UI but never play the done sound or notify the browser", () => {
+  const wrapper = chatWindowSource.slice(
+    chatWindowSource.indexOf("  const wrappedOnAgentEnd = useCallback"),
+    chatWindowSource.indexOf("  const wrappedOnAttentionNeeded"),
+  ).replace("(end: AgentEndInfo)", "(end)");
+  const browser = appShellSource.slice(
+    appShellSource.indexOf("  const handleAgentEnd = useCallback"),
+    appShellSource.indexOf("  const handleAttentionNeeded"),
+  ).replace("(paneSession?: SessionInfo | null, end?: { aborted: boolean })", "(paneSession, end)");
+  let sounds = 0;
+  let notifications = 0;
+  let refreshes = 0;
+  const useCallback = (fn) => fn;
+  const noop = () => {};
+  const onAgentEnd = new Function("useCallback", "setRefreshKey", "setExplorerRefreshKey",
+    "selectedSession", "hydrateSelectedSession", "isAutoSessionTitleEnabled", "shouldShowBrowserNotification",
+    "deliverSessionNotification", "translate", `${browser}; return handleAgentEnd;`)(
+    useCallback, () => refreshes++, noop, null, noop, () => false, () => true,
+    () => notifications++, (key) => key,
+  );
+  const end = new Function("useCallback", "completionNotificationsEnabled", "soundEnabledRef",
+    "playDoneSoundRef", "onAgentEnd", "sessionRef", `${wrapper}; return wrappedOnAgentEnd;`)(
+    useCallback, true, { current: true }, { current: () => sounds++ }, onAgentEnd, { current: { id: "s1" } },
+  );
+  end({ aborted: true });
+  assert.equal(refreshes, 1);
+  assert.equal(sounds, 0);
+  assert.equal(notifications, 0);
+  end({ aborted: false });
+  assert.equal(refreshes, 2);
+  assert.equal(sounds, 1);
+  assert.equal(notifications, 1);
+  assert.match(source, /onAgentEnd\?\.\(\{ aborted \}\)/);
+  assert.match(source, /finishPromptWithoutStream\(sid, runId, state\?\.lastRunAborted === true\)/);
 });
 
 test("every SSE handshake reloads missed history, whether the agent is busy or idle", () => {

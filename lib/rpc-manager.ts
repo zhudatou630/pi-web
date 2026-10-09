@@ -315,6 +315,7 @@ export class AgentSessionWrapper {
   private activeMutatingCommands = 0;
   private sessionReplacement: "fork" | "clone" | null = null;
   private agentRunNeedsCompletion = false;
+  private lastRunAborted = false;
   private promptAdmissionTail: Promise<void> = Promise.resolve();
   private extensionsBound = false;
   private extensionBindingPromise: Promise<void> | null = null;
@@ -415,7 +416,11 @@ export class AgentSessionWrapper {
 
   start(): void {
     this.unsubscribe = this.inner.subscribe((event: AgentEvent) => {
-      if (event.type === "agent_start") this.agentRunNeedsCompletion = true;
+      if (event.type === "agent_start") {
+        this.agentRunNeedsCompletion = true;
+        this.lastRunAborted = false;
+      }
+      if (event.type === "agent_settled") this.lastRunAborted = event.aborted === true;
       if (event.type === "agent_end") {
         invalidateSessionListCache();
       }
@@ -436,6 +441,10 @@ export class AgentSessionWrapper {
 
   private notifyAgentRunCompleteIfIdle(): void {
     if (!this.agentRunNeedsCompletion || this.isRunning()) return;
+    if (this.lastRunAborted) {
+      this.agentRunNeedsCompletion = false;
+      return;
+    }
     try {
       if (this.beforeAgentRunComplete?.(this.sessionId) || this.isRunning()) return;
     } catch (error) {
@@ -765,6 +774,7 @@ export class AgentSessionWrapper {
               this.agentRunNeedsCompletion = true;
               if (preflightSettled) return;
               preflightSettled = true;
+              if (!streamingBehavior) this.lastRunAborted = false;
               resolve();
             };
             rejectPreflight = (error) => {
@@ -802,7 +812,7 @@ export class AgentSessionWrapper {
             // the internal callback. This waits for the run, but never acks early.
             acceptPreflight();
             finishPrompt();
-            if (!streamingBehavior) this.emit({ type: "prompt_done" });
+            if (!streamingBehavior) this.emit({ type: "prompt_done", aborted: this.lastRunAborted });
           }, (error) => {
             rejectPreflight(error);
             finishPrompt();
@@ -814,7 +824,7 @@ export class AgentSessionWrapper {
                 type: "prompt_error",
                 errorMessage: error instanceof Error ? error.message : String(error),
               });
-              if (!streamingBehavior) this.emit({ type: "prompt_done" });
+              if (!streamingBehavior) this.emit({ type: "prompt_done", aborted: this.lastRunAborted });
             }
           }).catch((error) => {
             console.error(
@@ -831,6 +841,7 @@ export class AgentSessionWrapper {
       }
 
       case "abort":
+        this.lastRunAborted = true; // Extension commands may stop before an SDK run starts.
         this.forceShutdownOnIdle = true;
         this.resetIdleTimer();
         getPausedAutomaticFollowUps().add(this.sessionId);
@@ -852,6 +863,7 @@ export class AgentSessionWrapper {
           sessionFile: this.inner.sessionFile ?? "",
           isStreaming: this.inner.isStreaming,
           isPromptRunning: this.pendingPromptCount > 0,
+          lastRunAborted: this.lastRunAborted,
           isBashRunning: this.inner.isBashRunning,
           isCompacting: this.inner.isCompacting,
           autoCompactionEnabled: this.inner.autoCompactionEnabled,

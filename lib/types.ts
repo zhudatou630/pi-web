@@ -90,6 +90,8 @@ export interface AssistantMessage {
   stopReason?: string;
   errorMessage?: string;
   timestamp?: number;
+  /** SDK-recorded response generation time; absent in older history. */
+  durationMs?: number;
   usage?: AgentUsage;
   /** Client-only generation end. From jsonl entry.timestamp or message_end. Not persisted. */
   completedAt?: number;
@@ -103,6 +105,8 @@ export interface ToolResultMessage {
   isError?: boolean;
   details?: unknown;
   timestamp?: number;
+  /** SDK-recorded tool execution time (monotonic); absent in older history. */
+  durationMs?: number;
   usage?: AgentUsage;
   /** Calls this tool made to other tools (codemode scripts); results are not recorded. */
   nestedCalls?: NestedToolCalls;

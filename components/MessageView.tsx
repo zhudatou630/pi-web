@@ -637,18 +637,19 @@ function AssistantMessageView({
     // The group header already says "Thinking…".
     .filter(({ block }) => !isEmptyThinkingBlock(block)), [message.content]);
   const blocks = useMemo(() => blockItems.map(({ block }) => block), [blockItems]);
-  // ponytail: parallel tools start when the assistant message ends and their results share
-  // the batch-end timestamp, so history shows the batch duration per card. Persist
-  // tool_execution_start/end times if per-tool history accuracy ever matters.
+  // Older history has only batch timestamps; prefer the SDK's per-tool execution time.
   const toolStartedAt = message.completedAt ?? message.timestamp;
   const toolCallDurations = useMemo<Map<string, number>>(() => {
     const map = new Map<string, number>();
-    if (!toolResults || toolStartedAt === undefined) return map;
+    if (!toolResults) return map;
     for (const block of message.content) {
       if (block.type !== "toolCall") continue;
       const result = toolResults.get(block.toolCallId);
-      const secs = elapsedSeconds(toolStartedAt, result?.timestamp);
-      if (secs !== undefined) map.set(block.toolCallId, secs);
+      const ms = result?.durationMs;
+      const secs = typeof ms === "number" && Number.isFinite(ms) && ms >= 0
+        ? Math.round(ms / 1000)
+        : elapsedSeconds(toolStartedAt, result?.timestamp);
+      if (secs !== undefined && secs > 0) map.set(block.toolCallId, secs);
     }
     return map;
   }, [message.content, toolResults, toolStartedAt]);

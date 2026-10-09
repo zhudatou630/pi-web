@@ -1274,7 +1274,7 @@ export function AppShell() {
   const handleAutoNameRef = useRef<(options?: { sessionId?: string }) => Promise<void>>(undefined);
   const namingSessionIdsRef = useRef<Set<string>>(new Set());
 
-  const handleAgentEnd = useCallback((paneSession?: SessionInfo | null) => {
+  const handleAgentEnd = useCallback((paneSession?: SessionInfo | null, end?: { aborted: boolean }) => {
     setRefreshKey((k) => k + 1);
     setExplorerRefreshKey((k) => k + 1);
     if (selectedSession) hydrateSelectedSession(selectedSession.id);
@@ -1296,6 +1296,7 @@ export function AppShell() {
     }
 
     if (targetSession?.relation?.kind === "subagent") return;
+    if (end?.aborted) return;
     if (!shouldShowBrowserNotification()) return;
 
     deliverSessionNotification({

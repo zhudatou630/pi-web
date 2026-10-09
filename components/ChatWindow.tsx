@@ -37,7 +37,7 @@ import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
 import { getForkSessionName } from "@/lib/session-display-title";
 import { formatDuration } from "@/lib/i18n/format";
-import { useAgentSession, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
+import { useAgentSession, type AgentEndInfo, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -76,7 +76,7 @@ interface Props {
     worktrees: { path: string; branch: string | null; isMain: boolean }[];
   } | null;
   draftPersistenceWarning?: boolean;
-  onAgentEnd?: (session?: SessionInfo | null) => void;
+  onAgentEnd?: (session?: SessionInfo | null, end?: AgentEndInfo) => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest, session: SessionInfo | null) => void;
   onSessionCreated?: (session: SessionInfo, sourceDraftKey: string) => void;
   onSessionForked?: (newSessionId: string, sourceSessionId: string | null) => void;
@@ -793,11 +793,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     else if (chatInputRef.current === previous) chatInputRef.current = null;
   }, [chatInputRef]);
   const soundedExtensionDialogIdRef = useRef<string | null>(null);
-  const wrappedOnAgentEnd = useCallback(() => {
-    if (completionNotificationsEnabled && soundEnabledRef.current) {
+  const wrappedOnAgentEnd = useCallback((end: AgentEndInfo) => {
+    if (completionNotificationsEnabled && soundEnabledRef.current && !end.aborted) {
       playDoneSoundRef.current();
     }
-    onAgentEnd?.(sessionRef.current);
+    onAgentEnd?.(sessionRef.current, end);
   }, [completionNotificationsEnabled, onAgentEnd]);
   const wrappedOnAttentionNeeded = useCallback((request: BlockingExtensionUiRequest) => {
     onAttentionNeeded?.(request, sessionRef.current);
