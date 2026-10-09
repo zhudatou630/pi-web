@@ -80,7 +80,7 @@ self.addEventListener("fetch", (event) => {
     PRECACHE_URLS.includes(url.pathname);
 
   if (isStaticAsset) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(cacheFirst(request, event));
   }
 });
 
@@ -153,15 +153,19 @@ async function focusOrOpenWindow(targetUrl) {
   await self.clients.openWindow(targetUrl);
 }
 
-async function cacheFirst(request) {
+async function cacheFirst(request, event) {
   const cached = await caches.match(request);
   if (cached) return cached;
 
   // A cache miss must not wait on an upstream that never answers.
   const response = await fetchWithTimeout(request);
   if (response.ok && response.type === "basic") {
-    const cache = await caches.open(STATIC_CACHE);
-    await cache.put(request, response.clone());
+    const copy = response.clone();
+    event.waitUntil(
+      caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy)).catch(() => {
+        // A failed cache write costs a re-fetch, not a failed page load.
+      }),
+    );
   }
   return response;
 }

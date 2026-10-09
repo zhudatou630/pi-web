@@ -12,6 +12,7 @@ const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 const { SessionItem } = await jiti.import("./SessionSidebar.tsx");
 const familyHelpers = await jiti.import("../lib/session-family.ts");
 const { workspaceKeyOf } = await jiti.import("../lib/workspace-key.ts");
+const { applyProjectOrderUpdate } = await jiti.import("../lib/project-groups.ts");
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 const searchSource = await readFile(new URL("./SessionSearch.tsx", import.meta.url), "utf8");
 const shellSource = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
@@ -56,7 +57,7 @@ function callback(name, scope) {
   return execute(declaration.initializer.arguments[0], scope);
 }
 function workspaceRows(scope) {
-  return callback("workspaceRows", { ...familyHelpers, workspaceKeyOf, WORKSPACE_SESSION_PREVIEW_LIMIT: 6, ...scope })();
+  return callback("workspaceRows", { ...familyHelpers, workspaceKeyOf, WORKSPACE_SESSION_PREVIEW_LIMIT: 6, draggedProjectKey: null, ...scope })();
 }
 
 test("the actual virtual row model hides archived families, keeps cross-project subagents, and shows the scoped archive", () => {
@@ -72,6 +73,9 @@ test("the actual virtual row model hides archived families, keeps cross-project 
     archivedSessionIds: { "0": "2026-02-01T00:00:00.000Z", other: "2026-02-01T00:00:00.000Z" },
     runningSessionIds: new Set(["child"]), unreadSessionIds: new Set(["7"]), pinnedSessionIds: ["1"],
   };
+  const dragging = workspaceRows({ ...scope, draggedProjectKey: "/p" });
+  assert.deepEqual(Array.from(dragging, (r) => r.kind), ["workspace", "workspace"], "drag only collapses the source group, without changing expansion storage");
+  assert.equal(scope.expandedWorkspaceKeys.has("/p"), true);
   const normal = workspaceRows(scope);
   assert.deepEqual(Array.from(normal.filter((r) => r.kind === "session"), (r) => r.family.root.id), ["2", "3", "4", "5", "6", "7", "8", "9"]);
   assert.equal(normal.find((r) => r.kind === "session" && r.family.root.id === "9").family.subagents[0].id, "child");
@@ -143,6 +147,46 @@ test("archive and unarchive are optimistic before the single request resolves, t
   assert.equal(archived.root, archived.second);
   resolveRequest({ ok: true });
   await bulk;
+});
+
+test("relative project moves are optimistic and queued, then reconcile pending intentions and surface failure", async () => {
+  let order = ["a", "b", "c"];
+  let serverOrder = [...order];
+  const pendingProjectOps = { current: [] };
+  const projectWriteQueue = { current: Promise.resolve() };
+  const requests = [];
+  const events = [];
+  const update = callback("updateProjectOrder", {
+    pendingProjectOps, projectWriteQueue, applyProjectOrderUpdate,
+    setProjectOrder(edit) { order = edit(order); },
+    fetch(url, options) {
+      const body = JSON.parse(options.body);
+      return new Promise((resolve) => requests.push({ url, body, resolve }));
+    },
+    async loadSessions() {
+      order = pendingProjectOps.current.reduce(applyProjectOrderUpdate, serverOrder);
+      events.push("reload");
+    },
+    setError(message) { events.push(message); },
+  });
+  update({ move: "a", after: "b" });
+  const firstWrite = projectWriteQueue.current;
+  update({ move: "c", before: "b" });
+  assert.deepEqual(order, ["c", "b", "a"], "both intentions render before any response");
+  await Promise.resolve();
+  assert.equal(requests.length, 1, "one in-flight relative write per browser");
+  assert.deepEqual(requests[0].body, { move: "a", after: "b" });
+  requests[0].resolve({ ok: false, json: async () => ({ error: "Move refused" }) });
+  await firstWrite;
+  assert.deepEqual(events, ["reload", "Move refused"]);
+  assert.deepEqual(order, ["a", "c", "b"], "failed move rolls back, next intention remains optimistic");
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[1].body, { move: "c", before: "b" });
+  serverOrder = applyProjectOrderUpdate(serverOrder, requests[1].body);
+  requests[1].resolve({ ok: true });
+  await projectWriteQueue.current;
+  assert.deepEqual(order, serverOrder);
+  assert.equal(pendingProjectOps.current.length, 0);
 });
 
 test("the archive view exits when its relevant count becomes zero, and the project switcher has no archive icons", () => {

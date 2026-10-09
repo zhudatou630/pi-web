@@ -1,3 +1,6 @@
+import type { Content, Link, Parent, Root } from "mdast";
+import type { Plugin } from "unified";
+import type { Extension } from "micromark-util-types";
 import { defaultUrlTransform, type Options as ReactMarkdownOptions } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
@@ -415,6 +418,75 @@ function isLikelyMathExpression(value: string): boolean {
 // GFM's default single-tilde strikethrough silently mangled such ranges (#385).
 const remarkGfmOptions = { singleTilde: false } as const;
 
+const cjkPunctuationPattern =
+  /[\u3001\u3002\u3008-\u3011\u3014-\u301B\uFF01\uFF08\uFF09\uFF0C\uFF1A\uFF1B\uFF1F\u2018\u2019\u201C\u201D\u2013\u2014\u2026\u00B7\uFF5E\u301C]/;
+
+// Only bare GFM autolinks have source equal to their label; explicit links
+// (including URLs with punctuation) and genuine CJK paths stay untouched.
+export function splitAutolinkLiteralsAtCjkPunctuation(tree: Root, source: string): void {
+  const walk = (node: Root | Parent): void => {
+    const children = node.children as Content[];
+    for (let index = 0; index < children.length; index++) {
+      const child = children[index];
+      if (child.type === "link") splitAutolinkLiteral(children, index, child, source);
+      const current = children[index];
+      if ("children" in current && Array.isArray(current.children)) walk(current as Parent);
+    }
+  };
+  walk(tree);
+}
+
+function splitAutolinkLiteral(siblings: Content[], index: number, node: Link, source: string): void {
+  if (node.title != null || node.children.length !== 1) return;
+  const textNode = node.children[0];
+  if (textNode.type !== "text") return;
+  const start = node.position?.start;
+  const end = node.position?.end;
+  if (start?.offset == null || end?.offset == null) return;
+  if (source.slice(start.offset, end.offset) !== textNode.value) return;
+  const text = textNode.value;
+  const cut = text.search(cjkPunctuationPattern);
+  if (cut <= 0 || !node.url.endsWith(text)) return;
+  const head = text.slice(0, cut);
+  const boundary = { line: start.line, column: start.column + cut, offset: start.offset + cut };
+  node.url = node.url.slice(0, node.url.length - text.length) + head;
+  textNode.value = head;
+  node.position = { start, end: boundary };
+  siblings.splice(index + 1, 0, { type: "text", value: text.slice(cut), position: { start: boundary, end } });
+}
+
+function remarkSplitAutolinkLiterals() {
+  return (tree: Root, file: { value?: unknown }): void => {
+    splitAutolinkLiteralsAtCjkPunctuation(tree, typeof file.value === "string" ? file.value : "");
+  };
+}
+
+// Guard at tokenization, before ambiguous price pairs swallow emphasis/links.
+// Keep remark-math's own tokenizer and resolver for real math, code and $$.
+const remarkCurrencySafeMath: Plugin = function () {
+  remarkMath.call(this);
+  const data = this.data() as { micromarkExtensions?: Extension[] };
+  const constructs = data.micromarkExtensions?.at(-1)?.text?.[36];
+  for (const construct of Array.isArray(constructs) ? constructs : constructs ? [constructs] : []) {
+    if (construct.name !== "mathText") continue;
+    const tokenize = construct.tokenize;
+    construct.tokenize = function (effects, ok, nok) {
+      const start = this.now();
+      return tokenize.call(this, effects, (code) => {
+        const source = this.sliceSerialize({ start, end: this.now() });
+        if (source.startsWith("$") && !source.startsWith("$$")) {
+          const content = source.slice(1, -1);
+          const startsWithAmount = /^\s*[+-]?(?:\d|\.\d)/.test(content);
+          const closesBeforeNumber = code !== null && code >= 48 && code <= 57;
+          const mismatchedPadding = /^\s/.test(content) !== /\s$/.test(content);
+          if (startsWithAmount && (closesBeforeNumber || mismatchedPadding)) return nok(code);
+        }
+        return ok(code);
+      }, nok);
+    };
+  }
+};
+
 // CommonMark only closes `**` before whitespace or ASCII punctuation, so a Chinese
 // run written as `**第一，节奏坏了。**Q2 证明…` rendered as literal asterisks: the
 // closing `**` sits after a CJK punctuation mark. This plugin (CommonMark issue #650)
@@ -422,13 +494,57 @@ const remarkGfmOptions = { singleTilde: false } as const;
 export const markdownRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
-  remarkMath,
+  remarkSplitAutolinkLiterals,
+  remarkCurrencySafeMath,
   remarkCjkFriendly,
+];
+
+// Bare custom <br> nodes avoid remark-rehype's extra newline after hard breaks
+// (which pre-wrap would display twice). Code/math/html values stay untouched.
+interface MarkdownTreeNode {
+  type: string;
+  value?: string;
+  children?: MarkdownTreeNode[];
+  data?: { hName?: string };
+}
+const LINE_ENDING = /[ \t]*(?:\r\n|\r|\n)[ \t]*/;
+const PHRASING_BLOCK_TYPES = new Set(["paragraph", "heading", "tableCell"]);
+const RAW_TEXT_OPEN_TAG = /^<(?:iframe|noembed|noframes|noscript|plaintext|script|style|textarea|title|xmp)(?=[\s/>]|$)/i;
+
+function opensRawTextElement(node: MarkdownTreeNode): boolean {
+  if (node.type === "html") return RAW_TEXT_OPEN_TAG.test(node.value ?? "");
+  return node.children?.some(opensRawTextElement) ?? false;
+}
+function lineBreakNode(): MarkdownTreeNode {
+  return { type: "lineBreak", data: { hName: "br" } };
+}
+function keepLineBreaks(parent: MarkdownTreeNode): void {
+  if (!parent.children) return;
+  if (PHRASING_BLOCK_TYPES.has(parent.type) && opensRawTextElement(parent)) return;
+  parent.children = parent.children.flatMap((node) => {
+    if (node.type === "break") return [lineBreakNode()];
+    if (node.type !== "text" || !node.value) {
+      keepLineBreaks(node);
+      return [node];
+    }
+    return node.value.split(LINE_ENDING).flatMap((line, index) => [
+      ...(index > 0 ? [lineBreakNode()] : []),
+      ...(line ? [{ type: "text", value: line }] : []),
+    ]);
+  });
+}
+function remarkKeepLineBreaks() {
+  return (tree: MarkdownTreeNode) => keepLineBreaks(tree);
+}
+export const markdownUserRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
+  ...(markdownRemarkPlugins ?? []),
+  remarkKeepLineBreaks,
 ];
 export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
-  remarkMath,
+  remarkSplitAutolinkLiterals,
+  remarkCurrencySafeMath,
   remarkCjkFriendly,
 ];
 

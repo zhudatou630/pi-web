@@ -178,6 +178,9 @@ interface Props {
   /** Set on the session's last message when its turn stopped unfinished; sent by the Continue action. */
   continuePrompt?: string;
   onContinue?: (prompt: string) => void;
+  onCompact?: () => void;
+  isCompacting?: boolean;
+  compactError?: string | null;
 }
 
 export function getModelDisplayName(
@@ -255,12 +258,12 @@ function haveSameRelevantToolResults(
 /** Chat-level toasts; message actions report their outcome through it. */
 export const MessageNoticeContext = createContext<((notice: { message: string; type?: NoticeType }) => void) | null>(null);
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds, continuePrompt, onContinue }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationSeconds={turnDurationSeconds} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationSeconds={turnDurationSeconds} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -302,7 +305,10 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.sessionId === next.sessionId
     && prev.isProcess === next.isProcess
     && prev.continuePrompt === next.continuePrompt
-    && prev.onContinue === next.onContinue;
+    && prev.onContinue === next.onContinue
+    && prev.onCompact === next.onCompact
+    && prev.isCompacting === next.isCompacting
+    && prev.compactError === next.compactError;
 });
 
 function UserTextWithMentions({ text, cwd, onOpenFile }: { text: string; cwd?: string; onOpenFile?: (filePath: string) => void }) {
@@ -330,7 +336,7 @@ const IMAGE_HINT_LINE =
   /^\[Image(?:: original \d+x\d+, displayed at \d+x\d+\. Multiply coordinates by \d+\.\d{2} to map to original image\.| converted from \S+ to \S+\.)\]$/;
 
 function stripImageHints(text: string): string {
-  const lines = text.split("\n");
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
   let end = lines.length;
   while (end > 0 && (lines[end - 1].trim() === "" || IMAGE_HINT_LINE.test(lines[end - 1].trim()))) end -= 1;
   return lines.slice(0, end).join("\n");
@@ -576,6 +582,9 @@ function AssistantMessageView({
   runningToolIds,
   continuePrompt,
   onContinue,
+  onCompact,
+  isCompacting,
+  compactError,
 }: {
   message: AssistantMessage;
   modelName?: string;
@@ -594,6 +603,9 @@ function AssistantMessageView({
   runningToolIds?: ReadonlySet<string>;
   continuePrompt?: string;
   onContinue?: (prompt: string) => void;
+  onCompact?: () => void;
+  isCompacting?: boolean;
+  compactError?: string | null;
 }) {
   const { t, locale } = useI18n();
   const confirm = useConfirm();
@@ -625,6 +637,7 @@ function AssistantMessageView({
   }, [message.content, toolResults, toolStartedAt]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
   const truncated = isAssistantTruncated(message, { isStreaming });
+  const unansweredTruncation = truncated && !hasAssistantAnswer(message);
   const textContent = blocks
     .filter((block): block is TextContent => block.type === "text")
     .map((block) => block.text)
@@ -746,11 +759,25 @@ function AssistantMessageView({
             lineHeight: 1.5,
           }}
         >
-          {t("chat.truncatedByOutputLimit")}
+          {t(unansweredTruncation ? "chat.truncatedWithoutAnswer" : "chat.truncatedByOutputLimit")}
+          {unansweredTruncation && onCompact && (
+            <button
+              type="button"
+              className="meta-link"
+              onClick={onCompact}
+              disabled={isCompacting}
+              style={{ display: "block", marginTop: 8 }}
+            >
+              {t(isCompacting ? "chat.compacting" : "chat.compactContext")}
+            </button>
+          )}
+          {unansweredTruncation && compactError && (
+            <div role="alert" style={{ marginTop: 8, color: "var(--danger)", whiteSpace: "pre-wrap" }}>{compactError}</div>
+          )}
         </div>
       )}
 
-      {continuePrompt && onContinue && (providerError || truncated) && (
+      {continuePrompt && onContinue && !unansweredTruncation && (providerError || truncated) && (
         <TurnContinueAction prompt={continuePrompt} onContinue={onContinue} />
       )}
 
@@ -1119,7 +1146,7 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [commandCopied, setCommandCopied] = useState(false);
-  const inputStr = getToolCallInputText(block);
+  const inputStr = getWrittenFileText(block) ?? getToolCallInputText(block);
   const isStreamingInput = block.rawInput !== undefined;
   // The full command, not the clipped header preview; copyable while the row stays folded.
   const commandText = !isStreamingInput && typeof block.input?.command === "string" && block.input.command.trim() ? block.input.command : undefined;
@@ -1979,6 +2006,23 @@ function safeJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/** Thinking alone is not an answer; partial text, images and tool calls are. */
+export function hasAssistantAnswer(message: AssistantMessage): boolean {
+  return (message.content ?? []).some((block) => block.type === "text"
+    ? block.text.trim().length > 0
+    : block.type === "image" || block.type === "toolCall");
+}
+
+const WRITE_VIEW_KEYS = new Set(["path", "file_path", "content"]);
+
+// Rich or still-streaming inputs keep JSON so no argument disappears.
+export function getWrittenFileText(block: ToolCallContent): string | null {
+  if (block.rawInput !== undefined || !isWriteToolName(block.toolName)) return null;
+  const { content } = block.input ?? {};
+  if (typeof content !== "string" || content === "") return null;
+  return Object.keys(block.input).every((key) => WRITE_VIEW_KEYS.has(key)) ? content : null;
 }
 
 export function getToolCallInputText(block: ToolCallContent): string {

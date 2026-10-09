@@ -219,6 +219,12 @@ export function createAgentEventStream(
             sessionId,
             isStreaming: session.isStreaming,
             runningTools: session.runningTools,
+            // onEvent synchronously replays requests still held by the wrapper.
+            pendingExtensionUiIds: bufferedEvents
+              .filter((event) => event.type === "extension_ui_request" && typeof event.id === "string"
+                && ["select", "confirm", "input", "editor", "custom"].includes(event.method as string)
+                && event.closed !== true)
+              .map((event) => event.id as string),
           });
           for (const event of bufferedEvents) forwardEvent(event, snapshot);
           if (snapshot !== undefined && snapshot !== null) {

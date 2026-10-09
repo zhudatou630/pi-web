@@ -25,7 +25,7 @@ import {
   resolveActiveLocateEntryId,
   shouldAbortLocateOnLeafChange,
 } from "@/lib/chat-outline-jump";
-import { getModelDisplayName, MessageNoticeContext, MessageView } from "./MessageView";
+import { getModelDisplayName, hasAssistantAnswer, MessageNoticeContext, MessageView } from "./MessageView";
 import { MarkdownBody, MarkdownSessionContext } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
@@ -460,8 +460,10 @@ function isLiveProcessActivity(
   streamingMessage: AssistantMessage | null,
   phase: AgentPhase,
   hasAnswer = false,
+  isCompacting = false,
 ): boolean {
   if (!isLiveTail) return false;
+  if (isCompacting) return true;
   if (phase?.kind === "running_tools") return true;
   const lastBlock = lastStreamingBlock(streamingMessage);
   if (isStreaming && (lastBlock?.type === "thinking" || lastBlock?.type === "toolCall")) {
@@ -482,7 +484,9 @@ function liveProcessSummary(
   streamingMessage: AssistantMessage | null,
   phase: AgentPhase,
   t: (key: string, params?: Record<string, string | number>) => string,
+  isCompacting = false,
 ): string | null {
+  if (isCompacting) return t("chat.compacting");
   if (phase?.kind === "running_tools") {
     const name = phase.tools[phase.tools.length - 1]?.name ?? null;
     return imageStepLabel(name, undefined, t) ?? (name && displayToolName(name));
@@ -500,11 +504,14 @@ function latchedLiveProcessSummary(
   active: boolean,
   latched: { current: string | null },
   fallback: string,
+  override: string | null = null,
 ): string | null {
   if (!active) {
     latched.current = null;
     return null;
   }
+  // Compaction temporarily masks the last step; don't latch it into the next request.
+  if (override) return override;
   if (confirmed) latched.current = confirmed;
   return latched.current ?? fallback;
 }
@@ -1722,8 +1729,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // A turn that stopped on a provider error or the output limit offers one click to pick it back up.
   const lastMessage = messages.at(-1);
   const continuePrompt = session && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent && lastMessage?.role === "assistant"
-    ? (lastMessage.stopReason === "error" && !isAbortedAssistantError(lastMessage) ? t("chat.continuePromptError") : lastMessage.stopReason === "length" ? t("chat.continuePromptTruncated") : null)
+    ? (lastMessage.stopReason === "error" && !isAbortedAssistantError(lastMessage) ? t("chat.continuePromptError") : lastMessage.stopReason === "length" && hasAssistantAnswer(lastMessage) ? t("chat.continuePromptTruncated") : null)
     : null;
+  const recoverTruncation = Boolean(session && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent
+    && lastMessage?.role === "assistant" && lastMessage.stopReason === "length" && !hasAssistantAnswer(lastMessage));
   const handleContinue = useCallback((prompt: string) => { void handleChatSend(prompt); }, [handleChatSend]);
 
   const chatInputElement = (
@@ -1973,6 +1982,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     // offer Continue once, under the answer.
                     continuePrompt={idx === messages.length - 1 && !(options.isProcess && msg.role === "assistant" && msg.stopReason === "length" && completedAssistantParts[idx]?.answerMessage) ? continuePrompt ?? undefined : undefined}
                     onContinue={handleContinue}
+                    onCompact={idx === messages.length - 1 && recoverTruncation ? handleCompact : undefined}
+                    isCompacting={isCompacting}
+                    compactError={idx === messages.length - 1 && recoverTruncation ? compactError : undefined}
                     runningToolIds={msg.role === "assistant" && msg.content.some((block) => block.type === "toolCall" && runningToolIds.has(block.toolCallId)) ? runningToolIds : undefined}
                   />
                 );
@@ -2034,7 +2046,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   }
                   if (isLiveTail && streamingParts.processMessage) {
                     markOutlineTarget([]);
-                    const liveProcessActive = isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage));
+                    const liveProcessActive = isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage), isCompacting);
                     const turnStartTime = (boundaryIdx >= 0 && typeof messages[boundaryIdx]?.timestamp === "number" && Number.isFinite(messages[boundaryIdx].timestamp))
                       ? messages[boundaryIdx].timestamp
                       : streamingParts.processMessage.timestamp;
@@ -2052,10 +2064,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                           defaultExpanded
                           isMobile={isMobile}
                           activeStepSummary={latchedLiveProcessSummary(
-                            liveProcessSummary(streamingParts.processMessage, agentPhase, t),
+                            liveProcessSummary(streamingParts.processMessage, agentPhase, t, isCompacting),
                             liveProcessActive,
                             liveProcessSummaryRef,
                             t("chat.thinking"),
+                            isCompacting ? t("chat.compacting") : null,
                           )}
                           isStreaming={liveProcessActive}
                           t={t}
@@ -2117,11 +2130,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   if (processIdx !== finalAssistantIdx && parts?.answerMessage) {
                     promotedAnswers.push({ idx: processIdx, message: parts.answerMessage });
                   }
-                  const message = parts?.processMessage;
+                  const message = parts?.processMessage
+                    ?? (processMessage.stopReason === "length" && !parts?.answerMessage ? processMessage : null);
                   if (!message) continue;
                   const blocks = getDisplayableAssistantBlocks(message);
                   const hasError = Boolean(getAssistantErrorMessage(message));
-                  if (blocks.length === 0 && !hasError) continue;
+                  if (blocks.length === 0 && !hasError && message.stopReason !== "length") continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
                   processToolCount += countToolCallBlocks(blocks);
                   revealProcess ||= Boolean(
@@ -2162,14 +2176,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   streamingAssistant,
                   agentPhase,
                   hasLiveAnswer,
+                  isCompacting,
                 );
                 // Once the answer streams every step has finished, so the header already says what the turn did.
                 const answeringLive = !finalAnswerMessage && isLiveTail && Boolean(streamingParts.answerMessage) && !liveProcessActive;
                 const activeStepSummary = latchedLiveProcessSummary(
-                  liveProcessSummary(streamingAssistant, agentPhase, t),
+                  liveProcessSummary(streamingAssistant, agentPhase, t, isCompacting),
                   liveProcessActive,
                   liveProcessSummaryRef,
                   t("chat.thinking"),
+                  isCompacting ? t("chat.compacting") : null,
                 );
 
                 const turnStartTime = (boundaryIdx >= 0 && typeof messages[boundaryIdx]?.timestamp === "number" && Number.isFinite(messages[boundaryIdx].timestamp))

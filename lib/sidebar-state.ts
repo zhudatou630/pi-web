@@ -3,12 +3,13 @@ import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import lockfile from "proper-lockfile";
 import { writePrivateFileAtomicSync } from "./atomic-file";
+import { applyProjectOrderUpdate, isProjectKey, isProjectOrderUpdate, projectOrderFits, type ProjectOrderUpdate } from "./project-groups";
 
 export interface SidebarState {
   version: 1;
   pinned: string[];
   archived: Record<string, string>;
-  // A later version can add projectOrder without older writers discarding it.
+  projectOrder?: string[];
   [key: string]: unknown;
 }
 
@@ -43,6 +44,9 @@ function loadState(path: string): SidebarState {
     }
   } else if (isRecord(value) && value.version === 1
     && Array.isArray(value.pinned) && value.pinned.every((id) => typeof id === "string" && SESSION_ID_PATTERN.test(id))
+    && (value.projectOrder === undefined || (Array.isArray(value.projectOrder)
+      && value.projectOrder.every(isProjectKey) && new Set(value.projectOrder).size === value.projectOrder.length
+      && projectOrderFits(value.projectOrder)))
     && isRecord(value.archived) && Object.entries(value.archived).every(([id, time]) =>
       SESSION_ID_PATTERN.test(id) && typeof time === "string" && Number.isFinite(Date.parse(time)))) {
     return value as SidebarState;
@@ -59,14 +63,10 @@ export function readSidebarState(path = getSidebarStatePath()): SidebarState {
   }
 }
 
-/** Lock even a missing file; migration and read-modify-write share the lock. */
-export async function updateSidebarState(
-  ids: readonly string[], update: SidebarUpdate, path = getSidebarStatePath(),
-): Promise<SidebarState> {
-  if (!ids.length || ids.some((id) => !SESSION_ID_PATTERN.test(id))) throw new Error("Invalid session ids");
-  if ((typeof update.pinned === "boolean") === (typeof update.archived === "boolean")) {
-    throw new Error("Send exactly one of pinned or archived");
-  }
+/** Lock even a missing file; all sidebar read-modify-writes share this lock. */
+async function mutateSidebarState(
+  mutate: (state: SidebarState) => boolean, path: string,
+): Promise<{ state: SidebarState; changed: boolean }> {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   let compromised: Error | undefined;
   const release = await lockfile.lock(path, {
@@ -76,6 +76,33 @@ export async function updateSidebarState(
   });
   try {
     const state = loadState(path);
+    const changed = mutate(state);
+    if (compromised) throw compromised;
+    if (changed) writePrivateFileAtomicSync(path, JSON.stringify(state, null, 2) + "\n");
+    return { state, changed };
+  } finally {
+    await release();
+  }
+}
+
+export async function updateProjectOrder(update: ProjectOrderUpdate, path = getSidebarStatePath()) {
+  if (!isProjectOrderUpdate(update)) throw new Error("Invalid project order update");
+  return mutateSidebarState((state) => {
+    const next = applyProjectOrderUpdate(state.projectOrder ?? [], update);
+    if (JSON.stringify(next) === JSON.stringify(state.projectOrder ?? [])) return false;
+    state.projectOrder = next;
+    return true;
+  }, path);
+}
+
+export async function updateSidebarState(
+  ids: readonly string[], update: SidebarUpdate, path = getSidebarStatePath(),
+): Promise<SidebarState> {
+  if (!ids.length || ids.some((id) => !SESSION_ID_PATTERN.test(id))) throw new Error("Invalid session ids");
+  if ((typeof update.pinned === "boolean") === (typeof update.archived === "boolean")) {
+    throw new Error("Send exactly one of pinned or archived");
+  }
+  return (await mutateSidebarState((state) => {
     const archivedAt = new Date().toISOString();
     for (const id of new Set(ids)) {
       if (typeof update.pinned === "boolean") {
@@ -91,10 +118,6 @@ export async function updateSidebarState(
         delete state.archived[id];
       }
     }
-    if (compromised) throw compromised;
-    writePrivateFileAtomicSync(path, JSON.stringify(state, null, 2) + "\n");
-    return state;
-  } finally {
-    await release();
-  }
+    return true;
+  }, path)).state;
 }

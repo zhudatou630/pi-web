@@ -6,6 +6,7 @@ export interface SessionTitleSource {
   id: string;
   name?: string;
   firstMessage?: string;
+  parentSessionId?: string;
 }
 
 function truncateText(text: string, maxLength: number): string {
@@ -31,8 +32,11 @@ export function getSessionDisplayTitle(session: SessionTitleSource): string {
   return preview || session.id.slice(0, 12);
 }
 
-/** Name for a session forked from `source`: its title with `prefix`, never prefixed twice. */
+/** A fork keeps the source title/prefix, replacing any earlier fork suffix. */
 export function getForkSessionName(source: SessionTitleSource, prefix: string): string {
   const title = getSessionDisplayTitle(source);
-  return title.startsWith(prefix) ? title : `${prefix}${title}`;
+  const hasPrefix = /^(?:Fork: |分叉：)/.test(title) || title.startsWith(prefix);
+  const base = hasPrefix || source.parentSessionId ? title.replace(/ · [0-9a-f]{4}$/, "") : title;
+  const suffix = Array.from(crypto.getRandomValues(new Uint8Array(2)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hasPrefix ? base : `${prefix}${base}`} · ${suffix}`;
 }

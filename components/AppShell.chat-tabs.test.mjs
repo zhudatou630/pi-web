@@ -188,7 +188,8 @@ test("updates draft tab titles and confirms before discarding unsent content", (
 });
 
 test("late fork completion does not steal focus from another tab", () => {
-  assert.match(source, /const shouldFocus = !sourceSessionId \|\| activeSessionIdRef\.current === sourceSessionId/);
+  assert.match(source, /focusSessionId = sourceSessionId/);
+  assert.match(source, /const shouldFocus = !sourceSessionId \|\| activeSessionIdRef\.current === focusSessionId/);
   assert.match(source, /setChatTabs\(\(prev\) => openSessionInNewTab\(prev, forkedSession, pane\)\.tabs\);[\s\S]*?if \(!shouldFocus\) return/);
   assert.match(source, /if \(pane === "secondary"\) setSplitChatTabId\(newSessionId\)/);
   assert.match(chatWindowSource, /const handleChatFork = useCallback[\s\S]*?keepTabOpen\(\);[\s\S]*?return handleFork\(entryId,/);

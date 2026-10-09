@@ -26,6 +26,7 @@ import {
   buildEntriesFromFiles, buildAtInsertText, buildAtMentionText, extractAtQuery, filterFileEntries,
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
+import { getMarkdownListContinuation } from "@/lib/markdown-list-continuation";
 import { ImageMentionChip } from "./GeneratedImageResult";
 import { ImageAttachmentStrip } from "./ImageAttachmentStrip";
 import { FolderIcon, getFileIcon } from "./FileIcons";
@@ -136,6 +137,24 @@ function getVisibleTopBoundary(element: HTMLElement): number {
   }
 
   return visibleTop;
+}
+
+// Native replacement participates in undo. Engines that refuse execCommand
+// still insert the text; only that fallback lacks a native undo entry.
+export function replaceTextareaRange(
+  textarea: HTMLTextAreaElement, start: number, end: number, text: string, cursorOffset = text.length,
+): void {
+  textarea.focus();
+  textarea.setSelectionRange(start, end);
+  let inserted = false;
+  try {
+    inserted = document.execCommand(text ? "insertText" : "delete", false, text);
+  } catch { /* Unsupported engine: use the plain edit below. */ }
+  if (!inserted) {
+    textarea.setRangeText(text, start, end, "end");
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  textarea.setSelectionRange(start + cursorOffset, start + cursorOffset);
 }
 
 export function replaceLinksWithMarkdown(
@@ -815,18 +834,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       const start = ta.selectionStart ?? ta.value.length;
       const end = ta.selectionEnd ?? ta.value.length;
       const before = ta.value.slice(0, start);
-      const after = ta.value.slice(end);
       const sep = before.length > 0 && !before.endsWith(" ") ? " " : "";
-      const newVal = before + sep + text + after;
-      valueRef.current = newVal;
-      setValue(newVal);
+      replaceTextareaRange(ta, start, end, sep + text);
+      valueRef.current = ta.value;
+      setValue(ta.value);
+      setCursorPosition(ta.selectionStart);
       setAtQuery(null);
-      requestAnimationFrame(() => {
-        if (!ta) return;
-        const pos = start + sep.length + text.length;
-        ta.setSelectionRange(pos, pos);
-        ta.focus();
-      });
     },
     addImages(files: File[]) {
       processImageFiles(files);
@@ -991,6 +1004,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     observer.observe(ta);
     return () => observer.disconnect();
   }, [resizeTextarea]);
+
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    // Only native newline edits reach here: send-key swaps stay in keydown.
+    const continueList = (event: InputEvent) => {
+      if (event.inputType !== "insertLineBreak" || !event.cancelable || event.isComposing || isComposingRef.current) return;
+      const edit = getMarkdownListContinuation(ta.value, ta.selectionStart, ta.selectionEnd);
+      if (!edit) return;
+      event.preventDefault();
+      replaceTextareaRange(ta, edit.start, edit.end, edit.text);
+      valueRef.current = ta.value;
+      setValue(ta.value);
+      setCursorPosition(ta.selectionStart);
+    };
+    ta.addEventListener("beforeinput", continueList);
+    return () => ta.removeEventListener("beforeinput", continueList);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1195,27 +1226,18 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const applyAtCompletion = useCallback((entry: FileIndexEntry) => {
     if (!atQuery) return;
     const ta = textareaRef.current;
-    const cursor = ta?.selectionStart ?? value.length;
-    const before = value.slice(0, atQuery.start);
-    let after = value.slice(cursor);
-    // Completing inside a quoted token (@"my dir/… with the caret before the
-    // closing quote): the replacement carries its own closing quote, so drop
-    // the old one right after the caret (mirrors the TUI's applyCompletion).
-    if (atQuery.quoted && after.startsWith('"')) {
-      after = after.slice(1);
-    }
+    if (!ta) return;
+    const cursor = ta.selectionStart;
+    const replaceEnd = cursor + (atQuery.quoted && ta.value[cursor] === '"' ? 1 : 0);
     const insert = buildAtInsertText(entry.path, entry.isDir, atQuery.quoted);
-    const newValue = before + insert.text + after;
-    const newPos = before.length + insert.cursorOffset;
-    valueRef.current = newValue;
-    setValue(newValue);
+    const newPos = atQuery.start + insert.cursorOffset;
+    replaceTextareaRange(ta, atQuery.start, replaceEnd, insert.text, insert.cursorOffset);
+    valueRef.current = ta.value;
+    setValue(ta.value);
     setCursorPosition(newPos);
-    // setValue alone does not fire onChange — re-derive the token here. Files
-    // end with a space (token closes, menu hides); directories end with "/"
-    // before the caret (token stays open for drill-down into the directory).
-    setAtQuery(extractAtQuery(newValue.slice(0, newPos)));
-    focusTextareaAt(textareaRef, newPos);
-  }, [atQuery, value]);
+    // Quoted directories put the caret before their closing quote for drill-down.
+    setAtQuery(extractAtQuery(ta.value.slice(0, newPos)));
+  }, [atQuery]);
 
   useEffect(() => {
     if (atActiveIndex >= atMatches.length) {
@@ -2489,7 +2511,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       setImageMenuOpen(false);
                       setThinkingDropdownOpen((v) => !v);
                     }}
-                    disabled={isStreaming}
                     title={t("chat.changeReasoning", { level: thinkingDisplayLabel })}
                     aria-label={t("chat.changeReasoningLabel")}
                     aria-haspopup="menu"

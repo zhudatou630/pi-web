@@ -8,7 +8,7 @@ import { CopyGlyph } from "./CopyGlyph";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { encodeFilePathForApi } from "@/lib/file-paths";
-import { markdownRehypePlugins, markdownRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { markdownRehypePlugins, markdownRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { ImagePreview } from "./ImagePreview";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
 
@@ -123,7 +123,7 @@ export function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile
   return (
     <div className={["markdown-body", className].filter(Boolean).join(" ")}>
       <ReactMarkdown
-        remarkPlugins={markdownRemarkPlugins}
+        remarkPlugins={className?.split(/\s+/).includes("markdown-user-message") ? markdownUserRemarkPlugins : markdownRemarkPlugins}
         rehypePlugins={markdownRehypePlugins}
         urlTransform={onOpenFile ? markdownUrlTransform : undefined}
         components={components}

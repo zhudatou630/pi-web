@@ -153,3 +153,49 @@ test("a dead upstream cannot hang navigation or a static-asset miss", async () =
   assert.match(source, /const response = await fetchWithTimeout\(request\)/, "a cache miss must be bounded too");
   assert.doesNotMatch(source, /await fetch\(request\)/, "no unbounded fetch may remain in the worker");
 });
+
+function dispatchStaticFetch() {
+  let response;
+  const writes = [];
+  listeners.get("fetch")({
+    request: { url: "https://pi.test/_next/static/chunk.js", method: "GET" },
+    respondWith: (promise) => { response = promise; },
+    waitUntil: (promise) => writes.push(promise),
+  });
+  return { response, writes };
+}
+
+for (const cacheOperation of ["open", "put"]) {
+  test(`a static miss responds before cache.${cacheOperation} finishes`, async (t) => {
+    const previousCaches = globalThis.caches;
+    t.after(() => { globalThis.caches = previousCaches; });
+    const response = { ok: true, type: "basic", clone: () => ({}) };
+    t.mock.method(globalThis, "fetch", async () => response);
+    globalThis.caches = {
+      match: async () => undefined,
+      open: () => cacheOperation === "open" ? new Promise(() => {}) : Promise.resolve({ put: () => new Promise(() => {}) }),
+    };
+    const event = dispatchStaticFetch();
+    let timer;
+    try {
+      assert.equal(await Promise.race([
+        event.response,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("response blocked on cache write")), 500); }),
+      ]), response);
+      assert.equal(event.writes.length, 1);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+}
+
+test("a failed background cache write does not reject the static response", async (t) => {
+  const previousCaches = globalThis.caches;
+  t.after(() => { globalThis.caches = previousCaches; });
+  const response = { ok: true, type: "basic", clone: () => ({}) };
+  t.mock.method(globalThis, "fetch", async () => response);
+  globalThis.caches = { match: async () => undefined, open: async () => ({ put: async () => { throw new Error("quota"); } }) };
+  const event = dispatchStaticFetch();
+  assert.equal(await event.response, response);
+  await Promise.all(event.writes);
+});

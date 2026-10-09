@@ -370,6 +370,7 @@ export function AppShell() {
   const [projectTrustBusy, setProjectTrustBusy] = useState(false);
   const [projectTrustError, setProjectTrustError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const desktopSidebarOpenRef = useRef(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [fileWatchEnabled, setFileWatchEnabled] = useState(false);
   const [mobileSidebarReady, setMobileSidebarReady] = useState(false);
@@ -428,8 +429,9 @@ export function AppShell() {
   const reclampRightPanelWidth = rightPanelResizer.reclampWidth;
   // On mobile the sidebar is an overlay drawer; hide it by default so the chat
   // is visible on load. Runs once the breakpoint resolves after hydration.
+  // Mobile drawer actions never overwrite the desktop preference.
   useEffect(() => {
-    if (isMobile) setSidebarOpen(false);
+    setSidebarOpen(isMobile ? false : desktopSidebarOpenRef.current);
   }, [isMobile]);
   useEffect(() => {
     setMobileSidebarReady(true);
@@ -485,6 +487,7 @@ export function AppShell() {
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [historyExporting, setHistoryExporting] = useState(false);
   const [sessionForking, setSessionForking] = useState(false);
+  const forkInFlightRef = useRef(false);
   const [historyExportError, setHistoryExportError] = useState<string | null>(null);
   const branchLeafChangeFnRef = useRef<((leafId: string | null, anchorEntryId?: string) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
@@ -725,7 +728,11 @@ export function AppShell() {
     if (isMobile) {
       setActiveTopPanel(null);
     }
-    setSidebarOpen((open) => !open);
+    setSidebarOpen((open) => {
+      const next = !open;
+      if (!isMobile) desktopSidebarOpenRef.current = next;
+      return next;
+    });
   }, [isMobile]);
 
   const dismissMobileSidebar = useCallback(() => {
@@ -1345,7 +1352,7 @@ export function AppShell() {
     setExplorerRefreshKey((k) => k + 1);
   }, []);
 
-  const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null) => {
+  const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null, forkedInfo?: SessionInfo, focusSessionId = sourceSessionId) => {
     const sourceTab = chatTabsRef.current.find((tab) => tab.id === (sourceSessionId ?? selectedSession?.id));
     const sourceSession = sourceSessionId ? sourceTab?.session : selectedSession;
     const pane = isSplitActiveRef.current && sourceTab ? chatTabPane(sourceTab) : "primary";
@@ -1353,8 +1360,9 @@ export function AppShell() {
       ...(sourceSession ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
       transient: false,
+      ...forkedInfo,
     };
-    const shouldFocus = !sourceSessionId || activeSessionIdRef.current === sourceSessionId;
+    const shouldFocus = !sourceSessionId || activeSessionIdRef.current === focusSessionId;
 
     setRefreshKey((k) => k + 1);
     setChatTabs((prev) => openSessionInNewTab(prev, forkedSession, pane).tabs);
@@ -2034,9 +2042,37 @@ export function AppShell() {
     }
   }, [branchActiveLeafId, locale, selectedSession, translate]);
 
+  const handleSidebarFork = useCallback(async (source: SessionInfo) => {
+    if (forkInFlightRef.current) return;
+    forkInFlightRef.current = true;
+    setSessionForking(true);
+    const focusSessionId = activeSessionIdRef.current;
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(source.id)}/fork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prefix: translate("session.forkNamePrefix") }),
+      });
+      const result = await response.json() as { sessionId?: string; session?: SessionInfo; error?: string };
+      if (!response.ok || !result.sessionId || !result.session) {
+        throw new Error(result.error || translate("session.forkFailed"));
+      }
+      setChatTabs((tabs) => pinSessionTab(tabs, source.id));
+      handleSessionForked(result.sessionId, source.id, result.session, focusSessionId);
+    } catch (error) {
+      void confirm(translate("sidebar.forkFailed", {
+        error: error instanceof Error ? error.message : translate("session.forkFailed"),
+      }), { alert: true });
+    } finally {
+      forkInFlightRef.current = false;
+      setSessionForking(false);
+    }
+  }, [confirm, handleSessionForked, translate]);
+
   // Copies the viewed branch through its leaf into a new session; the source runtime stays alive.
   const handleForkSession = useCallback(async () => {
-    if (!selectedSession) return;
+    if (!selectedSession || forkInFlightRef.current) return;
+    forkInFlightRef.current = true;
     const sourceId = selectedSession.id;
     setHistoryExportError(null);
     setSessionForking(true);
@@ -2053,6 +2089,7 @@ export function AppShell() {
     } catch (error) {
       setHistoryExportError(error instanceof Error ? error.message : translate("session.forkFailed"));
     } finally {
+      forkInFlightRef.current = false;
       setSessionForking(false);
     }
   }, [branchActiveLeafId, handleSessionForked, selectedSession, translate]);
@@ -2146,6 +2183,8 @@ export function AppShell() {
         visibleSessionIds={[primaryTab?.session?.id ?? selectedSession?.id, isSplitActive ? secondaryTab?.session?.id : null].filter((id): id is string => Boolean(id))}
         onSelectSession={handleSelectSession}
         onOpenSessionInNewTab={handlePinSession}
+        onForkSession={handleSidebarFork}
+        forking={sessionForking}
         onNewSession={handleNewSession}
         initialSessionId={initialSessionId}
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
@@ -2400,7 +2439,7 @@ export function AppShell() {
           mobile={mobile}
           infoDisabled={toolsUnavailable}
           historyDisabled={!session}
-          forkDisabled={!session || Boolean(session.transient) || runningSessionIds.has(session.id)}
+          forkDisabled={!session || Boolean(session.transient)}
           forking={sessionForking}
           menuOpen={interactive && historyMenuOpen}
           exporting={historyExporting}
@@ -2414,9 +2453,7 @@ export function AppShell() {
             exportMarkdown: translate("history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
             fork: translate("session.fork"),
-            forkTitle: session && runningSessionIds.has(session.id)
-              ? translate("session.forkRunning")
-              : translate("session.forkTitle"),
+            forkTitle: translate("session.forkTitle"),
           }}
           onMenuOpenChange={handleHistoryMenuOpenChange}
           infoPending={infoPending}

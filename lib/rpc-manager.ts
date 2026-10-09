@@ -17,6 +17,7 @@ import {
   preferUserBashExtension,
 } from "./project-command-env";
 import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, resolveSessionPath } from "./session-reader";
+import { forkSessionBranch, getForkLeafId } from "./session-fork";
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { computeSessionStats } from "./session-stats";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
@@ -24,7 +25,8 @@ import { persistExplicitStartupPreferences } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
 import { hasActiveSessionLivenessProvider } from "./session-liveness";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
-import type { AgentSessionLike, ExtensionUiContextLike, ToolInfo } from "./pi-types";
+import type { AgentSessionLike, ExtensionUiContextLike } from "./pi-types";
+import { getModelToolEntries } from "./tool-declarations";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -114,6 +116,7 @@ type ExtensionCommandContextActionsLike = {
 
 type AgentSessionWrapperOptions = {
   chatOnly?: boolean;
+  getExactSystemPrompt?: () => string;
   beforeAgentRunComplete?: AgentRunCompletionGate;
   onAgentRunComplete?: AgentRunCompleteListener;
   suppressCompletionNotifications?: boolean;
@@ -317,6 +320,7 @@ export class AgentSessionWrapper {
   private extensionBindingPromise: Promise<void> | null = null;
   private extensionBindingError: unknown = null;
   private readonly chatOnly: boolean;
+  private readonly getExactSystemPrompt?: () => string;
   private readonly beforeAgentRunComplete?: AgentRunCompletionGate;
   private readonly onAgentRunComplete?: AgentRunCompleteListener;
   private readonly suppressCompletionNotifications: boolean;
@@ -337,6 +341,7 @@ export class AgentSessionWrapper {
     options: AgentSessionWrapperOptions = {},
   ) {
     this.chatOnly = options.chatOnly ?? false;
+    this.getExactSystemPrompt = options.getExactSystemPrompt;
     this.beforeAgentRunComplete = options.beforeAgentRunComplete;
     this.onAgentRunComplete = options.onAgentRunComplete;
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
@@ -545,6 +550,7 @@ export class AgentSessionWrapper {
   }
 
   private async navigateTree(targetId: string, options: { summarize?: boolean }): Promise<{ cancelled: boolean }> {
+    if (this.isRunning()) throw new Error("Cannot navigate while the session is running");
     const activeBefore = this.inner.getActiveToolNames();
     const result = await this.inner.navigateTree(targetId, options);
     if (!result.cancelled) {
@@ -860,7 +866,9 @@ export class AgentSessionWrapper {
           contextUsage: contextUsage
             ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
             : null,
-          systemPrompt: this.inner.agent.state?.systemPrompt ?? "",
+          // Exact prompts are projected onto requests, not stored in the transcript.
+          systemPrompt: this.getExactSystemPrompt?.() ?? (this.inner.agent.state?.systemPrompt
+            || (this.inner as AgentSessionLike & { readonly systemPrompt?: string }).systemPrompt || ""),
           thinkingLevel: this.inner.agent.state?.thinkingLevel ?? "off",
         };
       }
@@ -935,30 +943,17 @@ export class AgentSessionWrapper {
       }
 
       case "fork_branch": {
-        if (this.isSessionRunningForReplacement()) {
-          throw new Error("Cannot fork while the session is running");
+        if (command.entryId !== undefined && (typeof command.entryId !== "string" || !command.entryId)) {
+          throw new Error("Invalid entry ID for forking");
         }
-        const sessionManager = this.inner.sessionManager;
-        // No entryId: copy through the current leaf (session menu "Fork session").
-        const entryId = (command.entryId as string | undefined) ?? sessionManager.getLeafId();
-        if (!entryId) return { cancelled: true };
-        const currentSessionFile = this.inner.sessionFile;
-        if (!sessionManager.isPersisted()) return { cancelled: true };
-        if (!currentSessionFile) throw new Error("Persisted session is missing a session file");
-        if (!sessionManager.getEntry(entryId)) throw new Error("Invalid entry ID for forking");
-
-        const sessionDir = sessionManager.getSessionDir();
-        const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
-        const forkedPath = sourceManager.createBranchedSession(entryId);
-        if (!forkedPath) throw new Error("Failed to create forked session");
-
-        const forkedManager = SessionManager.open(forkedPath, sessionDir);
-        const name = (command.name as string | undefined)?.trim();
-        if (name) forkedManager.appendSessionInfo(name);
-        const newSessionId = forkedManager.getSessionId();
-        cacheSessionPath(newSessionId, forkedPath);
+        // Copy only persisted entries on a separate manager, even during a prompt or ! shell.
+        // Keep leaf selection and copying in the same synchronous turn.
+        const currentSessionFile = this.inner.sessionFile ?? "";
+        const entryId = (command.entryId as string | undefined) ?? getForkLeafId(currentSessionFile, this);
+        const fork = forkSessionBranch(currentSessionFile, entryId, command.name as string | undefined);
+        cacheSessionPath(fork.sessionId, fork.path);
         invalidateSessionListCache();
-        return { cancelled: false, newSessionId };
+        return { cancelled: false, newSessionId: fork.sessionId };
       }
 
       case "clone": {
@@ -999,9 +994,6 @@ export class AgentSessionWrapper {
       }
 
       case "navigate_tree": {
-        if (this.inner.isBashRunning) {
-          throw new Error("Cannot navigate while a shell command is running");
-        }
         return this.navigateTree(command.targetId as string, {});
       }
 
@@ -1086,12 +1078,7 @@ export class AgentSessionWrapper {
       }
 
       case "get_tools": {
-        const all: ToolInfo[] = this.inner.getAllTools();
-        const active = new Set<string>(this.inner.getActiveToolNames());
-        return all.map((t) => ({
-          ...t,
-          active: active.has(t.name),
-        }));
+        return getModelToolEntries(this.inner);
       }
 
       case "get_commands": {
@@ -1741,9 +1728,13 @@ function registerRpcWrapper(wrapper: AgentSessionWrapper): void {
 const SUBAGENT_CONTROLLER = createSubagentController({
   getSession: (sessionId) => getRegistry().get(sessionId),
   registerSession: (inner, options) => {
+    const resources = readSubagentSessionResources(inner.sessionManager.getEntries() as unknown as SessionEntry[]);
     const wrapper = new AgentSessionWrapper(inner, {
       chatOnly: options?.chatOnly,
       suppressCompletionNotifications: true,
+      ...(resources?.exactSystemPrompt !== undefined
+        ? { getExactSystemPrompt: () => resources.exactSystemPrompt! }
+        : {}),
     });
     registerRpcWrapper(wrapper);
   },
@@ -2466,6 +2457,11 @@ export async function startRpcSession(
         });
       },
       suppressCompletionNotifications: Boolean(subagentResources),
+      ...(subagentResources?.exactSystemPrompt !== undefined
+        ? { getExactSystemPrompt: () => subagentResources.exactSystemPrompt! }
+        : chatOnly && !subagentResources
+          ? { getExactSystemPrompt: readChatOnlySystemPrompt }
+          : {}),
     });
     const realSessionId = inner.sessionId as string;
     registerRpcWrapper(wrapper);

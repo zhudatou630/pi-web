@@ -204,11 +204,12 @@ test("projects have no pin toggle and the add menu does not switch projects", ()
   assert.match(source, /sidebar\.addProject/);
 });
 
-test("viewing a project does not promote it ahead of more recently active projects", () => {
-  const pinned = source.indexOf("pinnedCwds.forEach");
+test("viewing a project keeps the saved order instead of promoting it", () => {
+  const pinned = source.indexOf("[...pinnedCwds].reverse().forEach");
   const recent = source.indexOf("recentProjects.forEach(add)");
   const selected = source.indexOf("add(selectedProject)", recent);
   assert.ok(pinned >= 0 && pinned < recent);
+  assert.match(source, /return orderProjects\(projects, projectOrder\)/);
   assert.ok(recent < selected);
 });
 
@@ -230,9 +231,11 @@ test("workspace actions stay quiet on touch; long press and right-click open the
   const globalCss = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.doesNotMatch(source, /workspace-row-more/);
   assert.doesNotMatch(source, /revealedWorkspaceKey/);
-  assert.match(source, /handleWorkspaceTouchStart/);
-  assert.match(source, /workspaceLongPressTriggeredRef/);
-  assert.match(source, /setProjectMenu\(\{ key, cwd, x: touch\.clientX, y: touch\.clientY \}\)/);
+  const dragSource = await readFile(new URL("../hooks/useProjectDrag.ts", import.meta.url), "utf8");
+  assert.match(source, /onPointerDown=\{\(event\) => projectDrag\.onPointerDown\(event, row\.project\.key\)\}/);
+  assert.match(source, /onMenu: \(key, x, y\) =>/);
+  assert.match(dragSource, /PROJECT_LONG_PRESS_MS = 400/);
+  assert.match(dragSource, /gesture\.phase === "armed"\) optionsRef\.current\.onMenu/);
   assert.match(source, /setProjectMenu\(\{ key: row\.project\.key, cwd: workspaceCwd, x: event\.clientX, y: event\.clientY \}\)/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row \.workspace-row-action/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row:hover[\s\S]*?background: transparent !important;/);

@@ -12,19 +12,31 @@ import {
   getRpcSessionInfos,
   getRunningRpcSessionIds,
 } from "@/lib/rpc-manager";
-import { readSidebarState, updateSidebarState, SESSION_ID_PATTERN } from "@/lib/sidebar-state";
+import { readSidebarState, updateSidebarState, updateProjectOrder, SESSION_ID_PATTERN } from "@/lib/sidebar-state";
+import { isProjectOrderUpdate } from "@/lib/project-groups";
 import { listSessionFamilies, familyHasMemberIn } from "@/lib/session-family";
 
 export const dynamic = "force-dynamic";
 
-// PATCH /api/sessions body: { ids: string[], archived: boolean }. One locked write, all or nothing.
+// PATCH /api/sessions: bulk archive, addProjects, or { move, before|after, addProjects? }.
+// Project moves are relative; the locked state is never replaced with a client's whole list.
 export async function PATCH(req: Request) {
   try {
     const body: unknown = await req.json().catch(() => null);
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ error: "Expected a JSON object" }, { status: 400 });
     }
-    const { ids, archived } = body as { ids?: unknown; archived?: unknown };
+    const record = body as Record<string, unknown>;
+    if (["addProjects", "move", "before", "after", "projectOrder"].some((key) => key in record)) {
+      if (Object.keys(record).some((key) => !["addProjects", "move", "before", "after"].includes(key))
+        || !isProjectOrderUpdate(record)) {
+        return NextResponse.json({ error: "Send addProjects or a move with exactly one before/after anchor" }, { status: 400 });
+      }
+      const { state, changed } = await updateProjectOrder(record);
+      if (changed) invalidateSessionListCache();
+      return NextResponse.json({ projectOrder: state.projectOrder ?? [] });
+    }
+    const { ids, archived } = record;
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500
       || ids.some((id) => typeof id !== "string" || !SESSION_ID_PATTERN.test(id))
       || typeof archived !== "boolean") {
@@ -71,6 +83,7 @@ export async function GET(req: Request) {
         sessionListVersion,
         pinnedSessionIds: sidebarState.pinned,
         archivedSessionIds: sidebarState.archived,
+        projectOrder: sidebarState.projectOrder ?? [],
         runningSessionIds: getRunningRpcSessionIds(),
         completionNotificationSuppressedSessionIds: getCompletionNotificationSuppressedRpcSessionIds(),
       },

@@ -71,6 +71,7 @@ test("every SSE handshake reloads missed history, whether the agent is busy or i
   const handle = new Function(
     "event", "sessionIdRef", "loadSession", "dispatch", "cancelEventStreamGrace",
     "sdkAgentActiveRef", "agentRunningRef", "setAgentRunning", "setAgentPhase", "handshakePhase",
+    "rpcPromptPendingRef = { current: false }", "promptRunIdRef = { current: 0 }",
     `switch (event.type) { ${connectedSource} }`,
   );
   const noop = () => {};
@@ -161,10 +162,10 @@ test("reconcile applies context usage before bailing out on a busy run", () => {
     source.indexOf("  const reconcileAgentState = useCallback"),
     source.indexOf("  // Recovery net for missed SSE events"),
   );
-  const usageIndex = reconcileSource.indexOf("state?.contextUsage");
+  const usageIndex = reconcileSource.indexOf("applyContextUsage(state?.contextUsage");
   const busyIndex = reconcileSource.indexOf("if (busy)");
   assert.ok(usageIndex !== -1 && busyIndex !== -1 && usageIndex < busyIndex);
-  assert.match(reconcileSource, /keepContextUsage\(prev, state\.contextUsage \?\? null\)/);
+  assert.match(reconcileSource, /applyContextUsage\(state\?\.contextUsage, sid, runId, usageRequestId\)/);
 });
 
 test("assistant message_end refreshes context usage without reloading the session", () => {
@@ -264,7 +265,7 @@ test("a fresh session exposes context usage before its first prompt runs", () =>
   );
 
   assert.match(newAgentRouteSource, /contextUsage: state\.contextUsage/);
-  assert.match(ensureSource, /setContextUsage\(result\.contextUsage \?\? null\)/);
+  assert.match(ensureSource, /applyContextUsage\(result\.contextUsage, realId, usageRunId, usageRequestId\)/);
 });
 
 test("new-session promotion rekeys drafts before publishing the real session", () => {

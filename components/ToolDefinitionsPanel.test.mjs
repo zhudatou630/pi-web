@@ -16,12 +16,19 @@ test("opens Tools and System from the session menu into dialogs", () => {
 });
 
 test("renders active tool definitions in a selectable master-detail layout", () => {
-  assert.match(panelSource, /tools\?\.filter\(\(tool\) => tool\.active\)/);
+  assert.match(panelSource, /tools\?\.filter\(\(tool\) => tool\.active && !tool\.declarationHidden\)/);
   assert.match(panelSource, /browser\.select\(tool\.name\)/);
   assert.match(panelSource, /activeTools\?\.some\(\(tool\) => tool\.name === current\)/);
   assert.match(panelSource, /className="tool-definitions-sidebar"/);
   assert.match(panelSource, /className="tool-definition-detail"/);
   assert.match(panelSource, /grid-template-columns: clamp\(112px, 30%, 260px\) minmax\(0, 1fr\)/);
+  const predicate = panelSource.match(/tools\?\.filter\((\(tool\) => [^)]+)\)/)[1];
+  const visible = new Function("tools", `return tools.filter(${predicate});`);
+  assert.deepEqual(visible([
+    { name: "read", active: true, declarationHidden: true },
+    { name: "codemode", active: true },
+    { name: "disabled", active: false },
+  ]).map((tool) => tool.name), ["codemode"]);
 });
 
 test("shows schema fields and metadata in the detail form", () => {

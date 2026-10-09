@@ -12,6 +12,59 @@ const { invalidateSessionListCache, invalidateSessionPathCache } = await jiti.im
 const { listSessionFamilies, isFamilyArchived } = await jiti.import("../../../lib/session-family.ts");
 const { IMAGE_RESULT_TYPE } = await jiti.import("../../../lib/image-generation.ts");
 
+test("project ordering PATCH validates relative operations and refreshes other browsers without rewriting sessions", async (t) => {
+  const agentDir = await mkdtemp(join(tmpdir(), "project-order-api-"));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const previousRegistry = globalThis.__piSessions;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  globalThis.__piSessions = new Map();
+  invalidateSessionListCache();
+  t.after(async () => {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    globalThis.__piSessions = previousRegistry;
+    invalidateSessionListCache();
+    await rm(agentDir, { recursive: true, force: true });
+  });
+  const patch = (body) => bulkPatch(new Request("http://localhost/api/sessions", { method: "PATCH", body: JSON.stringify(body) }));
+  const list = async () => (await GET(new Request("http://localhost/api/sessions"))).json();
+  const initial = await list();
+  const path = join(agentDir, "pi-web", "sidebar-state.json");
+  for (const body of [
+    { projectOrder: ["a"] }, { addProjects: [] }, { addProjects: [null] }, { addProjects: [""] },
+    { addProjects: ["__proto__"] }, { addProjects: ["x".repeat(4097)] }, { addProjects: Array(501).fill("a") },
+    { move: "a" }, { move: "a", before: "a" }, { move: "a", after: "a" },
+    { move: "a", before: "b", after: "c" }, { move: null, before: "b" },
+    { before: "b" }, { move: "a", before: 1 }, { move: "a", after: "b", addProjects: "c" },
+    { addProjects: ["a"], archived: true, ids: ["root"] }, { move: "a", before: "b", unexpected: true },
+  ]) assert.equal((await patch(body)).status, 400, JSON.stringify(body));
+  await assert.rejects(readFile(path), { code: "ENOENT" });
+  assert.equal((await patch({ addProjects: ["a", "hidden", "b", "c", "d", "a"] })).status, 200);
+  const saved = await list();
+  assert.deepEqual(saved.projectOrder, ["a", "hidden", "b", "c", "d"]);
+  assert.ok(saved.sessionListVersion > initial.sessionListVersion);
+  const bytes = await readFile(path, "utf8");
+  assert.equal((await patch({ addProjects: ["d", "a"] })).status, 200);
+  assert.equal(await readFile(path, "utf8"), bytes);
+  assert.equal((await list()).sessionListVersion, saved.sessionListVersion, "idempotent add must not invalidate every poll");
+  assert.equal((await patch({ move: "d", before: "b" })).status, 200);
+  assert.equal((await patch({ move: "c", before: "a" })).status, 200);
+  const refreshed = await list();
+  assert.deepEqual(refreshed.projectOrder, ["c", "a", "hidden", "d", "b"]);
+  assert.ok(refreshed.sessionListVersion > saved.sessionListVersion);
+  assert.equal((await patch({ move: "new1", after: "new2", addProjects: ["new1", "new2"] })).status, 200);
+  assert.deepEqual((await list()).projectOrder, ["new2", "new1", ...refreshed.projectOrder]);
+  // Both caps still allow requests; unsaved keys remain ahead without evicting hidden slots.
+  assert.equal((await patch({ addProjects: Array.from({ length: 500 }, (_, i) => `large-${i}-` + "中".repeat(4000)) })).status, 200);
+  const cappedBytes = await readFile(path, "utf8");
+  const order = JSON.parse(cappedBytes).projectOrder;
+  assert.ok(Buffer.byteLength(JSON.stringify(order)) <= 256 * 1024);
+  assert.ok(order.includes("hidden"));
+  await writeFile(path, "{corrupt");
+  assert.equal((await patch({ move: "a", after: "b" })).status, 500);
+  assert.equal(await readFile(path, "utf8"), "{corrupt");
+});
+
 test("sidebar PATCH normalizes to family roots, syncs via list versions, never writes JSONL, and scanner activity restores archives", async (t) => {
   const agentDir = await mkdtemp(join(tmpdir(), "sidebar-api-"));
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;

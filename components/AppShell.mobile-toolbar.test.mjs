@@ -15,7 +15,7 @@ test("keeps session actions inline at every mobile width", () => {
 test("closes the mobile overlay on load even before a chat destination exists", () => {
   assert.match(
     source,
-    /useEffect\(\(\) => \{\s*if \(isMobile\) setSidebarOpen\(false\);\s*\}, \[isMobile\]\);/,
+    /useEffect\(\(\) => \{\s*setSidebarOpen\(isMobile \? false : desktopSidebarOpenRef.current\);\s*\}, \[isMobile\]\);/,
   );
   assert.doesNotMatch(source, /if \(isMobile && showChat\) setSidebarOpen\(false\)/);
   assert.doesNotMatch(source, /Keep the real project controls visible on an empty mobile workspace/);

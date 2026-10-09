@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ToolEntry } from "@/lib/tool-presets";
+import type { ModelToolEntry as ToolEntry } from "@/lib/tool-declarations";
 import { InfoDialog } from "./InfoDialog";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -14,7 +14,7 @@ interface Props {
 
 /** Selection state shared by the dialog header (phone back/title) and the panel body. */
 function useToolBrowser(tools: ToolEntry[] | null) {
-  const activeTools = useMemo(() => tools?.filter((tool) => tool.active) ?? null, [tools]);
+  const activeTools = useMemo(() => tools?.filter((tool) => tool.active && !tool.declarationHidden) ?? null, [tools]);
   const [selectedToolName, setSelectedToolName] = useState<string | null>(null);
   // Phone only: the list and one tool's details are two pushed panes, like the settings sheet.
   const [pane, setPane] = useState<"list" | "detail">("list");
