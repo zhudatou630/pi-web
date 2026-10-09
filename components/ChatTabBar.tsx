@@ -383,14 +383,13 @@ export function ChatTabBar({
               {dropIndex !== null && (dropIndex === index || (dropIndex === tabs.length && index === tabs.length - 1)) && (
                 <span
                   aria-hidden="true"
+                  className="drop-indicator"
                   style={{
                     position: "absolute",
                     top: 0,
                     bottom: 0,
                     width: 2,
                     [dropIndex === index ? "left" : "right"]: 0,
-                    background: "var(--accent)",
-                    pointerEvents: "none",
                     zIndex: 1,
                   }}
                 />

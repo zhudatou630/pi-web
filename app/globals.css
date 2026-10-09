@@ -3435,6 +3435,12 @@ span.token.table {
 /* Show more: label aligned with project/session names, count flush right
    with the relative-time column. Position and height come from the row's
    inline style (left/right, SESSION_LIST_ITEM_HEIGHT). */
+/* Insertion point while drag-reordering tabs or projects. */
+.drop-indicator {
+  background: var(--accent);
+  pointer-events: none;
+}
+
 .workspace-show-more-button {
   display: flex;
   align-items: center;

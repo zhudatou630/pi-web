@@ -122,7 +122,7 @@ function ProjectFolderIcon({ open }: { open: boolean }) {
 }
 
 function ProjectDropLine({ top }: { top: number }) {
-  return <div aria-hidden="true" style={{ position: "absolute", top: Math.max(0, top - 2), left: 4, right: 4, height: 2, background: "var(--text)", pointerEvents: "none", zIndex: 1 }} />;
+  return <div aria-hidden="true" className="drop-indicator" style={{ position: "absolute", top: Math.max(0, top - 2), left: 4, right: 4, height: 2, zIndex: 1 }} />;
 }
 
 function ArchiveIcon() {
