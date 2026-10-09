@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { listSessionFamilies, type SessionFamily } from "@/lib/session-family";
+import { listSessionFamilies, isFamilyArchived, familiesToArchive, previewSessionFamilies, markSessionFamilyRead, type SessionFamily } from "@/lib/session-family";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
@@ -120,8 +120,13 @@ function ProjectFolderIcon({ open }: { open: boolean }) {
   );
 }
 
+function ArchiveIcon() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="4" rx="1" /><path d="M5 7v13h14V7M10 12h4" /></svg>;
+}
+
 interface Props {
   selectedSessionId: string | null;
+  visibleSessionIds?: readonly string[];
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
   onOpenSessionInNewTab?: (session: SessionInfo) => void;
   onNewSession?: (sessionId: string, cwd: string) => void;
@@ -194,7 +199,8 @@ interface ValidatedProject {
 type WorkspaceRow =
   | { kind: "workspace"; project: ProjectSelection; cwd: string }
   | { kind: "session"; family: ReturnType<typeof listSessionFamilies>[number] }
-  | { kind: "showMore"; projectKey: string; remaining: number };
+  | { kind: "showMore"; projectKey: string; remaining: number }
+  | { kind: "showLess"; projectKey: string };
 
 const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
 const LAST_CUSTOM_CWD_STORAGE_KEY = "pi-web:last-custom-cwd";
@@ -295,10 +301,13 @@ function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
   );
 }
 
-export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSelectSession, onOpenSessionInNewTab, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionsChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
+  const [archivedSessionIds, setArchivedSessionIds] = useState<Record<string, string>>({});
+  const [archiveView, setArchiveView] = useState(false);
+  const [collapsedArchiveProjectKeys, setCollapsedArchiveProjectKeys] = useState<Set<string>>(() => new Set());
   const [sessionListVersion, setSessionListVersion] = useState<number | null>(null);
   const sessionListVersionRef = useRef<number | null>(null);
   const sessionLoadIdRef = useRef(0);
@@ -376,6 +385,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
   const [projectMenu, setProjectMenu] = useState<{ key: string; cwd: string; x: number; y: number } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<
     | { kind: "project"; key: string; x: number; y: number }
+    | { kind: "archiveProject"; key: string; x: number; y: number }
     | { kind: "session"; id: string; x: number; y: number }
     | null
   >(null);
@@ -478,6 +488,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
         sessions: SessionInfo[];
         sessionListVersion: number;
         pinnedSessionIds: string[];
+        archivedSessionIds?: Record<string, string>;
         runningSessionIds?: string[];
         completionNotificationSuppressedSessionIds?: string[];
       };
@@ -486,6 +497,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       setSessionListVersion(data.sessionListVersion);
       setAllSessions(data.sessions);
       setPinnedSessionIds(data.pinnedSessionIds);
+      setArchivedSessionIds(data.archivedSessionIds ?? {});
       // Treat the fetched running set as an initial fallback only. Once the
       // lightweight poll is live, a slow session-list fetch cannot overwrite it.
       if (!runningPollAuthoritativeRef.current) {
@@ -514,20 +526,49 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     }
   }, []);
 
+  const updateSessionSidebarState = useCallback(async (target: string | readonly string[], update: { pinned: boolean } | { archived: boolean }) => {
+    const ids = typeof target === "string" ? [target] : target;
+    if ("archived" in update) {
+      const archivedAt = new Date().toISOString();
+      setArchivedSessionIds((current) => {
+        const next = { ...current };
+        for (const id of ids) {
+          if (update.archived) next[id] = archivedAt;
+          else delete next[id];
+        }
+        return next;
+      });
+      if (update.archived) setPinnedSessionIds((current) => current.filter((id) => !ids.includes(id)));
+    }
+    let failure: string | null = null;
+    try {
+      const response = await fetch(typeof target === "string" ? `/api/sessions/${encodeURIComponent(target)}` : "/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(typeof target === "string" ? update : { ids, ...update }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
+    } catch (e) {
+      failure = e instanceof Error ? e.message : String(e);
+    }
+    await loadSessions();
+    if (failure) setError(failure);
+  }, [loadSessions]);
+
   // Optimistic toggle; the server list (and every other browser's poll) is authoritative.
   const toggleSessionPinned = useCallback(async (id: string) => {
     const pinned = !pinnedSessionIds.includes(id);
     setPinnedSessionIds((current) => pinned ? [...current, id] : current.filter((item) => item !== id));
-    try {
-      await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pinned }),
-      });
-    } finally {
-      void loadSessions();
-    }
-  }, [loadSessions, pinnedSessionIds]);
+    if (pinned) setArchivedSessionIds((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    await updateSessionSidebarState(id, { pinned });
+  }, [updateSessionSidebarState, pinnedSessionIds]);
 
   const initialLoadDone = useRef(false);
   useEffect(() => {
@@ -1053,11 +1094,29 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
     if (expandedWorkspaceKeys !== null) saveExpandedWorkspaceKeys(expandedWorkspaceKeys);
   }, [expandedWorkspaceKeys]);
 
-  // Per-project activity counts (running / unread) for the workspace selector.
-  // Uses the same stable server key as the project list and filtering.
+  const allFamilies = useMemo(() => listSessionFamilies(allSessions), [allSessions]);
+  const archivedFamilies = useMemo(
+    () => allFamilies.filter((family) => isFamilyArchived(family, archivedSessionIds, runningSessionIds)),
+    [allFamilies, archivedSessionIds, runningSessionIds],
+  );
+  const archivedMemberIds = useMemo(() => new Set(archivedFamilies.flatMap((family) =>
+    [family.root.id, ...family.subagents.map((session) => session.id)])), [archivedFamilies]);
+  const archivedCount = singleProject
+    ? archivedFamilies.filter((family) => workspaceKeyOf(family.root) === (selectedProject ?? workspaceProjects[0])?.key).length
+    : archivedFamilies.length;
+  useEffect(() => {
+    if (archiveView && archivedCount === 0) setArchiveView(false);
+  }, [archiveView, archivedCount]);
+  const archiveOlderFamilies = (projectKey: string) => familiesToArchive({
+    families: allFamilies, projectKey, archived: archivedSessionIds,
+    pinnedIds: new Set(pinnedSessionIds), runningIds: runningSessionIds, unreadIds: unreadSessionIds,
+    selectedSessionId, visibleSessionIds: new Set(visibleSessionIds),
+  });
+
+  // Per-project activity counts count families, excluding the archive.
   const projectActivity = useMemo(
-    () => getProjectActivity(allSessions, runningSessionIds, unreadSessionIds),
-    [allSessions, runningSessionIds, unreadSessionIds],
+    () => getProjectActivity(allSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds),
+    [allSessions, archivedMemberIds, runningSessionIds, unreadSessionIds],
   );
 
   const otherProjectActivity = useMemo(() => {
@@ -1127,35 +1186,38 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       ? workspaceProjects.filter((project) => project.key === (selectedProject ?? workspaceProjects[0])?.key)
       : workspaceProjects;
     for (const project of listedProjects) {
-      const allFamilies = listSessionFamilies(sessionsForProject(allSessions, project.key));
+      const projectFamilies = allFamilies.filter((family) => workspaceKeyOf(family.root) === project.key);
       // Pinned sessions live in their own section above the projects.
-      const families = allFamilies.filter((family) => !pinnedSessionIds.includes(family.root.id));
+      const families = projectFamilies.filter((family) => archiveView
+        ? isFamilyArchived(family, archivedSessionIds, runningSessionIds)
+        : !pinnedSessionIds.includes(family.root.id) && !isFamilyArchived(family, archivedSessionIds, runningSessionIds));
+      if (archiveView && families.length === 0) continue;
       rows.push({
         kind: "workspace",
         project,
         cwd: families[0]?.root.cwd ?? project.root,
       });
-      if (singleProject || expanded.has(project.key)) {
-        const limit = singleProject ? Infinity : workspaceSessionLimits[project.key] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
-        let visibleFamilies = families.slice(0, limit);
-        const selectedFamily = families.find((family) => (
-          family.root.id === selectedSessionId
-          || family.subagents.some((session) => session.id === selectedSessionId)
-        ));
-        if (selectedFamily && !visibleFamilies.includes(selectedFamily)) {
-          visibleFamilies = [...visibleFamilies.slice(0, Math.max(0, limit - 1)), selectedFamily];
-        }
+      const open = archiveView ? !collapsedArchiveProjectKeys.has(project.key) : expanded.has(project.key);
+      if (singleProject || open) {
+        const limit = workspaceSessionLimits[project.key] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
+        const forcedIds = new Set([...runningSessionIds, ...unreadSessionIds]);
+        if (selectedSessionId) forcedIds.add(selectedSessionId);
+        const { visible: visibleFamilies, revealed } = previewSessionFamilies(
+          families, singleProject || archiveView ? Infinity : WORKSPACE_SESSION_PREVIEW_LIMIT,
+          Math.max(0, limit - WORKSPACE_SESSION_PREVIEW_LIMIT), forcedIds,
+        );
         rows.push(...visibleFamilies.map((family) => ({ kind: "session" as const, family })));
         const remaining = families.length - visibleFamilies.length;
         if (remaining > 0) rows.push({ kind: "showMore", projectKey: project.key, remaining });
+        if (revealed > 0) rows.push({ kind: "showLess", projectKey: project.key });
       }
     }
     return rows;
-  }, [allSessions, defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, pinnedSessionIds, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
+  }, [allFamilies, archiveView, archivedSessionIds, collapsedArchiveProjectKeys, defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, pinnedSessionIds, runningSessionIds, unreadSessionIds, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
 
   const pinnedFamilies = useMemo(
-    () => listSessionFamilies(allSessions).filter((family) => pinnedSessionIds.includes(family.root.id)),
-    [allSessions, pinnedSessionIds],
+    () => allFamilies.filter((family) => pinnedSessionIds.includes(family.root.id) && !archivedMemberIds.has(family.root.id)),
+    [allFamilies, archivedMemberIds, pinnedSessionIds],
   );
 
   const virtualIndices = getSessionListIndices(
@@ -1484,6 +1546,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
           isPinned={pinned}
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
+          onToggleRead={() => setUnreadSessionIds((current) => markSessionFamilyRead(
+            family, current, familySessions.some((session) => current.has(session.id)),
+          ))}
+          isArchived={archivedMemberIds.has(family.root.id)}
+          onToggleArchive={() => void updateSessionSidebarState(family.root.id, { archived: !archivedMemberIds.has(family.root.id) })}
           pendingDelete={deleteConfirm?.kind === "session" && deleteConfirm.id === family.root.id}
           deleting={deletingSessionId === family.root.id}
           onRequestDelete={(x, y) => setDeleteConfirm({ kind: "session", id: family.root.id, x, y })}
@@ -1511,13 +1578,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
 
       {projectMenu && (() => {
         const running = Boolean(projectActivity.get(projectMenu.key)?.running);
+        const olderCount = archiveOlderFamilies(projectMenu.key).length;
         return (
           <div
             role="menu"
             className="project-context-menu menu-surface"
             style={{
               left: Math.min(projectMenu.x + 2, window.innerWidth - 168),
-              top: Math.min(projectMenu.y + 2, window.innerHeight - 76),
+              top: Math.min(projectMenu.y + 2, window.innerHeight - 108),
             }}
           >
             <button
@@ -1532,6 +1600,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h4" /><path d="M10 5h10" /><path d="M4 12h4" /><path d="M10 12h10" /><path d="M4 19h4" /><path d="M10 19h10" /></svg>
               {t("files.explorer")}
+            </button>
+            <button type="button" role="menuitem" disabled={olderCount === 0} onClick={() => {
+              setDeleteConfirm({ kind: "archiveProject", key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
+              setProjectMenu(null);
+            }}>
+              <ArchiveIcon />
+              {t("sidebar.archiveOlderThanWeek", { count: olderCount })}
             </button>
             <button
               type="button"
@@ -1552,7 +1627,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       })()}
 
       {/* Pinned sessions, across all projects */}
-      {pinnedFamilies.length > 0 && (
+      {pinnedFamilies.length > 0 && !archiveView && (
         <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)" }}>
           <div className="sidebar-section-row">
             <button type="button" onClick={() => setPinnedOpen((open) => !open)} className="sidebar-section-label" aria-expanded={pinnedOpen}>
@@ -1571,13 +1646,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       <div ref={dropdownRef} className="sidebar-section-row" style={{ position: "relative" }}>
         <button
           type="button"
-          onClick={() => setProjectsOpen((open) => !open)}
+          onClick={() => archiveView ? setArchiveView(false) : setProjectsOpen((open) => !open)}
           className="sidebar-section-label"
+          title={archiveView ? t("sidebar.backToSessions") : undefined}
         >
-          <span>{t("sidebar.projects")}</span>
+          <span>{archiveView ? t("sidebar.archivedCount", { count: archivedCount }) : t("sidebar.projects")}</span>
         </button>
         <div className="sidebar-header-actions">
-          {projectsOpen && !singleProject && workspaceProjects.filter((p) => (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(p.key)).length >= 2 && (
+          {projectsOpen && !archiveView && !singleProject && workspaceProjects.filter((p) => (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(p.key)).length >= 2 && (
             <ToolbarIconButton
               onClick={() => setExpandedWorkspaceKeys(new Set())}
               title={t("sidebar.collapseAll")}
@@ -1624,6 +1700,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               )}
             </ToolbarIconButton>
           </div>
+          {archivedCount > 0 && (
+            <ToolbarIconButton
+              onClick={() => {
+                setArchiveView((open) => !open);
+                setProjectsOpen(true);
+                setSessionSearchOpen(false);
+              }}
+              title={t("sidebar.viewArchive")}
+              ariaPressed={archiveView}
+              color={archiveView ? "var(--accent)" : "var(--text-muted)"}
+              background={archiveView ? "var(--bg-selected)" : "none"}
+            ><ArchiveIcon /></ToolbarIconButton>
+          )}
           <ToolbarIconButton
             onClick={() => {
               setSessionSearchOpen((open) => {
@@ -1675,6 +1764,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       {activity?.running ? <LivePulseBeacon size={11} /> : null}
                       {activity?.unread ? <span style={{ color: "var(--success)", fontSize: 10 }}>{activity.unread}</span> : null}
                     </button>
+                    {/* Bulk archive stays in the current project's menu: a second icon per row is noise for a rare action. */}
                     {/* Single-project mode: this list is the only place other projects
                         are visible, so it must be able to delete them without switching. */}
                     {allSessions.some((session) => workspaceKeyOf(session) === project.key) && (
@@ -1751,19 +1841,23 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
       )}
 
       {deleteConfirm && (() => {
-        const project = deleteConfirm.kind === "project"
+        const archiving = deleteConfirm.kind === "archiveProject";
+        const project = deleteConfirm.kind !== "session"
           ? workspaceProjects.find((item) => item.key === deleteConfirm.key)
           : null;
         const session = deleteConfirm.kind === "session"
           ? allSessions.find((item) => item.id === deleteConfirm.id)
           : null;
-        if (deleteConfirm.kind === "project" ? !project : !session) return null;
-        const count = project ? sessionsForProject(allSessions, project.key).length : 0;
-        const title = project
-          ? t("sidebar.deleteProjectSessionsConfirm", { count })
+        if (deleteConfirm.kind !== "session" ? !project : !session) return null;
+        const olderFamilies = project && archiving ? archiveOlderFamilies(project.key) : [];
+        const count = project ? (archiving ? olderFamilies.length : sessionsForProject(allSessions, project.key).length) : 0;
+        const title = archiving
+          ? t("sidebar.archiveProjectConfirm", { count })
+          : project ? t("sidebar.deleteProjectSessionsConfirm", { count })
           : t("sidebar.deleteSession");
-        const detail = project
-          ? t("sidebar.deleteProjectSessionsDetail", { count })
+        const detail = archiving
+          ? t("sidebar.archiveProjectDetail")
+          : project ? t("sidebar.deleteProjectSessionsDetail", { count })
           : session ? getSessionDisplayTitle(session) : null;
         return (
           <div
@@ -1783,17 +1877,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
               {detail && <div id="delete-project-detail">{detail}</div>}
               <div className="project-confirm-actions">
                 <button type="button" autoFocus onClick={() => setDeleteConfirm(null)}>{t("sidebar.cancel")}</button>
-                <button type="button" className="is-danger" onClick={() => {
-                  if (project) void deleteProject(project);
+                <button type="button" className={archiving ? undefined : "is-danger"} disabled={archiving && count === 0} onClick={() => {
+                  if (archiving) {
+                    setDeleteConfirm(null);
+                    void updateSessionSidebarState(olderFamilies.map((family) => family.root.id), { archived: true });
+                  } else if (project) void deleteProject(project);
                   else if (session) void deleteSession(session.id);
-                }}>{t("sidebar.delete")}</button>
+                }}>{t(archiving ? "sidebar.archive" : "sidebar.delete")}</button>
               </div>
             </div>
           </div>
         );
       })()}
 
-      <SessionSearch open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
+      <SessionSearch archivedSessionIds={archivedMemberIds} open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
       {projectsOpen && (
       <div
         ref={listScrollRef}
@@ -1815,7 +1912,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
             {virtualIndices.map((index) => {
               const row = workspaceRows[index];
               if (row.kind === "workspace") {
-                const expanded = (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(row.project.key);
+                const expanded = archiveView ? !collapsedArchiveProjectKeys.has(row.project.key) : (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(row.project.key);
                 const active = row.project.key === selectedProject?.key;
                 const activity = projectActivity.get(row.project.key);
                 const workspaceCwd = active && selectedCwd ? selectedCwd : row.cwd;
@@ -1850,6 +1947,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                       onClick={() => {
                         if (workspaceLongPressTriggeredRef.current) {
                           workspaceLongPressTriggeredRef.current = false;
+                          return;
+                        }
+                        if (archiveView && !singleProject) {
+                          setCollapsedArchiveProjectKeys((current) => {
+                            const next = new Set(current);
+                            if (next.has(row.project.key)) next.delete(row.project.key);
+                            else next.add(row.project.key);
+                            return next;
+                          });
                           return;
                         }
                         if (singleProject) {
@@ -1939,6 +2045,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onOpenSessi
                     <span className="workspace-show-more-count">{row.remaining}</span>
                   </button>
                 );
+              }
+              if (row.kind === "showLess") {
+                return <button
+                  key={`less:${row.projectKey}`}
+                  type="button"
+                  className="workspace-show-more-button"
+                  onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [row.projectKey]: WORKSPACE_SESSION_PREVIEW_LIMIT }))}
+                  style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT }}
+                >{t("sidebar.showLessSessions")}</button>;
               }
               return (
                 <div key={row.family.root.id} style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4 }}>
@@ -2116,6 +2231,9 @@ export function SessionItem({
   onOpenInNewTab,
   isPinned = false,
   onTogglePin,
+  onToggleRead,
+  isArchived = false,
+  onToggleArchive,
   projectHint,
   pendingDelete = false,
   deleting = false,
@@ -2139,6 +2257,9 @@ export function SessionItem({
   onOpenInNewTab?: () => void;
   isPinned?: boolean;
   onTogglePin?: () => void;
+  onToggleRead?: () => void;
+  isArchived?: boolean;
+  onToggleArchive?: () => void;
   /** Shown under the title in the tooltip where the project isn't visible from context. */
   projectHint?: string;
   pendingDelete?: boolean;
@@ -2497,7 +2618,7 @@ export function SessionItem({
         className="project-context-menu menu-surface"
         style={{
           left: Math.min(menuAt.x + 2, window.innerWidth - 168),
-          top: Math.min(menuAt.y + 2, window.innerHeight - 128),
+          top: Math.min(menuAt.y + 2, window.innerHeight - 192),
         }}
       >
         {onOpenInNewTab && (
@@ -2516,6 +2637,18 @@ export function SessionItem({
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
           {t("sidebar.rename")}
         </button>
+        {onToggleRead && (
+          <button type="button" role="menuitem" onClick={menuItem(onToggleRead)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 6 9 7 9-7" /></svg>
+            {t(isUnread ? "sidebar.markRead" : "sidebar.markUnread")}
+          </button>
+        )}
+        {onToggleArchive && !session.transient && (
+          <button type="button" role="menuitem" disabled={isRunning} onClick={menuItem(onToggleArchive)}>
+            <ArchiveIcon />
+            {t(isArchived ? "sidebar.unarchive" : "sidebar.archive")}
+          </button>
+        )}
         <button type="button" role="menuitem" className="is-danger" onClick={menuItem(() => { if (menuAt) onRequestDelete?.(menuAt.x, menuAt.y); })}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
           {t("sidebar.delete")}

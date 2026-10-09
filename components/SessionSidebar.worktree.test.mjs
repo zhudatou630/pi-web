@@ -55,7 +55,7 @@ test("uses the server-resolved current worktree identity", () => {
 });
 
 test("projects section owns workspace sessions and new-session actions", () => {
-  assert.match(source, /\{t\("sidebar\.projects"\)\}/);
+  assert.match(source, /: t\("sidebar\.projects"\)/);
   assert.ok(source.includes("{/* Projects and their sessions */}"));
   assert.match(source, /createSessionForCwd\(workspaceCwd\)/);
   assert.match(source, /const workspaceCwd = active && selectedCwd \? selectedCwd : row\.cwd/);
@@ -75,7 +75,7 @@ test("projects section owns workspace sessions and new-session actions", () => {
 test("single-project mode lists only the current project and switches via the dropdown", () => {
   assert.match(source, /isSidebarSingleProject\(\)/);
   assert.match(source, /workspaceProjects\.filter\(\(project\) => project\.key === \(selectedProject \?\? workspaceProjects\[0\]\)\?\.key\)/);
-  assert.match(source, /const limit = singleProject \? Infinity :/);
+  assert.match(source, /families, singleProject \|\| archiveView \? Infinity : WORKSPACE_SESSION_PREVIEW_LIMIT/);
   assert.match(source, /singleProject \? "sidebar\.switchProject" : "sidebar\.addProject"/);
   assert.match(source, /onClick=\{\(\) => \{ setSelectedCwd\(project\.root\); setDropdownOpen\(false\); \}\}/);
   assert.match(source, /otherProjectActivity\.running > 0/);
@@ -91,7 +91,7 @@ test("project rows delete all sessions behind an unskippable confirmation", () =
   assert.doesNotMatch(rowActions, /setConfirmDeleteProjectKey/);
   assert.match(source, /if \(projectFor\(cwd\)\?\.key === project\.key\) onTogglePinnedCwd\(cwd\)/);
   assert.match(source, /for \(const id of data\.deletedSessionIds \?\? \[\]\) onSessionDeleted\?\.\(id\)/);
-  const confirm = source.slice(source.indexOf("{deleteConfirm &&"), source.indexOf("<SessionSearch open="));
+  const confirm = source.slice(source.indexOf("{deleteConfirm &&"), source.indexOf("<SessionSearch "));
   assert.match(confirm, /sidebar\.deleteProjectSessionsDetail/);
   assert.doesNotMatch(confirm, /title=\{t\("sidebar\.deleteProjectSessionsDetail"/);
   assert.doesNotMatch(confirm, /shiftKey/);

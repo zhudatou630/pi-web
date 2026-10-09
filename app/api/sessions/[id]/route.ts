@@ -14,12 +14,14 @@ import {
   resolveSessionIdByPath,
   invalidateSessionPathCache,
   invalidateSessionListCache,
+  mergeSessionLists,
+  listAllSessions,
   buildSessionContext,
   probeLatestEntryId,
   readSessionHeader,
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
-import { getRpcSession, getSubagentRun, releaseRpcSessionForExternalWrite, reserveRpcSessionFileMutation } from "@/lib/rpc-manager";
+import { getRpcSession, getSubagentRun, getRunningRpcSessionIds, getRpcSessionInfos, releaseRpcSessionForExternalWrite, reserveRpcSessionFileMutation } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
@@ -28,7 +30,8 @@ import type { SessionEntry } from "@/lib/types";
 import { readSubagentRun, readSubagentSessionResources } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
 import { writePrivateFileAtomicSync } from "@/lib/atomic-file";
-import { setSessionPinned } from "@/lib/pinned-sessions";
+import { updateSidebarState } from "@/lib/sidebar-state";
+import { getSessionFamily, familyHasMemberIn } from "@/lib/session-family";
 
 /**
  * A live wrapper only reflects appends Pi Web itself made. When another pi process
@@ -164,24 +167,41 @@ export async function GET(
   }
 }
 
-// PATCH /api/sessions/[id]  body: { name: string } | { pinned: boolean }
+// PATCH /api/sessions/[id] body: { name: string } | { pinned: boolean } | { archived: boolean }
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   try {
-    const { name, pinned } = await req.json() as { name?: string; pinned?: boolean };
-    if (typeof name !== "string" && typeof pinned !== "boolean") {
-      return NextResponse.json({ error: "name or pinned is required" }, { status: 400 });
+    const body: unknown = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Expected a JSON object" }, { status: 400 });
+    }
+    const { name, pinned, archived } = body as { name?: unknown; pinned?: unknown; archived?: unknown };
+    if ((name !== undefined && typeof name !== "string")
+      || (pinned !== undefined && typeof pinned !== "boolean")
+      || (archived !== undefined && typeof archived !== "boolean")
+      || (pinned !== undefined && archived !== undefined)
+      || (name === undefined && pinned === undefined && archived === undefined)) {
+      return NextResponse.json({ error: "Send name, pinned or archived with the correct type" }, { status: 400 });
     }
     const filePath = await resolveSessionPath(id);
-    if (!filePath) {
+    if (!filePath || !existsSync(filePath)) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
-    if (typeof pinned === "boolean") setSessionPinned(id, pinned);
+    if (typeof pinned === "boolean" || typeof archived === "boolean") {
+      const family = getSessionFamily(mergeSessionLists(await listAllSessions(), getRpcSessionInfos()), id);
+      if (!family || family.root.transient) {
+        return NextResponse.json({ error: "Session family not found" }, { status: 404 });
+      }
+      if (archived === true && familyHasMemberIn(family, new Set(getRunningRpcSessionIds()))) {
+        return NextResponse.json({ error: "Session family is running" }, { status: 409 });
+      }
+      await updateSidebarState([family.root.id], typeof pinned === "boolean" ? { pinned } : { archived: archived as boolean });
+    }
     if (typeof name === "string") SessionManager.open(filePath).appendSessionInfo(name.trim());
-    // Also bumps the list version, so other browsers' running poll refetches names and pins.
+    // Also bumps the list version, so other browsers' running poll refetches sidebar state.
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });
   } catch (error) {

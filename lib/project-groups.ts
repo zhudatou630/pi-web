@@ -1,5 +1,6 @@
 import type { SessionInfo } from "./types";
 import { workspaceKeyOf } from "./workspace-key";
+import { listSessionFamilies, familyHasMemberIn } from "./session-family";
 
 export interface RecentProject {
   /** Stable server-provided identity used for comparison and Map keys. */
@@ -31,16 +32,16 @@ export function getProjectActivity(
   unreadSessionIds: ReadonlySet<string>,
 ): Map<string, { running: number; unread: number }> {
   const counts = new Map<string, { running: number; unread: number }>();
-  for (const session of sessions) {
-    const key = workspaceKeyOf(session);
+  for (const family of listSessionFamilies(sessions)) {
+    const key = workspaceKeyOf(family.root);
     if (!key) continue;
     let entry = counts.get(key);
     if (!entry) {
       entry = { running: 0, unread: 0 };
       counts.set(key, entry);
     }
-    if (runningSessionIds.has(session.id)) entry.running++;
-    if (unreadSessionIds.has(session.id)) entry.unread++;
+    if (familyHasMemberIn(family, runningSessionIds)) entry.running++;
+    if (familyHasMemberIn(family, unreadSessionIds)) entry.unread++;
   }
   return counts;
 }

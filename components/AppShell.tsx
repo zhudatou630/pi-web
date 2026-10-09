@@ -2143,6 +2143,7 @@ export function AppShell() {
     <>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
+        visibleSessionIds={[primaryTab?.session?.id ?? selectedSession?.id, isSplitActive ? secondaryTab?.session?.id : null].filter((id): id is string => Boolean(id))}
         onSelectSession={handleSelectSession}
         onOpenSessionInNewTab={handlePinSession}
         onNewSession={handleNewSession}
