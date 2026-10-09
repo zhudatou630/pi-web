@@ -9,7 +9,7 @@ import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { applyProjectOrderUpdate, isProjectKey, orderProjects, getProjectActivity, getRecentProjects, sessionsForProject, type ProjectOrderUpdate } from "@/lib/project-groups";
 import { createPortal } from "react-dom";
-import { projectSlotRect, projectTargetIndex, useProjectDrag, type ProjectDragBlock } from "@/hooks/useProjectDrag";
+import { useProjectDrag, type ProjectDragBlock } from "@/hooks/useProjectDrag";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
 import { isSidebarSingleProject, SIDEBAR_SINGLE_PROJECT_EVENT } from "@/lib/sidebar-single-project-preference";
@@ -123,22 +123,18 @@ function ProjectFolderIcon({ open }: { open: boolean }) {
 }
 
 // The ghost copies its row: folder + name in the list, the path label in the switcher.
-function ProjectDragOverlay({ drag, blocks, label, inset = 4 }: {
-  drag: ReturnType<typeof useProjectDrag>; blocks: ProjectDragBlock[]; label?: ReactNode; inset?: number;
+// The landing spot is the gap the other rows open; no extra marker (it read as an input box).
+function ProjectDragGhost({ drag, label, dropdown = false }: {
+  drag: ReturnType<typeof useProjectDrag>; label?: ReactNode; dropdown?: boolean;
 }) {
   const view = drag.view;
   if (!view || !label) return null;
-  const target = projectTargetIndex(blocks, view.key, view.phase === "cancelling" ? null : view.drop);
-  const slot = projectSlotRect(blocks, view.key, target, view.ghost.height, { top: 0, left: inset, width: 0 });
-  return <>
-    <div aria-hidden="true" className="project-drag-slot" style={{ top: slot.top, left: inset, right: inset, height: slot.height }} />
-    {createPortal(<div aria-hidden="true" className={`project-drag-ghost${inset === 0 ? " is-dropdown" : ""}`}
-      data-settling={view.phase !== "dragging" ? "true" : undefined}
-      onTransitionEnd={(event) => { if (event.propertyName === "transform") drag.onGhostTransitionEnd(); }}
-      style={{ left: view.ghost.left, top: 0, width: view.ghost.width, height: view.ghost.height, transform: `translateY(${view.ghost.top}px)` }}>
-      {label}
-    </div>, document.body)}
-  </>;
+  return createPortal(<div aria-hidden="true" className={`project-drag-ghost${dropdown ? " is-dropdown" : ""}`}
+    data-settling={view.phase !== "dragging" ? "true" : undefined}
+    onTransitionEnd={(event) => { if (event.propertyName === "transform") drag.onGhostTransitionEnd(); }}
+    style={{ left: view.ghost.left, top: 0, width: view.ghost.width, height: view.ghost.height, transform: `translateY(${view.ghost.top}px)` }}>
+    {label}
+  </div>, document.body);
 }
 
 function ArchiveIcon() {
@@ -1853,7 +1849,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           {singleProject && (
             <div ref={projectDropdownScrollRef} onClickCapture={dropdownDrag.onClickCapture} style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", scrollbarWidth: "none", marginBottom: 4, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>
               <div ref={projectDropdownInnerRef} style={{ position: "relative" }}>
-              <ProjectDragOverlay drag={dropdownDrag} blocks={dropdownDragBlocks} inset={0} label={(() => {
+              <ProjectDragGhost drag={dropdownDrag} dropdown label={(() => {
                 const root = workspaceProjects.find((project) => project.key === dropdownDrag.view?.key)?.root;
                 return root && <PathLabel text={displayCwd(root, homeDir)} style={{ flex: 1 }} />;
               })()} />
@@ -2024,7 +2020,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         )}
         {workspaceRows.length > 0 && (
           <div ref={listInnerRef} style={{ position: "relative", height: workspaceRows.length * SESSION_LIST_ITEM_HEIGHT }}>
-            <ProjectDragOverlay drag={projectDrag} blocks={projectDragBlocks} label={(() => {
+            <ProjectDragGhost drag={projectDrag} label={(() => {
               const root = workspaceProjects.find((project) => project.key === projectDrag.view?.key)?.root;
               return root && <><ProjectFolderIcon open={false} /><span>{getFileName(root)}</span></>;
             })()} />

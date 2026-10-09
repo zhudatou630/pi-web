@@ -3440,14 +3440,6 @@ span.token.table {
   transition: transform 150ms ease !important;
 }
 
-.project-drag-slot {
-  position: absolute;
-  box-sizing: border-box;
-  border: 1px solid var(--accent);
-  border-radius: var(--ui-radius-md);
-  pointer-events: none;
-}
-
 .project-drag-ghost {
   position: fixed;
   z-index: 1100;
