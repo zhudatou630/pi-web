@@ -2325,16 +2325,19 @@ export async function startRpcSession(
     // before the SDK restores the saved model from the session file.
     // Gate untrusted project extensions so opening a repository does not run
     // its .pi/extensions code automatically (see lib/project-trust.ts, #236).
+    // A subagent resolves resources from its parent's directory (the header cwd);
+    // a resumed isolated run only works in the tmpdir worktree (cwdOverride).
+    const configCwd = subagentResources ? sessionManager.getHeader()?.cwd ?? sessionCwd : sessionCwd;
     const trustReloadOptions = subagentResources
       ? subagentLoadsResources
-        ? projectTrustReloadOptions(sessionCwd, agentDir)
+        ? projectTrustReloadOptions(configCwd, agentDir)
         : undefined
       : chatOnly
         ? undefined
         : projectTrustReloadOptions(sessionCwd, agentDir);
-    const settingsManager = SettingsManager.create(sessionCwd, agentDir);
+    const settingsManager = SettingsManager.create(configCwd, agentDir);
     const services = await createAgentSessionServices({
-      cwd: sessionCwd,
+      cwd: configCwd,
       agentDir,
       settingsManager,
       resourceLoaderOptions: subagentResources
@@ -2421,7 +2424,7 @@ export async function startRpcSession(
       ? restoredModel
       : initial?.model;
     const { session: inner } = await createAgentSessionFromServices({
-      services,
+      services: { ...services, cwd: sessionCwd },
       sessionManager,
       ...(startupModel ? { model: startupModel } : {}),
       ...(initial?.thinkingLevel ? { thinkingLevel: initial.thinkingLevel } : {}),

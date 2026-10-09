@@ -1031,10 +1031,14 @@ export function createSubagentController(
             stored.run = { ...stored.run, worktreePath: isolated.path, worktreeBranch: isolated.branch };
             request.onUpdate?.(stored.run);
           }
-          const settingsManager = SettingsManager.create(childCwd, agentDir);
+          // Resources resolve exactly as for the parent's directory (settings, project
+          // overrides, trust); only the tools work in childCwd. An isolated worktree in
+          // tmpdir has neither the untracked .pi/settings.json nor a trust decision.
+          const configCwd = parent.cwd;
+          const settingsManager = SettingsManager.create(configCwd, agentDir);
           if (!chatOnly) initTheme();
           const services = await createAgentSessionServices({
-            cwd: childCwd,
+            cwd: configCwd,
             agentDir,
             modelRuntime: parentModelRuntime,
             settingsManager,
@@ -1054,7 +1058,7 @@ export function createSubagentController(
                 : { systemPrompt: " ", systemPromptOverride: () => undefined, appendSystemPrompt }),
             },
             ...((profile.loadExtensions || profile.loadSkills)
-              ? { resourceLoaderReloadOptions: projectTrustReloadOptions(childCwd, agentDir) }
+              ? { resourceLoaderReloadOptions: projectTrustReloadOptions(configCwd, agentDir) }
               : {}),
           });
           const extensionToolNames = profile.loadExtensions
@@ -1076,7 +1080,7 @@ export function createSubagentController(
           currentMetadata = runtimeMetadata;
           const parentModel = parent.inner.model as ReturnType<ModelRuntime["getModel"]>;
           const { session: inner } = await createAgentSessionFromServices({
-            services,
+            services: { ...services, cwd: childCwd },
             sessionManager: context.manager,
             model: requestedModel.model ?? parentModel,
             ...(thinking ? { thinkingLevel: thinking as ThinkingLevel } : {}),
