@@ -83,7 +83,8 @@ function agentTypeDescription(profiles: readonly SubagentProfile[]): string {
   if (available.length === 0) return "No subagent profiles are currently enabled.";
   return available.map((profile) => {
     const details = [`Tools: ${profile.tools.length > 0 ? profile.tools.join(", ") : "none"}`];
-    if (profile.model) details.push(`Default model: ${profile.model}, overridable with model`);
+    if (profile.model) details.push(`Default model: ${profile.model}`);
+    if (profile.thinking) details.push(`Default thinking: ${profile.thinking}`);
     return `- ${profile.name}: ${profile.description} (${details.join("; ")})`;
   }).join("\n");
 }
@@ -204,8 +205,8 @@ export function createSubagentExtension(
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
           run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results notify the parent after its current run settles." })),
-          model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>. New sessions only; omit with resume." })),
-          thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max. New sessions only; omit with resume." })),
+          model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>. Omit to use the profile's default model; pass only when the user asks for a model. New sessions only; omit with resume." })),
+          thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max. Omit to use the profile's default thinking; pass only when the user asks for a level. New sessions only; omit with resume." })),
           max_turns: Type.Optional(Type.Number({ description: "Optional positive agent turn limit for a new session. With resume, omit or pass 0 to keep the existing limit." })),
           inherit_context: Type.Optional(Type.Boolean({ description: "Include the parent session's active conversation context in a new session. With resume, omit or pass false." })),
           isolation: Type.Optional(Type.String({ description: "Run a new subagent in an isolated git worktree copy. With resume, omit or pass an empty string to keep existing isolation." })),
