@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import stripJsonComments from "strip-json-comments";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { invalidateModelsCache } from "./models-cache";
 import { findInvalidSamplingParams, isRecord } from "./model-config-validation";
@@ -65,12 +64,13 @@ export function getModelsConfigPath(): string {
  * config for a hand-edited file, and the next save then overwrote the user's
  * real providers with that empty object.
  */
-const TRAILING_COMMA = /,(\s*[}\]])/g;
-
 function parseModelsConfigContent(content: string): Record<string, unknown> {
-  const parsed = JSON.parse(
-    stripJsonComments(content).replace(TRAILING_COMMA, "$1"),
-  ) as Record<string, unknown>;
+  // SDK 1.0.4 utils/json.js: consume strings as a unit in BOTH passes.
+  const json = content.replace(/^\uFEFF/, "")
+    .replace(/"(?:\\.|[^"\\])*"|\/\/[^\n]*/g, (match) => match[0] === '"' ? match : "")
+    .replace(/"(?:\\.|[^"\\])*"|,(\s*[}\]])/g, (match, tail: string | undefined) => tail ?? match);
+  if (!json.trim()) return { providers: {} };
+  const parsed: unknown = JSON.parse(json);
   if (!isRecord(parsed)) throw new Error("Invalid models.json: expected an object");
   return parsed;
 }

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getAuthRetryAfterMs, recordAuthFailure, retryAfterSeconds } from "@/lib/web-auth-throttle";
 import {
   isApiRequestAllowed,
   isApiRequestHostAllowed,
@@ -36,8 +37,23 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const authenticated = isValidWebSessionToken(request.cookies.get(PI_WEB_SESSION_COOKIE)?.value, password)
-    || (isApiRequest && isValidBasicAuthorization(request.headers.get("authorization"), password));
+  let authenticated = isValidWebSessionToken(request.cookies.get(PI_WEB_SESSION_COOKIE)?.value, password);
+  const authorization = isApiRequest ? request.headers.get("authorization") : null;
+  if (!authenticated && authorization && /^Basic\s/i.test(authorization)) {
+    // Check before the web-auth exemption: GET must not be a password oracle.
+    // Even correct Basic credentials are blocked; otherwise the answer leaks.
+    const retryAfterMs = getAuthRetryAfterMs();
+    if (retryAfterMs > 0) {
+      return new NextResponse("Too many failed attempts", {
+        status: 429,
+        headers: { "Cache-Control": "no-store", "Retry-After": String(retryAfterSeconds(retryAfterMs)) },
+      });
+    }
+    authenticated = isValidBasicAuthorization(authorization, password);
+    if (!authenticated) recordAuthFailure();
+    // Basic authenticates every request: success must not reset an interleaved
+    // guesser's failures back to the base delay.
+  }
   if (request.nextUrl.pathname === "/login") {
     return authenticated
       ? NextResponse.redirect(new URL("/", request.url))

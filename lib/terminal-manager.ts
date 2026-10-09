@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { homedir } from "os";
 import type { IPty } from "node-pty";
 import { samePath } from "./paths";
+import { sanitizeProjectCommandEnvironment } from "./project-command-env";
 
 export type TerminalEvent =
   | { type: "output"; data: string; offset: number; reset?: boolean }
@@ -49,7 +50,7 @@ const SERVER_ONLY_ENV = /^(PI_WEB_CAN_UPDATE|PI_WEB_UPDATE_BLOCKED|__NEXT_PRIVAT
 
 export function shellEnvironment(): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(sanitizeProjectCommandEnvironment(process.env, process.platform))) {
     if (value !== undefined && !SERVER_ONLY_ENV.test(key)) env[key] = value;
   }
   env.TERM = "xterm-256color";

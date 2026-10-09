@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllowedFileRoots, isExistingFilePathAllowed, isFilePathAllowed, isWindowsAbsolutePath } from "@/lib/file-access";
 import { getGitFileDiff } from "@/lib/git-changes";
+import { isPathWithExistingAncestorWithinRoots } from "@/lib/path-security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,10 +18,9 @@ export async function GET(request: NextRequest) {
     if (!isFilePathAllowed(cwd, allowedRoots) || !isFilePathAllowed(filePath, allowedRoots)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
-    // The cwd must resolve inside an allowed root. The file itself may no
-    // longer exist when Git reports it as deleted; getGitFileDiff verifies
-    // that the requested path belongs to this repository and its status.
-    if (!isExistingFilePathAllowed(cwd, allowedRoots)) {
+    // Authorize the target's nearest existing entry so deleted-file diffs still work,
+    // without letting a symlink or junction redirect the target outside the roots.
+    if (!isExistingFilePathAllowed(cwd, allowedRoots) || !isPathWithExistingAncestorWithinRoots(filePath, allowedRoots)) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 

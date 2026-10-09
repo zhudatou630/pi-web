@@ -909,7 +909,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             <ConfigButton
               variant="primary"
               onClick={handleSave}
-              disabled={saving || savedOk}
+              disabled={saving || savedOk || Boolean(loadError)}
               className={savedOk ? "is-success" : undefined}
             >
               {savedOk && (

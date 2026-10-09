@@ -21,6 +21,8 @@ const { getHelpText, parseLaunchOptions } = require("./pi-web-options");
 const { wireChildProcessLifecycle } = require("./process-lifecycle");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { getGlobalNpmCli } = require("./app-update");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { rotatePreviewSecrets, getRotationError } = require("./rotate-preview-secrets");
 
 let launchOptions;
 try {
@@ -121,8 +123,15 @@ function startServer(shouldOpenBrowser) {
   let updating = false;
   let updateVersion;
   let stopTimer;
-  // Always run next's JS entry with node directly — avoids .bin symlink issues
-  // and path-with-spaces problems on Windows when shell: true is used.
+  // Every spawn (including post-update restarts) must invalidate the public
+  // preview id, which otherwise lets x-prerender-revalidate bypass the proxy.
+  const rotation = rotatePreviewSecrets(nextDir);
+  if (!rotation.ok) {
+    console.error(getRotationError(rotation.reason));
+    process.exit(1);
+    return;
+  }
+  // Run next's JS entry directly, avoiding .bin symlinks and shell escaping.
   const child = spawn(process.execPath, [nextBin, ...nextArgs], {
     cwd: pkgDir,
     stdio: ["inherit", "pipe", "inherit", "ipc"],

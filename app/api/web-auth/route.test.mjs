@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { after, before } from "node:test";
+import test, { after, before, beforeEach } from "node:test";
 import { createJiti } from "jiti";
 import { NextRequest } from "next/server.js";
 
@@ -10,9 +10,13 @@ const jiti = createJiti(import.meta.url, {
   moduleCache: false,
 });
 const { GET, POST, DELETE } = await jiti.import("./route.ts");
+const { recordAuthSuccess, getAuthRetryAfterMs } = await import("../../../lib/web-auth-throttle.ts");
+
+beforeEach(() => recordAuthSuccess());
 
 before(() => { process.env.PI_WEB_PASSWORD = "correct horse battery staple"; });
 after(() => {
+  recordAuthSuccess();
   if (originalPassword === undefined) delete process.env.PI_WEB_PASSWORD;
   else process.env.PI_WEB_PASSWORD = originalPassword;
 });
@@ -37,6 +41,11 @@ test("logs in with one password and reports the signed session", async () => {
   assert.equal(response.headers.has("set-cookie"), false);
 
   response = await POST(request("POST", { password: "correct horse battery staple" }));
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("retry-after"), "1");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  recordAuthSuccess();
+  response = await POST(request("POST", { password: "correct horse battery staple" }));
   assert.equal(response.status, 200);
   const cookie = response.headers.get("set-cookie");
   assert.match(cookie, /^pi_web_session=v1\./);
@@ -49,6 +58,7 @@ test("logs in with one password and reports the signed session", async () => {
   const cookiePair = cookie.split(";", 1)[0];
   response = await GET(request("GET", undefined, { Cookie: cookiePair }));
   assert.deepEqual(await response.json(), { enabled: true, authenticated: true });
+  assert.equal(getAuthRetryAfterMs(), 0);
 });
 
 test("logout clears the session cookie", async () => {

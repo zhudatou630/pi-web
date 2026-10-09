@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthRetryAfterMs, recordAuthFailure, recordAuthSuccess, retryAfterSeconds } from "@/lib/web-auth-throttle";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 import {
   createWebSessionToken,
@@ -59,10 +60,24 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null) as { password?: unknown } | null;
+  // Check after reading the body, so concurrent requests cannot all pass the
+  // gate before the first failed attempt has been recorded.
+  const retryAfterMs = getAuthRetryAfterMs();
+  if (retryAfterMs > 0 && !isValidWebSessionToken(request.cookies.get(PI_WEB_SESSION_COOKIE)?.value, password)) {
+    return NextResponse.json(
+      { error: "Too many failed attempts", retryAfterMs },
+      { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": String(retryAfterSeconds(retryAfterMs)) } },
+    );
+  }
   if (!body || typeof body.password !== "string" || !isValidWebPassword(body.password, password)) {
-    return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+    const delayMs = recordAuthFailure();
+    return NextResponse.json(
+      { error: "Invalid password", retryAfterMs: delayMs },
+      { status: 401, headers: { "Cache-Control": "no-store", "Retry-After": String(retryAfterSeconds(delayMs)) } },
+    );
   }
 
+  recordAuthSuccess();
   const response = NextResponse.json({ ok: true });
   response.cookies.set({
     name: PI_WEB_SESSION_COOKIE,

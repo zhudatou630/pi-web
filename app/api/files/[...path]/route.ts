@@ -28,6 +28,7 @@ import {
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
 import { filePathFromApiSegments, samePath } from "@/lib/paths";
+import { hasParentDirectorySegment } from "@/lib/path-security";
 import { readTextPreviewChunk } from "@/lib/text-preview";
 
 const IGNORED_NAMES = new Set([
@@ -461,6 +462,10 @@ export async function GET(
   try {
     const { path: segments } = await params;
     const filePath = filePathFromApiSegments(segments);
+    // Session references bypass realpath authorization, but must never bypass traversal refusal.
+    if (hasParentDirectorySegment(filePath)) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
     const rawType = request.nextUrl.searchParams.get("type") ?? "list";
     const type = parseFileRequestType(rawType);
     if (!type) {

@@ -60,6 +60,14 @@ test("revalidation keeps an unsaved models.json draft", () => {
   assert.match(source, /const applyConfig = useCallback\(\(d: ModelsJson\) => \{[\s\S]*?if \(configDirtyRef\.current\) return;[\s\S]*?setConfig\(normalized\)/);
 });
 
+test("Save stays disabled after models.json loading fails, even with a draft", () => {
+  const expression = source.match(/onClick=\{handleSave\}\s*disabled=\{([^}]+)\}/)?.[1];
+  assert.ok(expression, "Save must declare its disabled condition");
+  for (const loadError of [null, "Failed to read models.json"]) {
+    assert.equal(runInNewContext(expression, { saving: false, savedOk: false, loadError }), Boolean(loadError));
+  }
+});
+
 test("loading uses the shared settings indicator inside a keyed page", async () => {
   assert.match(source, /<div key=\{loading \? "loading" : JSON\.stringify\(view\)\} className="settings-page">\s*\{loading \? <SettingsLoading label=\{t\("i18n\.loading"\)\} \/> : renderProvidersTab\(\)\}/);
   const css = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");

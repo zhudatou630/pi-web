@@ -1,14 +1,18 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createCodemodeExtension,
   createMcpExtension,
   createToolSearchExtension,
   getPackageDir,
+  getAgentDir,
   type InlineExtension,
   type McpTransportFactory,
 } from "@earendil-works/pi-coding-agent";
 import { sanitizeProjectCommandEnvironment } from "./project-command-env";
+import { safeMcpTransportFactory, type McpValueParsers } from "./mcp-transport";
+import { loadSafeMcpConfig, type McpConfigValidator } from "./mcp-config-read";
+import { editMcpConfigFileSync, patchMcpServer } from "./mcp-config-file";
 
 /**
  * The CLI's built-in extensions that the SDK exports (`llama.cpp` is not). SDK sessions get
@@ -58,13 +62,21 @@ export function withProjectEnvironment(transport: McpTransport, baseEnvironment:
   return new Stdio({ ...options, inheritEnv: false, env: { ...environment, ...options.env } });
 }
 
+export async function loadSafeMcpTransport(): Promise<McpTransportFactory> {
+  const [factory, parsers] = await Promise.all([
+    loadDefaultTransport(),
+    importSdkFile<McpValueParsers>("core/resolve-config-value.js"),
+  ]);
+  // Never fall back to the SDK's own factory: it would hand servers the whole environment.
+  if (!factory) throw new Error("MCP transport unavailable in Pi Web; see the server log");
+  return safeMcpTransportFactory(factory, parsers, withProjectEnvironment);
+}
+
 export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
-  const createDefaultTransport = await loadDefaultTransport();
-  const createTransport: McpTransportFactory = (entry, cwd, authProvider) => {
-    // Never fall back to the SDK's own factory: it would hand servers the whole environment.
-    if (!createDefaultTransport) throw new Error("MCP transport unavailable in Pi Web; see the server log");
-    return withProjectEnvironment(createDefaultTransport(entry, cwd, authProvider));
-  };
+  const [createTransport, validator, parsers] = await Promise.all([
+    loadSafeMcpTransport(), importSdkFile<McpConfigValidator>("core/mcp-servers.js"),
+    importSdkFile<McpValueParsers>("core/resolve-config-value.js"),
+  ]);
   return [
     { name: "codemode", factory: createCodemodeExtension(), replaceable: true, builtin: true },
     { name: "tool-search", factory: createToolSearchExtension(), replaceable: true, builtin: true },
@@ -72,7 +84,15 @@ export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
     // shown through ui.notify and the redirect URL is pasted back through ui.input.
     {
       name: "mcp",
-      factory: createMcpExtension({ openUrl: () => {}, createTransport }),
+      factory: createMcpExtension({
+        openUrl: () => {}, createTransport,
+        loadConfig: (ctx) => loadSafeMcpConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() }, validator, parsers),
+        updateConfig: (entry, patch) => {
+          const path = entry.override ?? entry.source;
+          const projectRoot = entry.override || entry.scope === "project" ? dirname(dirname(path)) : undefined;
+          editMcpConfigFileSync(path, (servers) => patchMcpServer(servers, entry.name, patch), projectRoot);
+        },
+      }),
       replaceable: true,
       builtin: true,
     },

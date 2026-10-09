@@ -1,6 +1,12 @@
-import { realpathSync } from "fs";
+import { lstatSync, realpathSync } from "fs";
 import path from "path";
 import { isWindowsAbsolutePath } from "./paths";
+
+/** Refuse traversal before path normalization can hide it (including through links). */
+export function hasParentDirectorySegment(target: string): boolean {
+  const separator = process.platform === "win32" || isWindowsAbsolutePath(target) ? /[\\/]/ : "/";
+  return target.split(separator).includes("..");
+}
 
 /**
  * Lexical containment check. Accepts either canonical form on both sides: it
@@ -8,6 +14,7 @@ import { isWindowsAbsolutePath } from "./paths";
  * separator style and drive-letter case never decide the answer.
  */
 export function isPathWithinRoots(target: string, roots: Set<string>): boolean {
+  if (hasParentDirectorySegment(target)) return false;
   for (const root of roots) {
     const useWindowsRules = isWindowsAbsolutePath(target) || isWindowsAbsolutePath(root);
     const resolver = useWindowsRules ? path.win32 : path;
@@ -23,6 +30,7 @@ export function isPathWithinRoots(target: string, roots: Set<string>): boolean {
 }
 
 export function isExistingPathWithinRoots(target: string, roots: Set<string>): boolean {
+  if (hasParentDirectorySegment(target)) return false;
   let realTarget: string;
   try {
     realTarget = realpathSync(target);
@@ -39,4 +47,21 @@ export function isExistingPathWithinRoots(target: string, roots: Set<string>): b
     }
   }
   return isPathWithinRoots(realTarget, realRoots);
+}
+
+/** Deleted targets may be absent; never walk past a dangling link or an access error. */
+export function isPathWithExistingAncestorWithinRoots(target: string, roots: Set<string>): boolean {
+  let candidate = target;
+  while (isPathWithinRoots(candidate, roots)) {
+    try {
+      lstatSync(candidate);
+      return isExistingPathWithinRoots(candidate, roots);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
+    }
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return false;
+    candidate = parent;
+  }
+  return false;
 }
