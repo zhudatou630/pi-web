@@ -201,3 +201,9 @@ test("the archive view exits when its relevant count becomes zero, and the proje
   const dropdown = source.slice(source.indexOf("{workspaceProjects.map((project) =>"), source.indexOf("{/* Single-project mode: this list"));
   assert.doesNotMatch(dropdown, /archiveProject|<ArchiveIcon \/>/);
 });
+
+test("the archive view's project menu restores instead of archiving or deleting", () => {
+  const menu = source.slice(source.indexOf("{projectMenu && (() =>"), source.indexOf("{/* Pinned sessions, across all projects */}"));
+  assert.match(menu, /archiveView \? \([\s\S]*?updateSessionSidebarState\(projectArchivedIds, \{ archived: false \}\)/);
+  assert.match(menu, /\{!archiveView && <button[\s\S]*?sidebar\.deleteSessions/);
+});

@@ -547,14 +547,17 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     }
     let failure: string | null = null;
     try {
-      const response = await fetch(typeof target === "string" ? `/api/sessions/${encodeURIComponent(target)}` : "/api/sessions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(typeof target === "string" ? update : { ids, ...update }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? `HTTP ${response.status}`);
+      // The bulk route takes at most 500 ids per request.
+      for (let start = 0; start < ids.length; start += 500) {
+        const response = await fetch(typeof target === "string" ? `/api/sessions/${encodeURIComponent(target)}` : "/api/sessions", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(typeof target === "string" ? update : { ids: ids.slice(start, start + 500), ...update }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
       }
     } catch (e) {
       failure = e instanceof Error ? e.message : String(e);
@@ -1632,6 +1635,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
       {projectMenu && (() => {
         const running = Boolean(projectActivity.get(projectMenu.key)?.running);
         const olderCount = archiveOlderFamilies(projectMenu.key).length;
+        const projectArchivedIds = archivedFamilies
+          .filter((family) => workspaceKeyOf(family.root) === projectMenu.key)
+          .map((family) => family.root.id);
         const projectIndex = workspaceProjects.findIndex((project) => project.key === projectMenu.key);
         return (
           <div
@@ -1639,7 +1645,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
             className="project-context-menu menu-surface"
             style={{
               left: Math.min(projectMenu.x + 2, window.innerWidth - 168),
-              top: Math.min(projectMenu.y + 2, window.innerHeight - (archiveView ? 108 : 164)),
+              top: Math.min(projectMenu.y + 2, window.innerHeight - (archiveView ? 80 : 164)),
             }}
           >
             <button
@@ -1663,14 +1669,25 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                 {t(position === "before" ? "sidebar.moveProjectUp" : "sidebar.moveProjectDown")}
               </button>;
             })}
-            <button type="button" role="menuitem" disabled={olderCount === 0} onClick={() => {
-              setDeleteConfirm({ kind: "archiveProject", key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
-              setProjectMenu(null);
-            }}>
-              <ArchiveIcon />
-              {t("sidebar.archiveOlderThanWeek", { count: olderCount })}
-            </button>
-            <button
+            {archiveView ? (
+              // The archive view mirrors the list's actions: restore, never delete the whole project from here.
+              <button type="button" role="menuitem" disabled={projectArchivedIds.length === 0} onClick={() => {
+                setProjectMenu(null);
+                void updateSessionSidebarState(projectArchivedIds, { archived: false });
+              }}>
+                <ArchiveIcon />
+                {t("sidebar.unarchiveAll", { count: projectArchivedIds.length })}
+              </button>
+            ) : (
+              <button type="button" role="menuitem" disabled={olderCount === 0} title={t("sidebar.archiveOlderTitle")} onClick={() => {
+                setDeleteConfirm({ kind: "archiveProject", key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
+                setProjectMenu(null);
+              }}>
+                <ArchiveIcon />
+                {t("sidebar.archiveOlderThanWeek", { count: olderCount })}
+              </button>
+            )}
+            {!archiveView && <button
               type="button"
               role="menuitem"
               className="is-danger"
@@ -1683,7 +1700,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
               {t("sidebar.deleteSessions")}
-            </button>
+            </button>}
           </div>
         );
       })()}
@@ -1739,7 +1756,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                   : <span style={{ color: "var(--success)", fontSize: 10 }}>{otherProjectActivity.unread}</span>}
               </span>
             )}
-            <ToolbarIconButton
+            {/* Adding a project means nothing in the archive; switching project still does. */}
+            {(singleProject || !archiveView) && <ToolbarIconButton
               onClick={() => {
                 // Multi-project mode has nothing to pick but a path: open it directly.
                 if (singleProject) setDropdownOpen((open) => !open);
@@ -1760,7 +1778,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                   <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
               )}
-            </ToolbarIconButton>
+            </ToolbarIconButton>}
           </div>
           {archivedCount > 0 && (
             <ToolbarIconButton
