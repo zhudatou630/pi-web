@@ -5,7 +5,9 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import { createJiti } from "jiti";
 
-const { projectDragDecision, projectDropAt, PROJECT_LONG_PRESS_MS } = await createJiti(import.meta.url).import("./useProjectDrag.ts");
+const { projectDragDecision, projectDropAt, projectTargetIndex, projectRowOffset, projectSlotRect, PROJECT_LONG_PRESS_MS } = await createJiti(import.meta.url).import("./useProjectDrag.ts");
+const hookSource = await readFile(new URL("./useProjectDrag.ts", import.meta.url), "utf8");
+const compiled = ts.transpileModule(hookSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 
 test("mouse threshold and touch/pen hold distinguish taps, scrolling, menus, and drags", () => {
   assert.equal(PROJECT_LONG_PRESS_MS, 400);
@@ -43,11 +45,72 @@ test("drop lines use whole group boundaries, not session rows or the mounted vir
   assert.deepEqual(projectDropAt(dropdown, "a", 100), { anchor: "c", position: "after", lineY: 84 });
 });
 
+test("make-room math matches the committed order for every source/target and every expanded child row", () => {
+  for (const height of [26, 28]) {
+    for (let sourceIndex = 0; sourceIndex < 4; sourceIndex++) {
+      let top = 0;
+      const blocks = [1, 9, 3, 2].map((count, index) => {
+        const block = { key: String(index), top, bottom: top + (index === sourceIndex ? 1 : count) * height };
+        top = block.bottom;
+        return block;
+      });
+      const source = blocks[sourceIndex];
+      const others = blocks.filter((block) => block !== source);
+      for (let target = 0; target < blocks.length; target++) {
+        const anchor = others[target] ?? others.at(-1);
+        const drop = { anchor: anchor.key, position: target === others.length ? "after" : "before" };
+        assert.equal(projectTargetIndex(blocks, source.key, drop), target);
+        const reordered = [...others];
+        reordered.splice(target, 0, source);
+        let landedTop = 0;
+        for (const block of reordered) {
+          if (block === source) {
+            const slot = projectSlotRect(blocks, source.key, target, height, { top: -123, left: 8, width: 232 });
+            assert.deepEqual(slot, { top: landedTop - 123, left: 8, width: 232, height });
+          } else {
+            for (let rowTop = block.top; rowTop < block.bottom; rowTop += height) {
+              assert.equal(rowTop + projectRowOffset(blocks, source.key, target, rowTop, height), landedTop + rowTop - block.top);
+            }
+          }
+          landedTop += block.bottom - block.top;
+        }
+      }
+    }
+  }
+});
+
+test("ghost keeps its pointer offset and locked column; cancelling a landing never commits", (t) => {
+  const h = gestureHarness(t);
+  h.down();
+  h.emit("pointermove", { clientX: 200, clientY: 40 });
+  h.frame();
+  assert.equal(h.view().ghost.top, 30);
+  assert.equal(h.view().ghost.left, 4);
+  assert.equal(h.view().ghost.width, 240);
+  h.emit("pointerup", { clientY: 60 });
+  assert.equal(h.view().ghost.top, h.view().slot.top);
+  h.emit("keydown", { key: "Escape" });
+  assert.equal(h.view().phase, "cancelling");
+  assert.equal(h.view().ghost.top, 0 - h.scroll.scrollTop);
+  h.hold();
+  assert.equal(h.moves.length, 0);
+  assert.equal(h.view(), null);
+});
+
+test("reduced motion snaps and commits without a landing timer", (t) => {
+  const h = gestureHarness(t);
+  h.window.matchMedia = () => ({ matches: true });
+  h.down();
+  h.emit("pointermove", { clientY: 40 });
+  h.emit("pointerup", { clientY: 77 });
+  assert.deepEqual(h.moves, [["a", "c", "after"]]);
+  assert.equal(h.view(), null);
+  assert.equal(h.timers.size, 0);
+});
+
 // Exercise native listeners without a DOM/server or real user state.
-const hookSource = await readFile(new URL("./useProjectDrag.ts", import.meta.url), "utf8");
-const compiled = ts.transpileModule(hookSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 function gestureHarness(t) {
-  const window = new EventTarget();
+  const window = Object.assign(new EventTarget(), { matchMedia: () => ({ matches: false }) });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const timers = new Map();
   const frames = new Map();
@@ -57,7 +120,7 @@ function gestureHarness(t) {
   const scroll = { scrollTop: 0, clientHeight: 78, scrollHeight: 1000,
     getClientRects: () => [1], getBoundingClientRect: () => ({ top: 0, bottom: 78 }),
     setPointerCapture() {}, releasePointerCapture() {} };
-  const row = { closest: () => null };
+  const row = { closest: () => null, getBoundingClientRect: () => ({ top: 0, left: 4, width: 240, height: 26 }) };
   const moves = [], menus = [], dragging = [];
   const exports = {};
   runInNewContext(compiled, {
@@ -91,11 +154,12 @@ function gestureHarness(t) {
   const hold = () => { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach((fn) => fn()); };
   const frame = () => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((fn) => fn()); };
   const click = () => { const event = new Event("click", { cancelable: true }); api.onClickCapture(event); return event.defaultPrevented; };
-  return { api, down, hold, frame, click, emit, document, moves, menus, dragging, scroll, timers, frames, view: () => view };
+  return { api, down, hold, frame, click, emit, window, document, moves, menus, dragging, scroll, timers, frames, view: () => view };
 }
 
 test("real hook listeners leave clicks alone and defer a stationary long-press menu until release", (t) => {
   const h = gestureHarness(t);
+  assert.equal(h.api.rowStyle(0).transform, undefined, "idle rows must not establish a containing block for fixed menus");
   h.down();
   h.emit("pointermove", { clientX: 23.9 });
   h.emit("pointerup");
@@ -121,6 +185,10 @@ test("touch hold-then-move drags instead of opening a menu, prevents scrolling, 
   assert.ok(h.scroll.scrollTop > 0);
   assert.equal(h.view().key, "a");
   h.emit("pointerup", { clientY: 77 });
+  assert.equal(h.moves.length, 0, "commit waits until the ghost lands");
+  assert.equal(h.view().phase, "dropping");
+  h.api.onGhostTransitionEnd();
+  assert.equal(h.timers.size, 0);
   assert.deepEqual(h.moves, [["a", "c", "after"]]);
   assert.equal(h.menus.length, 0);
   assert.equal(h.click(), true);
@@ -138,6 +206,8 @@ test("swipes, Escape, second fingers, and hidden tabs cancel without moves or me
   for (const cancel of [
     () => h.emit("keydown", { key: "Escape" }),
     () => { h.emit("pointerdown", { pointerId: 2, isPrimary: false }); h.api.onPointerDown({ isPrimary: false }, "b"); },
+    () => h.emit("blur"),
+    () => h.emit("pointercancel"),
     () => { h.document.visibilityState = "hidden"; h.emit("visibilitychange", {}, h.document); },
   ]) {
     h.document.visibilityState = "visible";
@@ -146,10 +216,19 @@ test("swipes, Escape, second fingers, and hidden tabs cancel without moves or me
     assert.equal(h.view().key, "a");
     cancel();
     h.emit("pointerup");
+    assert.equal(h.view().phase, "cancelling");
+    h.hold();
     assert.equal(h.view(), null);
     assert.equal(h.click(), true, "cancelled release cannot toggle, even after a long wait");
     assert.equal(h.frames.size, 0);
   }
+  h.down("touch");
+  h.hold();
+  h.emit("touchmove", { touches: [{ clientX: 20, clientY: 40 }] });
+  h.emit("touchmove", { touches: [{ clientX: 20, clientY: 40 }, { clientX: 30, clientY: 40 }] });
+  assert.equal(h.view().phase, "cancelling");
+  h.hold();
+  assert.equal(h.view(), null);
   assert.equal(h.moves.length, 0);
   assert.equal(h.menus.length, 0);
 });

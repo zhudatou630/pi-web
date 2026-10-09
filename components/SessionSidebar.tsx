@@ -8,7 +8,8 @@ import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { applyProjectOrderUpdate, isProjectKey, orderProjects, getProjectActivity, getRecentProjects, sessionsForProject, type ProjectOrderUpdate } from "@/lib/project-groups";
-import { useProjectDrag, type ProjectDragBlock } from "@/hooks/useProjectDrag";
+import { createPortal } from "react-dom";
+import { projectSlotRect, projectTargetIndex, useProjectDrag, type ProjectDragBlock } from "@/hooks/useProjectDrag";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
 import { isSidebarSingleProject, SIDEBAR_SINGLE_PROJECT_EVENT } from "@/lib/sidebar-single-project-preference";
@@ -121,8 +122,23 @@ function ProjectFolderIcon({ open }: { open: boolean }) {
   );
 }
 
-function ProjectDropLine({ top }: { top: number }) {
-  return <div aria-hidden="true" className="drop-indicator" style={{ position: "absolute", top: Math.max(0, top - 2), left: 4, right: 4, height: 2, zIndex: 1 }} />;
+// The ghost copies its row: folder + name in the list, the path label in the switcher.
+function ProjectDragOverlay({ drag, blocks, label, inset = 4 }: {
+  drag: ReturnType<typeof useProjectDrag>; blocks: ProjectDragBlock[]; label?: ReactNode; inset?: number;
+}) {
+  const view = drag.view;
+  if (!view || !label) return null;
+  const target = projectTargetIndex(blocks, view.key, view.phase === "cancelling" ? null : view.drop);
+  const slot = projectSlotRect(blocks, view.key, target, view.ghost.height, { top: 0, left: inset, width: 0 });
+  return <>
+    <div aria-hidden="true" className="project-drag-slot" style={{ top: slot.top, left: inset, right: inset, height: slot.height }} />
+    {createPortal(<div aria-hidden="true" className={`project-drag-ghost${inset === 0 ? " is-dropdown" : ""}`}
+      data-settling={view.phase !== "dragging" ? "true" : undefined}
+      onTransitionEnd={(event) => { if (event.propertyName === "transform") drag.onGhostTransitionEnd(); }}
+      style={{ left: view.ghost.left, top: 0, width: view.ghost.width, height: view.ghost.height, transform: `translateY(${view.ghost.top}px)` }}>
+      {label}
+    </div>, document.body)}
+  </>;
 }
 
 function ArchiveIcon() {
@@ -1255,17 +1271,26 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     enabled: !loading && projectsOpen && !sessionSearchActive,
     allowDrag: !archiveView && !singleProject,
     blocks: projectDragBlocks, scrollRef: listScrollRef, innerRef: listInnerRef,
-    onMove: moveProject,
+    onMove: (key, anchor, position) => {
+      // Keep the lifted project collapsed at commit: expanding it here would move the landed rows.
+      setExpandedWorkspaceKeys((current) => {
+        const next = new Set(current ?? defaultExpandedWorkspaceKeys);
+        next.delete(key);
+        return next;
+      });
+      moveProject(key, anchor, position);
+    },
     onDrag: (key) => { setDraggedProjectKey(key); if (key) { setProjectMenu(null); setSessionMenu(null); } },
     onMenu: (key, x, y) => {
       const row = workspaceRows.find((row) => row.kind === "workspace" && row.project.key === key);
       if (row?.kind === "workspace") setProjectMenu({ key, cwd: key === selectedProject?.key && selectedCwd ? selectedCwd : row.cwd, x, y });
     },
   });
+  const dropdownDragBlocks = workspaceProjects.map((project, index) => ({ key: project.key, top: index * 28, bottom: (index + 1) * 28 }));
   const dropdownDrag = useProjectDrag({
     enabled: !loading && dropdownOpen && singleProject && !archiveView,
     allowDrag: true,
-    blocks: workspaceProjects.map((project, index) => ({ key: project.key, top: index * 28, bottom: (index + 1) * 28 })),
+    blocks: dropdownDragBlocks,
     scrollRef: projectDropdownScrollRef, innerRef: projectDropdownInnerRef, onMove: moveProject,
   });
 
@@ -1828,20 +1853,24 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           {singleProject && (
             <div ref={projectDropdownScrollRef} onClickCapture={dropdownDrag.onClickCapture} style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", scrollbarWidth: "none", marginBottom: 4, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>
               <div ref={projectDropdownInnerRef} style={{ position: "relative" }}>
-              {dropdownDrag.view?.drop && <ProjectDropLine top={dropdownDrag.view.drop.lineY} />}
-              {workspaceProjects.map((project) => {
+              <ProjectDragOverlay drag={dropdownDrag} blocks={dropdownDragBlocks} inset={0} label={(() => {
+                const root = workspaceProjects.find((project) => project.key === dropdownDrag.view?.key)?.root;
+                return root && <PathLabel text={displayCwd(root, homeDir)} style={{ flex: 1 }} />;
+              })()} />
+              {workspaceProjects.map((project, index) => {
                 const active = project.key === selectedProject?.key;
                 const activity = projectActivity.get(project.key);
                 return (
-                  <div key={project.key} style={{ display: "flex", alignItems: "center", height: 28, background: dropdownDrag.view?.key === project.key ? "var(--bg-selected)" : undefined, userSelect: "none", WebkitTouchCallout: "none" }}>
+                  <div key={project.key} className={dropdownDrag.view ? "project-drag-row" : undefined}
+                    onPointerDown={(event) => dropdownDrag.onPointerDown(event, project.key)}
+                    style={{ display: "flex", alignItems: "center", height: 28, userSelect: "none", WebkitTouchCallout: "none", ...dropdownDrag.rowStyle(index * 28) }}>
                     <button
                       type="button"
                       role="menuitemradio"
                       aria-checked={active}
-                      onPointerDown={(event) => dropdownDrag.onPointerDown(event, project.key)}
                       onClick={() => { setSelectedCwd(project.root); setDropdownOpen(false); }}
                       title={project.root}
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, height: 28 }}
                     >
                       <PathLabel text={displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
                       {activity?.running ? <LivePulseBeacon size={11} /> : null}
@@ -1856,6 +1885,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                           setDropdownOpen(false);
                           setDeleteConfirm({ kind: "project", key: project.key, x: event.clientX, y: event.clientY });
                         }}
+                        className="workspace-row-action"
                         disabled={Boolean(activity?.running) || deletingProjectKey === project.key}
                         title={t(activity?.running ? "sidebar.deleteProjectSessionsRunning" : "sidebar.deleteProjectSessions")}
                         color="var(--text-muted)"
@@ -1994,7 +2024,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         )}
         {workspaceRows.length > 0 && (
           <div ref={listInnerRef} style={{ position: "relative", height: workspaceRows.length * SESSION_LIST_ITEM_HEIGHT }}>
-            {projectDrag.view?.drop && <ProjectDropLine top={projectDrag.view.drop.lineY} />}
+            <ProjectDragOverlay drag={projectDrag} blocks={projectDragBlocks} label={(() => {
+              const root = workspaceProjects.find((project) => project.key === projectDrag.view?.key)?.root;
+              return root && <><ProjectFolderIcon open={false} /><span>{getFileName(root)}</span></>;
+            })()} />
             {virtualIndices.map((index) => {
               const row = workspaceRows[index];
               if (row.kind === "workspace") {
@@ -2005,7 +2038,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                 const pendingDelete = confirmDeleteProjectKey === row.project.key;
                 return (
                   <div
-                    className="workspace-list-row"
+                    className={`workspace-list-row${projectDrag.view ? " project-drag-row" : ""}`}
                     key={`workspace:${row.project.key}`}
                     data-active={active ? "true" : "false"}
                     data-pending-delete={pendingDelete ? "true" : undefined}
@@ -2016,7 +2049,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                       event.stopPropagation();
                       setProjectMenu({ key: row.project.key, cwd: workspaceCwd, x: event.clientX, y: event.clientY });
                     }}
-                    style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT, display: "flex", alignItems: "center", WebkitTouchCallout: "none", userSelect: "none", background: draggedProjectKey === row.project.key ? "var(--bg-selected)" : undefined }}
+                    style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT, display: "flex", alignItems: "center", WebkitTouchCallout: "none", userSelect: "none", ...projectDrag.rowStyle(index * SESSION_LIST_ITEM_HEIGHT) }}
                   >
                     <button
                       type="button"
@@ -2105,7 +2138,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                   <button
                     key={`more:${row.projectKey}`}
                     type="button"
-                    className="workspace-show-more-button"
+                    className={`workspace-show-more-button${projectDrag.view ? " project-drag-row" : ""}`}
                     aria-label={t("sidebar.showMoreSessionsLabel", { count: row.remaining })}
                     onClick={() => setWorkspaceSessionLimits((current) => ({
                       ...current,
@@ -2115,6 +2148,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                     style={{
                       position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT,
                       left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT,
+                      ...projectDrag.rowStyle(index * SESSION_LIST_ITEM_HEIGHT),
                     }}
                   >
                     <span>{t("sidebar.showMoreSessions")}</span>
@@ -2126,13 +2160,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                 return <button
                   key={`less:${row.projectKey}`}
                   type="button"
-                  className="workspace-show-more-button"
+                  className={`workspace-show-more-button${projectDrag.view ? " project-drag-row" : ""}`}
                   onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [row.projectKey]: WORKSPACE_SESSION_PREVIEW_LIMIT }))}
-                  style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT }}
+                  style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4, height: SESSION_LIST_ITEM_HEIGHT, ...projectDrag.rowStyle(index * SESSION_LIST_ITEM_HEIGHT) }}
                 >{t("sidebar.showLessSessions")}</button>;
               }
               return (
-                <div key={row.family.root.id} style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4 }}>
+                <div key={row.family.root.id} className={projectDrag.view ? "project-drag-row" : undefined}
+                  style={{ position: "absolute", top: index * SESSION_LIST_ITEM_HEIGHT, left: 4, right: 4, ...projectDrag.rowStyle(index * SESSION_LIST_ITEM_HEIGHT) }}>
                   {renderSessionFamily(row.family)}
                 </div>
               );

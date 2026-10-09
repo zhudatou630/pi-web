@@ -3436,6 +3436,60 @@ span.token.table {
    with the relative-time column. Position and height come from the row's
    inline style (left/right, SESSION_LIST_ITEM_HEIGHT). */
 /* Insertion point while drag-reordering tabs or projects. */
+.project-drag-row {
+  transition: transform 150ms ease !important;
+}
+
+.project-drag-slot {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--accent);
+  border-radius: var(--ui-radius-md);
+  pointer-events: none;
+}
+
+.project-drag-ghost {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  background: var(--bg-panel);
+  border-radius: var(--ui-radius-md);
+  box-shadow: var(--ui-shadow-popover);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.project-drag-ghost > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-drag-ghost.is-dropdown {
+  padding: 0 8px;
+  gap: 8px;
+}
+
+.project-drag-ghost[data-settling="true"] {
+  transition: transform 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-drag-row,
+  .project-drag-ghost[data-settling="true"] {
+    transition: none !important;
+  }
+}
+
 .drop-indicator {
   background: var(--accent);
   pointer-events: none;
