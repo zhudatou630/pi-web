@@ -4,6 +4,7 @@ import { dump as stringifyYaml } from "js-yaml";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { parseFrontmatter } from "./frontmatter";
+import { parseNpmSource } from "./plugin-updates";
 import { subagentProfileSources } from "./subagent-profile-precedence";
 import { ProjectNotTrustedError } from "./project-resource-overrides";
 import { getProjectTrustStatus } from "./project-trust";
@@ -29,6 +30,8 @@ export interface SubagentProfile {
   systemPrompt: string;
   tools: string[];
   extensionTools?: string[];
+  /** Resolve deny aliases against the same loaded sources as the grants. */
+  disallowedExtensionTools?: string[];
   loadSkills: boolean;
   loadExtensions: boolean;
   model?: string;
@@ -100,6 +103,8 @@ export interface SubagentRunInfo {
   description: string;
   task: string;
   runInBackground: boolean;
+  /** In-memory notification marker; not persisted or exposed in tool details. */
+  resumed?: boolean;
   maxTurns?: number;
   isolation?: "worktree" | "off";
   status: SubagentStatus;
@@ -114,7 +119,7 @@ export interface SubagentRunInfo {
 }
 
 const DEFAULT_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
-const BUILTIN_TOOLS = new Set(DEFAULT_TOOLS);
+const BUILTIN_TOOLS = new Set([...DEFAULT_TOOLS, "powershell"]);
 const SUBAGENT_CONTROL_TOOLS = new Set<string>(SUBAGENT_CONTROL_TOOL_NAMES);
 const THINKING_LEVELS = new Set<ThinkingLevel>(VALID_THINKING_LEVELS);
 
@@ -295,7 +300,7 @@ function composeToolsField(
     ...extensionTools.filter((tool) => tool.toLowerCase().startsWith("ext:")),
     ...stringList(storedTools).filter((tool) => tool.toLowerCase().startsWith("ext:")),
   ];
-  const uniqueSelectors = [...new Set(selectors)];
+  const uniqueSelectors = [...new Map(selectors.map((selector) => [selector.toLowerCase(), selector])).values()];
   const combined = [...tools, ...uniqueSelectors.filter((selector) => !tools.includes(selector))];
   return combined.length > 0 ? combined.join(", ") : "none";
 }
@@ -356,11 +361,9 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
     assertKnownProfileTools(data?.tools);
     const tools = parseTools(data?.tools, DEFAULT_TOOLS);
     const disallowedTools = new Set(parseTools(data?.disallowed_tools, []));
-    const disallowedExtensionTools = new Set(
-      parseExtensionToolSelectors(data?.disallowed_tools).map((tool) => tool.toLowerCase()),
-    );
-    const extensionTools = parseExtensionToolSelectors(data?.tools)
-      .filter((tool) => !disallowedExtensionTools.has(tool.toLowerCase()));
+    const disallowedExtensionTools = parseExtensionToolSelectors(data?.disallowed_tools);
+    // Keep the grants intact: removing the last one would activate the runtime's all-tools fallback.
+    const extensionTools = parseExtensionToolSelectors(data?.tools);
     const loadSkills = resourceFlag(data, "load_skills", "skills", false);
     const loadExtensions = resourceFlag(
       data,
@@ -375,6 +378,7 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
       systemPrompt: rest.trim(),
       tools: tools.filter((tool) => !disallowedTools.has(tool)),
       ...(extensionTools.length > 0 ? { extensionTools } : {}),
+      ...(disallowedExtensionTools.length > 0 ? { disallowedExtensionTools } : {}),
       loadSkills,
       loadExtensions,
       ...(stringValue(data?.model) ? { model: stringValue(data?.model) } : {}),
@@ -840,32 +844,68 @@ export function withSubagentExtensionTools(
   ])];
 }
 
+interface SubagentExtensionLike {
+  path: string;
+  sourceInfo?: { source?: string; origin?: string };
+  tools: Map<string, unknown>;
+}
+
+function extensionCandidates(extension: SubagentExtensionLike): { names: string[]; owner: string } {
+  const segments = extension.path.replaceAll("\\", "/").split("/");
+  const file = segments.at(-1) ?? "";
+  const source = extension.sourceInfo?.source?.trim() ?? "";
+  const npm = parseNpmSource(source);
+  const packageSource = source !== "local" && source !== "auto"
+    && (extension.sourceInfo?.origin === "package" || npm !== undefined);
+  const packageName = packageSource ? npm?.name ?? source : "";
+  return {
+    names: [...new Set([
+      segments.at(-2) ?? "", file, file.replace(/\.[^.]+$/, ""),
+      packageName, packageName.replace(/^@[^/]+\//, ""),
+    ].filter(Boolean).map((name) => name.toLowerCase()))],
+    // Top-level resources share "local" / "auto", not an ownership identity.
+    owner: packageSource ? source : extension.path,
+  };
+}
+
 export function selectSubagentExtensionTools(
-  extensions: Iterable<{ path: string; sourceInfo?: { source?: string }; tools: Map<string, unknown> }>,
+  extensions: Iterable<SubagentExtensionLike>,
   selectors: readonly string[],
+  deniedSelectors: readonly string[] = [],
 ): string[] {
-  const wanted = selectors.map((selector) => selector.slice(4).toLowerCase());
-  return [...extensions].flatMap((extension) => {
-    const pathName = extension.path.replaceAll("\\", "/").split("/").at(-2) ?? extension.path;
-    const sourceName = (extension.sourceInfo?.source ?? "").replace(/^npm:/, "");
-    const extensionNames = new Set([pathName.toLowerCase(), sourceName.toLowerCase()]);
-    const selected = wanted.some((selector) => {
-      if (selector === "*") return true;
-      const [extensionName, toolName] = selector.split("/", 2);
-      return extensionNames.has(extensionName) && (!toolName || extension.tools.has(toolName));
-    });
-    if (!selected) return [];
-    return [...extension.tools.keys()].filter((toolName) => {
-      if (SUBAGENT_CONTROL_TOOLS.has(toolName)) return false;
-      return wanted.some((selector) => {
-        if (selector === "*" || selector.endsWith("/*")) {
-          return selector === "*" || extensionNames.has(selector.slice(0, -2));
-        }
-        const [extensionName, selectedTool] = selector.split("/", 2);
-        return extensionNames.has(extensionName) && (!selectedTool || selectedTool === toolName);
-      });
-    });
+  const loaded = [...extensions].map((extension) => ({ extension, ...extensionCandidates(extension) }));
+  const owners = new Map<string, Set<string>>();
+  for (const { names, owner } of loaded) {
+    for (const name of names) {
+      const claimed = owners.get(name) ?? new Set<string>();
+      claimed.add(owner);
+      owners.set(name, claimed);
+    }
+  }
+  const resolveAll = (values: readonly string[]) => values.flatMap((selector) => {
+    if (!selector.toLowerCase().startsWith("ext:")) return [];
+    const body = selector.slice(4).trim().replace(/\/+$/, "").replace(/\/\*$/, "");
+    if (body === "*") return [{ name: "*", tool: undefined }];
+    const lower = body.toLowerCase();
+    // Resolve the longest name before the ambiguity check: never fall back to a shorter source.
+    const name = [...owners.keys()]
+      .filter((name) => lower === name || lower.startsWith(`${name}/`))
+      .sort((a, b) => b.length - a.length)[0];
+    if (!name || owners.get(name)!.size !== 1) return [];
+    return [{ name, tool: body.slice(name.length + 1) || undefined }];
   });
+  const grants = resolveAll(selectors);
+  const denials = resolveAll(deniedSelectors);
+  return [...new Set(loaded.flatMap(({ extension, names }) => {
+    const covers = (match: { name: string; tool?: string }, tool: string) => (
+      (match.name === "*" || names.includes(match.name)) && (!match.tool || match.tool === tool)
+    );
+    return [...extension.tools.keys()].filter((tool) => (
+      !SUBAGENT_CONTROL_TOOLS.has(tool)
+      && grants.some((match) => covers(match, tool))
+      && !denials.some((match) => covers(match, tool))
+    ));
+  }))];
 }
 
 const KNOWN_SUBAGENT_LIST_LIMIT = 20;

@@ -10,6 +10,8 @@ import { join } from "node:path";
 
 const HOST_EXTENSION_NAME = "pi-web-project-command-environment";
 const HOST_EXTENSION_PATH = `<inline:${HOST_EXTENSION_NAME}>`;
+const ABORT_SETTLE_GRACE_MS = 1_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 type ProjectShellSettings = {
   getShellCommandPrefix(): string | undefined;
@@ -77,9 +79,47 @@ export function createProjectCommandBashOperations(
         agentBinDir,
         platform,
       );
-      return localOperations.exec(command, cwd, {
+      const { onData, signal, timeout } = executionOptions;
+      let released = false;
+      const execution = localOperations.exec(command, cwd, {
         ...executionOptions,
         env: environment,
+        onData: (data) => { if (!released) onData(data); },
+      });
+      const timeoutMs = typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0
+        ? timeout * 1000
+        : undefined;
+      if (!signal && timeoutMs === undefined) return execution;
+
+      // A survivor outside Pi's kill tree can hold stdout open forever. Bound
+      // settling, not execution; Pi still owns killing the process tree.
+      // ponytail: unreachable children keep running; killing them needs SDK support.
+      return new Promise<Awaited<ReturnType<BashOperations["exec"]>>>((resolve, reject) => {
+        const timers: ReturnType<typeof setTimeout>[] = [];
+        const release = () => {
+          released = true;
+          for (const timer of timers) clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
+        };
+        const releaseAfter = (delayMs: number, error: Error) => {
+          timers.push(setTimeout(() => {
+            release();
+            reject(error);
+          }, Math.min(delayMs, MAX_TIMER_DELAY_MS)));
+        };
+        const onAbort = () => releaseAfter(ABORT_SETTLE_GRACE_MS, new Error("aborted"));
+        if (timeoutMs !== undefined) {
+          releaseAfter(timeoutMs + ABORT_SETTLE_GRACE_MS, new Error(`timeout:${timeout}`));
+        }
+        execution.then((result) => {
+          release();
+          resolve(result);
+        }, (error: unknown) => {
+          release();
+          reject(error);
+        });
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener("abort", onAbort, { once: true });
       });
     },
   };

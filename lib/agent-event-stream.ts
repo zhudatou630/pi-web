@@ -19,6 +19,22 @@ export interface AgentEventStreamSession {
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const STREAM_HIGH_WATER_MARK_BYTES = 512 * 1024;
+const DEFAULT_BACKLOG_LIMIT_BYTES = 16 * 1024 * 1024;
+let lastBackpressureLogAt = 0;
+
+/** Only deltas and partial output are repaired by later authoritative end events. */
+function isDroppableEvent(event: AgentEventLike): boolean {
+  if (event.type === "tool_execution_update") return true;
+  if (event.type !== "message_update") return false;
+  const update = event.assistantMessageEvent as { type?: unknown } | null;
+  return typeof update?.type === "string" && update.type.endsWith("_delta");
+}
+
+function resolveBacklogLimitBytes(): number {
+  const raw = Number(process.env.PI_WEB_SSE_BACKLOG_LIMIT_BYTES);
+  return Number.isFinite(raw) && raw >= 64 * 1024 ? raw : DEFAULT_BACKLOG_LIMIT_BYTES;
+}
 
 /**
  * Live SSE streams that must be closed before the process can exit.
@@ -107,7 +123,7 @@ export function createAgentEventStream(
       let abortHandler: (() => void) | null = null;
       const closeFromRegistry = () => cleanup(true);
 
-      const cleanup = (closeController: boolean) => {
+      const cleanup = (closeController: boolean | "error", reason?: Error) => {
         if (closed) return;
         closed = true;
         registry.delete(closeFromRegistry);
@@ -117,7 +133,9 @@ export function createAgentEventStream(
         unsubscribeClose?.();
         unsubscribeClose = null;
         if (abortHandler) req.signal.removeEventListener("abort", abortHandler);
-        if (closeController) {
+        if (closeController === "error") {
+          try { controller.error(reason); } catch { /* stream already closed */ }
+        } else if (closeController) {
           try { controller.close(); } catch { /* stream already closed */ }
         }
       };
@@ -129,21 +147,40 @@ export function createAgentEventStream(
       }
       registry.add(closeFromRegistry);
 
-      const enqueueText = (text: string) => {
+      const backlogLimitBytes = resolveBacklogLimitBytes();
+      const enqueueText = (text: string, droppable = false) => {
         if (closed) return;
+        const desiredSize = controller.desiredSize;
+        if (desiredSize === null) {
+          cleanup(false);
+          return;
+        }
+        const chunk = encoder.encode(text);
+        const queuedBytes = STREAM_HIGH_WATER_MARK_BYTES - desiredSize;
+        const overLimit = queuedBytes + chunk.byteLength > backlogLimitBytes;
+        if (droppable && (queuedBytes > STREAM_HIGH_WATER_MARK_BYTES || overLimit)) return;
+        if (overLimit) {
+          if (Date.now() - lastBackpressureLogAt >= 60_000) {
+            lastBackpressureLogAt = Date.now();
+            console.warn(`[pi-web] SSE backlog exceeded ${backlogLimitBytes} bytes for ${sessionId}; reconnecting with a snapshot`);
+          }
+          // close() retains the queue; error() releases it and triggers EventSource retry.
+          cleanup("error", new Error("pi-web agent event stream client backlog exceeded"));
+          return;
+        }
         try {
-          controller.enqueue(encoder.encode(text));
+          controller.enqueue(chunk);
         } catch {
           cleanup(false);
         }
       };
-      const encode = (data: unknown) => {
-        enqueueText(`data: ${JSON.stringify(data)}\n\n`);
+      const encode = (data: unknown, droppable = false) => {
+        enqueueText(`data: ${JSON.stringify(data)}\n\n`, droppable);
       };
       const forwardEvent = (event: AgentEventLike, snapshot: unknown) => {
         if (isEventIncludedInSnapshot(event, snapshot)) return;
         const clientEvent = toClientAgentEvent(event);
-        if (clientEvent) encode(clientEvent);
+        if (clientEvent) encode(clientEvent, isDroppableEvent(clientEvent));
       };
 
       const publishSession = async () => {
@@ -209,7 +246,7 @@ export function createAgentEventStream(
       }
       req.signal.addEventListener("abort", abortHandler, { once: true });
 
-      heartbeat = setInterval(() => enqueueText(":\n\n"), HEARTBEAT_INTERVAL_MS);
+      heartbeat = setInterval(() => enqueueText(":\n\n", true), HEARTBEAT_INTERVAL_MS);
 
       // Force the response headers through without claiming that the agent is
       // ready. The client waits for the later `connected` data event.
@@ -218,5 +255,8 @@ export function createAgentEventStream(
     cancel() {
       cancelStream(false);
     },
+  }, {
+    highWaterMark: STREAM_HIGH_WATER_MARK_BYTES,
+    size: (chunk) => chunk.byteLength,
   });
 }

@@ -181,6 +181,7 @@ export function createSubagentExtension(
       });
       pi.registerTool(defineTool({
         name: "Agent",
+        exposure: "model-only",
         label: "Agent",
         description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results notify the parent after its current run settles. Use foreground mode when no useful work can continue without the result.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
         promptSnippet: "Delegate a focused task to an inspectable subagent session",
@@ -196,23 +197,34 @@ export function createSubagentExtension(
         parameters: Type.Object({
           subagent_type: Type.Optional(Type.String({ description: `Configured agent profile. Available types: ${availableTypes}. ${profileNames.includes("general-purpose") ? "Default: general-purpose." : "Required: general-purpose is disabled."}` })),
           prompt: Type.String({ description: "The complete task for the subagent." }),
-          resume: Type.Optional(Type.String({ description: "Existing subagent session ID to continue instead of creating a new session." })),
+          resume: Type.Optional(Type.String({ description: "Existing subagent session ID to continue. Keeps its model, thinking, tools, context, isolation and turn limit; omit create-only options." })),
           input_files: Type.Optional(Type.Array(Type.String(), {
-            description: "UTF-8 text files under the session cwd to include with the task.",
+            description: "UTF-8 text files under the session cwd to include with a new task. With resume, omit or pass [].",
             maxItems: MAX_SUBAGENT_INPUT_FILES,
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
           run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results notify the parent after its current run settles." })),
-          model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>." })),
-          thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max." })),
-          max_turns: Type.Optional(Type.Number({ description: "Optional positive agent turn limit." })),
-          inherit_context: Type.Optional(Type.Boolean({ description: "Include the parent session's active conversation context." })),
-          isolation: Type.Optional(Type.String({ description: "Run the subagent in an isolated git worktree copy." })),
+          model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>. New sessions only; omit with resume." })),
+          thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max. New sessions only; omit with resume." })),
+          max_turns: Type.Optional(Type.Number({ description: "Optional positive agent turn limit for a new session. With resume, omit or pass 0 to keep the existing limit." })),
+          inherit_context: Type.Optional(Type.Boolean({ description: "Include the parent session's active conversation context in a new session. With resume, omit or pass false." })),
+          isolation: Type.Optional(Type.String({ description: "Run a new subagent in an isolated git worktree copy. With resume, omit or pass an empty string to keep existing isolation." })),
         }),
         async execute(toolCallId, params, signal, onUpdate, ctx) {
           const resume = params.resume?.trim();
           if (resume && (params.model || params.thinking)) {
             throw new Error("resume keeps the subagent's model and thinking level; omit model/thinking, or start a new subagent to change them.");
+          }
+          if (resume) {
+            const unsupported = [
+              params.input_files?.length ? "input_files" : undefined,
+              params.isolation ? "isolation" : undefined,
+              params.max_turns !== undefined && params.max_turns !== 0 ? "max_turns" : undefined,
+              params.inherit_context === true ? "inherit_context" : undefined,
+            ].filter(Boolean);
+            if (unsupported.length > 0) {
+              throw new Error(`resume cannot override create-only options: ${unsupported.join(", ")}. Omit them, or start a new subagent.`);
+            }
           }
           const execution = resume
             ? await runtime.resume({
@@ -275,6 +287,7 @@ export function createSubagentExtension(
 
       pi.registerTool(defineTool({
         name: "get_subagent_result",
+        exposure: "model-only",
         label: "Get agent result",
         description: "Check an inspectable subagent session and retrieve its latest result.",
         parameters: Type.Object({
@@ -327,6 +340,7 @@ export function createSubagentExtension(
 
       pi.registerTool(defineTool({
         name: "steer_subagent",
+        exposure: "model-only",
         label: "Steer agent",
         description: "Send a steering message to a currently running subagent session.",
         parameters: Type.Object({

@@ -16,5 +16,5 @@ test("agent SSE starts sessions asynchronously and disables response buffering",
 
 test("agent SSE reuses one TextEncoder per stream", () => {
   assert.equal((agentEventStreamSource.match(/new TextEncoder\(\)/g) ?? []).length, 1);
-  assert.match(agentEventStreamSource, /controller\.enqueue\(encoder\.encode\(/);
+  assert.match(agentEventStreamSource, /const chunk = encoder\.encode\(text\)/);
 });

@@ -41,7 +41,7 @@ function toPluginScope(scope: ConfiguredPackage["scope"]): PluginScope {
   return scope === "project" ? "project" : "global";
 }
 
-function parseNpmSource(source: string): ParsedNpmSource | undefined {
+export function parseNpmSource(source: string): ParsedNpmSource | undefined {
   if (!source.startsWith("npm:")) return undefined;
   const spec = source.slice(4).trim();
   const match = spec.match(/^(@?[^@]+(?:\/[^@]+)?)(?:@(.+))?$/);

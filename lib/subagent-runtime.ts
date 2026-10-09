@@ -3,6 +3,10 @@ import { THINKING_LEVELS as VALID_THINKING_LEVELS, THINKING_SUFFIX } from "./thi
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
+  createBashToolDefinition,
+  createLocalPowerShellOperations,
+  createPowerShellToolDefinition,
+  defineTool,
   getAgentDir,
   initTheme,
   SessionManager,
@@ -41,6 +45,7 @@ import { buildSubagentPromptPlan } from "./subagent-prompt";
 import { appendSubagentInputFiles, loadSubagentInputFiles } from "./subagent-input";
 import { projectTrustReloadOptions } from "./project-trust";
 import { resolveShellTools } from "./powershell-settings";
+import { createProjectCommandBashOperations } from "./project-command-env";
 import { isSubagentsEnabledForProject, readSubagentSettings } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension, type ContextFileContent } from "./chat-only";
@@ -94,6 +99,7 @@ type StoredSubagentExecution = {
   run: SubagentRunInfo;
   completion: Promise<SubagentRunInfo>;
   abortRequested: boolean;
+  turnLimitReached?: boolean;
   cancelQueued?: () => boolean;
   waveKey?: string;
 };
@@ -133,11 +139,10 @@ export function advanceSubagentTurnLimit(
   state: SubagentTurnLimitState,
   message: AgentMessage,
   turnLimit: number,
+  needsAnotherTurn = message.role === "assistant" && message.content.some((block) => block.type === "toolCall"),
 ): { state: SubagentTurnLimitState; requestWrapUp: boolean } {
   const turnCount = state.turnCount + 1;
-  const hasToolCalls = message.role === "assistant"
-    && message.content.some((block) => block.type === "toolCall");
-  if (!state.wrapUpRequested && turnCount >= turnLimit && hasToolCalls) {
+  if (!state.wrapUpRequested && turnCount >= turnLimit && needsAnotherTurn) {
     return {
       state: { turnCount, wrapUpRequested: true, turnLimitReached: false },
       requestWrapUp: true,
@@ -165,7 +170,7 @@ function messageText(message: AgentMessage | undefined): string | undefined {
 
 export function deriveSubagentOutcome(
   messages: readonly AgentMessage[],
-  options: { abortRequested: boolean; turnLimitReached: boolean; thrownError?: string },
+  options: { abortRequested: boolean; turnLimitReached: boolean; thrownError?: string; undeliveredMessages?: readonly string[] },
 ): SubagentOutcome {
   const assistants = messages.filter((message) => message.role === "assistant");
   const lastAssistant = assistants.at(-1);
@@ -194,6 +199,13 @@ export function deriveSubagentOutcome(
   }
   if (options.thrownError) {
     return { status: "failed", ...(result ? { result } : {}), error: options.thrownError };
+  }
+  if (options.undeliveredMessages?.length) {
+    return {
+      status: "failed",
+      ...(result ? { result } : {}),
+      error: `Subagent reached its turn limit. These queued messages were not delivered:\n${options.undeliveredMessages.map((text) => `- ${text}`).join("\n")}`,
+    };
   }
   if (options.turnLimitReached && (terminalHasToolCalls || !messageText(lastAssistant))) {
     return {
@@ -496,7 +508,8 @@ function buildSubagentNotification(runs: SubagentRunInfo[]): {
   for (const run of runs) {
     const description = run.description.slice(0, 160);
     const profile = run.profile.slice(0, 80);
-    const header = `## ${description} (${profile}, ${run.status})\nSession ID: ${run.sessionId}\n`;
+    const supersedes = run.resumed ? "Resumed run: this report supersedes any earlier report from this subagent.\n" : "";
+    const header = `## ${description} (${profile}, ${run.status})\nSession ID: ${run.sessionId}\n${supersedes}`;
     const separatorLength = sections.length > 0 ? 2 : 0;
     const bodyLimit = Math.min(
       SUBAGENT_NOTIFICATION_RESULT_MAX_CHARS,
@@ -794,6 +807,18 @@ async function promptSubagent(
   // The prompt plan's exact system prompt is projected by the inline extension
   // registered when the session was created; see lib/chat-only.ts.
   const previousFinishTurn = inner.agent.finishTurn;
+  const agent = inner.agent as AgentSessionLike["agent"] & {
+    steeringMode?: "all" | "one-at-a-time";
+    hasQueuedMessages?: () => boolean;
+  };
+  const previousSteeringMode = agent.steeringMode;
+  const undeliveredMessages: string[] = [];
+  const terminatingTools = new Set<string>();
+  const unsubscribeTools = options.turnLimit ? inner.subscribe((event) => {
+    if (event.type === "tool_execution_end" && event.result?.terminate === true) {
+      terminatingTools.add(event.toolCallId);
+    }
+  }) : undefined;
   if (options.turnLimit) {
     // Pi 0.87 replaced `shouldStopAfterTurn` with `finishTurn` and swapped the
     // ordering: `finishTurn` now runs BEFORE `turn_end` (0.86 emitted `turn_end`
@@ -802,22 +827,28 @@ async function promptSubagent(
     // let the agent run one turn past its limit.
     inner.agent.finishTurn = async (turn, signal) => {
       const previous = await previousFinishTurn?.(turn, signal);
-      const update = advanceSubagentTurnLimit(turnLimitState, turn.message, options.turnLimit!);
+      const toolsContinue = turn.toolResults.some((result) => !terminatingTools.has(result.toolCallId));
+      terminatingTools.clear();
+      const needsAnotherTurn = (previous?.action !== "end" && toolsContinue)
+        || previous?.action === "continue" || agent.hasQueuedMessages?.() === true;
+      if (signal?.aborted || (turn.message.role === "assistant" && (
+        turn.message.stopReason === "error" || turn.message.stopReason === "aborted"
+      ))) return previous;
+      const update = advanceSubagentTurnLimit(turnLimitState, turn.message, options.turnLimit!, needsAnotherTurn);
       turnLimitState = update.state;
-      if (update.requestWrapUp) {
-        // Steering polled by the loop right after this hook returns, so the wrap-up
-        // instruction lands on the very next provider request.
-        inner.agent.steer?.({
-          role: "user",
-          content: [{ type: "text", text: "You have reached your turn limit. Wrap up immediately and provide your final answer now without calling more tools." }],
-          timestamp: Date.now(),
-        });
+      if (turnLimitState.turnLimitReached) {
+        stored.turnLimitReached = true;
+        // AgentSession can restart for queued work even after an end verdict.
+        const { steering, followUp } = inner.clearQueue();
+        undeliveredMessages.push(...steering, ...followUp);
+        return { action: "end" };
       }
-      // Preserve a host handler's verdict: "continue" is not the same as "no
-      // opinion" — it forces one more provider request.
-      if (previous?.action === "continue") return { action: "continue" };
-      if (previous?.action === "end") return { action: "end" };
-      return turnLimitState.turnLimitReached ? { action: "end" } : undefined;
+      if (update.requestWrapUp) {
+        // Drain every earlier steer with the budget instruction, even in one-at-a-time mode.
+        agent.steeringMode = "all";
+        await inner.steer("You have reached your turn limit. Wrap up immediately and provide your final answer now without calling more tools.");
+      }
+      return previous;
     };
   }
 
@@ -830,6 +861,8 @@ async function promptSubagent(
     thrownError = errorMessage(error);
   } finally {
     inner.agent.finishTurn = previousFinishTurn;
+    if (options.turnLimit) agent.steeringMode = previousSteeringMode;
+    unsubscribeTools?.();
   }
 
   return deriveSubagentOutcome(
@@ -837,9 +870,29 @@ async function promptSubagent(
     {
       abortRequested: stored.abortRequested,
       turnLimitReached: turnLimitState.turnLimitReached,
+      undeliveredMessages,
       ...(thrownError ? { thrownError } : {}),
     },
   );
+}
+
+// SDK custom tools replace the default shell definitions on spawn and cold reopen.
+// User extension-owned shells remain user-controlled, as in the parent session.
+export function createSubagentShellTools(
+  cwd: string,
+  settings: Pick<SettingsManager, "getShellPath" | "getShellCommandPrefix">,
+  extensions: Iterable<{ tools: Map<string, unknown> }> = [],
+) {
+  const userTools = new Set([...extensions].flatMap((extension) => [...extension.tools.keys()]));
+  return [
+    createBashToolDefinition(cwd, {
+      commandPrefix: settings.getShellCommandPrefix(),
+      operations: createProjectCommandBashOperations({ shellPath: settings.getShellPath() }),
+    }),
+    createPowerShellToolDefinition(cwd, {
+      operations: createProjectCommandBashOperations({ localOperations: createLocalPowerShellOperations() }),
+    }),
+  ].filter((tool) => !userTools.has(tool.name)).map((tool) => defineTool({ ...tool, defaultActive: false }));
 }
 
 export function createSubagentController(
@@ -1005,9 +1058,11 @@ export function createSubagentController(
               : {}),
           });
           const extensionToolNames = profile.loadExtensions
-            ? profile.extensionTools?.length
-              ? selectSubagentExtensionTools(services.resourceLoader.getExtensions().extensions, profile.extensionTools)
-              : services.resourceLoader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()])
+            ? selectSubagentExtensionTools(
+                services.resourceLoader.getExtensions().extensions,
+                profile.extensionTools?.length ? profile.extensionTools : ["ext:*"],
+                profile.disallowedExtensionTools,
+              )
             : [];
           const activeTools = resolveShellTools(
             withSubagentExtensionTools(profile.tools, extensionToolNames),
@@ -1026,6 +1081,7 @@ export function createSubagentController(
             model: requestedModel.model ?? parentModel,
             ...(thinking ? { thinkingLevel: thinking as ThinkingLevel } : {}),
             tools: activeTools,
+            customTools: createSubagentShellTools(childCwd, settingsManager, services.resourceLoader.getExtensions().extensions),
             excludeTools: [...SUBAGENT_CONTROL_TOOL_NAMES],
           });
           dependencies.registerSession(inner, { chatOnly });
@@ -1102,6 +1158,7 @@ export function createSubagentController(
     const isolation = existing.isolation;
     const initialRun: SubagentRunInfo = {
       ...existing,
+      resumed: true,
       parentToolCallId: request.parentToolCallId,
       task: request.task,
       description: request.description.trim() || existing.description,
@@ -1257,6 +1314,9 @@ export function createSubagentController(
   async function steer(sessionId: string, message: string): Promise<void> {
     const wrapper = dependencies.getSession(sessionId);
     if (!wrapper?.isAlive() || !wrapper.isRunning()) throw new Error("Subagent is not running");
+    if (getSubagentRuns().get(sessionId)?.turnLimitReached) {
+      throw new Error("Subagent reached its turn limit and is stopping; resume it to continue");
+    }
     if (!message.trim()) throw new Error("Steering message is required");
     await wrapper.inner.steer(message.trim());
   }

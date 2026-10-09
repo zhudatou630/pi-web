@@ -44,7 +44,7 @@ import {
   readSubagentSessionResources,
   SUBAGENT_CONTROL_TOOL_NAMES,
 } from "./subagents";
-import { createSubagentController, getActiveSubagentRuns, isSubagentQueued } from "./subagent-runtime";
+import { createSubagentController, createSubagentShellTools, getActiveSubagentRuns, isSubagentQueued } from "./subagent-runtime";
 import { isSubagentsEnabledForProject } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
@@ -248,6 +248,7 @@ async function withShutdownDeadline(work: unknown): Promise<void> {
       console.error(`[pi-web] session_shutdown handlers still running after ${SESSION_SHUTDOWN_DEADLINE_MS} ms; disposing anyway`);
       resolve();
     }, SESSION_SHUTDOWN_DEADLINE_MS);
+    timer.unref?.();
   });
   try {
     await Promise.race([work, deadline]);
@@ -256,14 +257,18 @@ async function withShutdownDeadline(work: unknown): Promise<void> {
   }
 }
 
-function withExtensionTools(session: AgentSessionLike, toolNames: string[]): string[] {
+const SESSION_TOOL_NAMES = new Set<string>(["codemode", "tool_search", ...SUBAGENT_CONTROL_TOOL_NAMES]);
+
+function withExtensionTools(
+  session: AgentSessionLike,
+  toolNames: string[],
+  carry = session.getActiveToolNames(),
+): string[] {
   if (toolNames.length === 0) return [];
 
   const codingToolNames = new Set(CODING_TOOL_NAMES);
   const selectedToolNames = resolveShellTools(toolNames, session.settingsManager.getDefaultTools());
-  const activeExtensionToolNames = session
-    .getActiveToolNames()
-    .filter((name) => !codingToolNames.has(name));
+  const activeExtensionToolNames = carry.filter((name) => !codingToolNames.has(name));
 
   return [...new Set([...selectedToolNames, ...activeExtensionToolNames])];
 }
@@ -321,6 +326,9 @@ export class AgentSessionWrapper {
   private shutdownPromise: Promise<void> | null = null;
   private sessionShutdownEmitted = false;
   private forceShutdownOnIdle = false;
+  private forcedIdleTimerArmed = false;
+  private resolveDisposed: () => void = () => {};
+  private readonly disposed = new Promise<void>((resolve) => { this.resolveDisposed = resolve; });
   private _alive = true;
   private _closing = false;
 
@@ -370,7 +378,7 @@ export class AgentSessionWrapper {
   }
 
   isAlive(): boolean {
-    return this._alive;
+    return this._alive && !this._closing;
   }
 
   isClosing(): boolean {
@@ -532,12 +540,27 @@ export class AgentSessionWrapper {
     }
   }
 
-  setActiveToolSelection(toolNames: string[]): void {
-    this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames));
+  setActiveToolSelection(toolNames: string[], carry?: string[]): void {
+    this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames, carry));
+  }
+
+  private async navigateTree(targetId: string, options: { summarize?: boolean }): Promise<{ cancelled: boolean }> {
+    const activeBefore = this.inner.getActiveToolNames();
+    const result = await this.inner.navigateTree(targetId, options);
+    if (!result.cancelled) {
+      const activeAfter = this.inner.getActiveToolNames();
+      // Pins belong to the session (all entries), other extension tools to the target branch.
+      const pin = readSessionToolSelection(this.inner.sessionManager.getEntries() as unknown as SessionEntry[]);
+      this.setActiveToolSelection(
+        this.chatOnly ? [] : pin ?? activeAfter,
+        [...activeAfter, ...activeBefore.filter((name) => SESSION_TOOL_NAMES.has(name))],
+      );
+    }
+    return { cancelled: result.cancelled };
   }
 
   private emit(event: AgentEvent): void {
-    for (const { listener } of this.subscriptions) {
+    for (const { listener } of [...this.subscriptions]) {
       try {
         listener(event);
       } catch (error) {
@@ -560,11 +583,17 @@ export class AgentSessionWrapper {
   }
 
   private resetIdleTimer(): void {
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    if (!this._alive || this._closing) return;
-    // A resolved timeout of 0 disables idle shutdown entirely.
-    if (SESSION_IDLE_TIMEOUT_MS === 0) return;
+    if (!this._alive || this._closing) {
+      if (this.idleTimer) clearTimeout(this.idleTimer);
+      return;
+    }
     if (!this.isRunning()) this.forceShutdownOnIdle = false;
+    // Stop's deadline is fixed, even with idle shutdown disabled or repeated commands.
+    if (this.forceShutdownOnIdle && this.forcedIdleTimerArmed) return;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    const timeoutMs = this.forceShutdownOnIdle ? DEFAULT_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS;
+    this.forcedIdleTimerArmed = this.forceShutdownOnIdle;
+    if (timeoutMs === 0) return;
     this.idleTimer = setTimeout(() => {
       if (!this.forceShutdownOnIdle && (this.isRunning() || this.hasConnectedKeepAlive() || hasActiveSessionLivenessProvider({
         sessionId: this.sessionId,
@@ -576,7 +605,7 @@ export class AgentSessionWrapper {
       void this.shutdown().catch((error) => {
         console.error("[pi-web] failed to shut down idle session:", error instanceof Error ? error.message : error);
       });
-    }, SESSION_IDLE_TIMEOUT_MS);
+    }, timeoutMs);
   }
 
   private persistCommandOnlySession(): void {
@@ -629,6 +658,15 @@ export class AgentSessionWrapper {
 
   onDestroy(cb: () => void): void {
     this.onDestroyCallback = cb;
+  }
+
+  waitUntilDisposed(timeoutMs: number): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+      timer.unref?.();
+    });
+    return Promise.race([this.disposed.then(() => true), timedOut]).finally(() => clearTimeout(timer));
   }
 
   private async withSessionReplacement<T>(
@@ -788,6 +826,7 @@ export class AgentSessionWrapper {
 
       case "abort":
         this.forceShutdownOnIdle = true;
+        this.resetIdleTimer();
         getPausedAutomaticFollowUps().add(this.sessionId);
         this.directImageAbortController?.abort(new DOMException("Image generation cancelled", "AbortError"));
         // Stop must unwind extension commands that have not started the agent yet.
@@ -963,8 +1002,7 @@ export class AgentSessionWrapper {
         if (this.inner.isBashRunning) {
           throw new Error("Cannot navigate while a shell command is running");
         }
-        const result = await this.inner.navigateTree(command.targetId as string, {});
-        return { cancelled: result.cancelled };
+        return this.navigateTree(command.targetId as string, {});
       }
 
       case "set_thinking_level": {
@@ -1222,6 +1260,7 @@ export class AgentSessionWrapper {
 
       case "abort_bash": {
         this.forceShutdownOnIdle = true;
+        this.resetIdleTimer();
         getPausedAutomaticFollowUps().add(this.sessionId);
         this.inner.abortBash();
         return null;
@@ -1256,7 +1295,7 @@ export class AgentSessionWrapper {
       try {
         this.inner.dispose();
       } finally {
-        this.onDestroyCallback?.();
+        try { this.onDestroyCallback?.(); } finally { this.resolveDisposed(); }
       }
     };
 
@@ -1634,10 +1673,7 @@ export class AgentSessionWrapper {
       },
       newSession: async () => ({ cancelled: true }),
       fork: async () => ({ cancelled: true }),
-      navigateTree: async (targetId, options) => {
-        const result = await this.inner.navigateTree(targetId, { summarize: options?.summarize });
-        return { cancelled: result.cancelled };
-      },
+      navigateTree: (targetId, options) => this.navigateTree(targetId, { summarize: options?.summarize }),
       switchSession: async () => ({ cancelled: true }),
       reload: async () => {
         this.syncProjectTrust();
@@ -1743,6 +1779,27 @@ export { isSubagentQueued };
 function getLocks(): Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> {
   if (!globalThis.__piStartLocks) globalThis.__piStartLocks = new Map();
   return globalThis.__piStartLocks;
+}
+
+const closingSessionWaits = new WeakMap<AgentSessionWrapper, { done: boolean; promise: Promise<void> }>();
+
+function closingRpcSessionWait(sessionId: string): Promise<void> | null {
+  const closing = getRegistry().get(sessionId);
+  // Wrappers retained across a hot reload may lack the dispose barrier.
+  if (!closing || closing.isAlive() || typeof closing.waitUntilDisposed !== "function") return null;
+  let wait = closingSessionWaits.get(closing);
+  if (!wait) {
+    const entry = { done: false, promise: Promise.resolve() };
+    // ponytail: reopening after 6s can overlap stuck binding; bound SDK binding to guarantee exclusivity.
+    entry.promise = closing.waitUntilDisposed(SESSION_SHUTDOWN_DEADLINE_MS + 1_000)
+      .then((disposed) => {
+        if (!disposed) console.warn(`[pi-web] session ${sessionId} is still shutting down; starting it again anyway`);
+      })
+      .finally(() => { entry.done = true; });
+    closingSessionWaits.set(closing, entry);
+    wait = entry;
+  }
+  return wait.done ? null : wait.promise;
 }
 
 function normalizeRpcCwd(cwd: string): string {
@@ -1858,6 +1915,11 @@ export async function setRpcSessionTools(
   const toolNames = requestedToolNames === undefined
     ? undefined
     : validateSessionToolSelection(requestedToolNames);
+  const pending = getLocks().get(sessionId) ?? closingRpcSessionWait(sessionId);
+  if (pending) {
+    await pending.catch(() => undefined);
+    return setRpcSessionTools(sessionId, sessionFile, requestedToolNames);
+  }
   const existing = getRpcSession(sessionId);
 
   if (!existing?.isAlive()) {
@@ -2183,11 +2245,21 @@ export async function startRpcSession(
   const registry = getRegistry();
   const locks = getLocks();
 
+  const inflight = locks.get(sessionId);
+  if (inflight) return inflight;
+
   const existing = registry.get(sessionId);
   if (existing?.isAlive()) return { session: existing, realSessionId: sessionId };
 
-  const inflight = locks.get(sessionId);
-  if (inflight) return inflight;
+  const closingWait = closingRpcSessionWait(sessionId);
+  if (closingWait) {
+    const waiting: Promise<{ session: AgentSessionWrapper; realSessionId: string }> = closingWait.then(() => {
+      if (locks.get(sessionId) === waiting) locks.delete(sessionId);
+      return startRpcSession(sessionId, sessionFile, cwd, options);
+    });
+    locks.set(sessionId, waiting);
+    return waiting;
+  }
 
   let sessionManager: SessionManager;
   if (sessionFile) {
@@ -2352,7 +2424,10 @@ export async function startRpcSession(
       ...(initial?.thinkingLevel ? { thinkingLevel: initial.thinkingLevel } : {}),
       ...(scope.scopedModels.length > 0 ? { scopedModels: [...scope.scopedModels] } : {}),
       ...(toolsOption !== undefined ? { tools: toolsOption } : {}),
-      ...(subagentResources ? { excludeTools: [...SUBAGENT_CONTROL_TOOL_NAMES] } : {}),
+      ...(subagentResources ? {
+        excludeTools: [...SUBAGENT_CONTROL_TOOL_NAMES],
+        customTools: createSubagentShellTools(sessionCwd, settingsManager, services.resourceLoader.getExtensions().extensions),
+      } : {}),
     });
 
     const persistedPreferences = await persistExplicitStartupPreferences(
