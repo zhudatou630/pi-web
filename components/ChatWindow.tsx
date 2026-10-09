@@ -7,7 +7,7 @@ import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type
 import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
+import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
@@ -187,12 +187,28 @@ function NewSessionCwdControl({
   const [error, setError] = useState<string | null>(null);
   // Added projects without history first, then projects by recent activity (matches the sidebar).
   const cwdRows = [...pinnedPaths.filter((path) => !recentPaths.includes(path)), ...recentPaths];
-  const activeWorktree = worktreeInfo
-    && (worktreeInfo.forCwd === cwd
-      || worktreeInfo.projectRoot === cwd
-      || worktreeInfo.currentWorktreePath === cwd
-      || worktreeInfo.worktrees.some((wt) => wt.path === cwd))
-    ? worktreeInfo
+  const [refreshedWorktree, setRefreshedWorktree] = useState<typeof worktreeInfo>(null);
+  useEffect(() => {
+    if (!branchMenuOpen) return;
+    const controller = new AbortController();
+    void fetch(`/api/worktrees?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json() as { projectRoot?: string; currentWorktreePath?: string | null; worktrees?: NonNullable<typeof worktreeInfo>["worktrees"]; error?: string };
+        if (!controller.signal.aborted && data.projectRoot && !data.error) {
+          setRefreshedWorktree({ forCwd: cwd, projectRoot: data.projectRoot, currentWorktreePath: data.currentWorktreePath ?? null, worktrees: data.worktrees ?? [] });
+        }
+      })
+      .catch(() => { /* Keep the last known list on a refresh failure. */ });
+    return () => controller.abort();
+  }, [branchMenuOpen, cwd]);
+  const candidateWorktree = refreshedWorktree?.forCwd === cwd ? refreshedWorktree : worktreeInfo;
+  const activeWorktree = candidateWorktree
+    && (candidateWorktree.forCwd === cwd
+      || candidateWorktree.projectRoot === cwd
+      || candidateWorktree.currentWorktreePath === cwd
+      || candidateWorktree.worktrees.some((wt) => wt.path === cwd))
+    ? candidateWorktree
     : null;
 
   useEffect(() => {
@@ -797,11 +813,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (sessionId) onKeepTabOpen?.(sessionId);
   }, [onKeepTabOpen]);
 
-  // 稳定化 onEditContent 引用，配合 React.memo 防止历史消息重渲染
-  const handleEditContent = useCallback((message: UserMessage) => {
-    ownChatInputRef.current?.replaceMessage(message);
-  }, []);
-
   const initialScrollPositionRef = useRef(searchTarget ? null : initialScrollPosition ?? null);
   const [pendingScrollRestore, setPendingScrollRestore] = useState<Extract<ChatScrollPosition, { atBottom: false }> | null>(() => {
     const position = initialScrollPositionRef.current;
@@ -811,9 +822,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // Branch panel click: switch branch (when needed), then scroll to the row's first message.
   const [pendingBranchJump, setPendingBranchJump] = useState<string | null>(null);
   const branchSessionId = session?.id ?? null;
-  const branchDataChange = useCallback((tree: SessionTreeNode[], leafId: string | null, switchLeaf: (leafId: string | null) => void) => {
+  const branchDataChange = useCallback((tree: SessionTreeNode[], leafId: string | null, switchLeaf: (leafId: string | null) => Promise<boolean>) => {
     onBranchDataChange?.(branchSessionId, tree, leafId, async (targetLeafId, anchorEntryId) => {
-      if (targetLeafId) await (switchLeaf as (leafId: string | null) => Promise<void> | void)(targetLeafId);
+      if (targetLeafId && !(await switchLeaf(targetLeafId))) return;
       if (anchorEntryId) setPendingBranchJump(anchorEntryId);
     });
   }, [onBranchDataChange, branchSessionId]);
@@ -827,9 +838,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     notices, extensionDialog, extensionCustomUi, respondToExtensionUi, sendExtensionCustomInput, addNotice, setNoticePaused,
     isAutoModelSelection,
     agentPhase,
-    isNew,
+    isNew, editEntryId, handleEditContent, cancelEdit,
     sessionIdRef, scrollContainerRef, isNearBottomRef,
-    handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
+    handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleModelChange,
     retryLoadSession,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,
     handleRecallQueue,
@@ -1738,6 +1749,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const chatInputElement = (
     <ChatInput
       ref={setChatInputElement}
+      isEditing={editEntryId !== null}
       onSend={handleChatSend}
       onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImages) => { setImageEdit(null); setImageSourceSeed(sourceImages); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
       onAbort={handleActiveAbort}
@@ -1969,9 +1981,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
                     onFork={sessionBusy || isNew ? undefined : handleChatFork}
                     forking={forkingEntryId === entryIds[idx]}
-                    onNavigate={sessionBusy ? undefined : handleNavigate}
-                    prevAssistantEntryId={sessionBusy ? undefined : prevAssistantEntryId}
-                    onEditContent={handleEditContent}
+                    prevAssistantEntryId={prevAssistantEntryId}
+                    onEditContent={sessionBusy || isCompacting ? undefined : handleEditContent}
+                    onCancelEdit={cancelEdit}
+                    isEditing={!!prevAssistantEntryId && editEntryId === prevAssistantEntryId}
                     isTurnEnd={options.isTurnEnd}
                     expandOutput={idx === messages.length - 1}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}

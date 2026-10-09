@@ -1745,13 +1745,14 @@ export function AppShell() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cwd }),
     });
-    const data = await res.json() as { cwd?: string; error?: string };
+    const data = await res.json() as { cwd?: string; projectKey?: string; projectRoot?: string; error?: string };
     if (!res.ok || !data.cwd) throw new Error(data.error ?? `HTTP ${res.status}`);
     const nextCwd = data.cwd;
+    const projectKey = data.projectKey ?? data.projectRoot ?? nextCwd;
     if (draftKey) {
       setChatTabs((tabs) => tabs.map((tab) => (
         tab.kind === "draft" && tab.newSessionDraftKey === draftKey
-          ? { ...tab, newSessionCwd: nextCwd, projectKey: nextCwd }
+          ? { ...tab, newSessionCwd: nextCwd, projectKey }
           : tab
       )));
     }

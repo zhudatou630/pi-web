@@ -55,7 +55,7 @@ function setup(fetchImpl) {
   };
   defaultModelResolverScript.runInNewContext(context);
   defaultThinkingResolverScript.runInNewContext(context);
-  for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "NewSessionDefaultModel", "ThinkingLevel"]) {
+  for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "NewSessionDefaultModel", "NewSessionModel", "PendingModel", "ThinkingLevel"]) {
     context[`set${name}`] = (value) => writes.push([name, value]);
   }
   context.loadModels = loadScript.runInNewContext(context);
@@ -92,6 +92,33 @@ test("model-load failures stay visible through bounded retries and clear on reco
   assert.ok(recovered.writes.some(([name, value]) => name === "ModelList" && value[0].id === "test"));
   assert.ok(recovered.writes.some(([name, value]) => name === "NewSessionDefaultModel" && value.modelId === "test"));
   assert.ok(recovered.writes.some(([name, value]) => name === "ThinkingLevel" && value === "high"));
+});
+
+test("non-empty project model scopes reset unavailable overrides; empty/failed loads preserve them", async () => {
+  const selected = { provider: "old", modelId: "shared-id" };
+  for (const [modelList, reset] of [
+    [[{ provider: "new", id: "shared-id" }], true], // Same id, different provider is unavailable.
+    [[{ provider: "old", id: "shared-id" }], false],
+    [[], false],
+    [undefined, false],
+  ]) {
+    const state = setup(async () => Response.json({
+      models: {}, modelList,
+      defaultModel: { provider: "new", modelId: "shared-id" },
+      defaultThinkingLevel: "medium",
+    }));
+    state.context.newSessionModelOverrideRef.current = selected;
+    await state.run();
+    assert.equal(state.context.newSessionModelOverrideRef.current, reset ? null : selected);
+    assert.equal(state.writes.some(([name]) => name === "NewSessionModel"), reset);
+    assert.equal(state.writes.some(([name]) => name === "PendingModel"), reset);
+    if (reset) assert.ok(state.writes.some(([name, value]) => name === "ThinkingLevel" && value === "medium"));
+  }
+  const failed = setup(async () => { throw new Error("offline"); });
+  failed.context.newSessionModelOverrideRef.current = selected;
+  await failed.run();
+  assert.equal(failed.context.newSessionModelOverrideRef.current, selected);
+  assert.ok(!failed.writes.some(([name]) => name === "NewSessionModel"));
 });
 
 test("cancelling model loads prevents state writes and further retries", async () => {

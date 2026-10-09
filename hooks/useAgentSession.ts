@@ -14,7 +14,7 @@ import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
-import { rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
+import { getDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
@@ -214,7 +214,7 @@ export interface UseAgentSessionOptions {
   onSessionForked?: (newSessionId: string) => void;
   modelsRefreshKey?: number;
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
-  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => void) => void;
+  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => Promise<boolean>) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
   /** Registers an action that lazily starts the session and loads its prompt and tools. */
@@ -309,12 +309,15 @@ function readCompactResult(result: unknown, reason: string): CompactResultInfo |
 export interface ChatInputHandle {
   insertText: (text: string) => void;
   insertIfEmpty: (content: string) => void;
-  replaceMessage: (message: UserMessage) => void;
+  replaceMessage: (message: UserMessage) => Promise<boolean>;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
   restoreSubmission: (text: string, images?: Array<{ data: string; mimeType: string }>, targetDraftKey?: string) => void;
 }
+
+// Draft key -> previous assistant entry; edits never persist a leaf move before send.
+const pendingHistoryEdits = new Map<string, string>();
 
 type SelectedModel = { provider: string; modelId: string };
 
@@ -453,6 +456,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const streamDeltaFrameRef = useRef<number | null>(null);
   const pendingStreamDeltasRef = useRef<ClientAssistantMessageEvent[]>([]);
   const executeBashRef = useRef<(command: string, excludeFromContext: boolean) => Promise<void> | undefined>(undefined);
+  const handleNavigateRef = useRef<((entryId: string) => Promise<boolean>) | undefined>(undefined);
+  const navigationPendingRef = useRef(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const ensuringNewSessionRef = useRef<Promise<string | null> | null>(null);
   const warmCwdRef = useRef(newSessionCwd);
@@ -525,6 +530,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const currentModel = currentModelOverride ?? data?.context.model ?? pendingModel ?? null;
   const displayModel = isNew ? (newSessionModel ?? newSessionDefaultModel) : currentModel;
   const composerDraftKey = session?.id ?? newSessionDraftKey ?? undefined;
+  const composerDraftKeyRef = useRef(composerDraftKey);
+  composerDraftKeyRef.current = composerDraftKey;
+  const [editEntryId, setEditEntryId] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    if (composerDraftKey && !getDraft(composerDraftKey)) pendingHistoryEdits.delete(composerDraftKey);
+    setEditEntryId((composerDraftKey && pendingHistoryEdits.get(composerDraftKey)) || null);
+  }, [composerDraftKey]);
+  const setEdit = useCallback((entryId: string | null, key = composerDraftKey) => {
+    if (!key) return;
+    if (entryId) pendingHistoryEdits.set(key, entryId);
+    else pendingHistoryEdits.delete(key);
+    if (composerDraftKeyRef.current === key) setEditEntryId(entryId);
+  }, [composerDraftKey]);
 
   const resolveComposerDraftKey = useCallback((key: string | undefined) => {
     if (!key) return undefined;
@@ -992,6 +1010,19 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       },
     });
   }, []);
+
+  const handleEditContent = useCallback(async (message: UserMessage, targetId: string) => {
+    if (!session?.id || !composerDraftKey) return;
+    try {
+      if (await opts.chatInputRef?.current?.replaceMessage(message)
+        && sessionHookMountedRef.current && composerDraftKeyRef.current === composerDraftKey) {
+        setEdit(targetId);
+      }
+    } catch (e) {
+      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  }, [addNotice, composerDraftKey, opts.chatInputRef, session?.id, setEdit]);
+  const cancelEdit = useCallback(() => setEdit(null), [setEdit]);
 
   const handleExtensionUiRequest = useCallback((request: ExtensionUiRequest) => {
     if (isBlockingExtensionUiRequest(request)) onAttentionNeeded?.(request);
@@ -1615,6 +1646,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       restoreSubmission(message, images, composerDraftKey);
       return;
     }
+    const editTarget = composerDraftKey && pendingHistoryEdits.get(composerDraftKey);
+    if (editTarget) {
+      // Navigation and prompt are separate requests: rejection after navigation
+      // keeps the moved leaf, but the normal prompt recovery preserves the draft.
+      if (!(await handleNavigateRef.current?.(editTarget))) {
+        restoreSubmission(message, images, composerDraftKey);
+        return;
+      }
+      setEdit(null, composerDraftKey);
+    }
     const isSlashCommandPrompt = !images?.length && trimmedMessage.startsWith("/");
 
     const isBashCommand = !images?.length && trimmedMessage.startsWith("!");
@@ -1791,7 +1832,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (isSlashCommandPrompt && result.sessionId) {
       void waitForPromptSettlement(result.sessionId, promptRunId);
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreSubmission, setEdit]);
 
   const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[] = []): Promise<ImageGenerationResult> => {
     if (agentRunningRef.current || bashRunningRef.current || directImageRunningRef.current) throw new Error("Cannot generate an image while the session is busy");
@@ -1954,26 +1995,31 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [onSessionForked]);
 
-  const handleLeafChange = useCallback(async (leafId: string | null) => {
-    if (bashRunningRef.current || agentRunningRef.current || sessionRunningRef.current || isCompacting) return;
+  const handleLeafChange = useCallback(async (leafId: string | null): Promise<boolean> => {
+    if (bashRunningRef.current || agentRunningRef.current || sessionRunningRef.current || isCompacting || navigationPendingRef.current) return false;
     const sid = sessionIdRef.current;
-    if (!sid) return;
+    if (!sid) return false;
+    navigationPendingRef.current = true;
     try {
       if (leafId) {
         const result = await sendAgentCommand<{ cancelled?: boolean; aborted?: boolean }>(sid, {
           type: "navigate_tree", targetId: leafId,
         });
-        if (result?.cancelled || result?.aborted) return;
+        if (result?.cancelled || result?.aborted) return false;
       }
-      if (!sessionHookMountedRef.current || sessionIdRef.current !== sid) return;
+      if (!sessionHookMountedRef.current || sessionIdRef.current !== sid) return false;
       setActiveLeafId(leafId);
-      await loadContext(sid, leafId);
+      return Boolean(await loadContext(sid, leafId));
     } catch (e) {
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      return false;
+    } finally {
+      navigationPendingRef.current = false;
     }
   }, [addNotice, isCompacting, loadContext]);
 
   const handleNavigate = handleLeafChange;
+  handleNavigateRef.current = handleNavigate;
 
   const handleModelChange = useCallback(async (provider: string, modelId: string) => {
     if (isNew) {
@@ -2086,6 +2132,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const nextModelList = d.modelList ?? [];
     setModelList(nextModelList);
     if (isNew && !sessionIdRef.current) {
+      const selectedModel = newSessionModelOverrideRef.current;
+      if (selectedModel && nextModelList.length > 0 && !nextModelList.some(
+        (model) => model.provider === selectedModel.provider && model.id === selectedModel.modelId,
+      )) {
+        newSessionModelOverrideRef.current = null;
+        setNewSessionModel(null);
+        setPendingModel(null);
+      }
       // The first listed model is not necessarily the runtime's automatic choice.
       const displayModel = getDefaultDisplayModel(d);
       setNewSessionDefaultModel(displayModel);
@@ -2241,6 +2295,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   ) => {
     const sid = sessionIdRef.current;
     const restore = () => restoreSubmission(message, images, composerDraftKey);
+    if (composerDraftKey && pendingHistoryEdits.has(composerDraftKey)) {
+      restore();
+      return;
+    }
     if (!sid) {
       restore();
       addNotice({ type: "error", message: "No active session for the queued message" });
@@ -2603,10 +2661,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     isAutoModelSelection: isNew && newSessionModel === null,
     agentPhase,
     isNew,
+    editEntryId,
     // Refs
     sessionIdRef, scrollContainerRef,
     initialScrollDoneRef, isNearBottomRef,
     // Actions
+    handleEditContent, cancelEdit,
     handleSend, handleDirectImageGeneration, abortDirectImageGeneration, handleAbort, handleFork, handleNavigate, handleModelChange,
     retryLoadSession,
     handleCompact, handleSteer, handleFollowUp, handlePromptWithStreamingBehavior, handleAbortCompaction,

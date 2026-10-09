@@ -72,9 +72,9 @@ test("both navigation callers block busy sessions and only switch after successf
   let result = {};
   const bindings = {
     useCallback, bashRunningRef: ref(false), agentRunningRef: ref(false), sessionRunningRef: ref(false),
-    isCompacting: false, sessionIdRef: ref("session"), sessionHookMountedRef: ref(true),
+    isCompacting: false, navigationPendingRef: ref(false), handleNavigateRef: ref(null), sessionIdRef: ref("session"), sessionHookMountedRef: ref(true),
     sendAgentCommand: async () => { calls.push("navigate"); if (result instanceof Error) throw result; return result; },
-    setActiveLeafId: (id) => calls.push(["leaf", id]), loadContext: async () => { calls.push("context"); },
+    setActiveLeafId: (id) => calls.push(["leaf", id]), loadContext: async () => { calls.push("context"); return {}; },
     addNotice: () => calls.push("error"),
   };
   const code = between("  const handleLeafChange", "  const handleModelChange");
@@ -82,7 +82,7 @@ test("both navigation callers block busy sessions and only switch after successf
   for (const flag of ["bashRunningRef", "agentRunningRef", "sessionRunningRef", "isCompacting"]) {
     if (flag === "isCompacting") bindings[flag] = true;
     else bindings[flag].current = true;
-    for (const navigate of make()) await navigate("leaf");
+    for (const navigate of make()) assert.equal(await navigate("leaf"), false);
     assert.deepEqual(calls, []);
     if (flag === "isCompacting") bindings[flag] = false;
     else bindings[flag].current = false;
@@ -91,14 +91,28 @@ test("both navigation callers block busy sessions and only switch after successf
   assert.equal(navigate, alias);
   for (const outcome of [new Error("server refused"), { cancelled: true }, { aborted: true }]) {
     result = outcome;
-    await navigate("leaf");
+    assert.equal(await navigate("leaf"), false);
     assert.ok(!calls.includes("context"));
     assert.ok(!calls.some(Array.isArray));
     calls.length = 0;
   }
   result = {};
-  await navigate("leaf");
+  assert.equal(await navigate("leaf"), true);
   assert.deepEqual(calls, ["navigate", ["leaf", "leaf"], "context"]);
+  for (const stale of ["session", "unmount", "no-context", "no-session", "concurrent"]) {
+    calls.length = 0;
+    bindings.sessionIdRef.current = stale === "no-session" ? null : "session";
+    bindings.sessionHookMountedRef.current = stale !== "unmount";
+    bindings.navigationPendingRef.current = stale === "concurrent";
+    bindings.sendAgentCommand = async () => {
+      calls.push("navigate");
+      if (stale === "session") bindings.sessionIdRef.current = "other";
+      return {};
+    };
+    bindings.loadContext = async () => undefined;
+    assert.equal(await make()[0]("leaf"), false, stale);
+    if (stale !== "no-context") assert.ok(!calls.some(Array.isArray), stale);
+  }
 });
 
 test("context usage fences applied replies, not failed newer requests, and checks session/run/mount", () => {

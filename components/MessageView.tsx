@@ -156,9 +156,10 @@ interface Props {
   searchBlock?: AssistantContentBlock;
   onFork?: (entryId: string) => void;
   forking?: boolean;
-  onNavigate?: (entryId: string) => void;
   prevAssistantEntryId?: string;
-  onEditContent?: (message: UserMessage) => void;
+  onEditContent?: (message: UserMessage, targetId: string) => void;
+  onCancelEdit?: () => void;
+  isEditing?: boolean;
   isTurnEnd?: boolean;
   /** Open a `!` command's output on first render; only the newest one is, older ones start folded. */
   expandOutput?: boolean;
@@ -258,9 +259,9 @@ function haveSameRelevantToolResults(
 /** Chat-level toasts; message actions report their outcome through it. */
 export const MessageNoticeContext = createContext<((notice: { message: string; type?: NoticeType }) => void) | null>(null);
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user") {
-    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
+    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
     return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationSeconds={turnDurationSeconds} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
@@ -294,9 +295,10 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.searchBlock === next.searchBlock
     && prev.onFork === next.onFork
     && prev.forking === next.forking
-    && prev.onNavigate === next.onNavigate
     && prev.prevAssistantEntryId === next.prevAssistantEntryId
     && prev.onEditContent === next.onEditContent
+    && prev.onCancelEdit === next.onCancelEdit
+    && prev.isEditing === next.isEditing
     && prev.isTurnEnd === next.isTurnEnd
     && prev.expandOutput === next.expandOutput
     && prev.modelName === next.modelName
@@ -342,16 +344,17 @@ function stripImageHints(text: string): string {
   return lines.slice(0, end).join("\n");
 }
 
-function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
+function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing }: {
   message: UserMessage;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
   entryId?: string;
   onFork?: (entryId: string) => void;
   forking?: boolean;
-  onNavigate?: (entryId: string) => void;
   prevAssistantEntryId?: string;
-  onEditContent?: (message: UserMessage) => void;
+  onEditContent?: (message: UserMessage, targetId: string) => void;
+  onCancelEdit?: () => void;
+  isEditing?: boolean;
 }) {
   const { t, locale } = useI18n();
   const [hovered, setHovered] = useState(false);
@@ -392,7 +395,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
       style={{ marginBottom: content ? 8 : 0 }}
     />
   );
-  const canNavigate = !!prevAssistantEntryId && !!onNavigate;
+  const canEdit = !!prevAssistantEntryId && !!onEditContent;
+  const canCancelEdit = !!isEditing && !!onCancelEdit;
 
   const copyContent = () => {
     copyText(copyTarget).then(() => {
@@ -413,7 +417,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
             flex: 1,
             minWidth: 0,
             background: "var(--user-bg)",
-            border: "1px solid var(--user-border, var(--border))",
+            border: isEditing ? "1px solid var(--accent)" : "1px solid var(--user-border, var(--border))",
             borderRadius: 6,
             padding: "6px 11px",
             fontSize: "calc(14px + var(--chat-font-size-offset, 0px))",
@@ -505,8 +509,8 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
           <div
             className="message-action-group"
             style={{
-              opacity: (hovered || forking) ? 1 : 0,
-              pointerEvents: (hovered || forking) ? "auto" : "none",
+              opacity: (hovered || forking || canCancelEdit) ? 1 : 0,
+              pointerEvents: (hovered || forking || canCancelEdit) ? "auto" : "none",
             }}
           >
             <button
@@ -527,17 +531,30 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
                 </svg>
               )}
             </button>
-              {canNavigate && (
+              {canEdit && !canCancelEdit && (
                 <button
                   type="button"
                   className="message-action-button"
-                  onClick={() => { onNavigate!(prevAssistantEntryId!); onEditContent?.(editTarget); }}
+                  onClick={() => onEditContent!(editTarget, prevAssistantEntryId!)}
                   title={t("i18n.editFromHereTitle")}
                   aria-label={t("i18n.editFromHere")}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="15 10 20 15 15 20" />
                     <path d="M4 4v7a4 4 0 0 0 4 4h12" />
+                  </svg>
+                </button>
+              )}
+              {canCancelEdit && (
+                <button
+                  type="button"
+                  className="message-action-button"
+                  onClick={onCancelEdit}
+                  title={t("i18n.cancel")}
+                  aria-label={t("i18n.cancel")}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18" />
                   </svg>
                 </button>
               )}

@@ -41,6 +41,7 @@ import { ModelSelector, type ModelSelectorOption } from "./ModelSelector";
 
 
 interface Props {
+  isEditing?: boolean;
   onSend: (message: string, images?: AttachedImage[]) => void;
   /** Opens the direct image dialog; attached images are offered as its sources. */
   onOpenImageGeneration?: (sourceImages: Base64ImageAttachment[]) => void;
@@ -99,7 +100,7 @@ interface Props {
 export interface ChatInputHandle {
   insertText: (text: string) => void;
   insertIfEmpty: (text: string) => void;
-  replaceMessage: (message: UserMessage) => void;
+  replaceMessage: (message: UserMessage) => Promise<boolean>;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
@@ -596,7 +597,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -706,13 +707,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     },
     async replaceMessage(message: UserMessage) {
       const ta = textareaRef.current;
+      const restoreKey = draftKeyRef.current;
+      const restoreEpoch = imageProcessEpochRef.current;
       const canRestore = () => canRestoreUserMessage(ta ? ta.value : valueRef.current, attachedImagesRef.current.length, pendingImageCountRef.current);
-      if (!canRestore()) return;
+      if (!canRestore()) return false;
 
       const restoredText = getUserMessageText(message);
       const draftImages = await getUserMessageDraftImages(message);
-      // The user may have started typing or attaching while deferred images loaded.
-      if (!canRestore()) return;
+      // Refuse late media after typing, switching drafts, or unmounting.
+      if (draftKeyRef.current !== restoreKey || imageProcessEpochRef.current !== restoreEpoch || !canRestore()) return false;
       const restoredImages = draftImagesToAttachedImages(draftImages);
       valueRef.current = restoredText;
       attachedImagesRef.current = restoredImages;
@@ -723,10 +726,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         prev.forEach(revokeImagePreview);
         return restoredImages;
       });
+      if (restoreKey) setDraft(restoreKey, { value: restoredText, images: draftImages });
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
       });
+      return true;
     },
     prependText(text: string) {
       if (!text.trim()) return;
@@ -1031,7 +1036,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const runBuiltinCommand = useCallback(async (msg: string): Promise<boolean> => {
-    if (attachedImages.length || !msg.startsWith("/") || !onBuiltinCommand) return false;
+    if (isEditing || attachedImages.length || !msg.startsWith("/") || !onBuiltinCommand) return false;
     if (builtinCommandPendingRef.current) return true;
     builtinCommandPendingRef.current = true;
     setBuiltinCommandPending(true);
@@ -1044,7 +1049,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       builtinCommandPendingRef.current = false;
       setBuiltinCommandPending(false);
     }
-  }, [attachedImages.length, clearInput, onBuiltinCommand]);
+  }, [isEditing, attachedImages.length, clearInput, onBuiltinCommand]);
 
   const handleSend = useCallback(async () => {
     if (disabled) return;
@@ -1301,6 +1306,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, []);
 
   const sendQueued = useCallback((mode: "steer" | "followup") => {
+    if (isEditing) return;
     const msg = value.trim();
     if (exceedsAttachedImageSendLimit(attachedImages.length)) return;
     const outgoing = prependImageMentions(msg, mentionedImages);
@@ -1323,7 +1329,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     } else if (mode === "followup" && onFollowUp) {
       onFollowUp(outgoing, images);
     }
-  }, [value, attachedImages, mentionedImages, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
+  }, [isEditing, value, attachedImages, mentionedImages, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
