@@ -118,6 +118,10 @@ Full notes: `docs/subagents.md`, `docs/adr/0003-built-in-subagent-toggle.md`. Tr
 - Provider listing is capability-driven (`lib/provider-listing.ts`), never by provider id: dual-auth providers must appear exactly once (#309).
 - auth.json holds one credential per provider and `logout()` deletes whichever it is; delete routes use `removeStoredCredentialIfType()` under pi's auth file lock. Refresh *both* provider lists after any auth change.
 - Status endpoints never return raw keys. The model test route is `app/api/models-config/test/route.ts`.
+- The published `.next/prerender-manifest.json` carries a public `previewModeId`; a matching `x-prerender-revalidate` header skips `proxy.ts` entirely. `bin/pi-web.js` rotates those secrets before every `next start` spawn and refuses to start otherwise: never launch a production build with bare `next start`.
+
+### Sidebar state
+Pins, archives and project order live in `~/.pi/agent/pi-web/sidebar-state.json` (`lib/sidebar-state.ts`, locked + atomic; migrated from `pinned-sessions.json`). Session files are never touched. Archive is keyed by family root and is effective only while the root has no newer message activity and nothing in the family runs. Project order changes are relative moves, never whole-list writes.
 
 ### UI rules (details: `docs/ui.md`)
 - Modals go through `components/ModalDialog.tsx`; confirms through `useConfirm()`. `window.confirm`/`alert` are banned (tested).
