@@ -1635,7 +1635,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                       style={{
                         position: "fixed",
                         ...wtMenuPosition,
-                        zIndex: 100,
+                        // Above the mobile drawer (zIndex 200); same layer as .project-context-menu.
+                        zIndex: 1000,
                       }}
                     >
                   {showWtFilter && (
