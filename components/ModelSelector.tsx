@@ -127,28 +127,6 @@ export function ModelSelector({
     document.getElementById(id)?.scrollIntoView({ block: "nearest" });
   }, [open, activeOptionId, selectedIndex, listboxId]);
 
-  const buttonStyle: CSSProperties = variant === "field"
-    ? {
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        width: "100%",
-        minWidth: 0,
-        height: "var(--ui-control-height)",
-        padding: "0 10px",
-        overflow: "hidden",
-        border: "none",
-        borderRadius: "var(--ui-radius-md)",
-        background: locked ? "var(--bg-panel)" : "var(--ui-field-bg)",
-        // Same as .select-trigger: a borderless tint, ringed while its list is open.
-        boxShadow: open ? "var(--ui-field-ring)" : undefined,
-        color: locked ? "var(--text-dim)" : "var(--text)",
-        cursor: locked ? "default" : "pointer",
-        fontSize: 12,
-        textAlign: "left",
-      }
-    : {};
-
   const choose = (option: ModelSelectorOption) => {
     const active = option.modelId === value?.modelId && option.provider === value?.provider;
     setOpen(false);
@@ -222,33 +200,22 @@ export function ModelSelector({
         aria-busy={busy || undefined}
         disabled={locked}
         title={busy ? "Switching model" : locked ? currentName : sortedOptions.length > 0 || onClear ? "Change model" : "No available models"}
-        className={variant === "toolbar" ? "composer-btn model-selector-trigger" : undefined}
-        style={buttonStyle}
+        // Field variant looks exactly like Select.tsx's trigger.
+        className={variant === "toolbar" ? "composer-btn model-selector-trigger" : "select-trigger"}
         onClick={() => {
           updateAnchor();
           setOpen((current) => !current);
         }}
-        onMouseEnter={variant === "field" && !locked ? (event) => { event.currentTarget.style.background = "var(--bg-hover)"; } : undefined}
-        onMouseLeave={variant === "field" && !locked ? (event) => { event.currentTarget.style.background = "var(--bg)"; } : undefined}
       >
         {busy ? (
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ animation: "spin 0.8s linear infinite", display: "block", flexShrink: 0, transform: "translateY(-1px)" }} aria-hidden="true">
             <path d="M21 12a9 9 0 1 1-2.64-6.36" />
           </svg>
-        ) : variant === "field" ? (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
-            <rect x="4" y="4" width="16" height="16" rx="2" />
-            <rect x="9" y="9" width="6" height="6" />
-            <line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" />
-            <line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" />
-            <line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" />
-            <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
-          </svg>
         ) : null}
-        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4 }}>{currentName}</span>
+        <span className={variant === "field" ? "select-trigger-label" : undefined} style={variant === "field" ? undefined : { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4 }}>{currentName}</span>
         {variant === "field" && (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, color: "var(--text-dim)" }}>
-            <polyline points="6 9 12 15 18 9" />
+          <svg className="select-trigger-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
           </svg>
         )}
       </button>

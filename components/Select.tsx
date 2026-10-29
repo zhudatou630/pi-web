@@ -78,7 +78,8 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
     const vw = window.visualViewport?.width ?? window.innerWidth;
     const below = vh - anchor.bottom - 8;
     const above = anchor.top - 8;
-    const openAbove = below < 160 && above > below;
+    // Same rule as ModelSelector's "auto": open toward the side with more room.
+    const openAbove = above > below;
     const maxHeight = Math.max(120, Math.min(openAbove ? above : below, vh * 0.6));
     panelStyle = {
       position: "fixed",

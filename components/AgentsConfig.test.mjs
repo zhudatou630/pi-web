@@ -66,7 +66,9 @@ test("shows disabled controls with a gray background", () => {
   assert.match(cssSource, /\.settings-form \.config-field textarea:disabled \{\n  resize: none;/);
   assert.doesNotMatch(editorSource, /agents-system-prompt[^\n]*fontFamily/);
   assert.match(cssSource, /\.settings-form \.config-field :is\(input, select, textarea\):disabled \{[\s\S]*?background: var\(--bg-panel\);/);
-  assert.match(modelSelectorSource, /background: locked \? "var\(--bg-panel\)" : "var\(--ui-field-bg\)"/);
+  // The model field reuses Select's trigger: gray when disabled, no JS hover that could leave a stale background.
+  assert.match(modelSelectorSource, /variant === "toolbar" \? "composer-btn model-selector-trigger" : "select-trigger"/);
+  assert.doesNotMatch(modelSelectorSource, /style\.background = /);
 });
 
 test("keeps a larger resize corner when system instructions need a scrollbar", () => {
