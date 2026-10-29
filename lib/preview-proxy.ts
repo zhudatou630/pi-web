@@ -1,7 +1,7 @@
 import { createServer, request as httpRequest, type IncomingMessage, type OutgoingHttpHeaders, type Server, type ServerResponse } from "node:http";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import type { AddressInfo, Socket } from "node:net";
-import { PREVIEW_ENTRY_PATH, PREVIEW_PROXY_HEADER, parsePreviewTarget } from "./preview-target";
+import { PREVIEW_ENTRY_PATH, parsePreviewTarget } from "./preview-target";
 import { isHostHeaderAllowed } from "./request-security";
 import { isValidWebSessionToken, isWebPasswordEnabled, PI_WEB_SESSION_COOKIE } from "./web-auth";
 
@@ -83,7 +83,7 @@ function previewLocation(location: string, target: URL): string {
 }
 
 function upstreamHeaders(req: IncomingMessage, target: URL): OutgoingHttpHeaders {
-  const headers: OutgoingHttpHeaders = { ...req.headers, host: target.host, [PREVIEW_PROXY_HEADER]: "1" };
+  const headers: OutgoingHttpHeaders = { ...req.headers, host: target.host };
   // Pi Web's session is not the previewed service's business.
   const cookie = req.headers.cookie?.split(";").filter((part) => !part.trim().startsWith(`${PI_WEB_SESSION_COOKIE}=`)).join(";").trim();
   if (cookie) headers.cookie = cookie;

@@ -34,10 +34,10 @@ be allowed (`PI_WEB_ALLOWED_HOSTS`). Run one proxy port per Pi Web instance.
 
 - Targets are loopback only (`localhost`, `127.0.0.0/8`, `[::1]`; `0.0.0.0` maps
   to `127.0.0.1`). The proxy refuses to target itself.
-- Every proxied request carries `x-pi-web-preview: 1`, and Pi Web's `proxy.ts`
-  refuses such requests. Otherwise a previewed page could select a Pi Web port as
-  the target and call its API same-origin (passwordless setups). Pi Web versions
-  without this check stay reachable through the proxy until upgraded.
+- Pi Web instances (e.g. a dev server on another port) can be previewed, so
+  their UI can be checked without exposing each port over Tailscale. Accepted
+  trade-off: any previewed page can switch the target, so script running in a
+  previewed page can reach a Pi Web's API (passwordless setups).
 - The proxy requires Pi Web's login cookie when `PI_WEB_PASSWORD` is set, checks
   the Host header like Pi Web, and refuses cross-site requests and foreign
   `Origin`s. Pi Web's cookie is stripped before forwarding; upstream attempts to

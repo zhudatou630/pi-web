@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAuthRetryAfterMs, recordAuthFailure, retryAfterSeconds } from "@/lib/web-auth-throttle";
-import { PREVIEW_PROXY_HEADER } from "@/lib/preview-target";
 import {
   isApiRequestAllowed,
   isApiRequestHostAllowed,
@@ -13,10 +12,6 @@ import {
 } from "@/lib/web-auth";
 
 export function proxy(request: NextRequest) {
-  // A previewed page could select Pi Web as the preview target and call its API same-origin.
-  if (request.headers.has(PREVIEW_PROXY_HEADER)) {
-    return new NextResponse("Pi Web cannot be opened in its own browser tab.", { status: 403 });
-  }
   const isApiRequest = request.nextUrl.pathname === "/api"
     || request.nextUrl.pathname.startsWith("/api/");
   const isTrustedRequest = isApiRequest

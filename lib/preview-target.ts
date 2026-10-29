@@ -1,8 +1,6 @@
 /** Proxy path that selects the previewed address, then redirects to it. */
 export const PREVIEW_ENTRY_PATH = "/__pi_web_preview";
 export const PREVIEW_OPEN_EVENT = "pi-web:open-preview";
-/** Set on every proxied request; Pi Web (proxy.ts) refuses them, so a previewed page cannot target Pi Web itself. */
-export const PREVIEW_PROXY_HEADER = "x-pi-web-preview";
 
 declare global {
   interface WindowEventMap {
