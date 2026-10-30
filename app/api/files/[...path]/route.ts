@@ -625,14 +625,32 @@ export async function GET(
       let lastIno = stat?.ino ?? 0;
       let lastSize = stat?.size ?? 0;
       let lastExists = stat !== undefined;
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      let cleanup: (closeController: boolean) => void = () => { watcher?.close(); };
       const stream = new ReadableStream({
         start(controller) {
+          let closed = false;
+          const abort = () => cleanup(true);
+          cleanup = (closeController) => {
+            if (closed) return;
+            closed = true;
+            clearInterval(heartbeat);
+            watcher?.close();
+            watcher = null;
+            request.signal.removeEventListener("abort", abort);
+            if (closeController) {
+              try { controller.close(); } catch { /* already closed */ }
+            }
+          };
+          request.signal.addEventListener("abort", abort, { once: true });
+          if (request.signal.aborted) { cleanup(true); return; }
           const send = (eventName: string, data: Record<string, unknown>) => {
+            if (closed) return;
             const payload = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
             try {
               controller.enqueue(new TextEncoder().encode(payload));
             } catch {
-              // client disconnected
+              cleanup(false);
             }
           };
           try {
@@ -669,11 +687,8 @@ export async function GET(
                 send("change", { mtime: new Date().toISOString(), size: 0 });
               }
             });
-            watcher.on("error", () => {
-              try { watcher?.close(); } catch { /* ignore */ }
-              watcher = null;
-              try { controller.close(); } catch { /* ignore */ }
-            });
+            watcher.on("error", () => cleanup(true));
+            heartbeat = setInterval(() => send("heartbeat", {}), 30_000);
             // The client snapshots only after this event, so emit it after the
             // watcher exists to avoid dropping changes between those steps.
             send("connected", {
@@ -682,11 +697,11 @@ export async function GET(
             });
           } catch {
             send("error", { message: "Failed to watch file" });
-            controller.close();
+            cleanup(true);
           }
         },
         cancel() {
-          try { watcher?.close(); } catch { /* ignore */ }
+          cleanup(false);
         },
       });
       return new Response(stream, {

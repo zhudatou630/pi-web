@@ -29,3 +29,26 @@ test("connected is emitted only after the watcher exists", () => {
   assert.ok(watcher >= 0, "watcher creation missing");
   assert.ok(connected > watcher, "connected emitted before watcher creation");
 });
+
+test("request abort releases the watcher and its heartbeat, even without stream cancel", async (t) => {
+  const { default: ts } = await import("typescript");
+  const { default: path } = await import("node:path");
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  let closes = 0;
+  const watcher = { on() {}, close() { closes++; } };
+  const run = new Function("request", "fs", "path", "stat", "filePath", "type", "getFileVersion", ts.transpileModule(watchBlock, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText);
+  const abort = new AbortController();
+  const response = run(new Request("http://localhost/watch", { signal: abort.signal }), { watch: () => watcher }, path,
+    { isFile: () => true }, "/tmp/test", "watch", () => "version");
+  const reader = response.body.getReader();
+  assert.match(new TextDecoder().decode((await reader.read()).value), /event: connected/);
+  t.mock.timers.tick(30_000);
+  assert.match(new TextDecoder().decode((await reader.read()).value), /event: heartbeat/);
+  abort.abort();
+  assert.equal(closes, 1);
+  assert.equal((await reader.read()).done, true);
+  t.mock.timers.tick(60_000);
+  assert.equal(closes, 1);
+});

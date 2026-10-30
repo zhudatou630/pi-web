@@ -1,5 +1,6 @@
 "use client";
 
+import { FileWatchEventSource as EventSource } from "@/lib/file-watch-client";
 import { memo, useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";

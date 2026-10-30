@@ -256,7 +256,7 @@ export function createAgentEventStream(
       }
       req.signal.addEventListener("abort", abortHandler, { once: true });
 
-      heartbeat = setInterval(() => enqueueText(":\n\n", true), HEARTBEAT_INTERVAL_MS);
+      heartbeat = setInterval(() => encode({ type: "heartbeat" }, true), HEARTBEAT_INTERVAL_MS);
 
       // Force the response headers through without claiming that the agent is
       // ready. The client waits for the later `connected` data event.

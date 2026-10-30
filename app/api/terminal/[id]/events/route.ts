@@ -64,7 +64,7 @@ export async function GET(
       heartbeat = setInterval(() => {
         try {
           if ((controller.desiredSize ?? 0) <= 0) cleanup(true);
-          else if (!closed) controller.enqueue(encoder.encode(":\n\n"));
+          else if (!closed) controller.enqueue(encoder.encode('event: heartbeat\ndata: {}\n\n'));
         } catch { cleanup(false); }
       }, 30_000);
     },

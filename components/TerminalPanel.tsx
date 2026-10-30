@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme } from "@/hooks/useTheme";
+import { createSilenceWatchdog } from "@/lib/sse-watchdog";
 import { createTerminalWriter, terminalRequest } from "@/lib/terminal-client";
 import {
   applyTerminalModifiers,
@@ -138,11 +139,15 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
     const resizeObserver = new ResizeObserver(fitAndResize);
     resizeObserver.observe(container);
 
+    const watchdog = createSilenceWatchdog(() => connect());
     const connect = () => {
       if (disposed || exited || !navigator.onLine) return;
       events?.close();
       events = new EventSource(`/api/terminal/${encodeURIComponent(id)}/events${offset === undefined ? "" : `?after=${offset}`}`);
+      events.addEventListener("heartbeat", () => watchdog.touch());
+      watchdog.touch();
       events.onmessage = (message) => {
+        watchdog.touch();
         const event = JSON.parse(message.data) as TerminalEvent;
         if (event.type === "output") {
           if (event.reset) terminal.reset();
@@ -154,6 +159,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
           connected = false;
           terminal.options.disableStdin = true;
           events?.close();
+          watchdog.stop();
           setExitCode(event.type === "exit" ? event.exitCode : null);
           setStatus("exited");
         }
@@ -198,6 +204,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
       connected = false;
       terminal.options.disableStdin = true;
       events?.close();
+      watchdog.stop();
       if (!exited && !inputFailed) setStatus("connecting");
     };
     const pageShow = (event: PageTransitionEvent) => { if (event.persisted) connect(); };
@@ -207,6 +214,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
     window.addEventListener("online", connect);
     return () => {
       disposed = true;
+      watchdog.stop();
       events?.close();
       void writer.stop();
       resizeObserver.disconnect();

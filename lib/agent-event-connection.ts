@@ -1,3 +1,4 @@
+import { createSilenceWatchdog } from "./sse-watchdog";
 import type { AgentEventLike } from "./agent-event-wire";
 
 export interface AgentEventSourceLike {
@@ -35,6 +36,7 @@ type Connection = {
   sessionId: string;
   source: AgentEventSourceLike;
   attempt: Attempt;
+  watchdog: ReturnType<typeof createSilenceWatchdog>;
 };
 
 export interface AgentEventConnectionOptions {
@@ -43,6 +45,7 @@ export interface AgentEventConnectionOptions {
   shouldMaintain(sessionId: string): boolean;
   readinessTimeoutMs: number;
   reconnectDelayMs: number;
+  staleAfterMs?: number;
   onUnexpectedError?(error: unknown): void;
 }
 
@@ -155,11 +158,15 @@ export class AgentEventConnection {
         reject(error);
       },
     };
-    const connection: Connection = { sessionId, source, attempt };
+    const watchdog = createSilenceWatchdog(() => {
+      this.fail(connection, new AgentEventConnectionError("closed"));
+    }, this.options.staleAfterMs);
+    const connection: Connection = { sessionId, source, attempt, watchdog };
     this.current = connection;
 
     source.onmessage = (message) => {
       if (this.current !== connection) return;
+      if (attempt.ready) watchdog.touch();
       let event: AgentEventLike;
       try {
         event = JSON.parse(message.data) as AgentEventLike;
@@ -167,7 +174,9 @@ export class AgentEventConnection {
         return;
       }
 
+      if (event.type === "heartbeat") return;
       if (event.type === "connected") {
+        watchdog.touch();
         attempt.ready = true;
         attempt.succeed();
         this.stopRetrying();
@@ -196,6 +205,7 @@ export class AgentEventConnection {
   }
 
   private discard(connection: Connection, error: AgentEventConnectionError): void {
+    connection.watchdog.stop();
     connection.attempt.fail(error);
     connection.source.close();
     if (this.current === connection) this.current = null;
