@@ -5118,9 +5118,27 @@ span.token.table {
   color: var(--text);
   background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
 }
-.chat-input-feedback-close:focus-visible {
+.chat-input-feedback-close:focus-visible,
+.chat-input-feedback-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+/* A text action at the row's end, sized like the close button so the row keeps its height. */
+.chat-input-feedback-action {
+  flex-shrink: 0;
+  height: 20px;
+  margin: -1px -6px -1px auto;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.chat-input-feedback-action:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
 }
 
 .chat-input-feedback-detail {

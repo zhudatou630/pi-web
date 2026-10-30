@@ -2056,7 +2056,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         {isCompacting && (
           <div role="status" className="chat-input-feedback">
             <span>{t("chat.compacting")}</span>
-            {onAbortCompaction && <button type="button" className="composer-btn" onClick={onAbortCompaction}>{t("chat.stopCompaction")}</button>}
+            {onAbortCompaction && <button type="button" className="chat-input-feedback-action" onClick={onAbortCompaction}>{t("chat.stopCompaction")}</button>}
           </div>
         )}
         {compactResultText && (
