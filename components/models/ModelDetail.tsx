@@ -533,6 +533,14 @@ export function ModelDetail({
               <>
                 <SectionHeading title={t("models.compatibility")} />
                 <div className="models-switch-list">
+                  {effectiveApi === "anthropic-messages" && (
+                    <SwitchRow
+                      label={t("models.claudeAdaptiveThinking")}
+                      description="compat.forceAdaptiveThinking"
+                      checked={effectiveCompat(provider, model)["forceAdaptiveThinking"] === true}
+                      onChange={(v) => onChange(setCompatBool(model, "forceAdaptiveThinking", v))}
+                    />
+                  )}
                   <SwitchRow
                     label={t("models.deepSeekThinkingCompat")}
                     checked={hasDeepseekCompat(model)}

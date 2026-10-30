@@ -245,6 +245,26 @@ test("custom model config exposes model headers and supportsDeveloperRole compat
   assert.match(source, /setCompatBool\(model, "supportsDeveloperRole", v\)/);
 });
 
+test("adaptive thinking reads inherited compat and writes explicit per-model booleans", async () => {
+  const detail = await readFile(new URL("./models/ModelDetail.tsx", import.meta.url), "utf8");
+  const body = detail.match(/function effectiveCompat\([^]*?\{\n([^]*?)\n\}/)?.[1];
+  assert.ok(body);
+  const effectiveCompat = new Function("provider", "model", body);
+  assert.match(detail, /effectiveApi === "anthropic-messages" && \(/);
+  assert.match(detail, /checked=\{effectiveCompat\(provider, model\)\["forceAdaptiveThinking"\] === true\}/);
+  assert.match(detail, /setCompatBool\(model, "forceAdaptiveThinking", v\)/);
+  const provider = { compat: { forceAdaptiveThinking: true, other: "kept" } };
+  const model = { id: "custom-claude", compat: { another: true } };
+  assert.equal(effectiveCompat({}, model).forceAdaptiveThinking, undefined);
+  assert.equal(effectiveCompat(provider, model).forceAdaptiveThinking, true);
+  const off = setCompatBool(model, "forceAdaptiveThinking", false);
+  assert.deepEqual(off.compat, { another: true, forceAdaptiveThinking: false });
+  assert.equal(effectiveCompat(provider, off).forceAdaptiveThinking, false);
+  assert.equal(effectiveCompat({}, setCompatBool(off, "forceAdaptiveThinking", true)).forceAdaptiveThinking, true);
+  assert.deepEqual(model.compat, { another: true });
+  assert.equal(provider.compat.forceAdaptiveThinking, true);
+});
+
 test("runtime override diff only keeps changed fields", () => {
   const runtime = {
     id: "gpt-6-astra",

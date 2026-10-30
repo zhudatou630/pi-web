@@ -1030,6 +1030,7 @@ export const zhCNLocale: LocalePlugin = {
     "models.samplingParamsUnsupported": "该模型使用 {api}，不会应用这些参数。",
     "models.samplingParamsSummary": "额外参数：{count}",
     "models.compatibility": "兼容性",
+    "models.claudeAdaptiveThinking": "Claude 自适应思考",
     "models.deepSeekThinkingCompat": "DeepSeek 思考兼容",
     "models.developerRole": "使用 developer role 传递系统提示词",
     "models.thinkingLevelMap": "思考等级映射",

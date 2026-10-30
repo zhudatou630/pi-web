@@ -1030,6 +1030,7 @@ export const enLocale: LocalePlugin = {
     "models.samplingParamsUnsupported": "This model uses {api}, which ignores these parameters.",
     "models.samplingParamsSummary": "Extra parameters: {count}",
     "models.compatibility": "Compatibility",
+    "models.claudeAdaptiveThinking": "Claude adaptive thinking",
     "models.deepSeekThinkingCompat": "DeepSeek thinking compatibility",
     "models.developerRole": "Use the developer role for the system prompt",
     "models.thinkingLevelMap": "Thinking level map",
