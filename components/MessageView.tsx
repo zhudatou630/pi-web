@@ -525,6 +525,15 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
           <div
             className="message-action-group"
             style={{
+          {/* Sent by a routine run, not typed here (docs/routines.md). Always shown: it changes how to read the turn. */}
+          {message.routineId && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", userSelect: "none" }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+              </svg>
+              {t("chat.sentByRoutine")}
+            </span>
+          )}
               opacity: (hovered || forking || canCancelEdit) ? 1 : 0,
               pointerEvents: (hovered || forking || canCancelEdit) ? "auto" : "none",
             }}

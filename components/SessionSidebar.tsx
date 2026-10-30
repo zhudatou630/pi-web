@@ -1055,6 +1055,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     });
   }, [worktreeState, onWorktreeInfoChange]);
 
+  // A routine run's own chat is reached from the routine, not listed among the project's
+  // chats; it comes back once someone writes in it, or in the archive when its routine goes.
+  const listedSessions = useMemo(
+    () => allSessions.filter((session) => !session.routineRunOnly || session.id in archivedSessionIds),
+    [allSessions, archivedSessionIds],
+  );
+
   // Auto-select cwd and restore session from URL on first load
   useEffect(() => {
     if (allSessions.length === 0 || skipInitialProjectSelection) return;
@@ -1070,10 +1077,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           return;
         }
       }
-      const projects = getRecentProjects(allSessions, projectOrder);
+      const projects = getRecentProjects(listedSessions, projectOrder);
       if (projects.length > 0) setSelectedCwd(projects[0].root);
     }
-  }, [allSessions, projectOrder, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession]);
+  }, [allSessions, listedSessions, projectOrder, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession]);
 
   // Prefer an exact UI selection while a refetch is in flight. Once the
   // response catches up, the server-resolved path handles Windows case and
@@ -1269,7 +1276,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     return () => window.removeEventListener(SIDEBAR_SINGLE_PROJECT_EVENT, sync);
   }, []);
 
-  const recentProjects = useMemo(() => getRecentProjects(allSessions, projectOrder), [allSessions, projectOrder]);
+  const recentProjects = useMemo(() => getRecentProjects(listedSessions, projectOrder), [listedSessions, projectOrder]);
   // Empty-state CTA is only for a loaded sidebar with nothing to restore.
   // First paint has no cwd yet; treating that as "please select" flashes blue.
   const showSelectProjectPrompt = !selectedCwd && !loading && !error && recentProjects.length === 0;
@@ -1343,7 +1350,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     if (expandedWorkspaceKeys !== null) saveExpandedWorkspaceKeys(expandedWorkspaceKeys);
   }, [expandedWorkspaceKeys]);
 
-  const allFamilies = useMemo(() => listSessionFamilies(allSessions), [allSessions]);
+  const allFamilies = useMemo(() => listSessionFamilies(listedSessions), [listedSessions]);
   const archivedFamilies = useMemo(
     () => allFamilies.filter((family) => isFamilyArchived(family, archivedSessionIds, runningSessionIds)),
     [allFamilies, archivedSessionIds, runningSessionIds],
@@ -1364,8 +1371,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
 
   // Per-project activity counts count families, excluding the archive.
   const projectActivity = useMemo(
-    () => getProjectActivity(allSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds),
-    [allSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds],
+    () => getProjectActivity(listedSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds),
+    [listedSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds],
   );
 
   const otherProjectActivity = useMemo(() => {
@@ -3054,6 +3061,13 @@ export function SessionItem({
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {title}
               </span>
+              {/* Prompted by a routine (docs/routines.md). */}
+              {session.routineId && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={t("sidebar.routineSession")} style={{ flexShrink: 0, color: "var(--text-dim)" }}>
+                  <title>{t("sidebar.routineSession")}</title>
+                  <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+                </svg>
+              )}
             </div>
           </button>
           {session.isWorktree && session.branch && (

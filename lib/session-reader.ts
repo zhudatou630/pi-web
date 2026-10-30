@@ -16,6 +16,7 @@ import { resolveProject, type ProjectInfo } from "./worktree";
 import { readSubagentRun, SUBAGENT_META_TYPE } from "./subagents";
 import { timingCallsByAt, type TimingCall } from "./model-timing";
 import { checkSessionMembership, listSessionsIncremental, type ScannedSessionInfo } from "./session-list-scanner";
+import { routineIdOfEntry } from "./routine-run-entry";
 
 export { getAgentDir };
 
@@ -223,6 +224,8 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       messageCount: s.messageCount,
       firstMessage: s.firstMessage || "(no messages)",
       parentSessionId: originSessionId,
+      ...(s.routineId ? { routineId: s.routineId } : {}),
+      ...(s.routineRunOnly ? { routineRunOnly: true } : {}),
       ...(subagent
         ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: subagent.status, ...(model ? { model } : {}), thinkingLevel } }
         : s.parentSessionPath
@@ -674,8 +677,16 @@ export function buildSessionContext(
   const entryIds: string[] = [];
   // Whole file: a page's last reply may have its timing entry in the newer page.
   const timingByAt = timingCallsByAt(entries);
+  // A routine run appends its marker right before its prompt: label that user message.
+  let routineId: string | undefined;
   for (const entry of sliced) {
-    const m = entryToUiMessage(entry, options, timingByAt);
+    routineId = routineIdOfEntry(entry) ?? routineId;
+    let m = entryToUiMessage(entry, options, timingByAt);
+    if (m?.role === "user") {
+      // A copy: the message may be the live session's own object.
+      if (routineId) m = { ...m, routineId };
+      routineId = undefined;
+    }
     if (m) {
       messages.push(m);
       entryIds.push(entry.id);

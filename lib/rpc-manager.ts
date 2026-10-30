@@ -61,6 +61,7 @@ import { readOnlyToolGuard } from "./read-only-tool-guard";
 import { createBuiltinExtensions } from "./builtin-extensions";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, reservePiWebImageTool } from "./image-generation-extension";
+import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine-run-entry";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES } from "./image-generation";
 import { executeImageGeneration, generatedImagePreview, parseImageGenerationRequest, saveSourceImage } from "./image-generation-runtime";
 import { retryStreamDrops } from "./retry-stream-drops";
@@ -2405,6 +2406,9 @@ export function getRpcSessionInfos(): SessionInfo[] {
     if (!persisted && (!session.isRunning() || !firstUserMessage)) continue;
 
     const created = header?.timestamp
+    // Same rule as the disk scan, so a routine's run stays out of the sidebar while it runs too.
+    const routineMarks: RoutineMarks = {};
+    for (const entry of entries) foldRoutineMarks(routineMarks, entry);
       ?? entries[0]?.timestamp
       ?? new Date().toISOString();
     const headerTimestamp = new Date(created).getTime();
@@ -2450,6 +2454,7 @@ export function getRpcSessionInfos(): SessionInfo[] {
   const listedIds = new Set(sessions.map((session) => session.id));
   for (const run of activeSubagents.values()) {
     if (listedIds.has(run.sessionId)) continue;
+      ...routineMarksInfo(routineMarks, Boolean(header?.parentSession)),
     const parent = getRegistry().get(run.parentSessionId);
     sessions.push({
       path: run.sessionPath,

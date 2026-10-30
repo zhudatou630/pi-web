@@ -68,6 +68,8 @@ export interface UserMessage {
   content: string | (TextContent | ImageContent)[];
   timestamp?: number;
 }
+  /** Sent by this routine's run (from its pi-web:routine-run entry; history only, not live). */
+  routineId?: string;
 
 export interface AgentUsage {
   input: number;
@@ -387,6 +389,11 @@ export interface SessionInfo {
       };
   /** Main repo root shared by all worktrees of this cwd (cwd itself for non-git dirs).
    *  Always set by the server; optional because the client builds transient
+  /** Set when a routine's runs prompted this session (the latest such routine). */
+  routineId?: string;
+  /** A chat a routine's run started for itself that nobody has written in: not listed in the
+   *  sidebar's projects (reached from the routine's history), archived with the routine. */
+  routineRunOnly?: boolean;
    *  SessionInfo objects before the first refresh. Fall back to cwd. */
   projectRoot?: string;
   /** Stable server-computed project identity for grouping and comparison.

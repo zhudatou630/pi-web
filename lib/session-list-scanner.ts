@@ -11,6 +11,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { getSessionFirstMessagePreview, SESSION_FIRST_MESSAGE_PREVIEW_MAX_LENGTH } from "./session-display-title";
 import { IMAGE_RESULT_TYPE } from "./image-generation";
+import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine-run-entry";
 
 export interface ScannedSessionInfo {
 	path: string;
@@ -22,6 +23,10 @@ export interface ScannedSessionInfo {
 	messageCount: number;
 	firstMessage: string;
 	parentSessionPath?: string;
+	/** The routine whose runs prompted this session (latest), if any. */
+	routineId?: string;
+	/** A chat a routine run started for itself and nobody has written in: kept out of the sidebar lists. */
+	routineRunOnly?: boolean;
 }
 
 interface Fingerprint {
@@ -31,7 +36,7 @@ interface Fingerprint {
 	dev: number;
 }
 
-interface ScanState {
+interface ScanState extends RoutineMarks {
 	header: RawEntry | null;
 	name?: string;
 	messageCount: number;
@@ -66,7 +71,7 @@ function isRecord(value: unknown): value is RawEntry {
 }
 
 // Bump when counting/preview rules change: resumed totals keep the old rules.
-const INDEX_FORMAT_VERSION = 3;
+const INDEX_FORMAT_VERSION = 6;
 const RESUME_SAMPLE_BYTES = 1024;
 const INDEX_PERSIST_DELAY_MS = 5_000;
 
@@ -145,6 +150,7 @@ function foldLine(state: ScanState, bytes: Buffer): boolean {
 		}
 		return true;
 	}
+	foldRoutineMarks(state, entry);
 	if (entry.type !== "message") return true;
 	state.messageCount++;
 	const activityTime = activityTimeOf(entry);
@@ -262,6 +268,7 @@ async function scanSessionFile(filePath: string, previous?: IndexEntry): Promise
 				modified,
 				messageCount: visible.messageCount,
 				firstMessage: visible.hasFirstMessage ? visible.firstMessage : "(no messages)",
+				...routineMarksInfo(visible, typeof header.parentSession === "string"),
 			},
 			// shortcut: headers beyond the 1 KiB sample use full scans; enlarge the sample if needed.
 			resume: headerSampled && fp.ino > 0 ? {
@@ -335,7 +342,7 @@ function indexFilePath(agentDir: string): string {
 function readResumePoint(value: unknown, size: number): ResumePoint | undefined {
 	if (!isRecord(value) || !isRecord(value.state)) return undefined;
 	const { offset, head, tail, state } = value;
-	const { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime } = state;
+	const { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime, routineId, routineMode, routinePending, routineStarted, userReplied } = state;
 	if (
 		typeof offset !== "number" || !Number.isSafeInteger(offset) || offset <= 0 || offset > size ||
 		typeof head !== "string" || !/^[a-f0-9]{64}$/.test(head) ||
@@ -346,9 +353,13 @@ function readResumePoint(value: unknown, size: number): ResumePoint | undefined 
 		(name !== undefined && typeof name !== "string") ||
 		typeof messageCount !== "number" || !Number.isSafeInteger(messageCount) || messageCount < 0 ||
 		typeof firstMessage !== "string" || firstMessage.length > SESSION_FIRST_MESSAGE_PREVIEW_MAX_LENGTH || typeof hasFirstMessage !== "boolean" ||
-		(lastActivityTime !== undefined && (typeof lastActivityTime !== "number" || !Number.isFinite(lastActivityTime)))
+		(lastActivityTime !== undefined && (typeof lastActivityTime !== "number" || !Number.isFinite(lastActivityTime))) ||
+		(routineId !== undefined && typeof routineId !== "string") ||
+		(routineMode !== undefined && typeof routineMode !== "string") ||
+		[routinePending, routineStarted, userReplied].some((flag) => flag !== undefined && typeof flag !== "boolean")
 	) return undefined;
-	return { offset, head, tail, state: { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime } };
+	const flag = (value: unknown) => value as boolean | undefined; // checked just above
+	return { offset, head, tail, state: { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime, routineId, routineMode, routinePending: flag(routinePending), routineStarted: flag(routineStarted), userReplied: flag(userReplied) } };
 }
 
 function loadPersistedIndex(path: string): void {
@@ -375,6 +386,8 @@ function loadPersistedIndex(path: string): void {
 				typeof info.firstMessage !== "string" ||
 				(info.name !== undefined && typeof info.name !== "string") ||
 				(info.parentSessionPath !== undefined && typeof info.parentSessionPath !== "string") ||
+				(info.routineId !== undefined && typeof info.routineId !== "string") ||
+				(info.routineRunOnly !== undefined && typeof info.routineRunOnly !== "boolean") ||
 				typeof info.messageCount !== "number" || !Number.isSafeInteger(info.messageCount) || info.messageCount < 0 ||
 				typeof info.created !== "string" || typeof info.modified !== "string"
 			) continue;
@@ -392,6 +405,8 @@ function loadPersistedIndex(path: string): void {
 					cwd: info.cwd,
 					name: info.name,
 					parentSessionPath: info.parentSessionPath,
+					...(typeof info.routineId === "string" ? { routineId: info.routineId } : {}),
+					...(info.routineRunOnly === true ? { routineRunOnly: true } : {}),
 					firstMessage: info.firstMessage,
 					messageCount: info.messageCount,
 					created,
