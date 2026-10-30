@@ -7,7 +7,7 @@ export interface SplitDiffCell {
 }
 
 export type SplitDiffRow =
-  | { type: "hunk"; text: string }
+  | { type: "hunk"; text: string; skippedLines?: number | null }
   | { type: "line"; left: SplitDiffCell; right: SplitDiffCell };
 
 export interface SplitDiffFile {
@@ -33,6 +33,7 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
   // file header — checking for headers there splits one file into bogus extras.
   let hunkOldRemaining = 0;
   let hunkNewRemaining = 0;
+  let previousEnd: { old: number; new: number } | null = null;
   let removed: PendingChangeLine[] = [];
   let added: PendingChangeLine[] = [];
 
@@ -72,6 +73,7 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
         flushChanges();
         current = { oldPath: pendingOldPath, newPath: cleanPatchPath(line.slice(4)), rows: [] };
         files.push(current);
+        previousEnd = null;
         continue;
       }
     }
@@ -87,7 +89,13 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
       newLineNo = Number(hunk[3]);
       hunkOldRemaining = hunk[2] === undefined ? 1 : Number(hunk[2]);
       hunkNewRemaining = hunk[4] === undefined ? 1 : Number(hunk[4]);
-      current.rows.push({ type: "hunk", text: line });
+      const oldStart = oldLineNo + (hunkOldRemaining === 0 ? 1 : 0);
+      const newStart = newLineNo + (hunkNewRemaining === 0 ? 1 : 0);
+      const oldGap = previousEnd ? oldStart - previousEnd.old : 0;
+      const newGap = previousEnd ? newStart - previousEnd.new : 0;
+      current.rows.push({ type: "hunk", text: line, ...(oldGap > 0 || newGap > 0
+        ? { skippedLines: oldGap === newGap ? oldGap : null } : {}) });
+      previousEnd = { old: oldStart + hunkOldRemaining, new: newStart + hunkNewRemaining };
       continue;
     }
 
@@ -127,6 +135,34 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
 
   const parsed = files.filter((file) => file.rows.some((row) => row.type === "line"));
   return parsed.length > 0 ? parsed : null;
+}
+
+export type UnifiedDiffRow = Extract<SplitDiffRow, { type: "hunk" }> | { type: "line"; cell: SplitDiffCell };
+
+/** Keep whole change blocks in patch order, rather than interleaving paired replacements. */
+export function unifiedDiffRows(rows: SplitDiffRow[]): UnifiedDiffRow[] {
+  const result: UnifiedDiffRow[] = [];
+  let removed: UnifiedDiffRow[] = [];
+  let added: UnifiedDiffRow[] = [];
+  const flush = () => {
+    result.push(...removed, ...added);
+    removed = [];
+    added = [];
+  };
+  for (const row of rows) {
+    if (row.type === "hunk") {
+      flush();
+      result.push(row);
+    } else if (row.left.type === "context" || row.right.type === "context") {
+      flush();
+      result.push({ type: "line", cell: row.right.type === "context" ? row.right : row.left });
+    } else {
+      if (row.left.type !== "empty") removed.push({ type: "line", cell: row.left });
+      if (row.right.type !== "empty") added.push({ type: "line", cell: row.right });
+    }
+  }
+  flush();
+  return result;
 }
 
 function cleanPatchPath(path: string): string {

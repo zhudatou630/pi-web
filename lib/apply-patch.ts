@@ -105,7 +105,9 @@ export function parseApplyPatch(text: string): ApplyPatchFile[] | null {
     if (line.startsWith("@@")) {
       flushChanges();
       inHunk = true;
-      current.rows.push({ type: "hunk", text: line });
+      current.rows.push({ type: "hunk", text: line,
+        ...(current.rows.some((row) => row.type === "line") ? { skippedLines: null } : {}),
+      });
       continue;
     }
 

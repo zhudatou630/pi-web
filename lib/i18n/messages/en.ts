@@ -6,6 +6,8 @@ export const enLocale: LocalePlugin = {
   label: "English",
   messages: {
     "common.ok": "OK",
+    "diff.unchangedLines": "{count} unchanged lines",
+    "diff.unchangedUnknown": "Unchanged lines omitted",
     "common.language": "Language",
     "common.models": "Models",
     "common.skills": "Skills",

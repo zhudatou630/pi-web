@@ -15,11 +15,12 @@ import { SubagentIcon } from "./SubagentIcon";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { ExportImageIcon, useExportImage } from "./ExportImage";
 import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
-import { parseUnifiedPatch, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
+import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { parseApplyPatch } from "@/lib/apply-patch";
 import { displayToolName, isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
 import { resolveLocalFilePath } from "@/lib/file-links";
@@ -1493,8 +1494,9 @@ function ApplyPatchView({ patch }: { patch: string }) {
   );
 }
 
-function SplitDiffFiles({ files }: { files: SplitDiffFile[] }) {
+export function SplitDiffFiles({ files }: { files: SplitDiffFile[] }) {
   const { t } = useI18n();
+  const mobile = useIsMobile();
   const showFileHeaders = files.length > 1;
 
   return (
@@ -1514,7 +1516,8 @@ function SplitDiffFiles({ files }: { files: SplitDiffFile[] }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gridTemplateColumns: mobile ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)",
+                fontFamily: "var(--font-ui)",
                 position: "sticky",
                 top: 0,
                 zIndex: 1,
@@ -1522,16 +1525,23 @@ function SplitDiffFiles({ files }: { files: SplitDiffFile[] }) {
                 borderBottom: "1px solid var(--border)",
               }}
             >
-               <SplitDiffHeader title={file.oldPath || t("i18n.before")} side="left" />
-               <SplitDiffHeader title={file.newPath || t("i18n.after")} side="right" />
+               {mobile ? <SplitDiffHeader title={(file.newPath !== "/dev/null" && file.newPath) || file.oldPath || t("i18n.after")} side="right" /> : <>
+                 <SplitDiffHeader title={file.oldPath || t("i18n.before")} side="left" />
+                 <SplitDiffHeader title={file.newPath || t("i18n.after")} side="right" />
+               </>}
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)" }}>
-            {file.rows.map((row, rowIndex) => {
+          <div data-chat-diff-layout={mobile ? "unified" : "split"} style={{ display: "grid", gridTemplateColumns: mobile ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1fr)" }}>
+            {(mobile ? unifiedDiffRows(file.rows) : file.rows).map((row, rowIndex) => {
               if (row.type === "hunk") {
-                return null;
+                return row.skippedLines === undefined ? null : (
+                  <div key={rowIndex} style={{ gridColumn: "1 / -1", padding: "3px 10px", fontFamily: "var(--font-ui)", color: "var(--text-dim)", background: "var(--bg-panel)" }}>
+                    ⋯ {row.skippedLines === null ? t("diff.unchangedUnknown") : t("diff.unchangedLines", { count: row.skippedLines })}
+                  </div>
+                );
               }
+              if ("cell" in row) return <SplitDiffCellView key={rowIndex} cell={row.cell} side="right" />;
 
               return (
                 <div key={rowIndex} style={{ display: "contents" }}>

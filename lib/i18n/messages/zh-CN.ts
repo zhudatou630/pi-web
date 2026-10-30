@@ -6,6 +6,8 @@ export const zhCNLocale: LocalePlugin = {
   label: "简体中文",
   messages: {
     "common.ok": "确定",
+    "diff.unchangedLines": "省略 {count} 行未更改内容",
+    "diff.unchangedUnknown": "省略未更改内容",
     "common.language": "语言",
     "common.models": "模型",
     "common.skills": "技能",
