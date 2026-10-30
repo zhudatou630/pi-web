@@ -6,6 +6,11 @@ import {
   createToolSearchExtension,
   getPackageDir,
   getAgentDir,
+  type ExtensionAPI,
+  type ExtensionContext,
+  type ExtensionEvent,
+  type ExtensionFactory,
+  type ExtensionHandler,
   type InlineExtension,
   type McpTransportFactory,
 } from "@earendil-works/pi-coding-agent";
@@ -72,6 +77,46 @@ export async function loadSafeMcpTransport(): Promise<McpTransportFactory> {
   return safeMcpTransportFactory(factory, parsers, withProjectEnvironment);
 }
 
+// Exported for the lifecycle test; keep the SDK's connection and tool-discovery logic intact.
+export function deferMcpStart(factory: ExtensionFactory): ExtensionFactory {
+  return (pi) => {
+    let startHandler: ExtensionHandler<ExtensionEvent, unknown> | undefined;
+    let started = false;
+    const start = async (ctx: ExtensionContext) => {
+      if (started) return;
+      started = true;
+      await startHandler?.({ type: "session_start", reason: "startup" }, ctx);
+    };
+    return factory(new Proxy(pi, {
+      get(target, property) {
+        if (property === "on") return (event: string, handler: ExtensionHandler<ExtensionEvent, unknown>) => {
+          if (event === "session_start") {
+            startHandler = handler;
+            return () => { startHandler = undefined; };
+          }
+          return Reflect.apply(target.on, target, [event, async (event: ExtensionEvent, ctx: ExtensionContext) => {
+            // _prepareRun reconciles live tools after this event; MCP's own handler waits for direct tools.
+            if (event.type === "before_agent_start") await start(ctx);
+            if (event.type === "mcp_servers_change" && !started) return;
+            try { return await handler(event, ctx); }
+            finally { if (event.type === "session_shutdown") started = false; }
+          }]);
+        };
+        if (property === "registerCommand") return (name: string, command: Parameters<ExtensionAPI["registerCommand"]>[1]) => {
+          pi.registerCommand(name, {
+            ...command,
+            handler: async (args, ctx) => {
+              await start(ctx);
+              return command.handler(args, ctx);
+            },
+          });
+        };
+        return Reflect.get(target, property);
+      },
+    }));
+  };
+}
+
 export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
   const [createTransport, validator, parsers] = await Promise.all([
     loadSafeMcpTransport(), importSdkFile<McpConfigValidator>("core/mcp-servers.js"),
@@ -84,7 +129,7 @@ export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
     // shown through ui.notify and the redirect URL is pasted back through ui.input.
     {
       name: "mcp",
-      factory: createMcpExtension({
+      factory: deferMcpStart(createMcpExtension({
         openUrl: () => {}, createTransport,
         loadConfig: (ctx) => loadSafeMcpConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() }, validator, parsers),
         updateConfig: (entry, patch) => {
@@ -92,7 +137,7 @@ export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
           const projectRoot = entry.override || entry.scope === "project" ? dirname(dirname(path)) : undefined;
           editMcpConfigFileSync(path, (servers) => patchMcpServer(servers, entry.name, patch), projectRoot);
         },
-      }),
+      })),
       replaceable: true,
       builtin: true,
     },
