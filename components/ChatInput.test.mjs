@@ -243,7 +243,7 @@ test("shows context as an always-visible ring readout that only colors past 70%"
   )).match(/<button[^>]*data-top-panel-trigger="session"[\s\S]*?<\/button>/)?.[0];
   assert.match(withCost, /98%<\/span><span class="chat-input-context-cache">\$0\.49<\/span>/);
   assert.doesNotMatch(withCost, />cache /);
-  assert.match(withCost, /cost: \$0\.49/);
+  assert.match(withCost, /Cost: \$0\.49/);
   assert.match(low, /aria-controls="workspace-top-panel"/);
   assert.doesNotMatch(low, /Compact context/);
 
@@ -968,6 +968,8 @@ test("renders image warnings for known text-only defaults without an explicit mo
       assert.equal(html.includes("Images may not be sent"), warningExpected, `default model: ${modelId}`);
       if (warningExpected) {
         assert.match(html, /The selected model \(Text Only\) does not support image input/);
+        assert.match(html, /aria-label="Close"/);
+        assert.doesNotMatch(html, /aria-label="Dismiss"/);
         assert.ok(html.indexOf('role="alert"') < html.indexOf("<textarea"));
       }
     }

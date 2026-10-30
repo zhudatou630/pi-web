@@ -26,6 +26,19 @@ const source = (await Promise.all(
 )).join("\n");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
 
+test("provider model counts use the existing singular/many key convention", async () => {
+  const { getLocalePlugin } = await jiti.import("../lib/i18n/registry.ts");
+  const { translateMessage } = await jiti.import("../lib/i18n/format.ts");
+  const messages = Object.fromEntries(["en", "zh-CN"].map((locale) => [locale, getLocalePlugin(locale).messages]));
+  const expression = source.match(/t\(p\.modelCount === 1 \? "models\.modelCountOne" : "models\.modelCount", \{ count: p\.modelCount \}\)/)?.[0];
+  assert.ok(expression);
+  const label = new Function("p", "t", `return ${expression};`);
+  for (const [count, english] of [[0, "0 models"], [1, "1 model"], [2, "2 models"]]) {
+    assert.equal(label({ modelCount: count }, (key, params) => translateMessage("en", key, messages, params)), english);
+    assert.equal(label({ modelCount: count }, (key, params) => translateMessage("zh-CN", key, messages, params)), `${count} 个模型`);
+  }
+});
+
 test("the provider name field edits the display name, never the provider id", () => {
   // The id keys models.json, auth.json, and enabledModels, so renaming it here
   // silently orphaned the credentials, the chat list, and defaultProvider.

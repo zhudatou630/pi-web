@@ -537,6 +537,7 @@ function DiffView({ patch }: { patch: string }) {
 }
 
 function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAtMention }: Props) {
+  const { t } = useI18n();
   const [watching, setWatching] = useState(false);
   const [bust, setBust] = useState(0);
   const [size, setSize] = useState<number | null>(null);
@@ -666,7 +667,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAt
                 const img = e.currentTarget;
                 setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
               }}
-              onError={() => setError("Failed to load image")}
+              onError={() => setError(t("files.imageLoadError"))}
               style={{
                 maxWidth: "100%",
                 maxHeight: "100%",
@@ -698,6 +699,7 @@ function formatDuration(seconds: number): string {
 }
 
 function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAtMention }: Props) {
+  const { t } = useI18n();
   const mediaRef = useRef<HTMLAudioElement | null>(null);
   // A hidden tab or closed panel pauses the watch; stop playback with it.
   useEffect(() => {
@@ -826,7 +828,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAt
             preload="metadata"
             src={src}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-            onError={() => setError("Failed to load audio")}
+            onError={() => setError(t("files.audioLoadError"))}
             style={{ width: "100%" }}
           />
         </div>
@@ -836,6 +838,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAt
 }
 
 function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAtMention }: Props) {
+  const { t } = useI18n();
   const mediaRef = useRef<HTMLVideoElement | null>(null);
   // A hidden tab or closed panel pauses the watch; stop playback with it.
   useEffect(() => {
@@ -966,7 +969,7 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAt
             preload="metadata"
             src={src}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-            onError={() => setError("Failed to load video")}
+            onError={() => setError(t("files.videoLoadError"))}
             style={{ maxWidth: "100%", maxHeight: "100%" }}
           />
         </div>

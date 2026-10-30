@@ -120,7 +120,7 @@ export function AddProviderPicker({
           {availableOAuth.map((p) => card(p.id, p.name, t("models.kindOAuth"), <ProviderIcon id={p.id} size={28} />, () => { onSelectOAuth(p.id); onClose(); }))}
 
           {availableApiKey.length > 0 && <div className="models-card-group">{t("models.kindApiKey")}</div>}
-          {availableApiKey.map((p) => card(p.id, p.displayName, t("models.modelCount", { count: p.modelCount }), <ProviderIcon id={p.id} size={28} />, () => { onSelectApiKey(p.id); onClose(); }))}
+          {availableApiKey.map((p) => card(p.id, p.displayName, t(p.modelCount === 1 ? "models.modelCountOne" : "models.modelCount", { count: p.modelCount }), <ProviderIcon id={p.id} size={28} />, () => { onSelectApiKey(p.id); onClose(); }))}
         </div>
       )}
     </ModelsDialog>

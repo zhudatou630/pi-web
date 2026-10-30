@@ -534,6 +534,7 @@ function QueuedMessageRow({ kind, text, action }: { kind: "steer" | "follow-up";
 }
 
 function ModelNoticeBanner({ tone, title, body, onClose }: { tone: "error" | "warning"; title: string; body: string; onClose?: () => void }) {
+  const { t } = useI18n();
   const color = tone === "error" ? "var(--danger)" : "var(--warning)";
   return (
     <div
@@ -578,7 +579,7 @@ function ModelNoticeBanner({ tone, title, body, onClose }: { tone: "error" | "wa
         <button
           type="button"
           onClick={onClose}
-          aria-label="Dismiss"
+          aria-label={t("i18n.close")}
           style={{
             flexShrink: 0,
             background: "none",
@@ -1764,7 +1765,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         ? `${t("session.cacheHitRate")}: ${cacheHitRate.toFixed(1)}%`
         : null,
       timing && `${t("session.performance")}: ${timing.text}`,
-      costLabel && `cost: ${costLabel}`,
+      costLabel && `${t("usage.cost")}: ${costLabel}`,
       isHigh ? t("chat.contextHighWarning") : null,
     ].filter(Boolean).join("\n");
 

@@ -1337,7 +1337,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       {treeVisible && (
         <div style={{ padding: "2px 0" }}>
           {loading ? (
-            <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>Loading files...</div>
+            <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>{t("chat.loadingFiles")}</div>
           ) : error ? (
             <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--danger)" }}>{error}</div>
           ) : (
