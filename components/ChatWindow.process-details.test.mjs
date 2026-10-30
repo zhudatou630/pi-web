@@ -80,7 +80,7 @@ test("streams process blocks inside steps and answer blocks outside", () => {
 
 test("keeps completed turn projections stable while only the streaming tail changes", () => {
   assert.match(source, /const completedAssistantParts = useMemo\(\(\) => messages\.map/);
-  assert.match(source, /const \{ writtenFilesByAssistantIndex, turnActivityByAssistantIndex \} = useMemo/);
+  assert.match(source, /const \{ writtenFilesByAssistantIndex, routinesByAssistantIndex, turnActivityByAssistantIndex \} = useMemo/);
   assert.match(source, /durationSeconds=\{finalAnswerMessage \|\| answeringLive \? undefined : processDurationSeconds\}/);
   assert.match(source, /const finalParts = completedAssistantParts\[finalAssistantIdx\]/);
   assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);

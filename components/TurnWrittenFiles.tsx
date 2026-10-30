@@ -4,6 +4,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { getFileName } from "@/lib/file-paths";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { getFileIcon } from "./FileIcons";
+import { TurnArtifactChip } from "./TurnArtifacts";
 
 /**
  * Lists the files a turn actually wrote, as buttons that open each one in the
@@ -22,42 +23,14 @@ export function TurnWrittenFiles({ files, onOpenFile }: {
       {files.map(({ filePath }) => {
         const name = getFileName(filePath);
         return (
-          <button
+          <TurnArtifactChip
             key={filePath}
-            type="button"
+            icon={getFileIcon(name, 12)}
+            label={name}
             title={filePath}
-            aria-label={t("chat.openWrittenFile", { name })}
+            ariaLabel={t("chat.openWrittenFile", { name })}
             onClick={() => onOpenFile?.(filePath)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "2.5px 7px",
-              minHeight: 22,
-              fontSize: 11,
-              fontFamily: "var(--font-ui)",
-              lineHeight: 1.35,
-              color: "var(--text-muted)",
-              background: "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))",
-              border: "1px solid color-mix(in srgb, var(--border) 70%, transparent)",
-              borderRadius: "var(--ui-radius-md)",
-              cursor: "pointer",
-              transition: "background var(--motion-fast), color var(--motion-fast)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "var(--bg-hover)";
-              e.currentTarget.style.color = "var(--text)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))";
-              e.currentTarget.style.color = "var(--text-muted)";
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {getFileIcon(name, 12)}
-            </span>
-            <span>{name}</span>
-          </button>
+          />
         );
       })}
     </div>

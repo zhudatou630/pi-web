@@ -61,6 +61,7 @@ import { readOnlyToolGuard } from "./read-only-tool-guard";
 import { createBuiltinExtensions } from "./builtin-extensions";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, reservePiWebImageTool } from "./image-generation-extension";
+import { createRoutineToolExtension } from "./routine-tool-extension";
 import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine-run-entry";
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES } from "./image-generation";
 import { executeImageGeneration, generatedImagePreview, parseImageGenerationRequest, saveSourceImage } from "./image-generation-runtime";
@@ -181,10 +182,10 @@ export interface RpcSessionStartOptions {
   allowInitialModelFallback?: boolean;
   thinkingLevel?: ThinkingLevel;
   cwdOverride?: string;
-}
-
   /** False keeps an explicit model/thinking choice session-local (routines must not rewrite user defaults). */
   persistStartupPreferences?: boolean;
+}
+
 const MAX_UNDELIVERED_NOTICES = 10;
 const UNDELIVERED_NOTICE_MAX_AGE_MS = 2 * 60_000;
 
@@ -1799,7 +1800,12 @@ export class AgentSessionWrapper {
         opts?.signal,
       ),
       confirm: (title, message, opts) => this.requestExtensionUi(
-        { method: "confirm", title, message, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        {
+          method: "confirm", title, message,
+          // Pi Web's own tools may attach a card (RoutineApprovalCard); other clients read title/message.
+          ...((opts as { piWebCard?: unknown } | undefined)?.piWebCard ? { card: (opts as { piWebCard: unknown }).piWebCard } : {}),
+          ...(opts?.timeout ? { timeout: opts.timeout } : {}),
+        },
         false,
         (response) => "confirmed" in response ? response.confirmed : false,
         opts?.timeout,
@@ -2400,15 +2406,15 @@ export function getRpcSessionInfos(): SessionInfo[] {
     const sessionFile = manager.getSessionFile() ?? session.sessionFile;
     const persisted = Boolean(sessionFile && existsSync(sessionFile));
     const subagent = readSubagentRun(entries as unknown as SessionEntry[], header?.id ?? session.sessionId, sessionFile ?? "");
+    // Same rule as the disk scan, so a routine's run stays out of the sidebar while it runs too.
+    const routineMarks: RoutineMarks = {};
+    for (const entry of entries) foldRoutineMarks(routineMarks, entry);
 
     // An ensure_session call creates an idle, empty runtime while the composer
     // loads commands. Do not leak it into history before a prompt is accepted.
     if (!persisted && (!session.isRunning() || !firstUserMessage)) continue;
 
     const created = header?.timestamp
-    // Same rule as the disk scan, so a routine's run stays out of the sidebar while it runs too.
-    const routineMarks: RoutineMarks = {};
-    for (const entry of entries) foldRoutineMarks(routineMarks, entry);
       ?? entries[0]?.timestamp
       ?? new Date().toISOString();
     const headerTimestamp = new Date(created).getTime();
@@ -2448,13 +2454,13 @@ export function getRpcSessionInfos(): SessionInfo[] {
           thinkingLevel: session.inner.thinkingLevel,
         },
       } : {}),
+      ...routineMarksInfo(routineMarks, Boolean(header?.parentSession)),
       transient: !persisted,
     });
   }
   const listedIds = new Set(sessions.map((session) => session.id));
   for (const run of activeSubagents.values()) {
     if (listedIds.has(run.sessionId)) continue;
-      ...routineMarksInfo(routineMarks, Boolean(header?.parentSession)),
     const parent = getRegistry().get(run.parentSessionId);
     sessions.push({
       path: run.sessionPath,
@@ -2691,6 +2697,7 @@ export async function startRpcSession(
                 settings: settingsManager,
               }),
               createImageGenerationExtension(agentDir, { projectRoot }),
+              createRoutineToolExtension(),
               createSubagentExtension(
                 SUBAGENT_CONTROLLER.extensionRuntime,
                 () => listSubagentProfiles(sessionCwd),

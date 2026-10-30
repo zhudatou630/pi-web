@@ -1,4 +1,5 @@
 // Types mirrored from pi-mono coding-agent session-manager
+import type { RoutineSchedule } from "./routine-schedule";
 import type { TimingCall } from "./model-timing";
 
 export interface SessionHeader {
@@ -67,9 +68,9 @@ export interface UserMessage {
   role: "user";
   content: string | (TextContent | ImageContent)[];
   timestamp?: number;
-}
   /** Sent by this routine's run (from its pi-web:routine-run entry; history only, not live). */
   routineId?: string;
+}
 
 export interface AgentUsage {
   input: number;
@@ -154,6 +155,19 @@ export interface BashExecutionMessage {
 
 export type AgentMessage = SystemMessage | UserMessage | AssistantMessage | ToolResultMessage | CustomMessage | BashExecutionMessage;
 
+/** `create_routine`'s approval: shown inline at the end of the chat (components/RoutineApprovalCard.tsx). */
+export interface RoutineApprovalCard {
+  kind: "routine";
+  name: string;
+  schedule: RoutineSchedule;
+  /** The server's zone, where the schedule fires. */
+  timeZone: string;
+  nextRunAt: string | null;
+  runIn: "new_chat" | "this_chat";
+  instructions: string;
+  schedulerOn: boolean;
+}
+
 export type ExtensionUiRequest =
   | {
       type: "extension_ui_request";
@@ -170,6 +184,8 @@ export type ExtensionUiRequest =
       method: "confirm";
       title: string;
       message: string;
+      /** Pi Web's own confirmations render as a dedicated card instead of the generic dialog. */
+      card?: RoutineApprovalCard;
       timeout?: number;
       expiresAt?: number;
     }
@@ -372,6 +388,11 @@ export interface SessionInfo {
   modified: string;
   messageCount: number;
   firstMessage: string;
+  /** Set when a routine's runs prompted this session (the latest such routine). */
+  routineId?: string;
+  /** A chat a routine's run started for itself that nobody has written in: not listed in the
+   *  sidebar's projects (reached from the routine's history), archived with the routine. */
+  routineRunOnly?: boolean;
   parentSessionId?: string; // source session for a fork, or parent session for a subagent
   /** How this session relates to another session. Forks remain top-level in the
    *  UI; only subagent relations form a visible parent/child tree. */
@@ -389,11 +410,6 @@ export interface SessionInfo {
       };
   /** Main repo root shared by all worktrees of this cwd (cwd itself for non-git dirs).
    *  Always set by the server; optional because the client builds transient
-  /** Set when a routine's runs prompted this session (the latest such routine). */
-  routineId?: string;
-  /** A chat a routine's run started for itself that nobody has written in: not listed in the
-   *  sidebar's projects (reached from the routine's history), archived with the routine. */
-  routineRunOnly?: boolean;
    *  SessionInfo objects before the first refresh. Fall back to cwd. */
   projectRoot?: string;
   /** Stable server-computed project identity for grouping and comparison.

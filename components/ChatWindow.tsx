@@ -13,6 +13,7 @@ import { splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isHiddenCustomMessage, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
+import { extractTurnCreatedRoutines, type CreatedRoutine } from "@/lib/turn-routines";
 import { summarizeTurnActivity, type TurnActivity } from "@/lib/turn-activity";
 import { findQuoteInSegments, selectedTextWithTex } from "@/lib/quoted-selection";
 import { scrollIntoScroller } from "./FileFindBar";
@@ -36,6 +37,7 @@ import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { MobileOutlineSync, type MobileOutlineView } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
 import { ConfigButton } from "./SettingsUi";
+import { RoutineApprovalCard } from "./RoutineApprovalCard";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
 import { getForkSessionName } from "@/lib/session-display-title";
@@ -192,15 +194,15 @@ export function NewSessionCwdControl({
   projectPaths,
   worktreeInfo,
   projectNameByRoot,
+  placement = "below",
 }: {
   cwd: string;
-  placement = "below",
   onChange: (cwd: string) => Promise<void>;
   projectPaths: string[];
-  projectNameByRoot?: ReadonlyMap<string, string>;
-  worktreeInfo: {
   /** "above": menus open upward and align right, for a composer toolbar (Routines). */
   placement?: "below" | "above";
+  projectNameByRoot?: ReadonlyMap<string, string>;
+  worktreeInfo: {
     forCwd: string;
     projectRoot: string;
     currentWorktreePath: string | null;
@@ -256,11 +258,11 @@ export function NewSessionCwdControl({
   const currentBranch = currentWorktree?.branch ?? null;
   const displayProject = activeWorktree?.projectRoot ?? cwd;
   const projectLabel = projectNameByRoot?.get(displayProject) ?? getFileName(displayProject);
-  const closeMenus = () => {
-    setMenuOpen(false);
   const menuPosition: CSSProperties = placement === "above"
     ? { bottom: "calc(100% + 6px)", right: 0 }
     : { top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)" };
+  const closeMenus = () => {
+    setMenuOpen(false);
     setBranchMenuOpen(false);
   };
   const choose = (path: string) => {
@@ -878,6 +880,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     deferInitialScroll: Boolean(pendingScrollRestore),
     isVisiblePane,
   });
+  // Pi Web's own approval card renders inline instead of the generic extension dialog.
+  const routineApproval = extensionDialog?.method === "confirm" && extensionDialog.card?.kind === "routine" ? extensionDialog : null;
   const sessionBusy = agentRunning || directImageRunning || bashRunning;
   // While this session's run is under way its chime may come with the phone
   // locked, where a suspended audio context cannot start again.
@@ -1621,8 +1625,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const completedAssistantParts = useMemo(() => messages.map((message) => (
     message.role === "assistant" ? partitionAssistantMessage(message) : null
   )), [messages]);
-  const { writtenFilesByAssistantIndex, turnActivityByAssistantIndex } = useMemo(() => {
+  const { writtenFilesByAssistantIndex, routinesByAssistantIndex, turnActivityByAssistantIndex } = useMemo(() => {
     const filesByIndex = new Map<number, WrittenFile[]>();
+    const routinesByIndex = new Map<number, CreatedRoutine[]>();
     const activityByIndex = new Map<number, TurnActivity>();
     for (let idx = 0; idx < messages.length;) {
       const boundaryIdx = isMessageGroupBoundary(messages[idx]) ? idx : -1;
@@ -1636,11 +1641,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           finalAssistantIdx,
           extractTurnWrittenFiles(turnMessages.flatMap((message) => message.content), toolResultsMap, messageCwd),
         );
+        routinesByIndex.set(finalAssistantIdx, extractTurnCreatedRoutines(turnMessages.flatMap((message) => message.content), toolResultsMap));
         activityByIndex.set(finalAssistantIdx, summarizeTurnActivity(turnMessages, toolResultsMap));
       }
       idx = endIdx;
     }
-    return { writtenFilesByAssistantIndex: filesByIndex, turnActivityByAssistantIndex: activityByIndex };
+    return { writtenFilesByAssistantIndex: filesByIndex, routinesByAssistantIndex: routinesByIndex, turnActivityByAssistantIndex: activityByIndex };
   }, [completedAssistantParts, messageCwd, messages, toolResultsMap]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
@@ -2000,7 +2006,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             onSubmit={submitDirectImage}
           />
         )}
-        {extensionDialog && (
+        {extensionDialog && !routineApproval && (
           <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} />
         )}
         {extensionCustomUi && (
@@ -2049,7 +2055,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 messageRefs.current[refIndex] = el;
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; turnDurationSeconds?: number; turnTiming?: string; isProcess?: boolean } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; createdRoutines?: CreatedRoutine[]; turnDurationSeconds?: number; turnTiming?: string; isProcess?: boolean } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 if (isHiddenCustomMessage(msg)) return null;
                 const prevAssistantEntryId =
@@ -2097,6 +2103,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     expandOutput={idx === messages.length - 1}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
+                    createdRoutines={options.createdRoutines}
                     turnDurationSeconds={options.turnDurationSeconds}
                     turnTiming={options.turnTiming}
                     isProcess={options.isProcess}
@@ -2383,6 +2390,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     isTurnEnd: true,
                     messageOverride: finalAnswerMessage,
                     writtenFiles: writtenFilesByAssistantIndex.get(finalAssistantIdx),
+                    createdRoutines: routinesByAssistantIndex.get(finalAssistantIdx),
                     turnDurationSeconds: elapsedProcessSeconds(
                       turnStartTime ?? processStartTime,
                       (messages[finalAssistantIdx] as AssistantMessage).completedAt ?? messages[finalAssistantIdx].timestamp,
@@ -2427,6 +2435,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             })()}
             {streamState.isStreaming && streamingParts.answerMessage && (
               <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
+            )}
+            {/* create_routine waits on this card, inline where its tool call is (like a permission prompt). */}
+            {routineApproval?.card && (
+              <RoutineApprovalCard
+                key={routineApproval.id}
+                card={routineApproval.card}
+                onApprove={() => void respondToExtensionUi(routineApproval, { confirmed: true })}
+                onDecline={() => void respondToExtensionUi(routineApproval, { cancelled: true })}
+              />
             )}
             {streamState.isStreaming && streamingAssistant && !streamingParts.processMessage && !currentTurnHasVisibleOutput && (
               <StreamSilenceNotice message={streamingAssistant} />

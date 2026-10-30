@@ -28,6 +28,8 @@ import { resolveLocalFilePath } from "@/lib/file-links";
 import { getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
+import { TurnCreatedRoutines } from "./TurnArtifacts";
+import type { CreatedRoutine } from "@/lib/turn-routines";
 import { iconStroke } from "./iconStroke";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionBody, skillExpansionToCommand } from "@/lib/slash-display";
@@ -173,6 +175,8 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
+  /** Routines the turn created (create_routine), shown as chips like the written files. */
+  createdRoutines?: CreatedRoutine[];
   /** User send to final answer; shown in the turn-end footer. */
   turnDurationSeconds?: number;
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
@@ -262,12 +266,12 @@ function haveSameRelevantToolResults(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, turnDurationSeconds, turnTiming, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, turnDurationSeconds, turnTiming, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -306,6 +310,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.expandOutput === next.expandOutput
     && prev.modelName === next.modelName
     && prev.writtenFiles === next.writtenFiles
+    && prev.createdRoutines === next.createdRoutines
     && prev.turnDurationSeconds === next.turnDurationSeconds
     && prev.turnTiming === next.turnTiming
     && prev.sessionId === next.sessionId
@@ -520,11 +525,6 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
         display: "flex", alignItems: "center", justifyContent: "flex-end",
         gap: 4, marginTop: 2,
       }}>
-          {/* The answer footer already dates the turn; the send time is on-demand detail. */}
-          {time && <span data-user-time style={{ fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", userSelect: "none", opacity: hovered ? 1 : 0, transition: "opacity var(--motion-fast)" }}>{time}</span>}
-          <div
-            className="message-action-group"
-            style={{
           {/* Sent by a routine run, not typed here (docs/routines.md). Always shown: it changes how to read the turn. */}
           {message.routineId && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", userSelect: "none" }}>
@@ -534,6 +534,11 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
               {t("chat.sentByRoutine")}
             </span>
           )}
+          {/* The answer footer already dates the turn; the send time is on-demand detail. */}
+          {time && <span data-user-time style={{ fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", userSelect: "none", opacity: hovered ? 1 : 0, transition: "opacity var(--motion-fast)" }}>{time}</span>}
+          <div
+            className="message-action-group"
+            style={{
               opacity: (hovered || forking || canCancelEdit) ? 1 : 0,
               pointerEvents: (hovered || forking || canCancelEdit) ? "auto" : "none",
             }}
@@ -619,6 +624,7 @@ function AssistantMessageView({
   entryId,
   searchBlock,
   writtenFiles,
+  createdRoutines,
   turnDurationSeconds,
   turnTiming,
   isProcess,
@@ -641,6 +647,7 @@ function AssistantMessageView({
   entryId?: string;
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
+  createdRoutines?: CreatedRoutine[];
   turnDurationSeconds?: number;
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
   turnTiming?: string;
@@ -809,6 +816,8 @@ function AssistantMessageView({
       {writtenFiles && writtenFiles.length > 0 && (
         <TurnWrittenFiles files={writtenFiles} onOpenFile={onOpenFile} />
       )}
+
+      {createdRoutines && createdRoutines.length > 0 && <TurnCreatedRoutines routines={createdRoutines} />}
 
       {showFooter && (
         // Who answered, how long the turn took, when it ended; copy sits right after them.
