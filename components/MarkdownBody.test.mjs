@@ -8,7 +8,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MarkdownBody, tableSource } = await jiti.import("./MarkdownBody.tsx");
+const { MarkdownBody, tableSource, scrollMarkdownFragment } = await jiti.import("./MarkdownBody.tsx");
 const { normalizeDisplayMath } = await jiti.import("../lib/markdown.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
@@ -30,6 +30,30 @@ test("table borders surround the scroller without entering its mask", () => {
   const html = renderMarkdown("| a | b |\n| - | - |\n| 1 | 2 |");
   assert.match(html, /<div class="markdown-table-block"><div class="markdown-table-frame"><div class="markdown-table-wrap"><table>/);
   assert.match(html, /<\/table><\/div><\/div><div class="markdown-table-actions">/);
+});
+
+test("fragment links stay in their own markdown root rather than opening another tab", () => {
+  const html = renderMarkdown('[section](#sec)\n\n<a id="sec"></a>Here\n\nNote[^1]\n\n[^1]: Footnote');
+  assert.match(html, /id="user-content-sec"/);
+  assert.match(html, /<a href="#sec">section<\/a>/);
+  assert.match(html, /href="#user-content-fn-1"/);
+  assert.match(html, /id="user-content-user-content-fn-1"/);
+  assert.doesNotMatch(html.match(/<a[^>]*href="#[^"]*"[^>]*>/g)?.join(""), /target=/);
+});
+
+test("fragment scroll stays local, handles encoded ids, footnotes, headings and malformed escapes", () => {
+  const calls = [];
+  const target = (id, textContent = "") => ({ id, textContent, scrollIntoView: () => calls.push(id) });
+  const ids = [target("user-content-sec"), target("user-content-user-content-fn-1"), target("user-content-中文")];
+  const headings = [target("heading", "A heading")];
+  const root = { querySelectorAll: selector => selector === "[id]" ? ids : headings, scrollIntoView: () => calls.push("root") };
+  for (const fragment of ["sec", "user-content-fn-1", "%E4%B8%AD%E6%96%87", "a-heading", "", "%ZZ", "missing"]) {
+    scrollMarkdownFragment({ getAttribute: () => `#${fragment}`, closest: selector => {
+      assert.equal(selector, ".markdown-body");
+      return root;
+    } });
+  }
+  assert.deepEqual(calls, ["user-content-sec", "user-content-user-content-fn-1", "user-content-中文", "heading", "root"]);
 });
 
 test("opens non-file markdown links in a safe new tab", () => {

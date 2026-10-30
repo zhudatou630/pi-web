@@ -12,6 +12,7 @@ import { parsePreviewTarget, requestPreview } from "@/lib/preview-target";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { splitMarkdownBlocks } from "@/lib/markdown-blocks";
+import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
 
@@ -103,6 +104,12 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
     a({ href, children, ...props }) {
       // `node` is react-markdown metadata, not a DOM attribute.
       delete props.node;
+      if (href?.startsWith("#")) {
+        return <a href={href} {...props} onClick={(event) => {
+          event.preventDefault();
+          scrollMarkdownFragment(event.currentTarget);
+        }}>{children}</a>;
+      }
       const filePath = onOpenFile ? resolveLocalFileHref(href, cwd) : null;
       const openFile = onOpenFile;
       if (!filePath || !openFile) {
@@ -173,6 +180,19 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
     </div>
   );
 });
+
+/** Sanitized ids gain one prefix, including footnote ids that already carried one. */
+export function scrollMarkdownFragment(link: HTMLAnchorElement): void {
+  const href = link.getAttribute("href");
+  const root = link.closest<HTMLElement>(".markdown-body");
+  if (!root || !href?.startsWith("#")) return;
+  let slug: string;
+  try { slug = decodeURIComponent(href.slice(1)); } catch { return; }
+  const headings = [...root.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")];
+  const target = slug === "" ? root : [...root.querySelectorAll<HTMLElement>("[id]")].find((element) => element.id === `user-content-${slug}`)
+    ?? headings[findHeadingBySlug(headings.map((element) => element.textContent ?? ""), slug)];
+  target?.scrollIntoView({ block: "start", inline: "nearest" });
+}
 
 /** A plain click on a Pi Web machine address opens Pi Web's browser tab; modified clicks stay normal links. */
 function openLocalUrl(event: MouseEvent<HTMLAnchorElement>, url: string): void {
