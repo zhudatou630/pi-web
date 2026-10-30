@@ -20,9 +20,11 @@ const SUBAGENT_TOOL_NAMES = new Set<string>(SUBAGENT_CONTROL_TOOL_NAMES);
 const LEGACY_SUBAGENT_PACKAGE_NAME = "pi-subagents";
 const DEFAULT_RESULT_WAIT_TIMEOUT_MS = 5 * 60_000;
 const MAX_WAIT_TIMEOUT_MS = 30 * 60_000;
+// Foreground means the parent needs the result, so only a stuck child should hit this.
+const DEFAULT_FOREGROUND_WAIT_TIMEOUT_MS = MAX_WAIT_TIMEOUT_MS;
 const WAIT_TIMEOUT = Symbol("subagent-wait-timeout");
-const waitTimeoutParameter = () => Type.Optional(Type.Number({
-  description: "Maximum wait in milliseconds. Default: 300000; maximum: 1800000. A timeout does not stop the subagent.",
+const waitTimeoutParameter = (defaultMs: number) => Type.Optional(Type.Number({
+  description: `Maximum wait in milliseconds. Default: ${defaultMs}; maximum: ${MAX_WAIT_TIMEOUT_MS}. A timeout does not stop the subagent.`,
   minimum: 1,
   maximum: MAX_WAIT_TIMEOUT_MS,
 }));
@@ -133,7 +135,7 @@ export function subagentDelegationSection(profiles: readonly SubagentProfile[]):
   if (names.includes("plan")) rules.push("`plan`: before a large change spanning many files or steps.");
   rules.push(
     "Use several background Agent calls in one response for independent work. Parallel implementation only on non-overlapping files, or with isolation: \"worktree\".",
-    "Use a foreground call when the next step cannot proceed without the result. Foreground waits use timeout_ms (default 5 minutes, maximum 30); on timeout the child continues and its unread result is delivered automatically.",
+    "Use a foreground call when the next step cannot proceed without the result. Foreground waits use timeout_ms (default and maximum 30 minutes); on timeout the child continues and its unread result is delivered automatically.",
     "Unread background results are delivered automatically after your current run settles. Call get_subagent_result with wait=true once only to join within this run; never poll.",
     "Continue a subagent with resume instead of starting a new one, and do not duplicate work already delegated.",
     "Use abort_subagent to stop a subagent whose task became obsolete or is going wrong.",
@@ -268,7 +270,7 @@ export function createSubagentExtension(
         name: "Agent",
         exposure: "model-only",
         label: "Agent",
-        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results notify the parent after its current run settles. Use foreground mode when no useful work can continue without the result; timeout_ms bounds that wait (default 5 minutes, maximum 30), then the child continues and reports automatically.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
+        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results notify the parent after its current run settles. Use foreground mode when no useful work can continue without the result; timeout_ms bounds that wait (default and maximum 30 minutes), then the child continues and reports automatically.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
         promptSnippet: "Delegate a focused task to an inspectable subagent session; see <delegation> for when",
         executionMode: "parallel",
         parameters: Type.Object({
@@ -280,7 +282,7 @@ export function createSubagentExtension(
             maxItems: MAX_SUBAGENT_INPUT_FILES,
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
-          timeout_ms: waitTimeoutParameter(),
+          timeout_ms: waitTimeoutParameter(DEFAULT_FOREGROUND_WAIT_TIMEOUT_MS),
           run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results notify the parent after its current run settles." })),
           model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>. Omit to use the profile's default model; pass only when the user asks for a model. New sessions only; omit with resume." })),
           thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max. Omit to use the profile's default thinking; pass only when the user asks for a level. New sessions only; omit with resume." })),
@@ -346,7 +348,7 @@ export function createSubagentExtension(
             };
           }
 
-          const run = await waitWithinBudget(execution.completion, Date.now() + (params.timeout_ms ?? DEFAULT_RESULT_WAIT_TIMEOUT_MS), signal);
+          const run = await waitWithinBudget(execution.completion, Date.now() + (params.timeout_ms ?? DEFAULT_FOREGROUND_WAIT_TIMEOUT_MS), signal);
           if (run === WAIT_TIMEOUT) {
             execution.deferResult();
             return {
@@ -372,7 +374,7 @@ export function createSubagentExtension(
         parameters: Type.Object({
           agent_id: Type.String({ description: "Subagent session ID." }),
           wait: Type.Optional(Type.Boolean({ description: "Wait until the subagent finishes." })),
-          timeout_ms: waitTimeoutParameter(),
+          timeout_ms: waitTimeoutParameter(DEFAULT_RESULT_WAIT_TIMEOUT_MS),
         }),
         async execute(_toolCallId, params, signal, _onUpdate, ctx) {
           const parentSessionId = ctx.sessionManager.getSessionId();
