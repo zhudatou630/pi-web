@@ -724,17 +724,19 @@ function enqueueSubagentRun(
   }
 
   let terminalSettled = false;
+  let terminalPersisted = false;
   let removeAbortListener = () => {};
   const settle = (result: SubagentRunInfo): SubagentRunInfo => {
     if (terminalSettled) return stored.run;
     terminalSettled = true;
     removeAbortListener();
     const terminal = commitSubagentTerminal(context.manager, result);
+    terminalPersisted = terminal.persisted;
     stored.run = terminal.run;
     try { options.onUpdate?.(stored.run); } catch { /* observers must not rewrite the terminal result */ }
     if (runs.get(stored.run.sessionId) === stored) runs.delete(stored.run.sessionId);
     try { dependencies.invalidateSessionList(); } catch { /* cache invalidation is best effort */ }
-    if (options.runInBackground && stored.waveKey) {
+    if (stored.waveKey) {
       if (terminal.persisted) settleBackgroundWave(dependencies, stored.waveKey, stored.run);
       else abandonBackgroundWave(stored.waveKey);
     }
@@ -775,6 +777,19 @@ function enqueueSubagentRun(
     resolveCompletion(result);
   };
 
+  const execution: SubagentExecution = {
+    get run() { return stored.run; },
+    completion,
+    deferResult() {
+      removeAbortListener();
+      if (stored.waveKey || (terminalSettled && !terminalPersisted)) return;
+      stored.waveKey = options.waveKey;
+      attachBackgroundWave(options.waveKey, options.parentSessionId, stored.run);
+      // Completion can win the race just after the wait timer fires.
+      if (terminalSettled) settleBackgroundWave(dependencies, options.waveKey, stored.run);
+    },
+  };
+
   let queued: ReturnType<SubagentQueue<SubagentRunInfo>["enqueue"]>;
   try {
     queued = getSubagentQueue().enqueue(
@@ -791,7 +806,7 @@ function enqueueSubagentRun(
   } catch (error) {
     const result = settle(failedRun(stored.run, error));
     resolveCompletion(result);
-    return { run: result, completion };
+    return execution;
   }
 
   stored.cancelQueued = queued.cancel;
@@ -801,7 +816,7 @@ function enqueueSubagentRun(
     const result = settle(failedRun(stored.run, error));
     resolveCompletion(result);
   });
-  return { run: stored.run, completion };
+  return execution;
 }
 
 const SUBAGENT_SKILL_CATALOG_TYPE = "pi-web:subagent-skill-catalog";

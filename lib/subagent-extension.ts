@@ -19,6 +19,32 @@ const HOST_SUBAGENT_EXTENSION_PATH = `<inline:${HOST_SUBAGENT_EXTENSION_NAME}>`;
 const SUBAGENT_TOOL_NAMES = new Set<string>(SUBAGENT_CONTROL_TOOL_NAMES);
 const LEGACY_SUBAGENT_PACKAGE_NAME = "pi-subagents";
 const DEFAULT_RESULT_WAIT_TIMEOUT_MS = 5 * 60_000;
+const MAX_WAIT_TIMEOUT_MS = 30 * 60_000;
+const WAIT_TIMEOUT = Symbol("subagent-wait-timeout");
+const waitTimeoutParameter = () => Type.Optional(Type.Number({
+  description: "Maximum wait in milliseconds. Default: 300000; maximum: 1800000. A timeout does not stop the subagent.",
+  minimum: 1,
+  maximum: MAX_WAIT_TIMEOUT_MS,
+}));
+
+async function waitWithinBudget<T>(work: Promise<T>, deadline: number, signal?: AbortSignal): Promise<T | typeof WAIT_TIMEOUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<typeof WAIT_TIMEOUT>((resolve, reject) => {
+        timer = setTimeout(() => resolve(WAIT_TIMEOUT), Math.max(0, deadline - Date.now()));
+        onAbort = () => reject(new Error("Result wait aborted"));
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
+  }
+}
 
 export interface SubagentToolDetails {
   kind: "pi-web-subagent";
@@ -63,6 +89,8 @@ export interface ResumeSubagentRequest {
 export interface SubagentExecution {
   run: SubagentRunInfo;
   completion: Promise<SubagentRunInfo>;
+  /** Stop linking parent cancellation and deliver the unread result via its wave. */
+  deferResult(): void;
 }
 
 export interface SubagentExtensionRuntime {
@@ -105,7 +133,7 @@ export function subagentDelegationSection(profiles: readonly SubagentProfile[]):
   if (names.includes("plan")) rules.push("`plan`: before a large change spanning many files or steps.");
   rules.push(
     "Use several background Agent calls in one response for independent work. Parallel implementation only on non-overlapping files, or with isolation: \"worktree\".",
-    "Use a foreground call when the next step cannot proceed without the result.",
+    "Use a foreground call when the next step cannot proceed without the result. Foreground waits use timeout_ms (default 5 minutes, maximum 30); on timeout the child continues and its unread result is delivered automatically.",
     "Unread background results are delivered automatically after your current run settles. Call get_subagent_result with wait=true once only to join within this run; never poll.",
     "Continue a subagent with resume instead of starting a new one, and do not duplicate work already delegated.",
     "Use abort_subagent to stop a subagent whose task became obsolete or is going wrong.",
@@ -240,7 +268,7 @@ export function createSubagentExtension(
         name: "Agent",
         exposure: "model-only",
         label: "Agent",
-        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results notify the parent after its current run settles. Use foreground mode when no useful work can continue without the result.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
+        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results notify the parent after its current run settles. Use foreground mode when no useful work can continue without the result; timeout_ms bounds that wait (default 5 minutes, maximum 30), then the child continues and reports automatically.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
         promptSnippet: "Delegate a focused task to an inspectable subagent session; see <delegation> for when",
         executionMode: "parallel",
         parameters: Type.Object({
@@ -252,6 +280,7 @@ export function createSubagentExtension(
             maxItems: MAX_SUBAGENT_INPUT_FILES,
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
+          timeout_ms: waitTimeoutParameter(),
           run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results notify the parent after its current run settles." })),
           model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>. Omit to use the profile's default model; pass only when the user asks for a model. New sessions only; omit with resume." })),
           thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max. Omit to use the profile's default thinking; pass only when the user asks for a level. New sessions only; omit with resume." })),
@@ -317,7 +346,14 @@ export function createSubagentExtension(
             };
           }
 
-          const run = await execution.completion;
+          const run = await waitWithinBudget(execution.completion, Date.now() + (params.timeout_ms ?? DEFAULT_RESULT_WAIT_TIMEOUT_MS), signal);
+          if (run === WAIT_TIMEOUT) {
+            execution.deferResult();
+            return {
+              content: [{ type: "text", text: `Wait timed out. Subagent ${execution.run.sessionId} continues in background; its unread result will be delivered automatically after your current run settles. Do not poll.` }],
+              details: subagentToolDetails(execution.run),
+            };
+          }
           // The early background failure is already queued as unread; this result delivers it.
           if (run.runInBackground) runtime.consume(ctx.sessionManager.getSessionId(), run);
           return {
@@ -332,33 +368,37 @@ export function createSubagentExtension(
         name: "get_subagent_result",
         exposure: "model-only",
         label: "Get agent result",
-        description: "Retrieve a subagent's result, e.g. to re-read an earlier one. Unread background results are delivered automatically after your current run settles; use wait=true once only to join within this run. Do not poll.",
+        description: "Retrieve a subagent's result, e.g. to re-read an earlier one. Unread background results are delivered automatically after your current run settles; use wait=true once only to join within this run. timeout_ms bounds the entire lookup and wait; it does not stop the child. Do not poll.",
         parameters: Type.Object({
           agent_id: Type.String({ description: "Subagent session ID." }),
           wait: Type.Optional(Type.Boolean({ description: "Wait until the subagent finishes." })),
-          timeout_ms: Type.Optional(Type.Number({
-            description: "Maximum wait in milliseconds. Default: 300000.",
-            minimum: 1,
-            maximum: 30 * 60_000,
-          })),
+          timeout_ms: waitTimeoutParameter(),
         }),
         async execute(_toolCallId, params, signal, _onUpdate, ctx) {
           const parentSessionId = ctx.sessionManager.getSessionId();
-          let run = await runtime.get(parentSessionId, params.agent_id);
-          if (!run) throw notFound(ctx, params.agent_id);
           const timeoutMs = params.timeout_ms ?? DEFAULT_RESULT_WAIT_TIMEOUT_MS;
           const deadline = Date.now() + timeoutMs;
+          let run: SubagentRunInfo | null = null;
+          const read = () => params.wait
+            ? waitWithinBudget(runtime.get(parentSessionId, params.agent_id), deadline, signal)
+            : runtime.get(parentSessionId, params.agent_id);
+          const timedOut = () => ({
+            content: [{ type: "text" as const, text: run
+              ? `Subagent ${run.sessionId} is still ${run.status} after waiting ${timeoutMs}ms.`
+              : `Timed out waiting ${timeoutMs}ms for subagent ${params.agent_id}. Its result lookup is still pending.` }],
+            details: run ? subagentToolDetails(run) : undefined,
+          });
+          const first = await read();
+          if (first === WAIT_TIMEOUT) return timedOut();
+          run = first;
+          if (!run) throw notFound(ctx, params.agent_id);
           while (params.wait && (run.status === "starting" || run.status === "queued" || run.status === "running")) {
             const remainingMs = deadline - Date.now();
-            if (remainingMs <= 0) {
-              return {
-                content: [{ type: "text", text: `Subagent ${run.sessionId} is still ${run.status} after waiting ${timeoutMs}ms.` }],
-                details: subagentToolDetails(run),
-              };
-            }
+            if (remainingMs <= 0) return timedOut();
             await new Promise<void>((resolve, reject) => {
               const onAbort = () => {
                 clearTimeout(timer);
+                signal?.removeEventListener("abort", onAbort);
                 reject(new Error("Result wait aborted"));
               };
               const timer = setTimeout(() => {
@@ -368,7 +408,10 @@ export function createSubagentExtension(
               if (signal?.aborted) onAbort();
               else signal?.addEventListener("abort", onAbort, { once: true });
             });
-            run = await runtime.get(parentSessionId, params.agent_id);
+            if (Date.now() >= deadline) return timedOut();
+            const next = await read();
+            if (next === WAIT_TIMEOUT) return timedOut();
+            run = next;
             if (!run) throw new Error(`Subagent not found: ${params.agent_id}`);
           }
           if (run.status !== "starting" && run.status !== "queued" && run.status !== "running") {
