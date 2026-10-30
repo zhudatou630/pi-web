@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionIdsWithUnsettledSubagents } from "@/lib/subagent-runtime";
 import { getSessionListVersion } from "@/lib/session-reader";
 import {
   getAwaitingInputRpcSessionIds,
@@ -13,6 +14,7 @@ export async function GET() {
   return NextResponse.json(
     {
       sessionListVersion: getSessionListVersion(),
+      subagentsActiveSessionIds: getSessionIdsWithUnsettledSubagents(),
       runningSessionIds: getRunningRpcSessionIds(),
       awaitingInputSessionIds: getAwaitingInputRpcSessionIds(),
       completionNotificationSuppressedSessionIds: getCompletionNotificationSuppressedRpcSessionIds(),

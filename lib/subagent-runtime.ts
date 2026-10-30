@@ -446,6 +446,22 @@ function removeEmptySubagentWave(waveKey: string, wave: BackgroundWave): void {
   getSubagentWaves().delete(waveKey);
 }
 
+export function hasUnsettledSubagents(parentSessionId: string): boolean {
+  if (getSubagentNotificationParents().has(parentSessionId)) return true;
+  for (const wave of getSubagentWaves().values()) {
+    if (wave.parentSessionId === parentSessionId && (wave.pending > 0 || wave.results.size > 0)) return true;
+  }
+  return false;
+}
+
+export function getSessionIdsWithUnsettledSubagents(): string[] {
+  const ids = new Set(getSubagentNotificationParents());
+  for (const wave of getSubagentWaves().values()) {
+    if (wave.pending > 0 || wave.results.size > 0) ids.add(wave.parentSessionId);
+  }
+  return [...ids];
+}
+
 function pendingParentNotificationRuns(parentSessionId: string): SubagentRunInfo[] {
   const pending: SubagentRunInfo[] = [];
   for (const wave of getSubagentWaves().values()) {
@@ -591,6 +607,15 @@ function flushParentNotifications(
   }
 
   const notificationId = randomUUID();
+  let started = false;
+  // sendCustomMessage may resolve after the reply, or before a deferred turn starts.
+  // Hand completion back to the parent's run only at its actual agent_start.
+  const unsubscribe = parent.inner.subscribe((event) => {
+    if (event.type !== "agent_start") return;
+    started = true;
+    inFlightParents.delete(parentSessionId);
+    unsubscribe();
+  });
   const delivery = parent.inner.sendCustomMessage({
     customType: "pi-web:subagent-notification",
     content: notification.text,
@@ -608,6 +633,10 @@ function flushParentNotifications(
   let continueFlush = true;
   void delivery.catch((error) => {
     continueFlush = parentHasSubagentNotification(parent, notificationId);
+    if (!started) {
+      unsubscribe();
+      inFlightParents.delete(parentSessionId);
+    }
     if (!continueFlush && parent.isAlive() && !parent.isClosing()) {
       const waves = getSubagentWaves();
       for (const reservation of reservations) {
@@ -618,7 +647,6 @@ function flushParentNotifications(
     }
     console.error("[pi-web] failed to notify parent of subagent results:", error instanceof Error ? error.message : error);
   }).finally(() => {
-    inFlightParents.delete(parentSessionId);
     if (continueFlush) queueMicrotask(() => flushParentNotifications(dependencies, parentSessionId));
   });
   return parent.isRunning();

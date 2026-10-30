@@ -1398,7 +1398,7 @@ export function AppShell() {
   const handleAutoNameRef = useRef<(options?: { sessionId?: string }) => Promise<void>>(undefined);
   const namingSessionIdsRef = useRef<Set<string>>(new Set());
 
-  const handleAgentEnd = useCallback((paneSession?: SessionInfo | null, end?: { aborted: boolean }) => {
+  const handleAgentEnd = useCallback((paneSession?: SessionInfo | null, end?: { aborted: boolean; subagentsActive?: boolean }) => {
     // The sidebar's reload merges the selected session's new row into it
     // (the sessionCatalog effect), so no list fetch of its own here.
     setRefreshKey((k) => k + 1);
@@ -1421,7 +1421,7 @@ export function AppShell() {
     }
 
     if (targetSession?.relation?.kind === "subagent") return;
-    if (end?.aborted) return;
+    if (end?.aborted || end?.subagentsActive) return;
     if (!shouldShowBrowserNotification()) return;
 
     deliverSessionNotification({

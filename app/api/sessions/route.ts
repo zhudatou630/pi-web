@@ -18,6 +18,7 @@ import {
 } from "@/lib/rpc-manager";
 import { readSidebarState, updateSidebarState, updateProjectOrder, updateProjectName, SESSION_ID_PATTERN } from "@/lib/sidebar-state";
 import { isProjectKey, isProjectOrderUpdate, projectDisplayName } from "@/lib/project-groups";
+import { getSessionIdsWithUnsettledSubagents } from "@/lib/subagent-runtime";
 import { listSessionFamilies, familyHasMemberIn } from "@/lib/session-family";
 
 export const dynamic = "force-dynamic";
@@ -124,6 +125,7 @@ export async function GET(req: Request) {
         archivedSessionIds: sidebarState.archived,
         projectOrder: sidebarState.projectOrder ?? [],
         projectNames: sidebarState.projectNames ?? {},
+        subagentsActiveSessionIds: getSessionIdsWithUnsettledSubagents(),
         runningSessionIds: getRunningRpcSessionIds(),
         awaitingInputSessionIds: getAwaitingInputRpcSessionIds(),
         completionNotificationSuppressedSessionIds: getCompletionNotificationSuppressedRpcSessionIds(),

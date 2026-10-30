@@ -54,7 +54,7 @@ import {
   subagentToolOptions,
   SUBAGENT_CONTROL_TOOL_NAMES,
 } from "./subagents";
-import { createSubagentController, createSubagentShellTools, getActiveSubagentRuns, isSubagentQueued } from "./subagent-runtime";
+import { createSubagentController, createSubagentShellTools, getActiveSubagentRuns, hasUnsettledSubagents, isSubagentQueued } from "./subagent-runtime";
 import { isSubagentsEnabledForProject } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
@@ -495,7 +495,7 @@ export class AgentSessionWrapper {
           console.error("[pi-web] failed to persist model timing:", error instanceof Error ? error.message : error);
         }
       }
-      this.emit(event);
+      this.emit(event.type === "agent_settled" ? this.withSubagentsActive(event) : event);
       if (event.type === "agent_settled") this.notifyAgentRunCompleteIfIdle();
     });
     this.resetIdleTimer();
@@ -512,6 +512,7 @@ export class AgentSessionWrapper {
     } catch (error) {
       console.error("[pi-web] pre-completion listener failed:", error instanceof Error ? error.message : error);
     }
+    if (hasUnsettledSubagents(this.sessionId)) return;
     this.agentRunNeedsCompletion = false;
     if (this.suppressCompletionNotifications) return;
     try {
@@ -519,6 +520,12 @@ export class AgentSessionWrapper {
     } catch (error) {
       console.error("[pi-web] completion listener failed:", error instanceof Error ? error.message : error);
     }
+  }
+
+  private withSubagentsActive(event: AgentEvent): AgentEvent {
+    // A report can start before the original prompt's prompt_done is emitted.
+    return hasUnsettledSubagents(this.sessionId) || this.isRunning()
+      ? { ...event, subagentsActive: true } : event;
   }
 
   beginExtensionBinding(): void {
@@ -942,7 +949,7 @@ export class AgentSessionWrapper {
             // An extension-only command (no agent_end) may have renamed the session;
             // browsers reload the list on prompt_done without forcing a rescan.
             invalidateSessionListCache();
-            if (!streamingBehavior) this.emit({ type: "prompt_done", aborted: this.lastRunAborted });
+            if (!streamingBehavior) this.emit(this.withSubagentsActive({ type: "prompt_done", aborted: this.lastRunAborted }));
           }, (error) => {
             rejectPreflight(error);
             finishPrompt();
@@ -954,7 +961,7 @@ export class AgentSessionWrapper {
                 type: "prompt_error",
                 errorMessage: error instanceof Error ? error.message : String(error),
               });
-              if (!streamingBehavior) this.emit({ type: "prompt_done", aborted: this.lastRunAborted });
+              if (!streamingBehavior) this.emit(this.withSubagentsActive({ type: "prompt_done", aborted: this.lastRunAborted }));
             }
           }).catch((error) => {
             console.error(
@@ -995,6 +1002,7 @@ export class AgentSessionWrapper {
           isStreaming: this.inner.isStreaming,
           isPromptRunning: this.pendingPromptCount > 0,
           lastRunAborted: this.lastRunAborted,
+          subagentsActive: hasUnsettledSubagents(this.sessionId),
           isBashRunning: this.inner.isBashRunning,
           isCompacting: this.inner.isCompacting,
           autoCompactionEnabled: this.inner.autoCompactionEnabled,
@@ -2448,7 +2456,8 @@ export function getAwaitingInputRpcSessionIds(): string[] {
 }
 
 export function getCompletionNotificationSuppressedRpcSessionIds(): string[] {
-  const ids = new Set<string>();
+  // Stop survives wrapper replacement and pauses reports until an accepted user prompt.
+  const ids = new Set(getPausedAutomaticFollowUps());
   for (const [sessionId, session] of getRegistry()) {
     if (session.isRunning() && session.hasSuppressedCompletionNotifications()) {
       ids.add(session.sessionId || sessionId);

@@ -799,7 +799,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [chatInputRef]);
   const soundedExtensionDialogIdRef = useRef<string | null>(null);
   const wrappedOnAgentEnd = useCallback((end: AgentEndInfo) => {
-    if (completionNotificationsEnabled && soundEnabledRef.current && !end.aborted) {
+    if (completionNotificationsEnabled && soundEnabledRef.current && !end.aborted && !end.subagentsActive) {
       playDoneSoundRef.current();
     }
     onAgentEnd?.(sessionRef.current, end);

@@ -449,6 +449,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     setFileSearchOpen(false);
   }, [explorerReveal]);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
+  const [subagentsActiveSessionIds, setSubagentsActiveSessionIds] = useState<Set<string>>(() => new Set());
   // Relative times ("5m") are minute-grained. They used to advance only because
   // every running-state poll re-rendered the list; polls that change nothing now
   // keep the same Sets, so a minute clock refreshes the labels instead.
@@ -585,6 +586,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         projectOrder?: string[];
         projectNames?: Record<string, string>;
         runningSessionIds?: string[];
+        subagentsActiveSessionIds?: string[];
         awaitingInputSessionIds?: string[];
         completionNotificationSuppressedSessionIds?: string[];
       };
@@ -602,6 +604,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         currentSuppressedCompletionSessionIdsRef.current = new Set(
           data.completionNotificationSuppressedSessionIds ?? [],
         );
+        setSubagentsActiveSessionIds((current) => sameIdSet(current, data.subagentsActiveSessionIds));
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
       }
@@ -812,6 +815,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         const data = await res.json() as {
           sessionListVersion: number;
           runningSessionIds?: string[];
+          subagentsActiveSessionIds?: string[];
           awaitingInputSessionIds?: string[];
           completionNotificationSuppressedSessionIds?: string[];
         };
@@ -820,6 +824,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         currentSuppressedCompletionSessionIdsRef.current = new Set(
           data.completionNotificationSuppressedSessionIds ?? [],
         );
+        setSubagentsActiveSessionIds((current) => sameIdSet(current, data.subagentsActiveSessionIds));
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
         if (data.sessionListVersion !== sessionListVersionRef.current) {
@@ -871,23 +876,26 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
+    // Only completion/read tracking uses this union; Stop and running indicators do not.
+    const pendingCompletionIds = new Set([...runningSessionIds, ...subagentsActiveSessionIds]);
     // A session shown in either split pane counts as read when it finishes.
     const visibleIds = new Set(visibleSessionKey.split("\n"));
-    const completedInBackground = [...previous].filter((id) => !runningSessionIds.has(id) && !visibleIds.has(id));
+    const completedInBackground = [...previous].filter((id) => !pendingCompletionIds.has(id) && !visibleIds.has(id));
     const knownSubagentIds = new Set(
       allSessions
         .filter((session) => session.relation?.kind === "subagent")
         .map((session) => session.id),
     );
     const completedWithNotifications = completedInBackground.filter(
-      (id) => !previousSuppressedCompletionSessionIdsRef.current.has(id) && !knownSubagentIds.has(id),
+      (id) => !previousSuppressedCompletionSessionIdsRef.current.has(id)
+        && !currentSuppressedCompletionSessionIdsRef.current.has(id) && !knownSubagentIds.has(id),
     );
-    const newlyRunning = [...runningSessionIds].filter((id) => !previous.has(id));
+    const newlyRunning = [...pendingCompletionIds].filter((id) => !previous.has(id));
 
     if (completedWithNotifications.length > 0 || newlyRunning.length > 0) {
       setUnreadSessionIds((prev) => {
         const next = new Set(prev);
-        runningSessionIds.forEach((id) => next.delete(id));
+        pendingCompletionIds.forEach((id) => next.delete(id));
         completedWithNotifications.forEach((id) => next.add(id));
         return next;
       });
@@ -903,13 +911,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
       onBackgroundTaskDone?.(completedWithNotifications);
     }
 
-    previousRunningSessionIdsRef.current = runningSessionIds;
+    previousRunningSessionIdsRef.current = pendingCompletionIds;
     previousSuppressedCompletionSessionIdsRef.current = new Set(
-      [...runningSessionIds].filter(
+      [...pendingCompletionIds].filter(
         (id) => currentSuppressedCompletionSessionIdsRef.current.has(id) || knownSubagentIds.has(id),
       ),
     );
-  }, [runningSessionIds, visibleSessionKey, allSessions, loadSessions, onBackgroundTaskDone]);
+  }, [runningSessionIds, subagentsActiveSessionIds, visibleSessionKey, allSessions, loadSessions, onBackgroundTaskDone]);
 
   useEffect(() => {
     if (!visibleSessionKey) return;

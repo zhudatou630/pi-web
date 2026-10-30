@@ -86,6 +86,53 @@ test("unread storage updates replace stale markers without echoing writes", () =
   assert.equal(listeners.size, 0);
 });
 
+test("background completion waits across waves, respects Stop, and treats either pane as read", () => {
+  const start = source.indexOf("  useEffect(() => {\n    const previous = previousRunningSessionIdsRef.current;");
+  const code = source.slice(start, source.indexOf("  useEffect(() => {\n    if (!visibleSessionKey)", start));
+  for (const visibleSessionKey of ["", "primary\nparent", "parent\nsecondary"]) {
+    let unread = new Set();
+    const notices = [];
+    const context = vm.createContext({
+      Set, visibleSessionKey, runningSessionIds: new Set(), subagentsActiveSessionIds: new Set(),
+      previousRunningSessionIdsRef: { current: new Set() },
+      currentSuppressedCompletionSessionIdsRef: { current: new Set() },
+      previousSuppressedCompletionSessionIdsRef: { current: new Set() },
+      allSessions: [{ id: "parent" }, { id: "child", relation: { kind: "subagent" } }],
+      setUnreadSessionIds: (update) => { unread = update(unread); },
+      loadSessions() {}, onBackgroundTaskDone: (ids) => notices.push([...ids]),
+      useEffect: (effect) => effect(),
+    });
+    const poll = (running, unsettled, suppressed = ["child"]) => {
+      context.runningSessionIds = new Set(running);
+      context.subagentsActiveSessionIds = new Set(unsettled);
+      context.currentSuppressedCompletionSessionIdsRef.current = new Set(suppressed);
+      vm.runInContext(code, context);
+    };
+    poll(["parent", "child"], ["parent"]);
+    poll(["child"], ["parent"]); // Main idle, child active.
+    poll([], ["parent"]); // Finished result waiting for delivery.
+    poll(["parent"], []); // Parent answers the last report.
+    assert.deepEqual([...unread], []);
+    assert.deepEqual(notices, []);
+    poll([], []);
+    assert.deepEqual([...unread], visibleSessionKey ? [] : ["parent"]);
+    assert.deepEqual(notices, visibleSessionKey ? [] : [["parent"]]);
+    poll([], []);
+    assert.equal(notices.length, visibleSessionKey ? 0 : 1);
+
+    // No subagent: the original running -> idle behavior remains.
+    poll(["parent"], []); poll([], []);
+    assert.equal(notices.length, visibleSessionKey ? 0 : 2);
+    // Stop and later child completion stay silent, including an idle snapshot.
+    poll(["parent", "child"], ["parent"]);
+    poll(["child"], ["parent"], ["parent", "child"]);
+    poll([], ["parent"], ["parent"]);
+    poll([], [], ["parent"]);
+    assert.deepEqual([...unread], []);
+    assert.equal(notices.length, visibleSessionKey ? 0 : 2);
+  }
+});
+
 test("returning to a tab clears unread markers another tab set on its visible session", () => {
   const start = source.indexOf("  useEffect(() => {\n    if (!visibleSessionKey) return;");
   const code = source.slice(start, source.indexOf("  useEffect(() => {\n    if (explorerRefreshKey", start));

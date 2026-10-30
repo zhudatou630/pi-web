@@ -97,6 +97,7 @@ type AgentStateResponse = {
   isStreaming?: boolean;
   isPromptRunning?: boolean;
   lastRunAborted?: boolean;
+  subagentsActive?: boolean;
   isBashRunning?: boolean;
   isCompacting?: boolean;
   autoCompactionEnabled?: boolean;
@@ -212,6 +213,8 @@ export type BuiltinSlashCommandResult =
 export interface AgentEndInfo {
   /** A stopped run is not a finished task. */
   aborted: boolean;
+  /** Background work or an undelivered wave still keeps this task open. */
+  subagentsActive?: boolean;
 }
 
 export interface UseAgentSessionOptions {
@@ -1160,10 +1163,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     return wasRunning;
   }, [flushStreamDeltas]);
 
-  const notifyPromptStage = useCallback((runId: number, aborted = false) => {
+  const notifyPromptStage = useCallback((runId: number, aborted = false, subagentsActive = false) => {
     if (notifiedPromptRunIdRef.current === runId) return false;
     notifiedPromptRunIdRef.current = runId;
-    onAgentEnd?.({ aborted });
+    onAgentEnd?.({ aborted, subagentsActive });
     return true;
   }, [onAgentEnd]);
 
@@ -1229,7 +1232,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     eventStreamGraceTimerRef.current = setTimeout(() => void checkServerIdle(), EVENT_STREAM_IDLE_GRACE_MS);
   }, [cancelEventStreamGrace, closeEvents]);
 
-  const finishPromptWithoutStream = useCallback(async (sid: string | null = sessionIdRef.current, runId = promptRunIdRef.current, aborted = false) => {
+  const finishPromptWithoutStream = useCallback(async (sid: string | null = sessionIdRef.current, runId = promptRunIdRef.current, aborted = false, subagentsActive = false) => {
     // Bail out before loadSession too: a stale finish for a previous run
     // must not overwrite the messages of the run currently streaming.
     if (promptRunIdRef.current !== runId) return;
@@ -1244,9 +1247,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       optimisticUserMessageKeyRef.current = null;
       const wasRunning = settleUiStage();
       if (promptWasPending) {
-        notifyPromptStage(runId, aborted);
+        notifyPromptStage(runId, aborted, subagentsActive);
       } else if (agentWasActive && wasRunning) {
-        onAgentEnd?.({ aborted });
+        onAgentEnd?.({ aborted, subagentsActive });
       }
       if (sid) scheduleEventStreamClose(sid);
     }
@@ -1264,7 +1267,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
           const state = data.state;
           if (!data.running || !state || (!state.isStreaming && !state.isPromptRunning)) {
-            await finishPromptWithoutStream(sid, runId, state?.lastRunAborted === true);
+            await finishPromptWithoutStream(sid, runId, state?.lastRunAborted === true, state?.subagentsActive === true);
             return;
           }
         }
@@ -1342,7 +1345,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return;
       }
       if (!agentRunningRef.current) return;
-      await finishPromptWithoutStream(sid, runId, state?.lastRunAborted === true);
+      await finishPromptWithoutStream(sid, runId, state?.lastRunAborted === true, state?.subagentsActive === true);
       // Recover the prompt refresh too when agent_end was missed, not on every poll.
       if (state) {
         const fullRes = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
@@ -1497,7 +1500,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           void loadSession(sid);
           scheduleEventStreamClose(sid);
         }
-        if (wasRunning) onAgentEnd?.({ aborted: event.aborted === true });
+        if (wasRunning) onAgentEnd?.({ aborted: event.aborted === true, subagentsActive: event.subagentsActive === true });
         break;
       }
       case "prompt_done":
@@ -1508,7 +1511,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           // Keep optimisticUserMessageKeyRef: an extension command's
           // pi.sendUserMessage() run starts after prompt_done, and its user
           // message_end must replace the command bubble (/x -> /skill:x).
-          const firstNotification = notifyPromptStage(runId, event.aborted === true);
+          const firstNotification = notifyPromptStage(runId, event.aborted === true, event.subagentsActive === true);
           if (!promptWasPending && !firstNotification) break;
 
           const sid = sessionIdRef.current;

@@ -76,8 +76,8 @@ test("keeps the session event stream open through the idle grace window", () => 
   assert.doesNotMatch(agentEndSource, /closeEvents\(\)/);
   assert.match(agentStartSource, /cancelEventStreamGrace\(\)/);
   assert.match(agentSettledSource, /scheduleEventStreamClose\(sid\)/);
-  assert.match(agentSettledSource, /onAgentEnd\?\.\(\{ aborted: event\.aborted === true \}\)/);
-  assert.match(promptDoneSource, /notifyPromptStage\(runId, event\.aborted === true\)/);
+  assert.match(agentSettledSource, /onAgentEnd\?\.\(\{ aborted: event\.aborted === true, subagentsActive: event\.subagentsActive === true \}\)/);
+  assert.match(promptDoneSource, /notifyPromptStage\(runId, event\.aborted === true, event\.subagentsActive === true\)/);
   assert.match(promptDoneSource, /scheduleEventStreamClose\(sid\)/);
   assert.match(sendSource, /const definitivelyRejected = !promptRequestStarted/);
   assert.match(sendSource, /if \(!definitivelyRejected && sentSessionId\) \{[\s\S]*?waitForPromptSettlement/);
@@ -90,7 +90,7 @@ test("keeps the session event stream open through the idle grace window", () => 
   );
 });
 
-test("stopped runs still refresh the UI but never play the done sound or notify the browser", () => {
+test("stopped and unsettled-family runs refresh the UI but never play the done sound or notify the browser", () => {
   const wrapper = chatWindowSource.slice(
     chatWindowSource.indexOf("  const wrappedOnAgentEnd = useCallback"),
     chatWindowSource.indexOf("  const wrappedOnAttentionNeeded"),
@@ -98,7 +98,7 @@ test("stopped runs still refresh the UI but never play the done sound or notify 
   const browser = appShellSource.slice(
     appShellSource.indexOf("  const handleAgentEnd = useCallback"),
     appShellSource.indexOf("  const handleAttentionNeeded"),
-  ).replace("(paneSession?: SessionInfo | null, end?: { aborted: boolean })", "(paneSession, end)");
+  ).replace("(paneSession?: SessionInfo | null, end?: { aborted: boolean; subagentsActive?: boolean })", "(paneSession, end)");
   let sounds = 0;
   let notifications = 0;
   let refreshes = 0;
@@ -118,12 +118,16 @@ test("stopped runs still refresh the UI but never play the done sound or notify 
   assert.equal(refreshes, 1);
   assert.equal(sounds, 0);
   assert.equal(notifications, 0);
-  end({ aborted: false });
+  end({ aborted: false, subagentsActive: true });
   assert.equal(refreshes, 2);
+  assert.equal(sounds, 0);
+  assert.equal(notifications, 0);
+  end({ aborted: false, subagentsActive: false });
+  assert.equal(refreshes, 3);
   assert.equal(sounds, 1);
   assert.equal(notifications, 1);
-  assert.match(source, /onAgentEnd\?\.\(\{ aborted \}\)/);
-  assert.match(source, /finishPromptWithoutStream\(sid, runId, state\?\.lastRunAborted === true\)/);
+  assert.match(source, /onAgentEnd\?\.\(\{ aborted, subagentsActive \}\)/);
+  assert.match(source, /finishPromptWithoutStream\(sid, runId, state\?\.lastRunAborted === true, state\?\.subagentsActive === true\)/);
 });
 
 test("every SSE handshake reloads missed history, whether the agent is busy or idle", () => {
