@@ -61,7 +61,7 @@ Browser                Next.js Server              AgentSession (in-process)
 
 ### AgentSession lifecycle (`lib/rpc-manager.ts`)
 - One `AgentSessionWrapper` per session id in `globalThis.__piSessions` (`globalThis` survives hot reload; a module-level Map does not). Concurrent `startRpcSession()` calls share one start Promise (`globalThis.__piStartLocks`).
-- Idle timeout 10 min (`PI_WEB_IDLE_TIMEOUT_MS`). Visible-pane SSE subscribes with `onEvent(listener, keepAlive=true)` and keeps the runtime alive (also needed for extension UI dialogs); unviewed idle runtimes are disposed and recreated from `session_start` replay.
+- Idle timeout 10 min (`PI_WEB_IDLE_TIMEOUT_MS`). Every open chat tab renews that wrapper's idle countdown every 30 s (never starts a runtime or moves Stop's forced deadline); there is no separate browser-lease TTL. Visible-pane SSE subscribes with `onEvent(listener, keepAlive=true)` and keeps the runtime alive (also needed for extension UI dialogs); unviewed idle runtimes are disposed and recreated from `session_start` replay.
 - Stop always aborts work; observer lifetime must not block abort.
 - `lib/retry-stream-drops.ts` wraps pi's private `AgentSession._isRetryableError` to also retry relay HTTP/2 stream drops; `lib/retry-stream-drops.test.mjs` fails if the SDK renames it.
 

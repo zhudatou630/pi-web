@@ -674,6 +674,13 @@ export class AgentSessionWrapper {
     return release;
   }
 
+  /** Browser renewals use the wrapper's one idle clock, never Stop's forced deadline. */
+  renewIdleTimer(): boolean {
+    if (!this.isAlive() || this.forceShutdownOnIdle) return false;
+    this.resetIdleTimer();
+    return true;
+  }
+
   private resetIdleTimer(): void {
     if (!this._alive || this._closing) {
       if (this.idleTimer) clearTimeout(this.idleTimer);

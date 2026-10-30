@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 const SESSION_LEASE_RENEW_INTERVAL_MS = 30_000;
 
-/** Heartbeat for every mounted session ChatWindow. Closed tabs expire after the 90s TTL. */
+/** Renew the idle countdown for every open chat tab, not only the focused pane. */
 export function useOpenSessionLeases(sessionIds: readonly string[]): void {
   const sessionIdsKey = sessionIds.join(",");
 
