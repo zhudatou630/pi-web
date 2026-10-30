@@ -680,8 +680,9 @@ export class AgentSessionWrapper {
 
   private queuedMessages() {
     return {
-      steering: [...this.inner.getSteeringMessages(), ...this.compactionQueue.filter((item) => item.command.streamingBehavior !== "followUp").map((item) => item.command.message as string)],
-      followUp: [...this.inner.getFollowUpMessages(), ...this.compactionQueue.filter((item) => item.command.streamingBehavior === "followUp").map((item) => item.command.message as string)],
+      steering: [...this.inner.getSteeringMessages(), ...this.compactionQueue.filter((item) => item.command.streamingBehavior === "steer").map((item) => item.command.message as string)],
+      // A parked plain prompt runs after the compaction, so it reads as a follow-up rather than a steer.
+      followUp: [...this.inner.getFollowUpMessages(), ...this.compactionQueue.filter((item) => item.command.streamingBehavior !== "steer").map((item) => item.command.message as string)],
     };
   }
 
@@ -690,7 +691,7 @@ export class AgentSessionWrapper {
     const pending = this.compactionQueue;
     this.compactionQueue = [];
     for (const item of pending) {
-      recalled[item.command.streamingBehavior === "followUp" ? "followUp" : "steering"].push({
+      recalled[item.command.streamingBehavior === "steer" ? "steering" : "followUp"].push({
         text: item.command.message as string,
         images: (item.command.images as PromptImage[] | undefined) ?? [],
       });
