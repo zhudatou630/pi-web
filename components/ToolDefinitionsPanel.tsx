@@ -264,9 +264,9 @@ function ToolDefinitionsPanel({ loading, translate, browser }: Omit<Props, "tool
           min-height: 0;
           flex-direction: column;
         }
+        /* One surface with the detail pane (as the settings nav): only the rule divides them. */
         .tool-definitions-sidebar {
           border-right: 1px solid var(--border);
-          background: var(--bg-panel);
         }
         .tool-definitions-list,
         .tool-definition-scroll {
@@ -286,7 +286,7 @@ function ToolDefinitionsPanel({ loading, translate, browser }: Omit<Props, "tool
           gap: 1px;
           padding: 6px 10px;
           border: none;
-          border-radius: var(--ui-radius-sm);
+          border-radius: var(--ui-radius-md);
           background: transparent;
           font: inherit;
           line-height: 1.4;
@@ -348,7 +348,7 @@ function ToolDefinitionsPanel({ loading, translate, browser }: Omit<Props, "tool
           line-height: 1.4;
         }
         .tool-definition-description {
-          color: var(--text-muted);
+          color: var(--text);
           font-size: 13px;
           line-height: 1.6;
           overflow-wrap: anywhere;
@@ -379,12 +379,13 @@ function ToolDefinitionsPanel({ loading, translate, browser }: Omit<Props, "tool
           color: var(--text-dim);
           font-size: 10px;
         }
+        /* Required reads by tier, not by color: the dialog keeps accent for nothing at rest. */
         .tool-definition-field-name span.required {
-          color: var(--accent);
+          color: var(--text);
         }
         .tool-definition-field-value {
           min-width: 0;
-          color: var(--text-muted);
+          color: var(--text);
           overflow-wrap: anywhere;
         }
         .tool-definition-type {
@@ -405,13 +406,13 @@ function ToolDefinitionsPanel({ loading, translate, browser }: Omit<Props, "tool
           margin: 0;
           padding-left: 18px;
           list-style: disc;
-          color: var(--text-muted);
+          color: var(--text);
           font-size: 12px;
           line-height: 1.6;
         }
         .tool-definitions-empty {
           padding: 14px 12px;
-          color: var(--text-muted);
+          color: var(--text-dim);
           font-size: 12px;
           overflow-wrap: anywhere;
         }
@@ -434,7 +435,6 @@ function ToolDefinitionsPanel({ loading, translate, browser }: Omit<Props, "tool
           }
           .tool-definitions-sidebar {
             border-right: 0;
-            background: var(--bg);
           }
           .tool-definitions-list {
             padding: 4px 16px 24px;

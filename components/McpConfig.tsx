@@ -163,7 +163,7 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
   });
 
   const remove = async (server: McpServerView) => {
-    if (!(await confirm(t("mcp.deleteConfirm", { name: server.name }), { danger: true }))) return;
+    if (!(await confirm(t("mcp.deleteConfirm", { name: server.name }), { danger: true, confirmLabel: t("i18n.delete") }))) return;
     await run(async () => {
       await request("DELETE", { scope: server.scope, name: server.name });
       forget(server.name);
@@ -578,7 +578,7 @@ function McpSignIn({ server, cwd, disabled, onChanged }: { server: McpServerView
   };
 
   const signOut = async () => {
-    if (!(await confirm(t("mcp.signOutConfirm", { name: server.name }), { danger: true }))) return;
+    if (!(await confirm(t("mcp.signOutConfirm", { name: server.name }), { danger: true, confirmLabel: t("mcp.signOut") }))) return;
     try {
       await readJson(await fetch("/api/mcp/sign-in", {
         method: "DELETE",

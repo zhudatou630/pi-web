@@ -6,6 +6,8 @@ import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import type { SessionInfo, SubagentSessionStatus } from "@/lib/types";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { SubagentIcon } from "./SubagentIcon";
+import { MenuCheck } from "./MenuCheck";
+import { iconStroke } from "./iconStroke";
 
 interface Props {
   rootSession: SessionInfo;
@@ -118,37 +120,16 @@ function AgentRow({
           onOpenInNewTab();
         }
       }}
-      style={{
-        width: "100%",
-        minHeight: 56,
-        display: "grid",
-        gridTemplateColumns: "28px minmax(0, 1fr) auto",
-        alignItems: "center",
-        gap: 9,
-        padding: "7px 12px",
-        border: "none",
-        borderBottom: "1px solid var(--border)",
-        borderLeft: selected ? "2px solid var(--accent)" : "2px solid transparent",
-        background: selected ? "var(--bg-selected)" : "transparent",
-        color: "var(--text)",
-        cursor: "pointer",
-        textAlign: "left",
-      }}
-      onMouseEnter={(event) => {
-        if (!selected) event.currentTarget.style.background = "var(--bg-hover)";
-      }}
-      onMouseLeave={(event) => {
-        if (!selected) event.currentTarget.style.background = "transparent";
-      }}
+      className="agent-row"
     >
-      <span style={{ width: 28, height: 28, display: "grid", placeItems: "center", color: main ? "var(--text-muted)" : "var(--accent)" }}>
+      <span style={{ display: "grid", placeItems: "center" }}>
         {main ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(14)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M3 9h18" />
           </svg>
         ) : (
-          <SubagentIcon size={16} />
+          <SubagentIcon size={14} />
         )}
       </span>
       <span style={{ minWidth: 0 }}>
@@ -159,15 +140,14 @@ function AgentRow({
           {secondary}
         </span>
       </span>
-      <span style={{ display: "flex", alignItems: "center", gap: 6, color: main && !running ? "var(--text-dim)" : statusColor(status), fontSize: 11, whiteSpace: "nowrap" }}>
-        {main && !running ? (
-          selected ? t("agentSwitcher.current") : null
-        ) : (
-          <>
+      <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, whiteSpace: "nowrap" }}>
+        {!(main && !running) && (
+          <span style={{ display: "flex", alignItems: "center", gap: 6, color: statusColor(status) }}>
             <StatusIcon status={status} />
             <span>{t(`agentSwitcher.status.${status}`)}</span>
-          </>
+          </span>
         )}
+        <MenuCheck checked={selected} />
       </span>
     </button>
   );
@@ -207,7 +187,7 @@ export function AgentSessionPanel({
       style={{ overflow: "hidden" }}
     >
       <div>
-        <div style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ minHeight: 40, display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderBottom: "1px solid var(--border)" }}>
           <strong style={{ fontSize: 12, fontWeight: 600 }}>{t("agentSwitcher.title")}</strong>
           <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
             {t("agentSwitcher.count", { count: subagents.length })}
@@ -219,7 +199,7 @@ export function AgentSessionPanel({
           )}
         </div>
         {subagents.length > 8 && (
-          <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
+          <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
             <input
               type="search"
               className="agent-switcher-search-input"
@@ -228,14 +208,14 @@ export function AgentSessionPanel({
               placeholder={t("agentSwitcher.search")}
               aria-label={t("agentSwitcher.search")}
               style={{
-                width: "100%", height: 32, padding: "0 10px",
+                width: "100%", height: "var(--ui-row-height)", padding: "0 10px",
                 border: "none", borderRadius: 6,
-                background: "var(--ui-field-bg)", color: "var(--text)", fontSize: 12, outline: "none",
+                background: "var(--ui-field-bg)", boxShadow: "var(--ui-field-edge)", color: "var(--text)", fontSize: 12, outline: "none",
               }}
             />
           </div>
         )}
-        <div style={{ maxHeight: "min(58dvh, 480px)", overflowY: "auto" }}>
+        <div style={{ maxHeight: "min(58dvh, 480px)", overflowY: "auto", padding: 4 }}>
           <AgentRow
             session={rootSession}
             main

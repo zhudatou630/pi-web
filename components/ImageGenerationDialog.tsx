@@ -142,7 +142,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
       <div
         onDragOver={(event) => { if (canAttachSource && event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
         onDrop={(event) => { if (canAttachSource && attachSource(event.dataTransfer.files)) event.preventDefault(); }}
-        className="flex max-h-[min(92dvh,100%)] w-full max-w-full flex-col overflow-hidden rounded-t-[16px] border border-border bg-[var(--bg-elevated)] [box-shadow:var(--ui-shadow-dialog)] sm:max-h-[calc(100dvh-2rem)] sm:w-[480px] sm:rounded-[10px]"
+        className="flex max-h-[min(92dvh,100%)] w-full max-w-full flex-col overflow-hidden rounded-t-[16px] border border-border bg-[var(--bg-elevated)] [box-shadow:var(--ui-shadow-dialog)] sm:max-h-[calc(100dvh-2rem)] sm:w-[480px] sm:rounded-[var(--ui-radius-xl)]"
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
@@ -184,7 +184,7 @@ export function ImageGenerationDialog({ config, edit, editPreviewUrl, initialSou
             onChange={(event) => setPrompt(event.target.value)}
             onPaste={(event) => { if (canAttachSource && attachSource(event.clipboardData.files)) event.preventDefault(); }}
             placeholder={editing ? t("image.editPromptPlaceholder") : t("image.promptPlaceholder")}
-            className="image-generation-prompt w-full resize-none rounded-[10px] border-0 bg-[var(--ui-field-bg)] px-3 py-2.5 leading-[1.5] text-text outline-none placeholder:text-text-dim focus:[box-shadow:var(--ui-field-ring)]"
+            className="image-generation-prompt w-full resize-none rounded-[10px] border-0 bg-[var(--ui-field-bg)] [box-shadow:var(--ui-field-edge)] px-3 py-2.5 leading-[1.5] text-text outline-none placeholder:text-text-dim focus:[box-shadow:var(--ui-field-ring)]"
             style={{ fontFamily: "var(--font-chat)", fontSize: "var(--chat-content-font-size, 14px)" }}
           />
         </div>

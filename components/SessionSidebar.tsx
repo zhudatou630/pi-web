@@ -25,11 +25,13 @@ import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { SessionSearch } from "./SessionSearch";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { SubagentIcon } from "./SubagentIcon";
+import { iconStroke } from "./iconStroke";
+import { MenuCheck } from "./MenuCheck";
 
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
 const SESSION_LIST_ITEM_HEIGHT = 26;
-/** Menu rows are 26px everywhere, phones included (app/globals.css `.menu-surface`). */
+/** Menu rows, phones included: keep equal to `--ui-row-height` in app/globals.css. */
 const MENU_ROW_HEIGHT = 26;
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
 const WORKSPACE_SESSION_PAGE_SIZE = 20;
@@ -1766,22 +1768,18 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                           <div key={wt.path} className="wt-confirm-row">
                             <span>{t("sidebar.forceRemoveCheckout")}</span>
                             <div className="project-confirm-actions">
-                              <button type="button" className="is-danger" onClick={() => void handleRemoveWorktree(wt.path, true)} disabled={wtBusy}>
-                                {t("sidebar.force")}
-                              </button>
                               <button type="button" onClick={() => setWtConfirmRemove(null)}>
                                 {t("sidebar.cancel")}
+                              </button>
+                              <button type="button" className="is-danger" onClick={() => void handleRemoveWorktree(wt.path, true)} disabled={wtBusy}>
+                                {t("sidebar.force")}
                               </button>
                             </div>
                           </div>
                         );
                       }
                       return (
-                        <div
-                          key={wt.path}
-                          className="wt-row"
-                          style={{ display: "flex", alignItems: "center" }}
-                        >
+                        <div key={wt.path} className="menu-surface-row">
                           <button
                             type="button"
                             role="menuitemradio"
@@ -1795,35 +1793,23 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                             title={wt.path}
                             style={{ flex: 1 }}
                           >
-                            {isCurrent ? (
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                                <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                              </svg>
-                            ) : (
-                              <span style={{ width: 10, flexShrink: 0 }} />
-                            )}
                             <PathLabel text={wt.branch ?? displayCwd(wt.path, homeDir)} style={{ flex: 1 }} />
                             {wt.isMain && (wt.branch ?? "").toLowerCase() !== t("sidebar.main").toLowerCase() && (
-                              <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10 }}>{t("sidebar.main")}</span>
+                              <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 11 }}>{t("sidebar.main")}</span>
                             )}
+                            <MenuCheck checked={isCurrent} />
                           </button>
-                          {!wt.isMain && (
+                          {/* Every row keeps the trailing slot so checks line up with or without remove. */}
+                          {wt.isMain ? <span className="menu-surface-row-action" aria-hidden="true" /> : (
                             <button
+                              type="button"
+                              className="menu-surface-row-action is-danger"
                               onClick={() => void handleRemoveWorktree(wt.path, false)}
                               disabled={wtBusy}
-                               title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
-                              style={{
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                width: MENU_ROW_HEIGHT, height: MENU_ROW_HEIGHT, padding: 0,
-                                background: "none", border: "none",
-                                color: "var(--text-muted)", cursor: "pointer",
-                                borderRadius: 4, flexShrink: 0,
-                                transition: "color var(--motion-fast), background var(--motion-fast)",
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--danger)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "none"; }}
+                              title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
+                              aria-label={t("sidebar.removeWorktreeTitle", { path: wt.path })}
                             >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(13)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                 <polyline points="3 6 5 6 21 6" />
                                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                                 <path d="M10 11v6M14 11v6" />
@@ -1839,6 +1825,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                     )}
                   </div>
 
+                  <div role="separator" className="menu-surface-divider" />
                   {!wtNewOpen ? (
                     <button
                       type="button"
@@ -1850,16 +1837,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                         setTimeout(() => wtNewInputRef.current?.focus(), 0);
                       }}
                       title={t("sidebar.createWorktreeTitle")}
-                      style={{ marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: "0 0 4px 4px" }}
                     >
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" style={{ flexShrink: 0 }}>
-                        <line x1="5" y1="1" x2="5" y2="9" />
-                        <line x1="1" y1="5" x2="9" y2="5" />
-                      </svg>
-                       <span>{t("sidebar.newWorktree")}</span>
+                      <span>{t("sidebar.newWorktree")}</span>
                     </button>
                   ) : (
-                    <div style={{ marginTop: 4, padding: "6px 4px 2px", borderTop: "1px solid var(--border)" }}>
+                    <div style={{ padding: "2px 4px" }}>
                       <label className="sidebar-search-field">
                         <input
                           ref={wtNewInputRef}
@@ -1997,9 +1979,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                 saveExplorerOpen(true);
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h4" /><path d="M10 5h10" /><path d="M4 12h4" /><path d="M10 12h10" /><path d="M4 19h4" /><path d="M10 19h10" /></svg>
               {t("files.explorer")}
             </button>
+            <div role="separator" className="menu-surface-divider" />
             <button
               type="button"
               role="menuitem"
@@ -2008,19 +1990,17 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                 setRenamingProjectKey(projectMenu.key);
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
               {t("sidebar.rename")}
             </button>
             {!archiveView && (["before", "after"] as const).map((position) => {
               const anchor = workspaceProjects[projectIndex + (position === "before" ? -1 : 1)];
               return <button key={position} type="button" role="menuitem" disabled={projectIndex < 0 || !anchor}
                 onClick={() => { if (anchor) moveProject(projectMenu.key, anchor.key, position); }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={position === "before" ? "m6 12 6-6 6 6M12 6v12" : "m6 12 6 6 6-6M12 18V6"} /></svg>
                 {t(position === "before" ? "sidebar.moveProjectUp" : "sidebar.moveProjectDown")}
               </button>;
             })}
+            <div role="separator" className="menu-surface-divider" />
             <button type="button" role="menuitem" disabled={selectionBusy} onClick={() => beginSelection(projectMenu.key)}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="m7 12 3 3 7-7" /></svg>
               {t("sidebar.selectSessions")}
             </button>
             {!archiveView && (
@@ -2028,7 +2008,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                 setDeleteConfirm({ kind: "archiveProject", key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
                 setProjectMenu(null);
               }}>
-                <ArchiveIcon />
                 {t("sidebar.archiveOlderThanWeek", { count: olderCount })}
               </button>
             )}
@@ -2193,7 +2172,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           }}
         >
           {singleProject && (
-            <div ref={projectDropdownScrollRef} onClickCapture={dropdownDrag.onClickCapture} style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", scrollbarWidth: "none", marginBottom: 4, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>
+            <div ref={projectDropdownScrollRef} onClickCapture={dropdownDrag.onClickCapture} style={{ maxHeight: "min(50vh, 380px)", overflowY: "auto", scrollbarWidth: "none" }}>
               <div ref={projectDropdownInnerRef} style={{ position: "relative" }}>
               <ProjectDragGhost drag={dropdownDrag} dropdown label={(() => {
                 const root = workspaceProjects.find((project) => project.key === dropdownDrag.view?.key)?.root;
@@ -2216,6 +2195,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                     >
                       <PathLabel text={projectNames.get(project.key) ?? displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
                       <SessionActivitySummary activity={activity} />
+                      <MenuCheck checked={active} />
                     </button>
                   </div>
                 );
@@ -2223,12 +2203,12 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
               </div>
             </div>
           )}
+          {singleProject && <div role="separator" className="menu-surface-divider" />}
           <button
             type="button"
             role="menuitem"
             onClick={(event) => { event.stopPropagation(); handleCustomPathClick(); }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             <span>{t("sidebar.customPath")}</span>
           </button>
         </div>
@@ -2335,7 +2315,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
               {detail && <div id="delete-project-detail">{detail}</div>}
               <div className="project-confirm-actions">
                 <button type="button" autoFocus onClick={() => setDeleteConfirm(null)}>{t("sidebar.cancel")}</button>
-                <button type="button" className={archiving ? undefined : "is-danger"} disabled={archiving && count === 0} onClick={() => {
+                <button type="button" className={archiving ? "is-primary" : "is-danger"} disabled={archiving && count === 0} onClick={() => {
                   if (archiving) {
                     setDeleteConfirm(null);
                     void updateSessionSidebarState(olderFamilies.map((family) => family.root.id), { archived: true });
@@ -3149,45 +3129,40 @@ export function SessionItem({
         className="project-context-menu menu-surface"
         style={{
           left: Math.min(menuAt.x + 2, window.innerWidth - 168),
-          top: Math.min(menuAt.y + 2, window.innerHeight - 220),
+          top: Math.min(menuAt.y + 2, window.innerHeight - 240),
         }}
       >
         {onOpenInNewTab && (
           <button type="button" role="menuitem" onClick={menuItem(onOpenInNewTab)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
             {t("chatTabs.openInNewTab")}
           </button>
         )}
+        {onOpenInNewTab && <div role="separator" className="menu-surface-divider" />}
         {onTogglePin && (
           <button type="button" role="menuitem" onClick={menuItem(onTogglePin)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
             {t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
           </button>
         )}
         <button type="button" role="menuitem" onClick={menuItem(startRename)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>
           {t("sidebar.rename")}
         </button>
         {onFork && (
           <button type="button" role="menuitem" disabled={forking || Boolean(session.transient) || session.relation?.kind === "subagent"} onClick={menuItem(onFork)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="3" /><circle cx="18" cy="5" r="3" /><circle cx="6" cy="19" r="3" /><path d="M6 8v8M18 8a6 6 0 0 1-6 6H6" /></svg>
             {t("sidebar.fork")}
           </button>
         )}
         {onToggleRead && (
           <button type="button" role="menuitem" onClick={menuItem(onToggleRead)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 6 9 7 9-7" /></svg>
             {t(isUnread ? "sidebar.markRead" : "sidebar.markUnread")}
           </button>
         )}
+        <div role="separator" className="menu-surface-divider" />
         {onToggleArchive && !session.transient && (
           <button type="button" role="menuitem" disabled={isRunning} onClick={menuItem(onToggleArchive)}>
-            <ArchiveIcon />
             {t(isArchived ? "sidebar.unarchive" : "sidebar.archive")}
           </button>
         )}
         <button type="button" role="menuitem" className="is-danger" onClick={menuItem(() => { if (menuAt) onRequestDelete?.(menuAt.x, menuAt.y); })}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
           {t("sidebar.delete")}
         </button>
       </div>,

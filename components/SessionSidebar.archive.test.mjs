@@ -115,7 +115,7 @@ test("archive entry, shared non-danger confirm, pane protection, and subtle sear
   assert.ok(header.indexOf('sidebar.addProject') < header.indexOf('sidebar.viewArchive'));
   assert.ok(header.indexOf('sidebar.viewArchive') < header.indexOf('sidebar.toggleSessionSearch'));
   assert.match(source, /archiveView \? setArchiveView\(false\)/);
-  assert.match(source, /className=\{archiving \? undefined : "is-danger"\}/);
+  assert.match(source, /className=\{archiving \? "is-primary" : "is-danger"\}/);
   assert.match(source, /archiveProjectConfirm/);
   assert.match(source, /olderCount === 0/);
   assert.match(source, /visibleSessionIds: new Set\(visibleSessionIds\)/);

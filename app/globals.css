@@ -175,6 +175,9 @@ html {
   --accent-hover: #1d4ed8;
   --accent-contrast: #ffffff;
   --danger: #dc2626;
+  /* Fill of a destructive button under white text (>= 4.5:1); dark themes darken it
+     because their --danger is a light foreground red. */
+  --danger-fill: var(--danger);
   --warning: #b45309;
   --success: #059669;
   --user-bg: #f3f4f6;
@@ -188,6 +191,8 @@ html {
   --ui-radius-sm: 4px;
   --ui-radius-md: 6px;
   --ui-radius-lg: 10px;
+  /* Dialogs: a softer corner than menus and cards, as Claude's dialogs. */
+  --ui-radius-xl: 14px;
   /* Motion: every transition/animation duration is one of these (Motion.test.mjs). Fast for
      hover/color/press and menus, base for panels and reveals, slow for wide color fades.
      Color fades keep the default `ease`; moving things decelerate with --ease-out. */
@@ -195,11 +200,18 @@ html {
   --motion-base: 200ms;
   --motion-slow: 300ms;
   --ease-out: cubic-bezier(.2, .8, .2, 1);
-  --ui-control-height-sm: 28px;
-  --ui-control-height: 32px;
-  /* Text fields are a quiet tint with no resting outline; focus adds a neutral 1px ring. */
-  --ui-field-bg: color-mix(in srgb, var(--text) 5%, transparent);
-  --ui-field-bg-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  /* The one line height: list rows, menu rows, text buttons and single-line fields.
+     Groups get their air from dividers and gaps, not from taller rows. */
+  --ui-row-height: 26px;
+  /* Text fields (inputs, selects, search): the floating-surface color with a hairline edge,
+     as in Claude's forms; hover darkens the edge a step, focus to the neutral ring. A tinted
+     fill read muddy on the warm palette. */
+  --ui-field-bg: var(--bg-elevated);
+  --ui-field-edge: inset 0 0 0 1px var(--border);
+  --ui-field-edge-hover: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, var(--border));
+  /* Chips, tags, badges and boxed values: a quiet tint, no edge. */
+  --ui-chip-bg: color-mix(in srgb, var(--text) 5%, transparent);
+  --ui-chip-bg-hover: color-mix(in srgb, var(--text) 8%, transparent);
   --ui-field-ring: inset 0 0 0 1px color-mix(in srgb, var(--text) 30%, transparent);
   /* On-state of selection controls (switches, checkboxes, sliders): the text color, not
      the accent. Accent stays for links, primary actions, and focus rings. */
@@ -214,9 +226,11 @@ html {
   --segmented-track: #efefef;
   --segmented-thumb: #ffffff;
   --ui-shadow-raised: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
-  --ui-shadow-dialog: 0 24px 64px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.06);
+  /* Light, short shadows (Claude Desktop): the hairline border draws the edge, the shadow
+     only lifts. Deep blurs read grey and dirty on the warm palette. */
+  --ui-shadow-dialog: 0 12px 32px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
   /* Every floating card that is not a dialog (menus, popovers, notices, chips). */
-  --ui-shadow-popover: 0 8px 24px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06);
+  --ui-shadow-popover: 0 4px 14px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --chat-content-max-width: 820px;
   --chat-content-font-size: 14px;
   --chat-font-size-offset: calc(var(--chat-content-font-size, 14px) - 14px);
@@ -266,6 +280,7 @@ html.dark {
   --accent-hover: #93c5fd;
   --accent-contrast: #0f172a;
   --danger: #f87171;
+  --danger-fill: #b91c1c;
   --warning: #facc15;
   --success: #34d399;
   --user-bg: #22252b;
@@ -277,8 +292,8 @@ html.dark {
   --segmented-track: #121212;
   --segmented-thumb: #333333;
   --ui-shadow-raised: 0 1px 2px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.06);
-  --ui-shadow-dialog: 0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
-  --ui-shadow-popover: 0 8px 24px rgba(0,0,0,0.40), 0 1px 3px rgba(0,0,0,0.30);
+  --ui-shadow-dialog: 0 16px 40px rgba(0,0,0,0.36), 0 0 0 1px rgba(255,255,255,0.04);
+  --ui-shadow-popover: 0 4px 16px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.20);
 }
 
 /* Shared header rules. Keep the original 36px row; only remove layout-shifting marks. */
@@ -469,18 +484,19 @@ html.dark {
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
   padding: 0 6px 0 8px;
   box-sizing: border-box;
   border: none;
   border-radius: var(--ui-radius-md);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text-dim);
   transition: background-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
 .sidebar-search-field:hover {
-  background: var(--ui-field-bg-hover);
+  box-shadow: var(--ui-field-edge-hover);
 }
 
 .sidebar-search-field:focus-within {
@@ -591,7 +607,7 @@ html.dark {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 6px;
-  color: var(--text-muted);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -610,7 +626,7 @@ html.dark {
 }
 
 .session-stats-num {
-  color: var(--text-muted);
+  color: var(--text);
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -621,7 +637,7 @@ html.dark {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .session-stats-ellipsis {
@@ -1045,6 +1061,7 @@ html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
   border: none;
   border-radius: var(--ui-radius-sm);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font: inherit;
   line-height: 1.3;
@@ -2930,6 +2947,7 @@ pre, code {
   border: none;
   border-radius: var(--ui-radius-sm);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font: inherit;
   line-height: 1.3;
@@ -3090,7 +3108,7 @@ pre, code {
   gap: 2px;
   width: 100%;
   padding: 5px 8px;
-  border-radius: var(--ui-radius-sm);
+  border-radius: var(--ui-radius-md);
 }
 
 .file-outline-item:hover {
@@ -3155,14 +3173,14 @@ button.file-outline-fold:hover {
   outline-offset: -2px;
 }
 
-/* 28px borderless icon button: the shared close/collapse/up control inside dialogs. */
+/* Borderless row-height icon button: the shared close/collapse/up control inside dialogs. */
 .ghost-icon-button {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: var(--ui-control-height-sm);
-  height: var(--ui-control-height-sm);
+  width: var(--ui-row-height);
+  height: var(--ui-row-height);
   padding: 0;
   border: none;
   border-radius: var(--ui-radius-sm);
@@ -3216,8 +3234,8 @@ button.file-outline-fold:hover {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  /* Unruled, like the settings dialog's header strip: the panes below divide themselves. */
   padding: 10px 10px 10px 18px;
-  border-bottom: 1px solid var(--border);
 }
 
 .info-dialog-title {
@@ -3243,7 +3261,7 @@ button.file-outline-fold:hover {
   /* Two classes: settings.css loads after this file and its `.models-dialog-backdrop` scrim
      would otherwise win, dimming the screen on open instead of the opaque sheet background. */
   .models-dialog-backdrop.info-dialog-backdrop {
-    background: var(--bg);
+    background: var(--bg-elevated);
   }
 
   .models-dialog.info-dialog,
@@ -3302,7 +3320,7 @@ button.file-outline-fold:hover {
   max-height: min(30dvh, 180px);
   overflow-y: auto;
   flex-shrink: 1;
-  padding: 12px 12px 6px 18px;
+  padding: 16px 14px 6px 20px;
 }
 
 .extension-dialog-heading {
@@ -3345,7 +3363,7 @@ button.file-outline-fold:hover {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 6px 18px 14px;
+  padding: 6px 20px 8px;
 }
 
 /* Compound selector: settings.css loads later and its .models-dialog-footer uses space-between. */
@@ -3362,10 +3380,10 @@ button.file-outline-fold:hover {
 .extension-option {
   display: flex;
   align-items: center;
-  min-height: var(--ui-control-height-sm);
+  min-height: var(--ui-row-height);
   padding: 4px 10px;
-  border-radius: var(--ui-radius-sm);
-  color: var(--text-muted);
+  border-radius: var(--ui-radius-md);
+  color: var(--text);
   font-family: var(--font-ui);
   font-size: 12px;
   overflow-wrap: anywhere;
@@ -3382,7 +3400,6 @@ button.file-outline-fold:hover {
 .extension-option:hover,
 .extension-option:focus-visible {
   background: var(--bg-hover);
-  color: var(--text);
   outline: none;
 }
 
@@ -3414,7 +3431,7 @@ button.file-outline-fold:hover {
   align-items: center;
   gap: 10px;
   width: 100%;
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
   padding: 0 12px;
   color: var(--text);
   font: inherit;
@@ -3484,7 +3501,7 @@ button.file-outline-fold:hover {
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
   padding: 0 8px;
   border: none;
   border-radius: var(--ui-radius-sm);
@@ -3595,7 +3612,7 @@ button.file-outline-fold:hover {
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-muted);
-  background: var(--ui-field-bg);
+  background: var(--ui-chip-bg);
   border-radius: 999px;
   padding: 0 10px;
 }
@@ -3797,7 +3814,7 @@ span.token.table {
   margin: 0;
   border: 1px solid color-mix(in srgb, var(--text) 30%, transparent);
   border-radius: var(--ui-radius-sm);
-  background: var(--bg);
+  background: var(--ui-field-bg);
   cursor: pointer;
 }
 
@@ -4164,19 +4181,18 @@ span.token.table {
   flex-direction: column;
   gap: 6px;
   width: max-content;
-  max-width: 220px;
-  padding: 6px 4px 2px;
+  max-width: 240px;
+  padding: 8px 8px 4px;
 }
 
 .project-confirm-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 2px;
+  gap: 6px;
 }
 
 #delete-project-title,
 #delete-file-title {
-  padding: 0 4px;
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
@@ -4185,8 +4201,8 @@ span.token.table {
 
 #delete-project-detail,
 #delete-file-detail {
-  padding: 0 4px;
-  color: var(--text-muted);
+  margin-top: -2px;
+  color: var(--text-dim);
   font-size: 11px;
   font-weight: 400;
   line-height: 1.45;
@@ -4194,13 +4210,14 @@ span.token.table {
   overflow-wrap: anywhere;
 }
 
+/* Same pair as a confirm dialog: Cancel is a hairline button, the destructive action is filled. */
 .project-confirm-actions button {
-  height: 28px;
+  height: var(--ui-row-height);
   padding: 0 10px;
-  border: none;
-  border-radius: var(--ui-radius-sm);
-  background: none;
-  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-md);
+  background: var(--bg-elevated);
+  color: var(--text);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -4208,14 +4225,59 @@ span.token.table {
 
 .project-confirm-actions button:hover {
   background: var(--bg-hover);
+}
+
+/* A menu row with its own trailing action (worktree remove, tab close) is one hover unit:
+   the action stays inside the row's tint and shows on intent only (always on touch). */
+.menu-surface-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--ui-radius-md);
+}
+
+.menu-surface-row-action {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--ui-row-height);
+  height: var(--ui-row-height);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color var(--motion-fast), opacity var(--motion-fast);
+}
+
+.menu-surface-row-action:hover:not(:disabled) {
   color: var(--text);
+}
+
+.menu-surface-row-action.is-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.menu-surface-row-action:disabled {
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .menu-surface-row:hover {
+    background: var(--bg-hover);
+  }
+
+  .menu-surface-row:not(:hover, :focus-within) .menu-surface-row-action {
+    opacity: 0;
+  }
 }
 
 .wt-confirm-row {
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: var(--ui-control-height-sm);
+  min-height: var(--ui-row-height);
   padding-left: 8px;
   border-radius: var(--ui-radius-sm);
   background: color-mix(in srgb, var(--danger) 7%, transparent);
@@ -4232,17 +4294,30 @@ span.token.table {
 }
 
 .project-confirm-actions button:disabled {
-  color: var(--text-dim);
   cursor: default;
-  background: none;
+  opacity: 0.5;
+}
+
+.project-confirm-actions button.is-primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+
+.project-confirm-actions button.is-primary:not(:disabled):hover {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
 }
 
 .project-confirm-actions button.is-danger {
-  color: var(--danger);
+  border-color: var(--danger-fill);
+  background: var(--danger-fill);
+  color: #ffffff;
 }
 
-.project-confirm-actions button.is-danger:disabled {
-  color: var(--text-dim);
+.project-confirm-actions button.is-danger:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--danger-fill) 86%, #000000);
+  background: color-mix(in srgb, var(--danger-fill) 86%, #000000);
 }
 
 /* Compact running-state beacon: refined 5px core with a smooth expanding wave ring */
@@ -4571,7 +4646,8 @@ span.token.table {
   padding: 5px 5px 3px 10px;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-md);
-  background: var(--bg);
+  /* The composer is a text field: same fill as every other field (--ui-field-bg). */
+  background: var(--ui-field-bg);
   transition: border-color var(--motion-fast), background var(--motion-fast);
 }
 
@@ -4960,12 +5036,12 @@ span.token.table {
   max-width: calc(100vw - 24px);
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--ui-radius-md);
+  border-radius: var(--ui-radius-lg);
   box-shadow: var(--ui-shadow-popover);
 }
 
 .mobile-outline-row {
-  border-radius: var(--ui-radius-sm);
+  border-radius: var(--ui-radius-md);
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -4985,9 +5061,9 @@ span.token.table {
   background: var(--bg-hover);
 }
 
+/* Same as the desktop minimap: the reading position is a tint, no accent bar. */
 .mobile-outline-row[aria-current="location"] {
   background: var(--bg-selected);
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* Reduced motion keeps the fade (not motion) and drops only the 2px travel. */
@@ -5014,12 +5090,15 @@ span.token.table {
   gap: 8px;
   width: 100%;
   min-width: 0;
-  height: 26px;
-  padding: 0 10px 0 8px;
+  height: var(--ui-row-height);
+  padding: 0 10px;
   border: none;
-  border-radius: var(--ui-radius-sm);
+  /* Concentric with the surface: 10px outer radius minus 4px padding. */
+  border-radius: var(--ui-radius-md);
   background: none;
-  color: var(--text-muted);
+  /* Two tiers only: labels are --text, everything secondary (captions, meta, chevrons) --text-dim.
+     State never changes the text color; hover and keyboard only tint the row. */
+  color: var(--text);
   font: inherit;
   font-size: 12px;
   line-height: 1.4; /* the ellipsis span clips at its line box; 1 cut g/p/y */
@@ -5028,27 +5107,64 @@ span.token.table {
   cursor: pointer;
 }
 
-.menu-surface [aria-checked="true"],
-.menu-surface [aria-selected="true"] {
-  background: var(--bg-selected);
-  color: var(--text);
-}
-
+/* The check carries the selection; a tint on the checked row would say it twice and,
+   next to the hover tint, stack into two tiles. Only the row under the pointer or
+   keyboard is tinted. Check-less pickers (TimePicker) opt back in. */
 .menu-surface [data-active] {
   background: var(--bg-hover);
-  color: var(--text);
 }
 
-/* Check lists (Select): the check carries the selection and only the row under the pointer
-   or keyboard is tinted. Tinting checked rows too stacks into separate rounded tiles. */
-.menu-surface.is-check-list [aria-selected="true"]:not([data-active]) {
+/* Agents panel rows: two-line menu rows. The trailing check marks the open session;
+   no resting tint, no accent bar, no per-row rules. */
+.agent-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--ui-radius-md);
   background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .agent-row:hover {
+    background: var(--bg-hover);
+  }
+}
+
+.branch-tree-row {
+  background: none;
+}
+
+@media (hover: hover) {
+  .branch-tree-row:hover {
+    background: var(--bg-hover);
+  }
+}
+
+/* Trailing selection mark: the only accent in a resting menu. */
+.menu-surface-check {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--accent);
+}
+
+/* Separates options from actions; inset so it reads as part of the list, not a frame. */
+.menu-surface-divider {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--border);
 }
 
 @media (hover: hover) {
   .menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="option"]):hover:not(:disabled) {
     background: var(--bg-hover);
-    color: var(--text);
   }
 }
 
@@ -5057,7 +5173,8 @@ span.token.table {
   cursor: not-allowed;
 }
 
-.menu-surface [role="menuitem"].is-danger:hover:not(:disabled) {
+/* Destructive items are red at rest, not only on hover: the color is the warning. */
+.menu-surface [role="menuitem"].is-danger:not(:disabled) {
   color: var(--danger);
 }
 
@@ -5095,7 +5212,7 @@ span.token.table {
 }
 
 .menu-surface-label {
-  padding: 0 8px 2px;
+  padding: 0 10px 2px;
   color: var(--text-dim);
   font-size: 11px;
   line-height: 1.3;
@@ -5105,10 +5222,6 @@ span.token.table {
   position: absolute;
   bottom: calc(100% + 6px);
   z-index: 100;
-}
-
-.chat-input-menu-check {
-  color: var(--accent);
 }
 
 .chat-input-menu-note {
@@ -5128,9 +5241,6 @@ span.token.table {
 }
 
 .menu-surface .chat-input-menu-back {
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-  border-radius: 4px 4px 0 0;
   color: var(--text-dim);
 }
 

@@ -652,7 +652,7 @@ export function SkillsConfig({
       skill.install ? t("skills.deleteViaSkillsSh") : null,
       t("skills.deleteReloadHint"),
     ].filter(Boolean).join("\n\n");
-    if (!(await confirm(message, { danger: true }))) return;
+    if (!(await confirm(message, { danger: true, confirmLabel: t("i18n.delete") }))) return;
     setDeletingSkill(skill.filePath);
     setDeleteError(null);
     try {

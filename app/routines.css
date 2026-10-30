@@ -253,7 +253,7 @@
   flex-shrink: 0;
   padding: 0 6px;
   border-radius: var(--ui-radius-sm);
-  background: var(--ui-field-bg);
+  background: var(--ui-chip-bg);
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.6;
@@ -308,7 +308,7 @@
   min-width: 0;
 }
 
-/* Every text button on these pages is the app's 28px control (New, Cancel/Save), like the
+/* Every text button on these pages is the app's --ui-row-height control (New, Cancel/Save), like the
    overview's actions: an empty page is no reason for a bigger one. */
 .routines-button {
   padding: 0 12px;
@@ -322,7 +322,7 @@
   gap: 8px;
 }
 
-/* Segmented switches share rows with selects; both use the compact 28px height (the
+/* Segmented switches share rows with selects; both use --ui-row-height (the
    controls below are set to match). */
 .routines-page .settings-segmented-option {
   padding: 0 12px;
@@ -380,18 +380,19 @@
 
 .routines-schedule-control.select-trigger {
   width: auto;
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
   min-width: 96px;
   max-width: 320px;
 }
 
 .routines-schedule-input {
   width: 56px;
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
   padding: 0 10px;
   border: none;
   border-radius: var(--ui-radius-md);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
@@ -482,6 +483,11 @@
 .time-picker-column [role="option"] {
   justify-content: center;
   min-width: 48px;
+}
+
+/* No check marks here, so the picked value keeps its tint. */
+.time-picker-column [aria-selected="true"]:not([data-active]) {
+  background: var(--bg-selected);
 }
 
 .time-picker-column.is-period [role="option"] {
@@ -610,7 +616,7 @@
 /* Name and timeout use the same compact 28px as the schedule controls. */
 /* .settings-form.routines-form outranks settings.css whatever the stylesheet order. */
 .settings-form.routines-form .config-field input:not([type="checkbox"]) {
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
 }
 
 /* create_routine approval: an inline card at the end of the chat, where the tool call is
@@ -746,7 +752,7 @@
    actions in the header beside the breadcrumb; settings as label-over-value facts on the left,
    instructions and run history on the right. Labels are quiet, values read at body size,
    and the only surfaces are small chips and the history rows. */
-/* The header is 30px: a 28px control fills it edge to edge, so everything here is 24px with
+/* The header is 30px: a full-height control would fill it edge to edge, so everything here is 24px with
    air around it (Claude's header has the same rhythm at a larger size). Two quiet icons, a
    clear gap, the one filled action, then room before the panel menu. */
 /* The overview heads its own page: the routine's name, then its actions, within the page's
@@ -841,7 +847,7 @@
   padding: 3px 8px;
   border: none;
   border-radius: var(--ui-radius-md);
-  background: var(--ui-field-bg);
+  background: var(--ui-chip-bg);
   color: var(--text-muted);
   font-family: inherit;
   font-size: 12px;

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { chatTabCwd, type ChatPane, type ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
+import { MenuCheck } from "./MenuCheck";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { isModalDialogOpen } from "./ModalDialog";
 import { AwaitingSessionIndicator, UnreadSessionIndicator } from "./SessionStateBadge";
@@ -728,10 +729,7 @@ export function ChatTabBar({
               const selected = tab.id === activeTabId || tab.id === splitTabId;
               const state = tabState(tab);
               return (
-                <div
-                  key={tab.id}
-                  style={{ display: "flex", alignItems: "center", minWidth: 0, background: selected ? "var(--bg-selected)" : "transparent", borderRadius: 4 }}
-                >
+                <div key={tab.id} className="menu-surface-row">
                   <button
                     type="button"
                     onClick={() => {
@@ -745,11 +743,11 @@ export function ChatTabBar({
                       gap: 7,
                       flex: 1,
                       minWidth: 0,
-                      height: 26,
+                      height: "var(--ui-row-height)",
                       padding: "0 8px",
                       border: "none",
                       background: "transparent",
-                      color: selected || hiddenTabIds.has(tab.id) ? "var(--text)" : "var(--text-muted)",
+                      color: "var(--text)",
                       cursor: "pointer",
                       textAlign: "left",
                       fontSize: 12,
@@ -770,6 +768,7 @@ export function ChatTabBar({
                       />
                     )}
                     <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tab.title}</span>
+                    <MenuCheck checked={selected} />
                   </button>
                   <button
                     type="button"
@@ -793,7 +792,7 @@ export function ChatTabBar({
                     }}
                     title={`${t("chatTabs.closeTab")}: ${tab.title}`}
                     aria-label={`${t("chatTabs.closeTab")}: ${tab.title}`}
-                    style={{ width: 26, height: 26, padding: 0, border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0 }}
+                    className="menu-surface-row-action"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
                       <path d="M2 2l6 6M8 2 2 8" />

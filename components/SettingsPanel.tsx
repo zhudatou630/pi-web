@@ -487,7 +487,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
       onClose();
       return;
     }
-    void confirm(t("models.discardConfirm"), { danger: true }).then((ok) => { if (ok) onClose(); });
+    void confirm(t("models.discardConfirm"), { danger: true, confirmLabel: t("common.discard"), cancelLabel: t("common.keepEditing") }).then((ok) => { if (ok) onClose(); });
   }, [confirm, onClose, t]);
 
   useEffect(() => setLastSettingsSection(initialSection), [initialSection]);

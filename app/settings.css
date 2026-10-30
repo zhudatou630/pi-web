@@ -34,6 +34,8 @@
   height: 100%;
   border: 0;
   border-radius: 0;
+  /* Inside the settings dialog: one surface, no second paper under the header strip. */
+  background: none;
   box-shadow: none;
 }
 
@@ -41,7 +43,7 @@
   width: min(var(--config-panel-width), calc(100vw - 16px));
   height: min(var(--config-panel-height), calc(100dvh - 16px));
   border: 1px solid var(--border);
-  border-radius: var(--ui-radius-lg);
+  border-radius: var(--ui-radius-xl);
   background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
@@ -312,13 +314,13 @@
 }
 
 .config-button-default {
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
   padding: 0 14px;
   font-size: 12px;
 }
 
 .config-button-small {
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
   padding: 0 10px;
   font-size: 12px;
 }
@@ -329,17 +331,29 @@
   color: var(--primary-contrast);
 }
 
-/* Secondary and danger share one tint, the field's (no frame inside a framed dialog);
-   danger differs only in its text. The transparent border keeps every variant the same size. */
+/* Secondary and danger look like fields: the surface color with a hairline edge (Claude's
+   Cancel / Keep editing); danger differs only in its text. */
 .config-button-secondary,
 .config-button-danger {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-color: var(--border);
+  background: var(--bg-elevated);
   color: var(--text);
 }
 
 .config-button-danger {
   color: var(--danger);
+}
+
+/* The confirm button of a destructive dialog: filled red (Claude's Discard). */
+.config-button-destructive {
+  border-color: var(--danger-fill);
+  background: var(--danger-fill);
+  color: #ffffff;
+}
+
+.config-button-destructive:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--danger-fill) 86%, #000000);
+  background: color-mix(in srgb, var(--danger-fill) 86%, #000000);
 }
 
 .config-button-ghost {
@@ -354,7 +368,7 @@
 }
 
 .config-button-secondary:not(:disabled):hover {
-  background: color-mix(in srgb, var(--text) 10%, transparent);
+  background: var(--bg-hover);
 }
 
 .config-button-ghost:not(:disabled):hover {
@@ -509,7 +523,7 @@
   max-height: calc(100dvh - 32px);
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--ui-radius-lg);
+  border-radius: var(--ui-radius-xl);
   background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
@@ -524,7 +538,6 @@
   padding: 60px 10px 14px;
   overflow-y: auto;
   border-right: 1px solid var(--border);
-  background: var(--bg-panel);
 }
 
 /* The sheet title on phones; on desktop the group labels name the list. */
@@ -686,11 +699,11 @@
 
 .settings-dialog-surface .config-button-small,
 .settings-dialog-surface :is(.settings-select, .settings-inline-input, .settings-search-field) {
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
 }
 
 .settings-dialog-surface .settings-segmented-option {
-  height: calc(var(--ui-control-height) - 4px);
+  height: calc(var(--ui-row-height) - 4px);
   padding: 0 12px;
 }
 
@@ -981,7 +994,7 @@
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  height: calc(var(--ui-control-height-sm) - 4px);
+  height: calc(var(--ui-row-height) - 4px);
   padding: 0 8px;
   border: 0;
   border-radius: var(--ui-radius-sm);
@@ -1129,7 +1142,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: var(--ui-control-height-sm);
+  min-height: var(--ui-row-height);
   margin-bottom: 8px;
 }
 
@@ -1176,11 +1189,12 @@
 .settings-inline-input,
 .settings-field input,
 .settings-field select {
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
   padding: 0 8px;
   border: none;
   border-radius: var(--ui-radius-md);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font-size: 13px;
 }
@@ -1223,7 +1237,7 @@
 .settings-field input,
 .settings-field select {
   width: 100%;
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
 }
 
 .settings-inline-form-actions {
@@ -1257,8 +1271,8 @@
 }
 
 .settings-chat-reset {
-  width: var(--ui-control-height-sm);
-  height: var(--ui-control-height-sm);
+  width: var(--ui-row-height);
+  height: var(--ui-row-height);
   padding: 0;
 }
 
@@ -1287,21 +1301,22 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  height: var(--ui-control-height-sm);
+  height: var(--ui-row-height);
   padding: 0 8px;
   border-radius: var(--ui-radius-md);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text-dim);
   transition: background-color var(--motion-fast), box-shadow var(--motion-fast);
 }
 
 .settings-search-field.settings-search-field-wide {
   flex: 1;
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
 }
 
 .settings-search-field:hover {
-  background: var(--ui-field-bg-hover);
+  box-shadow: var(--ui-field-edge-hover);
 }
 
 .settings-search-field:focus-within {
@@ -1459,11 +1474,12 @@
 .settings-search-input {
   flex: 1;
   min-width: 0;
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
   padding: 0 10px;
   border: none;
   border-radius: var(--ui-radius-md);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font-size: 13px;
 }
@@ -1507,11 +1523,11 @@
 
 .settings-example {
   width: 100%;
-  min-height: var(--ui-control-height-sm);
+  min-height: var(--ui-row-height);
   padding: 4px 10px;
   border: none;
   border-radius: var(--ui-radius-md);
-  background: var(--ui-field-bg);
+  background: var(--ui-chip-bg);
   color: var(--text-muted);
   cursor: pointer;
   font-family: var(--font-ui);
@@ -1521,7 +1537,7 @@
 }
 
 .settings-example:hover {
-  background: var(--ui-field-bg-hover);
+  background: var(--ui-chip-bg-hover);
   color: var(--text);
 }
 
@@ -1549,11 +1565,12 @@
 .settings-form .config-field textarea {
   width: 100%;
   min-width: 0;
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
   padding: 0 10px;
   border: none;
   border-radius: var(--ui-radius-md);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font-size: 13px;
 }
@@ -1587,7 +1604,7 @@
   display: flex;
   font-family: inherit;
   align-items: center;
-  min-height: var(--ui-control-height);
+  min-height: var(--ui-row-height);
   overflow: hidden;
   color: var(--text);
   font-size: 13px;
@@ -1637,7 +1654,7 @@
   /* Phone: a full-screen sheet with iOS-style push navigation —
      the section list first, then one section with a back button. */
   .settings-dialog-backdrop {
-    background: var(--bg);
+    background: var(--bg-elevated);
   }
 
   .settings-dialog-surface {
@@ -1665,7 +1682,6 @@
     flex: 1;
     padding: 8px 16px 24px;
     border-right: 0;
-    background: var(--bg);
   }
 
   .settings-nav-title {
@@ -1731,7 +1747,7 @@
 
   .settings-toolbar > .settings-search-field {
     flex: 1 1 100%;
-    height: var(--ui-control-height);
+    height: var(--ui-row-height);
   }
 
   .settings-toolbar > .settings-toolbar-spacer {
@@ -1785,7 +1801,7 @@
   }
 
   .settings-segmented-option {
-    height: calc(var(--ui-control-height) - 4px);
+    height: calc(var(--ui-row-height) - 4px);
   }
 
   .settings-row.is-stacked .settings-range {
@@ -2198,12 +2214,13 @@ a.models-hint:hover {
 .models-input {
   width: 100%;
   min-width: 0;
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
   padding: 0 10px;
   border: none;
   border-radius: var(--ui-radius-md);
   outline: none;
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font-family: inherit;
   font-size: 12px;
@@ -2212,7 +2229,7 @@ a.models-hint:hover {
 }
 
 .models-input:hover:not(:disabled):not(:focus) {
-  background: var(--ui-field-bg-hover);
+  box-shadow: var(--ui-field-edge-hover);
 }
 
 .models-input:focus {
@@ -2282,15 +2299,15 @@ a.models-hint:hover {
 }
 
 .models-inline-form .config-button {
-  height: 32px;
+  height: var(--ui-row-height);
 }
 
 .models-icon-button {
   display: grid;
   flex-shrink: 0;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--ui-row-height);
+  height: var(--ui-row-height);
   padding: 0;
   border: 0;
   border-radius: var(--ui-radius-md);
@@ -2543,7 +2560,7 @@ a.models-hint:hover {
 
 .models-thinking-input.models-input {
   width: 14ch;
-  height: 28px;
+  height: var(--ui-row-height);
 }
 
 .models-thinking-row:not(.is-string) .models-thinking-input {
@@ -2619,16 +2636,18 @@ a.models-hint:hover {
   max-height: min(76vh, calc(100dvh - 32px));
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--ui-radius-lg);
+  border-radius: var(--ui-radius-xl);
   background: var(--bg-elevated);
   box-shadow: var(--ui-shadow-dialog);
 }
 
+/* Dialog anatomy (Claude): a title, a quieter line under it, the content, then the actions
+   bottom-right. No header or footer rules; spacing alone separates them. */
 .models-dialog-header {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 16px 18px 6px;
+  padding: 20px 20px 8px;
 }
 
 .models-dialog-header strong {
@@ -2639,7 +2658,7 @@ a.models-hint:hover {
 
 .models-dialog-header span {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -2685,9 +2704,8 @@ a.models-hint:hover {
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 18px;
-  border-top: 1px solid var(--border);
+  gap: 8px;
+  padding: 12px 20px 20px;
 }
 
 .models-dialog.trust-dialog {
@@ -2711,13 +2729,31 @@ a.models-hint:hover {
   background: var(--settings-scrim, rgba(0, 0, 0, 0.32));
 }
 
-.confirm-dialog-message {
+.confirm-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px 20px 8px;
+}
+
+.confirm-dialog-title,
+.confirm-dialog-detail {
   margin: 0;
-  padding: 18px 18px 16px;
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.confirm-dialog-detail {
+  color: var(--text-dim);
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-line;
-  overflow-wrap: anywhere;
 }
 
 .models-dialog-footer.confirm-dialog-footer {
@@ -2725,13 +2761,13 @@ a.models-hint:hover {
 }
 
 .trust-dialog-body {
-  padding: 4px 18px 16px;
+  padding: 4px 20px 8px;
 }
 
 .trust-dialog-path {
   padding: 7px 10px;
   border-radius: var(--ui-radius-md);
-  background: var(--ui-field-bg);
+  background: var(--ui-chip-bg);
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
@@ -2756,7 +2792,7 @@ a.models-hint:hover {
   align-items: center;
   gap: 8px;
   padding: 8px 10px 6px;
-  background: var(--bg);
+  background: var(--bg-elevated);
   color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
@@ -3146,7 +3182,7 @@ button.usage-bar:hover::after,
   margin-left: 6px;
   padding: 1px 5px;
   border-radius: var(--ui-radius-sm);
-  background: var(--ui-field-bg);
+  background: var(--ui-chip-bg);
   color: var(--text-dim);
   font-size: 10px;
 }
@@ -3256,7 +3292,7 @@ button.usage-bar:hover::after,
   display: flex;
   align-items: center;
   padding-right: 4px;
-  background: var(--bg);
+  background: var(--bg-elevated);
 }
 
 .usage-cell {
@@ -3445,7 +3481,7 @@ button.usage-cell:not(:disabled) {
   gap: 12px;
   margin-top: -8px;
   padding: 8px 0 12px;
-  background: var(--bg);
+  background: var(--bg-elevated);
 }
 
 .settings-sticky-head > .settings-row-message {
@@ -3515,7 +3551,7 @@ button.usage-cell:not(:disabled) {
   max-height: 300px;
   overflow-y: auto;
   border-radius: var(--ui-radius-lg);
-  background: var(--ui-field-bg);
+  background: var(--ui-chip-bg);
   padding: 4px;
 }
 
@@ -3573,11 +3609,12 @@ button.usage-cell:not(:disabled) {
   gap: 6px;
   width: 100%;
   min-width: 0;
-  height: var(--ui-control-height);
+  height: var(--ui-row-height);
   padding: 0 10px;
   border: none;
   border-radius: var(--ui-radius-md);
   background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
   color: var(--text);
   font-size: 13px;
   text-align: left;

@@ -151,7 +151,7 @@ export function ImagesConfig({
   };
 
   const removeCustom = async (connection: ImageGenerationSettingsConnection) => {
-    if (!(await confirm(t("agents.deleteConfirm", { name: connection.label }), { danger: true }))) return;
+    if (!(await confirm(t("agents.deleteConfirm", { name: connection.label }), { danger: true, confirmLabel: t("i18n.delete") }))) return;
     setSaving(true);
     setError(null);
     try {

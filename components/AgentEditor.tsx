@@ -299,7 +299,8 @@ export function useAgentEditor({ cwd, profiles, refresh, onChanged, fixedScope, 
       : effective.scope !== "project" && fallback.scope === "builtin"
         ? t("agents.restoreDefaultConfirm", { name: shown.displayName })
         : t("agents.restoreGlobalConfirm", { name: shown.displayName });
-    if (!(await confirm(message, { danger: true }))) return;
+    const confirmLabel = !fallback ? t("i18n.delete") : effective.scope !== "project" && fallback.scope === "builtin" ? t("agents.restoreDefault") : t("agents.restoreGlobal");
+    if (!(await confirm(message, { danger: true, confirmLabel }))) return;
     setSaving(true);
     setError(null);
     try {

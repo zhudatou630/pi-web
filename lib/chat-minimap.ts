@@ -3,7 +3,7 @@ export const MINIMAP_MAX_MARKERS = 15;
 /** Extra ticks rendered past each end of the window so a sliding tape never pops ticks in. */
 export const MINIMAP_MARKER_OVERSCAN = 3;
 const MINIMAP_TRIGGER_PADDING = 6;
-export const OUTLINE_ROW_HEIGHT = 28;
+export const OUTLINE_ROW_HEIGHT = 26; // --ui-row-height
 export const OUTLINE_MAX_HEIGHT = 360;
 /**
  * Rows rendered beyond each edge of the directory viewport. Native scroll paints before React

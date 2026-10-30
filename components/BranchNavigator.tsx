@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { BranchPreview, SessionEntry, SessionTreeNode } from "@/lib/types";
 import { iconStroke } from "./iconStroke";
+import { MenuCheck } from "./MenuCheck";
 import { useI18n } from "@/hooks/useI18n";
 import { buildBranchRows } from "@/lib/branch-rows";
 
@@ -114,7 +115,7 @@ export function BranchTreeList({ tree, activeLeafId, onLeafChange, hasSession }:
       ? t("i18n.noBranches")
       : null;
   if (reason) {
-    return <div style={{ padding: "10px 16px", fontSize: 12, lineHeight: 1.4, color: "var(--text-muted)" }}>{reason}</div>;
+    return <div style={{ padding: "10px 16px", fontSize: 12, lineHeight: 1.4, color: "var(--text-dim)" }}>{reason}</div>;
   }
   return (
     <div style={{ padding: "6px 8px 8px", maxHeight: 320, overflowY: "auto" }}>
@@ -127,21 +128,20 @@ export function BranchTreeList({ tree, activeLeafId, onLeafChange, hasSession }:
             key={row.key}
             type="button"
             title={row.preview}
-            className="workspace-header-action"
+            className="branch-tree-row"
             onClick={() => { if (row.leafId || row.anchorId) onLeafChange(row.leafId, row.anchorId); }}
             aria-current={row.current ? "true" : undefined}
             style={{
               display: "flex",
               alignItems: "stretch",
               width: "100%",
-              minHeight: 26,
+              minHeight: "var(--ui-row-height)",
               padding: "0 8px 0 0",
               border: "none",
-              borderRadius: 4,
-              background: row.current ? "var(--bg-selected)" : "none",
+              borderRadius: "var(--ui-radius-md)",
               cursor: row.leafId || row.anchorId ? "pointer" : "default",
               textAlign: "left",
-              color: row.current ? "var(--text)" : "var(--text-muted)",
+              color: "var(--text)",
             }}
           >
             {row.levels.map((level, i) => (
@@ -169,7 +169,7 @@ export function BranchTreeList({ tree, activeLeafId, onLeafChange, hasSession }:
                 {row.preview || "…"}
               </span>
               {range && <span style={{ flexShrink: 0, fontSize: 11, lineHeight: 1.4, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>{range}</span>}
-              {row.current && <span style={{ flexShrink: 0, fontSize: 10, lineHeight: 1.4, color: "var(--accent)" }}>{t("i18n.branchCurrent")}</span>}
+              {row.current && <MenuCheck checked />}
             </span>
           </button>
         );

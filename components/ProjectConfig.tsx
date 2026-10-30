@@ -227,7 +227,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
   };
   const restoreAgent = (row: (typeof agentRows)[number]) => {
-    void confirm(t("agents.restoreGlobalConfirm", { name: row.label }), { danger: true }).then((ok) => {
+    void confirm(t("agents.restoreGlobalConfirm", { name: row.label }), { danger: true, confirmLabel: t("agents.restoreGlobal") }).then((ok) => {
       if (ok) void run(() => followGlobal(row), true);
     });
   };
@@ -240,7 +240,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
   const differences = overridden.length + featuresOverridden.length + agentDiffs.length;
   const resetAll = async () => {
     // A project copy is content, not just a switch: deleting it needs a yes.
-    if (agentCustomized.length > 0 && !(await confirm(t("project.resetAgentsConfirm", { count: agentCustomized.length }), { danger: true }))) return;
+    if (agentCustomized.length > 0 && !(await confirm(t("project.resetAgentsConfirm", { count: agentCustomized.length }), { danger: true, confirmLabel: t("project.resetAll") }))) return;
     return resetAllNow();
   };
   const resetAllNow = () => run(async () => {

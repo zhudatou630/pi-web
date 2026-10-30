@@ -187,7 +187,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
         </div>
 
         <div className="models-dialog-footer directory-picker-footer">
-          <ConfigButton variant="ghost" className="directory-picker-action" onClick={onCancel} disabled={busy}>
+          <ConfigButton variant="secondary" className="directory-picker-action" onClick={onCancel} disabled={busy}>
             {t("i18n.cancel")}
           </ConfigButton>
           <ConfigButton

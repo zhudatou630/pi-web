@@ -2,7 +2,7 @@
 
 import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, ReactNode } from "react";
 
-type ConfigButtonVariant = "primary" | "secondary" | "danger" | "ghost";
+type ConfigButtonVariant = "primary" | "secondary" | "danger" | "destructive" | "ghost";
 type ConfigButtonSize = "small" | "default";
 
 interface ConfigPanelShellProps {

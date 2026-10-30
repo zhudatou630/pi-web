@@ -182,7 +182,7 @@ export function AgentsImportDialog({ cwd, fixedScope, onClose, onImported }: {
           {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
         </div>
         <div className="models-dialog-footer agents-import-footer">
-          <ConfigButton variant="ghost" onClick={onClose} disabled={importing}>
+          <ConfigButton variant="secondary" onClick={onClose} disabled={importing}>
             {result ? t("agents.importClose") : sources?.length === 0 ? t("i18n.close") : t("i18n.cancel")}
           </ConfigButton>
           {!result && sources && sources.length > 0 && (

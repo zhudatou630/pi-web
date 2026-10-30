@@ -31,7 +31,7 @@ function picker(props) {
   };
   const loaded = { exports: {} };
   new Function("require", "module", "exports", "window", compiled)(
-    (name) => name === "react" ? hooks : jsxRuntime, loaded, loaded.exports,
+    (name) => name === "react" ? hooks : name === "./MenuCheck" ? { MenuCheck: () => null } : jsxRuntime, loaded, loaded.exports,
     { innerHeight: 800, innerWidth: 1200 },
   );
   let tree;
@@ -73,9 +73,9 @@ for (const clear of [false, true]) {
     const chosen = [];
     const state = picker({ options, value: options[2], onChange: (...args) => chosen.push(args), ...(clear ? { onClear() {}, emptyLabel: "Default" } : {}) });
     state.key("ArrowDown"); // Open at A1.
-    const labels = state.options().map((option) => option.props.children[1].props.children);
+    const labels = state.options().map((option) => option.props.children[0].props.children);
     assert.deepEqual(labels, [...(clear ? ["Default"] : []), "A1", "A2", "A3", "B1"]);
-    assert.equal(state.active().props.children[1].props.children, "A1");
+    assert.equal(state.active().props.children[0].props.children, "A1");
     const keys = state.groups().map((group) => group.key);
     assert.equal(new Set(keys).size, keys.length);
     assert.equal(state.groups().length, 2); // One header per provider.
@@ -83,11 +83,11 @@ for (const clear of [false, true]) {
     assert.ok(html.indexOf('title="A1"') < html.indexOf('title="A2"'));
     assert.ok(html.indexOf('title="A3"') < html.indexOf('title="B1"'));
     state.key("ArrowDown");
-    assert.equal(state.active().props.children[1].props.children, "A2");
+    assert.equal(state.active().props.children[0].props.children, "A2");
     state.key("End");
-    assert.equal(state.active().props.children[1].props.children, "B1");
+    assert.equal(state.active().props.children[0].props.children, "B1");
     state.key("Home");
-    assert.equal(state.active().props.children[1].props.children, clear ? "Default" : "A1");
+    assert.equal(state.active().props.children[0].props.children, clear ? "Default" : "A1");
     if (clear) state.key("ArrowDown");
     state.key("ArrowDown");
     state.key("Enter");

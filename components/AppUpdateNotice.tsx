@@ -58,7 +58,7 @@ export function AppUpdateNotice({ showCurrentVersion = false }: { showCurrentVer
   }, [status, currentVersion]);
 
   const startUpdate = async () => {
-    if (requesting.current || !(await confirm(t("appUpdate.confirm")))) return;
+    if (requesting.current || !(await confirm(t("appUpdate.confirm"), { confirmLabel: t("i18n.update") }))) return;
     requesting.current = true;
     setError(null);
     setStatus("requesting");

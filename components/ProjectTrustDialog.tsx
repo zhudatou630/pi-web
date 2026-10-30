@@ -35,7 +35,7 @@ export function ProjectTrustDialog({
           {error && <div role="alert" className="settings-row-message is-error">{error}</div>}
         </div>
         <div className="models-dialog-footer trust-dialog-footer">
-          <button autoFocus type="button" className="config-button config-button-default config-button-ghost" onClick={onCancel} disabled={busy}>
+          <button autoFocus type="button" className="config-button config-button-default config-button-secondary" onClick={onCancel} disabled={busy}>
             {t("trust.cancel")}
           </button>
           <button type="button" className="config-button config-button-default config-button-primary" onClick={onConfirm} disabled={busy}>

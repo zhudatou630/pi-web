@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { MenuCheck } from "./MenuCheck";
 
 export interface SelectOption {
   value: string;
@@ -43,9 +44,10 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
   const selected = options.findIndex((option) => option.value === value);
   const enabled = options.map((option, index) => (option.disabled ? -1 : index)).filter((index) => index >= 0);
 
-  const show = () => {
+  // Only keyboard opening starts on a row; a click opens with nothing highlighted (the check shows the value).
+  const show = (fromKeyboard = false) => {
     setAnchor(buttonRef.current?.getBoundingClientRect() ?? null);
-    setActive(selected);
+    setActive(fromKeyboard ? selected : -1);
     setOpen(true);
   };
   const close = () => setOpen(false);
@@ -57,8 +59,9 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
   };
   const step = (direction: 1 | -1) => {
     if (!enabled.length) return;
+    if (active < 0 && enabled.includes(selected)) return setActive(selected);
     const at = enabled.indexOf(active);
-    setActive(enabled[(at + direction + enabled.length) % enabled.length]);
+    setActive(enabled[at < 0 ? (direction > 0 ? 0 : enabled.length - 1) : (at + direction + enabled.length) % enabled.length]);
   };
 
   useEffect(() => {
@@ -78,6 +81,13 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
       window.removeEventListener("scroll", scroll, true);
     };
   }, [open]);
+
+  // Opening reveals the current value (its check is the only selection mark); afterwards only
+  // the keyboard's row is followed, so clearing the hover never jumps the list.
+  useEffect(() => {
+    if (open && selected >= 0) document.getElementById(`${listboxId}-${selected}`)?.scrollIntoView({ block: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per opening
+  }, [open, listboxId]);
 
   useEffect(() => {
     if (open && active >= 0) document.getElementById(`${listboxId}-${active}`)?.scrollIntoView({ block: "nearest" });
@@ -128,16 +138,21 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
             event.preventDefault();
             event.stopPropagation();
             close();
+          } else if (!open && (event.key === "Enter" || event.key === " ")) {
+            // Keyboard opening starts on the current value, like the arrows.
+            event.preventDefault();
+            show(true);
           } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             if (open) step(event.key === "ArrowDown" ? 1 : -1);
-            else show();
+            else show(true);
           } else if (open && (event.key === "Home" || event.key === "End")) {
             event.preventDefault();
             setActive(enabled[event.key === "Home" ? 0 : enabled.length - 1] ?? -1);
           } else if (open && (event.key === "Enter" || event.key === " ")) {
             event.preventDefault();
             if (active >= 0) choose(active);
+            else close();
           } else if (event.key === "Tab") {
             close();
           }
@@ -151,7 +166,7 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
         </svg>
       </button>
       {panelStyle && (
-        <div ref={panelRef} id={listboxId} role="listbox" aria-label={ariaLabel} aria-multiselectable={multiple || undefined} className="menu-surface is-scrolling is-check-list" style={{ ...panelStyle, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div ref={panelRef} id={listboxId} role="listbox" aria-label={ariaLabel} aria-multiselectable={multiple || undefined} className="menu-surface is-scrolling" style={{ ...panelStyle, display: "flex", flexDirection: "column", overflow: "hidden" }} onMouseLeave={() => setActive(-1)}>
           <div className="menu-surface-scroll">
             {options.map((option, index) => (
               <button
@@ -166,8 +181,8 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
                 onClick={() => choose(index)}
                 onMouseEnter={() => !option.disabled && setActive(index)}
               >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, visibility: checked(index) ? "visible" : "hidden" }} aria-hidden="true"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{option.label}</span>
+                <MenuCheck checked={checked(index)} />
               </button>
             ))}
           </div>

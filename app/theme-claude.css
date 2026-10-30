@@ -11,6 +11,9 @@ html[data-theme="claude"] {
   --bg-hover: #efeeea;
   --bg-selected: #e8e7e3;
   --bg-raised: #f1efe8;
+  /* Menus, popovers and dialogs share one soft paper over any area, as in Claude Desktop:
+     a step lighter than the canvas, not pure white, and never the tone underneath. */
+  --bg-elevated: #fdfcfa;
   --border: #e1e0dc;
   --text: #141413;
   --text-muted: #45443e;
@@ -18,7 +21,8 @@ html[data-theme="claude"] {
   --accent: #c15f3c;
   --accent-hover: #a94e2f;
   --accent-contrast: #ffffff;
-  --danger: #b53333;
+  /* Brick red, as Claude Desktop's Delete: darker and quieter than a signal red. */
+  --danger: #9b3030;
   --warning: #946010;
   --success: #5b7a3a;
   --user-bg: #edece8;
@@ -53,7 +57,9 @@ html[data-theme="claude"].dark {
   --bg-panel: #191918;
   --bg-hover: #2a2928;
   --bg-selected: #353533;
-  --border: #31312f;
+  /* Hairlines one clear step above the floating surface (#252524), as in Claude Desktop's
+     dark menus; #31312f all but vanished on menus, dialogs and field edges. */
+  --border: #3d3d3a;
   --text: #e3e2de;
   --text-muted: #b9b7b1;
   --text-dim: #979691;
@@ -61,6 +67,7 @@ html[data-theme="claude"].dark {
   --accent-hover: #e08a6d;
   --accent-contrast: #141413;
   --danger: #e07070;
+  --danger-fill: #b4443c;
   --warning: #d9a54e;
   --success: #8fb573;
   --user-bg: #2a2928;

@@ -278,7 +278,7 @@ export function RoutinesView({ active, cwd, projectPaths, projectNameByRoot, wor
   };
 
   const discardEdits = async () => {
-    if (dirtyRef.current && !await confirm(t("routines.discardConfirm"), { danger: true })) return false;
+    if (dirtyRef.current && !await confirm(t("routines.discardConfirm"), { danger: true, confirmLabel: t("common.discard"), cancelLabel: t("common.keepEditing") })) return false;
     setDirty(false);
     return true;
   };
@@ -298,7 +298,7 @@ export function RoutinesView({ active, cwd, projectPaths, projectNameByRoot, wor
     if (!openRequest || handledOpenRef.current === openRequest) return;
     handledOpenRef.current = openRequest;
     void (async () => {
-      if (dirtyRef.current && !await confirm(t("routines.discardConfirm"), { danger: true })) return;
+      if (dirtyRef.current && !await confirm(t("routines.discardConfirm"), { danger: true, confirmLabel: t("common.discard"), cancelLabel: t("common.keepEditing") })) return;
       setDirty(false);
       setPage({ kind: "detail", id: openRequest.id });
     })();
@@ -567,7 +567,7 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
   };
 
   const remove = async () => {
-    if (!routine || !await confirm(t("routines.deleteConfirm", { name: routine.name }), { danger: true })) return;
+    if (!routine || !await confirm(t("routines.deleteConfirm", { name: routine.name }), { danger: true, confirmLabel: t("i18n.delete") })) return;
     try {
       await requestJson(`/api/routines/${routine.id}`, { method: "DELETE" });
       onDeleted();
@@ -593,7 +593,7 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
   // Leaving the form: an existing routine goes back to its overview, a new one to the list.
   const cancelEdit = async () => {
     if (!routine) return onCancel();
-    if (dirty && !await confirm(t("routines.discardConfirm"), { danger: true })) return;
+    if (dirty && !await confirm(t("routines.discardConfirm"), { danger: true, confirmLabel: t("common.discard"), cancelLabel: t("common.keepEditing") })) return;
     setDraft(initial);
     setError(null);
     setEditing(false);

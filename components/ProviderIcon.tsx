@@ -73,7 +73,7 @@ export function ProviderIcon({ id, size }: { id: string; size: number }) {
       style={{
         width: size,
         height: size,
-        background: "var(--ui-field-bg)",
+        background: "var(--ui-chip-bg)",
         borderRadius: 4,
         color: "var(--text-dim)",
         display: "inline-flex",

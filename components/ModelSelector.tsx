@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import { MenuCheck } from "./MenuCheck";
 
 export interface ModelSelectorOption {
   provider: string;
@@ -122,12 +123,16 @@ export function ModelSelector({
     if (!open) setActiveIndex(-1);
   }, [open]);
 
+  // Opening reveals the current model; afterwards only the keyboard's row is followed, so
+  // clearing the hover on mouseleave never jumps the list back.
   useEffect(() => {
-    if (!open) return;
-    const id = activeOptionId ?? (selectedIndex >= 0 ? `${listboxId}-option-${selectedIndex}` : undefined);
-    if (!id) return;
-    document.getElementById(id)?.scrollIntoView({ block: "nearest" });
-  }, [open, activeOptionId, selectedIndex, listboxId]);
+    if (open && selectedIndex >= 0) document.getElementById(`${listboxId}-option-${selectedIndex}`)?.scrollIntoView({ block: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per opening
+  }, [open, listboxId]);
+
+  useEffect(() => {
+    if (open && activeOptionId) document.getElementById(activeOptionId)?.scrollIntoView({ block: "nearest" });
+  }, [open, activeOptionId]);
 
   const choose = (option: ModelSelectorOption) => {
     const active = option.modelId === value?.modelId && option.provider === value?.provider;
@@ -245,6 +250,7 @@ export function ModelSelector({
             aria-label={ariaLabel}
             aria-activedescendant={activeOptionId}
             className="menu-surface is-scrolling"
+            onMouseLeave={() => setActiveIndex(-1)}
             style={{
               position: "fixed",
               ...verticalPosition,
@@ -311,8 +317,8 @@ function ModelOptionButton({ id, active, highlighted, label, onActive, onClick }
       onClick={onClick}
       onMouseEnter={onActive}
     >
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, visibility: active ? "visible" : "hidden" }} aria-hidden="true"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
       <span title={label} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+      <MenuCheck checked={active} />
     </button>
   );
 }

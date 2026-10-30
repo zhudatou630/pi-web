@@ -2197,7 +2197,7 @@ function TextFileViewer({
             className="file-viewer-mode-button"
             disabled={loadingMore}
             onClick={async () => {
-              if (data.size > LOAD_ALL_CONFIRM_BYTES && !(await confirm(t("i18n.loadAllConfirm", { size: formatSize(data.size) })))) return;
+              if (data.size > LOAD_ALL_CONFIRM_BYTES && !(await confirm(t("i18n.loadAllConfirm", { size: formatSize(data.size) }), { confirmLabel: t("i18n.loadAll") }))) return;
               setLoadingMore(true);
               void loadRest(filePath, data.nextOffset).finally(() => setLoadingMore(false));
             }}

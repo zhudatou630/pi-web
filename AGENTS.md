@@ -137,8 +137,8 @@ Pins, archives, project order and project display names (`projectNames`, keyed b
 - Modals go through `components/ModalDialog.tsx`; confirms through `useConfirm()`. `window.confirm`/`alert` are banned (tested).
 - Typography (enforced by `components/Typography.test.mjs`): fonts by role — `--font-ui` chrome, `--font-chat` prose, `--font-mono` only for verbatim content; only weights 400/600, 600 for headings only; never show state with weight or italic; sizes from the shared scale; three text tiers, no opacity fading; clipped text needs `line-height` >= 1.3. Fonts are bundled in `public/fonts`; bump `?v=` when replacing one.
 - Images: never render a raw `<img>` in a message; use the image components. Image order is the order sent to the model (`attachment:N`).
-- Corners use `--ui-radius-sm` (4px, chips/small buttons/inline code), `--ui-radius-md` (6px, controls/rows/menus/code blocks/images), `--ui-radius-lg` (10px, dialogs and settings cards). Pills `999px`, dots `50%`.
-- Heights: rows are 26px everywhere, phones included (menu rows `.menu-surface`, sidebar lists and footer, file rows); controls are 28px (`--ui-control-height-sm`). Do not add per-component or mobile-only row heights.
+- Corners use `--ui-radius-sm` (4px, chips/small buttons/inline code), `--ui-radius-md` (6px, controls/rows/menus/code blocks/images), `--ui-radius-lg` (10px, settings cards, menus/popovers; menu rows inside take `md`, concentric with the 4px padding), `--ui-radius-xl` (14px, dialogs). Pills `999px`, dots `50%`.
+- Heights: one line height, `--ui-row-height` (26px), phones included: list rows (sidebar, footer, file rows), menu rows, text buttons and single-line fields. Icon-only toolbar buttons and touch enlargements are separate. Do not add per-component or mobile-only row heights.
 
 ---
 

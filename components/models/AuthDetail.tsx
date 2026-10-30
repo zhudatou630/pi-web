@@ -116,7 +116,7 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
   }, [provider.id, onRefresh, cwd, t]);
 
   const handleLogout = useCallback(async () => {
-    if (!(await confirm(t("models.disconnectConfirm", { name: provider.name }), { danger: true }))) return;
+    if (!(await confirm(t("models.disconnectConfirm", { name: provider.name }), { danger: true, confirmLabel: t("i18n.disconnect") }))) return;
     await fetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -299,7 +299,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
   }, [apiKey, provider.id, onRefresh, cwd]);
 
   const handleRemove = useCallback(async () => {
-    if (!(await confirm(t("models.disconnectConfirm", { name: provider.displayName }), { danger: true }))) return;
+    if (!(await confirm(t("models.disconnectConfirm", { name: provider.displayName }), { danger: true, confirmLabel: t("i18n.disconnect") }))) return;
     setRemoving(true);
     setError(null);
     try {

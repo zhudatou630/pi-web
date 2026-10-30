@@ -1833,7 +1833,7 @@ export function AppShell() {
       const draft = getDraft(closingTab.newSessionDraftKey);
       const hasContent = closingTab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
       if (hasContent && !confirmed) {
-        void confirm(translate("chatTabs.discardDraft"), { danger: true }).then((ok) => { if (ok) closeTab(tabId, true); });
+        void confirm(translate("chatTabs.discardDraft"), { danger: true, confirmLabel: translate("common.discard") }).then((ok) => { if (ok) closeTab(tabId, true); });
         return false;
       }
       clearDraft(closingTab.newSessionDraftKey);
@@ -1900,7 +1900,7 @@ export function AppShell() {
       return tab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
     });
     if (unsent.length > 0 && !confirmed) {
-      void confirm(translate("chatTabs.discardDrafts", { count: unsent.length }), { danger: true }).then((ok) => { if (ok) closeTabs(tabIds, true); });
+      void confirm(translate("chatTabs.discardDrafts", { count: unsent.length }), { danger: true, confirmLabel: translate("common.discard") }).then((ok) => { if (ok) closeTabs(tabIds, true); });
       return false;
     }
     for (const tab of closing) {

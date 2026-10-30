@@ -28,6 +28,7 @@ import {
 } from "@/lib/file-fuzzy";
 import { getMarkdownListContinuation } from "@/lib/markdown-list-continuation";
 import { buildQuotedPrompt, joinQuotedDraft, splitQuotedPrompt, trimQuoteText, type Quote } from "@/lib/quoted-selection";
+import { MenuCheck } from "./MenuCheck";
 import { QuoteCard } from "./QuoteCard";
 import { ImageMentionChip } from "./GeneratedImageResult";
 import { ImageAttachmentStrip } from "./ImageAttachmentStrip";
@@ -1835,11 +1836,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       <path d="M4 2.5 6.5 5 4 7.5" />
     </svg>
   );
-  const menuCheck = (checked: boolean) => (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="chat-input-menu-check" style={{ visibility: checked ? "visible" : "hidden" }}>
-      <polyline points="1.5 5 4 7.5 8.5 2.5" />
-    </svg>
-  );
   const closeMenuOnEscape = (e: React.KeyboardEvent) => {
     if (e.key !== "Escape") return;
     e.stopPropagation();
@@ -2108,9 +2104,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 alignItems: "center",
                 gap: 6,
                 padding: "0 8px",
-                background: "var(--bg)",
+                background: "var(--bg-elevated)",
                 border: "1px solid var(--border)",
-                borderRadius: 4,
+                borderRadius: "var(--ui-radius-md)",
                 boxShadow: "var(--ui-shadow-popover)",
                 fontFamily: "var(--font-mono)",
                 fontSize: 11,
@@ -2120,7 +2116,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 pointerEvents: "none",
               }}
             >
-              <span style={{ color: "var(--text-muted)" }}>Usage:</span>
+              <span>Usage:</span>
               <span style={{ color: "var(--text)" }}>/{slashUsage.command}</span>
               <span>{slashUsage.signature}</span>
             </div>
@@ -2142,7 +2138,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <div
                 title={t("chat.inputHistory")}
                 style={{
-                  height: 30,
+                  height: "var(--ui-row-height)",
                   padding: "0 10px",
                   borderBottom: "1px solid var(--border)",
                   display: "flex",
@@ -2192,8 +2188,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         gap: 8,
                         padding: "7px 8px",
                         border: "none",
-                        borderRadius: 4,
-                        background: active ? "var(--bg-selected)" : "none",
+                        borderRadius: "var(--ui-radius-md)",
+                        background: active ? "var(--bg-hover)" : "none",
                         color: "var(--text)",
                         cursor: "pointer",
                         textAlign: "left",
@@ -2266,7 +2262,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           justifyContent: "space-between",
                           gap: 8,
                           padding: "4px 8px 3px",
-                          background: "var(--bg)",
+                          background: "var(--bg-elevated)",
                           color: "var(--text-dim)",
                           fontSize: 10,
                           letterSpacing: "0.04em",
@@ -2299,14 +2295,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                               style={{
                                 width: "100%",
                                 minWidth: 0,
-                                height: 30,
+                                height: "var(--ui-row-height)",
                                 display: "flex",
                                 alignItems: "center",
                                 gap: 12,
                                 padding: "0 8px",
                                 border: "none",
-                                borderRadius: 4,
-                                background: active ? "var(--bg-selected)" : "none",
+                                borderRadius: "var(--ui-radius-md)",
+                                background: active ? "var(--bg-hover)" : "none",
                                 color: dormant ? "var(--text-dim)" : "var(--text)",
                                 cursor: "pointer",
                                 textAlign: "left",
@@ -2329,7 +2325,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                   <span style={{
                                     marginLeft: 6,
                                     padding: "0 4px",
-                                    background: "var(--ui-field-bg)",
+                                    background: "var(--ui-chip-bg)",
                                     borderRadius: "var(--ui-radius-sm)",
                                     fontSize: 11,
                                     color: "var(--text-dim)",
@@ -2437,14 +2433,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                           onMouseEnter={() => setAtActiveIndex(index)}
                           style={{
                             width: "100%",
-                            height: 30,
+                            height: "var(--ui-row-height)",
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
                             padding: "0 8px",
                             border: "none",
-                            borderRadius: 4,
-                            background: active ? "var(--bg-selected)" : "none",
+                            borderRadius: "var(--ui-radius-md)",
+                            background: active ? "var(--bg-hover)" : "none",
                             color: "var(--text)",
                             cursor: "pointer",
                             textAlign: "left",
@@ -2689,8 +2685,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                               if (!isActive) onThinkingLevelChange(lvl);
                             }}
                           >
-                            {menuCheck(isActive)}
                             <span>{THINKING_LEVEL_LABELS[lvl]}</span>
+                            <MenuCheck checked={isActive} />
                           </button>
                         );
                       })}
@@ -2733,6 +2729,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             </svg>
                             <span>{controlsView}</span>
                           </button>
+                          <div role="separator" className="menu-surface-divider" />
                           {controlsView === "tools" && onToolPresetChange && TOOL_PRESETS.map((lvl) => {
                             const preset = TOOL_PRESET_MAP[lvl];
                             const isActive = (toolPreset ?? CONFIGURED_TOOL_PRESET) === preset;
@@ -2747,8 +2744,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                   if (!isActive) onToolPresetChange(preset);
                                 }}
                               >
-                                {menuCheck(isActive)}
                                 <span>{lvl}</span>
+                                <MenuCheck checked={isActive} />
                               </button>
                             );
                           })}
@@ -2763,7 +2760,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                 onCompact();
                               }}
                             >
-                              {menuCheck(false)}
                               <span>{t("chat.compactConfirm")}</span>
                             </button>
                           )}

@@ -33,6 +33,7 @@ import { getModelDisplayName, hasAssistantAnswer, MessageNoticeContext, MessageV
 import { MarkdownBody, MarkdownSessionContext } from "./MarkdownBody";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { MenuCheck } from "./MenuCheck";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { MobileOutlineSync, type MobileOutlineView } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
@@ -362,20 +363,15 @@ export function NewSessionCwdControl({
                   onClick={() => choose(path)}
                   title={path}
                 >
-                  {isSelected ? (
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                    </svg>
-                  ) : (
-                    <span style={{ width: 10, flexShrink: 0 }} />
-                  )}
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {projectNameByRoot?.get(path) ?? getFileName(path)}
                   </span>
+                  <MenuCheck checked={isSelected} />
                 </button>
               );
             })}
           </div>
+          <div role="separator" className="menu-surface-divider" />
           <button
             type="button"
             role="option"
@@ -385,7 +381,6 @@ export function NewSessionCwdControl({
               setPickerOpen(true);
               setError(null);
             }}
-            style={{ marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: "0 0 4px 4px" }}
           >
             {t("sidebar.customPath")}
           </button>
@@ -418,19 +413,13 @@ export function NewSessionCwdControl({
                   onClick={() => choose(wt.path)}
                   title={wt.path}
                 >
-                  {isCurrent ? (
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <polyline points="1.5 5 4 7.5 8.5 2.5" />
-                    </svg>
-                  ) : (
-                    <span style={{ width: 10, flexShrink: 0 }} />
-                  )}
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {wt.branch ?? wt.path}
                   </span>
                   {wt.isMain && (wt.branch ?? "").toLowerCase() !== t("sidebar.main").toLowerCase() && (
-                    <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 10 }}>{t("sidebar.main")}</span>
+                    <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 11 }}>{t("sidebar.main")}</span>
                   )}
+                  <MenuCheck checked={Boolean(isCurrent)} />
                 </button>
               );
             })}
@@ -2724,7 +2713,7 @@ function NoticeShelf({ notices, floating = false, onPauseChange, onOpenMcpSettin
             pointerEvents: "auto",
             marginBottom: index === notices.length - 1 ? 0 : 6,
             overflow: "hidden",
-            borderRadius: 6,
+            borderRadius: "var(--ui-radius-lg)",
             border: "1px solid var(--border)",
             background: "var(--bg-elevated)",
             color: "var(--text)",
@@ -2942,7 +2931,7 @@ function ExtensionDialog({
 
         <div className="models-dialog-footer extension-dialog-footer">
           <ConfigButton
-            variant="ghost"
+            variant="secondary"
             autoFocus={request.method === "confirm" || (request.method === "select" && request.options.length === 0)}
             onClick={() => onRespond(request, { cancelled: true })}
           >

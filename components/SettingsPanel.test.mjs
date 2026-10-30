@@ -59,7 +59,7 @@ test("keeps visited settings sections mounted and contains nested Escape handlin
   const dialogSource = await readFile(new URL("./models/fields.tsx", import.meta.url), "utf8");
   assert.match(modelsSource, /<ModelPickerDialog/);
   assert.match(dialogSource, /<ModalDialog className="models-dialog-backdrop" aria-label=\{title\} onClose=\{onClose\}>/);
-  assert.match(panelSource, /confirm\(t\("models\.discardConfirm"\), \{ danger: true \}\)/);
+  assert.match(panelSource, /confirm\(t\("models\.discardConfirm"\), \{ danger: true, confirmLabel: t\("common\.discard"\), cancelLabel: t\("common\.keepEditing"\) \}\)/);
 });
 
 test("offers direct light, dark, and system theme selection", () => {
