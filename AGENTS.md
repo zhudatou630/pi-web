@@ -2,7 +2,7 @@
 
 **What belongs here:** commands, environment, safety rules, and traps a reader of the code would get wrong. Feature specs, UX details, and design rationale go to `docs/*.md` or `docs/adr/`; rules already enforced by a test get one line pointing at the test. Keep entries short.
 
-Design docs: `docs/subagents.md`, `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/adr/`.
+Design docs: `docs/subagents.md`, `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/routines.md` (scheduled routines; scheduler on in production builds, off under `next dev` unless `PI_WEB_SCHEDULER=1`), `docs/adr/`.
 
 ## Quick Start
 
@@ -88,6 +88,7 @@ Pi stores `{type:"toolCall", id, name, arguments}`; our `ToolCallContent` is `{t
 - MCP `codemode`/`deferred` tools stay callable regardless of the active set, so `lib/read-only-tool-guard.ts` blocks every MCP call under the read-only preset. Never trust `readOnlyHint`.
 - The `mcp` extension's `session_start` work is deferred to the first prompt or `/mcp` command (`deferMcpStart`, `lib/builtin-extensions.ts`): viewing a session must spawn no MCP server (each viewed runtime used to hold every stdio server). Enforced by `lib/mcp-builtin.test.mjs`.
 - Settings › MCP grafts pi's MCP and never re-hosts it (`docs/adr/0004-mcp-management.md`). `/api/mcp` views never carry env/header/secret values (`lib/mcp-view.ts`). pi's MCP config/CLI/OAuth helpers are not exported by the SDK; they load by file path with `webpackIgnore`/`turbopackIgnore`, listed in `lib/pi-sdk-compatibility.test.mjs`. Details: `docs/settings.md`.
+- `create_routine` (`lib/routine-tool-extension.ts`) is a deferred host tool, so every non-Chat-only session activates `tool_search` (~155 tokens) plus a one-line `<routines>` prompt hint. Details: `docs/routines.md`.
 
 ### Extension UI
 - No persistent TUI widgets: `setWidget` is a compatibility no-op (string arrays emitted and ignored, factories never invoked).
