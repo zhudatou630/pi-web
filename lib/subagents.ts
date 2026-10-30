@@ -1,7 +1,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dump as stringifyYaml } from "js-yaml";
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { parseFrontmatter } from "./frontmatter";
 import { parseNpmSource } from "./plugin-updates";
@@ -423,7 +423,9 @@ function readProfileDirectory(dir: string, scope: SubagentScope, cwd: string): S
   if (!existsSync(dir)) return [];
   if (scope !== "global" && !isProjectProfilePathAllowed(cwd, dir)) return [];
   return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    // Global profiles may be dotfile links; saves follow them, so reads must list them too.
+    .filter((entry) => entry.name.endsWith(".md") && (entry.isFile()
+      || (scope === "global" && entry.isSymbolicLink() && statSync(join(dir, entry.name), { throwIfNoEntry: false })?.isFile() === true)))
     .map((entry) => parseProfileFile(join(dir, entry.name), scope))
     .filter((profile): profile is SubagentProfile => profile !== null);
 }
