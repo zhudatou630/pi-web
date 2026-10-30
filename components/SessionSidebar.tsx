@@ -913,12 +913,19 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
   useEffect(() => {
     if (!visibleSessionKey) return;
     const visibleIds = visibleSessionKey.split("\n");
-    setUnreadSessionIds((prev) => {
+    const markVisibleRead = () => setUnreadSessionIds((prev) => {
       if (!visibleIds.some((id) => prev.has(id))) return prev;
       const next = new Set(prev);
       visibleIds.forEach((id) => next.delete(id));
       return next;
     });
+    markVisibleRead();
+    // Another tab may have marked a session shown here as unread while this tab was hidden.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") markVisibleRead();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [visibleSessionKey]);
 
   useEffect(() => {

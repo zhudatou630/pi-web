@@ -86,6 +86,34 @@ test("unread storage updates replace stale markers without echoing writes", () =
   assert.equal(listeners.size, 0);
 });
 
+test("returning to a tab clears unread markers another tab set on its visible session", () => {
+  const start = source.indexOf("  useEffect(() => {\n    if (!visibleSessionKey) return;");
+  const code = source.slice(start, source.indexOf("  useEffect(() => {\n    if (explorerRefreshKey", start));
+  const listeners = new Map();
+  let ids = new Set(["shown", "other"]);
+  let cleanup;
+  const document = {
+    visibilityState: "visible",
+    addEventListener: (name, fn) => listeners.set(name, fn),
+    removeEventListener: (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); },
+  };
+  vm.runInContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, vm.createContext({
+    Set, document, visibleSessionKey: "shown",
+    setUnreadSessionIds: (update) => { ids = update(ids); },
+    useEffect: (effect) => { cleanup = effect(); },
+  }));
+  assert.deepEqual([...ids], ["other"]);
+  ids = new Set([...ids, "shown"]); // adopted from another tab while this one was hidden
+  document.visibilityState = "hidden";
+  listeners.get("visibilitychange")();
+  assert.ok(ids.has("shown"), "a hidden tab must not swallow the notice");
+  document.visibilityState = "visible";
+  listeners.get("visibilitychange")();
+  assert.deepEqual([...ids], ["other"]);
+  cleanup();
+  assert.equal(listeners.size, 0);
+});
+
 const sessionItemSource = source.slice(source.indexOf("function SessionItem("));
 
 test("session rows use one compact line without message counts", async () => {
