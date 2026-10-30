@@ -38,10 +38,14 @@ export function downloadMermaidSvg(svg: SVGSVGElement | string): void {
   const el = typeof svg === "string" ? parseMermaidSvg(svg) : svg;
   if (!el) return;
   const xml = new XMLSerializer().serializeToString(el);
-  const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+  downloadSvgFile(xml, "mermaid-diagram.svg");
+}
+
+export function downloadSvgFile(source: string, fileName: string): void {
+  const url = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = "mermaid-diagram.svg";
+  link.download = fileName;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
@@ -121,15 +125,12 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
   }, [code, currentKey, isClaude, isDark, previewVisible]);
 
   const previewButton = useMemo(() => (
-    <button
-      type="button"
-      onClick={() => setShowPreview((v) => !v)}
-      disabled={isStreaming}
-      title={isStreaming ? t("i18n.previewAfterStreaming") : (previewVisible ? t("i18n.showMermaidSource") : t("i18n.previewMermaid"))}
-      className={["markdown-code-action", previewVisible ? "is-active" : ""].filter(Boolean).join(" ")}
-    >
-      {previewVisible ? t("i18n.source") : t("i18n.preview")}
-    </button>
+    <PreviewToggleButton
+      isStreaming={isStreaming}
+      previewVisible={previewVisible}
+      onToggle={() => setShowPreview((v) => !v)}
+      title={previewVisible ? t("i18n.showMermaidSource") : t("i18n.previewMermaid")}
+    />
   ), [isStreaming, previewVisible, t]);
 
   if (!previewVisible) {
@@ -310,6 +311,26 @@ function MermaidZoomDialog({ svg, onClose }: { svg: string; onClose: () => void 
         </div>
       </div>
     </dialog>
+  );
+}
+
+export function PreviewToggleButton({ isStreaming, previewVisible, onToggle, title }: {
+  isStreaming?: boolean;
+  previewVisible: boolean;
+  onToggle: () => void;
+  title: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={isStreaming}
+      title={isStreaming ? t("i18n.previewAfterStreaming") : title}
+      className={["markdown-code-action", previewVisible ? "is-active" : ""].filter(Boolean).join(" ")}
+    >
+      {previewVisible ? t("i18n.source") : t("i18n.preview")}
+    </button>
   );
 }
 

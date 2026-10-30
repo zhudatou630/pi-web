@@ -130,6 +130,13 @@ test("a mounted viewer reads its echoed initialState once, so hiding it never re
   assert.match(source, /initialState=\{mountState\}/);
 });
 
+test("file preview delegates zoom only for plain images, not SVG ImagePreview buttons", () => {
+  const preview = source.slice(source.indexOf("const MarkdownFilePreview"), source.indexOf("function TextFileViewer"));
+  assert.equal((preview.match(/closest\("a, button"\)/g) ?? []).length, 4, "gallery, focus, click and keyboard must all leave image components alone");
+  assert.doesNotMatch(preview, /closest\("a"\)/);
+  assert.match(preview, /lang === "svg"\) return <SvgBlock/);
+});
+
 test("the markdown preview gets a stable open-file callback, so shell changes do not re-parse it", () => {
   assert.match(source, /const openFile = useCallback\(\(path: string, page\?: number\) => onOpenFileRef\.current\?\.\(path, page\), \[\]\);/);
   assert.match(source, /onOpenFile=\{onOpenFile \? openFile : undefined\}/);

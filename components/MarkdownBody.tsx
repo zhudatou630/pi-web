@@ -16,6 +16,7 @@ import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
 import { MarkdownCopyButton } from "./MarkdownCopyButton";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
+import { SvgBlock } from "./SvgBlock";
 
 /** Session whose messages are rendered; lets the file API serve images the session references outside allowed roots. */
 export const MarkdownSessionContext = createContext<string | null>(null);
@@ -91,6 +92,7 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
             />
           );
         }
+        if (lang === "svg") return <SvgBlock code={raw.replace(/\n$/, "")} isStreaming={isStreaming} />;
         return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} isStreaming={isStreaming} />;
       }
       // Agents often quote the dev-server address as code: `http://localhost:5173`.

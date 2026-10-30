@@ -30,6 +30,7 @@ import { parseFrontmatter } from "@/lib/frontmatter";
 import { extractMarkdownOutline, findHeadingBySlug } from "@/lib/markdown-outline";
 import { markdownAppUrlTransform, markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { CodeBlock, MermaidBlock } from "./MermaidBlock";
+import { SvgBlock } from "./SvgBlock";
 import { MarkdownTableBlock, tableSource } from "./MarkdownBody";
 import { DelimitedTable } from "./DelimitedTable";
 import { isDelimitedTablePath } from "@/lib/delimited-table";
@@ -1204,13 +1205,13 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
   const openZoom = (image: HTMLImageElement) => {
     const root = previewRef.current;
     if (!root) return;
-    const images = [...root.querySelectorAll("img")].filter((item) => !item.closest("a"));
+    const images = [...root.querySelectorAll("img")].filter((item) => !item.closest("a, button"));
     setZoom({ items: images.map((item) => ({ src: item.currentSrc || item.src, alt: item.alt })), index: images.indexOf(image) });
   };
-  // Unlinked images act as zoom buttons for the keyboard too (a link keeps its own focus stop).
+  // Only plain images get delegated zoom; links and image components handle themselves.
   useEffect(() => {
     for (const image of previewRef.current?.querySelectorAll("img") ?? []) {
-      if (image.closest("a")) continue;
+      if (image.closest("a, button")) continue;
       image.tabIndex = 0;
       image.setAttribute("role", "button");
       image.setAttribute("aria-label", image.alt ? `${t("chat.previewImage")}: ${image.alt}` : t("chat.previewImage"));
@@ -1230,13 +1231,13 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
         ref={previewRef}
         className="markdown-body markdown-file-preview"
         style={{ padding: "24px 32px" }}
-        // One delegated handler opens any image (except linked ones) in the zoom viewer, with its siblings.
+        // One delegated handler opens plain images in the zoom viewer, with their siblings.
         onClick={(event) => {
           const image = event.target instanceof Element ? event.target.closest("img") : null;
-          if (image && !image.closest("a")) openZoom(image);
+          if (image && !image.closest("a, button")) openZoom(image);
         }}
         onKeyDown={(event) => {
-          if ((event.key !== "Enter" && event.key !== " ") || !(event.target instanceof HTMLImageElement) || event.target.closest("a")) return;
+          if ((event.key !== "Enter" && event.key !== " ") || !(event.target instanceof HTMLImageElement) || event.target.closest("a, button")) return;
           event.preventDefault();
           openZoom(event.target);
         }}
@@ -1255,6 +1256,7 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
                 if (lang === "mermaid") {
                   return <MermaidBlock code={raw.replace(/\n$/, "")} defaultPreview />;
                 }
+                if (lang === "svg") return <SvgBlock code={raw.replace(/\n$/, "")} />;
                 return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
               }
               return (
