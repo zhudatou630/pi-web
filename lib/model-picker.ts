@@ -32,6 +32,8 @@ export interface EnabledModelsDocument {
 export interface EnabledModelsPanelState extends EnabledModelsDocument {
   visible: { provider: string; id: string }[];
   pins: Record<string, string>;
+  /** SDK-resolved expansions of exact-list entries, without the all-model fallback. */
+  matches: Record<string, { ref: string; pin?: string }[]>;
   /**
    * Every model the definition layers know, credentials aside. Comparing two
    * reads of this set tells the panel whether a definition disappeared, which
@@ -129,16 +131,18 @@ export function exactRefOf(pattern: string): ExactRef | null {
   };
 }
 
-export function removeExactRef(patterns: readonly string[], ref: string): string[] {
+export function removeExactRef(
+  patterns: readonly string[],
+  ref: string,
+  matches: EnabledModelsPanelState["matches"],
+): string[] {
   const target = ref.trim();
-  // The panel names models canonically (`provider/id`), but a list may hold the
-  // bare id form, which names the same model.
-  const targetId = target.slice(target.indexOf("/") + 1);
-  return normalizePatterns(patterns).filter((pattern) => {
-    const exact = exactRefOf(pattern);
-    if (exact === null) return true;
-    if (exact.ref === target) return false;
-    return exact.provider !== undefined || exact.id !== targetId;
+  return normalizePatterns(patterns).flatMap((pattern) => {
+    const expanded = matches[pattern] ?? [];
+    if (exactRefOf(pattern) === null || !expanded.some((model) => model.ref === target)) return [pattern];
+    // Replace only this entry, in place: a bare id may still enable other providers.
+    return expanded.filter((model) => model.ref !== target)
+      .map((model) => `${model.ref}${model.pin ? `:${model.pin}` : ""}`);
   });
 }
 
@@ -201,19 +205,21 @@ export function isExactList(patterns: readonly string[]): boolean {
 /**
  * The `enabledModels` value that removes one model from what chat shows.
  *
- * An exact list loses that line, and an empty result is returned as-is so the
- * caller can refuse it — an empty list deletes the key, which means every
- * model. Only a glob or fuzzy pattern, which cannot say "not this one", is
- * rewritten as the models it currently covers, keeping the pinned levels.
+ * An exact list replaces only the matching entries with their remaining SDK
+ * expansions. An empty result is returned as-is so the caller can refuse it —
+ * an empty list deletes the key, which means every model. Only a glob or fuzzy
+ * pattern, which cannot say "not this one", is rewritten as the models it
+ * currently covers, keeping the pinned levels.
  */
 export function removeVisibleModel(input: {
   patterns: readonly string[];
   visible: readonly string[];
   pins: Readonly<Record<string, string>>;
+  matches: EnabledModelsPanelState["matches"];
   ref: string;
 }): string[] {
   const patterns = normalizePatterns(input.patterns);
-  if (isExactList(patterns)) return removeExactRef(patterns, input.ref);
+  if (isExactList(patterns)) return removeExactRef(patterns, input.ref, input.matches);
   return input.visible
     .filter((ref) => ref !== input.ref)
     .map((ref) => `${ref}${input.pins[ref] ? `:${input.pins[ref]}` : ""}`);

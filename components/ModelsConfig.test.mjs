@@ -103,6 +103,7 @@ test("each model row carries its own chat switch", () => {
   // The provider page is the only place that edits one model's chat membership.
   assert.match(source, /if \(next\) void saveScope\(\(current\) => appendExactRef\(current\.patterns, ref\)\)/);
   assert.match(source, /else void removeFromChat\(ref\)/);
+  assert.match(source, /matches: current\.matches/);
   // In "every model" mode, turning one off writes the rest out as a list.
   assert.match(source, /disabled=\{scopeDoc\.readOnly \|\| \(!usable && !inChat\)\}/);
 });

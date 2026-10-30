@@ -5,6 +5,7 @@ import { createModelsConfigServices, getModelsConfigReadServices, resolveAllowed
 import {
   describeEnabledModels,
   enabledModelsWriteScope,
+  exactRefOf,
   modelPickerRef,
   normalizePatterns,
   patternsToStore,
@@ -52,9 +53,21 @@ async function readPanelState(
   modelRuntime: ModelRuntime,
 ): Promise<EnabledModelsPanelState> {
   const document = readEnabledModelsDocument(cwd, settings);
-  const scope = await resolveVisibleModels(modelRuntime, document.patterns);
+  const available = await modelRuntime.getAvailable();
+  const snapshot = { getAvailable: async () => available } as ModelRuntime;
+  const scope = await resolveVisibleModels(snapshot, document.patterns);
+  const matches = Object.fromEntries(await Promise.all(
+    document.patterns.filter((pattern) => exactRefOf(pattern) !== null).map(async (pattern) => {
+      const resolved = await resolveVisibleModels(snapshot, [pattern]);
+      return [pattern, resolved.scopedModels.map(({ model, thinkingLevel }) => ({
+        ref: modelPickerRef(model.provider, model.id),
+        ...(thinkingLevel ? { pin: thinkingLevel } : {}),
+      }))];
+    }),
+  ));
   return {
     ...document,
+    matches,
     visible: scope.visible.map((model) => ({ provider: model.provider, id: model.id })),
     pins: scope.thinkingLevelPins,
     // Credential-blind: what the definition layers know, so the panel can tell a

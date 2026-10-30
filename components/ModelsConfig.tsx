@@ -404,6 +404,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       patterns: current.patterns,
       visible: current.visible.map((model) => modelPickerRef(model.provider, model.id)),
       pins: current.pins,
+      matches: current.matches,
       ref,
     }));
     if (saved && materializes) setScopeNotice(t("models.listWritten"));
