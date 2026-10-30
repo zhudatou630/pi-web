@@ -1240,6 +1240,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           eventStreamGraceTimerRef.current = setTimeout(() => void checkServerIdle(), PROMPT_SETTLE_POLL_MS);
           return;
         }
+        // Background children will wake the parent for its final reply; keep listening for it.
+        if (data.running && state?.subagentsActive) {
+          eventStreamGraceTimerRef.current = setTimeout(() => void checkServerIdle(), EVENT_STREAM_IDLE_GRACE_MS);
+          return;
+        }
 
         eventStreamGraceActiveRef.current = false;
         eventStreamGraceTimerRef.current = null;

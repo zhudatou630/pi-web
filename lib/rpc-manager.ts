@@ -504,11 +504,21 @@ export class AgentSessionWrapper {
           console.error("[pi-web] failed to persist model timing:", error instanceof Error ? error.message : error);
         }
       }
-      if (event.type === "compaction_end") this.flushCompactionQueue();
+      if (event.type === "compaction_end") {
+        this.flushCompactionQueue();
+        this.resumeReportsWhenIdle();
+      }
       this.emit(event.type === "agent_settled" ? this.withSubagentsActive(event) : event);
       if (event.type === "agent_settled") this.notifyAgentRunCompleteIfIdle();
     });
     this.resetIdleTimer();
+  }
+
+  /** A child that finished during a compaction or shell command found the parent busy; deliver now. */
+  private resumeReportsWhenIdle(): void {
+    setTimeout(() => {
+      if (this._alive && !this.isRunning()) this.notifyAgentRunCompleteIfIdle();
+    }, 0);
   }
 
   private notifyAgentRunCompleteIfIdle(): void {
@@ -772,7 +782,9 @@ export class AgentSessionWrapper {
     this.idleDeadline = timeoutMs === 0 ? null : Date.now() + timeoutMs;
     if (timeoutMs === 0) return;
     this.idleTimer = setTimeout(() => {
-      if (!this.forceShutdownOnIdle && (this.isRunning() || this.hasConnectedKeepAlive() || hasActiveSessionLivenessProvider({
+      // Background children report into this wrapper; disposing it would drop their results.
+      const awaitingReports = this.canStartBackgroundFollowUp() && hasUnsettledSubagents(this.sessionId);
+      if (!this.forceShutdownOnIdle && (this.isRunning() || awaitingReports || this.hasConnectedKeepAlive() || hasActiveSessionLivenessProvider({
         sessionId: this.sessionId,
         sessionFile: this.sessionFile || undefined,
       }))) {
@@ -1490,6 +1502,7 @@ export class AgentSessionWrapper {
         } finally {
           this.resetIdleTimer();
           invalidateSessionListCache();
+          this.resumeReportsWhenIdle();
         }
       }
 
