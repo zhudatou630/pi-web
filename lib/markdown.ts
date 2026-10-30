@@ -580,19 +580,26 @@ interface MarkdownTreeNode {
   data?: { hName?: string };
 }
 const LINE_ENDING = /[ \t]*(?:\r\n|\r|\n)[ \t]*/;
-const PHRASING_BLOCK_TYPES = new Set(["paragraph", "heading", "tableCell"]);
-const RAW_TEXT_OPEN_TAG = /^<(?:iframe|noembed|noframes|noscript|plaintext|script|style|textarea|title|xmp)(?=[\s/>]|$)/i;
-
-function opensRawTextElement(node: MarkdownTreeNode): boolean {
-  if (node.type === "html") return RAW_TEXT_OPEN_TAG.test(node.value ?? "");
-  return node.children?.some(opensRawTextElement) ?? false;
+const HTML_BLOCK_PARENTS = new Set(["root", "blockquote", "listItem", "footnoteDefinition"]);
+function literalUserHtml(parent: MarkdownTreeNode): void {
+  if (!parent.children) return;
+  parent.children = parent.children.map((node) => {
+    if (node.type !== "html") {
+      literalUserHtml(node);
+      return node;
+    }
+    const text = { type: "text", value: node.value };
+    return HTML_BLOCK_PARENTS.has(parent.type) ? { type: "paragraph", children: [text] } : text;
+  });
+}
+function remarkLiteralUserHtml() {
+  return (tree: MarkdownTreeNode) => literalUserHtml(tree);
 }
 function lineBreakNode(): MarkdownTreeNode {
   return { type: "lineBreak", data: { hName: "br" } };
 }
 function keepLineBreaks(parent: MarkdownTreeNode): void {
   if (!parent.children) return;
-  if (PHRASING_BLOCK_TYPES.has(parent.type) && opensRawTextElement(parent)) return;
   parent.children = parent.children.flatMap((node) => {
     if (node.type === "break") return [lineBreakNode()];
     if (node.type !== "text" || !node.value) {
@@ -610,6 +617,7 @@ function remarkKeepLineBreaks() {
 }
 export const markdownUserRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   ...(markdownRemarkPlugins ?? []),
+  remarkLiteralUserHtml,
   remarkKeepLineBreaks,
 ];
 export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [

@@ -28,7 +28,7 @@ import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thin
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import { iconStroke } from "./iconStroke";
 import type { WrittenFile } from "@/lib/turn-written-files";
-import { skillExpansionToCommand } from "@/lib/slash-display";
+import { skillExpansionBody, skillExpansionToCommand } from "@/lib/slash-display";
 import type { SubagentToolDetails } from "@/lib/subagent-extension";
 import type {
   AgentMessage,
@@ -500,7 +500,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
                 )}
               </div>
               {expanded && (
-                <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{content}</MarkdownBody>
+                <MarkdownBody className="markdown-user-message" cwd={cwd} onOpenFile={onOpenFile}>{skillExpansionBody(content) ?? content}</MarkdownBody>
               )}
             </div>
           ) : (
