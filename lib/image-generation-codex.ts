@@ -1,3 +1,4 @@
+import { modelProgressFetch } from "./model-progress-fetch";
 import { Buffer } from "node:buffer";
 import { formatUserAgent } from "@earendil-works/pi-ai";
 import { getBase64DecodedByteLength } from "./image-attachments";
@@ -110,14 +111,13 @@ export async function requestCodexImage(
     Accept: "application/json",
     "Content-Type": "application/json",
   });
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const response = await fetch(endpoint, {
+  const requestSignal = signal;
+  const response = await modelProgressFetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify(buildCodexImageBody(connection.model, prompt, inputs, size, quality)),
     signal: requestSignal,
-  });
+  }, REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     const requestId = response.headers.get("x-request-id") ?? response.headers.get("request-id");
     const raw = await readImageResponseBytes(response, MAX_ERROR_BYTES, requestSignal).catch(() => null);

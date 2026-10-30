@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 // The UI ships exactly two faces, 400 and 600, no italic face, and disables
 // font synthesis (see the @font-face rules in app/globals.css). Any other
 // weight or a synthesized italic renders differently per machine and smears
 // CJK. 600 is for headings only; state uses background/color/border instead.
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 async function sourceLines() {
   const out = [];

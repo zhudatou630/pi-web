@@ -1,3 +1,4 @@
+import { modelProgressFetch } from "./model-progress-fetch";
 import { Buffer } from "node:buffer";
 import { getBase64DecodedByteLength } from "./image-attachments";
 import { readImageResponseBytes } from "./image-generation-response";
@@ -244,7 +245,7 @@ export async function requestGeminiImage(
 
 /**
  * Each endpoint gets its own header timeout so a hung endpoint yields to the next one;
- * once headers arrive, the image stream shares one total budget and is never re-sent.
+ * once headers arrive, real image bytes renew the inactivity budget; it is never re-sent.
  */
 export async function requestImageFromEndpoints(
   urls: string[],
@@ -253,11 +254,12 @@ export async function requestImageFromEndpoints(
   signal?: AbortSignal,
   { connectMs = CONNECT_TIMEOUT_MS, totalMs = REQUEST_TIMEOUT_MS } = {},
 ): Promise<Buffer> {
-  const total = AbortSignal.timeout(totalMs);
-  const requestSignal = signal ? AbortSignal.any([signal, total]) : total;
-  const timedOut = (endpoint: string, phase: string) => {
+  const requestSignal = signal ?? new AbortController().signal;
+  const timedOut = (endpoint: string, phase: string, error?: unknown) => {
     signal?.throwIfAborted();
-    return total.aborted ? new Error(`Image request to ${endpoint} timed out after ${totalMs / 1000}s while ${phase}`) : undefined;
+    return error instanceof Error && error.name === "TimeoutError"
+      ? new Error(`Image request to ${endpoint} timed out after ${totalMs / 1000}s while ${phase} (no output progress)`)
+      : undefined;
   };
   let lastError = "no image endpoint available";
   for (const endpoint of urls) {
@@ -266,14 +268,14 @@ export async function requestImageFromEndpoints(
     const timer = setTimeout(() => connect.abort(), connectMs);
     let response: Response;
     try {
-      response = await fetch(endpoint, {
+      response = await modelProgressFetch(endpoint, {
         method: "POST",
         headers,
         body,
         signal: AbortSignal.any([requestSignal, connect.signal]),
-      });
+      }, totalMs);
     } catch (error) {
-      const fatal = timedOut(endpoint, "connecting");
+      const fatal = timedOut(endpoint, "connecting", error);
       if (fatal) throw fatal;
       lastError = connect.signal.aborted
         ? `Image endpoint ${endpoint} sent no response within ${connectMs / 1000}s`
@@ -291,7 +293,7 @@ export async function requestImageFromEndpoints(
     try {
       return await collectImageFromSse(response, requestSignal);
     } catch (error) {
-      throw timedOut(endpoint, "streaming the image") ?? error;
+      throw timedOut(endpoint, "streaming the image", error) ?? error;
     }
   }
   throw new Error(lastError);

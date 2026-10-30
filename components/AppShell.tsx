@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
+import { ResearchObserver } from "./ResearchObserver";
+import { researchSelection } from "@/lib/research-observer";
 import { ChatTabBar, type SessionMarkers } from "./ChatTabBar";
 import {
   openSessionInNewTab,
@@ -166,6 +168,7 @@ function parkedNewSessionDraftKey(cwd: string): string {
 export function AppShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const observedResearch = researchSelection(searchParams.get("research"));
   const [initialNavigation] = useState(() => getInitialNavigation(searchParams));
   const { locale, t: translate } = useI18n();
   const confirm = useConfirm();
@@ -1136,6 +1139,8 @@ export function AppShell() {
   ) => {
     const currentFreshCwd = newSessionCwd ?? activeCwd;
     setActiveCwd(cwd);
+    // Sidebar initialization must not discard a read-only research deep link.
+    if (observedResearch) return;
     // Skip if cwd is null (initial mount).
     if (!cwd) return;
     const newProject = projectKey ?? projectRoot ?? cwd;
@@ -1191,7 +1196,7 @@ export function AppShell() {
     setSystemInfoLoading(false);
     setActiveTopPanel(null);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [activeCwd, newSessionCwd, router, selectedSession]);
+  }, [activeCwd, newSessionCwd, observedResearch, router, selectedSession]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, pinned = false, inPlace = false) => {
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
@@ -2465,6 +2470,14 @@ export function AppShell() {
         explorerReveal={explorerReveal}
       />
       <div className="sidebar-footer">
+        <a href="/?research=latest" className="sidebar-footer-item" title="只读观察 Research Loop">
+          <span className="sidebar-section-gutter" aria-hidden="true">◉</span>
+          <span>研究观察</span>
+        </a>
+        <a href="/research" className="sidebar-footer-item" title="Research Loop">
+          <span className="sidebar-section-gutter" aria-hidden="true">↻</span>
+          <span>Research Loop</span>
+        </a>
         <button
           type="button"
           onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
@@ -3461,7 +3474,11 @@ export function AppShell() {
               gridTemplateRows: "minmax(0, 1fr)",
             }}
           >
-            {showChat ? (
+            {observedResearch ? (
+              <div style={{gridColumn:"1 / -1",gridRow:1,minHeight:0,minWidth:0,overflow:"hidden"}}>
+                <ResearchObserver selection={observedResearch}/>
+              </div>
+            ) : showChat ? (
               <>
                 {/* Every ChatWindow stays under the same parent across split/merge.
                     Group ownership changes grid placement, never component identity. */}

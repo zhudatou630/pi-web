@@ -29,6 +29,10 @@ export function proxy(request: NextRequest) {
     return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
   }
 
+  // The local worker authenticates this private endpoint with its own token.
+  // Route code verifies that token even when the UI password is disabled.
+  if (["/api/research/runtime", "/api/research/figures"].includes(request.nextUrl.pathname)) return NextResponse.next();
+
   const password = process.env.PI_WEB_PASSWORD;
   if (!isWebPasswordEnabled(password)) {
     if (request.nextUrl.pathname === "/login") {
@@ -81,4 +85,4 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/", "/login", "/api/:path*"] };
+export const config = { matcher: ["/", "/research", "/login", "/api/:path*"] };

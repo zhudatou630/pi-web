@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 // Components take colors from the theme tokens in app/globals.css
 // (--danger, --success, --warning, --accent, ...; tints via color-mix) so every
 // theme recolors them. Allowed literals: black shadows/scrims and white.
 // TerminalPanel owns a fixed ANSI palette; the HTML preview frame matches the
 // standalone preview document served by app/api/files.
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 const exempt = new Set(["TerminalPanel.tsx"]);
 const allowed = /rgba\(\s*0\s*,\s*0\s*,\s*0\s*,[^)]*\)|#fff(fff)?\b|#eef1f5|\(#\d+\)|#\d+\)|issue #\d+/gi;
 

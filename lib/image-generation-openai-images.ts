@@ -1,3 +1,4 @@
+import { modelProgressFetch } from "./model-progress-fetch";
 import { Buffer } from "node:buffer";
 import { getBase64DecodedByteLength } from "./image-attachments";
 import { openaiImageSize } from "./image-generation";
@@ -77,9 +78,8 @@ export async function requestOpenAIImagesImage(
   const baseUrl = auth.auth.baseUrl ?? ctx.modelRegistry.getProvider(connection.provider)?.baseUrl;
   const editing = inputs.length > 0;
   const endpoint = resolveOpenAIImagesUrl(baseUrl, editing ? "edits" : "generations");
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const response = await fetch(endpoint, {
+  const requestSignal = signal;
+  const response = await modelProgressFetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${auth.auth.apiKey}`,
@@ -88,7 +88,7 @@ export async function requestOpenAIImagesImage(
     },
     body: JSON.stringify(buildOpenAIImagesBody(connection.model, prompt, inputs, size, quality)),
     signal: requestSignal,
-  });
+  }, REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     const requestId = response.headers.get("x-request-id") ?? response.headers.get("request-id");
     const raw = await readImageResponseBytes(response, MAX_ERROR_BYTES, requestSignal).catch(() => null);
