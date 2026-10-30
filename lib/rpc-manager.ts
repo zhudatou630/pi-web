@@ -994,6 +994,10 @@ export class AgentSessionWrapper {
           if (sameId) this.inner.setThinkingLevel(thinkingLevel);
           invalidateModelsCache();
           invalidateSessionListCache();
+        } else {
+          // Re-picking the current model is still an explicit choice: it becomes the default again.
+          this.inner.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
+          invalidateModelsCache();
         }
         // Return the effective level so clients can re-sync their picker.
         return { id: model.id, provider: model.provider, thinkingLevel: this.inner.thinkingLevel };
