@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import ReactMarkdown from "react-markdown";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, {
@@ -9,7 +10,7 @@ const jiti = createJiti(import.meta.url, {
   tsconfigPaths: true,
 });
 const { MarkdownBody, tableSource, scrollMarkdownFragment } = await jiti.import("./MarkdownBody.tsx");
-const { normalizeDisplayMath } = await jiti.import("../lib/markdown.ts");
+const { normalizeDisplayMath, markdownRemarkPlugins, markdownRehypePlugins, markdownPreviewRehypePlugins } = await jiti.import("../lib/markdown.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
 function renderMarkdown(markdown, props = {}) {
@@ -54,6 +55,40 @@ test("fragment scroll stays local, handles encoded ids, footnotes, headings and 
     } });
   }
   assert.deepEqual(calls, ["user-content-sec", "user-content-user-content-fn-1", "user-content-中文", "heading", "root"]);
+});
+
+test("display math copies trusted LaTeX source, not KaTeX glyphs; inline and preview math stay unchanged", () => {
+  const markdown = "$$\n\\frac{a}{b} < c\n$$\n\n```math\na^2\n```\n\nInline $x$ and $$y$$.";
+  for (const props of [{}, { onOpenFile: undefined }, { isStreaming: true }, { className: "markdown-user-message" }]) {
+    const html = renderMarkdown(markdown, props);
+    assert.equal((html.match(/class="markdown-code-actions markdown-math-copy"/g) ?? []).length, 2);
+    assert.equal((html.match(/class="katex-display"/g) ?? []).length, 2);
+    assert.match(html, /class="markdown-code-action"[^>]*title="Copy LaTeX"/);
+    assert.match(html, /data-export-exclude/);
+    assert.doesNotMatch(html, /data-math-source|dataMathSource/);
+  }
+  const sources = [];
+  renderToStaticMarkup(React.createElement(ReactMarkdown, {
+    remarkPlugins: markdownRemarkPlugins,
+    rehypePlugins: markdownRehypePlugins,
+    components: { div({ node, children }) {
+      sources.push(node.properties.dataMathSource);
+      return React.createElement("div", null, children);
+    } },
+  }, markdown));
+  assert.deepEqual(sources, ["\\frac{a}{b} < c", "a^2"]);
+  for (const forged of [
+    '<div data-math-source="forged">hi</div>',
+    '<div dataMathSource="forged">hi</div>',
+    '<div class="markdown-math-display" data-math-source="forged">$x$</div>',
+  ]) assert.doesNotMatch(renderMarkdown(forged), /markdown-math-copy|forged/);
+  const preview = renderToStaticMarkup(React.createElement(ReactMarkdown, {
+    remarkPlugins: markdownRemarkPlugins, rehypePlugins: markdownPreviewRehypePlugins,
+  }, markdown));
+  assert.doesNotMatch(preview, /data-math-source|markdown-math-copy/);
+  const nested = renderMarkdown("> $$\n> \\frac{a\n> $$", { isStreaming: true });
+  assert.match(nested, /katex-error/);
+  assert.match(nested, /markdown-math-copy/);
 });
 
 test("opens non-file markdown links in a safe new tab", () => {

@@ -1594,6 +1594,31 @@ pre, code {
   overflow-y: hidden;
   padding: 2px 0;
 }
+.markdown-math-display {
+  position: relative;
+  margin: 0.5em 0;
+  /* Keep the code-style action above even a full-width formula, outside its scroller. */
+  padding-top: 20px;
+}
+.markdown-math-display > .katex-display {
+  margin: 0;
+}
+.markdown-math-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .markdown-math-copy .markdown-code-action {
+    opacity: 0;
+    transition: opacity var(--motion-fast), color var(--motion-fast), background var(--motion-fast);
+  }
+  .markdown-math-display:hover .markdown-code-action,
+  .markdown-math-copy .markdown-code-action:focus-visible,
+  .markdown-math-copy .markdown-code-action[data-copied] {
+    opacity: 1;
+  }
+}
 .markdown-body .katex {
   font-size: 1.05em;
 }

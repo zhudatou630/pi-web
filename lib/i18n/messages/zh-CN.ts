@@ -1181,6 +1181,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.copyCommand": "复制命令",
     "chat.collapseStep": "收起",
     "chat.copyTable": "复制表格（Markdown）",
+    "chat.copyLatex": "复制 LaTeX",
     "chat.loadSessionFailed": "无法加载此会话",
     "chat.retryLoadSession": "重试",
     "i18n.noSummary": "（无摘要）",

@@ -1,3 +1,4 @@
+import type { Element as HastElement, Root as HastRoot, RootContent as HastContent } from "hast";
 import type { Content, Link, Parent, Root } from "mdast";
 import type { Plugin } from "unified";
 import type { Extension } from "micromark-util-types";
@@ -640,9 +641,38 @@ export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"]
   remarkCjkFriendly,
 ];
 
+function hastText(node: HastContent): string {
+  return node.type === "text" ? node.value : node.type === "element" ? node.children.map(hastText).join("") : "";
+}
+
+// After sanitizing: user HTML cannot forge the internal source attribute.
+function rehypeDisplayMathSource() {
+  return (tree: HastRoot): void => {
+    const visit = (parent: HastRoot | HastElement): void => {
+      parent.children = parent.children.map((child) => {
+        if (child.type !== "element") return child;
+        const code = child.tagName === "pre" && child.children.length === 1 ? child.children[0] : null;
+        const classes = code?.type === "element" && code.tagName === "code" ? code.properties.className : null;
+        if (Array.isArray(classes) && classes.includes("language-math")) {
+          return {
+            type: "element",
+            tagName: "div",
+            properties: { dataMathSource: hastText(child).replace(/\n$/, "") },
+            children: [child],
+          };
+        }
+        visit(child);
+        return child;
+      });
+    };
+    visit(tree);
+  };
+}
+
 export const markdownRehypePlugins: ReactMarkdownOptions["rehypePlugins"] = [
   rehypeRaw,
   [rehypeSanitize, markdownSanitizeSchema],
+  rehypeDisplayMathSource,
   [rehypeKatex, { throwOnError: false, strict: false }],
 ];
 

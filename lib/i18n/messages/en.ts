@@ -1181,6 +1181,7 @@ export const enLocale: LocalePlugin = {
     "chat.copyCommand": "Copy command",
     "chat.collapseStep": "Collapse",
     "chat.copyTable": "Copy table as Markdown",
+    "chat.copyLatex": "Copy LaTeX",
     "chat.loadSessionFailed": "Could not load this session",
     "chat.retryLoadSession": "Retry",
     "i18n.noSummary": "(no summary)",

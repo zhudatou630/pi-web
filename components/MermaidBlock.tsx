@@ -8,14 +8,13 @@ import { useFontScheme } from "@/hooks/useFontScheme";
 import { useTheme } from "@/hooks/useTheme";
 import { claudeCodeStyle, claudeDarkCodeStyle, claudeDarkMermaidVariables, claudeMermaidVariables } from "@/lib/claude-theme";
 import { useI18n } from "@/hooks/useI18n";
-import { copyText } from "@/lib/clipboard";
 import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
 import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 import { usePrismLanguages } from "@/hooks/usePrismLanguages";
 import { takeHighlightBudget, waitForHighlight } from "@/lib/highlight-queue";
 import { prismLanguagesLoaded } from "@/lib/prism-languages";
-import { CopyGlyph } from "./CopyGlyph";
+import { MarkdownCopyButton } from "./MarkdownCopyButton";
 import { ExportImageIcon, useExportImage } from "./ExportImage";
 
 interface MermaidBlockProps {
@@ -359,8 +358,6 @@ function renderCodeLines({ rows, stylesheet, useInlineStyles }: CodeLinesProps) 
  */
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
   const { isDark, palette } = useTheme();
-  const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
   // Loading starts with the first block, streaming or not, so a streamed reply
   // usually finds the languages ready when it ends.
   // A plain-text fence needs no grammars; any real language loads them all once.
@@ -375,37 +372,13 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
     return waitForHighlight(() => setHighlighted(true));
   }, [isStreaming, highlighted, languagesReady]);
 
-  const copy = () => {
-    copyText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-
   return (
     <div className="markdown-code-block">
       <div className="markdown-code-header">
         <span className="markdown-code-lang">{lang || "text"}</span>
         <div className="markdown-code-actions">
           {headerAction}
-          <button
-            type="button"
-            onClick={copy}
-            className="markdown-code-action"
-            title={copied ? t("i18n.copied") : t("i18n.copy")}
-            aria-label={copied ? t("i18n.copied") : t("i18n.copy")}
-          >
-            {copied ? (
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <CopyGlyph />
-              </svg>
-            )}
-            <span>{copied ? t("i18n.copied") : t("i18n.copy")}</span>
-          </button>
+          <MarkdownCopyButton text={code} />
         </div>
       </div>
       {isStreaming ? (

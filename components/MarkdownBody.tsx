@@ -14,6 +14,7 @@ import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, 
 import { splitMarkdownBlocks } from "@/lib/markdown-blocks";
 import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
+import { MarkdownCopyButton } from "./MarkdownCopyButton";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
 
 /** Session whose messages are rendered; lets the file API serve images the session references outside allowed roots. */
@@ -25,6 +26,18 @@ interface MarkdownBodyProps {
   isStreaming?: boolean;
   cwd?: string;
   onOpenFile?: (filePath: string, page?: number) => void;
+}
+
+function MathDisplay({ source, children }: { source: string; children: ReactNode }) {
+  const { t } = useI18n();
+  return (
+    <div className="markdown-math-display">
+      {children}
+      <div className="markdown-code-actions markdown-math-copy" data-export-exclude>
+        <MarkdownCopyButton text={source} label={t("chat.copyLatex")} />
+      </div>
+    </div>
+  );
 }
 
 interface MarkdownBlockProps {
@@ -151,6 +164,11 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
           <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />
         </ImagePreview>
       );
+    },
+    div({ node, children, ...props }) {
+      const source = node?.properties?.dataMathSource;
+      if (typeof source === "string") return <MathDisplay source={source}>{children}</MathDisplay>;
+      return <div {...props}>{children}</div>;
     },
     table({ children, node }) {
       const start = node?.position?.start.offset;
