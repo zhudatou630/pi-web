@@ -6,7 +6,8 @@ import { randomUUID } from "crypto";
 import { computeLiveSessionTotalActiveMs } from "./session-timing";
 import { cwdMissingError } from "./missing-cwd";
 import { existsSync, realpathSync, writeFileSync } from "fs";
-import { join, resolve } from "path";
+import type { DebugSession } from "./debug-types";
+import { basename, join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { isDeepStrictEqual } from "util";
 import { isBase64ImageWithinLimits, validateAgentImages } from "./image-attachments";
@@ -341,6 +342,7 @@ export class AgentSessionWrapper {
   private readonly suppressCompletionNotifications: boolean;
   private unsubscribe: (() => void) | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private idleDeadline: number | null = null;
   private onDestroyCallback: (() => void) | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private sessionShutdownEmitted = false;
@@ -674,6 +676,22 @@ export class AgentSessionWrapper {
     return release;
   }
 
+  /** A field-only projection: never call commands, extension callbacks or liveness probes. */
+  debugSnapshot(): Omit<DebugSession, "starting" | "sseSubscribers" | "activeSubagentRuns"> {
+    return {
+      id: this.sessionId,
+      cwd: basename(this.cwd),
+      alive: this._alive && !this._closing,
+      closing: this._closing,
+      running: this.isRunning(),
+      compacting: this.inner.isCompacting,
+      keepAliveListeners: this.subscriptions.filter((entry) => entry.keepAlive).length,
+      idleDeadline: this.idleDeadline ?? null,
+      forcedIdle: this.forceShutdownOnIdle,
+      pendingExtensionUi: this.pendingUiRequests.size,
+    };
+  }
+
   /** Browser renewals use the wrapper's one idle clock, never Stop's forced deadline. */
   renewIdleTimer(): boolean {
     if (!this.isAlive() || this.forceShutdownOnIdle) return false;
@@ -684,6 +702,7 @@ export class AgentSessionWrapper {
   private resetIdleTimer(): void {
     if (!this._alive || this._closing) {
       if (this.idleTimer) clearTimeout(this.idleTimer);
+      this.idleDeadline = null;
       return;
     }
     if (!this.isRunning()) this.forceShutdownOnIdle = false;
@@ -692,6 +711,7 @@ export class AgentSessionWrapper {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     const timeoutMs = this.forceShutdownOnIdle ? DEFAULT_SESSION_IDLE_TIMEOUT_MS : SESSION_IDLE_TIMEOUT_MS;
     this.forcedIdleTimerArmed = this.forceShutdownOnIdle;
+    this.idleDeadline = timeoutMs === 0 ? null : Date.now() + timeoutMs;
     if (timeoutMs === 0) return;
     this.idleTimer = setTimeout(() => {
       if (!this.forceShutdownOnIdle && (this.isRunning() || this.hasConnectedKeepAlive() || hasActiveSessionLivenessProvider({
@@ -1417,6 +1437,7 @@ export class AgentSessionWrapper {
     }
     this.closeListeners.clear();
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleDeadline = null;
     this.directImageAbortController?.abort(new DOMException("Session closed", "AbortError"));
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
@@ -2018,6 +2039,22 @@ export function hasAppUpdateBlockingSessions(): boolean {
     || getSessionFileMutations().size > 0
     || getActiveSubagentRuns().length > 0
     || [...getRegistry().values()].some((session) => session.isBusyForFileMutation());
+}
+
+export function getRpcDebugSnapshots(): Omit<DebugSession, "sseSubscribers" | "activeSubagentRuns">[] {
+  const sessions = [...(globalThis.__piSessions ?? [])].map(([id, session]) => ({
+    // A wrapper already in globalThis during HMR can predate debugSnapshot().
+    ...AgentSessionWrapper.prototype.debugSnapshot.call(session),
+    id,
+    starting: globalThis.__piStartLocks?.has(id) ?? false,
+  }));
+  for (const id of globalThis.__piStartLocks?.keys() ?? []) {
+    if (!globalThis.__piSessions?.has(id)) sessions.push({
+      id, cwd: null, alive: false, starting: true, closing: false, running: false,
+      compacting: false, keepAliveListeners: 0, idleDeadline: null, forcedIdle: false, pendingExtensionUi: 0,
+    });
+  }
+  return sessions;
 }
 
 export function getRpcSession(sessionId: string): AgentSessionWrapper | undefined {

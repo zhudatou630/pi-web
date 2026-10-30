@@ -1,3 +1,4 @@
+import { registerSseConnection } from "./sse-connections";
 import {
   isEventIncludedInSnapshot,
   toClientAgentEvent,
@@ -121,12 +122,14 @@ export function createAgentEventStream(
       let unsubscribe: (() => void) | null = null;
       let unsubscribeClose: (() => void) | null = null;
       let abortHandler: (() => void) | null = null;
+      let unregisterConnection = () => {};
       const closeFromRegistry = () => cleanup(true);
 
       const cleanup = (closeController: boolean | "error", reason?: Error) => {
         if (closed) return;
         closed = true;
         registry.delete(closeFromRegistry);
+        unregisterConnection();
         if (heartbeat !== null) clearInterval(heartbeat);
         unsubscribe?.();
         unsubscribe = null;
@@ -146,6 +149,7 @@ export function createAgentEventStream(
         return;
       }
       registry.add(closeFromRegistry);
+      unregisterConnection = registerSseConnection(req, "agent", sessionId);
 
       const backlogLimitBytes = resolveBacklogLimitBytes();
       const enqueueText = (text: string, droppable = false) => {

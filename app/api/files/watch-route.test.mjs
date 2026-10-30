@@ -35,13 +35,14 @@ test("request abort releases the watcher and its heartbeat, even without stream 
   const { default: path } = await import("node:path");
   t.mock.timers.enable({ apis: ["setInterval"] });
   let closes = 0;
+  let released = 0;
   const watcher = { on() {}, close() { closes++; } };
-  const run = new Function("request", "fs", "path", "stat", "filePath", "type", "getFileVersion", ts.transpileModule(watchBlock, {
+  const run = new Function("request", "fs", "path", "stat", "filePath", "type", "getFileVersion", "registerSseConnection", ts.transpileModule(watchBlock, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText);
   const abort = new AbortController();
   const response = run(new Request("http://localhost/watch", { signal: abort.signal }), { watch: () => watcher }, path,
-    { isFile: () => true }, "/tmp/test", "watch", () => "version");
+    { isFile: () => true }, "/tmp/test", "watch", () => "version", () => () => { released++; });
   const reader = response.body.getReader();
   assert.match(new TextDecoder().decode((await reader.read()).value), /event: connected/);
   t.mock.timers.tick(30_000);
@@ -49,6 +50,7 @@ test("request abort releases the watcher and its heartbeat, even without stream 
   abort.abort();
   assert.equal(closes, 1);
   assert.equal((await reader.read()).done, true);
+  assert.equal(released, 1);
   t.mock.timers.tick(60_000);
   assert.equal(closes, 1);
 });

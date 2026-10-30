@@ -64,7 +64,7 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
   assert.match(source, /const AGENT_PANEL_WIDTH = 420/);
   assert.match(
     source,
-    /if \(activeTopPanel === "agents" \|\| activeTopPanel === "session" \|\| \(!isMobile && activeTopPanel === "branches"\)\)[\s\S]*?Math\.min\(wantedWidth[\s\S]*?anchor\.getBoundingClientRect\(\)/,
+    /if \(activeTopPanel === "agents" \|\| activeTopPanel === "session" \|\| activeTopPanel === "debug" \|\| \(!isMobile && activeTopPanel === "branches"\)\)[\s\S]*?Math\.min\(wantedWidth[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
   assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSwitchFamilySession\}/);
   assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);

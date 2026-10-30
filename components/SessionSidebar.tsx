@@ -1,5 +1,6 @@
 "use client";
 
+import { pageDebugFetch } from "@/lib/page-debug";
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { selectionFamilies, reconcileSessionSelection, toggleSessionSelection, sessionSelectionSummary } from "@/lib/session-selection";
@@ -803,7 +804,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
       controller?.abort();
       controller = current;
       try {
-        const res = await fetch("/api/agent/running", {
+        const res = await pageDebugFetch("running", "/api/agent/running", {
           cache: "no-store",
           signal: current.signal,
         });

@@ -1,5 +1,6 @@
 "use client";
 
+import { pageDebugFetch } from "@/lib/page-debug";
 import { useEffect } from "react";
 
 const SESSION_LEASE_RENEW_INTERVAL_MS = 30_000;
@@ -16,7 +17,7 @@ export function useOpenSessionLeases(sessionIds: readonly string[]): void {
     const renew = () => {
       if (disposed) return;
       for (const id of ids) {
-        void fetch(`/api/agent/${encodeURIComponent(id)}/lease`, {
+        void pageDebugFetch("lease", `/api/agent/${encodeURIComponent(id)}/lease`, {
           method: "POST",
           cache: "no-store",
         }).catch(() => {});

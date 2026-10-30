@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { registerSseConnection } from "@/lib/sse-connections";
 import fs from "fs";
 import path from "path";
 import {
@@ -630,10 +631,12 @@ export async function GET(
       const stream = new ReadableStream({
         start(controller) {
           let closed = false;
+          let unregisterConnection = () => {};
           const abort = () => cleanup(true);
           cleanup = (closeController) => {
             if (closed) return;
             closed = true;
+            unregisterConnection();
             clearInterval(heartbeat);
             watcher?.close();
             watcher = null;
@@ -687,6 +690,7 @@ export async function GET(
                 send("change", { mtime: new Date().toISOString(), size: 0 });
               }
             });
+            unregisterConnection = registerSseConnection(request, "file-watch");
             watcher.on("error", () => cleanup(true));
             heartbeat = setInterval(() => send("heartbeat", {}), 30_000);
             // The client snapshots only after this event, so emit it after the
