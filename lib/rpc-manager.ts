@@ -3,6 +3,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
+import { computeLiveSessionTotalActiveMs } from "./session-timing";
 import { cwdMissingError } from "./missing-cwd";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
@@ -947,6 +948,7 @@ export class AgentSessionWrapper {
         const contextUsage = this.inner.getContextUsage();
         return {
           sessionId: this.inner.sessionId,
+          totalActiveMs: computeLiveSessionTotalActiveMs(this.inner.sessionManager),
           sessionFile: this.inner.sessionFile ?? "",
           isStreaming: this.inner.isStreaming,
           isPromptRunning: this.pendingPromptCount > 0,

@@ -1,3 +1,20 @@
+interface TimingEntriesSource {
+  getEntries(): readonly TimingEntry[];
+}
+
+const liveTimingCache = new WeakMap<TimingEntriesSource, { count: number; tail: TimingEntry | undefined; total: number }>();
+
+// Session entries are append-only; use the tail identity to also detect replacement.
+export function computeLiveSessionTotalActiveMs(source: TimingEntriesSource): number {
+  const entries = source.getEntries();
+  const tail = entries.at(-1);
+  const cached = liveTimingCache.get(source);
+  if (cached?.count === entries.length && cached.tail === tail) return cached.total;
+  const total = computeSessionTotalActiveMs(entries);
+  liveTimingCache.set(source, { count: entries.length, tail, total });
+  return total;
+}
+
 interface TimingEntry {
   type: string;
   timestamp: string;

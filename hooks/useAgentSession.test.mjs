@@ -230,7 +230,7 @@ test("reconcile applies context usage before bailing out on a busy run", () => {
   const usageIndex = reconcileSource.indexOf("applyContextUsage(state?.contextUsage");
   const busyIndex = reconcileSource.indexOf("if (busy)");
   assert.ok(usageIndex !== -1 && busyIndex !== -1 && usageIndex < busyIndex);
-  assert.match(reconcileSource, /applyContextUsage\(state\?\.contextUsage, sid, runId, usageRequestId\)/);
+  assert.match(reconcileSource, /applyContextUsage\(state\?\.contextUsage, sid, runId, usageRequestId, state\?\.totalActiveMs\)/);
 });
 
 test("assistant message_end refreshes context usage without reloading the session", () => {

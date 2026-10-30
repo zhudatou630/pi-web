@@ -89,6 +89,7 @@ interface LastAssistantTextResponse {
 }
 
 type AgentStateResponse = {
+  totalActiveMs?: number;
   contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
   systemPrompt?: string;
   thinkingLevel?: string;
@@ -418,6 +419,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption | null>(initialThinkingLevel);
   const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
+  const [liveActiveTime, setLiveActiveTime] = useState<{ sessionId: string; value: number } | null>(null);
   const contextUsageRequestIdRef = useRef(0);
   // Only applied replies fence older ones; a failed newer read does not discard a good reply.
   const contextUsageAppliedIdRef = useRef(0);
@@ -593,10 +595,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [newSessionDraftKey, opts.chatInputRef, resolveComposerDraftKey]);
 
   const sessionStats = useMemo(() => {
+    const liveMs = liveActiveTime?.sessionId === data?.sessionId ? liveActiveTime?.value : undefined;
+    // Either read can lead (streaming vs. a snapshot reload after compaction).
+    const totalActiveMs = data?.totalActiveMs === undefined && liveMs === undefined
+      ? undefined : Math.max(data?.totalActiveMs ?? 0, liveMs ?? 0);
     if (sessionStatsOverride) {
       return {
         ...sessionStatsOverride,
-        totalActiveMs: data?.totalActiveMs,
+        totalActiveMs,
         ...(contextUsage ? { contextUsage } : {}),
       };
     }
@@ -608,16 +614,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       sessionId: sessionIdRef.current ?? session?.id ?? "",
       sessionName: session?.name,
       ...stats,
-      totalActiveMs: data?.totalActiveMs,
+      totalActiveMs,
       ...(contextUsage ? { contextUsage } : {}),
     } satisfies SessionStatsInfo;
-  }, [messages, sessionStatsOverride, contextUsage, data?.context.messages, data?.filePath, data?.totalActiveMs, data?.stats, session?.id, session?.name]);
+  }, [messages, sessionStatsOverride, contextUsage, liveActiveTime, data?.sessionId, data?.context.messages, data?.filePath, data?.totalActiveMs, data?.stats, session?.id, session?.name]);
 
-  const applyContextUsage = useCallback((next: ContextUsage | null | undefined, sid: string, runId: number, requestId: number) => {
-    if (next === undefined || !sessionHookMountedRef.current || sessionIdRef.current !== sid
+  const applyContextUsage = useCallback((next: ContextUsage | null | undefined, sid: string, runId: number, requestId: number, totalActiveMs?: number) => {
+    if (!sessionHookMountedRef.current || sessionIdRef.current !== sid
       || promptRunIdRef.current !== runId || requestId <= contextUsageAppliedIdRef.current) return;
     contextUsageAppliedIdRef.current = requestId;
-    setContextUsage((prev) => keepContextUsage(prev, next));
+    if (totalActiveMs !== undefined) setLiveActiveTime({ sessionId: sid, value: totalActiveMs });
+    if (next !== undefined) setContextUsage((prev) => keepContextUsage(prev, next));
   }, []);
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
@@ -696,7 +703,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
         const liveState = agentState.state;
         if (liveState) {
-          applyContextUsage(liveState.contextUsage, sid, stateRunId, stateUsageRequestId);
+          applyContextUsage(liveState.contextUsage, sid, stateRunId, stateUsageRequestId, liveState.totalActiveMs);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
           if (liveState.thinkingLevel) setThinkingLevel(liveState.thinkingLevel as ThinkingLevelOption);
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
@@ -1321,7 +1328,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (typeof state?.autoCompactionEnabled === "boolean") {
         setAutoCompactionEnabled(state.autoCompactionEnabled);
       }
-      applyContextUsage(state?.contextUsage, sid, runId, usageRequestId);
+      applyContextUsage(state?.contextUsage, sid, runId, usageRequestId, state?.totalActiveMs);
       const busy = data.running && state
         && (state.isStreaming || state.isPromptRunning || state.isCompacting);
       if (busy) {
@@ -1464,7 +1471,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             .then((d: { state?: AgentStateResponse } | null) => {
               if (!d || !sessionHookMountedRef.current || sessionHookMountIdRef.current !== mountId
                 || sessionIdRef.current !== sid || promptRunIdRef.current !== runId) return;
-              applyContextUsage(d.state?.contextUsage, sid, runId, usageRequestId);
+              applyContextUsage(d.state?.contextUsage, sid, runId, usageRequestId, d.state?.totalActiveMs);
               if (d.state?.systemPrompt !== undefined) setSystemPrompt(d.state.systemPrompt ?? null);
               // Aborted turns can leave messages queued in pi (delivered with the
               // next turn); dead wrapper (no state) means the queue is gone.
