@@ -39,7 +39,7 @@ test("a new composer focus request runs once for its own draft and respects phon
     frames.splice(0).forEach(f => f());
     assert.equal(calls, expected);
   }
-  assert.equal((source.text.match(/newComposerFocusKeyRef.current = draftKey/g) ?? []).length, 2);
+  assert.equal((source.text.match(/newComposerFocusKeyRef.current = draftKey/g) ?? []).length, 3); // sidebar, tab bar, split
 });
 
 test("imperative composer focus puts the caret at the end of a restored draft", () => {

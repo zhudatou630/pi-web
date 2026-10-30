@@ -1954,6 +1954,7 @@ export function AppShell() {
         const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
         rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
         activeNewSessionDraftKeyRef.current = draftKey;
+        newComposerFocusKeyRef.current = draftKey;
         setNewSessionDraftId(draftId);
 
         const { tabs: nextTabs, tabId } = openDraftInTabs(
