@@ -1154,10 +1154,8 @@ test("manual compaction leaves the composer editable, labels parked rows and exp
   assert.doesNotMatch(html, /<fieldset[^>]*disabled/);
   assert.doesNotMatch(html, /<textarea[^>]*disabled/);
   assert.match(html, /Messages will queue until compaction finishes/);
-  // Status lives in the context readout and Stop beside send, as for a running session; no extra banner.
-  assert.match(html, /live-pulse-beacon[\s\S]*?<span>compacting<\/span>/);
-  assert.doesNotMatch(html, /chat-input-feedback/);
-  assert.match(html, /<button[^>]*aria-label="Stop compaction"/);
+  // No extra status UI: the composer only says where new messages go.
+  assert.doesNotMatch(html, /chat-input-feedback|live-pulse-beacon|compacting</);
   assert.match(html, /aria-label="Recall to input"/);
 });
 
