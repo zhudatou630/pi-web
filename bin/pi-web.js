@@ -23,6 +23,8 @@ const { wireChildProcessLifecycle } = require("./process-lifecycle");
 const { getGlobalNpmCli } = require("./app-update");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { rotatePreviewSecrets, getRotationError } = require("./rotate-preview-secrets");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { waitForPage } = require("./wait-for-page");
 
 let launchOptions;
 try {
@@ -158,13 +160,16 @@ function startServer(shouldOpenBrowser) {
   });
 
   let browserOpened = false;
-  const url = `http://${hostname}:${port}`;
+  const urlHost = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
+  const url = `http://${urlHost}:${port}`;
 
-  child.stdout.on("data", (chunk) => {
+  child.stdout.on("data", async (chunk) => {
     const text = chunk.toString();
     process.stdout.write(text);
     if (shouldOpenBrowser && !browserOpened && text.includes("Ready")) {
       browserOpened = true;
+      await waitForPage(url);
+      if (updating) return;
       const isWindows = process.platform === "win32";
       const isMac = process.platform === "darwin";
       // Avoid `shell: true` to suppress Node.js DEP0190 deprecation
