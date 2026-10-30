@@ -26,6 +26,7 @@ import {
   buildEntriesFromFiles, buildAtInsertText, buildAtMentionText, extractAtQuery, filterFileEntries,
   type AtQueryMatch, type FileIndexEntry,
 } from "@/lib/file-fuzzy";
+import { LivePulseBeacon } from "./LivePulseBeacon";
 import { getMarkdownListContinuation } from "@/lib/markdown-list-continuation";
 import { buildQuotedPrompt, joinQuotedDraft, splitQuotedPrompt, trimQuoteText, type Quote } from "@/lib/quoted-selection";
 import { QuoteCard } from "./QuoteCard";
@@ -1785,12 +1786,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       timing && `${t("session.performance")}: ${timing.text}`,
       costLabel && `${t("usage.cost")}: ${costLabel}`,
       isHigh ? t("chat.contextHighWarning") : null,
+      isCompacting ? t("chat.compacting") : null,
     ].filter(Boolean).join("\n");
 
     return (
       <button
         type="button"
-        className={`composer-btn chat-input-context${isHigh ? " is-high" : isWarning ? " is-warning" : ""}`}
+        className={`composer-btn chat-input-context${isCompacting ? "" : isHigh ? " is-high" : isWarning ? " is-warning" : ""}`}
         aria-pressed={onOpenSessionStats ? Boolean(statsOpen) : undefined}
         onClick={onOpenSessionStats}
         title={tooltip}
@@ -1798,11 +1800,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         data-top-panel-trigger={onOpenSessionStats ? "session" : undefined}
         aria-controls={onOpenSessionStats ? "workspace-top-panel" : undefined}
       >
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ transform: "rotate(-90deg)" }}>
-          <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" opacity="0.3" />
-          <circle cx="8" cy="8" r="6" pathLength="100" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeDasharray={`${Math.min(100, Math.round(percent))} 100`} />
-        </svg>
-        <span>{tokens !== null ? formatTokensK(tokens) : "?"}/{formatTokensK(windowTokens)}</span>
+        {/* While compacting, the context readout itself shows the work: the same pulse as a running session. */}
+        {isCompacting ? <LivePulseBeacon size={13} /> : (
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ transform: "rotate(-90deg)" }}>
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" opacity="0.3" />
+            <circle cx="8" cy="8" r="6" pathLength="100" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeDasharray={`${Math.min(100, Math.round(percent))} 100`} />
+          </svg>
+        )}
+        <span>{isCompacting ? "compacting" : `${tokens !== null ? formatTokensK(tokens) : "?"}/${formatTokensK(windowTokens)}`}</span>
         {cacheHitRate !== null && cacheHitRate !== undefined && (
           <span className="chat-input-context-cache">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
@@ -1897,6 +1902,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // A click chooses the delivery; the keyboard already names it (Enter / Alt+Enter).
   const chooseDelivery = queueStreamingActions && Boolean(onSteer && onFollowUp);
   const actionButtons = !isStreaming ? (
+    <>
+    {isCompacting && onAbortCompaction && (
+      <button type="button" className="composer-btn is-icon" aria-label={t("chat.stopCompaction")} title={t("chat.stopCompaction")} onClick={onAbortCompaction}>
+        {stopIcon}
+      </button>
+    )}
     <button
       type="button"
       className="composer-send"
@@ -1909,6 +1920,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     >
       {sendIcon}
     </button>
+    </>
   ) : (
     <>
       <button
@@ -2051,12 +2063,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <path d="M3 3v5h5" />
             </svg>
              {t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })}{retryInfo.errorMessage && <span style={{ opacity: 0.7, marginLeft: 4 }}>— {retryInfo.errorMessage}</span>}
-          </div>
-        )}
-        {isCompacting && (
-          <div role="status" className="chat-input-feedback">
-            <span>{t("chat.compacting")}</span>
-            {onAbortCompaction && <button type="button" className="chat-input-feedback-action" onClick={onAbortCompaction}>{t("chat.stopCompaction")}</button>}
           </div>
         )}
         {compactResultText && (

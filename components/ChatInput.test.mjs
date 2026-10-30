@@ -1148,14 +1148,16 @@ test("manual compaction leaves the composer editable, labels parked rows and exp
     React.createElement(ChatInput, {
       onSend() {}, onAbort() {}, isStreaming: false, isCompacting: true,
       onAbortCompaction() {}, queuedMessages: { steering: [], followUp: ["parked"] }, onRecallQueue() {},
+      contextUsage: { tokens: 1000, contextWindow: 10000, percent: 10 },
     }),
   ));
   assert.doesNotMatch(html, /<fieldset[^>]*disabled/);
   assert.doesNotMatch(html, /<textarea[^>]*disabled/);
   assert.match(html, /Messages will queue until compaction finishes/);
-  assert.match(html, /Compacting…/);
-  assert.doesNotMatch(html, /1 queued/, "the queue box already counts parked rows");
-  assert.match(html, /<button[^>]*>Stop compaction<\/button>/);
+  // Status lives in the context readout and Stop beside send, as for a running session; no extra banner.
+  assert.match(html, /live-pulse-beacon[\s\S]*?<span>compacting<\/span>/);
+  assert.doesNotMatch(html, /chat-input-feedback/);
+  assert.match(html, /<button[^>]*aria-label="Stop compaction"/);
   assert.match(html, /aria-label="Recall to input"/);
 });
 
