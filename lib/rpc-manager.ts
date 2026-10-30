@@ -1,6 +1,6 @@
 import { assertAppNotUpdating } from "./app-update-state";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, resizeImage, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
 import { computeLiveSessionTotalActiveMs } from "./session-timing";
@@ -81,6 +81,7 @@ export interface AgentEvent {
 }
 
 type EventListener = (event: AgentEvent) => void;
+type PromptImage = { type: "image"; data: string; mimeType: string };
 type EventSubscription = {
   listener: EventListener;
   keepAlive: boolean;
@@ -792,6 +793,19 @@ export class AgentSessionWrapper {
     }
   }
 
+  /**
+   * pi resizes images for a new prompt, but its steer/follow-up queues send them unchanged.
+   * Apply the same model limits here; an image pi cannot resize is kept as sent.
+   */
+  private async fitQueuedImages(images: PromptImage[] | undefined): Promise<PromptImage[] | undefined> {
+    if (!images?.length || !this.inner.settingsManager.getImageAutoResize()) return images;
+    const limits = this.inner.model?.inputLimits?.images?.resize;
+    return Promise.all(images.map(async (image) => {
+      const resized = await resizeImage(Buffer.from(image.data, "base64"), image.mimeType, limits);
+      return resized ? { type: "image" as const, data: resized.data, mimeType: resized.mimeType } : image;
+    }));
+  }
+
   async send(command: Record<string, unknown>): Promise<unknown> {
     assertAppNotUpdating();
     const type = command.type as string;
@@ -844,8 +858,9 @@ export class AgentSessionWrapper {
           if (this.extensionUiAbortController.signal.aborted) {
             this.extensionUiAbortController = new AbortController();
           }
-          const promptImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
           const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
+          const rawImages = command.images as PromptImage[] | undefined;
+          const promptImages = streamingBehavior ? await this.fitQueuedImages(rawImages) : rawImages;
           if (!streamingBehavior && !this.isRunning()) this.recordSelectionOnBranch();
           let preflightAccepted = false;
           let preflightSettled = false;
@@ -1181,13 +1196,13 @@ export class AgentSessionWrapper {
       }
 
       case "steer": {
-        const steerImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        const steerImages = await this.fitQueuedImages(command.images as PromptImage[] | undefined);
         await this.inner.steer(command.message as string, steerImages?.length ? steerImages : undefined, { source: "rpc" });
         return null;
       }
 
       case "follow_up": {
-        const followImages = command.images as Array<{ type: "image"; data: string; mimeType: string }> | undefined;
+        const followImages = await this.fitQueuedImages(command.images as PromptImage[] | undefined);
         await this.inner.followUp(command.message as string, followImages?.length ? followImages : undefined, { source: "rpc" });
         return null;
       }

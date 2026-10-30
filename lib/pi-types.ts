@@ -12,7 +12,7 @@ import type {
   AgentTurnContext,
   AgentTurnDecision,
 } from "@earendil-works/pi-agent-core";
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { ImageContent, ModelInputLimits, TextContent } from "@earendil-works/pi-ai";
 
 export interface ContextUsage {
   percent: number | null;
@@ -24,6 +24,7 @@ export interface ModelLike {
   id: string;
   provider: string;
   contextWindow?: number;
+  inputLimits?: ModelInputLimits;
 }
 
 export interface ToolInfo {
