@@ -46,7 +46,14 @@ export function getPowerShellSettingsPath(agentDir = getAgentDir()): string {
 
 function parseSettings(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
-  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  const text = readFileSync(path, "utf8");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new SyntaxError(`${path}: ${error.message}`);
+    throw error;
+  }
   if (!isRecord(parsed)) throw new Error("Invalid settings.json: expected an object");
   return parsed;
 }
