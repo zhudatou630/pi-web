@@ -24,7 +24,8 @@ test("Cmd/Ctrl+F opens find only for the engaged, visible viewer", () => {
 });
 
 test("markdown images open the zoom viewer, linked images keep their link", () => {
-  assert.match(viewer, /if \(image && !image\.closest\("a"\)\) openZoom\(image\);/);
-  assert.match(viewer, /if \(image\.closest\("a"\)\) continue;\s*image\.tabIndex = 0;/);
+  // SVG previews are buttons with their own viewer, so they are skipped too.
+  assert.match(viewer, /if \(image && !image\.closest\("a, button"\)\) openZoom\(image\);/);
+  assert.match(viewer, /if \(image\.closest\("a, button"\)\) continue;\s*image\.tabIndex = 0;/);
   assert.match(viewer, /<ImagePreview src=\{src\} alt=\{filePath\}/);
 });
