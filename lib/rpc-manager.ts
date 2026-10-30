@@ -618,8 +618,16 @@ export class AgentSessionWrapper {
     }
   }
 
-  setActiveToolSelection(toolNames: string[], carry?: string[]): void {
-    this.inner.setActiveToolsByName(withExtensionTools(this.inner, toolNames, carry));
+  setActiveToolSelection(toolNames: string[], carry?: string[], previousOrder?: string[]): void {
+    const selected = withExtensionTools(this.inner, toolNames, carry);
+    const active = this.inner.getActiveToolNames();
+    // Tool order is model input: preserve it even if navigation rebuilt the same set.
+    const selectedSet = new Set(selected);
+    const order = previousOrder ?? active;
+    const next = order.length === selectedSet.size && order.every((name) => selectedSet.has(name))
+      ? order : selected;
+    if (active.length === next.length && active.every((name, index) => name === next[index])) return;
+    this.inner.setActiveToolsByName(next);
   }
 
   private async navigateTree(targetId: string, options: { summarize?: boolean }): Promise<{ cancelled: boolean }> {
@@ -633,6 +641,7 @@ export class AgentSessionWrapper {
       this.setActiveToolSelection(
         this.chatOnly ? [] : pin ?? activeAfter,
         [...activeAfter, ...activeBefore.filter((name) => SESSION_TOOL_NAMES.has(name))],
+        activeBefore,
       );
     }
     return { cancelled: result.cancelled };
