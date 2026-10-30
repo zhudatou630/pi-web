@@ -25,7 +25,9 @@ test("connection test ignores late success, HTTP failure and rejection after edi
   const effect = find(file, (node) => ts.isCallExpression(node) && node.expression.getText(file) === "useEffect"
     && node.arguments[0].getText(file).includes("testRequestIdRef"));
   assert.ok(effect);
-  assert.equal(effect.arguments[1].getText(file), "[providerName, provider, model, cwd]");
+  // Content, not object identity: an unrelated parent render must not drop a running test.
+  assert.equal(effect.arguments[1].getText(file), "[testDraftKey]");
+  assert.match(source, /const testDraftKey = JSON\.stringify\(\[providerName, provider, model, cwd\]\);/);
   for (const outcome of ["success", "http-error", "reject"]) {
     const testRequestIdRef = { current: 0 };
     let state;

@@ -191,11 +191,13 @@ export function ModelDetail({
     return [t("i18n.failed"), ...meta, testState.message].filter(Boolean).join(" · ");
   })();
 
+  // Keyed by content: the parent rebuilds identical provider/model objects on unrelated renders.
+  const testDraftKey = JSON.stringify([providerName, provider, model, cwd]);
   useEffect(() => {
     testRequestIdRef.current += 1;
     setTestState({ phase: "idle" });
     return () => { testRequestIdRef.current += 1; };
-  }, [providerName, provider, model, cwd]);
+  }, [testDraftKey]);
 
   useEffect(() => {
     catalogRequestIdRef.current += 1;
