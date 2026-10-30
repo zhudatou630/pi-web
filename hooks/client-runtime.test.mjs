@@ -159,6 +159,40 @@ test("SSE run starts fence external runs without changing the local prompt's run
   assert.equal(ui.bindings.promptRunIdRef.current, 2, "reconnect to the same active run is not a new run");
 });
 
+for (const outcome of ["busy", "idle", "run", "session", "unmount", "remount", "http", "network"]) {
+  test(`reconcile uses lightweight status and refreshes the prompt only after settling: ${outcome}`, async () => {
+    const urls = [];
+    const prompts = [];
+    let settled = 0;
+    const bindings = {
+      useCallback, agentRunningRef: ref(true), sessionIdRef: ref("session"), promptRunIdRef: ref(1),
+      contextUsageRequestIdRef: ref(0), sessionHookMountIdRef: ref(1), sessionHookMountedRef: ref(true),
+      setIsCompacting: noop, setQueuedMessages: noop, normalizeQueuedMessages: noop,
+      setAutoCompactionEnabled: noop, applyContextUsage: noop,
+      setSystemPrompt: (prompt) => prompts.push(prompt),
+      finishPromptWithoutStream: async () => { settled++; bindings.agentRunningRef.current = false; },
+      fetch: async (url) => {
+        urls.push(url);
+        if (urls.length === 1) return { ok: true, json: async () => ({ running: true, state: { isStreaming: outcome === "busy" } }) };
+        assert.equal(settled, 1, "full prompt reads must not delay UI settlement");
+        if (outcome === "run") bindings.promptRunIdRef.current++;
+        if (outcome === "session") bindings.sessionIdRef.current = "other";
+        if (outcome === "unmount") bindings.sessionHookMountedRef.current = false;
+        if (outcome === "remount") bindings.sessionHookMountIdRef.current++;
+        if (outcome === "network") throw new Error("offline");
+        return { ok: outcome !== "http", json: async () => ({ state: { systemPrompt: "fresh prompt" } }) };
+      },
+    };
+    const reconcile = evaluate(between("  const reconcileAgentState", "  // Recovery net"), bindings, "return reconcileAgentState;");
+    await reconcile("session");
+    assert.deepEqual(urls, outcome === "busy"
+      ? ["/api/agent/session?systemPrompt=0"]
+      : ["/api/agent/session?systemPrompt=0", "/api/agent/session"]);
+    assert.deepEqual(prompts, outcome === "idle" ? ["fresh prompt"] : []);
+    assert.equal(settled, outcome === "busy" ? 0 : 1);
+  });
+}
+
 test("agent_end ignores late state reads across run/session/unmount/remount boundaries", async () => {
   const code = between('      case "agent_end":', '      case "agent_settled":');
   for (const stale of ["run", "session", "unmount", "remount", "http"]) {

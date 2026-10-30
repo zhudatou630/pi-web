@@ -100,7 +100,7 @@ export async function POST(
 
 // GET /api/agent/[id] - Get current agent state
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -114,7 +114,8 @@ export async function GET(
       return NextResponse.json({ running: false });
     }
 
-    const state = await session.send({ type: "get_state" });
+    const state = await session.send({ type: "get_state" }) as { systemPrompt?: string };
+    if (new URL(req.url).searchParams.get("systemPrompt") === "0") delete state.systemPrompt;
     return NextResponse.json({ running: true, state });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

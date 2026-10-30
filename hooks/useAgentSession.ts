@@ -1167,7 +1167,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       ) return;
 
       try {
-        const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
+        const res = await fetch(`/api/agent/${encodeURIComponent(sid)}?systemPrompt=0`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
         if (
@@ -1242,7 +1242,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     while (agentRunningRef.current && Date.now() - startedAt < PROMPT_SETTLE_MAX_MS) {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       try {
-        const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
+        const res = await fetch(`/api/agent/${encodeURIComponent(sid)}?systemPrompt=0`);
         if (res.ok) {
           const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
           const state = data.state;
@@ -1269,7 +1269,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     ) {
       await delay(BASH_STATE_RECONCILE_MS);
       try {
-        const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
+        const res = await fetch(`/api/agent/${encodeURIComponent(sid)}?systemPrompt=0`);
         if (!res.ok) continue;
         const data = await res.json() as { state?: AgentStateResponse };
         if (data.state?.isBashRunning) continue;
@@ -1297,7 +1297,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const usageRequestId = ++contextUsageRequestIdRef.current;
     const mountId = sessionHookMountIdRef.current;
     try {
-      const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
+      const res = await fetch(`/api/agent/${encodeURIComponent(sid)}?systemPrompt=0`);
       if (!res.ok) return;
       const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
       // A slow response can straddle a run boundary (previous run finished
@@ -1325,10 +1325,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return;
       }
       if (!agentRunningRef.current) return;
-      if (state) {
-        if (state.systemPrompt !== undefined) setSystemPrompt(state.systemPrompt ?? null);
-      }
       await finishPromptWithoutStream(sid, runId, state?.lastRunAborted === true);
+      // Recover the prompt refresh too when agent_end was missed, not on every poll.
+      if (state) {
+        const fullRes = await fetch(`/api/agent/${encodeURIComponent(sid)}`);
+        if (!fullRes.ok) return;
+        const full = await fullRes.json() as { state?: AgentStateResponse };
+        if (!sessionHookMountedRef.current || sessionHookMountIdRef.current !== mountId
+          || sessionIdRef.current !== sid || promptRunIdRef.current !== runId) return;
+        if (full.state?.systemPrompt !== undefined) setSystemPrompt(full.state.systemPrompt ?? null);
+      }
     } catch {
       // Network still down — the next poll / visibility / online tick retries.
     }

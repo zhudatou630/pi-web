@@ -30,6 +30,7 @@ const { DELETE: deleteSession, GET: getSessionDetail, PATCH: renameSession } = a
 const { GET: getSessionList } = await jiti.import("./route.ts");
 const { GET: getRunningSessions } = await jiti.import("../agent/running/route.ts");
 const { GET: getSessionState } = await jiti.import("./[id]/state/route.ts");
+const { GET: getAgentState } = await jiti.import("../agent/[id]/route.ts");
 const {
   cacheSessionPath,
   invalidateSessionPathCache,
@@ -117,6 +118,41 @@ test("live agent state is available before the session file is persisted", () =>
   assert.match(stateRoute, /if \(rpc\?\.isAlive\(\)\)/);
   assert.match(stateRoute, /return NextResponse\.json\(\{ running: false \}\)/);
   assert.doesNotMatch(stateRoute, /state: \{\}/);
+});
+
+test("both state GET endpoints omit only the system prompt when explicitly opted out", async (t) => {
+  const id = "status-without-prompt";
+  const registry = globalThis.__piSessions;
+  const state = {
+    systemPrompt: "Large project instructions\n".repeat(12_000),
+    isStreaming: true, isPromptRunning: true, isCompacting: false,
+    queuedMessages: { steering: [], followUp: ["continue"] },
+    contextUsage: { tokens: 42, contextWindow: 1000, percent: 4.2 },
+  };
+  globalThis.__piSessions = new Map([[id, {
+    isAlive: () => true,
+    send: async (command) => {
+      assert.deepEqual(command, { type: "get_state" });
+      return { ...state };
+    },
+  }]]);
+  t.after(() => { globalThis.__piSessions = registry; });
+  for (const [route, path] of [[getAgentState, `/api/agent/${id}`], [getSessionState, `/api/sessions/${id}/state`]]) {
+    const read = (query) => route(new Request(`http://localhost${path}${query}`), { params: Promise.resolve({ id }) });
+    const full = await read("");
+    assert.equal(full.status, 200);
+    assert.deepEqual(await full.json(), { running: true, state });
+    const small = await read("?systemPrompt=0");
+    assert.equal(small.status, 200);
+    const text = await small.text();
+    const rest = { ...state };
+    delete rest.systemPrompt;
+    assert.deepEqual(JSON.parse(text), { running: true, state: rest });
+    assert.ok(text.length < 1_000, "large prompt is not serialized");
+    for (const query of ["?systemPrompt=1", "?systemPrompt=false", ""]) {
+      assert.deepEqual(await (await read(query)).json(), { running: true, state }, "full reads remain the default");
+    }
+  }
 });
 
 test("deleting an intermediate subagent reparents both relation representations", async (t) => {
