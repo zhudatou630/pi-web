@@ -687,7 +687,7 @@ export class AgentSessionWrapper {
         images: (item.command.images as PromptImage[] | undefined) ?? [],
       });
       item.settle();
-      if (item.notifyDone) this.emit({ type: "prompt_done", aborted: this.lastRunAborted });
+      if (item.notifyDone) this.emit(this.withSubagentsActive({ type: "prompt_done", aborted: this.lastRunAborted }));
     }
     if (pending.length) this.emit({ type: "queue_update" });
     return recalled;
