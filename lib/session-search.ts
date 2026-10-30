@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import type { SessionInfo } from "./types";
+import { getSessionDisplayTitle } from "./session-display-title";
 
 const MAX_FILES = 500;
 const MAX_RESULTS = 30;
@@ -11,7 +12,8 @@ const TIME_BUDGET_MS = 3000;
 export interface SessionSearchResult {
   session: SessionInfo;
   entryId?: string;
-  blockIndex: number;
+  blockIndex?: number;
+  titleOnly?: boolean;
   before: string;
   match: string;
   after: string;
@@ -95,6 +97,18 @@ export async function searchSessionContents(
       stream.destroy();
     }
     if (!found && stream.bytesRead >= MAX_FILE_BYTES) response.truncated = true;
+    // The catalog already resolves the latest session_info; share the sidebar's fallback too.
+    if (!found && !signal.aborted && Date.now() < deadline) {
+      const title = getSessionDisplayTitle(session);
+      const hit = matcher.exec(title);
+      if (hit) response.results.push({
+        session,
+        titleOnly: true,
+        before: title.slice(0, hit.index),
+        match: hit[0],
+        after: title.slice(hit.index + hit[0].length),
+      });
+    }
   }
   return response;
 }
