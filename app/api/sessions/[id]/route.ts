@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { existsSync, statSync } from "fs";
 import { deleteSessionById } from "@/lib/session-delete-operation";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   attachSessionProjectInfo,
   resolveSessionPath,
@@ -13,7 +12,7 @@ import {
   probeLatestEntryId,
   openSessionForRead,
 } from "@/lib/session-reader";
-import { getRpcSession, getSubagentRun, getRunningRpcSessionIds, getRpcSessionInfos, releaseRpcSessionForExternalWrite } from "@/lib/rpc-manager";
+import { getRpcSession, getSubagentRun, getRunningRpcSessionIds, getRpcSessionInfos, releaseRpcSessionForExternalWrite, renameRpcSession } from "@/lib/rpc-manager";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 import { computeSessionStats } from "@/lib/session-stats";
@@ -196,7 +195,7 @@ export async function PATCH(
       }
       await updateSidebarState([family.root.id], typeof pinned === "boolean" ? { pinned } : { archived: archived as boolean });
     }
-    if (typeof name === "string") SessionManager.open(filePath).appendSessionInfo(name.trim());
+    if (typeof name === "string") await renameRpcSession(id, filePath, name.trim());
     // Also bumps the list version, so other browsers' running poll refetches sidebar state.
     invalidateSessionListCache();
     return NextResponse.json({ ok: true });

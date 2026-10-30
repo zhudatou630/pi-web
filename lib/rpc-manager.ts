@@ -1801,9 +1801,13 @@ export class AgentSessionWrapper {
 // Session registry
 // ============================================================================
 
+type SessionStartLock = Promise<{ session: AgentSessionWrapper; realSessionId: string }> & {
+  registered?: Promise<void>;
+};
+
 declare global {
   var __piSessions: Map<string, AgentSessionWrapper> | undefined;
-  var __piStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
+  var __piStartLocks: Map<string, SessionStartLock> | undefined;
   var __piStartingSessionCwds: Map<string, number> | undefined;
   var __piSessionFileMutations: Set<string> | undefined;
   var __piPausedAutomaticFollowUps: Set<string> | undefined;
@@ -1886,7 +1890,7 @@ export function sendSubagentUiMessage(sessionId: string, message: string) {
 
 export { isSubagentQueued };
 
-function getLocks(): Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> {
+function getLocks(): Map<string, SessionStartLock> {
   if (!globalThis.__piStartLocks) globalThis.__piStartLocks = new Map();
   return globalThis.__piStartLocks;
 }
@@ -1910,6 +1914,32 @@ function closingRpcSessionWait(sessionId: string): Promise<void> | null {
     wait = entry;
   }
   return wait.done ? null : wait.promise;
+}
+
+export async function renameRpcSession(sessionId: string, sessionFile: string, name: string): Promise<void> {
+  let observedStart: SessionStartLock | undefined;
+  for (;;) {
+    const wrapper = getRpcSession(sessionId);
+    if (wrapper?.isAlive()) {
+      // setSessionName emits to already-loaded extensions without awaiting session_start dialogs.
+      wrapper.inner.setSessionName(name);
+      return;
+    }
+    const closing = closingRpcSessionWait(sessionId);
+    if (closing) {
+      await closing;
+      continue;
+    }
+    const starting = getLocks().get(sessionId);
+    if (starting && starting !== observedStart) {
+      observedStart = starting;
+      await (starting.registered ?? starting).catch(() => undefined);
+      continue;
+    }
+    // No await between checking ownership and appending to the file.
+    SessionManager.open(sessionFile).appendSessionInfo(name);
+    return;
+  }
 }
 
 function normalizeRpcCwd(cwd: string): string {
@@ -2376,10 +2406,11 @@ export async function startRpcSession(
 
   const closingWait = closingRpcSessionWait(sessionId);
   if (closingWait) {
-    const waiting: Promise<{ session: AgentSessionWrapper; realSessionId: string }> = closingWait.then(() => {
+    const waiting: SessionStartLock = closingWait.then(() => {
       if (locks.get(sessionId) === waiting) locks.delete(sessionId);
       return startRpcSession(sessionId, sessionFile, cwd, options);
     });
+    waiting.registered = closingWait;
     locks.set(sessionId, waiting);
     return waiting;
   }
@@ -2409,7 +2440,9 @@ export async function startRpcSession(
   );
   const chatOnly = selectedToolNames?.length === 0 && !subagentLoadsResources;
   const finishStartingSession = trackStartingSession(sessionCwd);
-  const starting = (async () => {
+  let registered!: () => void;
+  const registration = new Promise<void>((resolve) => { registered = resolve; });
+  const starting: SessionStartLock = (async () => {
     // Some extensions access the SDK's global theme even outside the terminal UI.
     if (!chatOnly) initTheme();
     const agentDir = getAgentDir();
@@ -2667,14 +2700,17 @@ export async function startRpcSession(
     });
     const realSessionId = inner.sessionId as string;
     registerRpcWrapper(wrapper);
+    registered();
     await wrapper.waitUntilReady();
 
     return { session: wrapper, realSessionId };
   })().finally(() => {
     locks.delete(sessionId);
+    registered();
     finishStartingSession();
   });
 
+  starting.registered = registration;
   locks.set(sessionId, starting);
   return starting;
 }
