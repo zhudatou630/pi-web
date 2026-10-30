@@ -294,14 +294,19 @@ function saveLastCustomCwd(cwd: string): void {
   }
 }
 
+function parseUnreadSessionIds(raw: string | null): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(raw ?? "null");
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
 function loadUnreadSessionIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem(UNREAD_SESSIONS_STORAGE_KEY);
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) return new Set(parsed.filter((id): id is string => typeof id === "string"));
-    return new Set();
+    return parseUnreadSessionIds(window.localStorage.getItem(UNREAD_SESSIONS_STORAGE_KEY));
   } catch {
     return new Set();
   }
@@ -461,6 +466,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
   }, []);
   const [awaitingInputSessionIds, setAwaitingInputSessionIds] = useState<Set<string>>(() => new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
+  const storedUnreadSessionIdsRef = useRef(unreadSessionIds);
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   const currentSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
   const previousSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
@@ -758,8 +764,22 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
   // Persist unread markers so they survive a browser refresh before the user
   // has actually opened the completed session.
   useEffect(() => {
+    if (sameIdSet(storedUnreadSessionIdsRef.current, [...unreadSessionIds]) === storedUnreadSessionIdsRef.current) return;
     saveUnreadSessionIds(unreadSessionIds);
+    storedUnreadSessionIdsRef.current = unreadSessionIds;
   }, [unreadSessionIds]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage || (event.key !== null && event.key !== UNREAD_SESSIONS_STORAGE_KEY)) return;
+      const ids = parseUnreadSessionIds(event.newValue);
+      // Remember the external snapshot so adopting it never echoes a write back.
+      storedUnreadSessionIdsRef.current = ids;
+      setUnreadSessionIds((current) => sameIdSet(current, [...ids]));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   useEffect(() => {
     let stopped = false;

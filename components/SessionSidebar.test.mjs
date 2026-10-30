@@ -2,11 +2,73 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
+import ts from "typescript";
+import vm from "node:vm";
 
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
 const { getSessionListIndices, SessionItem } = await jiti.import("./SessionSidebar.tsx");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
+test("unread storage updates replace stale markers without echoing writes", () => {
+  const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const localStorage = {};
+  const listeners = new Map();
+  const writes = [];
+  const effects = [];
+  let ids = new Set(["stale", "keep"]);
+  const storedUnreadSessionIdsRef = { current: ids };
+  const context = vm.createContext({
+    Set,
+    window: {
+      localStorage,
+      addEventListener: (name, fn) => listeners.set(name, fn),
+      removeEventListener: (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); },
+    },
+    UNREAD_SESSIONS_STORAGE_KEY: "unread",
+    storedUnreadSessionIdsRef,
+    setUnreadSessionIds: (update) => { ids = update(ids); },
+    saveUnreadSessionIds: (value) => writes.push([...value]),
+    useEffect: (effect) => effects.push(effect),
+  });
+  const code = [
+    between("function parseUnreadSessionIds(", "function loadUnreadSessionIds("),
+    between("function sameIdSet(", "export function SessionSidebar("),
+    between("  useEffect(() => {\n    if (sameIdSet(storedUnreadSessionIdsRef", "  useEffect(() => {\n    let stopped = false;"),
+  ].join("\n");
+  context.unreadSessionIds = ids;
+  vm.runInContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
+  const [persist, subscribe] = effects;
+  const cleanup = subscribe();
+  const receive = (key, newValue, storageArea = localStorage) => listeners.get("storage")({ key, newValue, storageArea });
+  const flush = () => { context.unreadSessionIds = ids; persist(); };
+
+  receive("other", '["ignored"]');
+  receive("unread", '["ignored"]', {}); // sessionStorage is not shared.
+  assert.deepEqual([...ids], ["stale", "keep"]);
+  receive("unread", '["keep","new","new",42,null]');
+  assert.deepEqual([...ids], ["keep", "new"]);
+  flush();
+  assert.equal(writes.length, 0);
+  const unchanged = ids;
+  receive("unread", '["new","keep"]');
+  assert.equal(ids, unchanged);
+  flush();
+  assert.equal(writes.length, 0);
+
+  ids = new Set([...ids, "local"]);
+  flush();
+  assert.deepEqual(writes, [["keep", "new", "local"]]); // Never resurrects "stale".
+  for (const [key, value] of [["unread", null], [null, null], ["unread", "{broken"], ["unread", '{}']]) {
+    receive("unread", '["new"]');
+    receive(key, value);
+    assert.equal(ids.size, 0);
+    flush();
+  }
+  assert.equal(writes.length, 1);
+  cleanup();
+  assert.equal(listeners.size, 0);
+});
+
 const sessionItemSource = source.slice(source.indexOf("function SessionItem("));
 
 test("session rows use one compact line without message counts", async () => {
