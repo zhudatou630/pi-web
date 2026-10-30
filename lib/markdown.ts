@@ -520,6 +520,16 @@ function remarkSplitAutolinkLiterals() {
   };
 }
 
+function remarkDriveFileLinks() {
+  const walk = (node: Root | Content): void => {
+    if ((node.type === "link" || node.type === "definition") && /^\/?[a-z]:\//i.test(node.url)) {
+      node.url = `file:///${node.url.replace(/^\//, "")}`;
+    }
+    if ("children" in node) node.children.forEach(walk);
+  };
+  return walk;
+}
+
 // Guard at tokenization, before ambiguous price/prose pairs swallow Markdown
 // or a later formula's opening dollar. Register remark-math only once here.
 // Keep remark-math's own tokenizer and resolver for real math, code and $$.
@@ -566,6 +576,7 @@ const remarkCurrencySafeMath: Plugin = function () {
 export const markdownRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
+  remarkDriveFileLinks,
   remarkSplitAutolinkLiterals,
   remarkCurrencySafeMath,
   remarkCjkFriendly,
@@ -623,6 +634,7 @@ export const markdownUserRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = 
 export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
+  remarkDriveFileLinks,
   remarkSplitAutolinkLiterals,
   remarkCurrencySafeMath,
   remarkCjkFriendly,
