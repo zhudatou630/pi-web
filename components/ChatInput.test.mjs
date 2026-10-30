@@ -55,6 +55,9 @@ test("slash names win over description hits and skills rank by their bare names"
   assert.deepEqual(names("copy"), ["copy", "copy-last", "skill:copy-text", "skill:photocopy"]);
   assert.deepEqual(names("copy-text"), ["skill:copy-text"]);
   assert.deepEqual(names("skill:copy"), ["skill:copy-text"]);
+  // Typing the prefix toward `/skill:` keeps the skills listed.
+  assert.deepEqual(names("ski"), ["skill:copy-text", "skill:photocopy"]);
+  assert.deepEqual(names("skill"), ["skill:copy-text", "skill:photocopy"]);
   assert.deepEqual(names("clipboard"), ["copy", "copy-last", "skill:copy-text"]);
   assert.deepEqual(names("improve"), ["polish"]);
   assert.deepEqual(names("missing"), []);

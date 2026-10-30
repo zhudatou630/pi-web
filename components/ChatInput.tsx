@@ -301,13 +301,11 @@ const SLASH_SOURCE_ORDER: Record<SlashCommandSource, number> = {
 
 function slashMatchRank(command: SlashCommandPaletteItem, query: string, t: (key: string) => string): number {
   const fullName = command.name.toLowerCase();
-  const name = query.startsWith("skill:") ? fullName : fullName.replace(/^skill:/, "");
-  const description = getSlashDescription(command, t).toLowerCase();
-  if (name === query) return 0;
-  if (name.startsWith(query)) return 1;
-  if (name.includes(query)) return 2;
-  if (description.includes(query)) return 3;
-  return 4;
+  // Rank by the bare skill name, but keep the full name so a typed `/skill:…` prefix still matches.
+  const nameRank = Math.min(...[fullName.replace(/^skill:/, ""), fullName].map((name) =>
+    name === query ? 0 : name.startsWith(query) ? 1 : name.includes(query) ? 2 : 4));
+  if (nameRank < 4) return nameRank;
+  return getSlashDescription(command, t).toLowerCase().includes(query) ? 3 : 4;
 }
 
 export function filterSlashCommands(commands: SlashCommandPaletteItem[], query: string, t: (key: string) => string): SlashCommandPaletteItem[] {
