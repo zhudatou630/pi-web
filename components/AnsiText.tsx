@@ -13,6 +13,7 @@ import { AnsiUp } from "ansi_up";
  */
 
 export function AnsiText({ text }: { text: string }) {
-  const html = useMemo(() => new AnsiUp().ansi_to_html(text), [text]);
+  const html = useMemo(() => new AnsiUp().ansi_to_html(text)
+    .replaceAll("<a ", '<a target="_blank" rel="noopener noreferrer" '), [text]);
   return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }

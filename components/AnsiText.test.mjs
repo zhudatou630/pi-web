@@ -52,6 +52,16 @@ test("widget text cannot inject HTML (escape_html)", () => {
   assert.doesNotMatch(html, /<script>/);
 });
 
+test("OSC links open separately and preserve HTML escaping", () => {
+  const osc = (url, label) => `\x1b]8;;${url}\x1b\\${label}\x1b]8;;\x1b\\`;
+  const html = toHtml(osc("https://example.com/?a=1&b=2", '<a href="x">open</a>'));
+  assert.match(html, /<a target="_blank" rel="noopener noreferrer" href="https:\/\/example.com\/\?a=1&amp;b=2">/);
+  assert.match(html, /&lt;a href=&quot;x&quot;&gt;open&lt;\/a&gt;<\/a>/);
+  assert.equal((html.match(/<a /g) ?? []).length, 1);
+  assert.doesNotMatch(toHtml('<a href="https://example.com">fake</a>'), /<a |target=/);
+  assert.doesNotMatch(toHtml(osc("javascript:alert(1)", "unsafe")), /<a /);
+});
+
 test("newlines inside text are preserved", () => {
   assert.equal(toHtml("line one\nline two"), "<span>line one\nline two</span>");
 });
