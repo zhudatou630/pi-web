@@ -99,6 +99,16 @@ test("display math copies trusted LaTeX source, not KaTeX glyphs; inline and pre
     } },
   }, markdown));
   assert.deepEqual(sources, ["\\frac{a}{b} < c", "a^2"]);
+  const trailing = [];
+  renderToStaticMarkup(React.createElement(ReactMarkdown, {
+    remarkPlugins: markdownRemarkPlugins,
+    rehypePlugins: markdownRehypePlugins,
+    components: { div({ node, children }) {
+      trailing.push(node.properties.dataMathSource);
+      return React.createElement("div", null, children);
+    } },
+  }, "$$\nx = 1\n\n$$\n\n```math\nx = 1\n\n```"));
+  assert.deepEqual(trailing, ["x = 1\n", "x = 1\n"], "both forms keep the author's trailing blank line");
   for (const forged of [
     '<div data-math-source="forged">hi</div>',
     '<div dataMathSource="forged">hi</div>',

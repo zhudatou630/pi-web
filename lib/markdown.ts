@@ -654,10 +654,12 @@ function rehypeDisplayMathSource() {
         const code = child.tagName === "pre" && child.children.length === 1 ? child.children[0] : null;
         const classes = code?.type === "element" && code.tagName === "code" ? code.properties.className : null;
         if (Array.isArray(classes) && classes.includes("language-math")) {
+          const text = hastText(child);
           return {
             type: "element",
             tagName: "div",
-            properties: { dataMathSource: hastText(child).replace(/\n$/, "") },
+            // A ```math fence gets a newline appended by the compiler; a $$ block keeps its exact value.
+            properties: { dataMathSource: classes.includes("math-display") ? text : text.replace(/\n$/, "") },
             children: [child],
           };
         }
