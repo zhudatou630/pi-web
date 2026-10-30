@@ -39,6 +39,14 @@ test("provider model counts use the existing singular/many key convention", asyn
   }
 });
 
+test("saving an incomplete provider selects its existing detail page before sending a request", () => {
+  const save = source.slice(source.indexOf("const handleSave = useCallback"), source.indexOf("const discardChanges"));
+  assert.ok(save.indexOf("validateProviderEntries(config.providers)") < save.indexOf('fetch("/api/models-config"'));
+  assert.match(save, /e instanceof InvalidProviderEntryError/);
+  assert.match(save, /openProvider\(e\.provider\)/);
+  assert.match(save, /"models\.providerEmpty" : "models\.providerOAuthBaseUrl"/);
+});
+
 test("the provider name field edits the display name, never the provider id", () => {
   // The id keys models.json, auth.json, and enabledModels, so renaming it here
   // silently orphaned the credentials, the chat list, and defaultProvider.

@@ -1018,6 +1018,8 @@ export const enLocale: LocalePlugin = {
     "models.samplingParams": "Extra request parameters (samplingParams)",
     "models.samplingParamsHelp": "JSON object merged into every request body for this model, in every working directory. Leave blank to remove. Applied by the SDK only for these APIs: {apis}.",
     "models.samplingParamsInvalid": "Extra request parameters must be a JSON object.",
+    "models.providerEmpty": "Not saved: {provider} needs an endpoint, models or provider overrides. Complete it or remove the provider entry.",
+    "models.providerOAuthBaseUrl": "Not saved: {provider} needs a Base URL when OAuth is set.",
     "models.samplingParamsInvalidSave": "Not saved: extra request parameters for {model} are not a JSON object.",
     "models.samplingParamsUnsupported": "This model uses {api}, which ignores these parameters.",
     "models.samplingParamsSummary": "Extra parameters: {count}",

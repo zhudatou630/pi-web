@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
+import { InvalidProviderEntryError, validateProviderEntries } from "@/lib/model-config-validation";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   assignRuntimeOverride,
@@ -427,6 +428,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     setSaving(true);
     setSaveError(null);
     try {
+      validateProviderEntries(config.providers);
       const res = await fetch("/api/models-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -456,11 +458,14 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       }
       onModelsChanged?.();
     } catch (e) {
-      setSaveError(String(e));
+      if (e instanceof InvalidProviderEntryError) {
+        setSaveError(t(e.reason === "empty" ? "models.providerEmpty" : "models.providerOAuthBaseUrl", { provider: e.provider }));
+        openProvider(e.provider);
+      } else setSaveError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [config, fetchScope, onModelsChanged, refreshRuntime, saveScope, scopeDoc, t]);
+  }, [config, fetchScope, onModelsChanged, openProvider, refreshRuntime, saveScope, scopeDoc, t]);
 
   const discardChanges = () => {
     setConfig(savedConfig);

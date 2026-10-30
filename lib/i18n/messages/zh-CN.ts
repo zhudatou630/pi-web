@@ -1018,6 +1018,8 @@ export const zhCNLocale: LocalePlugin = {
     "models.samplingParams": "额外请求参数（samplingParams）",
     "models.samplingParamsHelp": "JSON 对象，会合并到该模型的每个请求体中，对所有工作目录生效。留空即删除。当前 SDK 仅对以下 API 生效：{apis}。",
     "models.samplingParamsInvalid": "额外请求参数必须是 JSON 对象。",
+    "models.providerEmpty": "未保存：{provider} 需要端点、模型或 Provider 覆盖设置。请补全，或删除该 Provider 条目。",
+    "models.providerOAuthBaseUrl": "未保存：{provider} 设置了 OAuth，必须填写 Base URL。",
     "models.samplingParamsInvalidSave": "未保存：{model} 的额外请求参数不是 JSON 对象。",
     "models.samplingParamsUnsupported": "该模型使用 {api}，不会应用这些参数。",
     "models.samplingParamsSummary": "额外参数：{count}",

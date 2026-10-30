@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { invalidateModelsCache } from "./models-cache";
-import { findInvalidSamplingParams, isRecord } from "./model-config-validation";
+import { findInvalidSamplingParams, isRecord, validateProviderEntries } from "./model-config-validation";
 
 const MODEL_COST_KEYS = ["input", "output", "cacheRead", "cacheWrite"] as const;
 
@@ -122,6 +122,7 @@ export function writeModelsConfig(
   const dir = dirname(modelsPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const normalized = normalizeModelsConfigCosts(sanitizeModelsConfig(reconcileModelOverrides(data)));
+  validateProviderEntries(normalized.providers);
   writePrivateFileAtomicSync(modelsPath, JSON.stringify(normalized, null, 2));
   invalidateModelsCache();
 }
