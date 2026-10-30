@@ -138,6 +138,7 @@ Pins, archives, project order and project display names (`projectNames`, keyed b
 - Typography (enforced by `components/Typography.test.mjs`): fonts by role — `--font-ui` chrome, `--font-chat` prose, `--font-mono` only for verbatim content; only weights 400/600, 600 for headings only; never show state with weight or italic; sizes from the shared scale; three text tiers, no opacity fading; clipped text needs `line-height` >= 1.3. Fonts are bundled in `public/fonts`; bump `?v=` when replacing one.
 - Images: never render a raw `<img>` in a message; use the image components. Image order is the order sent to the model (`attachment:N`).
 - Corners use `--ui-radius-sm` (4px, chips/small buttons/inline code), `--ui-radius-md` (6px, controls/rows/menus/code blocks/images), `--ui-radius-lg` (10px, dialogs and settings cards). Pills `999px`, dots `50%`.
+- Heights: rows are 26px everywhere, phones included (menu rows `.menu-surface`, sidebar lists and footer, file rows); controls are 28px (`--ui-control-height-sm`). Do not add per-component or mobile-only row heights.
 
 ---
 

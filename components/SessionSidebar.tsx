@@ -29,6 +29,8 @@ import { SubagentIcon } from "./SubagentIcon";
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
 const SESSION_LIST_ITEM_HEIGHT = 26;
+/** Menu rows are 26px everywhere, phones included (app/globals.css `.menu-surface`). */
+const MENU_ROW_HEIGHT = 26;
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
 const WORKSPACE_SESSION_PAGE_SIZE = 20;
 
@@ -1577,7 +1579,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
       if (row?.kind === "workspace") setProjectMenu({ key, cwd: key === selectedProject?.key && selectedCwd ? selectedCwd : row.cwd, x, y });
     },
   });
-  const dropdownDragBlocks = workspaceProjects.map((project, index) => ({ key: project.key, top: index * 28, bottom: (index + 1) * 28 }));
+  const dropdownDragBlocks = workspaceProjects.map((project, index) => ({ key: project.key, top: index * MENU_ROW_HEIGHT, bottom: (index + 1) * MENU_ROW_HEIGHT }));
   const dropdownDrag = useProjectDrag({
     enabled: !loading && dropdownOpen && singleProject && !archiveView,
     allowDrag: true,
@@ -1697,7 +1699,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                       display: "flex",
                       alignItems: "center",
                       gap: 6,
-                      height: 28,
+                      height: MENU_ROW_HEIGHT,
                       padding: "0 8px",
                       marginBottom: 4,
                       borderBottom: "1px solid var(--border)",
@@ -1812,7 +1814,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                                title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
                               style={{
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                width: 28, height: 28, padding: 0,
+                                width: MENU_ROW_HEIGHT, height: MENU_ROW_HEIGHT, padding: 0,
                                 background: "none", border: "none",
                                 color: "var(--text-muted)", cursor: "pointer",
                                 borderRadius: 4, flexShrink: 0,
@@ -2203,14 +2205,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                 return (
                   <div key={project.key} className={dropdownDrag.view ? "project-drag-row" : undefined}
                     onPointerDown={(event) => dropdownDrag.onPointerDown(event, project.key)}
-                    style={{ display: "flex", alignItems: "center", height: 28, userSelect: "none", WebkitTouchCallout: "none", ...dropdownDrag.rowStyle(index * 28) }}>
+                    style={{ display: "flex", alignItems: "center", height: MENU_ROW_HEIGHT, userSelect: "none", WebkitTouchCallout: "none", ...dropdownDrag.rowStyle(index * MENU_ROW_HEIGHT) }}>
                     <button
                       type="button"
                       role="menuitemradio"
                       aria-checked={active}
                       onClick={() => { setSelectedCwd(project.root); setDropdownOpen(false); }}
                       title={project.root}
-                      style={{ flex: 1, height: 28 }}
+                      style={{ flex: 1, height: MENU_ROW_HEIGHT }}
                     >
                       <PathLabel text={projectNames.get(project.key) ?? displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
                       <SessionActivitySummary activity={activity} />

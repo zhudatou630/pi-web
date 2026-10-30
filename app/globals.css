@@ -5529,11 +5529,6 @@ span.token.table {
     background: var(--accent);
   }
 
-  /* Compact touch rows in every composer menu and the model picker. */
-  .menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="option"]) {
-    height: 32px;
-  }
-
   .chat-stats-center {
     display: none !important;
   }

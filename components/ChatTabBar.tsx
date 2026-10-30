@@ -745,7 +745,7 @@ export function ChatTabBar({
                       gap: 7,
                       flex: 1,
                       minWidth: 0,
-                      height: 28,
+                      height: 26,
                       padding: "0 8px",
                       border: "none",
                       background: "transparent",
@@ -793,7 +793,7 @@ export function ChatTabBar({
                     }}
                     title={`${t("chatTabs.closeTab")}: ${tab.title}`}
                     aria-label={`${t("chatTabs.closeTab")}: ${tab.title}`}
-                    style={{ width: 28, height: 28, padding: 0, border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0 }}
+                    style={{ width: 26, height: 26, padding: 0, border: "none", background: "transparent", color: "var(--text-muted)", cursor: "pointer", flexShrink: 0 }}
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
                       <path d="M2 2l6 6M8 2 2 8" />
