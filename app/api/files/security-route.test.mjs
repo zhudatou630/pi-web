@@ -29,6 +29,7 @@ const { GET: index } = await jiti.import("../file-index/route.ts");
 const { getGitStatus } = await jiti.import("../../../lib/git-changes.ts");
 const { allowFileRoot } = await jiti.import("../../../lib/file-access.ts");
 const { isFilePathReferencedBySession } = await jiti.import("../../../lib/session-file-references.ts");
+const { isApiRequestAllowed } = await jiti.import("../../../lib/request-security.ts");
 const { NextRequest } = await jiti.import("next/server");
 
 const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
@@ -82,6 +83,28 @@ test("upload preflight and writes authorize nested directories and reject traver
 
 const diffRequest = (cwd, filePath) => request(diff, "/api/git/diff", { cwd, path: filePath });
 const link = (target, destination) => fs.symlinkSync(target, destination, process.platform === "win32" ? "junction" : "dir");
+
+test("cross-site PDF navigation keeps file authorization and script-free response headers", async () => {
+  const root = fixture();
+  const outside = fs.mkdtempSync(path.join(base, "pdf-outside-"));
+  const pdf = "%PDF-1.4\n%%EOF\n";
+  for (const dir of [root, outside]) fs.writeFileSync(path.join(dir, "Paper.PDF"), pdf);
+  link(outside, path.join(root, "escape"));
+  async function read(filePath) {
+    const req = new NextRequest(`http://localhost/api/files/${filePath.replace(/^\/+/, "")}?type=read`, {
+      headers: { host: "localhost", "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-user": "?1" },
+    });
+    assert.equal(isApiRequestAllowed(req), true, "the proxy allows only the navigation, not the file");
+    return files(req, { params: Promise.resolve({ path: filePath.replace(/^\/+/, "").split("/") }) });
+  }
+  const response = await read(path.join(root, "Paper.PDF"));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "application/pdf");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(await response.text(), pdf);
+  assert.equal((await read(path.join(outside, "Paper.PDF"))).status, 403);
+  assert.equal((await read(path.join(root, "escape", "Paper.PDF"))).status, 403);
+});
 
 test("files and file-index refuse traversal, including the session-reference exception", async () => {
   const root = fixture();

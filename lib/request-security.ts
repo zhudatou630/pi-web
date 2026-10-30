@@ -65,7 +65,18 @@ function getRequestOrigin(request: Request): string | null {
   return host ? canonicalOrigin(`${requestUrl.protocol}//${host}`) : null;
 }
 
-function isUserInitiatedSessionExportNavigation(request: Request): boolean {
+function isPdfFileReadUrl(url: URL): boolean {
+  if (!url.pathname.startsWith("/api/files/") || url.searchParams.get("type") !== "read") return false;
+  const lastSegment = url.pathname.slice(url.pathname.lastIndexOf("/") + 1);
+  try {
+    return decodeURIComponent(lastSegment).toLowerCase().endsWith(".pdf");
+  } catch {
+    return false;
+  }
+}
+
+/** Opaque PWA/PDF placeholders open cross-site; allow only clicked, script-free documents. */
+function isUserInitiatedDocumentNavigation(request: Request): boolean {
   if (
     request.method !== "GET"
     || request.headers.get("sec-fetch-mode") !== "navigate"
@@ -76,7 +87,8 @@ function isUserInitiatedSessionExportNavigation(request: Request): boolean {
   }
 
   try {
-    return /^\/api\/sessions\/[^/]+\/export$/.test(new URL(request.url).pathname);
+    const url = new URL(request.url);
+    return /^\/api\/sessions\/[^/]+\/export$/.test(url.pathname) || isPdfFileReadUrl(url);
   } catch {
     return false;
   }
@@ -157,7 +169,7 @@ export function isApiRequestAllowed(
   configuredHostnames = configuredHostnamesFromEnvironment(),
 ): boolean {
   if (!isApiRequestHostAllowed(request, configuredHostnames)) return false;
-  if (isUserInitiatedSessionExportNavigation(request)) return true;
+  if (isUserInitiatedDocumentNavigation(request)) return true;
   return !shouldCheckApiRequestOrigin(request) || isApiRequestOriginAllowed(request);
 }
 
