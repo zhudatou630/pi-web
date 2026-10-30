@@ -100,10 +100,10 @@ function AgentRow({
   const secondary = main
     ? sessionTitle(session)
     : relation
-      ? [relation.profile !== DEFAULT_SUBAGENT_PROFILE && relation.profile, relation.model?.id, time].filter(Boolean).join(" · ")
+      ? [relation.profile !== DEFAULT_SUBAGENT_PROFILE && relation.profile, relation.model?.id, relation.thinkingLevel, time].filter(Boolean).join(" · ")
       : `${t("agentSwitcher.subagent")} · ${time}`;
   const secondaryTitle = relation
-    ? [relation.profile, relation.model && `${relation.model.provider}/${relation.model.id}`, session.modified].filter(Boolean).join(" · ")
+    ? [relation.profile, relation.model && `${relation.model.provider}/${relation.model.id}`, relation.thinkingLevel, session.modified].filter(Boolean).join(" · ")
     : secondary;
 
   return (

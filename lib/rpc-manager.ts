@@ -2439,6 +2439,7 @@ export function getRpcSessionInfos(): SessionInfo[] {
           status: activeSubagents.get(session.sessionId)?.status
             ?? (session.isRunning() ? "running" as const : subagent.status),
           ...(session.inner.model ? { model: { provider: session.inner.model.provider, id: session.inner.model.id } } : {}),
+          thinkingLevel: session.inner.thinkingLevel,
         },
       } : {}),
       transient: !persisted,

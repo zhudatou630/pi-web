@@ -22,7 +22,6 @@ export { getAgentDir };
 const SESSION_HEADER_MAX_BYTES = 64 * 1024;
 const SESSION_RELATION_MAX_BYTES = 256 * 1024;
 const SESSION_RELATION_MAX_LINES = 2;
-const SESSION_RESULT_MAX_BYTES = 256 * 1024;
 /** Bounded tail read used to detect writes made by another process. */
 const SESSION_TAIL_PROBE_BYTES = 64 * 1024;
 
@@ -65,28 +64,6 @@ function readBoundedLines(filePath: string, maxBytes: number, maxLines: number):
   }
 }
 
-function readBoundedTailLines(filePath: string, maxBytes: number): string[] {
-  const fd = openSync(filePath, "r");
-  try {
-    const fileSize = fstatSync(fd).size;
-    const start = Math.max(0, fileSize - maxBytes);
-    const buffer = Buffer.allocUnsafe(fileSize - start);
-    const bytesRead = readSync(fd, buffer, 0, buffer.length, start);
-    if (bytesRead === 0) return [];
-
-    const lines = buffer.subarray(0, bytesRead).toString("utf8").split("\n");
-    if (start > 0) {
-      const previousByte = Buffer.allocUnsafe(1);
-      readSync(fd, previousByte, 0, 1, start - 1);
-      if (previousByte[0] !== 0x0a) lines.shift();
-    }
-    if (lines.at(-1) === "") lines.pop();
-    return lines.map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
-  } finally {
-    closeSync(fd);
-  }
-}
-
 function parseSessionEntries(lines: readonly string[]): SessionEntry[] {
   return lines.flatMap((line) => {
     try {
@@ -107,10 +84,9 @@ function readSessionRelationEntries(filePath: string): SessionEntry[] {
   ));
   if (!isSubagent) return prefixEntries;
 
-  return [
-    ...prefixEntries,
-    ...parseSessionEntries(readBoundedTailLines(filePath, SESSION_RESULT_MAX_BYTES)),
-  ];
+  // Settings can precede a large tail or belong to a sibling branch; head/tail
+  // samples cannot resolve them. Only changed subagent rows reach this parse.
+  return getSessionEntries(filePath);
 }
 
 export async function attachSessionProjectInfo(sessions: SessionInfo[]): Promise<SessionInfo[]> {
@@ -140,12 +116,12 @@ export function mergeSessionLists(
   const byId = new Map(supplementalSessions.map((session) => [session.id, session]));
   // A disk scan is authoritative once the JSONL exists. In particular, this
   // replaces a transient registry snapshot without briefly rendering two rows.
-  // Live subagent status is the exception: queued/running state belongs to the
-  // current process and stale JSONL markers become interrupted after restart.
+  // Live subagent status/settings are the exception: the wrapper owns current
+  // selections and queued/running state; stale disk runs become interrupted.
   for (const session of persistedSessions) {
     const live = byId.get(session.id);
     const relation = session.relation?.kind === "subagent" && live?.relation?.kind === "subagent"
-      ? { ...session.relation, status: live.relation.status, ...(live.relation.model ? { model: live.relation.model } : {}) }
+      ? { ...session.relation, status: live.relation.status, ...(live.relation.model ? { model: live.relation.model } : {}), ...(live.relation.thinkingLevel !== undefined ? { thinkingLevel: live.relation.thinkingLevel } : {}) }
       : session.relation;
     byId.set(session.id, relation === session.relation ? session : { ...session, relation });
   }
@@ -155,14 +131,15 @@ export function mergeSessionLists(
 type ScannedRelation = {
   subagent: ReturnType<typeof readSubagentRun>;
   model?: { provider: string; id: string };
+  thinkingLevel?: string;
 };
 
 /**
  * A fork's or subagent's relation, per scanned row. The scanner hands back the
  * same row object while the file's size and mtime hold and a new one once they
  * change, so the row is the cache key: otherwise every list rebuild re-reads
- * every child file's head and tail synchronously, though only the session that
- * just ran changed. A failed read is not cached.
+ * every child file synchronously, though only the session that just ran changed.
+ * A failed read is not cached.
  */
 const scannedRelations = new WeakMap<ScannedSessionInfo, ScannedRelation>();
 
@@ -171,17 +148,13 @@ function readScannedRelation(s: ScannedSessionInfo): ScannedRelation {
   if (cached) return cached;
   try {
     const entries = readSessionRelationEntries(s.path);
-    let model: ScannedRelation["model"];
-    // The already-read tail usually holds the final assistant message, which names
-    // the model actually used; no extra read just for display.
-    for (const entry of entries) {
-      if (entry.type === "model_change") model = { provider: entry.provider, id: entry.modelId };
-      if (entry.type === "message" && entry.message.role === "assistant") {
-        const { provider, model: id } = entry.message as { provider?: unknown; model?: unknown };
-        if (typeof provider === "string" && typeof id === "string") model = { provider, id };
-      }
-    }
-    const relation = { subagent: readSubagentRun(entries, s.id, s.path), model };
+    const subagent = readSubagentRun(entries, s.id, s.path);
+    const settings = subagent ? getSessionSettings(entries) : undefined;
+    const relation = {
+      subagent,
+      ...(settings?.model ? { model: { provider: settings.model.provider, id: settings.model.modelId } } : {}),
+      ...(settings ? { thinkingLevel: settings.thinkingLevel } : {}),
+    };
     scannedRelations.set(s, relation);
     return relation;
   } catch {
@@ -198,7 +171,7 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
   const sessions = scanned.map((s) => {
     cacheSessionPath(s.id, s.path);
     const originSessionId = s.parentSessionPath ? pathToId.get(sessionPathKey(s.parentSessionPath)) : undefined;
-    const { subagent, model } = s.parentSessionPath ? readScannedRelation(s) : { subagent: null, model: undefined };
+    const { subagent, model, thinkingLevel } = s.parentSessionPath ? readScannedRelation(s) : { subagent: null };
     return {
       path: s.path,
       id: s.id,
@@ -210,7 +183,7 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       firstMessage: s.firstMessage || "(no messages)",
       parentSessionId: originSessionId,
       ...(subagent
-        ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: subagent.status, ...(model ? { model } : {}) } }
+        ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: subagent.status, ...(model ? { model } : {}), thinkingLevel } }
         : s.parentSessionPath
           ? { relation: { kind: "fork" as const, ...(originSessionId ? { originSessionId } : {}) } }
           : {}),
