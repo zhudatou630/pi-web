@@ -936,6 +936,8 @@ export const zhCNLocale: LocalePlugin = {
     "i18n.invalidMermaid": "Mermaid 图表无效",
     "i18n.renderingMermaid": "正在渲染 Mermaid 图表",
     "i18n.previewAfterStreaming": "流式输出完成后可预览",
+    "chat.audioPlayer": "音频播放器",
+    "chat.videoPlayer": "视频播放器",
     "chat.previewSvg": "预览 SVG",
     "chat.showSvgSource": "显示 SVG 源码",
     "chat.svgImage": "SVG 图片",

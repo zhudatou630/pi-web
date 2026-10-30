@@ -9,20 +9,22 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { MarkdownBody, tableSource, scrollMarkdownFragment } = await jiti.import("./MarkdownBody.tsx");
+const { MarkdownBody, MarkdownSessionContext, tableSource, scrollMarkdownFragment } = await jiti.import("./MarkdownBody.tsx");
 const { normalizeDisplayMath, markdownRemarkPlugins, markdownRehypePlugins, markdownPreviewRehypePlugins } = await jiti.import("../lib/markdown.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 
-function renderMarkdown(markdown, props = {}) {
+function renderMarkdown(markdown, { sessionId = null, ...props } = {}) {
   return renderToStaticMarkup(
     React.createElement(
       I18nProvider,
       null,
-      React.createElement(MarkdownBody, {
-        cwd: "/home/me/project",
-        onOpenFile() {},
-        ...props,
-      }, markdown),
+      React.createElement(MarkdownSessionContext.Provider, { value: sessionId },
+        React.createElement(MarkdownBody, {
+          cwd: "/home/me/project",
+          onOpenFile() {},
+          ...props,
+        }, markdown),
+      ),
     ),
   );
 }
@@ -289,6 +291,53 @@ test("does not normalize escaped delimiters or link destinations", () => {
 
   assert.equal(normalizeDisplayMath(escaped), escaped);
   assert.equal(normalizeDisplayMath(link), link);
+});
+
+test("markdown audio/video use file-type detection, native controls and the unchanged image URL policy", async () => {
+  const { AUDIO_EXT_TO_MIME, VIDEO_EXT_TO_MIME } = await jiti.import("@/lib/file-types");
+  for (const [extensions, tag] of [[AUDIO_EXT_TO_MIME, "audio"], [VIDEO_EXT_TO_MIME, "video"]]) {
+    for (const ext of Object.keys(extensions)) {
+      const html = renderMarkdown(`![take](out/take.${ext.toUpperCase()})`, { sessionId: "session /?" });
+      assert.match(html, new RegExp(`<${tag} [^>]*controls=""[^>]*preload="metadata"`));
+      assert.ok(html.includes(`src="/api/files/home/me/project/out/take.${ext.toUpperCase()}?type=read&amp;sessionId=session%20%2F%3F"`));
+      assert.match(html, /aria-label="take"/);
+      assert.doesNotMatch(html, /<img|<button|\snode=/);
+      if (tag === "video") assert.match(html, /playsInline=""/);
+    }
+  }
+  for (const props of [{}, { onOpenFile: undefined }, { isStreaming: true }, { className: "markdown-user-message" }]) {
+    const remote = renderMarkdown("![](https://example.com/clip.mp4?v=2#t=1)", props);
+    assert.match(remote, /<video [^>]*src="https:\/\/example.com\/clip.mp4\?v=2#t=1"/);
+    assert.match(remote, /aria-label="Video player"/);
+    assert.doesNotMatch(remote, /sessionId=/);
+    const audio = renderMarkdown("![](take.wav)", props);
+    assert.match(audio, /<audio [^>]*aria-label="Audio player"/);
+    assert.doesNotMatch(audio, /playsInline/);
+    assert.match(renderMarkdown("![chart](out/chart.png)", props), /aria-haspopup="dialog"/);
+    for (const url of ["javascript:clip.mp4", "data:video/mp4;base64,AAAA", "data:audio/wav;base64,AAAA"]) {
+      assert.doesNotMatch(renderMarkdown(`![](${url})`, props), /<audio|<video/);
+    }
+  }
+  const linked = renderMarkdown("[![demo](out/demo.webm)](https://example.com/demo)");
+  assert.match(linked, /<a [^>]*href="https:\/\/example.com\/demo"[^>]*><video /);
+  assert.doesNotMatch(linked, /<button|<img/);
+  // The image sanitizer already refuses file: sources; media must not widen that policy.
+  assert.doesNotMatch(renderMarkdown("![voice](file:///home/me/project/take.wav)"), /<audio|<video/);
+});
+
+test("starting a markdown player pauses other players but not itself", async () => {
+  const { pauseOtherMedia } = await jiti.import("./MarkdownMedia.tsx");
+  const previous = globalThis.document;
+  const paused = [];
+  const media = [0, 1, 2].map(id => ({ pause() { paused.push(id); } }));
+  globalThis.document = { querySelectorAll(selector) { assert.equal(selector, "audio, video"); return media; } };
+  try {
+    pauseOtherMedia(media[1]);
+    assert.deepEqual(paused, [0, 2]);
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
 });
 
 test("previews completed Mermaid diagrams by default", () => {

@@ -936,6 +936,8 @@ export const enLocale: LocalePlugin = {
     "i18n.invalidMermaid": "Invalid Mermaid diagram",
     "i18n.renderingMermaid": "Rendering Mermaid diagram",
     "i18n.previewAfterStreaming": "Preview available after streaming",
+    "chat.audioPlayer": "Audio player",
+    "chat.videoPlayer": "Video player",
     "chat.previewSvg": "Preview SVG",
     "chat.showSvgSource": "Show SVG source",
     "chat.svgImage": "SVG image",

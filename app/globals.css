@@ -1448,6 +1448,18 @@ pre, code {
   margin: 6px 0;
   border-radius: var(--ui-radius-md);
 }
+.markdown-body audio.markdown-media {
+  display: block;
+  width: min(680px, 100%);
+  margin: 6px 0;
+}
+.markdown-body video.markdown-media {
+  display: block;
+  max-width: 100%;
+  max-height: min(60vh, 420px);
+  margin: 6px 0;
+  border-radius: var(--ui-radius-md);
+}
 .markdown-body .markdown-inline-code {
   background: color-mix(in srgb, var(--bg-panel) 80%, var(--bg));
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);

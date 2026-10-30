@@ -10,10 +10,12 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { parsePreviewTarget, requestPreview } from "@/lib/preview-target";
 import { encodeFilePathForApi } from "@/lib/file-paths";
+import { isAudioPath, isVideoPath } from "@/lib/file-types";
 import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { splitMarkdownBlocks } from "@/lib/markdown-blocks";
 import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
+import { MarkdownMedia } from "./MarkdownMedia";
 import { MarkdownCopyButton } from "./MarkdownCopyButton";
 import { MermaidBlock, CodeBlock } from "./MermaidBlock";
 import { SvgBlock } from "./SvgBlock";
@@ -159,6 +161,10 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
       const imageSrc = filePath
         ? `/api/files/${encodeFilePathForApi(filePath)}?type=read${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`
         : src;
+      const mediaPath = filePath ?? (typeof src === "string" ? src.split(/[?#]/, 1)[0] : "");
+      if (isAudioPath(mediaPath) || isVideoPath(mediaPath)) {
+        return <MarkdownMedia src={typeof imageSrc === "string" ? imageSrc : undefined} alt={alt} video={isVideoPath(mediaPath)} />;
+      }
       // Dynamic local paths are served directly by the file API.
       return (
         <ImagePreview src={typeof imageSrc === "string" ? imageSrc : ""} alt={alt ?? ""} style={{ width: "fit-content", maxWidth: "100%" }}>

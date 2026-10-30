@@ -39,6 +39,7 @@ import { MarkdownOutlineMenu } from "./MarkdownOutlineMenu";
 import { FileFindBar, scrollIntoScroller } from "./FileFindBar";
 import { ImageViewer as ImageLightbox } from "./ImageViewer";
 import { ImagePreview } from "./ImagePreview";
+import { MarkdownMedia } from "./MarkdownMedia";
 import { parseUnifiedPatch } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { readTextChunks, type TextChunk } from "@/lib/text-chunk-reader";
@@ -1317,6 +1318,10 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
               const imageSrc = imagePath
                 ? getFileApiUrl(imagePath, "read", sourceSessionId)
                 : src;
+              const mediaPath = imagePath ?? (typeof src === "string" ? src.split(/[?#]/, 1)[0] : "");
+              if (isAudioPath(mediaPath) || isVideoPath(mediaPath)) {
+                return <MarkdownMedia src={typeof imageSrc === "string" ? imageSrc : undefined} alt={alt} video={isVideoPath(mediaPath)} />;
+              }
               // Dynamic local paths are served directly by the file API.
               // eslint-disable-next-line @next/next/no-img-element
               return <img src={imageSrc} alt={alt ?? ""} loading="lazy" {...props} />;
