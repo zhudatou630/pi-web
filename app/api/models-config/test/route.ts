@@ -63,17 +63,17 @@ export async function POST(req: Request) {
     const composed = (await createModelsConfigServices(resolvedCwd.cwd)).modelRuntime;
     const registered = composed.getRegisteredProviderConfig(providerName);
     const runtimeModel = composed.getModel(providerName, modelId);
+    const provider = { ...body.provider, ...inheritedProviderFields(body.provider, registered) };
 
     tempDir = mkdtempSync(join(tmpdir(), "pi-web-model-test-"));
     const modelsPath = join(tempDir, "models.json");
     writeFileSync(modelsPath, JSON.stringify({
       providers: {
         [providerName]: {
-          ...body.provider,
-          ...inheritedProviderFields(body.provider, registered),
+          ...provider,
           models: [{
             ...body.model,
-            ...inheritedModelFields(body.model, runtimeModel),
+            ...inheritedModelFields(body.model, runtimeModel, provider),
             id: modelId,
           }],
         },

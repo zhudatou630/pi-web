@@ -23,6 +23,7 @@ export interface ModelEntry {
   id: string;
   name?: string;
   api?: string;
+  baseUrl?: string;
   reasoning?: boolean;
   thinkingLevelMap?: Record<string, string | null>;
   input?: string[];

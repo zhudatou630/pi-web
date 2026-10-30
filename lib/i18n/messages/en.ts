@@ -1023,6 +1023,8 @@ export const enLocale: LocalePlugin = {
     "models.headersSummary": "Headers: {count}",
     "models.compatSummary": "Compatibility: {count}",
     "models.thinkingSummary": "Thinking levels: {count}",
+    "models.baseUrlOverride": "Base URL override",
+    "models.baseUrlHelp": "Leave blank to use the provider's URL.",
     "models.apiOverride": "API override",
     "models.headers": "Headers",
     "models.headersHelp": "Added to this model's requests and overrides provider headers.",

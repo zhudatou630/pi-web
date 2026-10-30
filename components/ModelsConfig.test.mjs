@@ -424,8 +424,15 @@ test("runtime override diffs never write SDK-ignored keys", () => {
 
   // `api` exists on the edited entry (the editor renders it) but the SDK does
   // not merge it from modelOverrides, so it must not become a diff.
-  assert.equal(diffModelOverride(runtime, { ...runtime, api: "openai-responses" }), undefined);
+  assert.equal(diffModelOverride(runtime, { ...runtime, api: "openai-responses", baseUrl: "https://model.invalid" }), undefined);
   assert.deepEqual(diffModelOverride(runtime, { ...runtime, name: "Renamed" }), { name: "Renamed" });
+});
+
+test("Base URL uses the neighbouring field components and is definition-only", () => {
+  assert.match(source, /\{!lockId && \(\s*<ConfigField label=\{t\("models\.baseUrlOverride"\)\}>/);
+  assert.match(source, /onChange=\{\(v\) => set\("baseUrl", v\.trim\(\) \|\| undefined\)\}/);
+  assert.match(source, /placeholder=\{provider\.baseUrl \?\? t\("models\.providerDefaults"\)\}/);
+  assert.match(source, /<Hint>\{t\("models\.baseUrlHelp"\)\}<\/Hint>/);
 });
 
 test("the api protocol field is only editable for model definitions", () => {

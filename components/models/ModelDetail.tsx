@@ -144,6 +144,8 @@ export function ModelDetail({
   const samplingInvalid = typeof model.samplingParams === "string";
   const effectiveApi = model.api || provider.api;
   const samplingApiSupported = effectiveApi ? (SAMPLING_PARAMS_APIS as readonly string[]).includes(effectiveApi) : undefined;
+  const testRequestIdRef = useRef(0);
+  const effectiveBaseUrl = model.baseUrl ?? provider.baseUrl;
   const catalogRequestIdRef = useRef(0);
   const catalogUndoRef = useRef<ModelEntry | null>(null);
   const costTemplateRef = useRef(model.cost);
@@ -190,14 +192,16 @@ export function ModelDetail({
   })();
 
   useEffect(() => {
+    testRequestIdRef.current += 1;
     setTestState({ phase: "idle" });
-  }, [providerName, provider.baseUrl, provider.api, provider.apiKey, model.id, model.api]);
+    return () => { testRequestIdRef.current += 1; };
+  }, [providerName, provider, model, cwd]);
 
   useEffect(() => {
     catalogRequestIdRef.current += 1;
     setCatalogState({ phase: "idle" });
     catalogUndoRef.current = null;
-  }, [providerName, provider.baseUrl, model.id]);
+  }, [providerName, effectiveBaseUrl, model.id]);
 
   const handleTest = useCallback(async () => {
     if (!model.id.trim() || testState.phase === "testing") return;
@@ -205,6 +209,7 @@ export function ModelDetail({
       setTestState({ phase: "error", message: t("models.samplingParamsInvalid") });
       return;
     }
+    const requestId = ++testRequestIdRef.current;
     setTestState({ phase: "testing" });
     try {
       const res = await fetch("/api/models-config/test", {
@@ -219,6 +224,7 @@ export function ModelDetail({
         status?: number;
         responseText?: string;
       };
+      if (requestId !== testRequestIdRef.current) return;
       if (!res.ok || !d.ok) {
         setTestState({
           phase: "error",
@@ -235,6 +241,7 @@ export function ModelDetail({
         responseText: d.responseText,
       });
     } catch (e) {
+      if (requestId !== testRequestIdRef.current) return;
       setTestState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
     }
   }, [model, provider, providerName, testState.phase, cwd, t]);
@@ -247,7 +254,7 @@ export function ModelDetail({
     try {
       const params = new URLSearchParams({ q: query, provider: providerName, limit: "50" });
       if (cwd) params.set("cwd", cwd);
-      if (provider.baseUrl?.trim()) params.set("baseUrl", provider.baseUrl.trim());
+      if (effectiveBaseUrl?.trim()) params.set("baseUrl", effectiveBaseUrl.trim());
       const res = await fetch(`/api/models-config/catalog?${params}`);
       const data = await res.json() as { recommendation?: ModelCatalogRecommendation; error?: string };
       if (requestId !== catalogRequestIdRef.current) return;
@@ -270,7 +277,7 @@ export function ModelDetail({
       if (requestId !== catalogRequestIdRef.current) return;
       setCatalogState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [catalogState.phase, model, onChange, provider.baseUrl, providerName, cwd]);
+  }, [catalogState.phase, model, onChange, effectiveBaseUrl, providerName, cwd]);
 
   const undoCatalogFill = () => {
     const previous = catalogUndoRef.current;
@@ -333,6 +340,7 @@ export function ModelDetail({
   }
   compatibilityOverrideCount += remainingCompatKeys.size;
   const advancedSummaryParts = [
+    model.baseUrl ? t("models.baseUrlOverride") : null,
     model.api ? `API: ${model.api}` : null,
     Object.keys(model.headers ?? {}).length
       ? t("models.headersSummary", { count: Object.keys(model.headers ?? {}).length })
@@ -493,6 +501,14 @@ export function ModelDetail({
 
         {advancedOpen && (
           <div id="model-advanced-settings" className="models-form">
+            {!lockId && (
+              <ConfigField label={t("models.baseUrlOverride")}>
+                <TextInput value={model.baseUrl ?? ""} onChange={(v) => set("baseUrl", v.trim() || undefined)}
+                  placeholder={provider.baseUrl ?? t("models.providerDefaults")} />
+                <Hint>{t("models.baseUrlHelp")}</Hint>
+              </ConfigField>
+            )}
+
             {canEditApi && (
               <ConfigField label={t("models.apiOverride")}>
                 <Select value={model.api ?? ""} onChange={(v) => set("api", v || undefined)} options={API_OPTIONS} />

@@ -31,11 +31,14 @@ const INHERITED_MODEL_KEYS = ["api", "baseUrl", "name", "contextWindow", "maxTok
 export function inheritedModelFields<T extends object>(
   model: Record<string, unknown>,
   runtimeModel: T | undefined,
+  provider: Record<string, unknown> = {},
 ): Record<string, unknown> {
   if (!runtimeModel) return {};
   const source = runtimeModel as Record<string, unknown>;
   return Object.fromEntries(INHERITED_MODEL_KEYS.filter(
-    (key) => model[key] === undefined && source[key] !== undefined,
+    // A cleared model endpoint must inherit the draft provider, not the saved model.
+    (key) => model[key] === undefined && source[key] !== undefined
+      && (!(key === "baseUrl" || key === "api") || provider[key] === undefined),
   ).map((key) => [key, source[key]]));
 }
 
