@@ -36,7 +36,7 @@ test("active time merges only the same session, with either live or snapshot lea
   }
 });
 
-test("live timing follows usage request guards even when context usage is absent", () => {
+test("live timing follows session/run/mount guards and only grows, even without context usage", () => {
   const updates = [];
   const bindings = {
     sessionHookMountedRef: { current: true }, sessionIdRef: { current: "one" },
@@ -47,10 +47,13 @@ test("live timing follows usage request guards even when context usage is absent
   apply(undefined, "one", 2, 1, 200);
   apply(undefined, "two", 2, 2, 900);
   apply(undefined, "one", 1, 2, 900);
-  apply(undefined, "one", 2, 1, 900);
+  apply(undefined, "one", 2, 1, 900); // out-of-order request ids are fine: the value merges by max
+  apply(undefined, "one", 2, 3, 500); // an older, smaller live value never lowers it
   bindings.sessionHookMountedRef.current = false;
-  apply(undefined, "one", 2, 2, 900);
-  assert.deepEqual(updates, [{ sessionId: "one", value: 200 }]);
+  apply(undefined, "one", 2, 4, 1200);
+  const final = updates.reduce((prev, update) => typeof update === "function" ? update(prev) : update, null);
+  assert.equal(updates.length, 3);
+  assert.deepEqual(final, { sessionId: "one", value: 900 });
   assert.match(text, /applyContextUsage\(state\?\.contextUsage, sid, runId, usageRequestId, state\?\.totalActiveMs\)/);
   assert.ok(text.includes('?systemPrompt=0'));
 });
