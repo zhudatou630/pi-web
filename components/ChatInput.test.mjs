@@ -11,10 +11,30 @@ const jiti = createJiti(import.meta.url, {
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
+const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("@/lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+
+test("slash names win over description hits and skills rank by their bare names", () => {
+  const commands = [
+    { name: "skill:photocopy", source: "skill", description: "Scan a page" },
+    { name: "polish", source: "prompt", description: "Improve copy" },
+    { name: "skill:copy-text", source: "skill", description: "Clipboard helper" },
+    { name: "copy-last", source: "extension", description: "Clipboard helper" },
+    { name: "copy", source: "builtin", description: "copy.description" },
+  ];
+  const t = (key) => key === "copy.description" ? "Clipboard helper" : key;
+  const names = (query) => filterSlashCommands(commands, query, t).map((command) => command.name);
+  assert.deepEqual(names("copy"), ["copy", "copy-last", "skill:copy-text", "skill:photocopy"]);
+  assert.deepEqual(names("copy-text"), ["skill:copy-text"]);
+  assert.deepEqual(names("skill:copy"), ["skill:copy-text"]);
+  assert.deepEqual(names("clipboard"), ["copy", "copy-last", "skill:copy-text"]);
+  assert.deepEqual(names("improve"), ["polish"]);
+  assert.deepEqual(names("missing"), []);
+  assert.deepEqual(names(""), ["copy", "copy-last", "polish", "skill:copy-text", "skill:photocopy"]);
+  assert.equal(commands[0].name, "skill:photocopy");
+});
 
 test("preserves pasted HTML links as Markdown without changing plain text layout", () => {
   const link = (label, href, occurrence = 0) => ({ label, href, occurrence });

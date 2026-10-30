@@ -298,13 +298,22 @@ const SLASH_SOURCE_ORDER: Record<SlashCommandSource, number> = {
 };
 
 function slashMatchRank(command: SlashCommandPaletteItem, query: string, t: (key: string) => string): number {
-  const name = command.name.toLowerCase();
+  const fullName = command.name.toLowerCase();
+  const name = query.startsWith("skill:") ? fullName : fullName.replace(/^skill:/, "");
   const description = getSlashDescription(command, t).toLowerCase();
   if (name === query) return 0;
   if (name.startsWith(query)) return 1;
   if (name.includes(query)) return 2;
   if (description.includes(query)) return 3;
   return 4;
+}
+
+export function filterSlashCommands(commands: SlashCommandPaletteItem[], query: string, t: (key: string) => string): SlashCommandPaletteItem[] {
+  const nameMatches = commands.filter((command) => slashMatchRank(command, query, t) < 3);
+  const matches = nameMatches.length ? nameMatches : commands.filter((command) => getSlashDescription(command, t).toLowerCase().includes(query));
+  return matches.sort((a, b) => slashMatchRank(a, query, t) - slashMatchRank(b, query, t)
+    || SLASH_SOURCE_ORDER[a.source] - SLASH_SOURCE_ORDER[b.source]
+    || TEXT_COLLATOR.compare(a.name, b.name));
 }
 
 function getSlashDescription(command: SlashCommandPaletteItem, t: (key: string) => string): string {
@@ -1149,18 +1158,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       ? BUILTIN_SLASH_COMMANDS.filter((command) => command.availableWhileStreaming)
       : BUILTIN_SLASH_COMMANDS;
     const commands = [...builtinCommands, ...(slashCommands ?? [])];
-    return [...commands]
-      .filter((command) => {
-        const name = command.name.toLowerCase();
-        const description = getSlashDescription(command, t).toLowerCase();
-        return name.includes(slashQuery) || description.includes(slashQuery);
-      })
-      .sort((a, b) => {
-        const rankDelta = slashMatchRank(a, slashQuery, t) - slashMatchRank(b, slashQuery, t);
-        if (rankDelta !== 0) return rankDelta;
-        return SLASH_SOURCE_ORDER[a.source] - SLASH_SOURCE_ORDER[b.source]
-          || TEXT_COLLATOR.compare(a.name, b.name);
-      });
+    return filterSlashCommands(commands, slashQuery, t);
   })();
 
   const {
