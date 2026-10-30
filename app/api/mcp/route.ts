@@ -6,6 +6,7 @@ import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-acces
 import {
   MCP_EXPOSURES,
   McpConfigError,
+  readMcpServerEntry,
   readMcpSettings,
   removeMcpServer,
   saveMcpServer,
@@ -41,11 +42,19 @@ async function readWrite(req: Request): Promise<Record<string, unknown> | NextRe
   return { ...body, cwd };
 }
 
-// GET /api/mcp?cwd=<path> — configured servers of the global and (with cwd) project mcp.json.
+// GET /api/mcp?cwd=<path> — configured servers of the global and (with cwd) project mcp.json, secrets left out.
+// GET /api/mcp?cwd=&scope=&name= — that entry as written, for "Edit JSON".
 export async function GET(req: Request) {
-  const cwd = new URL(req.url).searchParams.get("cwd");
+  const params = new URL(req.url).searchParams;
+  const cwd = params.get("cwd");
+  const scope = params.get("scope");
+  const name = params.get("name");
   try {
     if (!(await cwdAllowed(cwd))) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    if (name !== null) {
+      if (scope !== "global" && scope !== "project") return NextResponse.json({ error: "scope must be global or project" }, { status: 400 });
+      return NextResponse.json({ config: await readMcpServerEntry({ cwd, scope, name }) });
+    }
     return NextResponse.json(await readMcpSettings(cwd));
   } catch (error) {
     return failure(error);
@@ -71,7 +80,8 @@ export async function PUT(req: Request) {
   }
 }
 
-// PATCH /api/mcp { cwd?, scope, name, enabled?, exposure?, override? } — the switches pi's /mcp manager changes.
+// PATCH /api/mcp { cwd?, scope, name, enabled?, exposure?, toolExposure?, override? } — the switches pi's /mcp manager
+// changes, plus per-tool rules (`toolExposure: { tool: exposure | null }`, null deletes that key).
 // `override: true` (project scope) writes a project override of the global server instead.
 // PATCH /api/mcp { cwd?, builtin, enabled } — load a built-in extension globally (`-builtin:<name>`).
 export async function PATCH(req: Request) {
@@ -94,12 +104,20 @@ export async function PATCH(req: Request) {
     if (body.exposure !== undefined && !(MCP_EXPOSURES as readonly unknown[]).includes(body.exposure)) {
       return NextResponse.json({ error: `exposure must be one of ${MCP_EXPOSURES.join(", ")}` }, { status: 400 });
     }
+    const toolExposure = body.toolExposure;
+    if (toolExposure !== undefined && (
+      typeof toolExposure !== "object" || toolExposure === null || Array.isArray(toolExposure)
+      || Object.entries(toolExposure).some(([tool, exposure]) => !tool || (exposure !== null && !(MCP_EXPOSURES as readonly unknown[]).includes(exposure)))
+    )) {
+      return NextResponse.json({ error: `toolExposure values must be null or one of ${MCP_EXPOSURES.join(", ")}` }, { status: 400 });
+    }
     await updateMcpServer({
       cwd,
       scope: body.scope as McpScope,
       name: body.name,
       ...(body.enabled !== undefined ? { enabled: body.enabled as boolean } : {}),
       ...(body.exposure !== undefined ? { exposure: body.exposure as McpExposure } : {}),
+      ...(toolExposure !== undefined ? { toolExposure: toolExposure as Record<string, McpExposure | null> } : {}),
       ...(body.override === true ? { override: true } : {}),
     });
     return NextResponse.json(await readMcpSettings(cwd));

@@ -250,15 +250,41 @@ export interface ProjectOverridesWriteResponse {
   failures: { path: string; error: string }[];
 }
 
-export interface McpServerView {
+/** An env/header/client-secret value as Settings may show it: never the value itself. */
+export interface McpConfigValue {
+  name: string;
+  /** `env`: reads `${NAME}` variables (detail lists them); `command`: runs a `!command` when connecting. */
+  kind: "literal" | "env" | "command";
+  detail?: string;
+}
+
+/** One mcp.json entry with secrets left out (`lib/mcp-view.ts`). */
+export interface McpServerFacts {
+  type: "stdio" | "http";
+  /** Command line or URL, secret-looking parts masked. */
+  transport: string;
+  description?: string;
+  cwd?: string;
+  timeout?: number;
+  env: McpConfigValue[];
+  headers: McpConfigValue[];
+  /** Keys set under `oauth`, apart from `clientSecret`. */
+  oauth?: string[];
+  clientSecret?: McpConfigValue;
+  authProvider?: string;
+  /** Signs in with MCP OAuth: HTTP without `auth.provider` or an Authorization header. */
+  usesOAuth: boolean;
+  /** Effective per-tool exposure rules (exact names or `*` patterns). */
+  toolExposure: Record<string, string>;
+}
+
+export interface McpServerView extends McpServerFacts {
   name: string;
   scope: "global" | "project";
-  /** The entry as written in mcp.json, for editing. */
-  config: Record<string, unknown>;
   enabled: boolean;
   exposure: string;
-  /** Command line or URL. */
-  transport: string;
+  /** OAuth tokens are stored for this name and URL (`mcp-auth.json`). */
+  signedIn?: boolean;
   /** A global entry replaced by a project entry of the same name. */
   overridden?: boolean;
   /**
@@ -276,19 +302,34 @@ export interface McpSettingsResponse {
   project: { path: string; trusted: boolean; ignored: boolean } | null;
   servers: McpServerView[];
   errors: string[];
+  /** Set when an mcp.json turns off codemode's automatic activation. */
+  autoEnableCodemode?: false;
   logTail: string;
   /** ISO time `mcp.log` was last written; null when it does not exist. */
   logModified: string | null;
 }
 
-/** `pi mcp list --json`. */
+export interface McpToolView {
+  name: string;
+  /** First line of the tool's description. */
+  description?: string;
+  /** Effective exposure (`toolExposure`, else the server's). */
+  exposure: string;
+  readOnly?: boolean;
+  destructive?: boolean;
+}
+
+/** Like `pi mcp list --json`, with tool details. */
 export interface McpCheckResponse {
   servers: {
     name: string;
     scope: "global" | "project";
     enabled: boolean;
     state: string;
-    tools: string[];
+    tools: McpToolView[];
+    resources?: boolean;
+    /** First paragraph of the server's instructions. */
+    instructions?: string;
     error?: string;
   }[];
   errors: string[];

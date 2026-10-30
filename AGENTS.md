@@ -86,7 +86,8 @@ Pi stores `{type:"toolCall", id, name, arguments}`; our `ToolCallContent` is `{t
 ### Built-in extensions (MCP, codemode, tool search)
 - SDK sessions get no built-in extensions, so `startRpcSession()` adds `mcp`, `codemode`, `tool-search` as `{ builtin: true, replaceable: true }` (CLI semantics: `-builtin:<name>` disables; an installed extension registering `/mcp` replaces it). Chat only and sub-agents load none.
 - MCP `codemode`/`deferred` tools stay callable regardless of the active set, so `lib/read-only-tool-guard.ts` blocks every MCP call under the read-only preset. Never trust `readOnlyHint`.
-- pi's MCP config/CLI helpers are not exported by the SDK; `lib/mcp-config.ts` loads them by file path with `webpackIgnore`/`turbopackIgnore`. Details: `docs/settings.md`.
+- The `mcp` extension's `session_start` work is deferred to the first prompt or `/mcp` command (`deferMcpStart`, `lib/builtin-extensions.ts`): viewing a session must spawn no MCP server (each viewed runtime used to hold every stdio server). Enforced by `lib/mcp-builtin.test.mjs`.
+- Settings › MCP grafts pi's MCP and never re-hosts it (`docs/adr/0004-mcp-management.md`). `/api/mcp` views never carry env/header/secret values (`lib/mcp-view.ts`). pi's MCP config/CLI/OAuth helpers are not exported by the SDK; they load by file path with `webpackIgnore`/`turbopackIgnore`, listed in `lib/pi-sdk-compatibility.test.mjs`. Details: `docs/settings.md`.
 
 ### Extension UI
 - No persistent TUI widgets: `setWidget` is a compatibility no-op (string arrays emitted and ignored, factories never invoked).

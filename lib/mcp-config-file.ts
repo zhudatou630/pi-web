@@ -48,9 +48,13 @@ export function editMcpConfigFileSync(path: string, edit: Edit, projectRoot?: st
   try { editLocked(path, target, edit, projectRoot); } finally { release(); }
 }
 
+/**
+ * `inherited`: the global server's `toolExposure`, for an override. The SDK merges an override
+ * shallowly, so its map replaces the global one; the first per-tool edit starts from it.
+ */
 export function patchMcpServer(servers: Record<string, unknown>, name: string, patch: {
-  enabled?: boolean; exposure?: string;
-}, override = false): void {
+  enabled?: boolean; exposure?: string; toolExposure?: Record<string, string | null>;
+}, override = false, inherited?: unknown): void {
   if (!Object.hasOwn(servers, name)) {
     if (!override) throw new McpConfigError(`No MCP server named "${name}"`);
     Object.defineProperty(servers, name, { value: {}, enumerable: true, configurable: true, writable: true });
@@ -65,5 +69,17 @@ export function patchMcpServer(servers: Record<string, unknown>, name: string, p
   if (patch.exposure !== undefined) {
     if (patch.exposure === "codemode" && !keepDefaults) delete server.exposure;
     else server.exposure = patch.exposure;
+  }
+  if (patch.toolExposure !== undefined) {
+    const source = isRecord(server.toolExposure) ? server.toolExposure : keepDefaults && isRecord(inherited) ? inherited : {};
+    // Keeps rule order: among patterns the first match wins.
+    const rules: Record<string, unknown> = Object.assign(Object.create(null), source);
+    for (const [tool, exposure] of Object.entries(patch.toolExposure)) {
+      if (exposure === null) delete rules[tool];
+      else rules[tool] = exposure;
+    }
+    // An override keeps an empty map: deleting it would bring the global rules back.
+    if (Object.keys(rules).length > 0 || keepDefaults) server.toolExposure = { ...rules };
+    else delete server.toolExposure;
   }
 }

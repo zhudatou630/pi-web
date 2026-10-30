@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { type McpTransportFactory } from "@earendil-works/pi-coding-agent";
-import type { McpCheckResponse } from "./api-types";
+import type { McpCheckResponse, McpToolView } from "./api-types";
 import { importSdkFile, loadSafeMcpTransport } from "./builtin-extensions";
 import { createProjectCommandBashOperations } from "./project-command-env";
 import { assertSafeMcpValues, resolvedMcpValues, type McpValueParsers } from "./mcp-transport";
@@ -8,14 +8,33 @@ import type { McpEntry } from "./mcp-config-read";
 
 type Transport = ReturnType<McpTransportFactory>;
 interface Connection {
-  state: string; error?: string; tools: { name: string }[];
+  state: string; error?: string; hasResources: boolean; instructions?: string;
+  tools: { name: string; description?: unknown; annotations?: unknown }[];
   getClient(): Promise<unknown>; close(): Promise<void>;
 }
 interface Runtime {
   McpServerConnection: new (options: {
     entry: McpEntry; cwd: string; credentials: unknown; createTransport: McpTransportFactory; onTools: () => void;
+    providerToken?: (provider: string) => Promise<string | undefined>; log?: unknown;
   }) => Connection;
   McpOAuthCredentialStore: new (backend: unknown, lockDir: string) => unknown;
+  McpServerLog: new (path: string) => unknown;
+}
+type ToolExposure = (config: McpEntry["config"], tool: string) => string;
+
+const firstLine = (value: unknown) => typeof value === "string" ? value.trim().split("\n", 1)[0]!.slice(0, 300) : undefined;
+
+/** Tool facts with server-supplied fields type-checked: MCP validates names and schemas only. */
+function toolView(tool: Connection["tools"][number], entry: McpEntry, exposureOf: ToolExposure): McpToolView {
+  const hints = typeof tool.annotations === "object" && tool.annotations !== null ? tool.annotations as Record<string, unknown> : {};
+  const description = firstLine(tool.description);
+  return {
+    name: tool.name,
+    ...(description ? { description } : {}),
+    exposure: exposureOf(entry.config, tool.name),
+    ...(hints.readOnlyHint === true ? { readOnly: true } : {}),
+    ...(hints.destructiveHint === true ? { destructive: true } : {}),
+  };
 }
 
 async function within<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -28,12 +47,13 @@ async function within<T>(promise: Promise<T>, ms: number, message: string): Prom
 }
 
 /** SDK !command resolution is synchronous. Pre-resolve asynchronously so a timer can stop it. */
-async function prepareEntry(entry: McpEntry, parsers: McpValueParsers, cwd: string, agentDir: string, signal: AbortSignal): Promise<McpEntry> {
+export async function prepareEntry(entry: McpEntry, parsers: McpValueParsers, cwd: string, agentDir: string, signal: AbortSignal): Promise<McpEntry> {
   assertSafeMcpValues(entry.config, parsers);
   const config = structuredClone(entry.config);
   const operations = createProjectCommandBashOperations({ agentBinDir: join(agentDir, "bin") });
   for (const { container, name, value } of resolvedMcpValues(config)) {
-    if (!parsers.isCommandConfigValue(value)) continue;
+    // The SDK resolves oauth.clientSecret only when a refresh or sign-in needs it.
+    if (container === "oauth" || !parsers.isCommandConfigValue(value)) continue;
     signal.throwIfAborted();
     const controller = new AbortController();
     const chunks: Buffer[] = [];
@@ -56,8 +76,14 @@ async function prepareEntry(entry: McpEntry, parsers: McpValueParsers, cwd: stri
   return { ...entry, config: { ...config, timeout: Math.min(config.timeout ?? 60, 15) } };
 }
 
-/** One overall 20 s deadline; cleanup never waits more than another 2 s. */
-export async function checkSafeMcpServers(loaded: Promise<{ servers: McpEntry[]; errors: string[] }>, cwd: string, agentDir: string): Promise<McpCheckResponse> {
+/**
+ * One overall 20 s deadline; cleanup never waits more than another 2 s. `providerToken` serves
+ * servers with `auth.provider`, like a session's model registry does.
+ */
+export async function checkSafeMcpServers(
+  loaded: Promise<{ servers: McpEntry[]; errors: string[] }>, cwd: string, agentDir: string,
+  providerToken?: (provider: string) => Promise<string | undefined>,
+): Promise<McpCheckResponse> {
   const controller = new AbortController();
   const connections: Connection[] = [];
   const transports = new Set<Transport>();
@@ -69,13 +95,16 @@ export async function checkSafeMcpServers(loaded: Promise<{ servers: McpEntry[];
   const aborted = new Promise<never>((_, reject) => controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true }));
   try {
     const work = async () => {
-      const [runtime, auth, parsers, factory, config] = await Promise.all([
+      const [runtime, auth, parsers, sdkServers, factory, config] = await Promise.all([
         importSdkFile<Runtime>("extensions/mcp/runtime.js"),
         importSdkFile<{ FileAuthStorageBackend: new (path: string) => unknown }>("core/auth-storage.js"),
-        importSdkFile<McpValueParsers>("core/resolve-config-value.js"), loadSafeMcpTransport(), loaded,
+        importSdkFile<McpValueParsers>("core/resolve-config-value.js"),
+        importSdkFile<{ getMcpToolExposure: ToolExposure }>("core/mcp-servers.js"), loadSafeMcpTransport(), loaded,
       ]);
       controller.signal.throwIfAborted();
       const credentials = new runtime.McpOAuthCredentialStore(new auth.FileAuthStorageBackend(join(agentDir, "mcp-auth.json")), agentDir);
+      // Server log notifications go to mcp.log, as with `pi mcp list`.
+      const log = new runtime.McpServerLog(join(agentDir, "mcp.log"));
       const createTransport: McpTransportFactory = (entry, directory, provider) => {
         controller.signal.throwIfAborted();
         const transport = factory(entry, directory, provider);
@@ -92,14 +121,18 @@ export async function checkSafeMcpServers(loaded: Promise<{ servers: McpEntry[];
         try {
           const prepared = await prepareEntry(entry, parsers, cwd, agentDir, controller.signal);
           controller.signal.throwIfAborted();
-          connection = new runtime.McpServerConnection({ entry: prepared, cwd, credentials, createTransport, onTools: () => {} });
+          connection = new runtime.McpServerConnection({ entry: prepared, cwd, credentials, createTransport, providerToken, log, onTools: () => {} });
           connections.push(connection);
           await connection.getClient();
         } catch (error) {
           report.error = connection?.error ?? (error instanceof Error ? error.message : "MCP check failed");
         }
         report.state = connection?.state ?? "failed";
-        report.tools = connection?.tools.map((tool) => tool.name).filter((name) => typeof name === "string") ?? [];
+        report.tools = connection?.tools.filter((tool) => typeof tool.name === "string")
+          .map((tool) => toolView(tool, entry, sdkServers.getMcpToolExposure)) ?? [];
+        if (connection?.hasResources) report.resources = true;
+        const instructions = connection?.instructions?.trim().split(/\n\s*\n/, 1)[0]?.slice(0, 1000);
+        if (instructions) report.instructions = instructions;
         return report;
       }));
       return { servers, errors: config.errors };
