@@ -37,7 +37,8 @@ test("terminal paragraphs, lists, code and table frames share the zero bottom ma
   const { fromHtml } = await import("hast-util-from-html");
   const { readFile } = await import("node:fs/promises");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(css, /\.markdown-body > :last-child,\s*\.markdown-body > :is\(ul, ol\):last-child > li:last-child \{ margin-bottom: 0; \}/);
+  // The last-child chain from the top, five levels deep: list > item > nested list > item > code block.
+  assert.match(css, /\.markdown-body > :last-child,\s*\.markdown-body > :last-child > :last-child,[\s\S]*?\.markdown-body > :last-child > :last-child > :last-child > :last-child > :last-child \{ margin-bottom: 0; \}/);
   for (const [markdown, tag, className] of [
     ["Intro\n\nEnd", "p"],
     ["Intro\n\n- one\n- last", "ul"],

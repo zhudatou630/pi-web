@@ -1358,9 +1358,14 @@ pre, code {
 .markdown-body :is(p, li, blockquote) { text-wrap: pretty; }
 .markdown-body :is(h1, h2, h3, h4, h5, h6) { text-wrap: balance; }
 .markdown-body p:last-child { margin-bottom: 0; }
-/* Terminal blocks share the paragraph's footer gap, including the final list item. */
+/* The block that ends the reply shares the paragraph's footer gap, also when it sits at the end
+   of a final list item or quote (a command at the end of a step list). Only the last-child chain
+   from the top is touched, so spacing inside the message is unchanged. */
 .markdown-body > :last-child,
-.markdown-body > :is(ul, ol):last-child > li:last-child { margin-bottom: 0; }
+.markdown-body > :last-child > :last-child,
+.markdown-body > :last-child > :last-child > :last-child,
+.markdown-body > :last-child > :last-child > :last-child > :last-child,
+.markdown-body > :last-child > :last-child > :last-child > :last-child > :last-child { margin-bottom: 0; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3,
 .markdown-body h4, .markdown-body h5, .markdown-body h6 {
   font-weight: 600;
