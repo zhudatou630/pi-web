@@ -160,8 +160,11 @@ export async function resolveProject(cwd: string): Promise<ProjectInfo> {
       isWorktree: isWorktreeTopLevel,
       isTopLevel,
     };
-  } catch {
+  } catch (error) {
     info = { projectRoot: cwd, branch: null, isWorktree: false, isTopLevel: false };
+    const { code, killed, signal } = error as { code?: unknown; killed?: boolean; signal?: unknown };
+    // Spawn/read failures and kills are not git's answer; missing git is stable.
+    if (killed || signal || (typeof code === "string" && code !== "ENOENT")) return info;
   }
 
   cache.set(cwd, { info, expiresAt: Date.now() + PROJECT_CACHE_TTL_MS });
