@@ -43,6 +43,8 @@ function realPathOrSelf(filePath: string): string {
 export async function createIsolatedWorktree(
   cwd: string,
   agentId: string,
+  /** The branch any changes are kept on; defaults to `pi-web-agent-<id>`. Routines name their own. */
+  branch = `pi-web-agent-${agentId.slice(0, 8)}`,
 ): Promise<IsolatedWorktree> {
   const baseSha = await git(cwd, ["rev-parse", "HEAD"]);
   const topLevel = toNativePath(await git(cwd, ["rev-parse", "--path-format=absolute", "--show-toplevel"]));
@@ -59,7 +61,7 @@ export async function createIsolatedWorktree(
   return {
     path: worktreePath,
     workPath: subdir ? join(worktreePath, subdir) : worktreePath,
-    branch: `pi-web-agent-${agentId.slice(0, 8)}`,
+    branch,
     baseSha,
   };
 }
@@ -77,6 +79,7 @@ export async function cleanupIsolatedWorktree(
   cwd: string,
   worktree: IsolatedWorktree,
   description: string,
+  commitPrefix = "pi-web-agent",
 ): Promise<IsolatedWorktreeCleanup> {
   if (!existsSync(worktree.path)) return { hasChanges: "unknown" };
   let hasChanges = false;
@@ -88,7 +91,7 @@ export async function cleanupIsolatedWorktree(
     if (status) {
       cleanupError = "Could not commit checkout changes.";
       await git(worktree.path, ["add", "-A"]);
-      await git(worktree.path, ["commit", "--no-verify", "-m", `pi-web-agent: ${description.slice(0, 200)}`]);
+      await git(worktree.path, ["commit", "--no-verify", "-m", `${commitPrefix}: ${description.slice(0, 200)}`]);
     } else {
       const currentSha = await git(worktree.path, ["rev-parse", "HEAD"]);
       if (currentSha === worktree.baseSha) {

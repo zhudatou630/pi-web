@@ -33,6 +33,8 @@ export interface WebPushNotifier {
   addSubscription: (subscription: PushSubscriptionRecord) => void;
   /** `sessionName` titles the notification; without one it reads "Session complete". */
   notifySessionComplete: (sessionId: string, sessionName?: string) => Promise<void>;
+  /** Any notification: text per subscriber locale, the page a click opens, a tag that replaces earlier ones. */
+  notify: (build: (locale: string) => { title: string; body: string }, url: string, tag: string) => Promise<void>;
 }
 
 function stateFilePath(): string {
@@ -133,20 +135,19 @@ export function createWebPushNotifier(environment: WebPushEnvironment): WebPushN
       saveState();
     },
     async notifySessionComplete(sessionId, sessionName) {
-      if (state.subscriptions.length === 0) return;
-      const payloadFor = (locale: string) => ({
+      await this.notify((locale) => ({
         title: sessionName ?? localeText(locale, "sessionComplete"),
         body: localeText(locale, "taskFinished"),
-        url: `/?session=${encodeURIComponent(sessionId)}`,
-        tag: `pi-session-complete:${sessionId}`,
-      });
-
+      }), `/?session=${encodeURIComponent(sessionId)}`, `pi-session-complete:${sessionId}`);
+    },
+    async notify(build, url, tag) {
+      if (state.subscriptions.length === 0) return;
       let pruned = false;
       for (const subscription of [...state.subscriptions]) {
         try {
           await environment.send(
             subscription,
-            JSON.stringify(payloadFor(subscription.locale)),
+            JSON.stringify({ ...build(subscription.locale), url, tag }),
             state.vapidKeys,
           );
         } catch (error) {
@@ -184,4 +185,9 @@ export function addSubscription(subscription: PushSubscriptionRecord): Promise<v
 export async function notifySessionComplete(sessionId: string, sessionName?: string): Promise<void> {
   const notifier = await getNotifier();
   await notifier.notifySessionComplete(sessionId, sessionName);
+}
+
+export async function sendNotification(build: (locale: string) => { title: string; body: string }, url: string, tag: string): Promise<void> {
+  const notifier = await getNotifier();
+  await notifier.notify(build, url, tag);
 }

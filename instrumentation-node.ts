@@ -1,6 +1,7 @@
 import { closeAllAgentEventStreams } from "@/lib/agent-event-stream";
 import { configureHttpDispatcher, readHttpIdleTimeoutMs } from "@/lib/http-dispatcher";
 import { startPreviewProxy, stopPreviewProxy } from "@/lib/preview-proxy";
+import { isRoutineSchedulerEnabled } from "@/lib/routine-scheduler-flag";
 
 /**
  * Node-only startup work.
@@ -28,6 +29,11 @@ export async function registerNodeRuntime(): Promise<void> {
   if (host[SHUTDOWN_HOOK_KEY]) return;
   host[SHUTDOWN_HOOK_KEY] = true;
   startPreviewProxy();
+  if (isRoutineSchedulerEnabled()) {
+    import("@/lib/routine-runner")
+      .then(({ startRoutineScheduler }) => startRoutineScheduler())
+      .catch((error) => console.error("[pi-web] routine scheduler failed to start:", error));
+  }
 
   // `once` + a synchronous close: Next's own handlers still run, and a second
   // signal is left to the default behavior so the process can always be killed.

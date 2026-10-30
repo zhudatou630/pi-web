@@ -182,6 +182,8 @@ export interface RpcSessionStartOptions {
   cwdOverride?: string;
 }
 
+  /** False keeps an explicit model/thinking choice session-local (routines must not rewrite user defaults). */
+  persistStartupPreferences?: boolean;
 const MAX_UNDELIVERED_NOTICES = 10;
 const UNDELIVERED_NOTICE_MAX_AGE_MS = 2 * 60_000;
 
@@ -2531,7 +2533,7 @@ export async function startRpcSession(
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   assertAppNotUpdating();
-  const { initialModel, allowInitialModelFallback, thinkingLevel, cwdOverride } = options;
+  const { initialModel, allowInitialModelFallback, thinkingLevel, cwdOverride, persistStartupPreferences = true } = options;
   if (getSessionFileMutations().has(sessionId)) {
     throw new Error("Session file is being modified");
   }
@@ -2809,7 +2811,7 @@ export async function startRpcSession(
             controller.abort();
           }
         }
-        if (!wrapper.isAlive()) return;
+        if (!wrapper.isAlive() || !persistStartupPreferences) return;
         const persistedPreferences = await persistExplicitStartupPreferences(
           services.settingsManager,
           {
