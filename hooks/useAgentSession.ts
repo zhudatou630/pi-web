@@ -1,6 +1,5 @@
 "use client";
 
-import { createPageEventSource } from "@/lib/page-debug";
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useReducer } from "react";
 import type {
   AgentMessage,
@@ -524,7 +523,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   visiblePaneRef.current = isVisiblePane;
   if (!eventConnectionRef.current) {
     eventConnectionRef.current = new AgentEventConnection({
-      createSource: (sid) => createPageEventSource(buildAgentEventSourceUrl(sid), "agent", sid),
+      createSource: (sid) => new EventSource(buildAgentEventSourceUrl(sid)),
       onEvent: (event) => handleAgentEventRef.current?.(event as AgentEvent),
       shouldMaintain: (sid) => (
         sessionHookMountedRef.current

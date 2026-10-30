@@ -142,10 +142,6 @@ export function createTerminal(cwd: string, cols: number, rows: number, id: stri
   return id;
 }
 
-export function getTerminalDebugSnapshots(): { id: string; listeners: number }[] {
-  return [...(globalThis.__piWebTerminals ?? [])].map(([id, record]) => ({ id, listeners: record.listeners.size }));
-}
-
 export function hasTerminal(id: string): boolean {
   return registry().has(id);
 }

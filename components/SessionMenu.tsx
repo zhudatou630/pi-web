@@ -17,7 +17,6 @@ type Props = {
   /** The info item whose data is still loading: it shows a spinner and the menu stays open. */
   infoPending?: "tools" | "system" | null;
   menuOpen: boolean;
-  debugOpen: boolean;
   exporting?: boolean;
   error?: string | null;
   labels: {
@@ -30,9 +29,7 @@ type Props = {
     exportMarkdownTitle: string;
     fork: string;
     forkTitle: string;
-    debug: string;
   };
-  onOpenDebug: () => void;
   onOpenTools: () => void;
   onOpenSystem: () => void;
   onForkSession: () => void;
@@ -49,7 +46,6 @@ export function SessionMenu({
   forking = false,
   infoPending = null,
   menuOpen,
-  debugOpen,
   exporting = false,
   error,
   labels,
@@ -59,7 +55,6 @@ export function SessionMenu({
   onViewFullHistory,
   onExportMarkdown,
   onMenuOpenChange,
-  onOpenDebug,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -93,22 +88,27 @@ export function SessionMenu({
     };
   }, [menuOpen, onMenuOpenChange]);
 
+  const disabled = infoDisabled && historyDisabled;
+  const color = disabled ? "var(--text-dim)" : "var(--text-muted)";
   const hover = (event: MouseEvent<HTMLButtonElement>, on: boolean) => {
-    event.currentTarget.style.color = on || menuOpen || debugOpen ? "var(--text)" : "var(--text-muted)";
+    if (disabled) return;
+    event.currentTarget.style.color = on || menuOpen ? "var(--text)" : "var(--text-muted)";
   };
 
   return (
     <div ref={rootRef} style={{ display: "flex", alignItems: "stretch", height: "100%", position: "relative" }}>
       <button
         type="button"
-        onClick={() => onMenuOpenChange(!menuOpen)}
+        onClick={() => {
+          if (disabled) return;
+          onMenuOpenChange(!menuOpen);
+        }}
+        disabled={disabled}
         title={labels.menu}
         aria-label={labels.menu}
         aria-haspopup="menu"
-        aria-expanded={menuOpen || debugOpen}
-        aria-pressed={debugOpen}
-        aria-controls={debugOpen ? "workspace-top-panel" : undefined}
-        data-active={menuOpen || debugOpen || undefined}
+        aria-expanded={menuOpen}
+        data-active={menuOpen || undefined}
         style={{
           display: "flex",
           alignItems: "center",
@@ -116,10 +116,11 @@ export function SessionMenu({
           width: ICON_BUTTON_SIZE,
           height: "100%",
           padding: 0,
-          background: menuOpen || debugOpen ? "var(--bg-selected)" : "none",
+          background: menuOpen ? "var(--bg-selected)" : "none",
           border: "none",
-          color: menuOpen || debugOpen ? "var(--text)" : "var(--text-muted)",
-          cursor: "pointer",
+          color: menuOpen ? "var(--text)" : color,
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.45 : 1,
           flexShrink: 0,
           transition: "color var(--motion-fast), background var(--motion-fast), opacity var(--motion-fast), box-shadow var(--motion-fast)",
         }}
@@ -128,7 +129,6 @@ export function SessionMenu({
         className="workspace-header-action"
         data-mobile-toolbar-action={mobile ? "session-menu" : undefined}
         data-session-menu-trigger
-        data-top-panel-trigger="debug"
       >
         <svg
           width="13"
@@ -147,7 +147,7 @@ export function SessionMenu({
           <circle cx="19" cy="12" r="1" />
         </svg>
       </button>
-      {menuOpen && menuPos && (
+      {menuOpen && !disabled && menuPos && (
         <div
           role="menu"
           aria-label={labels.menu}
@@ -261,12 +261,6 @@ export function SessionMenu({
                 <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
               </svg>
             )}
-          </button>
-          <button type="button" role="menuitem" onClick={onOpenDebug}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="8" /><path d="M12 8v4M12 16h.01" />
-            </svg>
-            {labels.debug}
           </button>
           {error && (
             <div style={{ padding: "6px 8px", fontSize: 11, color: "var(--danger)", lineHeight: 1.35 }}>

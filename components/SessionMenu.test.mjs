@@ -6,8 +6,8 @@ const source = await readFile(new URL("./SessionMenu.tsx", import.meta.url), "ut
 const appShell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 
 test("session menu is one icon button opening a dropdown of info and history actions", () => {
-  assert.match(source, /onMenuOpenChange\(!menuOpen\)/);
-  assert.match(source, /data-active=\{menuOpen \|\| debugOpen \|\| undefined\}/);
+  assert.match(source, /onMenuOpenChange\(!menuOpen\);/);
+  assert.match(source, /data-active=\{menuOpen \|\| undefined\}/);
   assert.match(source, /width: ICON_BUTTON_SIZE,/);
   assert.match(source, /data-mobile-toolbar-action=\{mobile \? "session-menu" : undefined\}/);
 });
@@ -22,8 +22,7 @@ test("menu lists tools, system prompt, a divider, then history and export", () =
 test("info items and history items are enabled independently", () => {
   assert.match(source, /disabled=\{infoDisabled \|\| infoPending !== null\}/);
   assert.match(source, /disabled=\{historyDisabled\}/);
-  assert.doesNotMatch(source, /const disabled = infoDisabled && historyDisabled/);
-  assert.match(source, /role="menuitem" onClick=\{onOpenDebug\}/, "debug is available without a live runtime");
+  assert.match(source, /const disabled = infoDisabled && historyDisabled/);
 });
 
 test("info dialogs open only after their data is loaded, so nothing swaps while they animate in", () => {

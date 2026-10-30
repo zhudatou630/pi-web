@@ -36,7 +36,6 @@ import { SettingsPanel } from "./SettingsPanel";
 import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
-import { DebugPanel } from "./DebugPanel";
 import { SessionMenu } from "./SessionMenu";
 import { InfoDialog } from "./InfoDialog";
 import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
@@ -635,7 +634,7 @@ export function AppShell() {
   }, [selectedSession, syncSessionMetadata]);
 
   // Single active panel — only one dropdown open at a time
-  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "session" | "language" | "outline" | "debug" | null>(null);
+  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "session" | "language" | "outline" | null>(null);
   const [infoDialog, setInfoDialog] = useState<"system" | "tools" | null>(null);
   // Subagent totals shown beside, never folded into, the parent's own usage.
   const [subagentUsage, setSubagentUsage] = useState<{ sessionId: string; count: number; tokens: number; cost: number } | null>(null);
@@ -715,7 +714,7 @@ export function AppShell() {
     if (!view) setActiveTopPanel((panel) => panel === "outline" ? null : panel);
   }, []);
 
-  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "session" | "language" | "outline" | "debug") => {
+  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "session" | "language" | "outline") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
@@ -850,16 +849,15 @@ export function AppShell() {
     const update = () => {
       const topBarRect = topBarRef.current!.getBoundingClientRect();
       // Agents and (on desktop) branches/session float under their trigger; other panels are full-width sheets.
-      if (activeTopPanel === "agents" || activeTopPanel === "session" || activeTopPanel === "debug" || (!isMobile && activeTopPanel === "branches")) {
+      if (activeTopPanel === "agents" || activeTopPanel === "session" || (!isMobile && activeTopPanel === "branches")) {
         // Session's trigger is the composer's stats pill (one per chat pane; the clicked one is focused).
         // The collapsed session title shares the trigger name but is not the pill.
         const triggerSelector = `[data-top-panel-trigger="${activeTopPanel}"]`;
         const anchor = activeTopPanel === "agents"
           ? agentsAnchorRef.current ?? agentsButtonRef.current
           : document.activeElement?.closest<HTMLElement>(triggerSelector)
-            ?? [...document.querySelectorAll<HTMLElement>(`${triggerSelector}:not([data-collapsed-session-title])`)]
-              .find((candidate) => !candidate.closest("[inert]"));
-        const wantedWidth = activeTopPanel === "debug" ? 460 : activeTopPanel === "agents" ? AGENT_PANEL_WIDTH : activeTopPanel === "session" ? SESSION_PANEL_WIDTH : BRANCH_PANEL_WIDTH;
+            ?? document.querySelector<HTMLElement>(`${triggerSelector}:not([data-collapsed-session-title])`);
+        const wantedWidth = activeTopPanel === "agents" ? AGENT_PANEL_WIDTH : activeTopPanel === "session" ? SESSION_PANEL_WIDTH : BRANCH_PANEL_WIDTH;
         const panelWidth = Math.min(wantedWidth, (typeof window !== "undefined" ? window.innerWidth : 800) - 16);
         if (anchor) {
           const rect = anchor.getBoundingClientRect();
@@ -2721,10 +2719,7 @@ export function AppShell() {
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
             fork: translate("session.fork"),
             forkTitle: translate("session.forkTitle"),
-            debug: translate("debug.title"),
           }}
-          debugOpen={interactive && activeTopPanel === "debug"}
-          onOpenDebug={() => toggleTopPanel("debug")}
           onMenuOpenChange={handleHistoryMenuOpenChange}
           infoPending={infoPending}
           onOpenTools={() => void openInfoDialog("tools")}
@@ -3077,9 +3072,7 @@ export function AppShell() {
               ref={topPanelRef}
               id="workspace-top-panel"
               role="region"
-              aria-label={activeTopPanel === "debug"
-                ? translate("debug.title")
-                : activeTopPanel === "agents"
+              aria-label={activeTopPanel === "agents"
                 ? translate("agentSwitcher.title")
                 : activeTopPanel === "outline"
                   ? translate("chatMinimap.userOutline")
@@ -3097,7 +3090,6 @@ export function AppShell() {
                 zIndex: 520,
               }}
             >
-              {activeTopPanel === "debug" && <DebugPanel />}
               {activeTopPanel === "agents" && activeSessionFamily && selectedSession && (
                 <AgentSessionPanel
                   rootSession={activeSessionFamily.root}

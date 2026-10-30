@@ -98,8 +98,6 @@ Pi stores `{type:"toolCall", id, name, arguments}`; our `ToolCallContent` is `{t
 - While running, `useAgentSession` polls `GET /api/agent/[id]` and reconciles on `visibilitychange`/`online` to recover missed terminal events. Prompt runs carry a monotonic run id; ignore late events from old runs.
 - Accept both `compaction_start/end` and legacy `auto_compaction_start/end`.
 - The sidebar polls `/api/agent/running` every 2.5 s while visible.
-- Agent, terminal and file-watch SSE send observable 30 s data heartbeats; 75 s of silence replaces the connection. Agent recovery uses the existing `connected` reconciliation, not a second state path.
-- `⋯` → Debug opens a read-only top-panel card. `/api/agent/debug` projects registries/fields only: no commands, starts, renewals or extension/liveness callbacks. SSE `pageId` is a bounded label, never identity; a pre-HMR wrapper's unrecorded idle deadline is shown as unknown.
 
 ### Paths, worktrees, file access
 - Linked worktrees resolve to the main repo `projectRoot` (`lib/worktree.ts`) so the sidebar groups them; sessions in removed worktrees fold back into the main project. See `docs/worktrees.md`.

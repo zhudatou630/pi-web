@@ -6,7 +6,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme } from "@/hooks/useTheme";
-import { createPageEventSource } from "@/lib/page-debug";
 import { createSilenceWatchdog } from "@/lib/sse-watchdog";
 import { createTerminalWriter, terminalRequest } from "@/lib/terminal-client";
 import {
@@ -144,7 +143,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
     const connect = () => {
       if (disposed || exited || !navigator.onLine) return;
       events?.close();
-      events = createPageEventSource(`/api/terminal/${encodeURIComponent(id)}/events${offset === undefined ? "" : `?after=${offset}`}`, "terminal", id);
+      events = new EventSource(`/api/terminal/${encodeURIComponent(id)}/events${offset === undefined ? "" : `?after=${offset}`}`);
       events.addEventListener("heartbeat", () => watchdog.touch());
       watchdog.touch();
       events.onmessage = (message) => {

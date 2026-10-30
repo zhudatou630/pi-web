@@ -1,4 +1,3 @@
-import { registerSseConnection } from "@/lib/sse-connections";
 import { hasTerminal, subscribeTerminal, type TerminalEvent } from "@/lib/terminal-manager";
 
 export const dynamic = "force-dynamic";
@@ -18,14 +17,12 @@ export async function GET(
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder();
-      const unregisterConnection = registerSseConnection(req, "terminal");
       let closed = false;
       let heartbeat: ReturnType<typeof setInterval> | null = null;
       let unsubscribe: (() => void) | null = null;
       const cleanup = (closeController: boolean) => {
         if (closed) return;
         closed = true;
-        unregisterConnection();
         if (heartbeat) clearInterval(heartbeat);
         unsubscribe?.();
         req.signal.removeEventListener("abort", abort);

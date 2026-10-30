@@ -1,4 +1,3 @@
-import { createPageEventSource } from "./page-debug";
 import { createSilenceWatchdog } from "./sse-watchdog";
 
 /** One logical file watch; native errors retry normally, silent streams are replaced. */
@@ -24,7 +23,7 @@ export class FileWatchEventSource extends EventTarget {
 
   private connect() {
     if (this.closed) return;
-    const source = createPageEventSource(this.url, "file-watch");
+    const source = new EventSource(this.url);
     this.source = source;
     for (const name of ["connected", "change", "heartbeat"]) {
       source.addEventListener(name, (event) => {

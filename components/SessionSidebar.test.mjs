@@ -214,7 +214,7 @@ test("uses a native main action without row-level deletion shortcuts", () => {
 
 test("polls running sessions only while the tab is visible", () => {
   assert.doesNotMatch(source, /new EventSource\("\/api\/agent\/running\/events"\)/);
-  assert.match(source, /pageDebugFetch\("running", "\/api\/agent\/running"/);
+  assert.match(source, /fetch\("\/api\/agent\/running"/);
   assert.match(source, /document\.visibilityState !== "visible"/);
   assert.match(source, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);
 });
