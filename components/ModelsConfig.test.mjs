@@ -157,6 +157,46 @@ test("one picker dialog serves first-time setup and later additions", () => {
   assert.doesNotMatch(source, /function AddChatModelsDialog/);
 });
 
+test("provider searches match names and ids without exposing connected providers", async () => {
+  const dialogs = await readFile(new URL("./models/dialogs.tsx", import.meta.url), "utf8");
+  const normalize = dialogs.match(/const q = (.*);/)?.[1];
+  const filter = (name, providers, search) => {
+    const expression = dialogs.match(new RegExp(`const available${name} = (.*);`))?.[1];
+    assert.ok(expression);
+    return new Function(name === "OAuth" ? "oauthProviders" : "apiKeyProviders", "search", `const q = ${normalize}; return ${expression};`)(providers, search);
+  };
+  for (const kind of ["OAuth", "ApiKey"]) {
+    const providers = [
+      { id: "fixture-subscription-id", name: "Friendly service", displayName: "Friendly service", loggedIn: false, configured: false },
+      { id: "connected", name: "Friendly service", displayName: "Friendly service", loggedIn: true, configured: true },
+    ];
+    for (const query of [" FRIENDLY ", " FIXTURE-SUBSCRIPTION-ID ", "subscription", "  "]) {
+      assert.deepEqual(filter(kind, providers, query), [providers[0]]);
+    }
+    assert.deepEqual(filter(kind, providers, "missing"), []);
+  }
+});
+
+test("add-model search matches provider ids and qualified refs, retaining order", async () => {
+  const dialogs = await readFile(new URL("./models/dialogs.tsx", import.meta.url), "utf8");
+  const { modelPickerRef } = await jiti.import("../lib/model-picker.ts");
+  const normalize = dialogs.match(/const normalizedQuery = (.*);/)?.[1];
+  const expression = dialogs.match(/const shown = ([\s\S]*?);/)?.[1];
+  assert.ok(expression);
+  const filter = new Function("catalog", "query", "modelPickerRef", `const normalizedQuery = ${normalize}; return ${expression};`);
+  const catalog = [
+    { provider: "relay-a", id: "vendor/model", name: "Friendly model" },
+    { provider: "relay-b", id: "vendor/model", name: "Friendly model" },
+    { provider: "anthropic", id: "claude-test" },
+  ];
+  for (const [query, expected] of [
+    [" RELAY-A ", [catalog[0]]], [" Relay-A/VENDOR ", [catalog[0]]],
+    ["anthropic/claude", [catalog[2]]], ["vendor/model", catalog.slice(0, 2)],
+    ["FRIENDLY", catalog.slice(0, 2)], ["claude", [catalog[2]]],
+    ["  ", catalog], ["missing", []],
+  ]) assert.deepEqual(filter(catalog, query, modelPickerRef), expected);
+});
+
 test("a list entry that no longer resolves stays visible and removable", () => {
   assert.match(source, /const unresolved = scopeDoc/);
   assert.match(source, /unresolvedPatterns\(\{ patterns: scopeDoc\.patterns/);

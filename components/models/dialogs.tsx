@@ -35,7 +35,7 @@ export function AddProviderPicker({
   const inputRef = useAutofocus<HTMLInputElement>();
 
   const q = search.trim().toLowerCase();
-  const availableOAuth = oauthProviders.filter((p) => !p.loggedIn && (!q || p.name.toLowerCase().includes(q)));
+  const availableOAuth = oauthProviders.filter((p) => !p.loggedIn && (!q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)));
   const availableApiKey = apiKeyProviders.filter((p) => !p.configured && (!q || p.displayName.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)));
   const showCustom = !q || "custom".includes(q) || "openai-compatible".includes(q) || "anthropic-compatible".includes(q);
   const totalCount = availableOAuth.length + availableApiKey.length + (showCustom ? 1 : 0);
@@ -162,6 +162,7 @@ export function ModelPickerDialog({
   // full set is visible and a missing model is not mistaken for an outage.
   const shown = catalog.filter((model) => !normalizedQuery
     || model.id.toLocaleLowerCase().includes(normalizedQuery)
+    || modelPickerRef(model.provider, model.id).toLocaleLowerCase().includes(normalizedQuery)
     || model.name?.toLocaleLowerCase().includes(normalizedQuery));
   const isListed = (model: RuntimeCatalogModel) => listedRefs.has(modelPickerRef(model.provider, model.id));
   const grouped = new Map<string, RuntimeCatalogModel[]>();
