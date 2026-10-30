@@ -73,7 +73,7 @@ test("only complete, content-only write arguments get the readable text view", (
   for (const changed of [{ rawInput: "{}" }, { toolName: "edit" }, { input: { ...block.input, mode: "append" } }, { input: { ...block.input, content: "" } }, { input: { ...block.input, content: 1 } }]) {
     assert.equal(getWrittenFileText({ ...block, ...changed }), null);
   }
-  assert.match(viewSource, /getWrittenFileText\(block\) \?\? getToolCallInputText\(block\)/);
+  assert.match(viewSource, /const writtenText = getWrittenFileText\(block\);\s+const inputStr = writtenText \?\? getToolCallInputText\(block\)/);
 });
 
 test("compaction overrides stale tool/thinking summaries even when an answer already exists", () => {
