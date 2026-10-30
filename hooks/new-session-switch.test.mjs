@@ -51,6 +51,7 @@ function sendHarness({ mounted, creation = false, visible = true }) {
     sendAgentCommand: async (sid, command) => { calls.push([command.type, sid]); return {}; },
     promoteNewSession: () => calls.push(["promote"]), addNotice: (notice) => calls.push(["notice", notice.message]),
     waitForPromptSettlement: noop, reconcileAgentState: noop, closeEvents: noop, isPromptRejectedError: () => false,
+    missingCwdFromBody: () => null, setPromptMissingCwd: noop,
     newSessionModelOverrideRef: ref(null), contextUsageRequestIdRef: ref(0), thinkingLevelOverrideRef: ref(null),
     toolPreset: "default", getToolNamesForPreset: () => undefined, sessionToolsPinnedRef: ref(false),
     warmCwdRef: ref("/project"), visiblePaneRef: ref(visible),

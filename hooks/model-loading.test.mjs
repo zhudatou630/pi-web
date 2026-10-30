@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Script } from "node:vm";
 import ts from "typescript";
+import { createJiti } from "jiti";
+const { missingCwdFromBody } = await createJiti(import.meta.url).import("../lib/missing-cwd.ts");
 
 const source = ts.createSourceFile(
   "useAgentSession.ts",
@@ -39,7 +41,7 @@ function setup(fetchImpl) {
   const writes = [];
   const delays = [];
   const context = {
-    Error, DOMException,
+    Error, DOMException, missingCwdFromBody,
     controller: new AbortController(),
     newSessionCwd: "/project", session: null, isNew: true,
     modelsUrl: "/api/models?cwd=%2Fproject",
@@ -55,7 +57,7 @@ function setup(fetchImpl) {
   };
   defaultModelResolverScript.runInNewContext(context);
   defaultThinkingResolverScript.runInNewContext(context);
-  for (const name of ["ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "NewSessionDefaultModel", "NewSessionModel", "PendingModel", "ThinkingLevel"]) {
+  for (const name of ["ModelsMissingCwd", "ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "NewSessionDefaultModel", "NewSessionModel", "PendingModel", "ThinkingLevel"]) {
     context[`set${name}`] = (value) => writes.push([name, value]);
   }
   context.loadModels = loadScript.runInNewContext(context);
@@ -72,7 +74,7 @@ test("model-load failures stay visible through bounded retries and clear on reco
     const state = setup(fetchImpl);
     await state.run();
     assert.deepEqual(state.delays, [2_000, 5_000, 10_000]);
-    assert.deepEqual(state.writes, Array.from({ length: 4 }, () => ["ModelError", expected]));
+    assert.deepEqual(state.writes.filter(([name]) => name === "ModelError"), Array.from({ length: 4 }, () => ["ModelError", expected]));
   }
 
   let attempts = 0;
@@ -92,6 +94,18 @@ test("model-load failures stay visible through bounded retries and clear on reco
   assert.ok(recovered.writes.some(([name, value]) => name === "ModelList" && value[0].id === "test"));
   assert.ok(recovered.writes.some(([name, value]) => name === "NewSessionDefaultModel" && value.modelId === "test"));
   assert.ok(recovered.writes.some(([name, value]) => name === "ThinkingLevel" && value === "high"));
+});
+
+test("missing folders use their own banner state, not a model error", async () => {
+  const state = setup(async () => Response.json({ error: "Gone", reason: "cwd-missing", cwd: "/removed" }, { status: 400 }));
+  await state.run();
+  assert.ok(state.writes.some(([name, value]) => name === "ModelsMissingCwd" && value === "/removed"));
+  assert.ok(state.writes.filter(([name]) => name === "ModelError").every(([, value]) => value === null));
+  state.context.fetch = async () => Response.json({ models: {}, modelList: [] });
+  state.writes.length = 0;
+  await state.run();
+  assert.ok(state.writes.some(([name, value]) => name === "ModelsMissingCwd" && value === null));
+  assert.ok(!state.writes.some(([name]) => name === "PromptMissingCwd"));
 });
 
 test("non-empty project model scopes reset unavailable overrides; empty/failed loads preserve them", async () => {

@@ -1,3 +1,4 @@
+import { missingCwdFromBody } from "@/lib/missing-cwd";
 import { NextResponse } from "next/server";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { existsSync } from "fs";
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
     if (!existsSync(cwd)) {
       return NextResponse.json({
         error: `Directory does not exist: ${cwd}`,
+        reason: "cwd-missing", cwd,
         ...(commandType === "prompt"
           ? { code: "prompt_rejected", accepted: false }
           : {}),
@@ -101,6 +103,7 @@ export async function POST(req: Request) {
   } catch (error) {
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
+      ...missingCwdFromBody(error),
       ...(commandType === "prompt" && !promptAccepted
         ? { code: "prompt_rejected", accepted: false }
         : {}),

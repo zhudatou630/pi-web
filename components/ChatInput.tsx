@@ -60,6 +60,7 @@ interface Props {
   isAutoModelSelection?: boolean;
   modelNames?: Record<string, string>;
   modelList?: { id: string; name: string; provider: string; input?: string[] }[];
+  missingCwd?: string | null;
   modelError?: string | null;
   /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
   modelScopeWarnings?: string[];
@@ -631,7 +632,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, modelScopeWarnings, onModelChange, modelSwitching,
+  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, missingCwd, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -2010,7 +2011,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }}
       />}
       <div className={compact ? undefined : "chat-input-column"} style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
-        <ModelErrorBanner error={modelError} />
+        {missingCwd
+          ? <ModelNoticeBanner tone="error" title={t("chat.folderMissing")} body={t("chat.folderMissingDetail", { cwd: missingCwd })} />
+          : <ModelErrorBanner error={modelError} />}
         <ModelScopeWarningBanner warnings={modelScopeWarnings} />
         {imageSendBlocked && (
           <ModelNoticeBanner

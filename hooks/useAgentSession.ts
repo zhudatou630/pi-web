@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
+import { missingCwdFromBody } from "@/lib/missing-cwd";
 import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
 import { getDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
@@ -402,6 +403,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const directImageCancelledRef = useRef(false);
   const [modelNames, setModelNames] = useState<Record<string, string>>(() => initialModels?.models ?? {});
   const [modelList, setModelList] = useState<ModelEntry[]>(() => initialModels?.modelList ?? []);
+  const [modelsMissingCwd, setModelsMissingCwd] = useState<string | null>(null);
+  const [promptMissingCwd, setPromptMissingCwd] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(() => initialModels?.modelError ?? null);
   const [modelScopeWarnings, setModelScopeWarnings] = useState<string[]>(() => initialModels?.modelScopeWarnings ?? []);
   const [modelThinkingLevels, setModelThinkingLevels] = useState<Record<string, string[]>>(() => initialModels?.thinkingLevels ?? {});
@@ -861,7 +864,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!res.ok) {
         // The server's reason (e.g. a deleted project folder) beats a bare status.
         const body = await res.json().catch(() => null) as { error?: unknown } | null;
-        throw new Error(typeof body?.error === "string" ? body.error : `HTTP ${res.status}`);
+        throw Object.assign(new Error(typeof body?.error === "string" ? body.error : `HTTP ${res.status}`), missingCwdFromBody(body));
       }
       // Explicit selections were just persisted as the new defaults.
       if (selectedModel || selectedThinkingLevel) invalidateModelsClientCache();
@@ -956,6 +959,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   useEffect(() => {
     if (!isNew || warmCwdRef.current === newSessionCwd) return;
     warmCwdRef.current = newSessionCwd;
+    setPromptMissingCwd(null);
+    setModelsMissingCwd(null);
     if (!sessionIdRef.current && !ensuringNewSessionRef.current) return;
     cancelEventStreamGrace();
     closeEvents();
@@ -1842,6 +1847,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           message,
           ...(piImages?.length ? { images: piImages } : {}),
         });
+        setPromptMissingCwd(null);
         managedSubagentPrompt = response?.subagentAction === "steered" || response?.subagentAction === "resumed";
       },
     });
@@ -1874,7 +1880,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           ? prev
           : [...prev.slice(0, optimisticIndex), ...prev.slice(optimisticIndex + 1)];
       });
-      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      const missing = missingCwdFromBody(e);
+      if (missing) setPromptMissingCwd(missing.cwd);
+      else addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
       restoreSubmission(message, images, composerDraftKey);
       optimisticUserMessageKeyRef.current = null;
       // Rejection only describes this submission. Another tab or an event we
@@ -2174,26 +2182,23 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       d = await loadModelsWithClientCache(modelsUrl, async () => {
         const res = await fetch(modelsUrl);
         if (!res.ok) {
-          let detail = "";
-          try {
-            const body: unknown = await res.json();
-            if (body && typeof body === "object" && "error" in body && typeof body.error === "string") {
-              detail = body.error;
-            }
-          } catch {
-            // Non-JSON error responses fall back to the HTTP status.
-          }
-          throw new Error(detail || `Failed to load models (HTTP ${res.status})`);
+          const body: unknown = await res.json().catch(() => null);
+          const detail = body && typeof body === "object" && "error" in body && typeof body.error === "string"
+            ? body.error : "";
+          throw Object.assign(new Error(detail || `Failed to load models (HTTP ${res.status})`), missingCwdFromBody(body));
         }
         return res.json() as Promise<ModelsResponse>;
       }, { force, refreshToken });
       signal?.throwIfAborted();
     } catch (e) {
       if (!signal?.aborted && !(e instanceof DOMException && e.name === "AbortError")) {
-        setModelError(e instanceof Error ? e.message : String(e));
+        const missing = missingCwdFromBody(e);
+        setModelsMissingCwd(missing?.cwd ?? null);
+        setModelError(missing ? null : e instanceof Error ? e.message : String(e));
       }
       throw e;
     }
+    setModelsMissingCwd(null);
     setModelNames(d.models);
     setModelError(d.modelError ?? null);
     setModelScopeWarnings(d.modelScopeWarnings ?? []);
@@ -2387,13 +2392,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         streamingBehavior: behavior,
         ...(piImages?.length ? { images: piImages } : {}),
       });
+      setPromptMissingCwd(null);
     } catch (e) {
       console.error("Failed to submit streaming prompt:", e);
       // A transport failure after dispatch is ambiguous: the server may have
       // accepted the queued prompt before the response was lost. Restoring in
       // that case would invite a duplicate turn.
       if (isPromptRejectedError(e)) restore();
-      addNotice({
+      const missing = missingCwdFromBody(e);
+      if (missing) setPromptMissingCwd(missing.cwd);
+      else addNotice({
         type: "error",
         message: e instanceof Error ? e.message : String(e),
       });
@@ -2735,7 +2743,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, directImageRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, directImageRunning, modelNames, modelList, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting,
     autoCompactionEnabled, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,

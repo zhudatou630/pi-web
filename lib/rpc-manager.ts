@@ -3,6 +3,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
+import { cwdMissingError } from "./missing-cwd";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
@@ -826,7 +827,7 @@ export class AgentSessionWrapper {
       // A deleted folder stays readable, but a run there only fails its tools, and pi's
       // write would recreate the folder. Refuse as /api/agent/new does; the composer keeps the draft.
       if (type === "prompt" && !existsSync(this.cwd)) {
-        throw new Error(`Directory does not exist: ${this.cwd}`);
+        throw cwdMissingError(this.cwd);
       }
 
       switch (type) {

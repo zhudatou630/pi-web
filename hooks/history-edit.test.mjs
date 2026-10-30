@@ -5,6 +5,7 @@ import ts from "typescript";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
+const { missingCwdFromBody } = await jiti.import("../lib/missing-cwd.ts");
 const { PromptRunGate, dispatchPromptRun } = await jiti.import("../lib/prompt-run-control.ts");
 const files = {};
 for (const [key, path] of Object.entries({ hook: "./useAgentSession.ts", input: "../components/ChatInput.tsx", view: "../components/MessageView.tsx", window: "../components/ChatWindow.tsx" })) {
@@ -103,6 +104,7 @@ function sendHarness() {
     setAgentRunning: noop, setAgentPhase: noop, dispatch: noop, pendingScrollToBottomRef: ref(false),
     pendingPromptRef: ref(null), promptRunGateRef: ref(new PromptRunGate()), dispatchPromptRun,
     isNew: false, sessionIdRef: ref("session"), isPromptRejectedError: () => true,
+    missingCwdFromBody, setPromptMissingCwd: noop,
     ensureEventsConnected: async () => calls.push(["connect"]),
     sendAgentCommand: async (_sid, command) => { calls.push([command.type, command.message]); return {}; },
     waitForPromptSettlement: noop, reconcileAgentState: noop, closeEvents: noop,
@@ -141,6 +143,23 @@ test("navigation precedes optimistic append, slash prompt and bash; refused prom
   assert.deepEqual(refused.messages(), []);
   assert.deepEqual(refused.restored, [["keep this", undefined, "session"]]);
   assert.equal(refused.targets.has("session"), false, "successful navigation is not rolled back");
+});
+
+test("missing-cwd refusals preserve drafts and use the folder banner for send, steer and follow-up", async () => {
+  for (const behavior of [null, "steer", "followUp"]) {
+    const state = sendHarness();
+    state.targets.clear();
+    const folders = [];
+    const notices = [];
+    state.bindings.setPromptMissingCwd = (cwd) => folders.push(cwd);
+    state.bindings.addNotice = (notice) => notices.push(notice);
+    state.bindings.sendAgentCommand = async () => { throw Object.assign(new Error("Gone"), { reason: "cwd-missing", cwd: "/removed" }); };
+    if (behavior) await callback("hook", "sendStreamingPrompt", state.bindings)("keep this", behavior);
+    else await state.send()("keep this");
+    assert.deepEqual(folders, ["/removed"]);
+    assert.deepEqual(notices, []);
+    assert.equal(state.restored.length, 1);
+  }
 });
 
 test("all steer/follow-up entrances restore pending edits rather than queue them", async () => {

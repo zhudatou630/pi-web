@@ -698,6 +698,8 @@ export const enLocale: LocalePlugin = {
     "chat.sendOptions": "Choose how to send",
     "chat.followUpHint": "Queue this message after the agent finishes",
     "chat.inputHistory": "Input history",
+    "chat.folderMissing": "Project folder not found",
+    "chat.folderMissingDetail": "Folder no longer exists: {cwd}",
     "chat.modelError": "Model error",
     "chat.modelScopeWarning": "Model scope warning",
     "chat.modelScopeWarnings": "Model scope warnings",

@@ -7,6 +7,7 @@
 // Call sites previously repeated the same 5-line fetch block 13× in
 // hooks/useAgentSession.ts. This helper collapses that down to one line.
 
+import { missingCwdFromBody } from "./missing-cwd";
 import { invalidateModelsClientCache } from "./models-client-cache";
 
 // These commands also persist the default model/effort for new sessions.
@@ -18,6 +19,8 @@ export class AgentCommandError extends Error {
     public readonly status: number,
     public readonly code?: string,
     public readonly accepted?: boolean,
+    public readonly reason?: string,
+    public readonly cwd?: string,
   ) {
     super(message);
     this.name = "AgentCommandError";
@@ -52,6 +55,8 @@ export async function sendAgentCommand<T = unknown>(
       res.status,
       body.code,
       body.accepted,
+      missingCwdFromBody(body)?.reason,
+      missingCwdFromBody(body)?.cwd,
     );
   }
   if (DEFAULT_CHANGING_COMMANDS.has(command.type as string)) invalidateModelsClientCache();

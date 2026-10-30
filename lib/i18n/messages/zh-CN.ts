@@ -698,6 +698,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.sendOptions": "选择发送方式",
     "chat.followUpHint": "在 Agent 完成后排队此消息",
     "chat.inputHistory": "输入历史",
+    "chat.folderMissing": "找不到项目文件夹",
+    "chat.folderMissingDetail": "文件夹已不存在：{cwd}",
     "chat.modelError": "模型错误",
     "chat.modelScopeWarning": "模型范围警告",
     "chat.modelScopeWarnings": "模型范围警告",

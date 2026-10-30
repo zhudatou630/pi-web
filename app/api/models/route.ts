@@ -100,7 +100,7 @@ export async function GET(req: Request) {
   try {
     cwdStat = await stat(cwd);
   } catch {
-    return Response.json({ error: `Directory does not exist: ${cwd}` }, { status: 400 });
+    return Response.json({ error: `Directory does not exist: ${cwd}`, reason: "cwd-missing", cwd }, { status: 400 });
   }
   if (!cwdStat.isDirectory()) {
     return Response.json({ error: `Not a directory: ${cwd}` }, { status: 400 });
