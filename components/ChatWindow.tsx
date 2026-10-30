@@ -2564,7 +2564,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         document.body,
       )}
 
-      <div className="relative shrink-0">
+      <div className="relative flex min-h-0 flex-col">
         {isEmptyNew && (
           <div className="empty-hero-anchor mx-auto mb-6 select-none text-center" style={{ maxWidth: "var(--chat-content-max-width, 820px)", padding: "0 16px" }}>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 32" width="82" height="32" fill="currentColor" role="img" aria-label="Pi Web" style={{ color: "var(--text)", display: "block", margin: "0 auto" }}>

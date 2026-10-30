@@ -4483,9 +4483,17 @@ span.token.table {
 /* Composer: the field and its status line share one box. The status line keeps the tool's
    icon + label vocabulary: what the next run uses on the left, readouts, the rare-controls menu
    and the action slot on the right. Only the action slot is filled. */
+.chat-input-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
 .chat-input-composer {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   gap: 2px;
   min-width: 0;
 }
@@ -4529,6 +4537,7 @@ span.token.table {
 
 /* The text and its verb share a row; the verb stays level with the last line as the text grows. */
 .chat-input-field-row {
+  flex-shrink: 0;
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -4568,6 +4577,10 @@ span.token.table {
   column-gap: 8px;
   row-gap: 2px;
   min-width: 0;
+  min-height: 36px;
+  max-height: min(180px, calc(var(--app-viewport-height, 100dvh) * 0.25));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   margin-bottom: 4px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
@@ -4588,6 +4601,14 @@ span.token.table {
   .chat-input-queue-row {
     animation: none;
   }
+}
+
+.chat-input-queue-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+  animation: none;
 }
 
 .chat-input-queue-kind {
@@ -4637,6 +4658,7 @@ span.token.table {
 }
 
 .chat-input-dock {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 2px;

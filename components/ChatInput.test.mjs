@@ -1042,5 +1042,9 @@ test("keeps queued prompts as a quiet row inside the composer card", () => {
     }),
   ));
   assert.match(two, /queued · 2/);
+  assert.match(two, /chat-input-queue-header/);
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.chat-input-queue \{[^}]*max-height: min\(180px,[^}]*overflow-y: auto;/);
+  assert.match(css, /\.chat-input-queue-header \{[^}]*position: sticky;/);
   assert.match(two, />follow-up<\/span>/);
 });

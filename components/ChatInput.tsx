@@ -1977,7 +1977,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       aria-busy={builtinCommandPending}
       className={compact ? "chat-input is-compact" : "chat-input"}
       style={{
-        flexShrink: 0,
+        ...(compact ? { flexShrink: 0 } : { display: "flex", flexDirection: "column", minHeight: 0 }),
         minWidth: 0,
         margin: 0,
         border: 0,
@@ -2002,7 +2002,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           onAttachFiles?.(files);
         }}
       />}
-      <div style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
+      <div className={compact ? undefined : "chat-input-column"} style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
         <ModelErrorBanner error={modelError} />
         <ModelScopeWarningBanner warnings={modelScopeWarnings} />
         {imageSendBlocked && (
@@ -2075,7 +2075,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
         )}
         {/* Main input */}
-        <div ref={composerBoxRef} style={{ position: "relative", minWidth: 0 }}>
+        <div ref={composerBoxRef} className={compact ? undefined : "chat-input-column"} style={{ position: "relative", minWidth: 0 }}>
           {slashUsage && !slashMenuOpen && (
             <div
               style={{
@@ -2458,7 +2458,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           {queueCount > 0 && (
             <div className="chat-input-queue" role="status" aria-label={t("chat.queued", { count: queueCount })}>
               {queueCount > 1 && (
-                <div className="chat-input-queue-row">
+                <div className="chat-input-queue-row chat-input-queue-header">
                   <span className="chat-input-queue-count">queued · {queueCount}</span>
                   {recallQueueButton}
                 </div>
