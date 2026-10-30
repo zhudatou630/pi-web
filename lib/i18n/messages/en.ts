@@ -857,6 +857,7 @@ export const enLocale: LocalePlugin = {
     "chat.changeToolPreset": "Change tool preset",
     "chat.stopCompaction": "Stop compaction",
     "chat.compactConfirm": "compact now",
+    "chat.promptUnconfirmed": "This prompt may not have been sent. Restored to your draft; check the conversation before sending again.",
     "chat.compacting": "Compacting…",
     "chat.compact": "compact", // toolbar state labels are lowercase like medium/configured
     "chat.dismissCompactError": "Dismiss compaction error",

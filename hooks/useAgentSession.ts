@@ -11,6 +11,7 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@/lib/types";
+import { useI18n } from "@/hooks/useI18n";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
@@ -22,7 +23,7 @@ import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, 
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
 import type { BugReportOutcome } from "@/lib/rpc-manager";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
-import { userMessageKey } from "@/lib/prompt-recovery";
+import { userMessageKey, userMessageReceiptKey } from "@/lib/prompt-recovery";
 import {
   AgentEventConnection,
   AgentEventConnectionError,
@@ -360,6 +361,7 @@ type SlashCommandsResponse = {
 };
 
 export function useAgentSession(opts: UseAgentSessionOptions) {
+  const { t } = useI18n();
   const {
     session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsPanelOpen,
@@ -493,6 +495,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     images?: AttachedImage[];
     userMsg: AgentMessage;
   } | null>(null);
+  const unconfirmedPromptsRef = useRef(new Map<number, {
+    message: string;
+    images?: AttachedImage[];
+    draftKey: string | undefined;
+    userMsg: AgentMessage;
+    baselineIds: Set<string>;
+    branch: number;
+  }>());
   const bashAbortRequestedRef = useRef(false);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
   // Bumped on every local (optimistic/SSE) append. A history snapshot requested
@@ -1232,12 +1242,45 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     eventStreamGraceTimerRef.current = setTimeout(() => void checkServerIdle(), EVENT_STREAM_IDLE_GRACE_MS);
   }, [cancelEventStreamGrace, closeEvents]);
 
+  const recoverUnconfirmedPrompt = useCallback(async (sid: string, runId: number) => {
+    const submission = unconfirmedPromptsRef.current.get(runId);
+    if (!submission) return;
+    let historyRead = false;
+    let received = false;
+    try {
+      // Read after confirmed idle; entry ids distinguish an old identical prompt.
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?deferThinking=1&deferMedia=1&force=1`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const snapshot = await res.json() as SessionData;
+      historyRead = true;
+      received = historyBranchRef.current === submission.branch && snapshot.context.messages.some((msg, index) => (
+        msg.role === "user"
+        && Boolean(snapshot.context.entryIds[index])
+        && !submission.baselineIds.has(snapshot.context.entryIds[index])
+        && userMessageReceiptKey(msg) === userMessageReceiptKey(submission.userMsg)
+      ));
+    } catch {
+      // No positive proof: return the submission with a warning, never retry it.
+    }
+    if (promptRunIdRef.current !== runId || sessionIdRef.current !== sid
+      || unconfirmedPromptsRef.current.get(runId) !== submission) return;
+    unconfirmedPromptsRef.current.delete(runId);
+    if (received) return;
+    restoreSubmission(submission.message, submission.images, submission.draftKey);
+    addNotice({ type: "warning", message: t("chat.promptUnconfirmed") });
+    if (historyRead) setMessages((prev) => prev.filter((msg) => msg !== submission.userMsg));
+  }, [addNotice, restoreSubmission, t]);
+
   const finishPromptWithoutStream = useCallback(async (sid: string | null = sessionIdRef.current, runId = promptRunIdRef.current, aborted = false, subagentsActive = false) => {
     // Bail out before loadSession too: a stale finish for a previous run
     // must not overwrite the messages of the run currently streaming.
     if (promptRunIdRef.current !== runId) return;
     try {
-      if (sid) await loadSession(sid);
+      if (sid) {
+        await recoverUnconfirmedPrompt(sid, runId);
+        if (promptRunIdRef.current !== runId) return;
+        await loadSession(sid);
+      }
     } finally {
       if (promptRunIdRef.current !== runId) return;
       const promptWasPending = rpcPromptPendingRef.current;
@@ -1253,20 +1296,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       if (sid) scheduleEventStreamClose(sid);
     }
-  }, [loadSession, notifyPromptStage, onAgentEnd, scheduleEventStreamClose, settleUiStage]);
+  }, [loadSession, notifyPromptStage, onAgentEnd, recoverUnconfirmedPrompt, scheduleEventStreamClose, settleUiStage]);
 
   const waitForPromptSettlement = useCallback(async (sid: string, runId?: number) => {
     await delay(PROMPT_SETTLE_INITIAL_DELAY_MS);
     const startedAt = Date.now();
 
-    while (agentRunningRef.current && Date.now() - startedAt < PROMPT_SETTLE_MAX_MS) {
+    while (sessionIdRef.current === sid && Date.now() - startedAt < PROMPT_SETTLE_MAX_MS) {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       try {
         const res = await fetch(`/api/agent/${encodeURIComponent(sid)}?systemPrompt=0`);
         if (res.ok) {
           const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
           const state = data.state;
-          if (!data.running || !state || (!state.isStreaming && !state.isPromptRunning)) {
+          if (!data.running || !state || (!state.isStreaming && !state.isPromptRunning && !state.isCompacting)) {
             await finishPromptWithoutStream(sid, runId, state?.lastRunAborted === true, state?.subagentsActive === true);
             return;
           }
@@ -1752,6 +1795,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return;
     }
 
+    const baselineIds = new Set(loadedHistoryRef.current.entryIds.filter(Boolean));
+    const branch = historyBranchRef.current;
     const promptRunId = promptRunIdRef.current + 1;
     cancelEventStreamGrace();
     rpcPromptPendingRef.current = true;
@@ -1884,6 +1929,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // have accepted the prompt before the response was lost. Keep SSE alive
       // until server state confirms the run is idle.
       if (!definitivelyRejected && sentSessionId) {
+        unconfirmedPromptsRef.current.set(promptRunId, { message, images, draftKey: composerDraftKey, userMsg, baselineIds, branch });
         void waitForPromptSettlement(sentSessionId, promptRunId);
         return;
       }
@@ -2410,10 +2456,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setPromptMissingCwd(null);
     } catch (e) {
       console.error("Failed to submit streaming prompt:", e);
-      // A transport failure after dispatch is ambiguous: the server may have
-      // accepted the queued prompt before the response was lost. Restoring in
-      // that case would invite a duplicate turn.
-      if (isPromptRejectedError(e)) restore();
+      restore();
+      if (!isPromptRejectedError(e)) {
+        addNotice({ type: "warning", message: t("chat.promptUnconfirmed") });
+        return;
+      }
       const missing = missingCwdFromBody(e);
       if (missing) setPromptMissingCwd(missing.cwd);
       else addNotice({
@@ -2421,7 +2468,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         message: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [addNotice, composerDraftKey, restoreSubmission]);
+  }, [addNotice, composerDraftKey, restoreSubmission, t]);
 
   const handleSteer = useCallback(async (message: string, images?: AttachedImage[]) => {
     await sendStreamingPrompt(message, "steer", images);

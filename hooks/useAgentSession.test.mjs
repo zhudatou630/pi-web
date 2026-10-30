@@ -486,7 +486,8 @@ test("streaming submissions cannot be stranded in an idle direct queue", () => {
 
   assert.match(queueSource, /type: "prompt"/);
   assert.match(queueSource, /streamingBehavior: behavior/);
-  assert.match(queueSource, /if \(isPromptRejectedError\(e\)\) restore\(\)/);
+  assert.match(queueSource, /restore\(\);\s*if \(!isPromptRejectedError\(e\)\)/);
+  assert.match(queueSource, /t\("chat.promptUnconfirmed"\)/);
   assert.doesNotMatch(queueSource, /type: "steer"/);
   assert.doesNotMatch(queueSource, /type: "follow_up"/);
 });

@@ -36,6 +36,13 @@ function imageSignature(block: unknown): string {
   ].join(":");
 }
 
+/** Delivery can resize images or replace their bytes with deferred URLs. */
+export function userMessageReceiptKey(message: Partial<AgentMessage>): string {
+  const content = (message as { content?: unknown }).content;
+  const imageCount = Array.isArray(content) ? content.filter((block) => block?.type === "image").length : 0;
+  return JSON.stringify({ text: extractMessageText(message), imageCount });
+}
+
 export function userMessageKey(message: Partial<AgentMessage>): string {
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") return JSON.stringify({ text: content, images: [] });
