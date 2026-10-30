@@ -22,6 +22,9 @@ export { getAgentDir };
 const SESSION_HEADER_MAX_BYTES = 64 * 1024;
 const SESSION_RELATION_MAX_BYTES = 256 * 1024;
 const SESSION_RELATION_MAX_LINES = 2;
+/** A subagent session writes its model and thinking level right after the meta entry. */
+const SUBAGENT_SETTINGS_HEAD_LINES = 8;
+const SESSION_RESULT_MAX_BYTES = 256 * 1024;
 /** Bounded tail read used to detect writes made by another process. */
 const SESSION_TAIL_PROBE_BYTES = 64 * 1024;
 
@@ -64,6 +67,28 @@ function readBoundedLines(filePath: string, maxBytes: number, maxLines: number):
   }
 }
 
+function readBoundedTailLines(filePath: string, maxBytes: number): string[] {
+  const fd = openSync(filePath, "r");
+  try {
+    const fileSize = fstatSync(fd).size;
+    const start = Math.max(0, fileSize - maxBytes);
+    const buffer = Buffer.allocUnsafe(fileSize - start);
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, start);
+    if (bytesRead === 0) return [];
+
+    const lines = buffer.subarray(0, bytesRead).toString("utf8").split("\n");
+    if (start > 0) {
+      const previousByte = Buffer.allocUnsafe(1);
+      readSync(fd, previousByte, 0, 1, start - 1);
+      if (previousByte[0] !== 0x0a) lines.shift();
+    }
+    if (lines.at(-1) === "") lines.pop();
+    return lines.map((line) => line.endsWith("\r") ? line.slice(0, -1) : line);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function parseSessionEntries(lines: readonly string[]): SessionEntry[] {
   return lines.flatMap((line) => {
     try {
@@ -84,9 +109,12 @@ function readSessionRelationEntries(filePath: string): SessionEntry[] {
   ));
   if (!isSubagent) return prefixEntries;
 
-  // Settings can precede a large tail or belong to a sibling branch; head/tail
-  // samples cannot resolve them. Only changed subagent rows reach this parse.
-  return getSessionEntries(filePath);
+  // Bounded head + tail, never the whole file: a cold list build reaches every
+  // subagent row (hundreds of files, some tens of MB).
+  return [
+    ...parseSessionEntries(readBoundedLines(filePath, SESSION_RELATION_MAX_BYTES, SUBAGENT_SETTINGS_HEAD_LINES).slice(1)),
+    ...parseSessionEntries(readBoundedTailLines(filePath, SESSION_RESULT_MAX_BYTES)),
+  ];
 }
 
 export async function attachSessionProjectInfo(sessions: SessionInfo[]): Promise<SessionInfo[]> {
@@ -149,11 +177,24 @@ function readScannedRelation(s: ScannedSessionInfo): ScannedRelation {
   try {
     const entries = readSessionRelationEntries(s.path);
     const subagent = readSubagentRun(entries, s.id, s.path);
-    const settings = subagent ? getSessionSettings(entries) : undefined;
+    // The sample is not a connected branch, so read it in file order; subagent
+    // sessions rarely branch, and the live wrapper overrides while one runs.
+    let model: ScannedRelation["model"];
+    let thinkingLevel: string | undefined;
+    if (subagent) {
+      for (const entry of entries) {
+        if (entry.type === "model_change") model = { provider: entry.provider, id: entry.modelId };
+        if (entry.type === "thinking_level_change") thinkingLevel = entry.thinkingLevel;
+        if (entry.type === "message" && entry.message.role === "assistant") {
+          const { provider, model: id } = entry.message as { provider?: unknown; model?: unknown };
+          if (typeof provider === "string" && typeof id === "string") model = { provider, id };
+        }
+      }
+    }
     const relation = {
       subagent,
-      ...(settings?.model ? { model: { provider: settings.model.provider, id: settings.model.modelId } } : {}),
-      ...(settings ? { thinkingLevel: settings.thinkingLevel } : {}),
+      ...(model ? { model } : {}),
+      ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
     };
     scannedRelations.set(s, relation);
     return relation;
