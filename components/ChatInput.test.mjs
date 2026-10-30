@@ -11,7 +11,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
+const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, readPromptImageFile, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 
 test("the live model selector reapplies the current model without changing form selectors", () => {
@@ -655,7 +655,104 @@ test("caps an upward menu to the visible space above its anchor", () => {
   assert.equal(getUpwardMenuMaxHeight(40, 36), 0);
 });
 
-test("compresses large images while preserving small images and GIFs", async () => {
+test("prompt attachments preserve original bytes unless they reach pi's encoded-byte ceiling", async () => {
+  const originals = {
+    FileReader: globalThis.FileReader,
+    createImageBitmap: globalThis.createImageBitmap,
+    document: globalThis.document,
+  };
+  let readerData;
+  let bitmapCalls = 0;
+  let closed = 0;
+  const canvas = {
+    getContext: () => ({ fillRect() {}, drawImage() {} }),
+    toDataURL: () => "data:image/jpeg;base64,COMPRESSED",
+  };
+  globalThis.FileReader = class {
+    readAsDataURL() {
+      this.result = `data:image/png;base64,${readerData}`;
+      this.onload();
+    }
+  };
+  globalThis.createImageBitmap = async () => {
+    bitmapCalls++;
+    return { width: 6000, height: 3000, close() { closed++; } };
+  };
+  globalThis.document = { createElement: () => canvas };
+
+  try {
+    // Large screenshots keep their bytes, dimensions, alpha and real MIME type, even with a wrong extension.
+    for (const [head, type] of [
+      ["iVBORw0KGgoAAAANSUhEUg==", "image/png"],
+      ["/9j/4AAQSkZJRg==", "image/jpeg"],
+      ["UklGRiQAAABXRUJQVlA4", "image/webp"],
+      ["R0lGODlh", "image/gif"],
+    ]) {
+      readerData = head + "A".repeat(4 * 1024 * 1024 - head.length);
+      assert.deepEqual(await readPromptImageFile({ size: 3 * 1024 * 1024, type: "image/unknown" }), {
+        data: readerData, mimeType: type,
+      });
+    }
+    readerData = "A".repeat(4.5 * 1024 * 1024 - 4);
+    assert.equal((await readPromptImageFile({ size: readerData.length * 3 / 4, type: "image/png" })).data, readerData);
+    assert.equal(bitmapCalls, 0);
+
+    // Queueing and autoResize:false bypass pi's resizer, so keep a fallback at its byte ceiling, including GIFs.
+    for (const [size, type] of [[4.5 * 1024 * 1024 * 3 / 4, "image/png"], [10 * 1024 * 1024, "image/gif"]]) {
+      readerData = "A".repeat(Math.ceil(size / 3) * 4);
+      assert.deepEqual(await readPromptImageFile({ size, type }), { data: "COMPRESSED", mimeType: "image/jpeg" });
+    }
+    assert.equal(bitmapCalls, 2);
+    assert.equal(closed, 2);
+    assert.equal(canvas.width, 2000);
+    assert.equal(canvas.height, 1000);
+  } finally {
+    Object.assign(globalThis, originals);
+  }
+});
+
+test("paste, attach and drop share the prompt reader and retain attachment limits", async () => {
+  const text = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  const source = ts.createSourceFile("ChatInput.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function findCallback(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "processImageFiles") return node.initializer.arguments[0];
+    return ts.forEachChild(node, findCallback);
+  }
+  const reads = [];
+  let attached = [];
+  const scope = {
+    compact: false,
+    MAX_ATTACHED_IMAGES: 10,
+    MAX_ATTACHED_IMAGE_BYTES: 10 * 1024 * 1024,
+    attachedImagesRef: { current: attached },
+    pendingImageCountRef: { current: 0 },
+    imageProcessEpochRef: { current: 0 },
+    readPromptImageFile: async (file) => { reads.push(file); return { data: file.name, mimeType: file.type }; },
+    URL: { createObjectURL: (file) => file.name },
+    revokeImagePreview() { assert.fail("no accepted preview should be revoked"); },
+    setAttachedImages: (update) => { attached = update(attached); },
+  };
+  const processFiles = new Script(ts.transpileModule(findCallback(source).getText(source), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText).runInNewContext(scope);
+  const screenshot = { name: "scan.png", size: 2 * 1024 * 1024, type: "image/png" };
+  const atLimit = { name: "limit.png", size: 10 * 1024 * 1024, type: "image/png" };
+  await processFiles([
+    { ...atLimit, size: atLimit.size + 1 },
+    { name: "report.pdf", size: 100, type: "application/pdf" },
+    screenshot, atLimit,
+    ...Array(10).fill(screenshot),
+  ]);
+  assert.equal(reads.length, 10);
+  assert.equal(reads[0], screenshot);
+  assert.equal(reads[1], atLimit);
+  assert.equal(attached.length, 10);
+  assert.equal(scope.pendingImageCountRef.current, 0);
+  assert.match(text, /addImages\(files: File\[\]\)\s*\{\s*processImageFiles\(files\)/);
+  assert.match(text, /const handlePaste =[\s\S]*?processImageFiles\(files\)/);
+});
+
+test("image-generation references still compress over 1 MiB, preserving small images and GIFs", async () => {
   assert.equal(shouldCompressImageFile({ size: 1024 * 1024, type: "image/png" }), false);
   assert.equal(shouldCompressImageFile({ size: 1024 * 1024 + 1, type: "image/png" }), true);
   assert.equal(shouldCompressImageFile({ size: 2 * 1024 * 1024, type: "image/gif" }), false);

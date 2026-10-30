@@ -391,6 +391,7 @@ const CLIENT_IMAGE_COMPRESSION_THRESHOLD_BYTES = 1024 * 1024;
 // Matches Pi's own prompt-image cap (2000px): compression must not go below what the model would get.
 const CLIENT_MAX_IMAGE_SIDE = 2000;
 const CLIENT_JPEG_QUALITY = 0.85;
+const PROMPT_IMAGE_MAX_BASE64_BYTES = 4.5 * 1024 * 1024;
 
 export function shouldCompressImageFile(file: Pick<File, "size" | "type">): boolean {
   return file.size > CLIENT_IMAGE_COMPRESSION_THRESHOLD_BYTES && file.type !== "image/gif";
@@ -427,9 +428,20 @@ function readImageFile(file: Blob, mimeType: string): Promise<{ data: string; mi
   });
 }
 
+export async function readPromptImageFile(file: File): Promise<{ data: string; mimeType: string }> {
+  const image = await readImageFile(file, file.type);
+  // shortcut: pi skips resizing when disabled and for queued images; keep its byte ceiling until both paths normalize.
+  return image.data.length < PROMPT_IMAGE_MAX_BASE64_BYTES ? image : reencodeImageFile(file);
+}
+
+// Image-generation references do not go through AgentSession's prompt normalization.
 export async function compressImageFile(file: File): Promise<{ data: string; mimeType: string }> {
+  return shouldCompressImageFile(file) ? reencodeImageFile(file) : readImageFile(file, file.type);
+}
+
+async function reencodeImageFile(file: File): Promise<{ data: string; mimeType: string }> {
   const original = () => readImageFile(file, file.type);
-  if (!shouldCompressImageFile(file) || typeof createImageBitmap !== "function") return original();
+  if (typeof createImageBitmap !== "function") return original();
 
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) return original();
@@ -947,7 +959,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     try {
       const newImages = await Promise.all(
         imageFiles.map(async (file) => ({
-          ...await compressImageFile(file),
+          ...await readPromptImageFile(file),
           previewUrl: URL.createObjectURL(file),
         }))
       );
