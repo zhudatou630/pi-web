@@ -33,6 +33,28 @@ test("table borders surround the scroller without entering its mask", () => {
   assert.match(html, /<\/table><\/div><\/div><div class="markdown-table-actions">/);
 });
 
+test("terminal paragraphs, lists, code and table frames share the zero bottom margin rule", async () => {
+  const { fromHtml } = await import("hast-util-from-html");
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.markdown-body > :last-child,\s*\.markdown-body > :is\(ul, ol\):last-child > li:last-child \{ margin-bottom: 0; \}/);
+  for (const [markdown, tag, className] of [
+    ["Intro\n\nEnd", "p"],
+    ["Intro\n\n- one\n- last", "ul"],
+    ["Intro\n\n1. one\n2. last", "ol"],
+    ["Intro\n\n```text\nend\n```", "div", "markdown-code-block"],
+    ["Intro\n\n| a |\n| - |\n| end |", "div", "markdown-table-block"],
+  ]) {
+    const root = fromHtml(renderMarkdown(markdown), { fragment: true }).children[0];
+    const last = root.children.filter(node => node.type === "element").at(-1);
+    assert.equal(last.tagName, tag);
+    if (className) assert.ok(last.properties.className.includes(className));
+    if (tag === "ul" || tag === "ol") {
+      assert.equal(last.children.filter(node => node.type === "element").at(-1).tagName, "li");
+    }
+  }
+});
+
 test("fragment links stay in their own markdown root rather than opening another tab", () => {
   const html = renderMarkdown('[section](#sec)\n\n<a id="sec"></a>Here\n\nNote[^1]\n\n[^1]: Footnote');
   assert.match(html, /id="user-content-sec"/);
