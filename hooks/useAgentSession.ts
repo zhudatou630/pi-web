@@ -620,11 +620,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [messages, sessionStatsOverride, contextUsage, liveActiveTime, data?.sessionId, data?.context.messages, data?.filePath, data?.totalActiveMs, data?.stats, session?.id, session?.name]);
 
   const applyContextUsage = useCallback((next: ContextUsage | null | undefined, sid: string, runId: number, requestId: number, totalActiveMs?: number) => {
-    if (!sessionHookMountedRef.current || sessionIdRef.current !== sid
-      || promptRunIdRef.current !== runId || requestId <= contextUsageAppliedIdRef.current) return;
+    if (!sessionHookMountedRef.current || sessionIdRef.current !== sid || promptRunIdRef.current !== runId) return;
+    // Active time merges by max, so an out-of-order reply is harmless and needs no fence.
+    if (totalActiveMs !== undefined) {
+      setLiveActiveTime((prev) => prev?.sessionId === sid && prev.value >= totalActiveMs ? prev : { sessionId: sid, value: totalActiveMs });
+    }
+    // Only an applied usage fences older replies; a newer reply without usage must not.
+    if (next === undefined || requestId <= contextUsageAppliedIdRef.current) return;
     contextUsageAppliedIdRef.current = requestId;
-    if (totalActiveMs !== undefined) setLiveActiveTime({ sessionId: sid, value: totalActiveMs });
-    if (next !== undefined) setContextUsage((prev) => keepContextUsage(prev, next));
+    setContextUsage((prev) => keepContextUsage(prev, next));
   }, []);
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
