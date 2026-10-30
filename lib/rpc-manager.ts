@@ -845,10 +845,8 @@ export class AgentSessionWrapper {
               if (preflightAccepted) return;
               preflightAccepted = true;
               getPausedAutomaticFollowUps().delete(this.sessionId);
-              this.agentRunNeedsCompletion = true;
               if (preflightSettled) return;
               preflightSettled = true;
-              if (!streamingBehavior) this.lastRunAborted = false;
               resolve();
             };
             rejectPreflight = (error) => {
@@ -866,6 +864,7 @@ export class AgentSessionWrapper {
           };
 
           this.pendingPromptCount += 1;
+          if (!streamingBehavior) this.lastRunAborted = false;
           let prompt: Promise<void>;
           try {
             prompt = this.inner.prompt(command.message as string, {
