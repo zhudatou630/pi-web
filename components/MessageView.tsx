@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useState, useRef, useEffect, useMemo, useId, type ReactNode } from "react";
+import { parseStreamingJson } from "@earendil-works/pi-ai";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
 import { ImageGallery } from "./ImageGallery";
@@ -1187,11 +1188,15 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
-function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
+export function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [commandCopied, setCommandCopied] = useState(false);
-  const inputStr = getWrittenFileText(block) ?? getToolCallInputText(block);
+  const writtenText = getWrittenFileText(block);
+  const inputStr = writtenText ?? getToolCallInputText(block);
+  const fieldInput = useMemo(() => expanded
+    ? block.rawInput === undefined ? block.input : parseStreamingJson<unknown>(block.rawInput)
+    : undefined, [expanded, block.rawInput, block.input]);
   const isStreamingInput = block.rawInput !== undefined;
   // The full command, not the clipped header preview; copyable while the row stays folded.
   const commandText = !isStreamingInput && typeof block.input?.command === "string" && block.input.command.trim() ? block.input.command : undefined;
@@ -1310,7 +1315,9 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
 
       {/* ── Expanded: input args ── */}
       {expanded && (isStreamingInput || !isEditTool) && !isApplyPatchTool && (
-        <pre
+        writtenText === null && shellCommand === undefined && codemodeCode === undefined
+          ? <ToolArguments input={fieldInput} fallback={inputStr} />
+          : <pre
           className="step-body"
           style={{
             margin: 0,
@@ -1382,6 +1389,23 @@ function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFi
         </div>
       )}
     </div>
+  );
+}
+
+function ToolArguments({ input, fallback }: { input: unknown; fallback: string }) {
+  const fields = input && typeof input === "object" && !Array.isArray(input) ? Object.entries(input) : [];
+  const flat = fields.length > 0 && fields.every(([, value]) => value === null || typeof value !== "object");
+  const style = { margin: 0, fontSize: "calc(12px + var(--chat-font-size-offset, 0px))", lineHeight: 1.5 };
+  if (!flat) return <pre className="step-body" style={{ ...style, padding: "8px 10px", color: "var(--text-muted)", overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{fallback}</pre>;
+  return (
+    <dl className="step-body" data-tool-fields="" style={{ ...style, display: "grid", gridTemplateColumns: "max-content minmax(0, 1fr)", gap: "4px 12px", padding: "8px 10px" }}>
+      {fields.map(([key, value]) => (
+        <div key={key} style={{ display: "contents" }}>
+          <dt style={{ fontFamily: "var(--font-ui)", color: "var(--text-dim)", maxWidth: 120, overflowWrap: "anywhere" }}>{key}</dt>
+          <dd style={{ margin: 0, fontFamily: "var(--font-mono)", color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 260, overflow: "auto" }}>{String(value)}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
