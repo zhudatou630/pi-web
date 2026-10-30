@@ -102,6 +102,7 @@ function sendHarness() {
     setMessages: (update) => { messages = update(messages); calls.push(["messages", messages.length]); },
     localAppendSeqRef: ref(0), optimisticUserMessageKeyRef: ref(null), userMessageKey: () => "key",
     setAgentRunning: noop, setAgentPhase: noop, dispatch: noop, pendingScrollToBottomRef: ref(false),
+    unconfirmedPromptsRef: ref(new Map()), queuedMessages: { steering: [], followUp: [] },
     pendingPromptRef: ref(null), loadedHistoryRef: ref({ messages: [], entryIds: [] }), historyBranchRef: ref(0), promptRunGateRef: ref(new PromptRunGate()), dispatchPromptRun,
     isNew: false, sessionIdRef: ref("session"), isPromptRejectedError: () => true,
     missingCwdFromBody, setPromptMissingCwd: noop,

@@ -858,6 +858,8 @@ export const zhCNLocale: LocalePlugin = {
     "chat.stopCompaction": "停止压缩",
     "chat.compactConfirm": "确认压缩",
     "chat.promptUnconfirmed": "这条提示词可能未发送，已放回草稿。再次发送前请先核对对话。",
+    "chat.compactingQueued": "正在压缩… · {count} 条待发送",
+    "chat.compactingQueueHint": "压缩结束后将按顺序发送消息",
     "chat.compacting": "正在压缩…",
     "chat.compact": "压缩",
     "chat.dismissCompactError": "关闭压缩错误",

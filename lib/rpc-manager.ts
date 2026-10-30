@@ -307,6 +307,13 @@ export function withConfiguredBuiltInTools(
 // Wraps AgentSession with the same interface the rest of the app expects
 // ============================================================================
 
+type CompactionQueuedPrompt = {
+  command: Record<string, unknown>;
+  settle: () => void;
+  notifyDone: boolean;
+  flushing?: boolean;
+};
+
 export class AgentSessionWrapper {
   private subscriptions: EventSubscription[] = [];
   private activeToolEvents = new Map<string, AgentEvent>();
@@ -321,6 +328,8 @@ export class AgentSessionWrapper {
   private undeliveredNotices: { event: AgentEvent; at: number }[] = [];
   private activeCustomUis = new Map<string, ActiveCustomUi>();
   private extensionUiAbortController = new AbortController();
+  // shortcut: parked prompts survive browser reloads, not server restarts; persist if crash recovery is needed.
+  private compactionQueue: CompactionQueuedPrompt[] = [];
   private pendingPromptCount = 0;
   private directImageAbortController: AbortController | null = null;
   private directImageRequestId: string | null = null;
@@ -495,6 +504,7 @@ export class AgentSessionWrapper {
           console.error("[pi-web] failed to persist model timing:", error instanceof Error ? error.message : error);
         }
       }
+      if (event.type === "compaction_end") this.flushCompactionQueue();
       this.emit(event.type === "agent_settled" ? this.withSubagentsActive(event) : event);
       if (event.type === "agent_settled") this.notifyAgentRunCompleteIfIdle();
     });
@@ -660,7 +670,48 @@ export class AgentSessionWrapper {
     return { cancelled: result.cancelled };
   }
 
+  private queuedMessages() {
+    return {
+      steering: [...this.inner.getSteeringMessages(), ...this.compactionQueue.filter((item) => item.command.streamingBehavior !== "followUp").map((item) => item.command.message as string)],
+      followUp: [...this.inner.getFollowUpMessages(), ...this.compactionQueue.filter((item) => item.command.streamingBehavior === "followUp").map((item) => item.command.message as string)],
+    };
+  }
+
+  private recallCompactionQueue() {
+    const recalled = { steering: [] as Array<{ text: string; images: PromptImage[] }>, followUp: [] as Array<{ text: string; images: PromptImage[] }> };
+    const pending = this.compactionQueue;
+    this.compactionQueue = [];
+    for (const item of pending) {
+      recalled[item.command.streamingBehavior === "followUp" ? "followUp" : "steering"].push({
+        text: item.command.message as string,
+        images: (item.command.images as PromptImage[] | undefined) ?? [],
+      });
+      item.settle();
+      if (item.notifyDone) this.emit({ type: "prompt_done", aborted: this.lastRunAborted });
+    }
+    if (pending.length) this.emit({ type: "queue_update" });
+    return recalled;
+  }
+
+  private flushCompactionQueue(): void {
+    if (this.forceShutdownOnIdle) return; // Ordinary Stop may precede a late SDK refusal.
+    for (const item of this.compactionQueue) {
+      if (item.flushing) continue;
+      item.flushing = true;
+      // Reserve admission now, but leave later entries recallable until they own it.
+      void this.send({ ...item.command, streamingBehavior: item.command.streamingBehavior ?? "steer" }, item)
+        .catch((error) => {
+          if (!this.isAlive()) return;
+          if (!this.compactionQueue.includes(item)) this.compactionQueue.push(item);
+          this.emit({ type: "queue_update" });
+          this.emit({ type: "prompt_error", errorMessage: error instanceof Error ? error.message : String(error) });
+        })
+        .finally(() => { item.settle(); item.flushing = false; });
+    }
+  }
+
   private emit(event: AgentEvent): void {
+    if (event.type === "queue_update") event = { ...event, ...this.queuedMessages() };
     for (const { listener } of [...this.subscriptions]) {
       try {
         listener(event);
@@ -840,7 +891,7 @@ export class AgentSessionWrapper {
     }));
   }
 
-  async send(command: Record<string, unknown>): Promise<unknown> {
+  async send(command: Record<string, unknown>, compactionDelivery?: CompactionQueuedPrompt): Promise<unknown> {
     assertAppNotUpdating();
     const type = command.type as string;
     const allowedDuringReplacement = COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT.has(type);
@@ -886,6 +937,13 @@ export class AgentSessionWrapper {
         // this submission starts a run or joins its streaming queue.
         const releaseAdmission = await this.acquirePromptAdmission();
         try {
+          if (!this.isAlive()) throw new Error("Session is closing");
+          if (compactionDelivery) {
+            const index = this.compactionQueue.indexOf(compactionDelivery);
+            if (index === -1) return null; // Recall won admission.
+            this.compactionQueue.splice(index, 1);
+            this.emit({ type: "queue_update" });
+          }
           if (this.inner.isBashRunning || this.directImageAbortController) {
             throw new Error("Cannot send a prompt while another session command is running");
           }
@@ -896,6 +954,8 @@ export class AgentSessionWrapper {
           const rawImages = command.images as PromptImage[] | undefined;
           const promptImages = streamingBehavior ? await this.fitQueuedImages(rawImages) : rawImages;
           if (!streamingBehavior && !this.isRunning()) this.recordSelectionOnBranch();
+          let parked = false;
+          let started = false;
           let preflightAccepted = false;
           let preflightSettled = false;
           let promptSettled = false;
@@ -934,7 +994,10 @@ export class AgentSessionWrapper {
               source: "rpc",
               // Match pi's RPC contract: acknowledge only after synchronous prompt
               // validation and extension preflight have accepted the submission.
-              preflightResult: () => acceptPreflight(),
+              preflightResult: (disposition) => {
+                started = disposition === "started";
+                acceptPreflight();
+              },
             });
           } catch (error) {
             finishPrompt();
@@ -949,8 +1012,18 @@ export class AgentSessionWrapper {
             // An extension-only command (no agent_end) may have renamed the session;
             // browsers reload the list on prompt_done without forcing a rescan.
             invalidateSessionListCache();
-            if (!streamingBehavior) this.emit(this.withSubagentsActive({ type: "prompt_done", aborted: this.lastRunAborted }));
+            if (!streamingBehavior || (compactionDelivery && started)) this.emit(this.withSubagentsActive({ type: "prompt_done", aborted: this.lastRunAborted }));
           }, (error) => {
+            // Only the SDK's pre-input manual-compaction refusal is safe to park.
+            if (!preflightAccepted && error instanceof Error
+              && error.message === "Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.") {
+              parked = true;
+              this.compactionQueue.push({ command, settle: finishPrompt, notifyDone: compactionDelivery?.notifyDone ?? !streamingBehavior });
+              acceptPreflight();
+              this.emit({ type: "queue_update" });
+              if (!this.inner.isCompacting) this.flushCompactionQueue();
+              return;
+            }
             rejectPreflight(error);
             finishPrompt();
             invalidateSessionListCache();
@@ -961,7 +1034,7 @@ export class AgentSessionWrapper {
                 type: "prompt_error",
                 errorMessage: error instanceof Error ? error.message : String(error),
               });
-              if (!streamingBehavior) this.emit(this.withSubagentsActive({ type: "prompt_done", aborted: this.lastRunAborted }));
+              if (!streamingBehavior || (compactionDelivery && started)) this.emit(this.withSubagentsActive({ type: "prompt_done", aborted: this.lastRunAborted }));
             }
           }).catch((error) => {
             console.error(
@@ -971,14 +1044,15 @@ export class AgentSessionWrapper {
           });
 
           await preflight;
-          return null;
+          return parked ? { queued: true } : null;
         } finally {
           releaseAdmission();
         }
       }
 
-      case "abort":
+      case "abort": {
         this.lastRunAborted = true; // Extension commands may stop before an SDK run starts.
+        const recalled = this.recallCompactionQueue();
         this.forceShutdownOnIdle = true;
         this.resetIdleTimer();
         getPausedAutomaticFollowUps().add(this.sessionId);
@@ -987,10 +1061,11 @@ export class AgentSessionWrapper {
         this.extensionUiAbortController.abort(new DOMException("Extension UI cancelled by Stop", "AbortError"));
         try {
           await this.withFinalIdleReset(() => this.inner.abort());
-          return null;
+          return recalled.steering.length || recalled.followUp.length ? recalled : null;
         } finally {
           if (!this.isRunning()) this.forceShutdownOnIdle = false;
         }
+      }
 
       case "get_state": {
         const model = this.inner.model;
@@ -1010,10 +1085,7 @@ export class AgentSessionWrapper {
           model: model ? { id: model.id, provider: model.provider } : undefined,
           messageCount: 0,
           pendingMessageCount: this.inner.pendingMessageCount,
-          queuedMessages: {
-            steering: [...this.inner.getSteeringMessages()],
-            followUp: [...this.inner.getFollowUpMessages()],
-          },
+          queuedMessages: this.queuedMessages(),
           contextUsage: contextUsage
             ? { percent: contextUsage.percent, contextWindow: contextUsage.contextWindow, tokens: contextUsage.tokens }
             : null,
@@ -1227,7 +1299,8 @@ export class AgentSessionWrapper {
         const snapshot = snapshotAgentQueuedMessages(this.inner.agent);
         const recalled = parseQueuedDeliverySnapshot(snapshot);
         this.inner.clearQueue();
-        return recalled;
+        const parked = this.recallCompactionQueue();
+        return { steering: [...recalled.steering, ...parked.steering], followUp: [...recalled.followUp, ...parked.followUp] };
       }
 
       case "steer": {

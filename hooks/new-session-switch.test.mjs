@@ -42,6 +42,7 @@ function sendHarness({ mounted, creation = false, visible = true }) {
     promptRunIdRef: ref(0), cancelEventStreamGrace: noop, rpcPromptPendingRef: ref(false),
     setMessages: noop, localAppendSeqRef: ref(0), optimisticUserMessageKeyRef: ref(null), userMessageKey: () => "key",
     setAgentRunning: noop, setAgentPhase: noop, dispatch: noop, pendingScrollToBottomRef: ref(false),
+    unconfirmedPromptsRef: ref(new Map()), queuedMessages: { steering: [], followUp: [] },
     pendingPromptRef: ref(null), loadedHistoryRef: ref({ messages: [], entryIds: [] }), historyBranchRef: ref(0), promptRunGateRef: ref(new PromptRunGate()), dispatchPromptRun,
     isNew: true, newSessionCwd: "/project", newSessionModel: null, session: null,
     sessionIdRef, ensuringNewSessionRef: ref(null), sessionHookMountedRef,

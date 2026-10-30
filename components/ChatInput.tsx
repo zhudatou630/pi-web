@@ -2053,6 +2053,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
              {t("chat.retrying", { attempt: retryInfo.attempt, max: retryInfo.maxAttempts })}{retryInfo.errorMessage && <span style={{ opacity: 0.7, marginLeft: 4 }}>— {retryInfo.errorMessage}</span>}
           </div>
         )}
+        {isCompacting && (
+          <div role="status" className="chat-input-feedback">
+            <span>{t(queueCount ? "chat.compactingQueued" : "chat.compacting", { count: queueCount })}</span>
+            {onAbortCompaction && <button type="button" className="composer-btn" onClick={onAbortCompaction}>{t("chat.stopCompaction")}</button>}
+          </div>
+        )}
         {compactResultText && (
           <div className="chat-input-feedback chat-input-feedback-success">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -2559,6 +2565,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             disabled={disabled}
             placeholder={disabled ? t("agentSwitcher.status.queued")
               : compact ? t("chat.sideChatPlaceholder")
+              : isCompacting ? t("chat.compactingQueueHint")
               : t(isMobile ? "chat.composerHintCompact" : "chat.composerHint")}
             value={value}
             onChange={(e) => {

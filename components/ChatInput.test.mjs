@@ -1143,6 +1143,21 @@ test("wraps @ file picker selection and caps the menu above the composer", () =>
   assert.match(source, /<fieldset\s+disabled=\{builtinCommandPending\}\s+aria-busy=\{builtinCommandPending\}/);
 });
 
+test("manual compaction leaves the composer editable, labels parked rows and exposes Stop", () => {
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatInput, {
+      onSend() {}, onAbort() {}, isStreaming: false, isCompacting: true,
+      onAbortCompaction() {}, queuedMessages: { steering: ["parked"], followUp: [] }, onRecallQueue() {},
+    }),
+  ));
+  assert.doesNotMatch(html, /<fieldset[^>]*disabled/);
+  assert.doesNotMatch(html, /<textarea[^>]*disabled/);
+  assert.match(html, /Messages will queue until compaction finishes/);
+  assert.match(html, /Compacting… · 1 queued/);
+  assert.match(html, /<button[^>]*>Stop compaction<\/button>/);
+  assert.match(html, /aria-label="Recall to input"/);
+});
+
 test("keeps queued prompts as a quiet row inside the composer card", () => {
   const one = renderToStaticMarkup(React.createElement(I18nProvider, null,
     React.createElement(ChatInput, {

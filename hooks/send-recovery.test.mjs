@@ -29,18 +29,18 @@ function harness() {
     agentRunningRef: ref(false), bashRunningRef: ref(false), sessionIdRef: ref("session"),
     promptRunIdRef: ref(0), rpcPromptPendingRef: ref(false), sdkAgentActiveRef: ref(false),
     promptRunGateRef: ref(new PromptRunGate()), pendingPromptRef: ref(null),
-    unconfirmedPromptsRef: ref(new Map()), loadedHistoryRef: ref({ messages: [], entryIds: [] }), historyBranchRef: ref(0),
+    unconfirmedPromptsRef: ref(new Map()), queuedMessages: { steering: [], followUp: [] }, setQueuedMessages: noop, loadedHistoryRef: ref({ messages: [], entryIds: [] }), historyBranchRef: ref(0),
     setMessages: (update) => { messages = update(messages); }, localAppendSeqRef: ref(0),
     optimisticUserMessageKeyRef: ref(null), pendingScrollToBottomRef: ref(false),
     isNew: false, session: { id: "session" }, sessionHookMountedRef: ref(true),
-    cancelEventStreamGrace: noop, setAgentRunning: noop, setAgentPhase: noop, dispatch: noop,
+    cancelEventStreamGrace: noop, setAgentRunning: noop, setAgentPhase: noop, setRetryInfo: noop, dispatch: noop,
     setPromptMissingCwd: noop, missingCwdFromBody: () => null, closeEvents: noop,
     ensureEventsConnected: async () => {}, dispatchPromptRun, userMessageKey, userMessageReceiptKey,
     sendAgentCommand: async () => { throw new TypeError("Failed to fetch"); },
     isPromptRejectedError: () => false, restoreSubmission: (...args) => restored.push(args),
     addNotice: (notice) => notices.push(notice), t: (key) => key,
     waitForPromptSettlement: noop, reconcileAgentState: noop, loadSession: async () => {},
-    settleUiStage: noop, notifyPromptStage: noop, onAgentEnd: noop, scheduleEventStreamClose: noop,
+    settleUiStage: noop, flushStreamDeltas: noop, notifyPromptStage: noop, onAgentEnd: noop, scheduleEventStreamClose: noop,
     fetch: async () => ({ ok: true, json: async () => ({ context: { messages: [], entryIds: [] } }) }),
   };
   // The recovery callback is added by the fix; the baseline still exercises the real send/settlement paths.
@@ -49,6 +49,7 @@ function harness() {
     send: (text = "keep me") => callback("handleSend", bindings)(text, images),
     finish: () => callback("finishPromptWithoutStream", bindings)("session", 1),
     queue: (behavior) => callback("sendStreamingPrompt", bindings)("keep me", behavior, images),
+    event: (event) => callback("handleAgentEvent", bindings)(event),
   };
 }
 
@@ -60,6 +61,61 @@ test("ambiguous normal send restores text and images only after idle verificatio
   assert.deepEqual(h.restored, [["keep me", images, "sending-tab"]]);
   assert.equal(h.notices.at(-1).type, "warning");
   assert.deepEqual(h.messages(), [], "the unsent optimistic bubble is removed");
+});
+
+test("parked acknowledgements remove only the optimistic bubble, not a delivered one", async () => {
+  for (const delivered of [false, true]) {
+    const h = harness();
+    h.bindings.sendAgentCommand = async () => {
+      if (delivered) h.bindings.optimisticUserMessageKeyRef.current = null;
+      return { queued: true };
+    };
+    await h.send();
+    assert.equal(h.messages().length, delivered ? 1 : 0);
+    assert.equal(h.bindings.rpcPromptPendingRef.current, false);
+    assert.deepEqual(h.restored, []);
+  }
+});
+
+test("a parked prompt recalled after a lost POST reply is not returned twice", async () => {
+  const h = harness();
+  await h.send();
+  h.event({ type: "queue_update", steering: ["keep me"], followUp: [] });
+  h.event({ type: "prompt_done" });
+  await h.finish();
+  assert.deepEqual(h.restored, []);
+});
+
+test("a queue receipt before a lost POST reply prevents a false restore", async () => {
+  const h = harness();
+  h.bindings.sendAgentCommand = async () => {
+    h.event({ type: "queue_update", steering: ["keep me"], followUp: [] });
+    throw new Error("proxy HTML instead of JSON");
+  };
+  await h.send(); await h.finish();
+  assert.deepEqual(h.restored, []);
+});
+
+test("another tab starting a run, or replaying an existing queue, does not prove our prompt arrived", async () => {
+  for (const event of [{ type: "agent_start" }, { type: "queue_update", steering: ["keep me"], followUp: [] }]) {
+    const h = harness();
+    h.bindings.queuedMessages = { steering: ["keep me"], followUp: [] };
+    await h.send();
+    h.event(event);
+    await h.finish();
+    assert.equal(h.restored.length, 1);
+  }
+});
+
+test("a late terminal event restarts idle verification after the initial settlement poll expired", async () => {
+  const h = harness();
+  const polls = [];
+  h.bindings.waitForPromptSettlement = (...args) => polls.push(args);
+  await h.send();
+  h.event({ type: "prompt_done" });
+  assert.deepEqual(polls, [["session", 1], ["session", 1]]);
+  await h.finish();
+  assert.equal(h.restored.length, 1);
 });
 
 test("ambiguous steer and follow-up immediately restore to the sending draft", async () => {
@@ -83,6 +139,17 @@ test("a new matching persisted user entry proves delivery, an old identical entr
     await h.finish();
     assert.equal(h.restored.length, landed ? 0 : 1);
   }
+});
+
+test("persisting a previous same-text SSE append is not proof of a later send", async () => {
+  const h = harness();
+  const prior = { role: "user", content: [{ type: "text", text: "keep me" }, { type: "image", data: images[0].data, mimeType: "image/png" }] };
+  const anchor = { role: "assistant", content: [] };
+  h.bindings.loadedHistoryRef.current = { messages: [anchor, prior], entryIds: ["anchor"] };
+  h.bindings.fetch = async () => ({ ok: true, json: async () => ({ context: { messages: [anchor, prior], entryIds: ["anchor", "previous-user"] } }) });
+  h.bindings.recoverUnconfirmedPrompt = callback("recoverUnconfirmedPrompt", h.bindings);
+  await h.send(); await h.finish();
+  assert.equal(h.restored.length, 1);
 });
 
 test("failed history read returns a warning, and late finishes cannot alter a newer run", async () => {
