@@ -132,6 +132,23 @@ function ActivityPulse({ label }: { label: string }) {
   );
 }
 
+/** A manual compaction while idle has no live turn to label, so it gets the live process row on its own. */
+function CompactionActivity({ t }: { t: (key: string, params?: Record<string, string | number>) => string }) {
+  const [startTime] = useState(() => Date.now());
+  return (
+    <div
+      role="status"
+      aria-label={t("chat.compacting")}
+      style={{ display: "flex", alignItems: "center", gap: 5, minHeight: 24, padding: "2px 0", marginBottom: 8, fontSize: 11, fontFamily: "var(--font-ui)" }}
+    >
+      <LivePulseBeacon size={12} />
+      <ProcessLiveDuration startTime={startTime} t={t} />
+      <span style={{ color: "var(--text-dim)" }}>·</span>
+      <span style={{ color: "var(--accent)" }}>{t("chat.compacting")}</span>
+    </div>
+  );
+}
+
 const STREAM_SILENCE_SECONDS = 5;
 
 /**
@@ -2419,6 +2436,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             {bashRunning && !pendingBash && !currentTurnHasVisibleOutput && !streamingParts.processMessage && (
               <ActivityPulse label={t("chat.agentWorking")} />
             )}
+
+            {/* During a run the live process row already says "compacting"; this covers a manual /compact while idle. */}
+            {isCompacting && !sessionBusy && !streamState.isStreaming && <CompactionActivity t={t} />}
 
             {pendingBash && (
               <MessageView

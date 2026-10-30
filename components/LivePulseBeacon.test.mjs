@@ -25,6 +25,9 @@ test("unifies running status indicator across sidebar, chat tabs, process steps,
   assert.match(sidebarSource, /activity\.running > 0[\s\S]*?<LivePulseBeacon size=\{11\}/);
   assert.match(tabSource, /\bisRunning \? \(\s*<LivePulseBeacon/);
   assert.match(chatWindowSource, /\{isStreaming \? \([\s\S]*?<LivePulseBeacon/);
+  // An idle manual compaction gets the live process row by itself; a run already labels it.
+  assert.match(chatWindowSource, /function CompactionActivity[\s\S]*?<LivePulseBeacon size=\{12\} \/>[\s\S]*?<ProcessLiveDuration/);
+  assert.match(chatWindowSource, /\{isCompacting && !sessionBusy && !streamState\.isStreaming && <CompactionActivity t=\{t\} \/>\}/);
   assert.match(panelSource, /if \(status === "running" \|\| status === "starting"\) \{\s*return <LivePulseBeacon/);
   assert.match(beaconSource, /export function LivePulseBeacon/);
 });
