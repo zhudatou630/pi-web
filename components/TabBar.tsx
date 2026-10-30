@@ -46,6 +46,7 @@ const TAB_DRAG_MIME = "application/x-pi-panel-tab";
 export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, onCloseTabs, onMoveTab, onRevealInExplorer, isMobile = false }: Props) {
   const { t } = useI18n();
   const [hoveredClose, setHoveredClose] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
   const focusAfterCloseRef = useRef(false);
   const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
@@ -58,10 +59,30 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
   );
 
   useEffect(() => {
-    activeTabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const list = listRef.current;
+    if (!list) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || Math.abs(event.deltaY) <= Math.abs(event.deltaX) || list.scrollWidth <= list.clientWidth) return;
+      event.preventDefault();
+      list.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? list.clientWidth : 1);
+    };
+    list.addEventListener("wheel", onWheel, { passive: false });
+    return () => list.removeEventListener("wheel", onWheel);
+  }, []);
+
+  useEffect(() => {
+    const list = listRef.current;
+    const tab = activeTabRef.current;
+    // Move only this strip, never its ancestors or the document.
+    if (list && tab) {
+      const strip = list.getBoundingClientRect();
+      const { left, right } = tab.getBoundingClientRect();
+      if (left < strip.left) list.scrollLeft -= strip.left - left;
+      else if (right > strip.right) list.scrollLeft += right - strip.right;
+    }
     if (!focusAfterCloseRef.current) return;
     focusAfterCloseRef.current = false;
-    activeTabRef.current?.focus();
+    activeTabRef.current?.focus({ preventScroll: true });
   }, [activeTabId, tabs]);
 
   // Same dismissal as the chat tab menu: outside press, Escape, resize.
@@ -103,7 +124,9 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
 
   return (
     <div
+      ref={listRef}
       role="tablist"
+      className="panel-tab-strip"
       onDragOver={(event) => {
         if (!acceptsDrag(event)) return;
         event.preventDefault();
@@ -155,7 +178,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
                 const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
                   : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
                 onSelectTab(tabs[next].id);
-                (event.currentTarget.parentElement?.children[next] as HTMLElement)?.focus();
+                (event.currentTarget.parentElement?.children[next] as HTMLElement)?.focus({ preventScroll: true });
               } else if (event.key === "Delete" && !tab.closing) {
                 event.preventDefault();
                 focusAfterCloseRef.current = true;

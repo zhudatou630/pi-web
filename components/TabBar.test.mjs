@@ -126,8 +126,64 @@ test("preview tabs reuse the dotted underline convention and show the pin hint",
 });
 
 test("keeps the active tab visible and restores focus after closing", () => {
-  assert.match(source, /scrollIntoView\(\{ block: "nearest", inline: "nearest" \}\)/);
+  assert.doesNotMatch(source, /scrollIntoView/);
   assert.match(source, /setHoveredClose\(null\);\s+focusAfterCloseRef\.current = true;\s+onCloseTab\(tab\.id\)/);
   assert.match(source, /focusAfterCloseRef\.current = true/);
-  assert.match(source, /activeTabRef\.current\?\.focus\(\)/);
+  assert.match(source, /activeTabRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
+});
+
+test("vertical wheel scrolls only an overflowing strip, preserving zoom and horizontal gestures", () => {
+  const body = source.match(/const onWheel = \(event: WheelEvent\) => \{([^]*?)\n    \};/)?.[1];
+  assert.ok(body);
+  const wheel = new Function("list", "event", body);
+  const list = { scrollLeft: 100, scrollWidth: 900, clientWidth: 300 };
+  const run = (changes = {}) => {
+    let prevented = false;
+    const event = { deltaX: 0, deltaY: 20, deltaMode: 0, ctrlKey: false, preventDefault() { prevented = true; }, ...changes };
+    wheel(list, event);
+    return prevented;
+  };
+  assert.equal(run(), true);
+  assert.equal(list.scrollLeft, 120);
+  run({ deltaY: -2, deltaMode: 1 });
+  assert.equal(list.scrollLeft, 88);
+  run({ deltaY: 1, deltaMode: 2 });
+  assert.equal(list.scrollLeft, 388);
+  assert.equal(run({ ctrlKey: true }), false);
+  assert.equal(run({ deltaX: 30 }), false);
+  assert.equal(run({ deltaY: 0 }), false);
+  assert.equal(list.scrollLeft, 388);
+  list.scrollWidth = 300;
+  assert.equal(run(), false);
+  assert.match(source, /addEventListener\("wheel", onWheel, \{ passive: false \}\)/);
+  assert.match(source, /removeEventListener\("wheel", onWheel\)/);
+});
+
+test("revealing a selected tab moves only its strip and focus cannot scroll ancestors", () => {
+  const body = source.match(/useEffect\(\(\) => \{\n    const list = listRef.current;\n    const tab = activeTabRef.current;([^]*?)\n  \}, \[activeTabId, tabs\]\);/)?.[1];
+  assert.ok(body);
+  const reveal = new Function("list", "tab", "activeTabRef", "focusAfterCloseRef", body);
+  const list = { scrollLeft: 100, getBoundingClientRect: () => ({ left: 200, right: 500 }) };
+  let focusOptions;
+  const tab = { getBoundingClientRect: () => ({ left: 520, right: 600 }), focus(options) { focusOptions = options; } };
+  const focus = { current: true };
+  reveal(list, tab, { current: tab }, focus);
+  assert.equal(list.scrollLeft, 200);
+  assert.deepEqual(focusOptions, { preventScroll: true });
+  assert.equal(focus.current, false);
+  tab.getBoundingClientRect = () => ({ left: 150, right: 300 });
+  reveal(list, tab, { current: tab }, focus);
+  assert.equal(list.scrollLeft, 150);
+  tab.getBoundingClientRect = () => ({ left: 200, right: 300 });
+  reveal(list, tab, { current: tab }, focus);
+  assert.equal(list.scrollLeft, 150);
+  reveal(null, null, { current: null }, focus);
+});
+
+test("hides native scrollbars without changing the header or tab height", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(render([{ id: "f", label: "f", filePath: "/f" }]), /class="panel-tab-strip"/);
+  assert.match(css, /\.panel-tab-strip \{\s*scrollbar-width: none;/);
+  assert.match(css, /\.panel-tab-strip::-webkit-scrollbar \{\s*display: none;/);
+  assert.match(source, /height: "100%"/);
 });

@@ -1254,6 +1254,14 @@ html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
   }
 }
 
+/* Tab strips keep the full header height, including with classic scrollbars. */
+.panel-tab-strip {
+  scrollbar-width: none;
+}
+.panel-tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
 :root {
   /* Sarasa Term SC, the monospace sibling of --font-ui's Sarasa UI SC.
      This tail is monospace-first and, unlike the UI tail, ends
