@@ -1487,6 +1487,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const queued = [...((event.steering as string[] | undefined) ?? []), ...((event.followUp as string[] | undefined) ?? [])];
       if (queued.filter((text) => text === unconfirmed.message).length > unconfirmed.queuedBefore) unconfirmed.received = true;
     }
+    // The run's own user message is receipt even if a long run later pushes it out of the history page.
+    if (unconfirmed && event.type === "message_end" && (event.message as AgentMessage | undefined)?.role === "user"
+      && userMessageReceiptKey(event.message as AgentMessage) === userMessageReceiptKey(unconfirmed.userMsg)) {
+      unconfirmed.received = true;
+    }
     if (unconfirmed?.ambiguous && (event.type === "prompt_done" || event.type === "agent_settled")) {
       const sid = sessionIdRef.current;
       if (sid) void waitForPromptSettlement(sid, promptRunIdRef.current);
@@ -1952,12 +1957,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       },
     });
 
-    if (result.status !== "failed") unconfirmedPromptsRef.current.delete(promptRunId);
-    if (result.status === "abandoned" || result.status === "aborted" || result.status === "stale") {
+    if (result.status === "cancelled_after_dispatch") {
+      // Stopped while the POST failed: the server may never have seen it, so verify like any ambiguous send.
+      submission.ambiguous = true;
+      void waitForPromptSettlement(result.sessionId, promptRunId);
       return;
     }
-    if (result.status === "cancelled_after_dispatch") {
-      void waitForPromptSettlement(result.sessionId, promptRunId);
+    if (result.status !== "failed") unconfirmedPromptsRef.current.delete(promptRunId);
+    if (result.status === "abandoned" || result.status === "aborted" || result.status === "stale") {
       return;
     }
     if (result.status === "failed") {
@@ -2004,6 +2011,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     if (isNew && newSessionCwd) promoteNewSession(1, message);
     if (promptQueued) {
+      // A late ACK after Recall + resend belongs to an older run: drop its bubble, leave the new run's state alone.
+      if (promptRunIdRef.current !== promptRunId || sessionIdRef.current !== result.sessionId) {
+        setMessages((prev) => prev.filter((msg) => msg !== userMsg));
+        return;
+      }
       if (optimisticUserMessageKeyRef.current !== null) setMessages((prev) => prev.filter((msg) => msg !== userMsg));
       optimisticUserMessageKeyRef.current = null;
       rpcPromptPendingRef.current = false;

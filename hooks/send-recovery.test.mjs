@@ -165,3 +165,39 @@ test("failed history read returns a warning, and late finishes cannot alter a ne
   assert.equal(h.restored.length, 1);
   assert.equal(h.notices.at(-1).type, "warning");
 });
+
+test("the run's own user message_end proves delivery even when history later lacks it", async () => {
+  const h = harness();
+  await h.send();
+  h.bindings.agentRunningRef.current = false; // receipt is read before the reducer; skip rendering here
+  h.event({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "keep me" }, { type: "image", data: images[0].data, mimeType: "image/png" }] } });
+  await h.finish();
+  assert.deepEqual(h.restored, []);
+});
+
+test("Stop during a POST that then fails still verifies and returns the prompt", async () => {
+  const h = harness();
+  h.bindings.sendAgentCommand = async () => {
+    h.bindings.promptRunGateRef.current.cancel(1); // the user pressed Stop meanwhile
+    throw new TypeError("Failed to fetch");
+  };
+  await h.send();
+  assert.equal(h.restored.length, 0, "nothing is returned before the server is idle");
+  await h.finish();
+  assert.deepEqual(h.restored, [["keep me", images, "sending-tab"]]);
+});
+
+test("a late parked ACK after Recall + resend leaves the newer run's state alone", async () => {
+  const h = harness();
+  h.bindings.sendAgentCommand = async () => {
+    // Recall + resend happened while this reply was in flight.
+    h.bindings.promptRunIdRef.current = 2;
+    h.bindings.rpcPromptPendingRef.current = true;
+    h.bindings.optimisticUserMessageKeyRef.current = "newer";
+    return { queued: true };
+  };
+  await h.send();
+  assert.equal(h.bindings.rpcPromptPendingRef.current, true);
+  assert.equal(h.bindings.optimisticUserMessageKeyRef.current, "newer");
+  assert.equal(h.messages().length, 0, "the recalled prompt's own bubble is dropped");
+});
