@@ -13,6 +13,32 @@ const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
+
+test("the live model selector reapplies the current model without changing form selectors", () => {
+  const source = ts.createSourceFile("ModelSelector.tsx", readFileSync(new URL("./ModelSelector.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function findChoose(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "choose") return node.initializer;
+    return ts.forEachChild(node, findChoose);
+  }
+  const script = new Script(`(${ts.transpileModule(findChoose(source).getText(source), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText.trim().replace(/;$/, "")})(option)`);
+  const calls = [];
+  const option = { provider: "custom", modelId: "current" };
+  const context = {
+    option, value: option, isAutoSelection: false, setOpen: () => {},
+    onChange: () => calls.push("change"), onReselect: () => calls.push("reselect"),
+  };
+  script.runInNewContext(context);
+  assert.deepEqual(calls, ["reselect"]);
+  script.runInNewContext({ ...context, onReselect: undefined });
+  assert.deepEqual(calls, ["reselect"]);
+  script.runInNewContext({ ...context, isAutoSelection: true });
+  script.runInNewContext({ ...context, value: null });
+  assert.deepEqual(calls, ["reselect", "change", "change"]);
+  const chat = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(chat, /onReselect=\{onModelChange\}/);
+});
 const { clearDraft, getDraft, mergeRestoredSubmissionDraft, mergeRestoredSubmissionText, rekeyDraft, setDraft } = await jiti.import("@/lib/draft-store.ts");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 

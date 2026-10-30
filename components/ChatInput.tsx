@@ -2633,6 +2633,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   options={modelOptions}
                   value={model}
                   onChange={onModelChange}
+                  onReselect={onModelChange}
                   disabled={isStreaming}
                   busy={modelSwitching}
                   isAutoSelection={isAutoModelSelection}

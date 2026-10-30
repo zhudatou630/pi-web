@@ -1051,6 +1051,7 @@ export const enLocale: LocalePlugin = {
     "models.noProviders": "No providers yet. Add one to get started.",
     "models.unsavedProvider": "Unsaved changes",
     "models.unsavedChanges": "Endpoint changes not saved (models.json)",
+    "models.reselectToApply": "In open sessions, select the model again to apply changes.",
     "models.discardChanges": "Discard",
     "models.discardConfirm": "models.json has unsaved changes. Discard them?",
     "models.kindOAuth": "Subscription",

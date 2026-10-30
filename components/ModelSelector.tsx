@@ -12,6 +12,7 @@ interface ModelSelectorProps {
   options: ModelSelectorOption[];
   value?: { provider: string; modelId: string } | null;
   onChange: (provider: string, modelId: string) => void;
+  onReselect?: (provider: string, modelId: string) => void;
   onClear?: () => void;
   emptyLabel?: string;
   selectedLabel?: string;
@@ -35,6 +36,7 @@ export function ModelSelector({
   options,
   value,
   onChange,
+  onReselect,
   onClear,
   emptyLabel,
   selectedLabel,
@@ -131,6 +133,7 @@ export function ModelSelector({
     const active = option.modelId === value?.modelId && option.provider === value?.provider;
     setOpen(false);
     if (!active || isAutoSelection) onChange(option.provider, option.modelId);
+    else onReselect?.(option.provider, option.modelId);
   };
 
   return (

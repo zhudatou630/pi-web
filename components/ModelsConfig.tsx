@@ -907,6 +907,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           <span className="models-footer-status is-danger" title={configFatalError ?? undefined}>{saveError || configFatalError}</span>
         ) : configDirty ? (
           <span className="models-footer-status"><span className="models-dirty-dot" />{t("models.unsavedChanges")}</span>
+        ) : savedOk ? (
+          <span className="models-footer-status">{t("models.reselectToApply")}</span>
         ) : null}>
           {!embedded && <ConfigButton onClick={onClose}>{t("i18n.cancel")}</ConfigButton>}
           {configDirty && !saving && (

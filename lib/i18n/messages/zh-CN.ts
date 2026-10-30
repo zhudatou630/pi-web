@@ -1051,6 +1051,7 @@ export const zhCNLocale: LocalePlugin = {
     "models.noProviders": "还没有服务商，先添加一个。",
     "models.unsavedProvider": "有未保存的更改",
     "models.unsavedChanges": "端点配置有未保存的更改（models.json）",
+    "models.reselectToApply": "在已打开的会话中，重新选择模型以应用更改。",
     "models.discardChanges": "放弃更改",
     "models.discardConfirm": "models.json 有未保存的更改，确定放弃吗？",
     "models.kindOAuth": "订阅",

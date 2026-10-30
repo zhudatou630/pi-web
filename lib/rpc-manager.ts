@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { existsSync, realpathSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
+import { isDeepStrictEqual } from "util";
 import { isBase64ImageWithinLimits, validateAgentImages } from "./image-attachments";
 import { parseQueuedDeliverySnapshot, snapshotAgentQueuedMessages, stampQueuedMessagesOnDelivery } from "./queued-messages";
 import { invalidateModelsCache } from "./models-cache";
@@ -972,17 +973,25 @@ export class AgentSessionWrapper {
 
       case "set_model": {
         const { provider, modelId } = command as { provider: string; modelId: string };
-        let model = this.inner.modelRuntime.getModel(provider, modelId);
-        if (!model) {
-          await this.inner.modelRuntime.refresh({ allowNetwork: false });
-          model = this.inner.modelRuntime.getModel(provider, modelId);
-        }
+        // Re-read saved definitions even for a known id; failed refreshes leave cached models usable.
+        await this.inner.modelRuntime.refresh({
+          allowNetwork: false,
+          providers: [provider],
+          signal: AbortSignal.timeout(15_000),
+        }).catch(() => undefined);
+        const model = this.inner.modelRuntime.getModel(provider, modelId);
         if (!model) throw new Error(`Model not found: ${provider}/${modelId}`);
-        // Like pi's /model: the last explicit choice becomes the default for new sessions.
-        await this.inner.setModel(model, { persist: true });
-        invalidateModelsCache();
-        invalidateSessionListCache();
-        // setModel resets the thinking level (per-model pin or global default).
+        const previous = this.inner.model;
+        if (!isDeepStrictEqual(previous, model)) {
+          const sameId = previous?.provider === model.provider && previous.id === model.id;
+          const thinkingLevel = this.inner.thinkingLevel;
+          // Like pi's /model: the last explicit choice becomes the default for new sessions.
+          await this.inner.setModel(model, { persist: true });
+          // A definition update is not a new choice; the SDK clamps to the updated capabilities.
+          if (sameId) this.inner.setThinkingLevel(thinkingLevel);
+          invalidateModelsCache();
+          invalidateSessionListCache();
+        }
         // Return the effective level so clients can re-sync their picker.
         return { id: model.id, provider: model.provider, thinkingLevel: this.inner.thinkingLevel };
       }

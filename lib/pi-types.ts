@@ -150,7 +150,7 @@ export interface AgentSessionLike {
     getModel: (provider: string, modelId: string) => ModelLike | undefined;
     getProvider: (provider: string) => { baseUrl?: string } | undefined;
     getAuth: (provider: string) => Promise<{ auth: { baseUrl?: string; apiKey?: string; headers?: Record<string, unknown> } } | undefined>;
-    refresh: (options?: { allowNetwork?: boolean }) => Promise<unknown>;
+    refresh: (options?: { allowNetwork?: boolean; providers?: string[]; signal?: AbortSignal }) => Promise<unknown>;
   };
   readonly sessionManager: SessionManager;
   readonly settingsManager: SettingsManager;
