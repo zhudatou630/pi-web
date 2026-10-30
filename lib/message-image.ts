@@ -16,12 +16,11 @@ const EXCLUDE = ".markdown-code-actions, .markdown-table-actions, .message-actio
 // its last row. A picture cannot scroll, so hide scrollbars and edge masks only in
 // the clone; !important beats the inline copies (including an active scroll animation).
 const EXPORT_CSS = "*{scrollbar-width:none!important;mask-image:none!important;-webkit-mask-image:none!important;animation:none!important}*::-webkit-scrollbar{display:none!important}"
-  // Wide tables and code blocks scroll on screen; a picture cannot, so they unfold to full width
-  // (the bordered box grows with them) while the prose keeps its on-screen line length.
-  + ".markdown-table-frame,.markdown-table-wrap,.markdown-code-block{width:max-content!important;min-width:100%!important;max-width:none!important;overflow:visible!important}"
+  // Wide tables scroll on screen; a picture unfolds their bordered frames.
+  + ".markdown-table-frame,.markdown-table-wrap{width:max-content!important;min-width:100%!important;max-width:none!important;overflow:visible!important}"
   // flow-root keeps the block formatting context overflow:hidden gave, so margins and height stay put.
   + ".markdown-body{overflow:visible!important;display:flow-root!important}"
-  + ".markdown-code-block>*{width:auto!important}.markdown-code-block pre{overflow:visible!important}"
+  + ".markdown-code-block pre{overflow:visible!important}"
   // A diagram preview scrolls vertically past min(600px, 60dvh); the picture shows all of it.
   + ".mermaid-preview-button{max-height:none!important;overflow:visible!important}";
 const SCROLLERS = ".markdown-table-wrap, .markdown-code-block pre";

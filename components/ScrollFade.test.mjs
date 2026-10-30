@@ -26,6 +26,10 @@ test("scroll fades use zero-initialized lengths and guarded, 16px scroll timelin
   assert.equal(block(".chat-scroll-fade {"), "\n  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);\n");
 });
 
+test("wrapped code no longer opts into a horizontal scroll mask", () => {
+  assert.doesNotMatch(fades, /markdown-code-block/);
+});
+
 test("both axes keep an opaque scrollbar strip", () => {
   assert.equal((fades.match(/linear-gradient\(#000, #000\)/g) ?? []).length, 2);
   assert.match(fades, /--scroll-fade-gutter: var\(--sidebar-scrollbar-gutter, 0px\)/);
@@ -97,7 +101,8 @@ test("image export clears masks and animations in the clone and unfolds the tabl
   const source = await readFile(new URL("../lib/message-image.ts", import.meta.url), "utf8");
   const exportCss = source.slice(source.indexOf("const EXPORT_CSS"), source.indexOf("const SCROLLERS"));
   assert.match(exportCss, /mask-image:none!important;-webkit-mask-image:none!important;animation:none!important/);
-  assert.match(exportCss, /\.markdown-table-frame,\.markdown-table-wrap,\.markdown-code-block\{width:max-content!important/);
+  assert.match(exportCss, /\.markdown-table-frame,\.markdown-table-wrap\{width:max-content!important/);
+  assert.doesNotMatch(exportCss, /\.markdown-code-block\{width:max-content/);
   assert.match(source, /fontEmbedCSS: EXPORT_CSS \+ await buildFontEmbedCSS\(el\)/);
   assert.match(source, /const SCROLLERS = "\.markdown-table-wrap, \.markdown-code-block pre"/);
 });

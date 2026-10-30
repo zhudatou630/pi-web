@@ -9,6 +9,8 @@ import { useTheme } from "@/hooks/useTheme";
 import { claudeCodeStyle, claudeDarkCodeStyle, claudeDarkMermaidVariables, claudeMermaidVariables } from "@/lib/claude-theme";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
+import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
+import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 import { usePrismLanguages } from "@/hooks/usePrismLanguages";
 import { takeHighlightBudget, waitForHighlight } from "@/lib/highlight-queue";
@@ -319,6 +321,28 @@ interface CodeBlockProps {
   isStreaming?: boolean;
 }
 
+type CodeLinesProps = Parameters<NonNullable<SyntaxHighlighterProps["renderer"]>>[0];
+
+// Like the file viewer: continuation lines belong to the text, not the number gutter.
+function renderCodeLines({ rows, stylesheet, useInlineStyles }: CodeLinesProps) {
+  return rows.map((row, index) => {
+    const children = row.children ?? [];
+    const classes = children[0]?.properties?.className;
+    const number = Array.isArray(classes) && classes.includes("react-syntax-highlighter-line-number") ? children[0] : null;
+    const text = {
+      ...row,
+      properties: { ...row.properties, className: [...(row.properties?.className ?? []), "markdown-code-line-text"] },
+      children: number ? children.slice(1) : children,
+    };
+    return (
+      <span key={index} className="markdown-code-line">
+        {number && renderSyntaxNode({ node: number, stylesheet, useInlineStyles, key: "number" })}
+        {renderSyntaxNode({ node: text, stylesheet, useInlineStyles, key: "text" })}
+      </span>
+    );
+  });
+}
+
 /**
  * Syntax-highlighted code block with copy button.
  * Used as the "source" view for mermaid blocks and for all non-mermaid code fences.
@@ -391,7 +415,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             padding: "6px 10px",
             fontSize: "calc(13px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.54,
-            overflowX: "auto",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
             border: "none",
             borderRadius: 0,
             background: "transparent",
@@ -405,7 +430,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           language={highlighted ? lang || "text" : "text"}
           style={palette === "claude" ? (isDark ? claudeDarkCodeStyle : claudeCodeStyle) : isDark ? vscDarkPlus : vs}
           showLineNumbers
-          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", paddingRight: "0.8em", userSelect: "none" }}
+          lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", paddingRight: "0.8em", userSelect: "none", flexShrink: 0 }}
+          renderer={renderCodeLines}
           customStyle={{
             margin: 0,
             padding: "6px 10px",
@@ -416,7 +442,9 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             boxShadow: "none",
             background: "transparent",
             backgroundColor: "transparent",
-            overflowX: "auto",
+            fontFamily: "var(--font-mono)",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >

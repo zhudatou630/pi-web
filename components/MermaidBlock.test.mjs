@@ -92,6 +92,33 @@ test("CodeBlock renders plain text without tokenization while streaming", () => 
   assert.match(html, /const x = 1;/);
 });
 
+test("CodeBlock wraps numbered text separately, preserving blank lines and multiline token colors", async () => {
+  const { fromHtml } = await import("hast-util-from-html");
+  await loadPrismLanguages();
+  const code = "/* comment\n" + "long-token-".repeat(30) + "\n\nend */\nconst 中文 = 1;\n";
+  const root = fromHtml(renderCode({ code, lang: "javascript" }), { fragment: true });
+  const find = (node, className) => [
+    ...(node.properties?.className?.includes(className) ? [node] : []),
+    ...(node.children ?? []).flatMap(child => find(child, className)),
+  ];
+  const textContent = node => node.value ?? (node.children ?? []).map(textContent).join("");
+  const rows = find(root, "markdown-code-line");
+  assert.equal(rows.length, code.split("\n").length);
+  for (const [index, row] of rows.entries()) {
+    assert.equal(textContent(row.children[0]), String(index + 1));
+    assert.match(row.children[0].properties.style, /flex-shrink:0/);
+    const text = find(row, "markdown-code-line-text")[0];
+    assert.equal(textContent(text), code.split("\n")[index] + (index < rows.length - 1 ? "\n" : ""));
+  }
+  const continuation = find(rows[1], "markdown-code-line-text")[0];
+  assert.match(continuation.properties.style, /color:/);
+  assert.equal(continuation.properties.style, find(rows[0], "token")[0].properties.style);
+  assert.match(renderCode({ code: "x", lang: "text" }), /font-family:var\(--font-mono\)/);
+  const streaming = renderCode({ code, lang: "javascript", isStreaming: true });
+  assert.match(streaming, /white-space:pre-wrap;overflow-wrap:anywhere/);
+  assert.doesNotMatch(streaming, /overflow-x:auto/);
+});
+
 test("MermaidBlock handles Chinese characters in diagram", () => {
   const chineseMermaid = `sequenceDiagram
     participant PC as PC客户端

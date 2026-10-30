@@ -1297,7 +1297,6 @@ pre, code {
 }
 @supports (animation-timeline: scroll(self block)) and (animation-range: 0px 16px) {
   .scroll-fade-block,
-  .markdown-code-block pre,
   .markdown-table-wrap {
     animation-name: scroll-fade-start, scroll-fade-end;
     animation-duration: auto;
@@ -1316,7 +1315,6 @@ pre, code {
     mask-size: calc(100% - var(--scroll-fade-gutter)) 100%, var(--scroll-fade-gutter) 100%;
     mask-position: left top, right top;
   }
-  .markdown-code-block pre,
   .markdown-table-wrap {
     --scroll-fade-gutter: 0px;
     animation-timeline: scroll(self inline);
@@ -1329,7 +1327,6 @@ pre, code {
   /* These browsers use our 5px classic bar; touch bars are hidden. */
   @supports selector(::-webkit-scrollbar) {
     @media (pointer: fine) {
-      .markdown-code-block pre,
       .markdown-table-wrap { --scroll-fade-gutter: 5px; }
     }
   }
@@ -2081,6 +2078,15 @@ pre, code {
   border-radius: 0 !important;
   background: transparent !important;
   background-color: transparent !important;
+}
+.markdown-code-line {
+  display: flex;
+}
+.markdown-code-line-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .markdown-code-header {
   font-family: var(--font-ui);
