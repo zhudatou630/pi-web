@@ -647,10 +647,11 @@ test("renders the shared field model selector as a disabled gray control", () =>
   );
 
   assert.match(html, /aria-label="Model override"/);
-  assert.match(html, /disabled=""/);
-  assert.match(html, /background:var\(--bg-panel\)/);
-  assert.match(html, />Parent default</);
-  assert.match(html, /<rect x="4" y="4" width="16" height="16"/);
+  // The field is Select's trigger (70a71b107): its gray disabled look comes from `.select-trigger:disabled`.
+  assert.match(html, /<button[^>]*disabled=""[^>]*class="select-trigger"|<button[^>]*class="select-trigger"[^>]*disabled=""/);
+  assert.match(html, /class="select-trigger-label">Parent default</);
+  assert.match(html, /class="select-trigger-chevron"/);
+  assert.match(readFileSync(new URL("../app/settings.css", import.meta.url), "utf8"), /\.select-trigger:disabled \{\s*background: var\(--bg-panel\);/);
 });
 
 test("caps an upward menu to the visible space above its anchor", () => {

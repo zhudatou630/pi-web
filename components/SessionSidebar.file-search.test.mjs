@@ -26,7 +26,7 @@ test("reloads an expanded directory after the tree is remounted", () => {
 
 test("search result rows offer mention and download actions like the file tree", () => {
   assert.match(source, /onAtMention\(getRelativeFilePath\(node\.fullPath, cwd\), node\.isDir, cwd\)/);
-  assert.match(source, /<MentionIcon \/>/);
+  assert.match(source, /<MentionIcon size=\{13\} \/>/);
   assert.match(source, /encodeFilePathForApi\(node\.fullPath\)\}\?type=download/);
 });
 

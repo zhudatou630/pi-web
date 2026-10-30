@@ -106,7 +106,8 @@ test("skills and plugins pages show translated state and never edit package-owne
   const sources = Object.fromEntries(configSources);
   // A package skill's switch is locked; the page points to Plugins / This project instead.
   assert.match(sources.SkillsConfig, /skill\.sourceInfo\?\.origin === "package"/);
-  assert.match(sources.SkillsConfig, /disabled=\{isPackageSkill\(skill\) \|\| !on\}/);
+  // Auto-invoke is a property of the skill file, editable even while the skill is off globally (97c3c156d).
+  assert.match(sources.SkillsConfig, /checked=\{autoInvoke\}\s*disabled=\{isPackageSkill\(skill\)\}/);
   // The list switch is the global load switch; auto-invoke lives in the detail page.
   assert.match(sources.SkillsConfig, /<ConfigSwitch\s+checked=\{skill\.globalEnabled\}[\s\S]*?label=\{t\("skills\.enabled"\)\}/);
   assert.match(sources.SkillsConfig, /patchSkill\(skill, \{ enabled: !skill\.globalEnabled \}\)/);
