@@ -195,6 +195,10 @@ test("highlighted and bounded diff gutters stay pinned with matching line boxes"
 });
 
 test("a hidden or closed viewer reports its state and stops media playback", () => {
-  assert.match(source, /if \(!watchEnabled\) onStateChangeRef\.current\?\.\(\{ \.\.\.viewerStateRef\.current \}\);/);
+  assert.match(source, /if \(watchEnabled\) return;\s*onStateChangeRef\.current\?\.\(\{ \.\.\.viewerStateRef\.current \}\);/);
   assert.equal(source.match(/if \(!watchEnabled\) mediaRef\.current\?\.pause\(\);/g)?.length, 2);
+});
+
+test("a hidden Markdown preview pauses its inline media", () => {
+  assert.match(source, /if \(watchEnabled\) return;[\s\S]{0,300}?shellRef\.current\?\.querySelectorAll<HTMLMediaElement>\("audio, video"\)\.forEach\(\(media\) => media\.pause\(\)\)/);
 });

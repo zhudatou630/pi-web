@@ -1434,7 +1434,10 @@ function TextFileViewer({
   // time) and loop under StrictMode's mount/unmount/mount.
   // A hidden (cached) or closed viewer reports too, so a reopen that remounts it starts from current state.
   useEffect(() => {
-    if (!watchEnabled) onStateChangeRef.current?.({ ...viewerStateRef.current });
+    if (watchEnabled) return;
+    onStateChangeRef.current?.({ ...viewerStateRef.current });
+    // A hidden (cached) Markdown preview must not keep playing its inline media, like AudioViewer/VideoViewer.
+    shellRef.current?.querySelectorAll<HTMLMediaElement>("audio, video").forEach((media) => media.pause());
   }, [watchEnabled]);
 
   useEffect(() => {
