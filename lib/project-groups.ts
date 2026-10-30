@@ -116,21 +116,29 @@ export function applyProjectOrderUpdate(order: readonly string[], update: Projec
   return next;
 }
 
+export interface ProjectActivity {
+  running: number;
+  awaiting: number;
+  unread: number;
+}
+
 export function getProjectActivity(
   sessions: readonly SessionInfo[],
   runningSessionIds: ReadonlySet<string>,
   unreadSessionIds: ReadonlySet<string>,
-): Map<string, { running: number; unread: number }> {
-  const counts = new Map<string, { running: number; unread: number }>();
+  awaitingInputSessionIds: ReadonlySet<string>,
+): Map<string, ProjectActivity> {
+  const counts = new Map<string, ProjectActivity>();
   for (const family of listSessionFamilies(sessions)) {
     const key = workspaceKeyOf(family.root);
     if (!key) continue;
     let entry = counts.get(key);
     if (!entry) {
-      entry = { running: 0, unread: 0 };
+      entry = { running: 0, awaiting: 0, unread: 0 };
       counts.set(key, entry);
     }
-    if (familyHasMemberIn(family, runningSessionIds)) entry.running++;
+    if (familyHasMemberIn(family, awaitingInputSessionIds)) entry.awaiting++;
+    else if (familyHasMemberIn(family, runningSessionIds)) entry.running++;
     if (familyHasMemberIn(family, unreadSessionIds)) entry.unread++;
   }
   return counts;

@@ -8,7 +8,7 @@ import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
-import { applyProjectOrderUpdate, isProjectKey, orderProjects, getProjectActivity, getRecentProjects, projectDisplayName, type ProjectOrderUpdate } from "@/lib/project-groups";
+import { applyProjectOrderUpdate, isProjectKey, orderProjects, getProjectActivity, getRecentProjects, projectDisplayName, type ProjectActivity, type ProjectOrderUpdate } from "@/lib/project-groups";
 import { createPortal } from "react-dom";
 import { useProjectDrag, type ProjectDragBlock } from "@/hooks/useProjectDrag";
 import { workspaceKeyOf } from "@/lib/workspace-key";
@@ -1349,19 +1349,21 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
 
   // Per-project activity counts count families, excluding the archive.
   const projectActivity = useMemo(
-    () => getProjectActivity(allSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds),
-    [allSessions, archivedMemberIds, runningSessionIds, unreadSessionIds],
+    () => getProjectActivity(allSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds),
+    [allSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds],
   );
 
   const otherProjectActivity = useMemo(() => {
     let running = 0;
+    let awaiting = 0;
     let unread = 0;
     for (const [key, activity] of projectActivity) {
       if (key === selectedProject?.key) continue;
       running += activity.running;
+      awaiting += activity.awaiting;
       unread += activity.unread;
     }
-    return { running, unread };
+    return { running, awaiting, unread };
   }, [projectActivity, selectedProject?.key]);
 
   const selectionProjectKey = selection?.archiveView === archiveView ? selection.projectKey : null;
@@ -1565,6 +1567,15 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     () => allFamilies.filter((family) => workspaceKeyOf(family.root) !== selectionProjectKey && pinnedSessionIds.includes(family.root.id) && !archivedMemberIds.has(family.root.id)),
     [allFamilies, archivedMemberIds, pinnedSessionIds, selectionProjectKey],
   );
+
+  const pinnedActivity = useMemo(() => [...getProjectActivity(
+    pinnedFamilies.flatMap((family) => [family.root, ...family.subagents]),
+    runningSessionIds, unreadSessionIds, awaitingInputSessionIds,
+  ).values()].reduce((total, activity) => ({
+    running: total.running + activity.running,
+    awaiting: total.awaiting + activity.awaiting,
+    unread: total.unread + activity.unread,
+  }), { running: 0, awaiting: 0, unread: 0 }), [pinnedFamilies, runningSessionIds, unreadSessionIds, awaitingInputSessionIds]);
 
   const virtualIndices = getSessionListIndices(
     workspaceRows.length,
@@ -2007,6 +2018,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           <div className="sidebar-section-row">
             <button type="button" onClick={() => setPinnedOpen((open) => !open)} className="sidebar-section-label" aria-label={t("sidebar.pinned")} aria-expanded={pinnedOpen}>
               <span>{sectionTitle("sidebar.pinned")}</span>
+              {!pinnedOpen && <SessionActivitySummary activity={pinnedActivity} />}
             </button>
           </div>
           {pinnedOpen && (
@@ -2074,16 +2086,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
             </ToolbarIconButton>
           )}
           <div style={{ display: "flex", alignItems: "center" }}>
-            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.unread > 0) && (
+            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0) && (
               <span
                 role="status"
                 title={t("sidebar.otherProjectActivity")}
-                aria-label={`${t("sidebar.otherProjectActivity")} (${otherProjectActivity.running + otherProjectActivity.unread})`}
+                aria-label={`${t("sidebar.otherProjectActivity")} (${otherProjectActivity.running + otherProjectActivity.awaiting + otherProjectActivity.unread})`}
                 style={{ display: "inline-flex", alignItems: "center" }}
               >
-                {otherProjectActivity.running > 0
-                  ? <LivePulseBeacon size={11} />
-                  : <span style={{ color: "var(--success)", fontSize: 10 }}>{otherProjectActivity.unread}</span>}
+                <SessionActivitySummary activity={otherProjectActivity} />
               </span>
             )}
             {/* Adding a project means nothing in the archive; switching project still does. */}
@@ -2181,8 +2191,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                       style={{ flex: 1, height: 28 }}
                     >
                       <PathLabel text={projectNames.get(project.key) ?? displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
-                      {activity?.running ? <LivePulseBeacon size={11} /> : null}
-                      {activity?.unread ? <span style={{ color: "var(--success)", fontSize: 10 }}>{activity.unread}</span> : null}
+                      <SessionActivitySummary activity={activity} />
                     </button>
                   </div>
                 );
@@ -2400,14 +2409,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
                     >
                       <ProjectFolderIcon open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{projectNames.get(row.project.key) ?? getFileName(row.project.root)}</span>
-                      {activity?.running ? (
-                        <span role="status" aria-label={`${t("sidebar.agentRunning")} (${activity.running})`}>
-                          <LivePulseBeacon size={11} />
-                        </span>
-                      ) : null}
-                      {activity?.unread ? (
-                        <span aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ color: "var(--success)", fontSize: 10 }}>{activity.unread}</span>
-                      ) : null}
+                      <SessionActivitySummary activity={activity} />
                     </button>
                     )}
                     {active ? worktreeSwitcher : null}
@@ -2682,6 +2684,28 @@ function ProjectNameInput({ open, initial, onCommit, onCancel }: {
         style={RENAME_INPUT_STYLE}
       />
     </div>
+  );
+}
+
+export function SessionActivitySummary({ activity }: { activity?: ProjectActivity }) {
+  const { t } = useI18n();
+  if (!activity) return null;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-ui)" }}>
+      {activity.awaiting > 0 && (
+        <span role="status" aria-label={`${t("sidebar.awaitingInput")} (${activity.awaiting})`} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "var(--warning)" }}>
+          <AwaitingSessionIndicator />{activity.awaiting}
+        </span>
+      )}
+      {activity.running > 0 && (
+        <span role="status" aria-label={`${t("sidebar.agentRunning")} (${activity.running})`} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+          <LivePulseBeacon size={11} />{activity.running}
+        </span>
+      )}
+      {activity.unread > 0 && (
+        <span aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ color: "var(--success)" }}>{activity.unread}</span>
+      )}
+    </span>
   );
 }
 

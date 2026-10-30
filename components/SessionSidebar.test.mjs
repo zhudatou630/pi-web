@@ -6,9 +6,26 @@ import ts from "typescript";
 import vm from "node:vm";
 
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
-const { getSessionListIndices, SessionItem } = await jiti.import("./SessionSidebar.tsx");
+const { getSessionListIndices, SessionItem, SessionActivitySummary } = await jiti.import("./SessionSidebar.tsx");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
+test("folded summaries use the existing awaiting badge and show separate counts", async () => {
+  const React = await jiti.import("react");
+  const { renderToStaticMarkup } = await jiti.import("react-dom/server");
+  const { I18nProvider } = await jiti.import("@/hooks/useI18n");
+  const render = activity => renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SessionActivitySummary, { activity })));
+  const waiting = render({ awaiting: 2, running: 0, unread: 0 });
+  assert.match(waiting, /Awaiting input \(2\)/);
+  assert.match(waiting, /var\(--warning\)/);
+  assert.doesNotMatch(waiting, /live-pulse-beacon/);
+  const mixed = render({ awaiting: 2, running: 1, unread: 3 });
+  assert.match(mixed, /Agent running… \(1\)/);
+  assert.match(mixed, /live-pulse-beacon/);
+  assert.match(mixed, /New session activity \(3\)/);
+  assert.match(source, /!pinnedOpen && <SessionActivitySummary activity=\{pinnedActivity\}/);
+  assert.equal((source.match(/<SessionActivitySummary activity=\{activity\}/g) ?? []).length, 2);
+});
+
 test("unread storage updates replace stale markers without echoing writes", () => {
   const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
   const localStorage = {};
