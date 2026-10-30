@@ -536,7 +536,6 @@ export function ModelDetail({
                   {effectiveApi === "anthropic-messages" && (
                     <SwitchRow
                       label={t("models.claudeAdaptiveThinking")}
-                      description="compat.forceAdaptiveThinking"
                       checked={effectiveCompat(provider, model)["forceAdaptiveThinking"] === true}
                       onChange={(v) => onChange(setCompatBool(model, "forceAdaptiveThinking", v))}
                     />
