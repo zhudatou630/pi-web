@@ -512,6 +512,7 @@ export function AppShell() {
     };
   }, [rightPanelOpen, rightPanelResizer.panelRef]);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
+  const newComposerFocusKeyRef = useRef<string | null>(null);
   const [pendingQuotePrompt, setPendingQuotePrompt] = useState<{ sessionId: string; text: string } | null>(null);
   const handlePendingQuotePromptConsumed = useCallback((sessionId: string) => {
     setPendingQuotePrompt((current) => current?.sessionId === sessionId ? null : current);
@@ -1266,6 +1267,7 @@ export function AppShell() {
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
     const draftKey = `new:${sessionId}:${cwd}`;
+    newComposerFocusKeyRef.current = draftKey;
     rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
@@ -1869,6 +1871,7 @@ export function AppShell() {
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
+    newComposerFocusKeyRef.current = draftKey;
     rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(draftId);
@@ -2335,6 +2338,15 @@ export function AppShell() {
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = focusedDraftKey;
   }, [focusedDraftKey]);
+  useEffect(() => {
+    if (!focusedDraftKey || newComposerFocusKeyRef.current !== focusedDraftKey) return;
+    newComposerFocusKeyRef.current = null;
+    if (isMobile || window.matchMedia("(pointer: coarse)").matches) return;
+    const frame = requestAnimationFrame(() => {
+      if (!isModalDialogOpen()) chatInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusedDraftKey, isMobile]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
 
