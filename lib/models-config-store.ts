@@ -123,7 +123,7 @@ export function writeModelsConfig(
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const normalized = normalizeModelsConfigCosts(sanitizeModelsConfig(reconcileModelOverrides(data)));
   validateProviderEntries(normalized.providers);
-  writePrivateFileAtomicSync(modelsPath, JSON.stringify(normalized, null, 2));
+  writePrivateFileAtomicSync(modelsPath, JSON.stringify(normalized, null, 2), 0o600, { followSymlinks: true });
   invalidateModelsCache();
 }
 

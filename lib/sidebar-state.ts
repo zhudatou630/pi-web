@@ -81,7 +81,7 @@ async function mutateSidebarState(
     const state = loadState(path);
     const changed = mutate(state);
     if (compromised) throw compromised;
-    if (changed) writePrivateFileAtomicSync(path, JSON.stringify(state, null, 2) + "\n");
+    if (changed) writePrivateFileAtomicSync(path, JSON.stringify(state, null, 2) + "\n", 0o600, { followSymlinks: true });
     return { state, changed };
   } finally {
     await release();

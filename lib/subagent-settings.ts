@@ -80,7 +80,7 @@ export function writeProjectSubagentsEnabled(
   const stored = readStoredSettings(settingsPath);
   const next = withProjectOverride({ ...stored, version: 1 }, projectRoot, enabled, stored.builtInEnabled !== false);
   mkdirSync(dirname(settingsPath), { recursive: true });
-  writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2));
+  writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2), 0o600, { followSymlinks: true });
 }
 
 export function writeBuiltInSubagentsEnabled(
@@ -93,7 +93,7 @@ export function writeBuiltInSubagentsEnabled(
     ...stored,
     version: 1,
     builtInEnabled: enabled,
-  }, null, 2));
+  }, null, 2), 0o600, { followSymlinks: true });
   return readSubagentSettings(settingsPath);
 }
 
@@ -110,6 +110,6 @@ export function writeSubagentMaxConcurrent(
     ...stored,
     version: 1,
     maxConcurrent,
-  }, null, 2));
+  }, null, 2), 0o600, { followSymlinks: true });
   return readSubagentSettings(settingsPath);
 }

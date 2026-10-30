@@ -396,7 +396,7 @@ export function writeImageProjectEnabled(
   }
   const stored = readStoredSettings(settingsPath);
   const next = withProjectOverride(stored, projectRoot, enabled, stored.enabled === true);
-  writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2));
+  writePrivateFileAtomicSync(settingsPath, JSON.stringify(next, null, 2), 0o600, { followSymlinks: true });
 }
 
 /** With a project root, the project's own setting decides whether generation is on. */
@@ -538,7 +538,7 @@ function persistImageSettings(agentDir: string, next: ImageSettingsSnapshot): Im
   if (Object.keys(custom).length) payload.custom = custom;
   else delete payload.custom;
   mkdirSync(path.dirname(settingsPath), { recursive: true });
-  writePrivateFileAtomicSync(settingsPath, JSON.stringify(payload, null, 2));
+  writePrivateFileAtomicSync(settingsPath, JSON.stringify(payload, null, 2), 0o600, { followSymlinks: true });
   return next;
 }
 

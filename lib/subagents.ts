@@ -573,7 +573,7 @@ export function saveSubagentProfile(
     if (!(key in frontmatter)) frontmatter[key] = value;
   }
   const yaml = stringifyYaml(frontmatter, { noRefs: true, lineWidth: 1000 }).trimEnd();
-  writePrivateFileAtomicSync(filePath, `---\n${yaml}\n---\n\n${systemPrompt}\n`);
+  writePrivateFileAtomicSync(filePath, `---\n${yaml}\n---\n\n${systemPrompt}\n`, 0o600, { followSymlinks: scope === "global" });
   const preservedSelectors = parseExtensionToolSelectors(frontmatter.tools);
   return {
     ...profile,
@@ -747,7 +747,7 @@ export function importAgentProfiles(
       }
       mkdirSync(dir, { recursive: true });
       // Copy verbatim with private permissions, like every other agent file write.
-      writePrivateFileAtomicSync(join(dir, file), readFileSync(sourcePath));
+      writePrivateFileAtomicSync(join(dir, file), readFileSync(sourcePath), 0o600, { followSymlinks: scope === "global" });
       imported.push(file);
       names.add(parsed.name.toLowerCase());
     } catch (error) {
@@ -773,7 +773,7 @@ export function setSubagentProfileEnabled(cwd: string, name: string, enabled: bo
   if (profile.scope === "builtin") {
     const dir = assertWritableProfileDirectory(cwd, "global");
     mkdirSync(dir, { recursive: true });
-    writePrivateFileAtomicSync(join(dir, `${profile.name}.md`), DISABLE_STUB);
+    writePrivateFileAtomicSync(join(dir, `${profile.name}.md`), DISABLE_STUB, 0o600, { followSymlinks: true });
     return;
   }
   if (profile.disableStub) {
