@@ -4,6 +4,7 @@ import { PwaRegistration } from "@/components/PwaRegistration";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./settings.css";
+import "./routines.css";
 import "./theme-claude.css";
 
 const notoSansMono = Noto_Sans_Mono({

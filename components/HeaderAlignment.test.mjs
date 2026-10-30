@@ -53,7 +53,12 @@ test("sidebar starts with project sections sharing one chevron gutter and settin
   assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 3);
   assert.doesNotMatch(sidebar, /className="sidebar-switcher"|Workspace context bar/);
   assert.match(shell, /className="sidebar-footer"/);
+  assert.equal(footer.display, "flex");
+  // Settings, then Routines (when switched on) at the far end.
   assert.equal((shell.match(/className="sidebar-footer-item"/g) ?? []).length, 1);
+  assert.equal((shell.match(/className="sidebar-footer-item is-end"/g) ?? []).length, 1);
+  assert.ok(shell.indexOf('className="sidebar-footer-item"') < shell.indexOf('className="sidebar-footer-item is-end"'), "Settings comes first");
+  assert.equal(declarations(".sidebar-footer-item.is-end")["justify-content"], "flex-end");
   assert.doesNotMatch(shell, /sidebar-section-label/);
   assert.doesNotMatch(shell, /toUpperCase\(\)/);
 });

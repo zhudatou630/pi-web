@@ -51,7 +51,7 @@ for (const [component, prop, split] of [
       syncSessionMetadata(id) { result.metadata = id; },
       rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
     };
-    for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen"]) {
+    for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
       scope[`set${setter}`] = (value) => { result[setter] = value; };
     }
     scope.handleSelectSession = callback("handleSelectSession", scope);
@@ -72,6 +72,7 @@ for (const [component, prop, split] of [
     assert.equal(result.SidebarOpen, split ? undefined : false);
     assert.equal(result.metadata, "target");
     assert.equal(result.url, "?session=target");
+    assert.equal(result.MainView, "chat", "opening a session leaves the Routines view");
   });
 }
 
@@ -90,7 +91,7 @@ function familySwitchScope(tabs, primary, result) {
     syncSessionMetadata(id) { result.metadata = id; },
     rekeyDraft() { assert.fail("family switch must not rekey a draft"); },
   };
-  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen"]) {
+  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
     scope[`set${setter}`] = (value) => { result[setter] = value; };
   }
   scope.handleSelectSession = callback("handleSelectSession", scope);
@@ -156,7 +157,7 @@ test("does not close the file reader while a session identity is still unresolve
     syncSessionMetadata() {},
     rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
   };
-  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen"]) {
+  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
     scope[`set${setter}`] = (value) => { result[setter] = value; };
   }
   scope.handleSelectSession = callback("handleSelectSession", scope);
@@ -194,7 +195,7 @@ test("uses the focused session project instead of the sidebar project in split v
     syncSessionMetadata() {},
     rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
   };
-  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen"]) {
+  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
     scope[`set${setter}`] = (value) => { result[setter] = value; };
   }
   scope.handleSelectSession = callback("handleSelectSession", scope);

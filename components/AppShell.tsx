@@ -33,6 +33,7 @@ import { FileViewer, type FileReveal, type FileSelectionAttachment } from "./Fil
 import { TabBar, type Tab } from "./TabBar";
 import { FILE_TABS_KEY, getAdjacentTabId, mergeFileViewerStates, movePanelTab, openFileTab, orderPanelTabs, PANEL_TAB_ORDER_KEY, pinFileTab, replacePanelTabId, restoreFileTabs, restorePanelTabOrder, serializeFileTabs, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel } from "./SettingsPanel";
+import { RoutinesView } from "./RoutinesView";
 import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
@@ -116,6 +117,7 @@ import { iconStroke } from "./iconStroke";
 import { isModalDialogOpen } from "./ModalDialog";
 import { BrowserPanel, BROWSER_TAB_ID, type BrowserState } from "./BrowserPanel";
 import { parsePreviewTarget, PREVIEW_OPEN_EVENT } from "@/lib/preview-target";
+import { OPEN_ROUTINE_EVENT, ROUTINES_FEATURE_EVENT } from "@/lib/routine-events";
 
 const BROWSER_TAB_KEY = "pi-web:browser-tab";
 
@@ -400,6 +402,56 @@ export function AppShell() {
   }, []);
   const [explorerRefreshKey, setExplorerRefreshKey] = useState(0);
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
+  // Routines are a main-area view, a peer of the chat (docs/routines.md). Once opened the
+  // view stays mounted while hidden, so an unsaved routine survives a trip to a session.
+  // `?routines` / `?routines=<id>` reopen the view after a reload or from a notification.
+  const [mainView, setMainView] = useState<"chat" | "routines">(() => initialNavigation.routines !== null ? "routines" : "chat");
+  const [routinesOpened, setRoutinesOpened] = useState(() => initialNavigation.routines !== null);
+  const [routineOpenRequest, setRoutineOpenRequest] = useState<{ id: string } | null>(() => initialNavigation.routines ? { id: initialNavigation.routines } : null);
+  /** The address of the Routines page being shown: the list, or one routine. */
+  const showRoutinesInUrl = useCallback((routineId: string | null) => {
+    router.replace(routineId ? `?routines=${encodeURIComponent(routineId)}` : "?routines", { scroll: false });
+  }, [router]);
+  // Settings › General can switch Routines off: no footer entry and no page. Null until known,
+  // so a switched-off install never flashes the entry.
+  const [routinesEnabled, setRoutinesEnabled] = useState<boolean | null>(null);
+  const routinesEnabledRef = useRef(routinesEnabled);
+  routinesEnabledRef.current = routinesEnabled;
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/routines/settings", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() as Promise<{ enabled?: unknown }> : null))
+      .then((data) => { if (!cancelled && typeof data?.enabled === "boolean") setRoutinesEnabled(data.enabled); })
+      .catch(() => {});
+    const sync = (event: Event) => {
+      const enabled = (event as CustomEvent<{ enabled?: unknown }>).detail?.enabled;
+      if (typeof enabled === "boolean") setRoutinesEnabled(enabled);
+    };
+    window.addEventListener(ROUTINES_FEATURE_EVENT, sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(ROUTINES_FEATURE_EVENT, sync);
+    };
+  }, []);
+  // A chat's created-routine chip asks to show that routine (lib/routine-events.ts).
+  useEffect(() => {
+    const open = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: unknown }>).detail?.id;
+      if (typeof id !== "string" || routinesEnabledRef.current === false) return;
+      setMainView("routines");
+      setRoutinesOpened(true);
+      setRoutineOpenRequest({ id });
+    };
+    window.addEventListener(OPEN_ROUTINE_EVENT, open);
+    return () => window.removeEventListener(OPEN_ROUTINE_EVENT, open);
+  }, []);
+  // Switched off while shown (or opened by a stale ?routines link): back to the chat.
+  useEffect(() => {
+    if (routinesEnabled !== false || mainView !== "routines") return;
+    setMainView("chat");
+    router.replace(selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : window.location.pathname, { scroll: false });
+  }, [routinesEnabled, mainView, router, selectedSessionId]);
+  const [routinesHeaderSlot, setRoutinesHeaderSlot] = useState<HTMLElement | null>(null);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -1194,6 +1246,7 @@ export function AppShell() {
   }, [activeCwd, newSessionCwd, router, selectedSession]);
 
   const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, pinned = false, inPlace = false) => {
+    setMainView("chat");
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
     const activeDraftKey = activeNewSessionDraftKeyRef.current;
     const activeDraftCwd = newSessionCwd ?? (selectedSession === null ? activeCwd : null);
@@ -1266,6 +1319,7 @@ export function AppShell() {
   }, [activeCwd, router, isMobile, newSessionCwd, selectedSession, syncSessionMetadata]);
 
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
+    setMainView("chat");
     const draftKey = `new:${sessionId}:${cwd}`;
     newComposerFocusKeyRef.current = draftKey;
     rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
@@ -1328,16 +1382,18 @@ export function AppShell() {
     handleSelectSession(session, false, undefined, undefined, false, true);
   }, [handleSelectSession]);
 
-  const handleOpenSession = useCallback(async (sessionId: string) => {
+  /** Opens a session by id: in place within its family (sub-agent links), or as a normal pick (routine runs). */
+  const handleOpenSession = useCallback(async (sessionId: string, inPlace = true) => {
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
       const data = await response.json() as { info?: SessionInfo; error?: string };
       if (!response.ok || !data.info) throw new Error(data.error ?? `HTTP ${response.status}`);
-      handleSwitchFamilySession(data.info);
+      if (inPlace) handleSwitchFamilySession(data.info);
+      else handleSelectSession(data.info);
     } catch (error) {
       console.error("[pi-web] failed to open session:", error instanceof Error ? error.message : error);
     }
-  }, [handleSwitchFamilySession]);
+  }, [handleSelectSession, handleSwitchFamilySession]);
 
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo, sourceDraftKey: string) => {
@@ -1747,6 +1803,7 @@ export function AppShell() {
   }, [chatTabs, focusChatTab]);
 
   const handleSelectChatTab = useCallback((tabId: string) => {
+    setMainView("chat");
     const tab = chatTabs.find((candidate) => candidate.id === tabId);
     if (!tab) return;
 
@@ -1863,6 +1920,7 @@ export function AppShell() {
   }, [activeChatPane, activeChatTabId, confirm, focusChatTab, splitChatTabId, translate]);
 
   const handleNewChatTab = useCallback((pane?: "primary" | "secondary") => {
+    setMainView("chat");
     const openInSecondary = isSplitActive && (
       pane === "secondary" || (pane !== "primary" && activeChatPane === "secondary")
     );
@@ -2464,6 +2522,8 @@ export function AppShell() {
         onWorktreeInfoChange={setWorktreeInfo}
         explorerReveal={explorerReveal}
       />
+      {/* Settings where a section title starts; Routines (when switched on) at the far end,
+          its label where the section headers' last icon ends. */}
       <div className="sidebar-footer">
         <button
           type="button"
@@ -2478,6 +2538,25 @@ export function AppShell() {
               the button's accessible name and tooltip are translated. */}
           <span className="sidebar-footer-label" aria-hidden="true">Settings</span>
         </button>
+        {routinesEnabled && (
+          <button
+            type="button"
+            onClick={() => {
+              const leaving = mainView === "routines";
+              setMainView(leaving ? "chat" : "routines");
+              setRoutinesOpened(true);
+              // Back in the chat, the address names its session again (RoutinesView names its own page).
+              if (leaving) router.replace(selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : window.location.pathname, { scroll: false });
+              if (isMobile) setSidebarOpen(false);
+            }}
+            title={translate("routines.title")}
+            aria-label={translate("routines.title")}
+            aria-pressed={mainView === "routines"}
+            className="sidebar-footer-item is-end"
+          >
+            <span className="sidebar-footer-label" aria-hidden="true">Routines</span>
+          </button>
+        )}
       </div>
     </>
   );
@@ -2943,6 +3022,14 @@ export function AppShell() {
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
         <div className="workspace-header" style={{ position: "relative" }}>
+          {mainView === "routines" ? (
+            <>
+              {sidebarToggleButton}
+              {/* RoutinesView portals its breadcrumb here, where the chat tabs would be. */}
+              <div ref={setRoutinesHeaderSlot} className="routines-header-slot" />
+              {renderMainFileToggle(isMobile)}
+            </>
+          ) : (<>
           {!isSplitActive && sidebarToggleButton}
           {isMobile && (
             <div
@@ -3066,6 +3153,7 @@ export function AppShell() {
             </>
           ))}
           {!isMobile && !isSplitActive && renderMainFileToggle(false)}
+          </>)}
           {/* Top panel dropdown — shared, only one active at a time */}
           {activeTopPanel && topPanelPos && (
             <div
@@ -3411,7 +3499,7 @@ export function AppShell() {
           )}
 
         </div>
-        {isMobile && showChat && chatTabs.length > 1 && (
+        {isMobile && showChat && chatTabs.length > 1 && mainView === "chat" && (
           <div
             data-mobile-chat-tabs="true"
             style={{
@@ -3451,6 +3539,7 @@ export function AppShell() {
           {/* Panes area */}
           <div
             ref={chatPanesContainerRef}
+            inert={mainView === "routines" || undefined}
             style={{
               flex: 1,
               overflow: "hidden",
@@ -3548,6 +3637,22 @@ export function AppShell() {
             </div>
           ) : null}
           </div>
+          {routinesOpened && (
+            <div className="routines-layer" style={{ display: mainView === "routines" ? undefined : "none" }}>
+              <RoutinesView
+                active={mainView === "routines"}
+                cwd={projectTrustCwd ?? activeCwd ?? null}
+                projectPaths={projectPaths}
+                projectNameByRoot={projectNameByRoot}
+                worktreeInfo={worktreeInfo}
+                sessions={sessionCatalog}
+                openRequest={routineOpenRequest}
+                onPageChange={showRoutinesInUrl}
+                headerSlot={mainView === "routines" ? routinesHeaderSlot : null}
+                onOpenSession={(sessionId) => void handleOpenSession(sessionId, false)}
+              />
+            </div>
+          )}
         </div>
       </div>
 

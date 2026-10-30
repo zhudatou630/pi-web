@@ -35,6 +35,15 @@ export const PRESET_FULL: string[] = ["bash", "read", "edit", "write", "grep", "
 
 const BUILTIN_TOOL_NAMES = new Set([...PRESET_FULL, "powershell"]);
 
+/** The preset whose list equals `toolNames` exactly (undefined = configured), else null. Never rounds. */
+export function exactToolPreset(toolNames: readonly string[] | undefined): ToolPreset | null {
+  const key = (names: readonly string[]) => [...names].sort().join(",");
+  return TOOL_PRESET_VALUES.find((preset) => {
+    const names = getToolNamesForPreset(preset);
+    return names === undefined ? toolNames === undefined : toolNames !== undefined && key(names) === key(toolNames);
+  }) ?? null;
+}
+
 export function isToolPreset(value: unknown): value is ToolPreset {
   return typeof value === "string" && (TOOL_PRESET_VALUES as readonly string[]).includes(value);
 }

@@ -363,10 +363,12 @@ export function useAgentEditor({ cwd, profiles, refresh, onChanged, fixedScope, 
 export type AgentEditor = ReturnType<typeof useAgentEditor>;
 
 /** Model choices for the runtime field; the last reply paints at once, then revalidates. */
-function useModelOptions(cwd: string) {
+export function useModelOptions(cwd: string) {
   const seed = peekJson<Partial<ModelsData> & { error?: string }>(settingsUrls.chatModels(cwd));
   const seeded = seed?.ok && !seed.data.error ? seed.data.modelList : undefined;
   const [options, setOptions] = useState<ModelsData["modelList"]>(seeded ?? []);
+  /** The whole reply: Routines also shows the concrete default model and thinking level. */
+  const [data, setData] = useState<Partial<ModelsData> | null>(seeded ? seed!.data : null);
   const [loading, setLoading] = useState(!seeded);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -379,6 +381,7 @@ function useModelOptions(cwd: string) {
         const data = response.data;
         if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
         setOptions(data.modelList ?? []);
+        setData(data);
         setError(data.modelError ?? null);
       } catch (cause) {
         if (controller.signal.aborted) return;
@@ -389,7 +392,7 @@ function useModelOptions(cwd: string) {
     })();
     return () => controller.abort();
   }, [cwd]);
-  return { options, loading, error };
+  return { options, loading, error, data };
 }
 
 /** The Save button for the editor, shown while the form is editable. */

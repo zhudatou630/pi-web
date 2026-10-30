@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 export interface SelectOption {
   value: string;
@@ -19,10 +19,21 @@ interface SelectProps {
   className?: string;
   /** Dropdown at least as wide as the trigger by default; "content" keeps it as wide as its longest row. */
   align?: "start" | "end";
+  /** Leading glyph inside the trigger (composer-style toolbars). */
+  icon?: ReactNode;
+  /** "up" opens above like the chat composer's menus, unless there is no room; default flips only when needed. */
+  placement?: "auto" | "up";
+  /**
+   * Multi-select: checks come from `isSelected`, every pick calls `onChange` (the caller
+   * toggles) and the menu stays open. `label` then names the selection on the trigger.
+   */
+  isSelected?: (value: string) => boolean;
+  /** Trigger text instead of the selected option's label; "" shows only the icon. */
+  label?: string;
 }
 
 /** Replacement for a native `<select>`: same panel language as ModelSelector (`.menu-surface`). */
-export function Select({ value, options, onChange, ariaLabel, disabled = false, className = "select-trigger", align = "start" }: SelectProps) {
+export function Select({ value, options, onChange, ariaLabel, disabled = false, className = "select-trigger", align = "start", icon, placement = "auto", isSelected, label }: SelectProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
@@ -38,9 +49,11 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
     setOpen(true);
   };
   const close = () => setOpen(false);
+  const multiple = Boolean(isSelected);
+  const checked = (index: number) => (isSelected ? isSelected(options[index].value) : index === selected);
   const choose = (index: number) => {
-    close();
-    if (options[index] && index !== selected) onChange(options[index].value);
+    if (!multiple) close();
+    if (options[index] && (multiple || index !== selected)) onChange(options[index].value);
   };
   const step = (direction: 1 | -1) => {
     if (!enabled.length) return;
@@ -54,13 +67,15 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
       const target = event.target as Node;
       if (!buttonRef.current?.contains(target) && !panelRef.current?.contains(target)) close();
     };
+    // Scrolling the page moves the trigger away from the fixed panel; scrolling the list itself must not close it.
+    const scroll = (event: Event) => { if (!panelRef.current?.contains(event.target as Node)) close(); };
     document.addEventListener("mousedown", outside);
     window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
+    window.addEventListener("scroll", scroll, true);
     return () => {
       document.removeEventListener("mousedown", outside);
       window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", scroll, true);
     };
   }, [open]);
 
@@ -78,8 +93,8 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
     const vw = window.visualViewport?.width ?? window.innerWidth;
     const below = vh - anchor.bottom - 8;
     const above = anchor.top - 8;
-    // Same rule as ModelSelector's "auto": open toward the side with more room.
-    const openAbove = above > below;
+    // Toward the side with more room (as ModelSelector's "auto"); "up" prefers above when it fits.
+    const openAbove = placement === "up" ? above >= 160 || above > below : above > below;
     const maxHeight = Math.max(120, Math.min(openAbove ? above : below, vh * 0.6));
     panelStyle = {
       position: "fixed",
@@ -128,13 +143,15 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
           }
         }}
       >
-        <span className="select-trigger-label">{options[selected]?.label ?? ""}</span>
+        {icon}
+        {/* An empty `label` leaves an icon-only trigger. */}
+        {(label ?? options[selected]?.label) ? <span className="select-trigger-label">{label ?? options[selected]?.label}</span> : null}
         <svg className="select-trigger-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
       {panelStyle && (
-        <div ref={panelRef} id={listboxId} role="listbox" aria-label={ariaLabel} className="menu-surface is-scrolling" style={{ ...panelStyle, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div ref={panelRef} id={listboxId} role="listbox" aria-label={ariaLabel} aria-multiselectable={multiple || undefined} className="menu-surface is-scrolling is-check-list" style={{ ...panelStyle, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div className="menu-surface-scroll">
             {options.map((option, index) => (
               <button
@@ -142,14 +159,14 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
                 id={`${listboxId}-${index}`}
                 type="button"
                 role="option"
-                aria-selected={index === selected}
+                aria-selected={checked(index)}
                 data-active={index === active || undefined}
                 disabled={option.disabled}
                 title={option.title ?? option.label}
                 onClick={() => choose(index)}
                 onMouseEnter={() => !option.disabled && setActive(index)}
               >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, visibility: index === selected ? "visible" : "hidden" }} aria-hidden="true"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--accent)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, visibility: checked(index) ? "visible" : "hidden" }} aria-hidden="true"><polyline points="1.5 5 4 7.5 8.5 2.5" /></svg>
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{option.label}</span>
               </button>
             ))}

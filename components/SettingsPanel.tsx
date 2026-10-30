@@ -52,6 +52,7 @@ import { setupPushSubscription } from "@/lib/push-client";
 import { AppUpdateNotice } from "./AppUpdateNotice";
 import { ConfigButton, ConfigSwitch, SettingsGroup, SettingsRow } from "./SettingsUi";
 import { SubagentIcon } from "./SubagentIcon";
+import { announceRoutinesFeature } from "@/lib/routine-events";
 
 interface Props {
   cwd: string | null;
@@ -103,6 +104,10 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     return reply?.ok && !reply.data.error ? reply.data : null;
   });
   const [shellSaving, setShellSaving] = useState(false);
+  // Routines on/off is server state: it also gates the scheduler and the create_routine tool.
+  const [routinesEnabled, setRoutinesEnabled] = useState<boolean | null>(null);
+  const [routinesSaving, setRoutinesSaving] = useState(false);
+  const [routinesError, setRoutinesError] = useState<string | null>(null);
   const [shellError, setShellError] = useState<string | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [exportImageFooter, setExportImageFooter] = useState(false);
@@ -158,6 +163,33 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    void fetch("/api/routines/settings", { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ enabled?: unknown }>)
+      .then((data) => { if (typeof data.enabled === "boolean") setRoutinesEnabled(data.enabled); })
+      .catch(() => {});
+  }, []);
+
+  const toggleRoutines = async (enabled: boolean) => {
+    setRoutinesSaving(true);
+    setRoutinesError(null);
+    try {
+      const response = await fetch("/api/routines/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await response.json() as { enabled?: boolean; error?: string };
+      if (!response.ok || data.error || typeof data.enabled !== "boolean") throw new Error(data.error ?? `HTTP ${response.status}`);
+      setRoutinesEnabled(data.enabled);
+      announceRoutinesFeature(data.enabled);
+    } catch (cause) {
+      setRoutinesError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setRoutinesSaving(false);
+    }
+  };
 
   const togglePowerShell = async (enabled: boolean) => {
     setShellSaving(true);
@@ -344,6 +376,12 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           setSidebarSingleProject(enabled);
           setSingleProject(enabled);
         })}
+        {routinesEnabled !== null && (
+          <SettingsRow label={t("settings.routines")} description={t("settings.routinesDescription")}>
+            <ConfigSwitch checked={routinesEnabled} loading={routinesSaving} label={t("settings.routines")} onChange={(enabled) => void toggleRoutines(enabled)} />
+          </SettingsRow>
+        )}
+        {routinesError && <p role="alert" className="settings-row-message is-error">{routinesError}</p>}
         {shellSettings?.isWindows && (
           <SettingsRow label={t("settings.usePowerShell")} description={t("settings.shellToolDescription")}>
             <ConfigSwitch

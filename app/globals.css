@@ -406,9 +406,11 @@ html.dark {
   color: var(--text-dim);
 }
 
-/* Mirrors a section header: as tall, its label where a title starts. The whole
-   bar is one button. */
+/* Mirrors a section header: as tall, its first label where a title starts.
+   Settings and Routines split the bar. */
 .sidebar-footer {
+  display: flex;
+  gap: 2px;
   flex-shrink: 0;
   /* 1px border + 2 + 26 + 2: the content is as tall as a section header. */
   height: calc(var(--workspace-header-height, 30px) + 1px);
@@ -440,6 +442,15 @@ html.dark {
   margin-left: 4px;
   line-height: 1;
   white-space: nowrap;
+}
+
+/* Routines sits at the far end: its label ends where the section headers' last icon ends. */
+.sidebar-footer-item.is-end {
+  justify-content: flex-end;
+}
+
+.sidebar-footer-item.is-end .sidebar-footer-label {
+  margin: 0 4px 0 0;
 }
 
 .sidebar-search-container {
@@ -5003,7 +5014,7 @@ span.token.table {
   gap: 8px;
   width: 100%;
   min-width: 0;
-  height: 28px;
+  height: 26px;
   padding: 0 10px 0 8px;
   border: none;
   border-radius: var(--ui-radius-sm);
@@ -5026,6 +5037,12 @@ span.token.table {
 .menu-surface [data-active] {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+/* Check lists (Select): the check carries the selection and only the row under the pointer
+   or keyboard is tinted. Tinting checked rows too stacks into separate rounded tiles. */
+.menu-surface.is-check-list [aria-selected="true"]:not([data-active]) {
+  background: none;
 }
 
 @media (hover: hover) {
@@ -5075,10 +5092,6 @@ span.token.table {
 
 .menu-surface-group.is-lead + .menu-surface-group {
   margin-top: 8px;
-}
-
-.menu-surface-group [role="option"] {
-  height: 26px;
 }
 
 .menu-surface-label {

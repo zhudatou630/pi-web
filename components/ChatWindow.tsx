@@ -5,7 +5,7 @@ import { displayToolName } from "@/lib/tool-names";
 import { encodeFilePathForApi, getFileName, joinFilePath } from "@/lib/file-paths";
 import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
@@ -185,7 +185,8 @@ function StreamSilenceNotice({ message }: { message: AssistantMessage }) {
 
 const CHAT_COLUMN_PADDING = 16;
 
-function NewSessionCwdControl({
+/** Project + worktree picker for where a new chat (or a routine) runs. */
+export function NewSessionCwdControl({
   cwd,
   onChange,
   projectPaths,
@@ -193,10 +194,13 @@ function NewSessionCwdControl({
   projectNameByRoot,
 }: {
   cwd: string;
+  placement = "below",
   onChange: (cwd: string) => Promise<void>;
   projectPaths: string[];
   projectNameByRoot?: ReadonlyMap<string, string>;
   worktreeInfo: {
+  /** "above": menus open upward and align right, for a composer toolbar (Routines). */
+  placement?: "below" | "above";
     forCwd: string;
     projectRoot: string;
     currentWorktreePath: string | null;
@@ -254,6 +258,9 @@ function NewSessionCwdControl({
   const projectLabel = projectNameByRoot?.get(displayProject) ?? getFileName(displayProject);
   const closeMenus = () => {
     setMenuOpen(false);
+  const menuPosition: CSSProperties = placement === "above"
+    ? { bottom: "calc(100% + 6px)", right: 0 }
+    : { top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)" };
     setBranchMenuOpen(false);
   };
   const choose = (path: string) => {
@@ -266,7 +273,7 @@ function NewSessionCwdControl({
   };
 
   return (
-    <div ref={rootRef} style={{ position: "relative", marginTop: 10, maxWidth: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+    <div ref={rootRef} style={{ position: "relative", marginTop: placement === "above" ? 0 : 10, maxWidth: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
       <button
         type="button"
         title={t("chat.changeWorkingDirectory")}
@@ -333,9 +340,7 @@ function NewSessionCwdControl({
           className="menu-surface"
           style={{
             position: "absolute",
-            top: "calc(100% + 6px)",
-            left: "50%",
-            transform: "translateX(-50%)",
+            ...menuPosition,
             width: "max-content",
             minWidth: 200,
             maxWidth: "min(90vw, 260px)",
@@ -391,9 +396,7 @@ function NewSessionCwdControl({
           className="menu-surface"
           style={{
             position: "absolute",
-            top: "calc(100% + 6px)",
-            left: "50%",
-            transform: "translateX(-50%)",
+            ...menuPosition,
             width: "max-content",
             minWidth: 180,
             maxWidth: "min(90vw, 260px)",
