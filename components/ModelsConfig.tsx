@@ -44,6 +44,7 @@ import { AddProviderPicker, ModelPickerDialog } from "./models/dialogs";
 import { EndpointForm, ModelDiscovery } from "./models/EndpointSections";
 import { Notice, SectionHeading } from "./models/fields";
 import { ModelDetail } from "./models/ModelDetail";
+import { PromptCacheGroup } from "./models/PromptCacheGroup";
 import {
   runtimeToEntry,
   type ApiKeyProvider,
@@ -887,6 +888,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                 {otherRows.map(item)}
               </SettingsGroup>
             )}
+            {connectedRows.some((row) => row.models.some((model) => model.api === "anthropic-messages")) && <PromptCacheGroup />}
           </>
         )}
       </>

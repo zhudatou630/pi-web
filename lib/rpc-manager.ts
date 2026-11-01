@@ -66,6 +66,7 @@ import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES } from "./image-generation";
 import { executeImageGeneration, generatedImagePreview, parseImageGenerationRequest, saveSourceImage } from "./image-generation-runtime";
 import { retryStreamDrops } from "./retry-stream-drops";
+import { applyAnthropicCacheTtl } from "./prompt-cache-settings";
 import {
   appendClearedSessionToolSelection,
   appendSessionToolSelection,
@@ -2002,6 +2003,7 @@ const SUBAGENT_CONTROLLER = createSubagentController({
   registerSession: (inner, options) => {
     const resources = readSubagentSessionResources(inner.sessionManager.getEntries() as unknown as SessionEntry[]);
     stampQueuedMessagesOnDelivery(inner.agent);
+    applyAnthropicCacheTtl(inner.agent);
     const wrapper = new AgentSessionWrapper(inner, {
       chatOnly: options?.chatOnly,
       suppressCompletionNotifications: true,
@@ -2769,6 +2771,7 @@ export async function startRpcSession(
     }
 
     stampQueuedMessagesOnDelivery(inner.agent);
+    applyAnthropicCacheTtl(inner.agent);
     const wrapper = new AgentSessionWrapper(inner, {
       chatOnly,
       finishStartup: async () => {
