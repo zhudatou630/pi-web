@@ -525,15 +525,6 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
         display: "flex", alignItems: "center", justifyContent: "flex-end",
         gap: 4, marginTop: 2,
       }}>
-          {/* Sent by a routine run, not typed here (docs/routines.md). Always shown: it changes how to read the turn. */}
-          {message.routineId && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", userSelect: "none" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-              </svg>
-              {t("chat.sentByRoutine")}
-            </span>
-          )}
           {/* The answer footer already dates the turn; the send time is on-demand detail. */}
           {time && <span data-user-time style={{ fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums", userSelect: "none", opacity: hovered ? 1 : 0, transition: "opacity var(--motion-fast)" }}>{time}</span>}
           <div
@@ -606,6 +597,15 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
                 </button>
               )}
           </div>
+          {/* Sent by a routine run, not typed here (docs/routines.md). Always shown: it changes how to read the turn. Last in the row so it sits flush under the bubble while the hover-only actions stay invisible to its left. */}
+          {message.routineId && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 4, fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", userSelect: "none" }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+              </svg>
+              {t("chat.sentByRoutine")}
+            </span>
+          )}
       </div>
     </div>
   );
