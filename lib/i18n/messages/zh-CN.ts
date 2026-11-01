@@ -196,6 +196,7 @@ export const zhCNLocale: LocalePlugin = {
     "settings.imagesNotConfigured": "未配置密钥",
     "settings.usage": "用量",
     "routines.title": "定时任务",
+    "routines.backToChat": "返回对话",
     "routines.schedule.manual": "手动",
     "routines.schedule.once": "一次",
     "routines.schedule.date": "日期",

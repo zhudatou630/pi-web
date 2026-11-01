@@ -412,6 +412,11 @@ export function AppShell() {
   const showRoutinesInUrl = useCallback((routineId: string | null) => {
     router.replace(routineId ? `?routines=${encodeURIComponent(routineId)}` : "?routines", { scroll: false });
   }, [router]);
+  const closeRoutines = useCallback(() => {
+    setMainView("chat");
+    // Back in the chat, the address names its session again (RoutinesView names its own page).
+    router.replace(selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : window.location.pathname, { scroll: false });
+  }, [router, selectedSessionId]);
   // Settings › General can switch Routines off: no footer entry and no page. Null until known,
   // so a switched-off install never flashes the entry.
   const [routinesEnabled, setRoutinesEnabled] = useState<boolean | null>(null);
@@ -448,9 +453,8 @@ export function AppShell() {
   // Switched off while shown (or opened by a stale ?routines link): back to the chat.
   useEffect(() => {
     if (routinesEnabled !== false || mainView !== "routines") return;
-    setMainView("chat");
-    router.replace(selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : window.location.pathname, { scroll: false });
-  }, [routinesEnabled, mainView, router, selectedSessionId]);
+    closeRoutines();
+  }, [routinesEnabled, mainView, closeRoutines]);
   const [routinesHeaderSlot, setRoutinesHeaderSlot] = useState<HTMLElement | null>(null);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
@@ -2542,11 +2546,11 @@ export function AppShell() {
           <button
             type="button"
             onClick={() => {
-              const leaving = mainView === "routines";
-              setMainView(leaving ? "chat" : "routines");
-              setRoutinesOpened(true);
-              // Back in the chat, the address names its session again (RoutinesView names its own page).
-              if (leaving) router.replace(selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : window.location.pathname, { scroll: false });
+              if (mainView === "routines") closeRoutines();
+              else {
+                setMainView("routines");
+                setRoutinesOpened(true);
+              }
               if (isMobile) setSidebarOpen(false);
             }}
             title={translate("routines.title")}
@@ -3025,6 +3029,25 @@ export function AppShell() {
           {mainView === "routines" ? (
             <>
               {sidebarToggleButton}
+              <button
+                type="button"
+                className="workspace-header-action"
+                onClick={closeRoutines}
+                title={translate("routines.backToChat")}
+                aria-label={translate("routines.backToChat")}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+                  background: "none", border: "none",
+                  color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
+                }}
+                onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+                onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
+                </svg>
+              </button>
               {/* RoutinesView portals its breadcrumb here, where the chat tabs would be. */}
               <div ref={setRoutinesHeaderSlot} className="routines-header-slot" />
               {renderMainFileToggle(isMobile)}

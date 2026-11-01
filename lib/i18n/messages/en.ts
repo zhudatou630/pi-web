@@ -196,6 +196,7 @@ export const enLocale: LocalePlugin = {
     "settings.imagesNotConfigured": "Provider has no key",
     "settings.usage": "Usage",
     "routines.title": "Routines",
+    "routines.backToChat": "Back to chat",
     "routines.schedule.manual": "Manual",
     "routines.schedule.once": "Once",
     "routines.schedule.date": "Date",
