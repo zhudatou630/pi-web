@@ -3,20 +3,24 @@ import type { AssistantContentBlock, ToolResultMessage } from "./types";
 export interface CreatedRoutine {
   id: string;
   name: string;
+  action: "created" | "updated";
 }
 
-/** The routines a turn created with `create_routine` (approved and saved), in call order. */
+/** Successful routine creations and updates, deduplicated in call order; creation wins. */
 export function extractTurnCreatedRoutines(
   content: AssistantContentBlock[],
   toolResults: Map<string, ToolResultMessage> | undefined,
 ): CreatedRoutine[] {
-  const routines: CreatedRoutine[] = [];
+  const routines = new Map<string, CreatedRoutine>();
   for (const block of content) {
-    if (block.type !== "toolCall" || block.toolName !== "create_routine") continue;
-    const details = toolResults?.get(block.toolCallId)?.details as { created?: unknown; routineId?: unknown } | undefined;
-    if (details?.created !== true || typeof details.routineId !== "string") continue;
-    const name = typeof block.input?.name === "string" ? block.input.name : details.routineId;
-    routines.push({ id: details.routineId, name });
+    if (block.type !== "toolCall" || (block.toolName !== "create_routine" && block.toolName !== "update_routine")) continue;
+    const result = toolResults?.get(block.toolCallId);
+    const details = result?.details as { created?: unknown; updated?: unknown; routineId?: unknown; name?: unknown } | undefined;
+    const action = block.toolName === "create_routine" ? "created" : "updated";
+    if (result?.isError || details?.[action] !== true || typeof details.routineId !== "string") continue;
+    if (routines.get(details.routineId)?.action === "created") continue;
+    const name = action === "created" ? block.input?.name : details.name;
+    routines.set(details.routineId, { id: details.routineId, name: typeof name === "string" ? name : details.routineId, action });
   }
-  return routines;
+  return [...routines.values()];
 }

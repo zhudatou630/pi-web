@@ -53,14 +53,14 @@ export function TurnArtifactChip({ icon, label, title, ariaLabel, onClick }: {
 }
 
 /**
- * Routines this turn created (approved `create_routine` calls), like the written-file chips:
+ * Routines this turn created or updated, like the written-file chips:
  * the result stays where the turn is, and one click opens it on the Routines page.
  */
 export function TurnCreatedRoutines({ routines }: { routines: CreatedRoutine[] }) {
   const { t } = useI18n();
   if (routines.length === 0) return null;
   return (
-    <div data-export-exclude aria-label={t("chat.routinesCreated")} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6 }}>
+    <div data-export-exclude aria-label={t("chat.turnRoutines")} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6 }}>
       {routines.map((routine) => (
         <TurnArtifactChip
           key={routine.id}
@@ -69,7 +69,7 @@ export function TurnCreatedRoutines({ routines }: { routines: CreatedRoutine[] }
               <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
             </svg>
           )}
-          label={routine.name}
+          label={routine.action === "updated" ? t("chat.routineUpdated", { name: routine.name }) : routine.name}
           title={t("chat.openRoutine", { name: routine.name })}
           ariaLabel={t("chat.openRoutine", { name: routine.name })}
           onClick={() => requestOpenRoutine(routine.id)}

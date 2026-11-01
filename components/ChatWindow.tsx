@@ -13,6 +13,7 @@ import { splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isHiddenCustomMessage, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
+import { findAskUserAnswers } from "@/lib/ask-user-answer";
 import { extractTurnCreatedRoutines, type CreatedRoutine } from "@/lib/turn-routines";
 import { summarizeTurnActivity, type TurnActivity } from "@/lib/turn-activity";
 import { findQuoteInSegments, selectedTextWithTex } from "@/lib/quoted-selection";
@@ -1607,6 +1608,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
     return map;
   }, [activeToolResults, messages]);
+  const questionState = useMemo(() => findAskUserAnswers(
+    // While a history message is being edited, a send goes to that edit, not after the question.
+    messages, toolResultsMap, !sessionBusy && !isCompacting && !streamState.isStreaming && !loading && editEntryId === null,
+  ), [messages, toolResultsMap, sessionBusy, isCompacting, streamState.isStreaming, loading, editEntryId]);
   const runningToolIds = useMemo<ReadonlySet<string>>(
     () => new Set(agentPhase?.kind === "running_tools" ? agentPhase.tools.map((tool) => tool.id) : []),
     [agentPhase],
@@ -2030,7 +2035,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               const visibleRefIndexByMessage = new Map<number, number>();
               let refIdx = 0;
               messages.forEach((msg, idx) => {
-                if (isHiddenCustomMessage(msg)) return;
+                if (isHiddenCustomMessage(msg) || questionState.cardAnswerIndexes.has(idx)) return;
                 const persistedImage = (msg.role === "toolResult" && !msg.isError)
                   || (msg.role === "custom" && msg.customType === IMAGE_RESULT_TYPE)
                   ? getImageGenerationResult(msg.details)
@@ -2047,6 +2052,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; createdRoutines?: CreatedRoutine[]; turnDurationSeconds?: number; turnTiming?: string; isProcess?: boolean } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 if (isHiddenCustomMessage(msg)) return null;
+                // An answer clicked on an ask_user card: the card shows it (Grok-style), no bubble.
+                if (!options.messageOverride && questionState.cardAnswerIndexes.has(idx)) return null;
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
                     ? entryIds[idx - 1]
@@ -2077,6 +2084,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       ? getModelDisplayName(msg.provider ?? "", msg.model ?? "", modelNames)
                       : undefined}
                     toolResults={toolResultsMap}
+                    questionAnswers={questionState.answers}
+                    activeQuestionId={questionState.activeQuestionId}
+                    onAnswer={handleChatSend}
                     cwd={messageCwd}
                     onOpenFile={openFileFromSession}
                     onOpenSession={onOpenSession}
@@ -2194,6 +2204,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                             isStreaming
                             isProcess
                             toolResults={toolResultsMap}
+                            questionAnswers={questionState.answers}
+                            activeQuestionId={questionState.activeQuestionId}
+                            onAnswer={handleChatSend}
                             cwd={messageCwd}
                             onOpenFile={openFileFromSession}
                             onOpenSession={onOpenSession}
@@ -2279,6 +2292,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       isStreaming
                       isProcess
                       toolResults={toolResultsMap}
+                      questionAnswers={questionState.answers}
+                      activeQuestionId={questionState.activeQuestionId}
+                      onAnswer={handleChatSend}
                       cwd={messageCwd}
                       onOpenFile={openFileFromSession}
                       onOpenSession={onOpenSession}
@@ -2423,7 +2439,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               );
             })()}
             {streamState.isStreaming && streamingParts.answerMessage && (
-              <MessageView message={streamingParts.answerMessage} isStreaming cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
+              <MessageView message={streamingParts.answerMessage} isStreaming toolResults={toolResultsMap} questionAnswers={questionState.answers} activeQuestionId={questionState.activeQuestionId} onAnswer={handleChatSend} cwd={messageCwd} onOpenFile={openFileFromSession} onOpenSession={onOpenSession} />
             )}
             {/* create_routine waits on this card, inline where its tool call is (like a permission prompt). */}
             {routineApproval?.card && (

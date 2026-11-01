@@ -353,21 +353,23 @@ export class RoutineStore {
     });
   }
 
-  async update(id: string, input: RoutineInput, now = new Date()): Promise<Routine> {
+  /** `input` may be computed from the stored routine, under the lock (a partial change from chat). */
+  async update(id: string, input: RoutineInput | ((current: Routine) => RoutineInput), now = new Date()): Promise<Routine> {
     return this.mutate((state) => {
       const routine = findRoutine(state, id);
-      if (input.target.cwd !== routine.target.cwd) {
+      let next = typeof input === "function" ? input(structuredClone(routine)) : input;
+      if (next.target.cwd !== routine.target.cwd) {
         throw new RoutineError("A routine's project directory cannot be changed", 400);
       }
-      const resumed = input.enabled && !routine.enabled;
-      const rescheduled = JSON.stringify(input.schedule) !== JSON.stringify(routine.schedule);
+      const resumed = next.enabled && !routine.enabled;
+      const rescheduled = JSON.stringify(next.schedule) !== JSON.stringify(routine.schedule);
       // A bound chat stays bound: a form loaded before the first run bound it must not undo
       // that. Picking another chat replaces it; switching to new chats drops it.
-      if (input.target.kind === "same_session" && !input.target.sessionId
+      if (next.target.kind === "same_session" && !next.target.sessionId
         && routine.target.kind === "same_session" && routine.target.sessionId) {
-        input = { ...input, target: { ...input.target, sessionId: routine.target.sessionId } };
+        next = { ...next, target: { ...next.target, sessionId: routine.target.sessionId } };
       }
-      Object.assign(routine, input, { updatedAt: now.toISOString() });
+      Object.assign(routine, next, { updatedAt: now.toISOString() });
       // Resuming or rescheduling starts from the next occurrence, never a catch-up.
       if (resumed || rescheduled) routine.lastScheduledFor = now.toISOString();
       return routine;

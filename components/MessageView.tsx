@@ -28,6 +28,7 @@ import { resolveLocalFilePath } from "@/lib/file-links";
 import { getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
 import { TurnWrittenFiles } from "./TurnWrittenFiles";
+import { QuestionCard } from "./QuestionCard";
 import { TurnCreatedRoutines } from "./TurnArtifacts";
 import type { CreatedRoutine } from "@/lib/turn-routines";
 import { iconStroke } from "./iconStroke";
@@ -175,8 +176,11 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
-  /** Routines the turn created (create_routine), shown as chips like the written files. */
+  /** Routines the turn created or updated, shown as chips like the written files. */
   createdRoutines?: CreatedRoutine[];
+  questionAnswers?: ReadonlyMap<string, string | null>;
+  activeQuestionId?: string | null;
+  onAnswer?: (answer: string) => Promise<void>;
   /** User send to final answer; shown in the turn-end footer. */
   turnDurationSeconds?: number;
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
@@ -266,12 +270,12 @@ function haveSameRelevantToolResults(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, turnDurationSeconds, turnTiming, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -311,6 +315,12 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.modelName === next.modelName
     && prev.writtenFiles === next.writtenFiles
     && prev.createdRoutines === next.createdRoutines
+    && prev.activeQuestionId === next.activeQuestionId
+    && prev.onAnswer === next.onAnswer
+    && (prev.questionAnswers === next.questionAnswers || prev.message.role !== "assistant" || prev.message.content.every((block) => (
+      block.type !== "toolCall" || block.toolName !== "ask_user"
+      || prev.questionAnswers?.get(block.toolCallId) === next.questionAnswers?.get(block.toolCallId)
+    )))
     && prev.turnDurationSeconds === next.turnDurationSeconds
     && prev.turnTiming === next.turnTiming
     && prev.sessionId === next.sessionId
@@ -625,6 +635,9 @@ function AssistantMessageView({
   searchBlock,
   writtenFiles,
   createdRoutines,
+  questionAnswers,
+  activeQuestionId,
+  onAnswer,
   turnDurationSeconds,
   turnTiming,
   isProcess,
@@ -648,6 +661,9 @@ function AssistantMessageView({
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
   createdRoutines?: CreatedRoutine[];
+  questionAnswers?: ReadonlyMap<string, string | null>;
+  activeQuestionId?: string | null;
+  onAnswer?: (answer: string) => Promise<void>;
   turnDurationSeconds?: number;
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
   turnTiming?: string;
@@ -735,6 +751,9 @@ function AssistantMessageView({
               block={block}
               searchTarget={block === searchBlock}
               toolResults={toolResults}
+              questionAnswer={block.type === "toolCall" ? questionAnswers?.get(block.toolCallId) : undefined}
+              questionActive={block.type === "toolCall" && block.toolCallId === activeQuestionId && !isStreaming}
+              onAnswer={onAnswer}
               isStreaming={isStreaming}
               streamingDuration={thinkingDuration}
               startTime={block.type === "toolCall" ? toolStartedAt : thinkingStart}
@@ -1004,7 +1023,7 @@ function StepDuration({ seconds, startTime, live }: { seconds?: number; startTim
   );
 }
 
-function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDuration, startTime, live, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, searchTarget, toolResults, questionAnswer, questionActive, onAnswer, isStreaming, streamingDuration, startTime, live, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; questionAnswer?: string | null; questionActive?: boolean; onAnswer?: (answer: string) => Promise<void>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     const text = (block as TextContent).text;
     if (!text?.trim()) return null;
@@ -1025,6 +1044,9 @@ function BlockView({ block, searchTarget, toolResults, isStreaming, streamingDur
   if (block.type === "toolCall") {
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
+    if (tc.toolName === "ask_user" && !result?.isError) {
+      return <QuestionCard key={tc.toolCallId} block={tc} result={result} answer={questionAnswer} active={questionActive} onAnswer={onAnswer} />;
+    }
     const duration = toolCallDurations?.get(tc.toolCallId);
     return <ToolCallBlock block={tc} result={result} duration={duration} startTime={startTime} live={live} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
   }

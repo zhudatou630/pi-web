@@ -87,6 +87,64 @@ function renderMessage(message, props = {}) {
   );
 }
 
+test("renders ask_user cards in answer and process views, and only selected options after an answer", () => {
+  const block = { type: "toolCall", toolCallId: "question-1", toolName: "ask_user", input: {} };
+  const message = { role: "assistant", content: [block] };
+  const details = { question: "Which plan?", options: ["First", "Second", "Third"], multi_select: true };
+  const props = { toolResults: new Map([[block.toolCallId, { role: "toolResult", toolCallId: block.toolCallId, content: [], details }]]) };
+  for (const isProcess of [false, true]) {
+    const active = renderMessage(message, { ...props, isProcess, activeQuestionId: block.toolCallId, onAnswer: async () => {} });
+    assert.match(active, /<section class="question-card"/);
+    assert.match(active, /Which plan\?/);
+    assert.equal((active.match(/role="checkbox"/g) ?? []).length, 3);
+    assert.match(active, /disabled=""[^>]*>Send/);
+    assert.doesNotMatch(active, /data-step-card/);
+    assert.match(active, /question-card-footer" data-export-exclude/);
+    const answered = renderMessage(message, { ...props, isProcess, questionAnswers: new Map([[block.toolCallId, " Third \nFirst"]]) });
+    assert.match(answered, />First</);
+    assert.match(answered, />Third</);
+    assert.doesNotMatch(answered, />Second<|role="checkbox"|<button/);
+    assert.equal((answered.match(/question-card-badge is-chosen/g) ?? []).length, 2);
+    const custom = renderMessage(message, { ...props, isProcess, questionAnswers: new Map([[block.toolCallId, "My own plan"]]) });
+    assert.equal((custom.match(/question-card-option is-muted/g) ?? []).length, 3);
+    assert.doesNotMatch(custom, /<button/);
+  }
+});
+
+test("ask_user is non-interactive while streaming or pending and errors keep the ordinary tool view", () => {
+  const block = { type: "toolCall", toolCallId: "q", toolName: "ask_user", input: {}, rawInput: '{"question":"Partial question","options":["First"' };
+  const message = { role: "assistant", content: [block] };
+  const pending = renderMessage(message, { isStreaming: true, activeQuestionId: "q", onAnswer: async () => {} });
+  assert.match(pending, /Partial question/);
+  assert.match(pending, />First</);
+  assert.doesNotMatch(pending, /<button/);
+  const result = { role: "toolResult", toolCallId: "q", content: [], details: { question: "Done?", options: ["Yes", "No"] } };
+  const streaming = renderMessage(message, { isStreaming: true, toolResults: new Map([["q", result]]), activeQuestionId: "q", onAnswer: async () => {} });
+  assert.match(streaming, /Done\?/);
+  assert.doesNotMatch(streaming, /<button/);
+  const failed = renderMessage(message, { toolResults: new Map([["q", { ...result, isError: true }]]) });
+  assert.match(failed, /data-step-card/);
+  assert.doesNotMatch(failed, /question-card/);
+});
+
+test("memoized messages update when their question answer, active state or send callback changes", () => {
+  const message = { role: "assistant", content: [{ type: "toolCall", toolCallId: "q", toolName: "ask_user", input: {} }] };
+  const props = { message, questionAnswers: new Map([["q", null]]) };
+  assert.equal(MessageView.compare(props, { ...props, questionAnswers: new Map([["q", "Yes"]]) }), false);
+  assert.equal(MessageView.compare(props, { ...props, questionAnswers: new Map([["q", null], ["other", "No"]]) }), true);
+  assert.equal(MessageView.compare(props, { ...props, activeQuestionId: "q" }), false);
+  assert.equal(MessageView.compare(props, { ...props, onAnswer: async () => {} }), false);
+});
+
+test("routine chips retain created names and label updates", () => {
+  const html = renderMessage({ role: "assistant", content: [{ type: "text", text: "Done" }] }, {
+    createdRoutines: [{ id: "r1", name: "Created name", action: "created" }, { id: "r2", name: "New name", action: "updated" }],
+  });
+  assert.match(html, />Created name</);
+  assert.match(html, />Updated · New name</);
+  assert.match(html, /aria-label="Open routine New name"/);
+});
+
 test("renders generated image mentions as chips in user messages", () => {
   const html = renderMessage({
     role: "user",

@@ -1722,6 +1722,79 @@ pre, code {
   gap: 4px;
 }
 
+.question-card {
+  margin: 8px 0;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.question-card-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.question-card-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+.question-card-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--ui-row-height);
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--ui-radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.question-card-option:not(:disabled) {
+  cursor: pointer;
+}
+button.question-card-option:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+.question-card-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.question-card-option.is-muted {
+  color: var(--text-muted);
+}
+.question-card-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--ui-radius-sm);
+  background: var(--bg-subtle);
+  font-size: 11px;
+}
+.question-card-badge.is-chosen {
+  background: var(--control-on);
+  color: var(--control-knob-on);
+}
+.question-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 /* Step cards: thinking, a tool call, a provider error, a sub-agent notice. A bordered card where
    one stands alone (an error in an answer); a flat row in the process list and in a user shell
    run (.step-flat), which is where thinking and tool calls always render. */

@@ -130,7 +130,9 @@ export function isAssistantTruncated(
 export const PROCESS_TEXT_PROMOTE_MIN_CHARS = 400;
 
 function isFinalAnswerBlock(block: AssistantContentBlock, options: DisplayOptions = {}): boolean {
-  return block.type === "image" || (block.type === "text" && (options.isStreaming ? block.text.length > 0 : block.text.trim().length > 0));
+  return block.type === "image"
+    || (block.type === "toolCall" && block.toolName === "ask_user")
+    || (block.type === "text" && (options.isStreaming ? block.text.length > 0 : block.text.trim().length > 0));
 }
 
 function isPromotedProcessText(block: AssistantContentBlock): boolean {

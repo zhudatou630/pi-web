@@ -1,6 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const WRITE_CAPABLE_TOOLS = ["bash", "powershell", "edit", "write"];
+export const WRITE_CAPABLE_TOOLS = ["bash", "powershell", "edit", "write"];
+
+/** The read-only preset: no write-capable built-in is active. */
+export function hasWriteCapableTool(activeTools: readonly string[]): boolean {
+  return activeTools.some((name) => WRITE_CAPABLE_TOOLS.includes(name));
+}
 
 /**
  * A session with no write-capable built-in active (the read-only preset) must not
@@ -13,7 +18,7 @@ const WRITE_CAPABLE_TOOLS = ["bash", "powershell", "edit", "write"];
 export function readOnlyToolGuard(pi: ExtensionAPI): void {
   pi.on("tool_call", (event) => {
     if (!event.toolName.startsWith("mcp__")) return;
-    if (pi.getActiveTools().some((name) => WRITE_CAPABLE_TOOLS.includes(name))) return;
+    if (hasWriteCapableTool(pi.getActiveTools())) return;
     return {
       block: true,
       reason: `${event.toolName} is an MCP tool, and this session uses read-only tools.`,

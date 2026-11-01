@@ -33,7 +33,7 @@ function render(messages, locate = null, overrides = {}) {
   const scope = {
     React, ...display, ...lazy, ...outline, ...modelTiming, messages, entryIds, messageKeys: entryIds, mountedRangeRef,
     // Leaf presentation is intentionally simple; grouping and slicing are real.
-    MessageView: ({ message }) => React.createElement("p", null, typeof message.content === "string" ? message.content : message.content.map((block) => block.text ?? "").join("")),
+    MessageView: ({ message }) => React.createElement("p", null, typeof message.content === "string" ? message.content : message.content.map((block) => block.text ?? (block.toolName === "ask_user" ? block.input?.question : "") ?? "").join("")),
     ProcessDetailsGroup: ({ children }) => React.createElement("section", null, children),
     getImageGenerationResult: () => null, IMAGE_RESULT_TYPE: "image-result",
     getModelDisplayName: () => "model", modelNames: new Map(),
@@ -43,6 +43,7 @@ function render(messages, locate = null, overrides = {}) {
     completedAssistantParts: messages.map((message) => message.role === "assistant" ? display.partitionAssistantMessage(message) : null),
     writtenFilesByAssistantIndex: new Map(), routinesByAssistantIndex: new Map(), turnActivityByAssistantIndex: new Map(),
     toolResultsMap: new Map(), runningToolIds: new Set(), agentPhase: null,
+    questionState: { answers: new Map(), activeQuestionId: null, cardAnswerIndexes: new Set() }, handleChatSend() {},
     liveProcessSummaryRef: { current: null }, isCompacting: false, isMobile: false,
     pendingOutlineJump: locate ? { entryId: locate, signal: { aborted: false } } : null,
     pendingSearchScroll: null, pendingScrollRestore: null, searchTarget: null,
@@ -87,6 +88,18 @@ test("Q/A plus 60 hidden tail messages keeps the real answer in final mounted ou
   assert.deepEqual(range, { startIndex: 0, endIndex: 2, totalCount: 2 });
   assert.equal(messages.length, 62);
   assert.equal(entryIds.length, 62);
+});
+
+test("ask_user and preceding text stay outside the collapsed process group", () => {
+  const message = { role: "assistant", content: [
+    { type: "toolCall", toolCallId: "bash", toolName: "bash", input: { command: "pwd" } },
+    { type: "text", text: "CLARIFICATION" },
+    { type: "toolCall", toolCallId: "question", toolName: "ask_user", input: { question: "WHICH OPTION?" } },
+  ] };
+  const { html } = render([user, message, { role: "toolResult", toolCallId: "question", content: [] }]);
+  assert.match(html, /CLARIFICATIONWHICH OPTION\?/);
+  assert.doesNotMatch(html.match(/<section>[\s\S]*?<\/section>/)?.[0] ?? "", /CLARIFICATION|WHICH OPTION/);
+  assert.match(html, /<\/section>[\s\S]*CLARIFICATIONWHICH OPTION\?/);
 });
 
 test("ordinary no-answer turns skip hidden slots and preserve ids and locate-window bookkeeping", () => {

@@ -5,14 +5,20 @@ import { minIntervalMs, nextRuns, type RoutineSchedule } from "./routine-schedul
 import { describeSchedule, type Translate } from "./routine-summary";
 import { interpolateMessage } from "./i18n/format";
 import { enLocale } from "./i18n/messages/en";
-import { parseRoutineInput, RoutineStore, validateSchedule, type RoutineInput } from "./routines";
+import { parseRoutineInput, RoutineStore, validateSchedule, type Routine, type RoutineInput, type RoutineRun } from "./routines";
 import { isRoutineSchedulerEnabled } from "./routine-scheduler-flag";
 import { readSessionToolSelection } from "./session-tool-selection";
 import type { RoutineApprovalCard, SessionEntry } from "./types";
+import { ASK_USER_TOOL_NAME, registerAskUserTool } from "./ask-user-extension";
+import { hasWriteCapableTool } from "./read-only-tool-guard";
+import { resolveProject } from "./worktree";
+import { samePath } from "./paths";
 
 // Design: docs/routines.md ("Create from chat").
 
 export const ROUTINE_TOOL_NAME = "create_routine";
+export const LIST_ROUTINES_TOOL_NAME = "list_routines";
+export const UPDATE_ROUTINE_TOOL_NAME = "update_routine";
 const TOOL_SEARCH = "tool_search";
 /** An unattended run (or a closed tab) must not hold the turn forever; no answer = not created. */
 const CONFIRM_TIMEOUT_MS = 15 * 60_000;
@@ -71,6 +77,7 @@ function relative(date: Date, now: Date): string {
 
 /** "Mon, Nov 2, 9:00 AM (in 3 days)", or "none". */
 function nextRunText(input: RoutineInput, now: Date): string {
+  if (!input.enabled) return "none (paused)";
   const [next] = nextRuns(input.schedule, undefined, 1, now);
   return next ? `${stamp(next)} (${relative(next, now)})` : "none";
 }
@@ -89,6 +96,87 @@ export function routineConfirmMessage(input: RoutineInput, now = new Date(), sch
     "",
     ...instructions.split("\n").map((line) => `> ${line}`),
   ].join("\n");
+}
+
+export interface UpdateRoutineParams {
+  id: string;
+  name?: string;
+  instructions?: string;
+  cron?: string;
+  at?: string;
+  enabled?: boolean;
+}
+
+/**
+ * The stored routine with the chat's partial change applied, validated like a form save.
+ * Only name, instructions, schedule and on/off: where it runs (project, chat, model, tools)
+ * stays as the user set it, so a change from chat never widens what a run may do.
+ */
+export function applyRoutineUpdate(current: Routine, params: UpdateRoutineParams): RoutineInput {
+  const { cron, at } = params;
+  if (cron !== undefined && at !== undefined) throw new Error("give cron or at, not both");
+  const schedule: RoutineSchedule = cron !== undefined ? { kind: "cron", exprs: [cron] }
+    : at !== undefined ? { kind: "once", at } : current.schedule;
+  return parseRoutineInput({
+    name: params.name ?? current.name,
+    prompt: params.instructions ?? current.prompt,
+    enabled: params.enabled ?? current.enabled,
+    schedule,
+    target: current.target,
+    timeoutMinutes: current.timeoutMinutes,
+  });
+}
+
+/** What an update changed, in words for the tool result ("schedule: Every hour → Every day at 09:00 AM"). */
+export function describeRoutineChanges(before: RoutineInput, after: RoutineInput): string[] {
+  const changes: string[] = [];
+  if (before.name !== after.name) changes.push(`renamed from "${before.name}"`);
+  if (before.prompt !== after.prompt) changes.push("instructions replaced");
+  const schedule = (input: RoutineInput) => describeSchedule(input.schedule, "en", en);
+  if (JSON.stringify(before.schedule) !== JSON.stringify(after.schedule)) changes.push(`schedule: ${schedule(before)} → ${schedule(after)}`);
+  if (before.enabled !== after.enabled) changes.push(after.enabled ? "resumed" : "paused");
+  return changes;
+}
+
+const localTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString("sv-SE").slice(0, 16) : "-");
+const serverNow = () => `${localTime(new Date().toISOString())} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`;
+
+function runsIn(routine: Routine, chatId: string): string {
+  if (routine.target.kind === "new_session") return "a new chat each run";
+  if (!routine.target.sessionId) return "a chat its first run creates";
+  return routine.target.sessionId === chatId ? "this chat" : `chat ${routine.target.sessionId}`;
+}
+
+/** One run: when it was due, when it started, how it ended (a late start shows as the gap). */
+export function describeRun(run: RoutineRun): string {
+  const due = run.trigger === "manual" ? "manual run" : `due ${localTime(run.scheduledFor)}${run.trigger === "catch_up" ? " (catch-up)" : ""}`;
+  const error = run.error ? `: ${run.error.length > 300 ? `${run.error.slice(0, 300)}…` : run.error}` : "";
+  return `${due}, started ${localTime(run.startedAt)}, ${run.status}${run.skipReason ? ` (${run.skipReason})` : ""}${error}${run.sessionId ? ` [chat ${run.sessionId}]` : ""}`;
+}
+
+/** The list (one line each) or, for one routine, its instructions and recent runs. */
+export function describeRoutines(routines: Routine[], chatId: string, now: Date, detailed: boolean): string {
+  if (routines.length === 0) return `No routines in this project. Server time now: ${serverNow()}.`;
+  const lines = routines.map((routine) => {
+    const last = routine.runs[0];
+    const head = `- ${routine.id} "${routine.name}" · ${routine.enabled ? "on" : "paused"} · ${describeSchedule(routine.schedule, "en", en)} · next ${nextRunText(routine, now)} · runs in ${runsIn(routine, chatId)} · last run: ${last ? describeRun(last) : "none yet"}`;
+    if (!detailed) return head;
+    return [
+      head,
+      `Timeout: ${routine.timeoutMinutes} min.`,
+      "Instructions:",
+      routine.prompt,
+      "Recent runs, newest first:",
+      ...(routine.runs.length ? routine.runs.slice(0, 10).map((run) => `- ${describeRun(run)}`) : ["- none yet"]),
+    ].join("\n");
+  });
+  return [...lines, "", `Server time now: ${serverNow()}. Times are the server's local time.`].join("\n");
+}
+
+/** Routines belong to a project; a chat sees and changes those of its own project (worktrees included). */
+async function inProject(routine: Routine, cwd: string): Promise<boolean> {
+  const [theirs, ours] = await Promise.all([resolveProject(routine.target.cwd), resolveProject(cwd)]);
+  return samePath(theirs.projectRoot, ours.projectRoot);
 }
 
 /** An unreadable routines file must not take the tool away; creating reports the real error. */
@@ -114,25 +202,37 @@ export function createRoutineToolExtension(store: () => RoutineStore = () => new
         const active = pi.getActiveTools();
         if (searchable() && !active.includes(TOOL_SEARCH)) pi.setActiveTools([...active, TOOL_SEARCH]);
       });
+      // Any routines tool found brings the whole set: pi declares tool changes once per request,
+      // so they arrive in one addition. A later separate load would break the prompt cache again
+      // on providers that fold additions into the leading prompt.
+      const routineTools = [ROUTINE_TOOL_NAME, LIST_ROUTINES_TOOL_NAME, UPDATE_ROUTINE_TOOL_NAME, ASK_USER_TOOL_NAME];
+      pi.on("tool_result", (event) => {
+        if (event.toolName !== TOOL_SEARCH) return;
+        const loaded = (event.details as { loaded?: unknown } | undefined)?.loaded;
+        if (!Array.isArray(loaded) || !loaded.some((name) => routineTools.includes(name))) return;
+        const active = pi.getActiveTools();
+        const missing = routineTools.filter((name) => !active.includes(name));
+        if (missing.length > 0) pi.setActiveTools([...active, ...missing]);
+      });
       pi.on("before_agent_start", (event) => {
         if (!event.systemPromptOptions.selectedTools.includes(TOOL_SEARCH)) return;
-        event.systemPromptOptions.sections.routines = `To run work later or on a schedule (a Pi Web routine), load \`${ROUTINE_TOOL_NAME}\` with ${TOOL_SEARCH}.`;
+        event.systemPromptOptions.sections.routines = `For scheduled or later work (Pi Web routines), load \`${ROUTINE_TOOL_NAME}\`, \`${LIST_ROUTINES_TOOL_NAME}\` or \`${UPDATE_ROUTINE_TOOL_NAME}\` with ${TOOL_SEARCH}.`;
       });
       pi.registerTool({
         name: ROUTINE_TOOL_NAME,
         label: "Create routine",
         exposure: "deferred",
         description: [
-          "Create a Pi Web routine: instructions that run later or repeatedly in this project. The user approves a summary before it is saved.",
-          "run_in: new_chat for independent jobs (digests, scans, reviews); each run starts fresh with no memory of this conversation, so make instructions self-contained (goal, scope, expected output). this_chat for ongoing work that needs this conversation (watching a PR, following up); each run continues here.",
-          "Times are the server's local time. Runs must be at least 15 minutes apart (5 for this_chat).",
+          "Create a Pi Web routine: instructions run later or repeatedly in this project. The user approves it before it is saved.",
+          `Steps: 1) settle choices that change the result (ask with ${ASK_USER_TOOL_NAME} if you cannot); 2) do one trial run now with the exact method the routine will use, then end your turn showing the user its result (skip for plain reminders); 3) once they agree, create it, writing the verified method into instructions: sources, tools, filters, output format, how to skip what was already reported, what to report when blocked. To change a routine use ${UPDATE_ROUTINE_TOOL_NAME}, never a second one.`,
+          "run_in: new_chat starts each run fresh, without this conversation, so instructions must be self-contained; this_chat continues this chat (ongoing work). Times are server local time.",
         ].join("\n"),
         parameters: Type.Object({
-          name: Type.String({ minLength: 1, maxLength: 80, description: "Short title." }),
-          instructions: Type.String({ minLength: 1, maxLength: 20_000, description: "Sent as the user message on every run." }),
+          name: Type.String({ description: "Short title." }),
+          instructions: Type.String({ description: "Sent as the user message on every run." }),
           run_in: StringEnum(["new_chat", "this_chat"]),
-          cron: Type.Optional(Type.String({ description: "Repeating: one 5-field cron, e.g. \"0 9 * * 1-5\" or \"*/30 * * * *\" (steps must divide the hour or day)." })),
-          at: Type.Optional(Type.String({ description: "Once: YYYY-MM-DDTHH:mm. Give cron or at, not both." })),
+          cron: Type.Optional(Type.String({ description: "Repeating: one 5-field cron, e.g. \"0 9 * * 1-5\"." })),
+          at: Type.Optional(Type.String({ description: "Or once: YYYY-MM-DDTHH:mm." })),
         }),
         async execute(_toolCallId, params, signal, _onUpdate, ctx) {
           const now = new Date();
@@ -179,10 +279,73 @@ export function createRoutineToolExtension(store: () => RoutineStore = () => new
           catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
           const routine = await store().create(input);
           const text = [
-            `Created routine "${routine.name}". Next run: ${nextRunText(routine, new Date())}. It is managed on the Routines page.`,
+            `Created routine "${routine.name}". Next run: ${nextRunText(routine, new Date())}. Change it later with ${UPDATE_ROUTINE_TOOL_NAME}.`,
             ...(schedulerOn ? [] : ["Scheduling is off in this Pi Web process, so it runs only when the user clicks Run now."]),
           ].join("\n");
           return { content: [{ type: "text" as const, text }], details: { created: true, routineId: routine.id } };
+        },
+      });
+      registerAskUserTool(pi);
+      pi.registerTool({
+        name: LIST_ROUTINES_TOOL_NAME,
+        label: "List routines",
+        exposure: "deferred",
+        description: "List this project's routines: id, schedule, next and last run. With id: also its instructions and recent runs (due vs start time, status, error), to explain a late or failed run.",
+        parameters: Type.Object({
+          id: Type.Optional(Type.String()),
+        }),
+        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+          const text = (value: string) => ({ content: [{ type: "text" as const, text: value }], details: undefined });
+          if (!featureEnabled(store)) return text("Routines are turned off in Pi Web settings.");
+          const { id } = params as { id?: string };
+          const all = store().list().filter((routine) => !id || routine.id === id);
+          const mine = (await Promise.all(all.map(async (routine) => (await inProject(routine, ctx.cwd) ? routine : null))))
+            .filter((routine): routine is Routine => routine !== null);
+          if (id && mine.length === 0) return text(`No routine ${id} in this project.`);
+          return text(describeRoutines(mine, ctx.sessionManager.getSessionId(), new Date(), Boolean(id)));
+        },
+      });
+      pi.registerTool({
+        name: UPDATE_ROUTINE_TOOL_NAME,
+        label: "Update routine",
+        exposure: "deferred",
+        description: [
+          "Change a routine of this project (id from list_routines) when the user asks or a run shows it is wrong. Give only what changes; instructions replaces the whole text. Applied without approval, so tell the user what changed. Project, chat, model and tools change on the Routines page only.",
+        ].join("\n"),
+        parameters: Type.Object({
+          id: Type.String(),
+          name: Type.Optional(Type.String()),
+          instructions: Type.Optional(Type.String()),
+          cron: Type.Optional(Type.String({ description: "New repeating schedule (5-field cron)." })),
+          at: Type.Optional(Type.String({ description: "Or once: YYYY-MM-DDTHH:mm." })),
+          enabled: Type.Optional(Type.Boolean({ description: "false pauses, true resumes." })),
+        }),
+        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+          const fail = (message: string) => ({
+            content: [{ type: "text" as const, text: `Not updated: ${message}\nServer time now: ${serverNow()}.` }],
+            details: { updated: false },
+          });
+          if (!featureEnabled(store)) return fail("Routines are turned off in Pi Web settings.");
+          // A routine run is unattended work: a read-only chat must not rewrite one without approval.
+          if (!hasWriteCapableTool(pi.getActiveTools())) return fail("this chat uses read-only tools. The user can change routines on the Routines page.");
+          const change = params as UpdateRoutineParams;
+          if (["name", "instructions", "cron", "at", "enabled"].every((key) => change[key as keyof UpdateRoutineParams] === undefined)) {
+            return fail("nothing to change.");
+          }
+          const before = store().list().find((routine) => routine.id === change.id);
+          if (!before || !(await inProject(before, ctx.cwd))) return fail(`no routine ${change.id} in this project; see list_routines.`);
+          let after: Routine;
+          try {
+            after = structuredClone(await store().update(change.id, (current) => applyRoutineUpdate(current, change)));
+          } catch (error) {
+            return fail(error instanceof Error ? error.message : String(error));
+          }
+          const changes = describeRoutineChanges(before, after);
+          if (changes.length === 0) {
+            return { content: [{ type: "text" as const, text: `No change: "${after.name}" already has these values.` }], details: { updated: false } };
+          }
+          const text = `Updated routine "${after.name}": ${changes.join("; ")}. Next run: ${nextRunText(after, new Date())}.`;
+          return { content: [{ type: "text" as const, text }], details: { updated: true, routineId: after.id, name: after.name } };
         },
       });
     },
