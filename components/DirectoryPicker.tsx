@@ -187,12 +187,11 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
         </div>
 
         <div className="models-dialog-footer directory-picker-footer">
-          <ConfigButton variant="secondary" className="directory-picker-action" onClick={onCancel} disabled={busy}>
+          <ConfigButton variant="secondary" onClick={onCancel} disabled={busy}>
             {t("i18n.cancel")}
           </ConfigButton>
           <ConfigButton
             variant="primary"
-            className="directory-picker-action"
             onClick={() => onSelect(currentPath)}
             disabled={!canSelect}
             title={hasUncommittedPath ? t("directoryPicker.openBeforeSelecting") : t("directoryPicker.selectCurrentDirectory")}

@@ -3553,8 +3553,11 @@ button.file-outline-fold:hover {
   height: min(560px, calc(100dvh - 32px));
 }
 
-.directory-picker-nav {
-  gap: 6px;
+/* Unruled like the rest of the dialog; the 26px back button's icon lands on the title's 20px inset. */
+.models-dialog-search.directory-picker-nav {
+  gap: 4px;
+  padding: 4px 20px 8px 14px;
+  border-bottom: 0;
 }
 
 .directory-picker-nav .settings-search-field {
@@ -3565,10 +3568,10 @@ button.file-outline-fold:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 8px 8px;
+  padding: 0 12px 4px;
 }
 
-/* Same row as a .menu-surface item. */
+/* Same row as a .menu-surface item, phones included. */
 .directory-picker-entry {
   display: flex;
   align-items: center;
@@ -3577,7 +3580,7 @@ button.file-outline-fold:hover {
   height: var(--ui-row-height);
   padding: 0 8px;
   border: none;
-  border-radius: var(--ui-radius-sm);
+  border-radius: var(--ui-radius-md);
   background: none;
   color: var(--text-muted);
   font: inherit;
@@ -5759,18 +5762,6 @@ span.token.table {
   .panel-resize-handle,
   .right-panel-overlay-backdrop {
     display: none;
-  }
-  .directory-picker-back,
-  .directory-picker-entry,
-  .directory-picker-action {
-    min-height: 44px !important;
-  }
-  .directory-picker-back {
-    min-width: 44px !important;
-  }
-  .directory-picker-footer {
-    flex-wrap: wrap;
-    padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
   }
   .image-generation-select {
     width: auto !important;
