@@ -1471,12 +1471,13 @@ function ToolArguments({ input, fallback }: { input: unknown; fallback: string }
   const flat = fields.length > 0 && fields.every(([, value]) => value === null || typeof value !== "object");
   const style = { margin: 0, fontSize: "calc(12px + var(--chat-font-size-offset, 0px))", lineHeight: 1.5 };
   if (!flat) return <pre className="step-body" style={{ ...style, padding: "8px 10px", color: "var(--text-muted)", overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{fallback}</pre>;
+  // Keys share the values' mono face: Sarasa UI's Latin (Inter) sits visibly larger than Sarasa Term's (Iosevka) at the same px.
   return (
-    <dl className="step-body" data-tool-fields="" style={{ ...style, display: "grid", gridTemplateColumns: "max-content minmax(0, 1fr)", gap: "4px 12px", padding: "8px 10px" }}>
+    <dl className="step-body" data-tool-fields="" style={{ ...style, fontFamily: "var(--font-mono)", display: "grid", gridTemplateColumns: "max-content minmax(0, 1fr)", gap: "4px 12px", padding: "8px 10px" }}>
       {fields.map(([key, value]) => (
         <div key={key} style={{ display: "contents" }}>
-          <dt style={{ fontFamily: "var(--font-ui)", color: "var(--text-dim)", maxWidth: 120, overflowWrap: "anywhere" }}>{key}</dt>
-          <dd style={{ margin: 0, fontFamily: "var(--font-mono)", color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 260, overflow: "auto" }}>{String(value)}</dd>
+          <dt style={{ color: "var(--text-dim)", maxWidth: 120, overflowWrap: "anywhere" }}>{key}</dt>
+          <dd style={{ margin: 0, color: "var(--text-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 260, overflow: "auto" }}>{String(value)}</dd>
         </div>
       ))}
     </dl>
