@@ -174,6 +174,15 @@ test("keeps the user send time out of the resting view", () => {
   assert.match(html, /data-user-time[^>]*opacity:0/);
 });
 
+test("long user bubbles fold behind a toggle instead of scrolling inside", async () => {
+  const html = renderMessage({ role: "user", content: "hi" });
+  assert.match(html, /class="user-bubble-clip" style="max-height:min\(400px, 50svh\)"/);
+  assert.doesNotMatch(html, /user-bubble-toggle/, "the toggle appears only once overflow is measured");
+  assert.doesNotMatch(html, /overflow-y:auto/);
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(max-width: 640px\) \{\s*\.user-bubble-row \{ max-width: min\(85%, 580px\); \}/);
+});
+
 test("updates a reused message when its written files change", () => {
   const props = { message: { role: "assistant", content: [] } };
   assert.equal(MessageView.compare(props, props), true);

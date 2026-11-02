@@ -119,7 +119,8 @@ function SafeMarkdownBody({ children, className, ...props }: React.ComponentProp
 
 // Cap the user "sent" bubble's height so an abnormally long message does not
 // push the conversation off screen; overflow scrolls inside the bubble.
-const USER_BUBBLE_MAX_HEIGHT = "min(400px, 30dvh)";
+// svh, not dvh: the fold point must not jump when the phone keyboard or URL bar moves.
+const USER_BUBBLE_MAX_HEIGHT = "min(400px, 50svh)";
 
 function loadThinkingContent(sessionId: string, entryId: string, blockIndex: number): Promise<string> {
   const key = `${sessionId}:${entryId}:${blockIndex}`;
@@ -397,6 +398,22 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
   const [hovered, setHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // Long bubbles fold instead of scrolling inside: a nested scroller traps touch scrolling.
+  const [showAll, setShowAll] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const clipRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const clip = clipRef.current;
+    const body = bodyRef.current;
+    if (!clip || !body || showAll || typeof ResizeObserver === "undefined") return;
+    const measure = () => setOverflowing(body.offsetHeight > clip.clientHeight + 1);
+    const observer = new ResizeObserver(measure);
+    observer.observe(clip);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [showAll]);
 
   const content = stripImageHints(
     typeof message.content === "string"
@@ -448,7 +465,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "min(70%, 580px)" }}>
+      <div className="user-bubble-row">
         <div
           style={{
             flex: 1,
@@ -462,10 +479,15 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
             lineHeight: 1.58,
             color: "var(--text)",
             wordBreak: "break-word",
-            maxHeight: USER_BUBBLE_MAX_HEIGHT,
-            overflowY: "auto",
           }}
         >
+          <div
+            ref={clipRef}
+            className="user-bubble-clip"
+            data-clamped={overflowing && !showAll ? "true" : undefined}
+            style={{ maxHeight: showAll ? undefined : USER_BUBBLE_MAX_HEIGHT }}
+          >
+          <div ref={bodyRef}>
           {commandText ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
               {imageBlocksNode}
@@ -532,6 +554,22 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
           {imageBlocksNode}
           {content && <UserTextWithMentions text={content} cwd={cwd} onOpenFile={onOpenFile} />}
           </>
+          )}
+          </div>
+          </div>
+          {overflowing && (
+            <button
+              type="button"
+              className="user-bubble-toggle"
+              aria-expanded={showAll}
+              aria-label={showAll ? t("i18n.collapse") : t("i18n.expand")}
+              title={showAll ? t("i18n.collapse") : t("i18n.expand")}
+              onClick={() => setShowAll((prev) => !prev)}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
           )}
         </div>
 
