@@ -98,6 +98,7 @@ test("background completion waits across waves, respects Stop, and treats either
       currentSuppressedCompletionSessionIdsRef: { current: new Set() },
       previousSuppressedCompletionSessionIdsRef: { current: new Set() },
       allSessions: [{ id: "parent" }, { id: "child", relation: { kind: "subagent" } }],
+      familyParentId: (session) => session.relation?.kind === "subagent" ? "parent" : undefined,
       setUnreadSessionIds: (update) => { unread = update(unread); },
       loadSessions() {}, onBackgroundTaskDone: (ids) => notices.push([...ids]),
       useEffect: (effect) => effect(),
@@ -246,7 +247,7 @@ test("subagent completion stays silent and never becomes unread", () => {
   assert.match(source, /if \(completedWithNotifications\.length > 0\) \{\s*onBackgroundTaskDone\?\.\(completedWithNotifications\)/);
   assert.match(
     source,
-    /filter\(\(session\) => session\.relation\?\.kind !== "subagent"\)[\s\S]*?unreadEligibleIds\.has\(id\)/,
+    /filter\(\(session\) => !familyParentId\(session\)\)[\s\S]*?unreadEligibleIds\.has\(id\)/,
   );
 });
 

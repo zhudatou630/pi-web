@@ -396,9 +396,11 @@ export interface SessionInfo {
   routineRunOnly?: boolean;
   parentSessionId?: string; // source session for a fork, or parent session for a subagent
   /** How this session relates to another session. Forks remain top-level in the
-   *  UI; only subagent relations form a visible parent/child tree. */
+   *  UI; subagents and side chats live in their main session's family (lib/session-family.ts). */
   relation?:
     | { kind: "fork"; originSessionId?: string }
+    /** lib/side-chat.ts; `parentSessionId` is the main session's, also for a side chat of a side chat. */
+    | { kind: "side"; parentSessionId: string }
     | {
         kind: "subagent";
         parentSessionId: string;

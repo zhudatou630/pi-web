@@ -1,9 +1,10 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { writePrivateFileAtomicSync } from "./atomic-file";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionWrapper } from "./rpc-manager";
 import { getForkSessionName } from "./session-display-title";
 import { probeLatestEntryId, userMessagePreview } from "./session-reader";
-import { SIDE_CHAT_BOUNDARY, SIDE_CHAT_TYPE, sideChatParentId, type SideChatDetails } from "./side-chat";
+import { SIDE_CHAT_BOUNDARY, SIDE_CHAT_HEADER_KEY, SIDE_CHAT_TYPE, sideChatParentId, type SideChatHeader } from "./side-chat";
 import { readSubagentRun } from "./subagents";
 import type { SessionEntry } from "./types";
 
@@ -57,20 +58,28 @@ export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null
     parentSessionId: manager.getHeader()?.parentSession,
     firstMessage: firstUser?.type === "message" && firstUser.message.role === "user" ? userMessagePreview(firstUser.message.content, 500) : undefined,
   }, "Fork: ");
-  const sideParentId = side ? sideChatParentId(entries) ?? manager.getSessionId() : undefined;
+  // Read before branching, which repoints the manager at the copy.
+  const sourceSideParentId = sideChatParentId(manager.getHeader());
+  const sideParentId = side ? sourceSideParentId ?? manager.getSessionId() : sourceSideParentId;
   const path = manager.createBranchedSession(leafId);
   manager.appendSessionInfo(forkName);
-  if (sideParentId) {
-    const details: SideChatDetails = { parentSessionId: sideParentId };
-    manager.appendCustomMessageEntry(SIDE_CHAT_TYPE, SIDE_CHAT_BOUNDARY, false, details);
-  }
-  // The SDK defers writing shell-only branches; persist those copies too.
-  if (path && !existsSync(path)) {
-    const header = manager.getHeader();
-    if (!header) throw new Error("Forked session is missing a session header");
-    const content = [header, ...manager.getEntries()].map((entry) => JSON.stringify(entry)).join("\n") + "\n";
-    writeFileSync(path, content, { encoding: "utf8", flag: "wx" });
-  }
+  if (side) manager.appendCustomMessageEntry(SIDE_CHAT_TYPE, SIDE_CHAT_BOUNDARY, false);
+  if (path) writeSessionCopy(manager, path, sideParentId);
   if (!path || !existsSync(path)) throw new Error("Failed to fork the session");
   return { sessionId: manager.getSessionId(), path, name: forkName };
+}
+
+/**
+ * Finishes a copy made with `manager` (a fork, clone or side chat). Any copy of a side chat
+ * stays one, owned by the same main session: `sideParentId` marks the header, which the SDK
+ * wrote before it was known, so the copy is written whole. Without one, only a copy the SDK
+ * deferred (a shell-only branch, an empty fork) is written.
+ */
+export function writeSessionCopy(manager: SessionManager, path: string, sideParentId: string | undefined): void {
+  if (!sideParentId && existsSync(path)) return;
+  const header = manager.getHeader();
+  if (!header) throw new Error("Forked session is missing a session header");
+  // pi keeps the loaded header object, so the key survives its own later rewrites.
+  if (sideParentId) Object.assign(header, { [SIDE_CHAT_HEADER_KEY]: { parentSessionId: sideParentId } satisfies SideChatHeader });
+  writePrivateFileAtomicSync(path, [header, ...manager.getEntries()].map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 }

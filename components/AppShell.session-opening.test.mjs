@@ -85,6 +85,8 @@ function familySwitchScope(tabs, primary, result) {
     chatTabsRef: { current: tabs }, isSplitActiveRef: { current: false }, activeChatPaneRef: { current: "primary" },
     activeChatTabIdRef: { current: "primary" }, splitChatTabIdRef: { current: null },
     branchLeafChangeFnRef: { current: null }, suppressCwdBumpRef: { current: false },
+    activeSessionIdRef: { current: primary.id },
+    handleSessionForked(...args) { result.besideArgs = args; },
     workspaceKeyOf: (item) => item.projectKey ?? item.cwd,
     setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
     router: { replace(url) { result.url = url; } },
@@ -96,8 +98,25 @@ function familySwitchScope(tabs, primary, result) {
   }
   scope.handleSelectSession = callback("handleSelectSession", scope);
   scope.handleSwitchFamilySession = callback("handleSwitchFamilySession", scope);
+  scope.handleSelectFamilySession = callback("handleSelectFamilySession", scope);
   return scope;
 }
+
+test("AgentSessionPanel.onSelectSession opens a side chat beside the current chat, or focuses its open tab", () => {
+  const side = { id: "side", name: "Side: why", cwd: "/repo", projectKey: "/repo", relation: { kind: "side", parentSessionId: "primary" } };
+  const primary = { id: "primary", name: "Main", cwd: "/repo", projectKey: "/repo" };
+  const result = {};
+  const scope = familySwitchScope(tabState.openSessionInNewTab([], primary).tabs, primary, result);
+  boundAction("AgentSessionPanel", "onSelectSession", scope)(side);
+  assert.deepEqual(result.besideArgs, ["side", "primary", side, "primary", true]);
+  assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["primary"], "the main chat keeps its tab");
+
+  const open = {};
+  const openScope = familySwitchScope(tabState.openSessionInNewTab(tabState.openSessionInNewTab([], primary).tabs, side).tabs, primary, open);
+  boundAction("AgentSessionPanel", "onSelectSession", openScope)(side);
+  assert.equal(open.besideArgs, undefined);
+  assert.equal(open.ActiveChatTabId, "side");
+});
 
 test("AgentSessionPanel.onSelectSession replaces the current tab in place", () => {
   const session = { id: "child", name: "Child", cwd: "/repo", projectKey: "/repo" };

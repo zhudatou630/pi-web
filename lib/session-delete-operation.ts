@@ -73,14 +73,13 @@ export async function deleteSessionById(id: string) {
     }
     const directChildren = (childrenByParent.get(target.pathKey) ?? []).map(readRecord);
     const cascadeDeletes = new Map<string, SessionFileRecord>();
-    if (!parentSessionPath) {
-      const queue = directChildren.filter((record) => record.isSubagent);
-      while (queue.length) {
-        const record = queue.shift()!;
-        if (record.pathKey === target.pathKey || cascadeDeletes.has(record.pathKey)) continue;
-        cascadeDeletes.set(record.pathKey, record);
-        queue.push(...(childrenByParent.get(record.pathKey) ?? []).map(readRecord));
-      }
+    // Side chats go with their main session: reparented, they would name a main session that is gone.
+    const queue = directChildren.filter((record) => record.sideParentId === target.id || (!parentSessionPath && record.isSubagent));
+    while (queue.length) {
+      const record = queue.shift()!;
+      if (record.pathKey === target.pathKey || cascadeDeletes.has(record.pathKey)) continue;
+      cascadeDeletes.set(record.pathKey, record);
+      queue.push(...(childrenByParent.get(record.pathKey) ?? []).map(readRecord));
     }
     const reparents = directChildren.filter((record) => !cascadeDeletes.has(record.pathKey));
     if (reparents.some((record) => record.isSubagent) && (!parentSessionPath || !parentSessionId)) {

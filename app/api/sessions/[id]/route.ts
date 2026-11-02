@@ -23,6 +23,7 @@ import { readSessionToolSelection } from "@/lib/session-tool-selection";
 import { updateSidebarState } from "@/lib/sidebar-state";
 import { getSessionFamily, familyHasMemberIn } from "@/lib/session-family";
 import { jsonResponse } from "@/lib/json-response";
+import { sideChatParentId } from "@/lib/side-chat";
 import { routineNameLookup } from "@/lib/routines";
 
 /**
@@ -124,6 +125,7 @@ export async function GET(
     const activeSubagent = subagent ? await getSubagentRun(id) : null;
     const toolNames = readSubagentSessionResources(entries as never)?.tools
       ?? readSessionToolSelection(entries as never);
+    const sideParentId = sideChatParentId(header);
     const info = header ? (await attachSessionProjectInfo([{
       path: filePath,
       id: header.id,
@@ -141,9 +143,11 @@ export async function GET(
       parentSessionId,
       ...(subagent
         ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: activeSubagent?.status ?? subagent.status } }
-        : header.parentSession
-          ? { relation: { kind: "fork" as const, ...(parentSessionId ? { originSessionId: parentSessionId } : {}) } }
-          : {}),
+        : sideParentId
+          ? { relation: { kind: "side" as const, parentSessionId: sideParentId } }
+          : header.parentSession
+            ? { relation: { kind: "fork" as const, ...(parentSessionId ? { originSessionId: parentSessionId } : {}) } }
+            : {}),
       transient: !filePath || !existsSync(filePath),
     }]))[0] : null;
 

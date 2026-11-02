@@ -215,6 +215,29 @@ test("shell-only persisted prefix is copied and written even when SDK defers its
   assert.equal(readFileSync(manager.getSessionFile(), "utf8"), before);
 });
 
+test("side chats list in the main session's family and are deleted with it", async (t) => {
+  const { create, cache } = await fixture(t);
+  const manager = create();
+  user(manager);
+  manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "done" }], timestamp: Date.now() });
+  const mainId = manager.getSessionId();
+  cache(mainId, manager.getSessionFile());
+  const side = forkSessionBranch(manager.getSessionFile(), undefined, "Side: a", true);
+  const nested = forkSessionBranch(side.path, undefined, "Side: b", true);
+  const fork = forkSessionBranch(manager.getSessionFile(), undefined, "Fork: c");
+  for (const copy of [side, nested, fork]) cache(copy.sessionId, copy.path);
+  invalidateSessionListCache();
+  const listed = await listAllSessions();
+  const relation = (id) => listed.find((session) => session.id === id)?.relation;
+  assert.deepEqual(relation(side.sessionId), { kind: "side", parentSessionId: mainId });
+  assert.deepEqual(relation(nested.sessionId), { kind: "side", parentSessionId: mainId });
+  assert.equal(relation(fork.sessionId)?.kind, "fork");
+
+  assert.equal((await deleteSessionById(mainId)).status, 200);
+  const left = readdirSync(manager.getSessionDir()).filter((file) => file.endsWith(".jsonl"));
+  assert.deepEqual(left, [fork.path.split("/").at(-1)], "side chats go with the main session; a plain fork stays");
+});
+
 test("fork route and all RPC child-copy commands refuse during a delete shutdown wait", async (t) => {
   const { create, request, live } = await fixture(t);
   const manager = create();

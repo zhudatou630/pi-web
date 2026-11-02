@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { selectionFamilies, reconcileSessionSelection, toggleSessionSelection, sessionSelectionSummary } from "@/lib/session-selection";
-import { listSessionFamilies, isFamilyArchived, familyHasMemberIn, familiesToArchive, previewSessionFamilies, markSessionFamilyRead, type SessionFamily } from "@/lib/session-family";
+import { familyParentId, listSessionFamilies, isFamilyArchived, familyHasMemberIn, familiesToArchive, previewSessionFamilies, markSessionFamilyRead, type SessionFamily } from "@/lib/session-family";
 import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
@@ -611,11 +611,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
       }
-      // Drop markers for deleted sessions and for subagents, whose completion
-      // is intentionally silent even if an older client marked them unread.
+      // Drop markers for deleted sessions and for family members (subagents, side chats),
+      // whose completion is intentionally silent even if an older client marked them unread.
       const unreadEligibleIds = new Set(
         data.sessions
-          .filter((session) => session.relation?.kind !== "subagent")
+          .filter((session) => !familyParentId(session))
           .map((session) => session.id),
       );
       setUnreadSessionIds((prev) => {
@@ -886,7 +886,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     const completedInBackground = [...previous].filter((id) => !pendingCompletionIds.has(id) && !visibleIds.has(id));
     const knownSubagentIds = new Set(
       allSessions
-        .filter((session) => session.relation?.kind === "subagent")
+        .filter((session) => familyParentId(session))
         .map((session) => session.id),
     );
     const completedWithNotifications = completedInBackground.filter(

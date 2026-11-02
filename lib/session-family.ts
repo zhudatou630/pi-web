@@ -7,6 +7,12 @@ export interface SessionFamily {
   latestModified: string;
 }
 
+/** Subagents and side chats live in their main session's family, never as sidebar rows of their own. */
+export function familyParentId(session: SessionInfo): string | undefined {
+  const relation = session.relation;
+  return relation?.kind === "subagent" || relation?.kind === "side" ? relation.parentSessionId : undefined;
+}
+
 function resolveFamilyRoots(sessions: readonly SessionInfo[]): Map<string, string | null> {
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const roots = new Map<string, string | null>();
@@ -30,11 +36,12 @@ function resolveFamilyRoots(sessions: readonly SessionInfo[]): Map<string, strin
       path.push(currentId);
       const current = byId.get(currentId);
       if (!current) break;
-      if (current.relation?.kind !== "subagent") {
+      const parentId = familyParentId(current);
+      if (!parentId) {
         rootId = current.id;
         break;
       }
-      currentId = current.relation.parentSessionId;
+      currentId = parentId;
     }
 
     for (const id of path) roots.set(id, rootId);
@@ -49,7 +56,7 @@ export function listSessionFamilies(sessions: readonly SessionInfo[]): SessionFa
   const families = new Map<string, SessionFamily>();
 
   for (const session of sessions) {
-    if (session.relation?.kind === "subagent") continue;
+    if (familyParentId(session)) continue;
     families.set(session.id, {
       root: session,
       subagents: [],
@@ -58,7 +65,7 @@ export function listSessionFamilies(sessions: readonly SessionInfo[]): SessionFa
   }
 
   for (const session of sessions) {
-    if (session.relation?.kind !== "subagent") continue;
+    if (!familyParentId(session)) continue;
     const rootId = rootsBySessionId.get(session.id);
     const family = rootId ? families.get(rootId) : undefined;
     if (!family) continue;

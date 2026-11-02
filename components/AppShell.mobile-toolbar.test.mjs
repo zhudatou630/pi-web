@@ -66,7 +66,7 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
     source,
     /if \(activeTopPanel === "agents" \|\| activeTopPanel === "session" \|\| \(!isMobile && activeTopPanel === "branches"\)\)[\s\S]*?Math\.min\(wantedWidth[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
-  assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSwitchFamilySession\}/);
+  assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSelectFamilySession\}/);
   assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);
   assert.match(source, /handleSelectSession\(session, false, undefined, undefined, false, true\)/);
   assert.match(source, /session\?\.relation\?\.kind === "subagent"/);

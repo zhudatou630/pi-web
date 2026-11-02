@@ -506,7 +506,7 @@ export const zhCNLocale: LocalePlugin = {
     "agentSwitcher.main": "主 Agent",
     "agentSwitcher.backToMain": "返回主 Agent",
     "agentSwitcher.subagent": "子 Agent",
-    "agentSwitcher.count": "{count} 个子 Agent",
+    "agentSwitcher.count": "共 {count} 个",
     "agentSwitcher.runningCount": "{count} 个运行中",
     "agentSwitcher.search": "搜索 Agents",
     "agentSwitcher.noMatches": "没有匹配的 Agent",

@@ -21,7 +21,7 @@ import {
   preferUserBashExtension,
 } from "./project-command-env";
 import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, resolveSessionPath } from "./session-reader";
-import { forkSessionBranch, getForkLeafId } from "./session-fork";
+import { forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fork";
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { computeSessionStats } from "./session-stats";
 import { TimingRecorder } from "./model-timing";
@@ -1190,18 +1190,10 @@ export class AgentSessionWrapper {
             if (!forkedPath) throw new Error("Failed to create forked session");
             newSessionFile = forkedPath;
           }
-          // Before the fallback write below, so an unflushed copy still keeps its name.
+          // Before the copy is written, so an unflushed copy still keeps its name.
           const name = (command.name as string | undefined)?.trim();
           if (name) forkedManager.appendSessionInfo(name);
-
-          if (!existsSync(newSessionFile)) {
-            const header = forkedManager.getHeader();
-            if (!header) throw new Error("Forked session is missing a session header");
-            const content = [header, ...forkedManager.getEntries()]
-              .map((forkedEntry) => JSON.stringify(forkedEntry))
-              .join("\n") + "\n";
-            writeFileSync(newSessionFile, content, { encoding: "utf8", flag: "wx" });
-          }
+          writeSessionCopy(forkedManager, newSessionFile, sideChatParentId(sessionManager.getHeader()));
 
           const newSessionId = forkedManager.getSessionId();
           cacheSessionPath(newSessionId, newSessionFile);
@@ -1242,8 +1234,10 @@ export class AgentSessionWrapper {
         return this.withSessionReplacement("clone", async () => {
           const sessionDir = sessionManager.getSessionDir();
           const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
+          const sideParentId = sideChatParentId(sourceManager.getHeader());
           const clonedPath = sourceManager.createBranchedSession(leafId);
           if (!clonedPath || !existsSync(clonedPath)) throw new Error("Failed to clone current session branch");
+          writeSessionCopy(sourceManager, clonedPath, sideParentId);
 
           const newSessionId = SessionManager.open(clonedPath, sessionDir).getSessionId();
           cacheSessionPath(newSessionId, clonedPath);
@@ -2789,7 +2783,7 @@ export async function startRpcSession(
     });
     // The provider cache key (OpenAI's prompt_cache_key, relay affinity headers) is the session id:
     // a side chat sends its parent's, so its first request can reuse the parent's cached prefix.
-    const sideParentId = sideChatParentId(sessionManager.getEntries());
+    const sideParentId = sideChatParentId(sessionManager.getHeader());
     if (sideParentId) inner.agent.sessionId = sideParentId;
 
     // shortcut: explicit late-provider requests still use eager scope validation; defer them when needed.

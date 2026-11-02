@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { existsSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { basename, dirname, join } from "path";
 import { sessionPathKey } from "./session-path";
+import { sideChatParentId } from "./side-chat";
 import { readSubagentRun, SUBAGENT_META_TYPE } from "./subagents";
 import type { SessionEntry } from "./types";
 import { recordUsageBeforeDelete } from "./usage-stats";
@@ -15,6 +16,8 @@ export interface SessionFileRecord {
   entries: SessionEntry[];
   original: string;
   isSubagent: boolean;
+  /** The main session's id for a side chat (lib/side-chat.ts). */
+  sideParentId?: string;
 }
 
 export function readSessionFileRecord(filePath: string): SessionFileRecord | null {
@@ -40,6 +43,7 @@ export function readSessionFileRecord(filePath: string): SessionFileRecord | nul
     entries,
     original,
     isSubagent: Boolean(readSubagentRun(entries as never, header.id, filePath)),
+    sideParentId: sideChatParentId(header),
   };
 }
 

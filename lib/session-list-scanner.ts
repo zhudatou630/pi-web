@@ -9,6 +9,7 @@ import type { Dirent } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
+import { SIDE_CHAT_HEADER_KEY, sideChatParentId } from "./side-chat";
 import { getSessionFirstMessagePreview, SESSION_FIRST_MESSAGE_PREVIEW_MAX_LENGTH } from "./session-display-title";
 import { IMAGE_RESULT_TYPE } from "./image-generation";
 import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine-run-entry";
@@ -23,6 +24,8 @@ export interface ScannedSessionInfo {
 	messageCount: number;
 	firstMessage: string;
 	parentSessionPath?: string;
+	/** The main session's id when the header marks a side chat (lib/side-chat.ts). */
+	sideParentSessionId?: string;
 	/** The routine whose runs prompted this session (latest), if any. */
 	routineId?: string;
 	/** A chat a routine run started for itself and nobody has written in: kept out of the sidebar lists. */
@@ -71,7 +74,9 @@ function isRecord(value: unknown): value is RawEntry {
 }
 
 // Bump when counting/preview rules change: resumed totals keep the old rules.
-const INDEX_FORMAT_VERSION = 6;
+// The file name carries the version: the npm-installed service shares the agent dir, and an older
+// build writing the same file would drop fields a newer one reads (and the reverse forces cold rebuilds).
+const INDEX_FORMAT_VERSION = 7;
 const RESUME_SAMPLE_BYTES = 1024;
 const INDEX_PERSIST_DELAY_MS = 5_000;
 
@@ -133,6 +138,7 @@ function foldLine(state: ScanState, bytes: Buffer): boolean {
 			cwd: typeof entry.cwd === "string" ? entry.cwd : "",
 			timestamp: entry.timestamp,
 			parentSession: typeof entry.parentSession === "string" ? entry.parentSession : undefined,
+			[SIDE_CHAT_HEADER_KEY]: entry[SIDE_CHAT_HEADER_KEY],
 		};
 		return true;
 	}
@@ -253,6 +259,7 @@ async function scanSessionFile(filePath: string, previous?: IndexEntry): Promise
 		const header = visible.header;
 		if (!header) return null;
 		const headerTime = typeof header.timestamp === "string" ? new Date(header.timestamp).getTime() : NaN;
+		const sideParentSessionId = sideChatParentId(header);
 		const modified = typeof visible.lastActivityTime === "number" && visible.lastActivityTime > 0
 			? new Date(visible.lastActivityTime)
 			: !Number.isNaN(headerTime) ? new Date(headerTime) : stats.mtime;
@@ -264,6 +271,7 @@ async function scanSessionFile(filePath: string, previous?: IndexEntry): Promise
 				cwd: header.cwd as string,
 				name: visible.name,
 				parentSessionPath: header.parentSession as string | undefined,
+				...(sideParentSessionId ? { sideParentSessionId } : {}),
 				created: new Date(header.timestamp as string),
 				modified,
 				messageCount: visible.messageCount,
@@ -336,7 +344,7 @@ function getIndex(): Map<string, IndexEntry> {
 }
 
 function indexFilePath(agentDir: string): string {
-	return join(agentDir, "pi-web-session-index.json");
+	return join(agentDir, `pi-web-session-index-v${INDEX_FORMAT_VERSION}.json`);
 }
 
 function readResumePoint(value: unknown, size: number): ResumePoint | undefined {
@@ -386,6 +394,7 @@ function loadPersistedIndex(path: string): void {
 				typeof info.firstMessage !== "string" ||
 				(info.name !== undefined && typeof info.name !== "string") ||
 				(info.parentSessionPath !== undefined && typeof info.parentSessionPath !== "string") ||
+				(info.sideParentSessionId !== undefined && typeof info.sideParentSessionId !== "string") ||
 				(info.routineId !== undefined && typeof info.routineId !== "string") ||
 				(info.routineRunOnly !== undefined && typeof info.routineRunOnly !== "boolean") ||
 				typeof info.messageCount !== "number" || !Number.isSafeInteger(info.messageCount) || info.messageCount < 0 ||
@@ -405,6 +414,7 @@ function loadPersistedIndex(path: string): void {
 					cwd: info.cwd,
 					name: info.name,
 					parentSessionPath: info.parentSessionPath,
+					...(typeof info.sideParentSessionId === "string" ? { sideParentSessionId: info.sideParentSessionId } : {}),
 					...(typeof info.routineId === "string" ? { routineId: info.routineId } : {}),
 					...(info.routineRunOnly === true ? { routineRunOnly: true } : {}),
 					firstMessage: info.firstMessage,

@@ -7,6 +7,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import type { Routine, RoutineSchedule } from "@/lib/routines";
+import { familyParentId } from "@/lib/session-family";
 import type { SessionInfo } from "@/lib/types";
 import {
   draftFromSchedule,
@@ -520,7 +521,7 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
   // Chats of this project, newest first; the bound chat stays listed even if it scrolled away.
   const chatChoices = useMemo(() => {
     const ofProject = sessions
-      .filter((session) => sameCwd(session.cwd, draft.cwd) && session.relation?.kind !== "subagent" && !session.routineRunOnly)
+      .filter((session) => sameCwd(session.cwd, draft.cwd) && !familyParentId(session) && !session.routineRunOnly)
       .sort((a, b) => b.modified.localeCompare(a.modified))
       .slice(0, 50);
     const label = (session: SessionInfo) => (session.name || session.firstMessage || session.id).replace(/\s+/g, " ").slice(0, 80);

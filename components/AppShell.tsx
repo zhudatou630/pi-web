@@ -1591,6 +1591,16 @@ export function AppShell() {
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [hydrateSelectedSession, router, selectedSession]);
 
+  /** Agents panel: a side chat not yet open opens beside the current chat (another pane, or a tab on phones). */
+  const handleSelectFamilySession = useCallback((session: SessionInfo) => {
+    const besideId = activeSessionIdRef.current;
+    if (session.relation?.kind !== "side" || !besideId || chatTabsRef.current.some((tab) => tab.id === session.id)) {
+      handleSwitchFamilySession(session);
+      return;
+    }
+    handleSessionForked(session.id, besideId, session, besideId, true);
+  }, [handleSessionForked, handleSwitchFamilySession]);
+
   const handleAskInSideChat = useCallback(async (
     prompt: string,
     sourceSessionId: string,
@@ -1606,7 +1616,10 @@ export function AppShell() {
     });
     if (!result?.newSessionId) throw new Error(translate("chat.quoteForkFailed"));
     setPendingQuotePrompt({ sessionId: result.newSessionId, text: prompt });
-    handleSessionForked(result.newSessionId, sourceSessionId, { name, parentSessionId: sourceSessionId }, sourceSessionId, true);
+    // Known before the next list refresh, so the Agents panel shows it at once (a nested one keeps the main session).
+    const sourceRelation = chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session?.relation;
+    const relation = sourceRelation?.kind === "side" ? sourceRelation : { kind: "side" as const, parentSessionId: sourceSessionId };
+    handleSessionForked(result.newSessionId, sourceSessionId, { name, parentSessionId: sourceSessionId, relation }, sourceSessionId, true);
   }, [handleSessionForked, translate]);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
@@ -3215,7 +3228,7 @@ export function AppShell() {
                   subagents={activeSessionFamily.subagents}
                   selectedSessionId={selectedSession.id}
                   runningSessionIds={runningSessionIds}
-                  onSelectSession={handleSwitchFamilySession}
+                  onSelectSession={handleSelectFamilySession}
                   onOpenInNewTab={handlePinSession}
                 />
               )}

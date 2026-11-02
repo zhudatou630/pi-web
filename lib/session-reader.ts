@@ -228,9 +228,11 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       ...(s.routineRunOnly ? { routineRunOnly: true } : {}),
       ...(subagent
         ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: subagent.status, ...(model ? { model } : {}), thinkingLevel } }
-        : s.parentSessionPath
-          ? { relation: { kind: "fork" as const, ...(originSessionId ? { originSessionId } : {}) } }
-          : {}),
+        : s.sideParentSessionId
+          ? { relation: { kind: "side" as const, parentSessionId: s.sideParentSessionId } }
+          : s.parentSessionPath
+            ? { relation: { kind: "fork" as const, ...(originSessionId ? { originSessionId } : {}) } }
+            : {}),
       transient: false,
     };
   });

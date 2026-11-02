@@ -96,6 +96,7 @@ function AgentRow({
 }) {
   const { locale, t } = useI18n();
   const relation = session.relation?.kind === "subagent" ? session.relation : null;
+  const side = session.relation?.kind === "side";
   const status = sessionStatus(session, running);
   const primary = main ? t("agentSwitcher.main") : relation?.description || sessionTitle(session);
   const time = formatCompactRelativeTime(session.modified, locale);
@@ -103,7 +104,7 @@ function AgentRow({
     ? sessionTitle(session)
     : relation
       ? [relation.profile !== DEFAULT_SUBAGENT_PROFILE && relation.profile, relation.model?.id, relation.thinkingLevel, time].filter(Boolean).join(" · ")
-      : `${t("agentSwitcher.subagent")} · ${time}`;
+      : side ? time : `${t("agentSwitcher.subagent")} · ${time}`;
   const secondaryTitle = relation
     ? [relation.profile, relation.model && `${relation.model.provider}/${relation.model.id}`, relation.thinkingLevel, session.modified].filter(Boolean).join(" · ")
     : secondary;
@@ -128,6 +129,11 @@ function AgentRow({
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M3 9h18" />
           </svg>
+        ) : side ? (
+          // The selection toolbar's Side chat glyph.
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(14)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M6 3v12M18 9a9 9 0 0 1-9 9" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
+          </svg>
         ) : (
           <SubagentIcon size={14} />
         )}
@@ -141,7 +147,8 @@ function AgentRow({
         </span>
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, whiteSpace: "nowrap" }}>
-        {!(main && !running) && (
+        {/* A main or side chat shows a status only while it runs; "completed" means nothing for a chat. */}
+        {!((main || side) && !running) && (
           <span style={{ display: "flex", alignItems: "center", gap: 6, color: statusColor(status) }}>
             <StatusIcon status={status} />
             <span>{t(`agentSwitcher.status.${status}`)}</span>
