@@ -448,7 +448,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "min(85%, 680px)" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, maxWidth: "min(70%, 580px)" }}>
         <div
           style={{
             flex: 1,
