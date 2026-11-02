@@ -17,6 +17,7 @@ import { findAskUserAnswers } from "@/lib/ask-user-answer";
 import { extractTurnCreatedRoutines, type CreatedRoutine } from "@/lib/turn-routines";
 import { summarizeTurnActivity, type TurnActivity } from "@/lib/turn-activity";
 import { findQuoteInSegments, selectedTextWithTex } from "@/lib/quoted-selection";
+import { SIDE_CHAT_TYPE } from "@/lib/side-chat";
 import { scrollIntoScroller } from "./FileFindBar";
 import type { FileReveal } from "./FileViewer";
 import {
@@ -44,7 +45,7 @@ import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
 import { getForkSessionName } from "@/lib/session-display-title";
 import { formatDuration } from "@/lib/i18n/format";
-import { useAgentSession, type AgentEndInfo, type AgentPhase, type NoticeItem } from "@/hooks/useAgentSession";
+import { useAgentSession, type AgentEndInfo, type AgentPhase, type BuiltinSlashCommandResult, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { dropMentionText, splitDroppedItems, uploadFiles, type DroppedItem } from "@/lib/file-upload-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -110,7 +111,8 @@ interface Props {
   onOpenSession?: (sessionId: string) => void;
   /** Pi's MCP extension points to `/mcp`, whose manager is the Settings > MCP page here. */
   onOpenMcpSettings?: () => void;
-  onAskInNewChat?: (prompt: string, sourceSessionId: string, leafId: string | null) => Promise<void>;
+  /** Forks this chat into a side chat (lib/side-chat.ts) and sends `prompt` there; null leaf = the live one. */
+  onAskInSideChat?: (prompt: string, sourceSessionId: string, leafId: string | null) => Promise<void>;
   quoteSelectionEnabled?: boolean;
   initialPrompt?: string;
   onInitialPromptConsumed?: (sessionId: string) => void;
@@ -787,7 +789,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInNewChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -874,6 +876,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // Pi Web's own approval card renders inline instead of the generic extension dialog.
   const routineApproval = extensionDialog?.method === "confirm" && extensionDialog.card?.kind === "routine" ? extensionDialog : null;
   const sessionBusy = agentRunning || directImageRunning || bashRunning;
+  // A side chat's divider sits above its first question, after the hidden marker.
+  const sideChatStartIdx = useMemo(() => {
+    let markerIdx = -1;
+    for (let i = messages.length - 1; i >= 0 && markerIdx < 0; i--) {
+      const message = messages[i];
+      if (message.role === "custom" && message.customType === SIDE_CHAT_TYPE) markerIdx = i;
+    }
+    if (markerIdx < 0) return -1;
+    return messages.findIndex((message, i) => i > markerIdx && message.role === "user");
+  }, [messages]);
   // While this session's run is under way its chime may come with the phone
   // locked, where a suspended audio context cannot start again.
   useEffect(() => {
@@ -969,11 +981,28 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
   }, [addNotice, handleDirectImageGeneration, keepTabOpen, messages, newSessionCwd, session?.cwd]);
 
-  const handleBuiltinCommandWithImageRefresh = useCallback(async (message: string) => {
+  const handleBuiltinCommandWithImageRefresh = useCallback(async (message: string): Promise<BuiltinSlashCommandResult> => {
+    const side = message.trim().match(/^\/side(?:\s+([\s\S]*))?$/);
+    if (side) {
+      const fail = (error: string): BuiltinSlashCommandResult => {
+        addNotice({ type: "error", message: error });
+        return { handled: true, error };
+      };
+      const question = side[1]?.trim() ?? "";
+      const sourceSessionId = sessionIdRef.current ?? session?.id;
+      if (!question) return fail("Usage: /side <question>");
+      if (!sourceSessionId || !onAskInSideChat) return fail("Send a message before opening a side chat");
+      try {
+        await onAskInSideChat(question, sourceSessionId, sessionBusy ? null : activeLeafId);
+        return { handled: true };
+      } catch (cause) {
+        return fail(cause instanceof Error ? cause.message : String(cause));
+      }
+    }
     const result = await handleBuiltinSlashCommand(message);
     if (!("error" in result) && /^\/reload(?:\s|$)/.test(message.trim())) setImageConfigRefreshKey((value) => value + 1);
     return result;
-  }, [handleBuiltinSlashCommand]);
+  }, [activeLeafId, addNotice, handleBuiltinSlashCommand, onAskInSideChat, session?.id, sessionBusy, sessionIdRef]);
   const closeQuotedSelection = useCallback(() => {
     setQuotedSelection(null);
     setQuoteInputOpen(false);
@@ -1102,15 +1131,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     closeQuotedSelection();
   }, [quotedSelection, closeQuotedSelection]);
 
-  const askSelectionInNewChat = useCallback(async (prompt: string) => {
+  const askSelectionInSideChat = useCallback(async (prompt: string) => {
     const sourceSessionId = sessionIdRef.current ?? session?.id;
-    if (quoteSubmitting || !prompt.trim() || !quotedSelection || !sourceSessionId || !onAskInNewChat) return;
+    if (quoteSubmitting || !prompt.trim() || !quotedSelection || !sourceSessionId || !onAskInSideChat) return;
     setQuoteSubmitting(true);
     setQuoteError(null);
     unlockAudio?.();
     try {
-      // Fork through the viewed leaf, so the new chat sees the whole conversation, not just up to the quote.
-      await onAskInNewChat(prompt, sourceSessionId, activeLeafId);
+      // Fork through the viewed leaf, so the side chat sees the whole conversation, not just up to the quote.
+      // During a run the server's live leaf is newer than the view's.
+      await onAskInSideChat(prompt, sourceSessionId, sessionBusy ? null : activeLeafId);
       closeQuotedSelection();
     } catch (error) {
       quoteChatInputRef.current?.restoreSubmission(prompt);
@@ -1118,7 +1148,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     } finally {
       setQuoteSubmitting(false);
     }
-  }, [onAskInNewChat, quotedSelection, quoteSubmitting, session?.id, sessionIdRef, activeLeafId, closeQuotedSelection, unlockAudio]);
+  }, [onAskInSideChat, quotedSelection, quoteSubmitting, session?.id, sessionIdRef, sessionBusy, activeLeafId, closeQuotedSelection, unlockAudio]);
 
   const initialPromptSentRef = useRef(false);
   useEffect(() => {
@@ -2126,6 +2156,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     data-slot-index={`msg-${idx}`}
                     ref={options.attachRef === false || currentRefIdx === undefined ? undefined : attachVisibleRef(currentRefIdx)}
                   >
+                    {idx === sideChatStartIdx && (
+                      <div role="separator" className="my-4 flex items-center gap-3 text-[11px] text-[var(--text-dim)]" style={{ fontFamily: "var(--font-ui)" }}>
+                        <span className="h-px flex-1 bg-[var(--border)]" />
+                        <span className="min-w-0 text-center">{t("chat.sideChatDivider")}</span>
+                        <span className="h-px flex-1 bg-[var(--border)]" />
+                      </div>
+                    )}
                     {view}
                   </div>
                 );
@@ -2571,7 +2608,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               <ChatInput
                 ref={quoteChatInputRef}
                 compact
-                onSend={askSelectionInNewChat}
+                onSend={askSelectionInSideChat}
                 onAbort={closeQuotedSelection}
                 isStreaming={false}
               />
@@ -2589,13 +2626,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 4v16M4 12h16" /></svg>
             <span>{t("chat.askInCurrent")}</span>
           </button>
-          {onAskInNewChat && (
+          {onAskInSideChat && (
             <button
               type="button"
-              // Disabled, not hidden, while this chat runs: the toolbar keeps its width and place.
-              disabled={sessionBusy}
-              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--text-muted)]"
-              // The tooltip says what the panel no longer spells out: the question goes to a copy in a new tab.
+              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+              // The tooltip says what the panel no longer spells out: the question goes to a read-only copy beside this chat.
               title={t("chat.sideChatHint")}
               aria-label={t("chat.askInNewChat")}
               onPointerDown={(event) => event.preventDefault()}

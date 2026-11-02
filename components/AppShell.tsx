@@ -63,6 +63,7 @@ import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
 import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
+import { getSideChatName } from "@/lib/side-chat";
 import { downloadBlob, prefersShareSheet, shareProducedFile } from "@/lib/save-file";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import {
@@ -316,6 +317,7 @@ export function AppShell() {
   const activeChatPaneRef = useRef<"primary" | "secondary">("primary");
   activeChatPaneRef.current = activeChatPane;
   const isSplitActiveRef = useRef(false);
+  const canSplitChatRef = useRef(false);
   const [chatSplitRatio, setChatSplitRatio] = useState<number>(0.5);
   const chatPanesContainerRef = useRef<HTMLDivElement>(null);
   const isResizingSplitRef = useRef(false);
@@ -1558,17 +1560,21 @@ export function AppShell() {
     };
   }, [requestExplorerRefresh]);
 
-  const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null, forkedInfo?: SessionInfo, focusSessionId = sourceSessionId) => {
+  const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null, forkedInfo?: Partial<SessionInfo>, focusSessionId = sourceSessionId, besideSource = false) => {
     const sourceTab = chatTabsRef.current.find((tab) => tab.id === (sourceSessionId ?? selectedSession?.id));
     const sourceSession = sourceSessionId ? sourceTab?.session : selectedSession;
-    const pane = isSplitActiveRef.current && sourceTab ? chatTabPane(sourceTab) : "primary";
+    const shouldFocus = !sourceSessionId || activeSessionIdRef.current === focusSessionId;
+    const sourcePane = isSplitActiveRef.current && sourceTab ? chatTabPane(sourceTab) : "primary";
+    // A side chat opens in the other pane (splitting if needed), so the source stays in view.
+    const pane = besideSource && shouldFocus && sourceTab && canSplitChatRef.current
+      ? (sourcePane === "primary" ? "secondary" : "primary")
+      : sourcePane;
     const forkedSession: SessionInfo = {
       ...(sourceSession ?? { path: "", cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" }),
       id: newSessionId,
       transient: false,
       ...forkedInfo,
     };
-    const shouldFocus = !sourceSessionId || activeSessionIdRef.current === focusSessionId;
 
     setRefreshKey((k) => k + 1);
     setChatTabs((prev) => openSessionInNewTab(prev, forkedSession, pane).tabs);
@@ -1585,21 +1591,22 @@ export function AppShell() {
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [hydrateSelectedSession, router, selectedSession]);
 
-  const handleAskInNewChat = useCallback(async (
+  const handleAskInSideChat = useCallback(async (
     prompt: string,
     sourceSessionId: string,
     leafId: string | null,
   ) => {
-    const source = chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session;
+    const name = getSideChatName(prompt, translate("session.sideNamePrefix"));
     setChatTabs((tabs) => pinSessionTab(tabs, sourceSessionId));
     const result = await sendAgentCommand<{ newSessionId?: string }>(sourceSessionId, {
       type: "fork_branch",
+      side: true,
       ...(leafId ? { entryId: leafId } : {}),
-      ...(source ? { name: getForkSessionName(source, translate("session.forkNamePrefix")) } : {}),
+      name,
     });
     if (!result?.newSessionId) throw new Error(translate("chat.quoteForkFailed"));
     setPendingQuotePrompt({ sessionId: result.newSessionId, text: prompt });
-    handleSessionForked(result.newSessionId, sourceSessionId);
+    handleSessionForked(result.newSessionId, sourceSessionId, { name, parentSessionId: sourceSessionId }, sourceSessionId, true);
   }, [handleSessionForked, translate]);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
@@ -1715,6 +1722,7 @@ export function AppShell() {
   const canSplitChat = !isMobile && chatPanesWide;
   const isSplitActive = Boolean(canSplitChat && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
   isSplitActiveRef.current = isSplitActive;
+  canSplitChatRef.current = canSplitChat;
   const primaryPaneHasFocus = !isSplitActive || activeChatPane === "primary";
 
   const focusChatTab = useCallback((tab: ChatTabItem, pane: "primary" | "secondary") => {
@@ -2276,7 +2284,7 @@ export function AppShell() {
         onOpenFile={handleOpenLinkedFile}
         onOpenSession={handleOpenSession}
         onOpenMcpSettings={() => setSettingsSection("mcp")}
-        onAskInNewChat={handleAskInNewChat}
+        onAskInSideChat={handleAskInSideChat}
         quoteSelectionEnabled={quoteSelectionEnabled}
         initialPrompt={pendingQuotePrompt?.sessionId === tabSession?.id ? pendingQuotePrompt?.text : undefined}
         onInitialPromptConsumed={handlePendingQuotePromptConsumed}

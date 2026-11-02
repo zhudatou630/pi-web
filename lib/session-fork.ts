@@ -3,6 +3,7 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionWrapper } from "./rpc-manager";
 import { getForkSessionName } from "./session-display-title";
 import { probeLatestEntryId, userMessagePreview } from "./session-reader";
+import { SIDE_CHAT_BOUNDARY, SIDE_CHAT_TYPE, sideChatParentId, type SideChatDetails } from "./side-chat";
 import { readSubagentRun } from "./subagents";
 import type { SessionEntry } from "./types";
 
@@ -26,8 +27,11 @@ export function getForkLeafId(sourcePath: string, wrapper?: Pick<AgentSessionWra
   return leafId;
 }
 
-/** Synchronous disk copy on an independent manager: never repoint the source runtime. */
-export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null, name?: string) {
+/**
+ * Synchronous disk copy on an independent manager: never repoint the source runtime.
+ * `side` ends the copy on the side-chat marker (lib/side-chat.ts).
+ */
+export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null, name?: string, side = false) {
   if (!sourcePath || !existsSync(sourcePath)) {
     throw new SessionForkError(liveLeafId !== undefined ? "unsaved" : "not_found", liveLeafId !== undefined
       ? "This session has not been saved yet. Send a message before forking it."
@@ -53,8 +57,13 @@ export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null
     parentSessionId: manager.getHeader()?.parentSession,
     firstMessage: firstUser?.type === "message" && firstUser.message.role === "user" ? userMessagePreview(firstUser.message.content, 500) : undefined,
   }, "Fork: ");
+  const sideParentId = side ? sideChatParentId(entries) ?? manager.getSessionId() : undefined;
   const path = manager.createBranchedSession(leafId);
   manager.appendSessionInfo(forkName);
+  if (sideParentId) {
+    const details: SideChatDetails = { parentSessionId: sideParentId };
+    manager.appendCustomMessageEntry(SIDE_CHAT_TYPE, SIDE_CHAT_BOUNDARY, false, details);
+  }
   // The SDK defers writing shell-only branches; persist those copies too.
   if (path && !existsSync(path)) {
     const header = manager.getHeader();

@@ -37,7 +37,7 @@ function render(messages, locate = null, overrides = {}) {
     ProcessDetailsGroup: ({ children }) => React.createElement("section", null, children),
     getImageGenerationResult: () => null, IMAGE_RESULT_TYPE: "image-result",
     getModelDisplayName: () => "model", modelNames: new Map(),
-    messageRefs: { current: [] }, messageCwd: "/project", imageConfig: null,
+    messageRefs: { current: [] }, messageCwd: "/project", imageConfig: null, sideChatStartIdx: -1,
     sessionBusy: false, session: { id: "s1" }, sessionIdRef: { current: "s1" },
     streamState: { isStreaming: false }, streamingParts: {}, streamingAssistant: null,
     completedAssistantParts: messages.map((message) => message.role === "assistant" ? display.partitionAssistantMessage(message) : null),

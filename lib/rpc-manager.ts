@@ -58,6 +58,7 @@ import { isSubagentsEnabledForProject } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
 import { readOnlyToolGuard } from "./read-only-tool-guard";
+import { sideChatParentId, sideChatToolGuard } from "./side-chat";
 import { createBuiltinExtensions } from "./builtin-extensions";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, reservePiWebImageTool } from "./image-generation-extension";
@@ -1218,7 +1219,7 @@ export class AgentSessionWrapper {
         // Keep leaf selection and copying in the same synchronous turn.
         const currentSessionFile = this.inner.sessionFile ?? "";
         const entryId = (command.entryId as string | undefined) ?? getForkLeafId(currentSessionFile, this);
-        const fork = forkSessionBranch(currentSessionFile, entryId, command.name as string | undefined);
+        const fork = forkSessionBranch(currentSessionFile, entryId, command.name as string | undefined, command.side === true);
         cacheSessionPath(fork.sessionId, fork.path);
         invalidateSessionListCache();
         return { cancelled: false, newSessionId: fork.sessionId };
@@ -2729,6 +2730,7 @@ export async function startRpcSession(
               // ponytail: sub-agents are left out; their `tools:` allow-list would hide MCP tools anyway.
               ...(await createBuiltinExtensions()),
               { name: "read-only-guard", factory: readOnlyToolGuard, hidden: true },
+              { name: "side-chat-guard", factory: sideChatToolGuard, hidden: true },
               createProjectCommandBashExtension({
                 cwd: sessionCwd,
                 settings: settingsManager,
@@ -2785,6 +2787,10 @@ export async function startRpcSession(
         customTools: createSubagentShellTools(sessionCwd, settingsManager, services.resourceLoader.getExtensions().extensions),
       } : {}),
     });
+    // The provider cache key (OpenAI's prompt_cache_key, relay affinity headers) is the session id:
+    // a side chat sends its parent's, so its first request can reuse the parent's cached prefix.
+    const sideParentId = sideChatParentId(sessionManager.getEntries());
+    if (sideParentId) inner.agent.sessionId = sideParentId;
 
     // shortcut: explicit late-provider requests still use eager scope validation; defer them when needed.
     const retryStartupModel = !initialModel && !chatOnly && !subagentResources && !hasExistingMessages && (
