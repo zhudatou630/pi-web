@@ -213,10 +213,11 @@ test("uses a native main action without row-level deletion shortcuts", () => {
   assert.match(sessionItemSource, /<button\s*type="button"\s*aria-current=\{isSelected && !selection \? "page" : undefined\}/);
 });
 
-test("polls running sessions only while the tab is visible", () => {
+test("polls running sessions quickly while visible and slowly while hidden, for the favicon badge", () => {
   assert.doesNotMatch(source, /new EventSource\("\/api\/agent\/running\/events"\)/);
   assert.match(source, /fetch\("\/api\/agent\/running"/);
-  assert.match(source, /document\.visibilityState !== "visible"/);
+  assert.match(source, /document\.visibilityState === "visible" \? RUNNING_SESSIONS_POLL_MS : HIDDEN_RUNNING_SESSIONS_POLL_MS/);
+  assert.match(source, /const HIDDEN_RUNNING_SESSIONS_POLL_MS = 30_000/);
   assert.match(source, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);
 });
 

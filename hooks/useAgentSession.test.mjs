@@ -108,9 +108,9 @@ test("stopped and unsettled-family runs refresh the UI but never play the done s
   const noop = () => {};
   const onAgentEnd = new Function("useCallback", "setRefreshKey", "setExplorerRefreshKey",
     "selectedSession", "hydrateSelectedSession", "isAutoSessionTitleEnabled", "shouldShowBrowserNotification",
-    "deliverSessionNotification", "translate", `${browser}; return handleAgentEnd;`)(
+    "deliverSessionNotification", "translate", "setFinishedWhileHidden", `${browser}; return handleAgentEnd;`)(
     useCallback, () => refreshes++, noop, null, noop, () => false, () => true,
-    () => notifications++, (key) => key,
+    () => notifications++, (key) => key, noop,
   );
   const end = new Function("useCallback", "completionNotificationsEnabled", "soundEnabledRef",
     "playDoneSoundRef", "onAgentEnd", "sessionRef", `${wrapper}; return wrappedOnAgentEnd;`)(

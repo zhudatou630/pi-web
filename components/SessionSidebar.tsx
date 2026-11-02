@@ -258,6 +258,7 @@ const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
 const LAST_CUSTOM_CWD_STORAGE_KEY = "pi-web:last-custom-cwd";
 const WORKSPACE_EXPANSION_STORAGE_KEY = "pi-web:workspace-expansion";
 const RUNNING_SESSIONS_POLL_MS = 2500;
+const HIDDEN_RUNNING_SESSIONS_POLL_MS = 30_000;
 
 function loadExpandedWorkspaceKeys(): Set<string> | null {
   if (typeof window === "undefined") return null;
@@ -798,14 +799,16 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
       timer = null;
     };
 
+    // A hidden page keeps a slow poll: the favicon badge reports completions and waiting sessions there.
     const schedule = () => {
       clearTimer();
-      if (stopped || document.visibilityState !== "visible") return;
-      timer = setTimeout(() => void poll(), RUNNING_SESSIONS_POLL_MS);
+      if (stopped) return;
+      timer = setTimeout(() => void poll(), document.visibilityState === "visible" ? RUNNING_SESSIONS_POLL_MS : HIDDEN_RUNNING_SESSIONS_POLL_MS);
     };
 
     const poll = async () => {
-      if (stopped || document.visibilityState !== "visible") return;
+      if (stopped) return;
+      clearTimer();
       const current = new AbortController();
       controller?.abort();
       controller = current;
@@ -835,21 +838,19 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           await loadSessions();
         }
       } catch {
-        // Keep the last known state; the next visible-tab poll retries.
+        // Keep the last known state; the next poll retries.
       } finally {
-        if (controller === current) controller = null;
-        schedule();
+        // A superseded poll (aborted by a newer one) leaves the scheduling to it.
+        if (controller === current) {
+          controller = null;
+          schedule();
+        }
       }
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        void poll();
-        return;
-      }
-      clearTimer();
-      controller?.abort();
-      controller = null;
+      if (document.visibilityState === "visible") void poll();
+      else schedule();
     };
 
     void poll();

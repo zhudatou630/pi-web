@@ -64,6 +64,7 @@ import { sendAgentCommand } from "@/lib/agent-client";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
 import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getSideChatName } from "@/lib/side-chat";
+import { countFaviconUnread, syncFaviconBadge } from "@/lib/favicon-badge";
 import { downloadBlob, prefersShareSheet, shareProducedFile } from "@/lib/save-file";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import {
@@ -264,6 +265,23 @@ export function AppShell() {
   const handleSessionMarkersChange = useCallback((markers: SessionMarkers) => {
     setSessionMarkers((previous) => previous.unread === markers.unread && previous.awaitingInput === markers.awaitingInput ? previous : markers);
   }, []);
+  // On-screen sessions that finished while the page was hidden: the sidebar never marks those unread,
+  // but the favicon badge counts them until the page is seen again.
+  const [finishedWhileHidden, setFinishedWhileHidden] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const clearIfSeen = () => {
+      if (!shouldShowBrowserNotification()) setFinishedWhileHidden((previous) => previous.size ? new Set() : previous);
+    };
+    document.addEventListener("visibilitychange", clearIfSeen);
+    window.addEventListener("focus", clearIfSeen);
+    return () => {
+      document.removeEventListener("visibilitychange", clearIfSeen);
+      window.removeEventListener("focus", clearIfSeen);
+    };
+  }, []);
+  useEffect(() => {
+    syncFaviconBadge(sessionMarkers.awaitingInput.size, countFaviconUnread(sessionMarkers.unread, finishedWhileHidden));
+  }, [finishedWhileHidden, sessionMarkers]);
   // The temporary id distinguishes consecutive fresh composers in one cwd.
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
   const [newSessionDraftId, setNewSessionDraftId] = useState("initial");
@@ -1483,6 +1501,10 @@ export function AppShell() {
     if (targetSession?.relation?.kind === "subagent") return;
     if (end?.aborted || end?.subagentsActive) return;
     if (!shouldShowBrowserNotification()) return;
+    if (targetSession) {
+      const id = targetSession.id;
+      setFinishedWhileHidden((previous) => previous.has(id) ? previous : new Set(previous).add(id));
+    }
 
     deliverSessionNotification({
       targetSession,
