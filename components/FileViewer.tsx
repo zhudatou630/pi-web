@@ -27,6 +27,7 @@ import {
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { parseFrontmatter } from "@/lib/frontmatter";
+import { injectSandboxedHtmlPolyfill } from "@/lib/html-sandbox-polyfill";
 import { extractMarkdownOutline, findHeadingBySlug } from "@/lib/markdown-outline";
 import { markdownAppUrlTransform, markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { CodeBlock, MermaidBlock } from "./MermaidBlock";
@@ -1715,6 +1716,11 @@ function TextFileViewer({
     : displayMode === "preview" && !hasPreview
       ? "source"
       : displayMode;
+  const rawHtml = data?.truncated ? htmlFull?.text : viewerContent;
+  const htmlPreview = useMemo(
+    () => isHtml && effectiveDisplayMode === "preview" ? injectSandboxedHtmlPolyfill(rawHtml ?? "") : "",
+    [isHtml, effectiveDisplayMode, rawHtml],
+  );
   // A fresh token whenever the rendered text may change, so an open find bar searches again.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const findContentKey = useMemo(() => ({}), [data, gitDiff, htmlFull, effectiveDisplayMode, wrapLines]);
@@ -2236,7 +2242,7 @@ function TextFileViewer({
           </div>
         ) : isHtml && effectiveDisplayMode === "preview" ? (
           <iframe
-            srcDoc={data?.truncated ? htmlFull?.text : content}
+            srcDoc={htmlPreview}
             sandbox="allow-scripts"
             style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
              title={t("i18n.htmlPreview")}
