@@ -2742,9 +2742,10 @@ export async function startRpcSession(
     });
     const enabledModels = services.settingsManager.getEnabledModels();
     const scope = await resolveVisibleModels(services.modelRuntime, enabledModels);
+    // A model outside `enabledModels` is still a valid explicit choice (pi's --model with --models).
     const effectiveInitialModel = initialModel && (
       !allowInitialModelFallback
-      || scope.visible.some((model) => model.provider === initialModel.provider && model.id === initialModel.modelId)
+      || scope.available.some((model) => model.provider === initialModel.provider && model.id === initialModel.modelId)
     )
       ? initialModel
       : undefined;

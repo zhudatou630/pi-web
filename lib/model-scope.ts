@@ -23,6 +23,8 @@ const THINKING_LEVEL_SUFFIXES = new Set<ThinkingLevel>(THINKING_LEVELS);
 export interface ModelScopeResult {
   /** Models the UI should offer, in resolver order (all available when unscoped). */
   visible: readonly Model<Api>[];
+  /** Every available model: pi's `/model` "all" view, and what an explicit choice may name. */
+  available: readonly Model<Api>[];
   /** SDK-native scope retained for AgentSession model cycling and extensions. */
   scopedModels: readonly ScopedModel[];
   /** `provider/modelId` → thinking level pinned with a `:level` pattern suffix. */
@@ -81,8 +83,10 @@ export async function resolveVisibleModels(
 ): Promise<ModelScopeResult> {
   const cleaned = (patterns ?? []).map((pattern) => pattern.trim()).filter(Boolean);
   if (cleaned.length === 0) {
+    const available = await modelRuntime.getAvailable(undefined, { signal });
     return {
-      visible: await modelRuntime.getAvailable(undefined, { signal }),
+      visible: available,
+      available,
       scopedModels: [],
       thinkingLevelPins: {},
       warnings: [],
@@ -115,6 +119,7 @@ export async function resolveVisibleModels(
   if (scopedModels.length === 0) {
     return {
       visible: available,
+      available,
       scopedModels: [],
       thinkingLevelPins: {},
       warnings,
@@ -133,6 +138,7 @@ export async function resolveVisibleModels(
   }
   return {
     visible: scopedModels.map((scoped) => scoped.model),
+    available,
     scopedModels,
     thinkingLevelPins,
     warnings,
@@ -148,15 +154,20 @@ export async function resolveVisibleModels(
  */
 export function orderSelectorModels(scope: ModelScopeResult): Model<Api>[] {
   if (scope.scopedModels.length > 0) return [...scope.visible];
-  // Array.prototype.sort is stable: models of one provider keep their order.
-  return [...scope.visible].sort((a, b) => a.provider.localeCompare(b.provider));
+  return orderAllModels(scope.available);
+}
+
+/** pi's `/model` "all" view: sorted by provider id only (stable, so each provider keeps its order). */
+export function orderAllModels(models: readonly Model<Api>[]): Model<Api>[] {
+  return [...models].sort((a, b) => a.provider.localeCompare(b.provider));
 }
 
 /**
  * Select the model and thinking level used to create a new AgentSession.
  *
- * This mirrors pi's startup rule: prefer an explicit selection, otherwise use
- * the saved default when it is in scope, then the first resolver-ordered model.
+ * This mirrors pi's startup rule: prefer an explicit selection (any available
+ * model, as pi's `--model` outside `--models`), otherwise use the saved default
+ * when it is in scope, then the first resolver-ordered model.
  * A scoped-model thinking pin is applied unless the caller supplied an explicit
  * thinking level.
  */
@@ -167,12 +178,10 @@ export function selectInitialModelScope(
   const requestedRef = options.requestedModel;
   const defaultRef = options.defaultModel;
   const requested = requestedRef
-    ? scope.visible.find((model) => matchesModel(model, requestedRef))
+    ? scope.available.find((model) => matchesModel(model, requestedRef))
     : undefined;
   if (requestedRef && !requested) {
-    throw new Error(
-      `Model is not available in the enabled scope: ${requestedRef.provider}/${requestedRef.modelId}`,
-    );
+    throw new Error(`Model is not available: ${requestedRef.provider}/${requestedRef.modelId}`);
   }
 
   const requestedScoped = requested

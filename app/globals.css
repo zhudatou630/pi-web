@@ -5508,6 +5508,21 @@ span.token.table {
   margin-top: 8px;
 }
 
+/* The model selector's In chat | All switch: stays above the scrolling list, full width. */
+.model-selector-scope {
+  flex-shrink: 0;
+  padding: 4px 4px 0;
+}
+
+.model-selector-scope .settings-segmented {
+  display: grid;
+  width: 100%;
+}
+
+.model-selector-scope .settings-segmented-option {
+  font-size: 12px;
+}
+
 .menu-surface-label {
   padding: 0 10px 2px;
   color: var(--text-dim);

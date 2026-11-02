@@ -33,6 +33,7 @@ function picker(props) {
   new Function("require", "module", "exports", "window", compiled)(
     (name) => name === "react" ? hooks
       : name === "./MenuCheck" ? { MenuCheck: () => null }
+      : name === "./SettingsUi" ? { SettingsSegmented: (segmented) => React.createElement("segmented", segmented) }
       : name === "@/hooks/useI18n" ? { useI18n: () => ({ t: (key) => key }) }
       : jsxRuntime, loaded, loaded.exports,
     { innerHeight: 800, innerWidth: 1200 },
@@ -57,6 +58,9 @@ function picker(props) {
     key: (key) => { button().props.onKeyDown({ key, preventDefault() {} }); render(); },
     options: () => visit(tree, (node) => node.props.role === "option"),
     groups: () => visit(tree, (node) => node.props.className === "menu-surface-group"),
+    scope: () => visit(tree, (node) => node.type === "segmented")[0]?.props,
+    label: () => button().props.children[1].props.children,
+    render,
     active: () => {
       const id = button().props["aria-activedescendant"];
       return visit(tree, (node) => node.props.id === id && node.props.role === "option")[0];
@@ -98,3 +102,31 @@ for (const clear of [false, true]) {
     assert.deepEqual(options.map((option) => option.modelId), ["b1", "a3", "a1", "a2"]); // Input not mutated.
   });
 }
+
+test("while the scope narrows the list, In chat | All switches by tap or Tab, and opens on All for a model outside it", () => {
+  const scoped = [{ provider: "a", modelId: "a1", name: "A1" }];
+  const all = [...scoped, { provider: "b", modelId: "b1", name: "B1" }];
+  const labels = (state) => state.options().map((option) => option.props.children[0].props.children);
+
+  const inScope = picker({ options: scoped, allOptions: all, value: scoped[0], onChange() {} });
+  inScope.key("ArrowDown");
+  assert.equal(inScope.scope().value, "scoped");
+  assert.deepEqual(labels(inScope), ["A1"]);
+  inScope.key("Tab");
+  assert.equal(inScope.scope().value, "all");
+  assert.deepEqual(labels(inScope), ["A1", "B1"]);
+
+  const chosen = [];
+  const outside = picker({ options: scoped, allOptions: all, value: all[1], onChange: (...args) => chosen.push(args) });
+  assert.equal(outside.label(), "B1", "the name comes from the full list");
+  outside.key("ArrowDown");
+  assert.equal(outside.scope().value, "all");
+  assert.equal(outside.active().props.children[0].props.children, "B1");
+  outside.scope().onChange("scoped");
+  outside.render();
+  assert.deepEqual(labels(outside), ["A1"]);
+
+  const unscoped = picker({ options: all, value: all[1], onChange() {} });
+  unscoped.key("ArrowDown");
+  assert.equal(unscoped.scope(), undefined, "no switch without a scope");
+});

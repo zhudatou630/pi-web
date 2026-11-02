@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { MenuCheck } from "./MenuCheck";
+import { SettingsSegmented } from "./SettingsUi";
 
 export interface ModelSelectorOption {
   provider: string;
@@ -12,6 +13,8 @@ export interface ModelSelectorOption {
 
 interface ModelSelectorProps {
   options: ModelSelectorOption[];
+  /** Every available model while `options` is the `enabledModels` scope: adds pi's `/model` Scoped | All switch. */
+  allOptions?: ModelSelectorOption[];
   value?: { provider: string; modelId: string } | null;
   onChange: (provider: string, modelId: string) => void;
   onReselect?: (provider: string, modelId: string) => void;
@@ -36,6 +39,7 @@ function compareModelOptions(a: ModelSelectorOption, b: ModelSelectorOption): nu
 
 export function ModelSelector({
   options,
+  allOptions,
   value,
   onChange,
   onReselect,
@@ -57,8 +61,13 @@ export function ModelSelector({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [anchorRect, setAnchorRect] = useState<{ top: number; right: number; bottom: number; left: number; width: number } | null>(null);
+  // null until switched: the menu opens on the scope, as pi's /model, unless the current model lies outside it.
+  const [scopeChoice, setScopeChoice] = useState<boolean | null>(null);
   const locked = disabled || busy;
-  const sortedOptions = useMemo(() => [...options].sort(compareModelOptions), [options]);
+  const isValue = (option: ModelSelectorOption) => option.modelId === value?.modelId && option.provider === value?.provider;
+  const showAll = Boolean(allOptions) && (scopeChoice ?? Boolean(value && !options.some(isValue)));
+  const listed = showAll && allOptions ? allOptions : options;
+  const sortedOptions = useMemo(() => [...listed].sort(compareModelOptions), [listed]);
   const modelsByProvider: { provider: string; options: ModelSelectorOption[] }[] = [];
 
   for (const option of sortedOptions) {
@@ -68,7 +77,7 @@ export function ModelSelector({
   }
 
   const currentName = selectedLabel ?? (value
-    ? sortedOptions.find((option) => option.modelId === value.modelId && option.provider === value.provider)?.name ?? value.modelId
+    ? (options.find(isValue) ?? allOptions?.find(isValue))?.name ?? value.modelId
     : emptyLabel ?? (sortedOptions.length > 0 ? t("modelSelector.select") : t("modelSelector.none")));
   const selectableOptions = useMemo<(ModelSelectorOption | null)[]>(
     () => (onClear ? [null, ...sortedOptions] : sortedOptions),
@@ -81,6 +90,11 @@ export function ModelSelector({
     ? Math.min(activeIndex, selectableOptions.length - 1)
     : -1;
   const activeOptionId = activeOptionIndex >= 0 ? `${listboxId}-option-${activeOptionIndex}` : undefined;
+
+  const switchScope = (all: boolean) => {
+    setScopeChoice(all);
+    setActiveIndex(-1);
+  };
 
   const updateAnchor = useCallback(() => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -122,7 +136,9 @@ export function ModelSelector({
   }, [open, updateAnchor]);
 
   useEffect(() => {
-    if (!open) setActiveIndex(-1);
+    if (open) return;
+    setActiveIndex(-1);
+    setScopeChoice(null);
   }, [open]);
 
   // Opening reveals the current model; afterwards only the keyboard's row is followed, so
@@ -192,6 +208,12 @@ export function ModelSelector({
             });
             return;
           }
+          // Tab switches Scoped | All, as in pi's /model.
+          if (open && allOptions && event.key === "Tab") {
+            event.preventDefault();
+            switchScope(!showAll);
+            return;
+          }
           if (!open || !selectableOptions.length) return;
           if (event.key === "Home" || event.key === "End") {
             event.preventDefault();
@@ -247,10 +269,6 @@ export function ModelSelector({
         return (
           <div
             ref={panelRef}
-            id={listboxId}
-            role="listbox"
-            aria-label={ariaLabel}
-            aria-activedescendant={activeOptionId}
             className="menu-surface is-scrolling"
             onMouseLeave={() => setActiveIndex(-1)}
             style={{
@@ -264,7 +282,20 @@ export function ModelSelector({
               overflow: "hidden",
             }}
           >
-            <div className="menu-surface-scroll">
+            {allOptions && (
+              <div className="model-selector-scope">
+                <SettingsSegmented
+                  label={t("modelSelector.scope")}
+                  options={[
+                    { value: "scoped", label: t("modelSelector.scoped"), title: t("modelSelector.scopedTitle") },
+                    { value: "all", label: t("modelSelector.all"), title: t("modelSelector.allTitle") },
+                  ]}
+                  value={showAll ? "all" : "scoped"}
+                  onChange={(next) => switchScope(next === "all")}
+                />
+              </div>
+            )}
+            <div id={listboxId} role="listbox" aria-label={ariaLabel} aria-activedescendant={activeOptionId} className="menu-surface-scroll">
               {onClear && (
                 <div className="menu-surface-group is-lead">
                   <ModelOptionButton

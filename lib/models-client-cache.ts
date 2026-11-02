@@ -15,6 +15,7 @@ export type ModelsResponse = {
   defaultThinkingLevel?: string;
   modelError?: string;
   modelScopeWarnings?: string[];
+  allModelList?: ModelEntry[];
 };
 
 type CacheEntry = {

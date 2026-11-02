@@ -11,6 +11,8 @@ export interface ModelsData {
   modelError?: string;
   /** Warnings from resolving the `enabledModels` scope (e.g. a pattern matched nothing). */
   modelScopeWarnings?: string[];
+  /** Every available model, in pi's `/model` "all" order; set only while `enabledModels` narrows `modelList`. */
+  allModelList?: ModelsData["modelList"];
 }
 
 interface ModelsCacheState {

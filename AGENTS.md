@@ -83,6 +83,7 @@ Active tool order is prompt input: `withExtensionTools()` keeps the carried orde
 ### Models
 - `defaultModel` comes from `~/.pi/agent/settings.json`. Explicit model/thinking choices are applied atomically at AgentSession construction and then persisted by `lib/startup-preferences.ts` (no `set_model` replay); implicit `enabledModels` fallbacks are not persisted. In-session `set_model`/`set_thinking_level` persist (`persist: true`). The composer shows the concrete effective thinking level, never `auto`.
 - `enabledModels` uses pi's `--models` syntax (globs, fuzzy match, `:thinkingLevel` suffix). Never compare as literal strings: `lib/model-scope.ts` delegates to the SDK's `resolveModelScopeWithDiagnostics()`.
+- The scope narrows lists, not choices: an explicit model may lie outside it (pi's `--model` with `--models`), so `selectInitialModelScope()` resolves requests against `scope.available`. While a scope is active `/api/models` adds `allModelList` (the composer's In chat | All switch, pi's `/model` Tab); names and thinking levels cover every available model.
 - `defaultTools` may be a `+name`/`-name` delta: read via `SettingsManager.getDefaultTools()` or `resolveDefaultTools()` (`lib/powershell-settings.ts`), never as a plain list.
 
 ### Built-in extensions (MCP, codemode, tool search)

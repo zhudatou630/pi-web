@@ -411,6 +411,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const directImageCancelledRef = useRef(false);
   const [modelNames, setModelNames] = useState<Record<string, string>>(() => initialModels?.models ?? {});
   const [modelList, setModelList] = useState<ModelEntry[]>(() => initialModels?.modelList ?? []);
+  const [allModelList, setAllModelList] = useState<ModelEntry[] | null>(() => initialModels?.allModelList ?? null);
   const [modelsMissingCwd, setModelsMissingCwd] = useState<string | null>(null);
   const [promptMissingCwd, setPromptMissingCwd] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(() => initialModels?.modelError ?? null);
@@ -2340,9 +2341,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setModelDefaultThinkingLevel(d.defaultThinkingLevel);
     const nextModelList = d.modelList ?? [];
     setModelList(nextModelList);
+    setAllModelList(d.allModelList ?? null);
     if (isNew && !sessionIdRef.current) {
       const selectedModel = newSessionModelOverrideRef.current;
-      if (selectedModel && nextModelList.length > 0 && !nextModelList.some(
+      if (selectedModel && nextModelList.length > 0 && !(d.allModelList ?? nextModelList).some(
         (model) => model.provider === selectedModel.provider && model.id === selectedModel.modelId,
       )) {
         newSessionModelOverrideRef.current = null;
@@ -2851,7 +2853,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, directImageRunning, modelNames, modelList, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, directImageRunning, modelNames, modelList, allModelList, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting,
     autoCompactionEnabled, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,

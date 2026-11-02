@@ -8,7 +8,7 @@ import {
   withSafeModelLoadFailure,
   type ModelsData,
 } from "@/lib/models-cache";
-import { orderSelectorModels, resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope";
+import { orderAllModels, orderSelectorModels, resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { projectTrustReloadOptions } from "@/lib/project-trust";
 
@@ -42,14 +42,11 @@ async function loadModels(cwd: string): Promise<ModelsData> {
     services.modelRuntime,
     settings.getEnabledModels(),
   );
-  const { visible, thinkingLevelPins, warnings } = scope;
-  modelList = orderSelectorModels(scope).map((m) => ({
-    id: m.id,
-    name: m.name,
-    provider: m.provider,
-    input: m.input,
-  }));
-  for (const m of visible) {
+  const { available, thinkingLevelPins, warnings } = scope;
+  const entry = (m: (typeof available)[number]) => ({ id: m.id, name: m.name, provider: m.provider, input: m.input });
+  modelList = orderSelectorModels(scope).map(entry);
+  // Names and levels cover every model: a session may run one outside the scope.
+  for (const m of available) {
     const key = `${m.provider}:${m.id}`;
     nameMap.set(key, m.name);
     thinkingLevels[key] = getSupportedThinkingLevels(m);
@@ -77,6 +74,8 @@ async function loadModels(cwd: string): Promise<ModelsData> {
       thinkingLevelPins,
       defaultThinkingLevel: settings.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
       ...(warnings.length > 0 ? { modelScopeWarnings: warnings } : {}),
+      // pi's `/model` "all" view, only while `enabledModels` narrows the list.
+      ...(scope.scopedModels.length > 0 ? { allModelList: orderAllModels(available).map(entry) } : {}),
     },
     modelError,
   );

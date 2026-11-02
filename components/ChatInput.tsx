@@ -61,6 +61,8 @@ interface Props {
   isAutoModelSelection?: boolean;
   modelNames?: Record<string, string>;
   modelList?: { id: string; name: string; provider: string; input?: string[] }[];
+  /** Every available model while `enabledModels` narrows `modelList` (the selector's "All"). */
+  allModelList?: { id: string; name: string; provider: string; input?: string[] }[] | null;
   missingCwd?: string | null;
   modelError?: string | null;
   /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
@@ -646,7 +648,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, modelError, missingCwd, modelScopeWarnings, onModelChange, modelSwitching,
+  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, allModelList, modelError, missingCwd, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -1215,7 +1217,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // image input (#584), including a resolved default. Unknown models stay silent.
   const showImageUnsupportedWarning = (
     attachedImages.length > 0
-    && !modelSupportsImageInput(model, modelList)
+    && !modelSupportsImageInput(model, allModelList ?? modelList)
     && !imageWarningDismissed
   );
   useEffect(() => {
@@ -1712,6 +1714,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       name,
     }));
   })();
+  const allModelOptions = allModelList?.map((m): ModelSelectorOption => ({ provider: m.provider, modelId: m.id, name: m.name }));
 
   const compactSavedTokens = compactResult
     ? Math.max(0, compactResult.tokensBefore - compactResult.estimatedTokensAfter)
@@ -2032,7 +2035,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           />
         )}
         {showImageUnsupportedWarning && (() => {
-          const entry = modelList?.find((m) => m.provider === model?.provider && m.id === model?.modelId);
+          const entry = (allModelList ?? modelList)?.find((m) => m.provider === model?.provider && m.id === model?.modelId);
           return (
             <ModelNoticeBanner
               tone="warning"
@@ -2644,6 +2647,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               {(modelOptions.length > 0 || model || modelError) && onModelChange && (
                 <ModelSelector
                   options={modelOptions}
+                  allOptions={allModelOptions}
                   value={model}
                   onChange={onModelChange}
                   onReselect={onModelChange}

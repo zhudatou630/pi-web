@@ -57,7 +57,7 @@ function setup(fetchImpl) {
   };
   defaultModelResolverScript.runInNewContext(context);
   defaultThinkingResolverScript.runInNewContext(context);
-  for (const name of ["ModelsMissingCwd", "ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "NewSessionDefaultModel", "NewSessionModel", "PendingModel", "ThinkingLevel"]) {
+  for (const name of ["ModelsMissingCwd", "ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "AllModelList", "NewSessionDefaultModel", "NewSessionModel", "PendingModel", "ThinkingLevel"]) {
     context[`set${name}`] = (value) => writes.push([name, value]);
   }
   context.loadModels = loadScript.runInNewContext(context);
@@ -110,14 +110,16 @@ test("missing folders use their own banner state, not a model error", async () =
 
 test("non-empty project model scopes reset unavailable overrides; empty/failed loads preserve them", async () => {
   const selected = { provider: "old", modelId: "shared-id" };
-  for (const [modelList, reset] of [
+  for (const [modelList, reset, allModelList] of [
     [[{ provider: "new", id: "shared-id" }], true], // Same id, different provider is unavailable.
     [[{ provider: "old", id: "shared-id" }], false],
+    // Outside the enabledModels scope but available: picked under All, it stays.
+    [[{ provider: "new", id: "shared-id" }], false, [{ provider: "new", id: "shared-id" }, { provider: "old", id: "shared-id" }]],
     [[], false],
     [undefined, false],
   ]) {
     const state = setup(async () => Response.json({
-      models: {}, modelList,
+      models: {}, modelList, allModelList,
       defaultModel: { provider: "new", modelId: "shared-id" },
       defaultThinkingLevel: "medium",
     }));
