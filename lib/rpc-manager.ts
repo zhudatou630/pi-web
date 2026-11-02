@@ -289,9 +289,11 @@ function withExtensionTools(
 
   const codingToolNames = new Set(CODING_TOOL_NAMES);
   const selectedToolNames = resolveShellTools(toolNames, session.settingsManager.getDefaultTools());
-  const activeExtensionToolNames = carry.filter((name) => !codingToolNames.has(name));
-
-  return [...new Set([...selectedToolNames, ...activeExtensionToolNames])];
+  // Tool order is prompt input: keep the carried order (the pi CLI's, or what pi restored for a branch)
+  // and append newly selected built-ins. Regrouping built-ins first rewrote the prompt's tool list
+  // and missed the provider cache on the first turn after switching between pi and Pi Web.
+  const carried = carry.filter((name) => !codingToolNames.has(name) || selectedToolNames.includes(name));
+  return [...new Set([...carried, ...selectedToolNames])];
 }
 
 /**
@@ -688,14 +690,9 @@ export class AgentSessionWrapper {
     }
   }
 
-  setActiveToolSelection(toolNames: string[], carry?: string[], previousOrder?: string[]): void {
-    const selected = withExtensionTools(this.inner, toolNames, carry);
+  setActiveToolSelection(toolNames: string[], carry?: string[]): void {
+    const next = withExtensionTools(this.inner, toolNames, carry);
     const active = this.inner.getActiveToolNames();
-    // Tool order is model input: preserve it even if navigation rebuilt the same set.
-    const selectedSet = new Set(selected);
-    const order = previousOrder ?? active;
-    const next = order.length === selectedSet.size && order.every((name) => selectedSet.has(name))
-      ? order : selected;
     if (active.length === next.length && active.every((name, index) => name === next[index])) return;
     this.inner.setActiveToolsByName(next);
   }
@@ -711,7 +708,6 @@ export class AgentSessionWrapper {
       this.setActiveToolSelection(
         this.chatOnly ? [] : pin ?? activeAfter,
         [...activeAfter, ...activeBefore.filter((name) => SESSION_TOOL_NAMES.has(name))],
-        activeBefore,
       );
     }
     return { cancelled: result.cancelled };

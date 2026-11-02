@@ -78,6 +78,7 @@ Pi stores `{type:"toolCall", id, name, arguments}`; our `ToolCallContent` is `{t
 
 ### Tool presets
 `toolNames[]` is passed at creation (`POST /api/agent/new`) and persisted as versioned `pi-web:tool-selection` custom entries. No entry = follows `defaultTools` (new default-preset sessions and legacy ones alike); empty array = Chat only, which loads no extensions/skills/prompts/themes and replaces Pi's base prompt with the context files. Crossing the Chat-only boundary rebuilds the wrapper. The browser-stored last preset only initializes fresh composers; existing sessions use live `get_tools`. See `docs/adr/0002-chat-only-tool-selection.md`.
+Active tool order is prompt input: `withExtensionTools()` keeps the carried order (pi's own, or what it restored for a branch) and appends newly selected built-ins. Never regroup built-ins first: that rewrote the tool list and missed the provider cache on the first turn after switching between the pi CLI and Pi Web.
 
 ### Models
 - `defaultModel` comes from `~/.pi/agent/settings.json`. Explicit model/thinking choices are applied atomically at AgentSession construction and then persisted by `lib/startup-preferences.ts` (no `set_model` replay); implicit `enabledModels` fallbacks are not persisted. In-session `set_model`/`set_thinking_level` persist (`persist: true`). The composer shows the concrete effective thinking level, never `auto`.
