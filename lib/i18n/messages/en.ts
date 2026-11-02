@@ -510,6 +510,8 @@ export const enLocale: LocalePlugin = {
     "agentSwitcher.runningCount": "{count} running",
     "agentSwitcher.search": "Search agents",
     "agentSwitcher.noMatches": "No matching agents",
+    "agentSwitcher.deleteSideChat": "Delete side chat",
+    "agentSwitcher.deleteSideChatConfirm": "Delete side chat “{title}”?\nCannot be undone. The main session and other side chats stay.",
     "agentSwitcher.status.starting": "Starting",
     "agentSwitcher.status.running": "Running",
     "agentSwitcher.status.queued": "Queued",

@@ -16,6 +16,8 @@ interface Props {
   runningSessionIds: ReadonlySet<string>;
   onSelectSession: (session: SessionInfo) => void;
   onOpenInNewTab?: (session: SessionInfo) => void;
+  /** Deletes one side chat (the main session and its other members stay). */
+  onDeleteSideChat?: (session: SessionInfo) => void;
 }
 
 function sessionTitle(session: SessionInfo): string {
@@ -86,6 +88,8 @@ function AgentRow({
   running,
   onSelect,
   onOpenInNewTab,
+  actionSlot,
+  onDelete,
 }: {
   session: SessionInfo;
   main?: boolean;
@@ -93,6 +97,9 @@ function AgentRow({
   running: boolean;
   onSelect: () => void;
   onOpenInNewTab?: () => void;
+  /** Keeps the trailing action column, so checks line up with rows that have Delete. */
+  actionSlot?: boolean;
+  onDelete?: () => void;
 }) {
   const { locale, t } = useI18n();
   const relation = session.relation?.kind === "subagent" ? session.relation : null;
@@ -109,7 +116,7 @@ function AgentRow({
     ? [relation.profile, relation.model && `${relation.model.provider}/${relation.model.id}`, relation.thinkingLevel, session.modified].filter(Boolean).join(" · ")
     : secondary;
 
-  return (
+  const row = (
     <button
       type="button"
       role="option"
@@ -158,6 +165,28 @@ function AgentRow({
       </span>
     </button>
   );
+  if (!actionSlot) return row;
+  return (
+    <div className="menu-surface-row agent-row-with-action">
+      {row}
+      {onDelete ? (
+        <button
+          type="button"
+          className="menu-surface-row-action is-danger"
+          onClick={onDelete}
+          title={t("agentSwitcher.deleteSideChat")}
+          aria-label={`${t("agentSwitcher.deleteSideChat")}: ${primary}`}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(13)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          </svg>
+        </button>
+      ) : <span className="menu-surface-row-action" aria-hidden="true" />}
+    </div>
+  );
 }
 
 export function AgentSessionPanel({
@@ -167,6 +196,7 @@ export function AgentSessionPanel({
   runningSessionIds,
   onSelectSession,
   onOpenInNewTab,
+  onDeleteSideChat,
 }: Props) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -185,6 +215,7 @@ export function AgentSessionPanel({
       })
     : sortedSubagents;
   const runningCount = subagents.filter((session) => runningSessionIds.has(session.id)).length;
+  const actionSlot = Boolean(onDeleteSideChat) && subagents.some((session) => session.relation?.kind === "side");
 
   return (
     <div
@@ -230,6 +261,7 @@ export function AgentSessionPanel({
             running={runningSessionIds.has(rootSession.id)}
             onSelect={() => onSelectSession(rootSession)}
             onOpenInNewTab={onOpenInNewTab ? () => onOpenInNewTab(rootSession) : undefined}
+            actionSlot={actionSlot}
           />
           {visibleSubagents.map((session) => (
             <AgentRow
@@ -239,6 +271,8 @@ export function AgentSessionPanel({
               running={runningSessionIds.has(session.id)}
               onSelect={() => onSelectSession(session)}
               onOpenInNewTab={onOpenInNewTab ? () => onOpenInNewTab(session) : undefined}
+              actionSlot={actionSlot}
+              onDelete={onDeleteSideChat && session.relation?.kind === "side" ? () => onDeleteSideChat(session) : undefined}
             />
           ))}
           {visibleSubagents.length === 0 && (

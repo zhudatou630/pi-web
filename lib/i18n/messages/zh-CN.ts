@@ -510,6 +510,8 @@ export const zhCNLocale: LocalePlugin = {
     "agentSwitcher.runningCount": "{count} 个运行中",
     "agentSwitcher.search": "搜索 Agents",
     "agentSwitcher.noMatches": "没有匹配的 Agent",
+    "agentSwitcher.deleteSideChat": "删除侧聊",
+    "agentSwitcher.deleteSideChatConfirm": "删除侧聊「{title}」？\n无法撤销。主会话和其他侧聊保留。",
     "agentSwitcher.status.starting": "正在启动",
     "agentSwitcher.status.running": "运行中",
     "agentSwitcher.status.queued": "排队中",

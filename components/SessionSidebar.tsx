@@ -58,7 +58,7 @@ declare global {
 }
 
 /** Known delete refusals get a localized reason; others show the server text. */
-function deleteRefusalText(t: ReturnType<typeof useI18n>["t"], data: { code?: string; error?: string }): string {
+export function deleteRefusalText(t: ReturnType<typeof useI18n>["t"], data: { code?: string; error?: string }): string {
   if (data.code === "child_running") return t("sidebar.deleteChildRunning");
   if (data.code === "session_running") return t("sidebar.deleteSessionRunning");
   return data.error ?? t("sidebar.deleteFailed");

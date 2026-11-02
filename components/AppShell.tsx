@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, Fragment } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { SessionSidebar } from "./SessionSidebar";
+import { deleteRefusalText, SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
 import { ChatTabBar, type SessionMarkers } from "./ChatTabBar";
 import {
@@ -1707,6 +1707,26 @@ export function AppShell() {
     }
   }, [activeCwd, router, translate]);
 
+  // A side chat shown in place of its main session goes back to it, as the Main agent row does;
+  // one beside it (split or own tab) just closes.
+  const handleDeleteSideChat = useCallback(async (session: SessionInfo, root: SessionInfo) => {
+    const title = session.name || session.firstMessage || session.id.slice(0, 12);
+    if (!await confirm(translate("agentSwitcher.deleteSideChatConfirm", { title }), { danger: true, confirmLabel: translate("sidebar.delete") })) return;
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      const data = await response.json().catch(() => ({})) as { deletedSessionIds?: string[]; error?: string; code?: string };
+      if (!response.ok) throw new Error(deleteRefusalText(translate, data));
+      if (activeSessionIdRef.current === session.id && !chatTabsRef.current.some((tab) => tab.id === root.id)) {
+        handleSwitchFamilySession(root);
+        setRefreshKey((key) => key + 1);
+      } else {
+        for (const id of data.deletedSessionIds ?? [session.id]) handleSessionDeleted(id);
+      }
+    } catch (error) {
+      void confirm(`${translate("sidebar.deleteFailed")}\n${error instanceof Error ? error.message : String(error)}`, { alert: true });
+    }
+  }, [confirm, handleSessionDeleted, handleSwitchFamilySession, translate]);
+
   const updateChatSplitRatio = useCallback((clientX: number) => {
     const container = chatPanesContainerRef.current;
     if (!container) return;
@@ -3252,6 +3272,7 @@ export function AppShell() {
                   runningSessionIds={runningSessionIds}
                   onSelectSession={handleSelectFamilySession}
                   onOpenInNewTab={handlePinSession}
+                  onDeleteSideChat={(session) => void handleDeleteSideChat(session, activeSessionFamily.root)}
                 />
               )}
               {activeTopPanel === "branches" && !isMobile && (
