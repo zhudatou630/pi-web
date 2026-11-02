@@ -204,3 +204,10 @@ test("downloadMermaidSvg HTML-parses a string before serializing", async () => {
     URL.revokeObjectURL = originalRevokeObjectURL;
   }
 });
+
+test("the zoom viewport closes only on a press that starts on it, not a drag from the diagram", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("./MermaidBlock.tsx", import.meta.url), "utf8");
+  assert.match(source, /onPointerDown=\{\(event\) => \{ pressedViewportRef\.current = event\.target === event\.currentTarget; \}\}/);
+  assert.match(source, /if \(pressedViewport && event\.target === event\.currentTarget\) onClose\(\);/);
+});

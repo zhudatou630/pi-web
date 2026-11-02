@@ -211,6 +211,7 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
 function MermaidZoomDialog({ svg, onClose }: { svg: string; onClose: () => void }) {
   const { t } = useI18n();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const pressedViewportRef = useRef(false);
   const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
@@ -299,8 +300,12 @@ function MermaidZoomDialog({ svg, onClose }: { svg: string; onClose: () => void 
         </div>
         <div
           className="mermaid-zoom-viewport"
+          // A drag from the diagram that ends in the margin clicks the viewport: only a press there closes.
+          onPointerDown={(event) => { pressedViewportRef.current = event.target === event.currentTarget; }}
           onClick={(event) => {
-            if (event.target === event.currentTarget) onClose();
+            const pressedViewport = pressedViewportRef.current;
+            pressedViewportRef.current = false;
+            if (pressedViewport && event.target === event.currentTarget) onClose();
           }}
         >
           <div
