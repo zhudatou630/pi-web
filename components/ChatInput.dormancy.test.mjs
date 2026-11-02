@@ -6,7 +6,7 @@ const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
   tsconfigPaths: true,
 });
-const { buildSlashCommandLayout } = await jiti.import("./ChatInput.tsx");
+const { buildSlashCommandLayout, filterSlashCommands } = await jiti.import("./ChatInput.tsx");
 
 test("uses the rendered slash command order for selection indices", () => {
   const dormant = {
@@ -38,4 +38,15 @@ test("uses the rendered slash command order for selection indices", () => {
     layout.groups.flatMap((group) => group.items.map((item) => item.index)),
     [0, 1, 2],
   );
+});
+
+test("search keeps an exact dormant skill ahead of an active prefix match", () => {
+  const commands = [
+    { name: "skill:review", description: "Review", source: "skill" },
+    { name: "skill:review-pr", description: "Review a PR", source: "skill" },
+  ];
+  const matches = filterSlashCommands(commands, "review", (key) => key);
+  const layout = buildSlashCommandLayout(matches, { review: true }, "review");
+  assert.deepEqual(layout.commands.map((command) => command.name), ["skill:review", "skill:review-pr"]);
+  assert.deepEqual(layout.groups[0].items.map((item) => item.index), [0, 1]);
 });
