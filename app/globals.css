@@ -1088,6 +1088,115 @@ html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
   text-align: center;
 }
 
+/* Empty browser tab: detected local servers. Rows match .extension-option. */
+.browser-servers {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* Empty tab: one hint line, then "Detect" as a text link. */
+.browser-servers-start {
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px;
+}
+
+.browser-servers-start p {
+  margin: 0;
+}
+
+.browser-servers-detect {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.browser-servers-detect:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.browser-servers-detect:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.browser-servers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--ui-row-height);
+  padding: 0 8px;
+  color: var(--text-muted);
+}
+
+.browser-servers-others > summary {
+  margin-top: 8px;
+  padding: 0 8px;
+  color: var(--text-muted);
+  line-height: var(--ui-row-height);
+  cursor: pointer;
+}
+
+.browser-servers-refresh {
+  height: var(--ui-row-height);
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+.browser-servers-refresh:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.browser-server {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--ui-row-height);
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--ui-radius-md);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.browser-server:hover,
+.browser-server:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.browser-server-port {
+  flex: none;
+  min-width: 5ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.browser-server-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-dim);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Pages assume a browser's white canvas; transparent ones would sit on the dark theme. */
 .browser-frame {
   flex: 1;

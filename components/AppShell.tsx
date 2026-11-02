@@ -3823,6 +3823,7 @@ export function AppShell() {
             <div hidden={activeFileTabId !== BROWSER_TAB_ID} style={{ width: "100%", height: "100%" }}>
               <BrowserPanel
                 page={browserPage}
+                cwd={projectTrustCwd}
                 onNavigate={handleOpenBrowser}
               />
             </div>

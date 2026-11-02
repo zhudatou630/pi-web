@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { parsePreviewTarget, previewFrameUrl } from "@/lib/preview-target";
+import type { DevServer } from "@/lib/dev-servers";
 
 /** The browser tab's address; a new `id` reloads the frame even for the same URL. */
 export interface BrowserState {
@@ -13,8 +14,10 @@ export interface BrowserState {
 export const BROWSER_TAB_ID = "browser";
 
 /** Shows a service of the Pi Web machine (`localhost:<port>`), directly or through the preview proxy. */
-export function BrowserPanel({ page, onNavigate }: {
+export function BrowserPanel({ page, cwd, onNavigate }: {
   page: BrowserState;
+  /** Directory of the focused chat; its dev servers are listed first. */
+  cwd: string | null;
   onNavigate: (url: string) => void;
 }) {
   const { t } = useI18n();
@@ -41,7 +44,7 @@ export function BrowserPanel({ page, onNavigate }: {
   // Chrome keeps a frame's stylesheets and scripts in memory for the whole Pi Web tab, past any cache
   // clearing, so the cache-free load (proxy drops the preview's cached files) happens in a new window.
   const windowUrl = target ? previewFrameUrl(target, window.location.hostname, proxyUrl ?? null, true) : null;
-  const message = !target ? t("browser.empty") : !frameUrl && proxyUrl !== undefined ? t("browser.remoteOff") : null;
+  const message = !frameUrl && proxyUrl !== undefined ? t("browser.remoteOff") : null;
 
   return (
     <div className="browser-panel">
@@ -49,6 +52,8 @@ export function BrowserPanel({ page, onNavigate }: {
         className="browser-toolbar"
         onSubmit={(event) => {
           event.preventDefault();
+          // An empty address goes back to the list of local servers.
+          if (!draft.trim()) { setInvalid(false); onNavigate(""); return; }
           const next = parsePreviewTarget(draft);
           setInvalid(!next);
           if (next) onNavigate(next.href);
@@ -86,8 +91,63 @@ export function BrowserPanel({ page, onNavigate }: {
           sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
           allow="clipboard-write; fullscreen"
         />
+      ) : !target ? (
+        // Keyed by directory: switching chats drops the other directory's results.
+        <DevServerList key={cwd ?? ""} cwd={cwd} onOpen={onNavigate} />
       ) : (
         <div className="browser-message">{message}</div>
+      )}
+    </div>
+  );
+}
+
+/** Empty-tab content: on request, local HTTP services, the focused chat directory's first, the rest folded. */
+function DevServerList({ cwd, onOpen }: { cwd: string | null; onOpen: (url: string) => void }) {
+  const { t } = useI18n();
+  const [servers, setServers] = useState<DevServer[] | null>(null);
+  const [detecting, setDetecting] = useState(false);
+
+  const detect = () => {
+    setDetecting(true);
+    fetch(`/api/preview/servers${cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { servers?: DevServer[] } | null) => setServers(body?.servers ?? []))
+      .catch(() => setServers([]))
+      .finally(() => setDetecting(false));
+  };
+
+  if (servers === null) {
+    return (
+      <div className="browser-message browser-servers-start">
+        <p>{t("browser.empty")}</p>
+        <button type="button" className="browser-servers-detect" onClick={detect} disabled={detecting}>
+          {detecting ? t("browser.detecting") : t("browser.detect")}
+        </button>
+      </div>
+    );
+  }
+
+  const own = servers?.filter((server) => server.inCwd) ?? [];
+  const others = servers?.filter((server) => !server.inCwd) ?? [];
+  const row = (server: DevServer) => (
+    <button key={server.url} type="button" className="browser-server" onClick={() => onOpen(server.url)} title={server.cwd ?? server.url}>
+      <span className="browser-server-port">{server.port}</span>
+      <span className="browser-server-detail">{[server.process, server.cwd].filter(Boolean).join(" · ")}</span>
+    </button>
+  );
+
+  return (
+    <div className="browser-servers">
+      <div className="browser-servers-head">
+        <span>{own.length ? t("browser.serversHere") : t("browser.noServersHere")}</span>
+        <button type="button" className="browser-servers-refresh" onClick={detect} disabled={detecting}>{detecting ? t("browser.detecting") : t("browser.refresh")}</button>
+      </div>
+      {own.map(row)}
+      {others.length > 0 && (
+        <details className="browser-servers-others" open={!own.length}>
+          <summary>{t("browser.otherServers", { count: others.length })}</summary>
+          {others.map(row)}
+        </details>
       )}
     </div>
   );

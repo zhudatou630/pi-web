@@ -6,6 +6,17 @@ the globe button next to the terminal button in the sidebar, or click a local
 address in a chat reply (a link or inline code such as `http://localhost:5173`).
 Other addresses stay normal links.
 
+## Detected servers
+
+An empty browser tab (or an emptied address + Enter) offers "Detect dev
+servers". Only that click lists the HTTP services listening on the machine's
+loopback (`lib/dev-servers.ts`); switching chats clears the result. Those whose process
+runs inside the focused chat's directory come first, so each worktree sees its
+own dev server; the rest fold under "Other local services". Sources: `ss` on
+Linux, `lsof` on macOS, `netstat` on Windows (no process name or directory
+there, so nothing is sorted first). A port counts as HTTP if a `HEAD /` gets any
+response within 1.5 s; HTTPS-only servers are not listed.
+
 ## How it reaches the service
 
 - **Browser on the Pi Web machine** (page host is `localhost`/`127.x`/`[::1]`):
