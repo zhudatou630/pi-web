@@ -13,6 +13,9 @@ mounted behind inactive tabs, hidden panels, and session or project switches.
 - `sessionStorage` retains terminal IDs, cwds, and the active terminal layout
   across refresh. Restored tabs first check the existing server instance and
   never silently start replacement processes after expiry or server restart.
+- The shell is `$SHELL -l`; on Windows it is PowerShell as pi's powershell tool
+  finds it (`getPowerShellConfig()`: pwsh 7, then Windows PowerShell), and
+  `ComSpec` only without either. No setting: type `cmd` or `bash` in the tab.
 - A new PTY gets a 120-second connection lease. Subscribing cancels expiry;
   the last subscriber leaving starts a new 120-second grace period. This also
   collects creations that never establish their initial connection.
