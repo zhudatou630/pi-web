@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "@/hooks/useI18n";
 import { ModalDialog } from "./ModalDialog";
@@ -67,12 +67,16 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
   const [drives, setDrives] = useState<DirectoryEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Only the latest navigation lands: an earlier one resolving late must not show its folder as selectable.
+  const navigationRef = useRef(0);
 
   const navigateTo = useCallback(async (directory?: string) => {
+    const navigation = ++navigationRef.current;
     setLoading(true);
     setLoadError(null);
     try {
       const data = await loadDirectories(directory);
+      if (navigation !== navigationRef.current) return;
       const nextPath = data.path ?? directory ?? "/";
       setCurrentPath(nextPath);
       setParentDirectory(data.parentPath ?? null);
@@ -80,9 +84,9 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
       setDirectories(data.directories ?? []);
       setDrives(data.drives ?? null);
     } catch (cause) {
-      setLoadError(cause instanceof Error ? cause.message : String(cause));
+      if (navigation === navigationRef.current) setLoadError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setLoading(false);
+      if (navigation === navigationRef.current) setLoading(false);
     }
   }, []);
 
@@ -97,7 +101,8 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
     if (candidate) void navigateTo(candidate);
   };
   const hasUncommittedPath = pathInput.trim() !== currentPath;
-  const canSelect = Boolean(currentPath) && !hasUncommittedPath && !busy;
+  // While a folder loads, currentPath is still the previous folder.
+  const canSelect = Boolean(currentPath) && !hasUncommittedPath && !busy && !loading;
   const canNavigateUp = Boolean(parentDirectory) || isWindowsDriveRoot(currentPath);
 
   if (!portalTarget) return null;
