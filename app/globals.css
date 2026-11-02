@@ -2379,6 +2379,17 @@ button.question-card-option:not(:disabled):hover {
 .markdown-custom-message p {
   color: var(--text);
 }
+/* An extension's text may be laid out for pi's TUI (a status box, aligned bars): show it as the TUI
+   does, monospace with its spaces kept (lib/markdown.ts keeps the line breaks and indents). Sarasa
+   Term draws box drawing and CJK on the column grid; a tighter line height joins the box lines. */
+.markdown-custom-message,
+.markdown-custom-message :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-mono);
+  line-height: 1.35;
+}
+.markdown-custom-message p {
+  white-space: pre-wrap;
+}
 
 .compaction-file-details {
   margin-top: 10px;

@@ -398,3 +398,22 @@ test("local addresses in replies stay links, including inline code", () => {
   assert.match(html, /<a href="http:\/\/127\.0\.0\.1:3000\/app"[^>]*><code class="markdown-inline-code"[^>]*>http:\/\/127\.0\.0\.1:3000\/app<\/code><\/a>/);
   assert.match(html, /<code class="markdown-inline-code"[^>]*>localhost:5173<\/code>/);
 });
+
+test("keeps an extension message's text layout as pi's TUI does", () => {
+  const layout = (markdown) => renderMarkdown(markdown, { className: "markdown-custom-message" });
+
+  assert.match(layout("╭──╮\n│  ACP  │\n╰──╯\nnext"), /<p>╭──╮<br\/>│  ACP  │<br\/>╰──╯<br\/>next<\/p>/);
+  assert.match(layout("Breakdown:\n  Tool   ██  46%\n  Code   █   15%"), /<p>Breakdown:<br\/> {2}Tool {3}██ {2}46%<br\/> {2}Code {3}█ {3}15%<\/p>/);
+  // The first line's indent, and each line's own: more than a code block's four.
+  assert.match(layout("  one\n      two\nthree"), /<p> {2}one<br\/> {6}two<br\/>three<\/p>/);
+  // Past inline nodes, which split the text and leave its pieces without a position.
+  assert.match(layout("*one\n  two*\n  three"), /<em>one<br\/> {2}two<\/em><br\/> {2}three<\/p>/);
+  assert.match(layout("one\r\n  two\r\n    three"), /<p>one<br\/> {2}two<br\/> {4}three<\/p>/);
+  // Markdown still renders, raw HTML shows as text, and a list's or quote's prefix is no indent.
+  assert.match(layout("# Title\n\ntext\n\n\n  more\n    lines"), /<h1[^>]*>Title<\/h1>[\s\S]*<p>text<\/p>[\s\S]*<p> {2}more<br\/> {4}lines<\/p>/);
+  assert.match(layout("<b>hi</b>\nnext"), /&lt;b&gt;hi&lt;\/b&gt;<br\/>next/);
+  assert.match(layout("- a\n  b\n- c"), /<li>a<br\/>b<\/li>/);
+  assert.match(layout("> a\n>   b"), /<p>a<br\/>b<\/p>/);
+  // Other messages stay as they were.
+  assert.match(renderMarkdown("one\n  two"), /<p>one\ntwo<\/p>/);
+});

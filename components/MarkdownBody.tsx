@@ -11,7 +11,7 @@ import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from 
 import { parsePreviewTarget, requestPreview } from "@/lib/preview-target";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { isAudioPath, isVideoPath } from "@/lib/file-types";
-import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownTextLayoutRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
 import { splitMarkdownBlocks } from "@/lib/markdown-blocks";
 import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
@@ -66,6 +66,7 @@ const MarkdownBlock = memo(function MarkdownBlock({ markdown, remarkPlugins, url
 
 export const MarkdownBody = memo(function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
   const sessionId = useContext(MarkdownSessionContext);
+  const classNames = className?.split(/\s+/) ?? [];
   const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
   // A streaming reply grows by a few characters per chunk; parsing all of it each
   // time made a long reply quadratic. Its finished blocks keep their parse and only
@@ -198,7 +199,8 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
         <MarkdownBlock
           key={index}
           markdown={block}
-          remarkPlugins={className?.split(/\s+/).includes("markdown-user-message") ? markdownUserRemarkPlugins : markdownRemarkPlugins}
+          remarkPlugins={classNames.includes("markdown-custom-message") ? markdownTextLayoutRemarkPlugins
+            : classNames.includes("markdown-user-message") ? markdownUserRemarkPlugins : markdownRemarkPlugins}
           urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
           components={components}
         />
