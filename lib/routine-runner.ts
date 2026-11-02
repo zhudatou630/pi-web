@@ -194,6 +194,11 @@ export async function executeRoutineRun(store: RoutineStore, routine: Routine, r
     paused = error instanceof RoutinePausedError;
     outcome = { status: "failed", error: error instanceof Error ? error.message : String(error) };
   }
+  try {
+    chat?.session.endRoutineRun();
+  } catch (error) {
+    console.error("[pi-web] failed to close routine run marker:", error instanceof Error ? error.message : error);
+  }
   // An isolated run: no changes → the checkout goes; changes → committed to the run's branch.
   if (chat?.isolated && routine.target.kind === "new_session") {
     const cleanup: IsolatedWorktreeCleanup = await cleanupIsolatedWorktree(routine.target.cwd, chat.isolated, routine.name, "routine")

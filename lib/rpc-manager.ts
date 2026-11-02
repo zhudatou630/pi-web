@@ -66,7 +66,7 @@ import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES } from "./image-generation";
 import { executeImageGeneration, generatedImagePreview, parseImageGenerationRequest, saveSourceImage } from "./image-generation-runtime";
 import { retryStreamDrops } from "./retry-stream-drops";
-import { ROUTINE_RUN_ENTRY_TYPE, type RoutineRunTag } from "./routine-run-entry";
+import { ROUTINE_RUN_END_ENTRY_TYPE, ROUTINE_RUN_ENTRY_TYPE, type RoutineRunTag } from "./routine-run-entry";
 import { applyAnthropicCacheTtl } from "./prompt-cache-settings";
 import {
   appendClearedSessionToolSelection,
@@ -345,6 +345,8 @@ export class AgentSessionWrapper {
   private lastRunAborted = false;
   /** Set by markRoutineRun() until the run's prompt surfaces as a user message. */
   private pendingRoutineRun: RoutineRunTag | null = null;
+  /** The marker entry and run of the routine run in progress, for endRoutineRun(). */
+  private routineRunMarker: { id: string; runId: string } | null = null;
   private promptAdmissionTail: Promise<void> = Promise.resolve();
   private extensionsBound = false;
   private extensionBindingPromise: Promise<void> | null = null;
@@ -481,8 +483,20 @@ export class AgentSessionWrapper {
    * and its live user message events carry the same tag (SSE has no custom-entry events).
    */
   markRoutineRun(data: RoutineRunTag & { runId: string; mode: string }): void {
-    this.inner.sessionManager.appendCustomEntry(ROUTINE_RUN_ENTRY_TYPE, { version: 1, ...data });
+    this.routineRunMarker = { id: this.inner.sessionManager.appendCustomEntry(ROUTINE_RUN_ENTRY_TYPE, { version: 1, ...data }), runId: data.runId };
     this.pendingRoutineRun = data.name ? { routineId: data.routineId, name: data.name } : { routineId: data.routineId };
+  }
+
+  /** After the run: closes a marker no user message followed, so a later message is not read as the run's. */
+  endRoutineRun(): void {
+    const marker = this.routineRunMarker;
+    this.routineRunMarker = null;
+    this.pendingRoutineRun = null;
+    if (!marker) return;
+    const branch = this.inner.sessionManager.getBranch();
+    const at = branch.findIndex((entry) => entry.id === marker.id);
+    if (at === -1 || branch.slice(at + 1).some((entry) => entry.type === "message" && entry.message.role === "user")) return;
+    this.inner.sessionManager.appendCustomEntry(ROUTINE_RUN_END_ENTRY_TYPE, { version: 1, runId: marker.runId });
   }
 
   canStartBackgroundFollowUp(): boolean {

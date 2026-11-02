@@ -225,7 +225,7 @@ Pi Web 中这类对话框会挂起并重放给打开该会话的页面。P1 不�
 - 页面内主按钮固定用中性色（`--control-on`），不跟随 Paper 配色的橙色强调色；运行中状态也不用强调色。
 - 历史：一个列表卡片，有会话的行点击后切回聊天并打开那次运行的会话。
 - 返回列表时若有未保存修改，用 `useConfirm()` 确认；表单干净时跟随服务端的更新，有未保存修改时不被覆盖。
-- 来源标记（两种目标都有）：每次运行在 prompt 前追加 `pi-web:routine-run` 自定义 entry（`lib/routine-run-entry.ts`，无依赖）。
+- 来源标记（两种目标都有）：每次运行在 prompt 前追加 `pi-web:routine-run` 自定义 entry（`lib/routine-run-entry.ts`，无依赖）。运行结束时标记后面若没有任何 user 消息（prompt 被拒，比如登录过期；或命令没发消息），追加 `pi-web:routine-run-end`（`AgentSessionWrapper.endRoutineRun()`）：聊天历史和侧边栏遇到它就作废标记，之后有人在这个对话里打的字不会被当成这次运行的 prompt。
   - 侧边栏：会话列表扫描（`lib/session-list-scanner.ts` 的 `foldLine` → `foldRoutineMarks`，`lib/routine-run-entry.ts`；运行中的会话由 `getRpcSessionInfos` 用同一规则）给 `SessionInfo.routineId`，行尾显示时钟图标。扫描索引格式升到 6（旧索引重建一次）。
   - **运行会话不进侧边栏**（参照 Claude：运行会话从任务的历史进入，侧边栏顶多每任务一行）：标记里带 `mode`（目标类型）。新会话目标的运行会话、且没有人在里面写过一条非 routine 的消息 → `routineRunOnly`，侧边栏的项目列表、最近项目、首次自动选中项目都不算它们（`SessionSidebar` 的 `listedSessions`）。入口：任务历史、聊天里的小标签、通知。你在里面回复过 → 成为普通对话，回到侧边栏。fork（头部带 `parentSession`）复制了标记，但是你自己的对话，总是列出。"同一个对话"绑定的对话照常显示。"对话"下拉也不列 `routineRunOnly` 的会话。
   - 删除任务时，它的 `routineRunOnly` 会话被归档（`DELETE /api/routines/[id]` → `updateSidebarState(..., { archived: true })`），在侧边栏归档里能找到，不删除。

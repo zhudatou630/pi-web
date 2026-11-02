@@ -16,7 +16,7 @@ import { resolveProject, type ProjectInfo } from "./worktree";
 import { readSubagentRun, SUBAGENT_META_TYPE } from "./subagents";
 import { timingCallsByAt, type TimingCall } from "./model-timing";
 import { checkSessionMembership, listSessionsIncremental, type ScannedSessionInfo } from "./session-list-scanner";
-import { routineRunTagOfEntry, type RoutineRunTag } from "./routine-run-entry";
+import { isRoutineRunEnd, routineRunTagOfEntry, type RoutineRunTag } from "./routine-run-entry";
 
 export { getAgentDir };
 
@@ -683,7 +683,7 @@ export function buildSessionContext(
   // message first means the run sent none (e.g. a command). A page can start at the prompt itself.
   let routineRun = hasMore ? routineRunBefore(entries, sliced[0]!, options, timingByAt) : undefined;
   for (const entry of sliced) {
-    routineRun = routineRunTagOfEntry(entry) ?? routineRun;
+    routineRun = isRoutineRunEnd(entry) ? undefined : routineRunTagOfEntry(entry) ?? routineRun;
     let m = entryToUiMessage(entry, options, timingByAt);
     if (m?.role === "user") {
       // A copy: the message may be the live session's own object.
@@ -788,7 +788,7 @@ function routineRunBefore(
   for (let entry = first.parentId ? byId.get(first.parentId) : undefined; entry; entry = entry.parentId ? byId.get(entry.parentId) : undefined) {
     const tag = routineRunTagOfEntry(entry);
     if (tag) return tag;
-    if (entryToUiMessage(entry, options, timingByAt)) return undefined;
+    if (isRoutineRunEnd(entry) || entryToUiMessage(entry, options, timingByAt)) return undefined;
   }
   return undefined;
 }

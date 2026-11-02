@@ -7,6 +7,19 @@
  */
 export const ROUTINE_RUN_ENTRY_TYPE = "pi-web:routine-run";
 
+/**
+ * Appended when a run ends and no user message followed its marker (the prompt was rejected, or a
+ * command sent none): the next message someone types is theirs, not the run's.
+ * `{ type: "custom", customType, data: { version: 1, runId } }`.
+ */
+export const ROUTINE_RUN_END_ENTRY_TYPE = "pi-web:routine-run-end";
+
+export function isRoutineRunEnd(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") return false;
+  const { type, customType } = entry as { type?: unknown; customType?: unknown };
+  return type === "custom" && customType === ROUTINE_RUN_END_ENTRY_TYPE;
+}
+
 /** The routine id and target kind of a routine-run entry, else undefined. */
 export function routineRunOfEntry(entry: unknown): { routineId: string; mode: string } | undefined {
   const routineId = routineIdOfEntry(entry);
@@ -49,6 +62,10 @@ export interface RoutineMarks {
 }
 
 export function foldRoutineMarks(marks: RoutineMarks, entry: unknown): void {
+  if (isRoutineRunEnd(entry)) {
+    marks.routinePending = false;
+    return;
+  }
   const run = routineRunOfEntry(entry);
   if (run) {
     marks.routineId = run.routineId;
