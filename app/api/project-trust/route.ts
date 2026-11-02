@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
     const agentDir = getAgentDir();
     const current = getProjectTrustStatus(result.cwd, agentDir);
-    if (!current.requiresTrust) {
+    if (!current.requiresTrust && current.trusted) {
       return NextResponse.json({ error: "This project has no resources that require trust" }, { status: 409 });
     }
     if (hasBusyRpcSessionForCwd(result.cwd)) {

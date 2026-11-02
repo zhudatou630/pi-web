@@ -499,7 +499,7 @@ function assertWritableProfileDirectory(cwd: string, scope: SubagentWritableScop
  */
 function assertProjectScopeTrusted(cwd: string): void {
   const status = getProjectTrustStatus(cwd, getAgentDir());
-  if (status.requiresTrust && !status.trusted) {
+  if (!status.trusted) {
     throw new ProjectNotTrustedError("Project resources must be trusted before changing project agents");
   }
 }

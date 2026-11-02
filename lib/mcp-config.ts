@@ -172,7 +172,7 @@ async function assertWritable(scope: McpScope, cwd: string | null, agentDir: str
   if (scope !== "project") return;
   if (!cwd) throw new Error("cwd required for project MCP servers");
   const status = getProjectTrustStatus(cwd, agentDir);
-  if (status.requiresTrust && !status.trusted) {
+  if (!status.trusted) {
     throw new ProjectNotTrustedError("Trust this project before changing its MCP servers");
   }
   // A fresh folder gets trusted by saveMcpServer below; refuse folders where that trust would spread.

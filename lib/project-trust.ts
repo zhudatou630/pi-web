@@ -111,22 +111,18 @@ export async function assertAutoTrustable(cwd: string, makeError: (message: stri
 }
 
 export function getProjectTrustStatus(cwd: string, agentDir: string): ProjectTrustStatus {
-  const requiresTrust = Boolean(cwd) && hasTrustRequiringProjectResources(cwd);
-  if (!requiresTrust) return { requiresTrust: false, trusted: true };
-
-  const trustStore = new ProjectTrustStore(agentDir);
-  return {
-    requiresTrust: true,
-    trusted: trustStore.get(cwd) === true,
-  };
+  if (!cwd) return { requiresTrust: false, trusted: true };
+  const requiresTrust = hasTrustRequiringProjectResources(cwd);
+  // As pi >= 1.5: a saved decision wins, also a "Do not trust" for a project with nothing to gate.
+  return { requiresTrust, trusted: new ProjectTrustStore(agentDir).get(cwd) ?? !requiresTrust };
 }
 
 export function trustProject(cwd: string, agentDir: string): ProjectTrustStatus {
   const status = getProjectTrustStatus(cwd, agentDir);
-  if (!status.requiresTrust) return status;
+  if (!status.requiresTrust && status.trusted) return status;
 
   new ProjectTrustStore(agentDir).set(cwd, true);
-  return { requiresTrust: true, trusted: true };
+  return { requiresTrust: status.requiresTrust, trusted: true };
 }
 
 /** Re-check synchronously at the commit point; explicit operator trust stays separate. */
@@ -150,15 +146,16 @@ export function trustProjectAutomatically(cwd: string, agentDir: string): Projec
  *
  * Pi Web and the `pi` CLI share the same trust store. Projects with gated
  * resources default to untrusted until either client records a trust decision.
- * Returns `undefined` when the project has no trust-requiring resources,
- * leaving ordinary projects on their existing load path.
+ * Returns `undefined` for a trusted project without trust-requiring resources,
+ * leaving ordinary projects on their existing load path; a saved "Do not trust"
+ * still reaches the settings, so extensions see `ctx.isProjectTrusted()` false.
  */
 export function projectTrustReloadOptions(
   cwd: string,
   agentDir: string,
 ): { resolveProjectTrust: () => Promise<boolean> } | undefined {
   const status = getProjectTrustStatus(cwd, agentDir);
-  if (!status.requiresTrust) return undefined;
+  if (!status.requiresTrust && status.trusted) return undefined;
   const trustStore = new ProjectTrustStore(agentDir);
   return { resolveProjectTrust: async () => trustStore.get(cwd) === true };
 }

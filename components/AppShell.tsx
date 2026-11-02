@@ -2617,7 +2617,7 @@ export function AppShell() {
   };
 
   const renderProjectTrustWarning = (mobileBanner: boolean, visible = true) => {
-    if (!visible || !showChat || !projectTrust?.requiresTrust || projectTrust.trusted) return null;
+    if (!visible || !showChat || !projectTrust || projectTrust.trusted) return null;
     return (
       <button
         type="button"
