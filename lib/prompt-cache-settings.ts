@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
+import { importSdkFile } from "./builtin-extensions";
 
 /** Anthropic prompt-cache TTL: pi's `short` (provider default, 5m) or `long` (1h) retention. */
 export type AnthropicCacheTtl = "5m" | "1h";
@@ -47,4 +48,27 @@ export function applyAnthropicCacheTtl(agent: unknown, read: () => AnthropicCach
     const ttl = read();
     return base(model, context, ttl ? { ...options, cacheRetention: ttl === "1h" ? "long" : "short" } : options);
   };
+}
+
+type MarkRuntimeStreamFunction = (streamFn: StreamFn, modelRuntime: unknown) => void;
+let markRuntimeStreamFunction: MarkRuntimeStreamFunction | undefined;
+
+/**
+ * pi marks the stream function createAgentSession installs so compaction and branch summaries let the
+ * ModelRuntime resolve stored OAuth instead of passing it as an explicit API key (#11520). The marker is
+ * not exported from the SDK index. startRpcSession awaits this before wrapping its first session.
+ */
+export async function loadRuntimeStreamMarker(): Promise<void> {
+  try {
+    markRuntimeStreamFunction ??= (await importSdkFile<{ markRuntimeStreamFunction: MarkRuntimeStreamFunction }>("core/agent-session.js"))
+      .markRuntimeStreamFunction;
+  } catch (error) {
+    console.error("[pi-web] summaries keep pre-resolved auth:", error instanceof Error ? error.message : error);
+  }
+}
+
+/** applyAnthropicCacheTtl() for a session, keeping pi's mark on its stream function (see loadRuntimeStreamMarker). */
+export function applyAnthropicCacheTtlToSession(session: { agent: unknown; modelRuntime: unknown }): void {
+  applyAnthropicCacheTtl(session.agent);
+  markRuntimeStreamFunction?.((session.agent as { streamFunction: StreamFn }).streamFunction, session.modelRuntime);
 }
