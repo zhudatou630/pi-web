@@ -236,3 +236,15 @@ test("panel tab order spans files and terminals; unlisted tabs follow in natural
   assert.deepEqual(restorePanelTabOrder('["a", 1, "b"]'), ["a", "b"]);
   assert.deepEqual(restorePanelTabOrder("{"), []);
 });
+
+test("a tab opened into diff carries no wrap choice, so the file's kind decides; a pressed one survives", () => {
+  const opened = openFileTab([], { ...openA, tabId: "file:/repo/README.md", filePath: "/repo/README.md", fileName: "README.md", modeHint: "diff" });
+  assert.equal("wrapLines" in opened[0].viewerState, false);
+  const raw = serializeFileTabs({ activeTabId: opened[0].id, open: true, tabs: [opened[0], tabA] });
+  const restored = restoreFileTabs(raw);
+  assert.equal(restored.tabs.length, 2, "a state without a wrap choice is valid");
+  assert.equal("wrapLines" in restored.tabs[0].viewerState, false);
+  assert.equal(restored.tabs[1].viewerState.wrapLines, true);
+  const rediffed = openFileTab([tabA], { ...openA, modeHint: "diff" });
+  assert.equal(rediffed[0].viewerState.wrapLines, true);
+});

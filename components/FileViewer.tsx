@@ -48,6 +48,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
 import { placeSelectionToolbar, prefersToolbarBelow, selectionAnchor, visibleBounds, type SelectionAnchor } from "@/lib/selection-toolbar";
 import {
+  defaultWrapLines,
   resolveInitialFileDisplayMode,
   type FileViewerDisplayMode as DisplayMode,
   type FileViewerState,
@@ -438,7 +439,7 @@ function diffMetadataLines(patch: string): string[] {
   return patch.split(/\r?\n/).filter((line) => /^(?:similarity index|dissimilarity index|rename from|rename to|copy from|copy to|old mode|new mode|new file mode|deleted file mode|Binary files|Submodule )/.test(line));
 }
 
-function DiffView({ patch }: { patch: string }) {
+function DiffView({ patch, wrapLines }: { patch: string; wrapLines: boolean }) {
   const { t } = useI18n();
   const diff = useMemo(() => diffLines(patch), [patch]);
   const metadata = diffMetadataLines(patch);
@@ -463,7 +464,7 @@ function DiffView({ patch }: { patch: string }) {
     <div
       className="file-diff-view"
       style={{
-        width: "max-content",
+        width: wrapLines ? "100%" : "max-content",
         minWidth: "100%",
         ...FILE_CODE_STYLE,
       }}
@@ -525,9 +526,9 @@ function DiffView({ patch }: { patch: string }) {
               <span
                 className="file-diff-line-content"
                 style={{
-                  flexShrink: 0,
+                  ...(wrapLines ? { flex: 1, minWidth: 0, overflowWrap: "anywhere" } : { flexShrink: 0 }),
                   padding: "0 8px 0 0",
-                  whiteSpace: "pre",
+                  whiteSpace: wrapLines ? "pre-wrap" : "pre",
                   color: "var(--text)",
                 }}
               >
@@ -1369,7 +1370,7 @@ function TextFileViewer({
     || isVideoPath(filePath)
     || isDocumentPreviewPath(filePath)
   );
-  const initialWrapLines = initialState?.wrapLines ?? false;
+  const initialWrapLines = initialState?.wrapLines ?? defaultWrapLines(filePath);
   const initialModeScroll = initialState?.scrollByMode?.[requestedInitialDisplayMode];
   const initialScrollTop = initialModeScroll?.scrollTop ?? initialState?.scrollTop ?? 0;
   const initialScrollLeft = initialModeScroll?.scrollLeft ?? initialState?.scrollLeft ?? 0;
@@ -1397,7 +1398,8 @@ function TextFileViewer({
   const scrollRestorePendingRef = useRef(true);
   const viewerStateRef = useRef<FileViewerState>({
     displayMode: requestedInitialDisplayMode,
-    wrapLines: initialWrapLines,
+    // Saved only once pressed: an unmade choice keeps following the file's kind.
+    wrapLines: initialState?.wrapLines,
     scrollTop: initialScrollTop,
     scrollLeft: initialScrollLeft,
     loadedBytes: initialLoadedBytes,
@@ -1422,12 +1424,12 @@ function TextFileViewer({
   }, []);
 
   const toggleWrapLines = useCallback(() => {
-    setWrapLines((current) => {
-      const next = !current;
-      viewerStateRef.current.wrapLines = next;
-      return next;
-    });
-  }, []);
+    const next = !wrapLines;
+    viewerStateRef.current.wrapLines = next;
+    setWrapLines(next);
+    // Saved at once, not only on hide: reopening this file into diff remounts the viewer from the tab's state.
+    onStateChangeRef.current?.({ ...viewerStateRef.current });
+  }, [wrapLines]);
 
   // AppShell keys this viewer by tab id + viewerRevision, so every intended reset
   // remounts it and the initializers above apply. Save on unmount only: reacting to
@@ -2136,7 +2138,7 @@ function TextFileViewer({
                 <MentionIcon />
               </button>
             )}
-            {effectiveDisplayMode === "source" && (
+            {(effectiveDisplayMode === "source" || effectiveDisplayMode === "diff") && (
               <>
                 <button
                   type="button"
@@ -2235,7 +2237,7 @@ function TextFileViewer({
         style={{ flex: 1, overflow: "auto", background: "var(--bg)", paddingBottom: data?.truncated && !(isHtml && effectiveDisplayMode === "preview") ? 48 : undefined }}
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
-          <DiffView patch={gitDiff.patch!} />
+          <DiffView patch={gitDiff.patch!} wrapLines={wrapLines} />
         ) : isHtml && effectiveDisplayMode === "preview" && data?.truncated && !htmlFull?.text ? (
           <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, color: htmlFull?.error ? "var(--danger)" : "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
             {htmlFull?.error ?? t("i18n.loading")}

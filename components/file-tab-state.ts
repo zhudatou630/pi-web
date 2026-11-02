@@ -26,7 +26,6 @@ export function openFileTab(tabs: Tab[], input: OpenFileTabInput): Tab[] {
       ...(input.page !== undefined ? { pdfPage: input.page } : {}),
       viewerState: input.modeHint ? {
         displayMode: input.modeHint,
-        wrapLines: false,
         scrollTop: 0,
         scrollLeft: 0,
       } : undefined,
@@ -65,7 +64,7 @@ export function openFileTab(tabs: Tab[], input: OpenFileTabInput): Tab[] {
       next.initialDisplayMode = input.modeHint;
       next.viewerState = {
         displayMode: input.modeHint,
-        wrapLines: tab.viewerState?.wrapLines ?? false,
+        ...(tab.viewerState?.wrapLines !== undefined ? { wrapLines: tab.viewerState.wrapLines } : {}),
         scrollTop: 0,
         scrollLeft: 0,
         loadedBytes: tab.viewerState?.loadedBytes,
@@ -120,7 +119,7 @@ function isOffset(value: unknown): value is number {
 
 function readViewerState(value: unknown): FileViewerState | undefined {
   if (!isRecord(value) || !["source", "preview", "diff"].includes(value.displayMode as string)
-    || typeof value.wrapLines !== "boolean" || !isOffset(value.scrollTop) || !isOffset(value.scrollLeft)
+    || (value.wrapLines !== undefined && typeof value.wrapLines !== "boolean") || !isOffset(value.scrollTop) || !isOffset(value.scrollLeft)
     || (value.loadedBytes !== undefined && !isOffset(value.loadedBytes))) return undefined;
   const scrollByMode: FileViewerState["scrollByMode"] = {};
   if (value.scrollByMode !== undefined) {
@@ -134,7 +133,7 @@ function readViewerState(value: unknown): FileViewerState | undefined {
   }
   return {
     displayMode: value.displayMode as FileViewerState["displayMode"],
-    wrapLines: value.wrapLines,
+    ...(typeof value.wrapLines === "boolean" ? { wrapLines: value.wrapLines } : {}),
     scrollTop: value.scrollTop,
     scrollLeft: value.scrollLeft,
     ...(value.loadedBytes !== undefined ? { loadedBytes: value.loadedBytes as number } : {}),

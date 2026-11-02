@@ -77,7 +77,9 @@ test("TextFileViewer snapshots and restores lightweight tab state", () => {
   assert.match(block, /onStateChangeRef\.current\?\.\(\{ \.\.\.viewerStateRef\.current \}\)/);
   assert.match(block, /displayMode: requestedInitialDisplayMode/);
   assert.match(block, /viewerStateRef\.current\.displayMode = nextDisplayMode/);
-  assert.match(block, /viewerStateRef\.current\.wrapLines = next/);
+  assert.match(block, /viewerStateRef\.current\.wrapLines = next;\s*setWrapLines\(next\);[\s\S]{0,160}onStateChangeRef\.current\?\.\(\{ \.\.\.viewerStateRef\.current \}\);/, "a wrap toggle is saved at once");
+  // An unmade wrap choice stays unsaved, so the file's kind keeps deciding.
+  assert.match(block, /wrapLines: initialState\?\.wrapLines,/);
   assert.match(block, /viewerStateRef\.current\.scrollTop = position\.scrollTop/);
   assert.match(block, /viewerStateRef\.current\.scrollLeft = position\.scrollLeft/);
   assert.match(block, /\[effectiveDisplayMode\]: position/);
