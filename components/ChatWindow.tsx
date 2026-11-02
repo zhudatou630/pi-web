@@ -2092,6 +2092,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     onOpenSession={onOpenSession}
                     entryId={entryIds[idx]}
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
+                    searchTarget={msg.role === "user" && entryIds[idx] === pendingSearchScroll?.entryId}
                     onFork={sessionBusy || isNew ? undefined : handleChatFork}
                     forking={forkingEntryId === entryIds[idx]}
                     prevAssistantEntryId={prevAssistantEntryId}

@@ -66,6 +66,7 @@ import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine
 import { IMAGE_ABORT_COMMAND, IMAGE_DIRECT_COMMAND, IMAGE_RESULT_TYPE, MAX_REFERENCE_IMAGES } from "./image-generation";
 import { executeImageGeneration, generatedImagePreview, parseImageGenerationRequest, saveSourceImage } from "./image-generation-runtime";
 import { retryStreamDrops } from "./retry-stream-drops";
+import { ROUTINE_RUN_ENTRY_TYPE, type RoutineRunTag } from "./routine-run-entry";
 import { applyAnthropicCacheTtl } from "./prompt-cache-settings";
 import {
   appendClearedSessionToolSelection,
@@ -342,6 +343,8 @@ export class AgentSessionWrapper {
   private sessionReplacement: "fork" | "clone" | null = null;
   private agentRunNeedsCompletion = false;
   private lastRunAborted = false;
+  /** Set by markRoutineRun() until the run's prompt surfaces as a user message. */
+  private pendingRoutineRun: RoutineRunTag | null = null;
   private promptAdmissionTail: Promise<void> = Promise.resolve();
   private extensionsBound = false;
   private extensionBindingPromise: Promise<void> | null = null;
@@ -473,6 +476,15 @@ export class AgentSessionWrapper {
     return this.suppressCompletionNotifications;
   }
 
+  /**
+   * Records that a routine's run sends the next prompt: the session entry tags it in history,
+   * and its live user message events carry the same tag (SSE has no custom-entry events).
+   */
+  markRoutineRun(data: RoutineRunTag & { runId: string; mode: string }): void {
+    this.inner.sessionManager.appendCustomEntry(ROUTINE_RUN_ENTRY_TYPE, { version: 1, ...data });
+    this.pendingRoutineRun = data.name ? { routineId: data.routineId, name: data.name } : { routineId: data.routineId };
+  }
+
   canStartBackgroundFollowUp(): boolean {
     return this._alive && !this._closing && !getPausedAutomaticFollowUps().has(this.sessionId);
   }
@@ -510,6 +522,13 @@ export class AgentSessionWrapper {
       if (event.type === "compaction_end") {
         this.flushCompactionQueue();
         this.resumeReportsWhenIdle();
+      }
+      const routineRun = this.pendingRoutineRun;
+      if (routineRun && (event.type === "message_start" || event.type === "message_end")
+        && (event.message as { role?: unknown } | undefined)?.role === "user") {
+        if (event.type === "message_end") this.pendingRoutineRun = null;
+        // A copy: pi persists its own message object.
+        event = { ...event, message: { ...(event.message as object), routineRun } };
       }
       this.emit(event.type === "agent_settled" ? this.withSubagentsActive(event) : event);
       if (event.type === "agent_settled") this.notifyAgentRunCompleteIfIdle();
@@ -725,6 +744,8 @@ export class AgentSessionWrapper {
   }
 
   private emit(event: AgentEvent): void {
+    // The run's prompt ended without a user message (a command, a rejected prompt): tag nothing later.
+    if (event.type === "prompt_done" || event.type === "prompt_error") this.pendingRoutineRun = null;
     if (event.type === "queue_update") event = { ...event, ...this.queuedMessages() };
     for (const { listener } of [...this.subscriptions]) {
       try {

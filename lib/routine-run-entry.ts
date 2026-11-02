@@ -1,7 +1,8 @@
 /**
  * The custom session entry a routine run appends before its prompt (lib/routine-runner.ts):
- * `{ type: "custom", customType, data: { version: 1, routineId, runId, mode } }`, `mode` being
- * the routine's target kind. Dependency-free:
+ * `{ type: "custom", customType, data: { version: 1, routineId, runId, mode, name } }`, `mode`
+ * being the routine's target kind, `name` the routine's name at the run (older entries lack it).
+ * Dependency-free:
  * the session-list scanner and the chat context builder read it too.
  */
 export const ROUTINE_RUN_ENTRY_TYPE = "pi-web:routine-run";
@@ -12,6 +13,19 @@ export function routineRunOfEntry(entry: unknown): { routineId: string; mode: st
   if (!routineId) return undefined;
   const mode = (entry as { data?: { mode?: unknown } }).data?.mode;
   return { routineId, mode: typeof mode === "string" ? mode : "new_session" };
+}
+
+/** What the chat shows instead of the prompt a run sent (docs/routines.md). */
+export interface RoutineRunTag {
+  routineId: string;
+  name?: string;
+}
+
+export function routineRunTagOfEntry(entry: unknown): RoutineRunTag | undefined {
+  const routineId = routineIdOfEntry(entry);
+  if (!routineId) return undefined;
+  const { name } = (entry as { data: { name?: unknown } }).data;
+  return typeof name === "string" && name ? { routineId, name } : { routineId };
 }
 
 /** The routine id of a routine-run entry, else undefined. */

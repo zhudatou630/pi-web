@@ -31,6 +31,7 @@ import { TurnWrittenFiles } from "./TurnWrittenFiles";
 import { QuestionCard } from "./QuestionCard";
 import { TurnCreatedRoutines } from "./TurnArtifacts";
 import type { CreatedRoutine } from "@/lib/turn-routines";
+import { requestOpenRoutine } from "@/lib/routine-events";
 import { iconStroke } from "./iconStroke";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionBody, skillExpansionToCommand } from "@/lib/slash-display";
@@ -159,6 +160,8 @@ interface Props {
   onOpenSession?: (sessionId: string) => void;
   entryId?: string;
   searchBlock?: AssistantContentBlock;
+  /** Session search landed on this message (a routine run then shows its instructions). */
+  searchTarget?: boolean;
   onFork?: (entryId: string) => void;
   forking?: boolean;
   prevAssistantEntryId?: string;
@@ -270,7 +273,10 @@ function haveSameRelevantToolResults(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+  if (message.role === "user" && message.routineRun) {
+    return <RoutineRunView message={message} routineRun={message.routineRun} searchTarget={searchTarget} cwd={cwd} onOpenFile={onOpenFile} />;
+  }
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
@@ -304,6 +310,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.onOpenSession === next.onOpenSession
     && prev.entryId === next.entryId
     && prev.searchBlock === next.searchBlock
+    && prev.searchTarget === next.searchTarget
     && prev.onFork === next.onFork
     && prev.forking === next.forking
     && prev.prevAssistantEntryId === next.prevAssistantEntryId
@@ -607,16 +614,43 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
                 </button>
               )}
           </div>
-          {/* Sent by a routine run, not typed here (docs/routines.md). Always shown: it changes how to read the turn. Last in the row so it sits flush under the bubble while the hover-only actions stay invisible to its left. */}
-          {message.routineId && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 4, fontSize: 11, lineHeight: 1.35, color: "var(--text-dim)", userSelect: "none" }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-              </svg>
-              {t("chat.sentByRoutine")}
-            </span>
-          )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A routine run's prompt (docs/routines.md): a centered "routine · time" link to the routine, not a
+ * user bubble; the chevron shows the instructions this run sent.
+ */
+function RoutineRunView({ message, routineRun, searchTarget, cwd, onOpenFile }: { message: UserMessage; routineRun: NonNullable<UserMessage["routineRun"]>; searchTarget?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+  const { t, locale } = useI18n();
+  const [expanded, setExpanded] = useState(Boolean(searchTarget));
+  // A search match is in the instructions: show them.
+  useEffect(() => { if (searchTarget) setExpanded(true); }, [searchTarget]);
+  const name = routineRun.name ?? t("chat.routineRun");
+  const time = formatTime(message.timestamp, locale);
+  const toggleLabel = expanded ? t("chat.routineRunHidePrompt") : t("chat.routineRunShowPrompt");
+  return (
+    <div className="chat-routine-run" data-routine-run="">
+      <div className="chat-routine-run-line">
+        <button type="button" onClick={() => requestOpenRoutine(routineRun.routineId)} title={t("chat.openRoutine", { name })}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+          </svg>
+          {time ? `${name} · ${time}` : name}
+        </button>
+        <button type="button" className="chat-routine-run-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} title={toggleLabel} aria-label={toggleLabel}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="2 3.5 5 6.5 8 3.5" />
+          </svg>
+        </button>
+      </div>
+      {expanded && (
+        <div className="chat-routine-run-prompt">
+          <MarkdownBody className="markdown-compaction-message" cwd={cwd} onOpenFile={onOpenFile}>{getMessageText(message.content)}</MarkdownBody>
+        </div>
+      )}
     </div>
   );
 }

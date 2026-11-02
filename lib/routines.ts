@@ -272,6 +272,18 @@ function loadFile(path: string): RoutinesFile {
   return value as unknown as RoutinesFile;
 }
 
+/** Current routine names by id for the chat's run rows, read once on first use; unreadable file = none. */
+export function routineNameLookup(path = getRoutinesPath()): (id: string) => string | undefined {
+  let names: Map<string, string> | undefined;
+  return (id) => {
+    if (!names) {
+      try { names = new Map(loadFile(path).routines.map((routine) => [routine.id, routine.name])); }
+      catch { names = new Map(); }
+    }
+    return names.get(id);
+  };
+}
+
 export interface RoutineStoreOptions {
   path?: string;
   isPidAlive?: (pid: number | undefined) => boolean;

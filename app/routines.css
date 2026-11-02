@@ -806,7 +806,7 @@
 .routine-fact dt,
 .routine-section-label {
   margin: 0 0 6px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
@@ -898,7 +898,7 @@
 .routine-runs {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -907,10 +907,10 @@
 .routine-run {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  min-height: 40px;
-  padding: 6px 12px;
+  min-height: var(--ui-row-height);
+  padding: 0 8px;
   border: 1px solid transparent;
   border-radius: var(--ui-radius-md);
   background: var(--bg);
@@ -1062,6 +1062,11 @@
     row-gap: 2px;
   }
 
+  /* Only a row whose note wrapped is taller than the shared row height. */
+  .routine-run:has(.routine-run-note:not(:empty)) {
+    padding-block: 4px;
+  }
+
   .routine-run-open {
     margin-left: auto;
   }
@@ -1069,7 +1074,7 @@
   .routine-run-note {
     order: 3;
     flex-basis: 100%;
-    padding-left: 23px;
+    padding-left: 21px;
     text-align: left;
     white-space: normal;
   }

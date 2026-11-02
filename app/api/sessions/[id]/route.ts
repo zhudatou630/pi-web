@@ -23,6 +23,7 @@ import { readSessionToolSelection } from "@/lib/session-tool-selection";
 import { updateSidebarState } from "@/lib/sidebar-state";
 import { getSessionFamily, familyHasMemberIn } from "@/lib/session-family";
 import { jsonResponse } from "@/lib/json-response";
+import { routineNameLookup } from "@/lib/routines";
 
 /**
  * A live wrapper only reflects appends Pi Web itself made. When another pi process
@@ -94,6 +95,7 @@ export async function GET(
         deferThinking,
         deferToolResultImages,
         tail,
+        routineName: routineNameLookup(),
         sessionId: id, // local: lazy URLs for historical tool-result images
       }),
       // Branch navigation keeps the runtime's model/effort; show what the next prompt uses.

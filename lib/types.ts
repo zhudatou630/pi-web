@@ -1,5 +1,6 @@
 // Types mirrored from pi-mono coding-agent session-manager
 import type { RoutineSchedule } from "./routine-schedule";
+import type { RoutineRunTag } from "./routine-run-entry";
 import type { TimingCall } from "./model-timing";
 
 export interface SessionHeader {
@@ -68,8 +69,8 @@ export interface UserMessage {
   role: "user";
   content: string | (TextContent | ImageContent)[];
   timestamp?: number;
-  /** Sent by this routine's run (from its pi-web:routine-run entry; history only, not live). */
-  routineId?: string;
+  /** Sent by a routine's run (its pi-web:routine-run entry): shown as a run row, not a bubble. */
+  routineRun?: RoutineRunTag;
 }
 
 export interface AgentUsage {

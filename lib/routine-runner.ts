@@ -185,8 +185,9 @@ export async function executeRoutineRun(store: RoutineStore, routine: Routine, r
     } else {
       sessionId = chat.sessionId;
       // `mode` lets the session list tell a run's own chat (hidden there) from a continued one.
-      chat.session.inner.sessionManager.appendCustomEntry(ROUTINE_RUN_ENTRY_TYPE, { version: 1, routineId: routine.id, runId: run.runId, mode: routine.target.kind });
       await store.updateRun(routine.id, run.runId, { sessionId });
+      // Right before the prompt: nothing else may be sent into the chat in between.
+      chat.session.markRoutineRun({ routineId: routine.id, runId: run.runId, mode: routine.target.kind, name: routine.name });
       outcome = await runPromptToCompletion(chat.session as unknown as RoutineSession, routine.prompt, routine.timeoutMinutes * 60_000);
     }
   } catch (error) {

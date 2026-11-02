@@ -16,7 +16,7 @@ import { resolveProject, type ProjectInfo } from "./worktree";
 import { readSubagentRun, SUBAGENT_META_TYPE } from "./subagents";
 import { timingCallsByAt, type TimingCall } from "./model-timing";
 import { checkSessionMembership, listSessionsIncremental, type ScannedSessionInfo } from "./session-list-scanner";
-import { routineIdOfEntry } from "./routine-run-entry";
+import { routineRunTagOfEntry, type RoutineRunTag } from "./routine-run-entry";
 
 export { getAgentDir };
 
@@ -657,6 +657,8 @@ export interface BuildSessionContextOptions {
   excludeLeaf?: boolean;
   /** Session id used to build lazy URLs for historical tool-result images. */
   sessionId?: string;
+  /** A routine's current name (renamed since the run, or a marker older than names); else the run's. */
+  routineName?: (routineId: string) => string | undefined;
 }
 
 export function buildSessionContext(
@@ -677,15 +679,21 @@ export function buildSessionContext(
   const entryIds: string[] = [];
   // Whole file: a page's last reply may have its timing entry in the newer page.
   const timingByAt = timingCallsByAt(entries);
-  // A routine run appends its marker right before its prompt: label that user message.
-  let routineId: string | undefined;
+  // A routine run appends its marker right before its prompt: label that user message. Any other
+  // message first means the run sent none (e.g. a command). A page can start at the prompt itself.
+  let routineRun = hasMore ? routineRunBefore(entries, sliced[0]!, options, timingByAt) : undefined;
   for (const entry of sliced) {
-    routineId = routineIdOfEntry(entry) ?? routineId;
+    routineRun = routineRunTagOfEntry(entry) ?? routineRun;
     let m = entryToUiMessage(entry, options, timingByAt);
     if (m?.role === "user") {
       // A copy: the message may be the live session's own object.
-      if (routineId) m = { ...m, routineId };
-      routineId = undefined;
+      if (routineRun) {
+        const name = options.routineName?.(routineRun.routineId) ?? routineRun.name;
+        m = { ...m, routineRun: name ? { ...routineRun, name } : routineRun };
+      }
+      routineRun = undefined;
+    } else if (m) {
+      routineRun = undefined;
     }
     if (m) {
       messages.push(m);
@@ -769,6 +777,22 @@ const SESSION_TAIL_ANCHOR_LIMIT = 1000;
  * (user / compaction) or `SESSION_TAIL_ANCHOR_LIMIT`, so a page does not start
  * mid-turn and leave tool calls unfolded.
  */
+/** The routine marker still waiting for a user message when a page starts at `first`. */
+function routineRunBefore(
+  entries: SessionEntry[],
+  first: SessionEntry,
+  options: BuildSessionContextOptions,
+  timingByAt: ReadonlyMap<number, TimingCall>,
+): RoutineRunTag | undefined {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  for (let entry = first.parentId ? byId.get(first.parentId) : undefined; entry; entry = entry.parentId ? byId.get(entry.parentId) : undefined) {
+    const tag = routineRunTagOfEntry(entry);
+    if (tag) return tag;
+    if (entryToUiMessage(entry, options, timingByAt)) return undefined;
+  }
+  return undefined;
+}
+
 export function sliceActiveBranch(
   entries: SessionEntry[],
   leafId: string | null,

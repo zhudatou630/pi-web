@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveSessionPath, buildSessionContext, openSessionForRead } from "@/lib/session-reader";
 import { getRpcSession } from "@/lib/rpc-manager";
 import { jsonResponse } from "@/lib/json-response";
+import { routineNameLookup } from "@/lib/routines";
 
 export async function GET(
   req: Request,
@@ -43,6 +44,7 @@ export async function GET(
         tail,
         excludeLeaf: Boolean(before),
         sessionId: id,
+        routineName: routineNameLookup(),
       }),
       ...liveRpc?.liveSelection?.(), // optional: wrappers from before a hot reload lack it
     };
