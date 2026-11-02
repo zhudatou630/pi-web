@@ -5469,7 +5469,10 @@ span.token.table {
 .quote-chip {
   display: inline-flex;
   align-items: flex-start;
-  max-width: min(280px, 100%);
+  /* Plain px: a % max-width is cyclic inside the max-content user bubble and is
+     ignored for its sizing, so the bubble grew to the full quote text. Narrow
+     containers still fit because the flex item shrinks. */
+  max-width: 280px;
   border-radius: var(--ui-radius-md);
   background: color-mix(in srgb, var(--text) 4%, transparent);
   color: var(--text-muted);
