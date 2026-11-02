@@ -219,8 +219,15 @@ export function NewSessionCwdControl({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshedWorktree, setRefreshedWorktree] = useState<typeof worktreeInfo>(null);
+  const coversCwd = (info: typeof worktreeInfo) => !!info && (info.forCwd === cwd
+    || info.projectRoot === cwd
+    || info.currentWorktreePath === cwd
+    || info.worktrees.some((wt) => wt.path === cwd));
+  // The prop follows the sidebar's selected cwd, which can be another project (other pane or
+  // tab) or not loaded yet; then look up this cwd's worktrees ourselves.
+  const propCoversCwd = coversCwd(worktreeInfo);
   useEffect(() => {
-    if (!branchMenuOpen) return;
+    if (!branchMenuOpen && propCoversCwd) return;
     const controller = new AbortController();
     void fetch(`/api/worktrees?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal })
       .then(async (response) => {
@@ -232,15 +239,9 @@ export function NewSessionCwdControl({
       })
       .catch(() => { /* Keep the last known list on a refresh failure. */ });
     return () => controller.abort();
-  }, [branchMenuOpen, cwd]);
+  }, [branchMenuOpen, cwd, propCoversCwd]);
   const candidateWorktree = refreshedWorktree?.forCwd === cwd ? refreshedWorktree : worktreeInfo;
-  const activeWorktree = candidateWorktree
-    && (candidateWorktree.forCwd === cwd
-      || candidateWorktree.projectRoot === cwd
-      || candidateWorktree.currentWorktreePath === cwd
-      || candidateWorktree.worktrees.some((wt) => wt.path === cwd))
-    ? candidateWorktree
-    : null;
+  const activeWorktree = coversCwd(candidateWorktree) ? candidateWorktree : null;
 
   useEffect(() => {
     if (!menuOpen && !branchMenuOpen) return;

@@ -17,14 +17,14 @@ test("path menu and worktree menu are separate", () => {
   assert.doesNotMatch(pathMenu, /worktrees\.map/);
 });
 
-test("path menu renders sidebar workspace state; only opening the worktree menu refreshes", () => {
+test("path menu renders sidebar workspace state; worktrees refresh on menu open or when the sidebar's info is for another cwd", () => {
   assert.match(control, /projectPaths: string\[\]/);
   assert.match(control, /projectPaths\.map\(\(path\) =>/);
   assert.doesNotMatch(control, /recentPaths|pinnedPaths|cwdRows/);
   assert.match(control, /worktreeInfo:/);
   assert.doesNotMatch(control, /\/api\/sessions/);
   assert.doesNotMatch(control, /\/api\/home/);
-  assert.match(control, /if \(!branchMenuOpen\) return;/);
+  assert.match(control, /if \(!branchMenuOpen && propCoversCwd\) return;/);
   assert.match(control, /\/api\/worktrees\?cwd=/);
 });
 
@@ -87,12 +87,12 @@ test("worktree menu refreshes on every open, retaining the last list on failure 
   const parsed = ts.createSourceFile("ChatWindow.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const effect = find(parsed, (node) => ts.isCallExpression(node) && node.expression.getText(parsed) === "useEffect"
     && node.arguments[0].getText(parsed).includes("/api/worktrees?cwd="));
-  assert.equal(effect.arguments[1].getText(parsed), "[branchMenuOpen, cwd]");
+  assert.equal(effect.arguments[1].getText(parsed), "[branchMenuOpen, cwd, propCoversCwd]");
   const writes = [];
   const calls = [];
   let response = Response.json({ projectRoot: "/root", currentWorktreePath: "/root/new", worktrees: [{ path: "/root/new", branch: "new" }] });
   const bindings = {
-    AbortController, branchMenuOpen: false, cwd: "/root/new",
+    AbortController, branchMenuOpen: false, cwd: "/root/new", propCoversCwd: true,
     fetch: async (url, options) => { calls.push([url, options]); return response; },
     setRefreshedWorktree: (data) => writes.push(data),
   };
@@ -124,6 +124,14 @@ test("worktree menu refreshes on every open, retaining the last list on failure 
   late.resolve(Response.json({ projectRoot: "/stale", worktrees: [] }));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(writes.length, 2);
+  // Sidebar info belongs to another project (other pane/tab): look up this cwd with the menu closed.
+  bindings.branchMenuOpen = false;
+  bindings.propCoversCwd = false;
+  bindings.fetch = async (url) => { calls.push([url]); return Response.json({ projectRoot: "/root", worktrees: [{ path: "/root/new", branch: "main" }] }); };
+  cleanup = open();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(writes[2].worktrees[0].branch, "main");
+  cleanup();
 });
 
 test("draft cwd validation uses stable project identity without rekeying/remounting or changing sibling drafts", async () => {
