@@ -51,8 +51,10 @@ declare global {
   var __piModelsConfigReadServices: Map<string, ReadServicesEntry> | undefined;
 }
 
-// shortcut: external extension source edits appear within 10 minutes; add file watching if immediate reload is needed.
-const READ_SERVICES_TTL_MS = 10 * 60_000;
+// Building the services imports every extension (seconds with many, blocking the event loop), so keep it rare.
+// Config file changes rebuild at once through the key below.
+// shortcut: extension source edited outside Pi Web shows within an hour; add file watching if it must be immediate.
+const READ_SERVICES_TTL_MS = 60 * 60_000;
 const READ_SERVICES_TIMEOUT_MS = 30_000;
 const MAX_READ_SERVICES = 8;
 
