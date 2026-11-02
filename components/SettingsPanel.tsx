@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { useTheme, type ThemePalette, type ThemePreference } from "@/hooks/useTheme";
 import { useFontScheme, type FontScheme } from "@/hooks/useFontScheme";
 import {
@@ -458,6 +459,7 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
     `${cwd}:${Object.entries(versions).filter(([name]) => name !== page).map(([, v]) => v).join(":")}`;
   // Narrow screens show one page at a time: the section list, then the section.
   const [pane, setPane] = useState<"nav" | "section">("nav");
+  const isMobile = useIsMobile();
   const [mountedSections, setMountedSections] = useState<ReadonlySet<SettingsSection>>(
     () => new Set([section]),
   );
@@ -531,7 +533,8 @@ export function SettingsPanel({ cwd, sessionId, initialSection, onClose, onSessi
   ) : null;
 
   return (
-    <ModalDialog aria-label={t("settings.title")} className="settings-dialog-backdrop" onClose={requestClose}>
+    // On a phone a close request (Android back) goes up one level, as the header's Back does.
+    <ModalDialog aria-label={t("settings.title")} className="settings-dialog-backdrop" onClose={isMobile && pane === "section" ? goBack : requestClose}>
       <div className="settings-dialog-surface" data-pane={pane}>
         <nav aria-label={t("settings.title")} className="settings-nav">
           <strong className="settings-nav-title">{t("settings.title")}</strong>

@@ -55,7 +55,7 @@ test("keeps visited settings sections mounted and contains nested Escape handlin
   assert.match(panelSource, /mountedSections\.has\(id\)/);
   assert.match(panelSource, /hidden=\{section !== id\}/);
   // Escape belongs to the topmost ModalDialog; nested controls that handle it prevent it first.
-  assert.match(panelSource, /<ModalDialog aria-label=\{t\("settings\.title"\)\} className="settings-dialog-backdrop" onClose=\{requestClose\}>/);
+  assert.match(panelSource, /<ModalDialog aria-label=\{t\("settings\.title"\)\} className="settings-dialog-backdrop" onClose=\{isMobile && pane === "section" \? goBack : requestClose\}>/);
   const dialogSource = await readFile(new URL("./models/fields.tsx", import.meta.url), "utf8");
   assert.match(modelsSource, /<ModelPickerDialog/);
   assert.match(dialogSource, /<ModalDialog className="models-dialog-backdrop" aria-label=\{title\} onClose=\{onClose\}>/);

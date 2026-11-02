@@ -11,8 +11,10 @@ test("ModalDialog leaves focus, inertness, and layering to a native modal <dialo
   assert.match(modal, /event\.key !== "Escape" \|\| event\.defaultPrevented \|\| event\.nativeEvent\.isComposing/);
   assert.match(modal, /event\.preventDefault\(\);[^\n]*\n\s*event\.stopPropagation\(\);/);
   assert.match(modal, /if \(event\.target !== event\.currentTarget\) return;/);
-  // A dialog whose owner withholds onClose is reopened if the browser closes it anyway.
-  assert.match(modal, /else dialog\.showModal\(\);/);
+  // An uncancelable cancel (no user activation) is followed by close: onClose answers only that close.
+  assert.match(modal, /if \(!event\.cancelable\) return;\s*event\.preventDefault\(\);\s*onCloseRef\.current\?\.\(\);/);
+  // A dialog whose owner withholds onClose, or stays open after it, is reopened if the browser closes it anyway.
+  assert.match(modal, /dialog\.showModal\(\);\s*onCloseRef\.current\?\.\(\);\s*\};/);
   assert.match(modal, /opener\?\.isConnected \? opener :/);
   // A text drag from a field that ends on the scrim must not close: only a press on the scrim does.
   assert.match(modal, /pressedScrimRef\.current = event\.target === event\.currentTarget;/);

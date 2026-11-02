@@ -40,8 +40,10 @@ export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onCl
     const handleNativeClose = () => {
       // `close` is queued: one from an earlier close() (Strict Mode remount) arrives while open again.
       if (!mounted || dialog.open) return;
-      if (onCloseRef.current) onCloseRef.current();
-      else dialog.showModal();
+      // Reopen before asking: an owner that stays (Settings going up a level, a discard confirm
+      // it opens on top) keeps its dialog; one that closes unmounts it.
+      dialog.showModal();
+      onCloseRef.current?.();
     };
     dialog.addEventListener("close", handleNativeClose);
     const autoFocused = dialog.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
@@ -73,6 +75,9 @@ export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onCl
       onCancel={(event) => {
         // React walks a nested dialog's cancel up the component tree; only this dialog's own counts.
         if (event.target !== event.currentTarget) return;
+        // Without user activation since the last one (a repeated Android back) the browser closes
+        // anyway: answering here too would call onClose twice; the close handler answers once.
+        if (!event.cancelable) return;
         event.preventDefault();
         onCloseRef.current?.();
       }}
