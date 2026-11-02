@@ -14,6 +14,9 @@ test("ModalDialog leaves focus, inertness, and layering to a native modal <dialo
   // A dialog whose owner withholds onClose is reopened if the browser closes it anyway.
   assert.match(modal, /else dialog\.showModal\(\);/);
   assert.match(modal, /opener\?\.isConnected \? opener :/);
+  // A text drag from a field that ends on the scrim must not close: only a press on the scrim does.
+  assert.match(modal, /pressedScrimRef\.current = event\.target === event\.currentTarget;/);
+  assert.match(modal, /if \(pressedScrim && event\.target === event\.currentTarget\) onCloseRef\.current\?\.\(\);/);
 });
 
 test("confirms are app dialogs that start on Cancel when destructive", () => {

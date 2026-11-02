@@ -19,8 +19,9 @@ type ModalDialogProps = Omit<DialogHTMLAttributes<HTMLDialogElement>, "open" | "
  * A descendant with React's `autoFocus` keeps the initial focus; otherwise the browser focuses
  * the first focusable descendant.
  */
-export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onClick, children, ...rest }: ModalDialogProps) {
+export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onClick, onPointerDown, children, ...rest }: ModalDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const pressedScrimRef = useRef(false);
   // Read during the first render: by the layout effect an autoFocus descendant already has focus.
   const [opener] = useState(() => (typeof document === "undefined" ? null : document.activeElement as HTMLElement | null));
   const onCloseRef = useRef(onClose);
@@ -75,9 +76,17 @@ export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onCl
         event.preventDefault();
         onCloseRef.current?.();
       }}
+      onPointerDown={(event) => {
+        onPointerDown?.(event);
+        pressedScrimRef.current = event.target === event.currentTarget;
+      }}
       onClick={(event) => {
         onClick?.(event);
-        if (event.target === event.currentTarget) onCloseRef.current?.();
+        // A click targets the common ancestor of press and release: a text drag from a field
+        // that ends on the scrim clicks the dialog itself. Only a press on the scrim closes.
+        const pressedScrim = pressedScrimRef.current;
+        pressedScrimRef.current = false;
+        if (pressedScrim && event.target === event.currentTarget) onCloseRef.current?.();
       }}
     >
       {children}
