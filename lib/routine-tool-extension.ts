@@ -1,4 +1,5 @@
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { ExtensionAPI, InlineExtension } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { minIntervalMs, nextRuns, type RoutineSchedule } from "./routine-schedule";

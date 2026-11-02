@@ -129,6 +129,45 @@ export function toClientAgentEvent(
   return event;
 }
 
+/**
+ * Raw argument text of the tool calls in the assistant message being streamed. pi >= 1.5 keeps it off
+ * the content blocks, so a view connecting mid-call would rebuild its preview from a fragment.
+ */
+export class StreamingToolInput {
+  private raw = new Map<number, string>();
+  private lastMessage: unknown;
+
+  observe(event: AgentEventLike): void {
+    if (event.type === "message_start" || event.type === "message_end") {
+      this.raw.clear();
+      this.lastMessage = undefined;
+      return;
+    }
+    if (event.type !== "message_update" || !isObject(event.assistantMessageEvent)) return;
+    this.lastMessage = event.message;
+    const { type, contentIndex, delta } = event.assistantMessageEvent;
+    if (typeof contentIndex !== "number") return;
+    // shortcut: like the browser's live path, assumes arguments start empty (OpenAI Responses may put a
+    // prefix in output_item.added, sent as no delta); track that prefix if such previews show up broken.
+    if (type === "toolcall_start") this.raw.set(contentIndex, "");
+    else if (type === "toolcall_delta" && typeof delta === "string") this.raw.set(contentIndex, (this.raw.get(contentIndex) ?? "") + delta);
+    else if (type === "toolcall_end") this.raw.delete(contentIndex);
+  }
+
+  /**
+   * A copy of the SDK's streaming message whose open tool calls carry `rawInput`. Only when it is the
+   * message of the last observed update: pi sets its state before listeners run, and a snapshot from
+   * that gap is newer than the text seen here (the client then keeps the parsed input).
+   */
+  project<T>(message: T): T {
+    if (this.raw.size === 0 || message !== this.lastMessage || !isObject(message) || !Array.isArray(message.content)) return message;
+    const content = message.content.map((block: unknown, index: number) => (
+      isObject(block) && block.type === "toolCall" && this.raw.has(index) ? { ...block, rawInput: this.raw.get(index) } : block
+    ));
+    return { ...message, content } as T;
+  }
+}
+
 export function isEventIncludedInSnapshot(
   event: AgentEventLike,
   snapshot: unknown,

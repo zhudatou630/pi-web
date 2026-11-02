@@ -25,6 +25,7 @@ import { forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fo
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { computeSessionStats } from "./session-stats";
 import { TimingRecorder } from "./model-timing";
+import { StreamingToolInput } from "./agent-event-wire";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
@@ -326,6 +327,7 @@ export class AgentSessionWrapper {
   private subscriptions: EventSubscription[] = [];
   private activeToolEvents = new Map<string, AgentEvent>();
   private readonly timing = new TimingRecorder();
+  private readonly streamingToolInput = new StreamingToolInput();
   private closeListeners = new Set<() => void>();
   private pendingUiResponses = new Map<string, PendingUiResponse>();
   private pendingUiRequests = new Map<string, AgentEvent>();
@@ -399,7 +401,7 @@ export class AgentSessionWrapper {
   }
 
   get streamingMessage() {
-    return this.inner.agent.state?.streamingMessage;
+    return this.streamingToolInput.project(this.inner.agent.state?.streamingMessage);
   }
 
   /** Executing tool calls, named from the assistant message that issued them. */
@@ -527,6 +529,7 @@ export class AgentSessionWrapper {
       }
       if (IDLE_RESET_EVENT_TYPES.has(event.type)) this.resetIdleTimer();
       this.timing.observe(event);
+      this.streamingToolInput.observe(event);
       // turn_end: the call and its tool results are persisted, so the entry lands before the next
       // call and branch copies keep it. Before emit: the client reloads stats on agent_end.
       if (event.type === "turn_end" || event.type === "agent_end") {

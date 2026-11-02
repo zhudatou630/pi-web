@@ -128,12 +128,14 @@ function applyDelta(
       });
     case "toolcall_delta":
       return updateContentBlock(state, event.contentIndex, (current) => (
-        current?.type === "toolCall"
+        // Without a raw baseline (a snapshot that had none) appending would leave a fragment:
+        // keep the snapshot's parsed input until toolcall_end.
+        current?.type === "toolCall" && current.rawInput !== undefined
           ? {
             ...current,
             toolCallId: event.id || current.toolCallId,
             toolName: event.toolName || current.toolName,
-            rawInput: (current.rawInput ?? "") + event.delta,
+            rawInput: current.rawInput + event.delta,
           }
           : null
       ));

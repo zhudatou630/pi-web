@@ -1,5 +1,6 @@
 import path from "node:path";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { ModelRuntime, type InlineExtension, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { IMAGE_TOOL_NAME, MAX_REFERENCE_IMAGES } from "./image-generation";
 import { imageConfigView, isImageGenerationEnabled, isImageGenerationEnabledForProject, resolveImageConfig } from "./image-generation-config";

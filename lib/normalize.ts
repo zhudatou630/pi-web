@@ -24,21 +24,6 @@ export function projectMessageForBrowser<T>(message: T): T {
     : message;
 }
 
-function streamingRawInput(block: Record<string, unknown>): string | undefined {
-  if (typeof block.rawInput === "string") return block.rawInput;
-  if (typeof block.partialJson === "string") return block.partialJson;
-  if (typeof block.partialArgs === "string") return block.partialArgs;
-
-  const customInput = isObject(block.customInput) ? block.customInput : null;
-  const property = customInput && typeof customInput.property === "string"
-    ? customInput.property
-    : null;
-  const args = isObject(block.arguments) ? block.arguments : null;
-  return property && args && typeof args[property] === "string"
-    ? args[property]
-    : undefined;
-}
-
 function normalizeToolCallBlock(
   block: unknown,
   options: { includeStreamingRawInput?: boolean } = {},
@@ -54,7 +39,8 @@ function normalizeToolCallBlock(
         ? block.arguments as Record<string, unknown>
         : {}),
   };
-  const rawInput = options.includeStreamingRawInput ? streamingRawInput(block) : undefined;
+  // Set on the SSE snapshot by StreamingToolInput (agent-event-wire.ts); pi >= 1.5 keeps raw text off blocks.
+  const rawInput = options.includeStreamingRawInput && typeof block.rawInput === "string" ? block.rawInput : undefined;
   return rawInput === undefined ? normalized : { ...normalized, rawInput };
 }
 
