@@ -31,7 +31,10 @@ function picker(props) {
   };
   const loaded = { exports: {} };
   new Function("require", "module", "exports", "window", compiled)(
-    (name) => name === "react" ? hooks : name === "./MenuCheck" ? { MenuCheck: () => null } : jsxRuntime, loaded, loaded.exports,
+    (name) => name === "react" ? hooks
+      : name === "./MenuCheck" ? { MenuCheck: () => null }
+      : name === "@/hooks/useI18n" ? { useI18n: () => ({ t: (key) => key }) }
+      : jsxRuntime, loaded, loaded.exports,
     { innerHeight: 800, innerWidth: 1200 },
   );
   let tree;

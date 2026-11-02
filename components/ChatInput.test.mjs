@@ -596,10 +596,10 @@ test("shows and locks the optimistic model while a switch is pending", () => {
 });
 
 test("renders the toolbar model as a plain dock button without a chip icon", () => {
-  const html = renderToStaticMarkup(React.createElement(ModelSelector, {
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(ModelSelector, {
     options: [{ provider: "openai", modelId: "gpt-test", name: "GPT Test" }],
     value: { provider: "openai", modelId: "gpt-test" }, onChange() {},
-  }));
+  })));
   assert.match(html, /class="composer-btn model-selector-trigger"/);
   assert.match(html, />GPT Test<\/span><\/button>/);
   assert.doesNotMatch(html, /<rect x="4" y="4" width="16" height="16"/);

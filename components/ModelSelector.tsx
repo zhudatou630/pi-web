@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useI18n } from "@/hooks/useI18n";
 import { MenuCheck } from "./MenuCheck";
 
 export interface ModelSelectorOption {
@@ -48,6 +49,7 @@ export function ModelSelector({
   variant = "toolbar",
   placement = "up",
 }: ModelSelectorProps) {
+  const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -67,7 +69,7 @@ export function ModelSelector({
 
   const currentName = selectedLabel ?? (value
     ? sortedOptions.find((option) => option.modelId === value.modelId && option.provider === value.provider)?.name ?? value.modelId
-    : emptyLabel ?? (sortedOptions.length > 0 ? "Select model" : "No models"));
+    : emptyLabel ?? (sortedOptions.length > 0 ? t("modelSelector.select") : t("modelSelector.none")));
   const selectableOptions = useMemo<(ModelSelectorOption | null)[]>(
     () => (onClear ? [null, ...sortedOptions] : sortedOptions),
     [onClear, sortedOptions],
@@ -207,7 +209,7 @@ export function ModelSelector({
         }}
         aria-busy={busy || undefined}
         disabled={locked}
-        title={busy ? "Switching model" : locked ? currentName : sortedOptions.length > 0 || onClear ? "Change model" : "No available models"}
+        title={busy ? t("modelSelector.switching") : locked ? currentName : sortedOptions.length > 0 || onClear ? t("modelSelector.change") : t("modelSelector.noneAvailable")}
         // Field variant looks exactly like Select.tsx's trigger.
         className={variant === "toolbar" ? "composer-btn model-selector-trigger" : "select-trigger"}
         onClick={() => {
@@ -269,7 +271,7 @@ export function ModelSelector({
                     id={`${listboxId}-option-0`}
                     active={!value}
                     highlighted={activeOptionIndex === 0}
-                    label={emptyLabel ?? "Default"}
+                    label={emptyLabel ?? t("i18n.default")}
                     onActive={() => setActiveIndex(0)}
                     onClick={() => {
                       setOpen(false);
@@ -280,7 +282,7 @@ export function ModelSelector({
               )}
               {modelsByProvider.length === 0 ? (
                 <div style={{ padding: "7px 8px", color: "var(--text-dim)", fontSize: 12, whiteSpace: "nowrap" }}>
-                  No available models
+                  {t("modelSelector.noneAvailable")}
                 </div>
               ) : modelsByProvider.map((group) => (
                 <div key={group.provider} className="menu-surface-group">
