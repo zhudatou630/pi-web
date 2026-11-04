@@ -43,6 +43,12 @@ import {
   type SubagentResultMetadata,
   type SubagentRunInfo,
 } from "./subagents";
+import {
+  installSubagentPoolFailover,
+  modelRef,
+  profilePool,
+  selectPoolStart,
+} from "./subagent-pool";
 import type { SessionEntry } from "./types";
 import { buildSubagentPromptPlan } from "./subagent-prompt";
 import { appendSubagentInputFiles, loadSubagentInputFiles, subagentInputByteLimit } from "./subagent-input";
@@ -303,6 +309,101 @@ export function parseSubagentModel<T extends { provider: string; id: string }>(
     + (choices.length > 0 ? ` from: ${modelRefs(choices)}` : "")
     + ". Pass reasoning effort with the thinking parameter, not inside the model name.",
   );
+}
+
+/**
+ * Resolve a profile's ordered pool. `Agent.model` (when present) is parsed against
+ * the session's scoped choices and moved to the front. Other refs resolve against
+ * the full catalog; a miss is skipped. An empty pool means inherit the parent.
+ * If every profile ref misses and nothing was requested, throw the existing error.
+ */
+export function resolveSubagentPool<T extends { provider: string; id: string }>(
+  profile: { model?: string; models?: readonly string[] },
+  options: {
+    requestModel?: string;
+    scopedModels: readonly T[];
+    allModels: readonly T[];
+    choices?: ReadonlyArray<{ provider: string; id: string }>;
+  },
+): { pool: T[]; thinking?: ThinkingLevel } {
+  const refs = profilePool(profile);
+  const pool: T[] = [];
+  const seen = new Set<string>();
+  let thinking: ThinkingLevel | undefined;
+
+  if (options.requestModel?.trim()) {
+    const parsed = parseSubagentModel(options.scopedModels, options.requestModel);
+    if (parsed.model) {
+      pool.push(parsed.model);
+      seen.add(modelRef(parsed.model));
+    }
+    thinking = parsed.thinking;
+  }
+
+  let lastError: Error | undefined;
+  for (const ref of refs) {
+    try {
+      const parsed = parseSubagentModel(options.allModels, ref, options.choices ?? options.scopedModels);
+      if (parsed.model && !seen.has(modelRef(parsed.model))) {
+        pool.push(parsed.model);
+        seen.add(modelRef(parsed.model));
+      }
+      thinking ??= parsed.thinking;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  if (refs.length > 0 && pool.length === 0) {
+    if (lastError) throw lastError;
+    parseSubagentModel(options.allModels, refs[0], options.choices ?? options.scopedModels);
+  }
+  return { pool, ...(thinking ? { thinking } : {}) };
+}
+
+/** Resume/snapshot: skip refs that no longer exist in the catalog. */
+export function resolvePoolModelRefs<T extends { provider: string; id: string }>(
+  models: readonly T[],
+  refs: readonly string[],
+): T[] {
+  const pool: T[] = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    try {
+      const parsed = parseSubagentModel(models, ref);
+      if (parsed.model && !seen.has(modelRef(parsed.model))) {
+        pool.push(parsed.model);
+        seen.add(modelRef(parsed.model));
+      }
+    } catch {
+      // A stale snapshot member must not block resume of the rest of the pool.
+    }
+  }
+  return pool;
+}
+
+/** Resume keeps the last physical model. Missing runtime or profile must not fail the prompt. */
+function installResumedSubagentPoolFailover(
+  session: object,
+  parent: HostSession,
+  metadata: Pick<SubagentMetadata, "pool" | "profile">,
+): void {
+  let refs = metadata.pool?.length ? [...metadata.pool] : [];
+  if (refs.length === 0 && typeof parent.cwd === "string") {
+    try {
+      refs = profilePool(resolveSubagentProfile(parent.cwd, metadata.profile) ?? {});
+    } catch {
+      refs = [];
+    }
+  }
+  const runtime = (session as unknown as { modelRuntime?: ModelRuntime }).modelRuntime
+    ?? (parent.inner as unknown as { modelRuntime?: ModelRuntime }).modelRuntime;
+  if (typeof runtime?.getModels !== "function") return;
+  try {
+    installSubagentPoolFailover(session, resolvePoolModelRefs(runtime.getModels(), refs));
+  } catch {
+    // Failover is optional on resume: the child continues on its last physical model.
+  }
 }
 
 function modelRefs(models: ReadonlyArray<{ provider: string; id: string }>): string {
@@ -1000,13 +1101,19 @@ export function createSubagentController(
       (parent.inner.scopedModels ?? []) as ReadonlyArray<{ model: ReturnType<ModelRuntime["getAvailableSnapshot"]>[number] }>,
       parentModelRuntime.getAvailableSnapshot(),
     );
-    const requestedModel = request.model
-      ? parseSubagentModel(choices, request.model)
-      : parseSubagentModel(parentModelRuntime.getModels(), profile.model, choices);
-    const thinking = request.thinking ?? requestedModel.thinking ?? profile.thinking ?? parent.inner.agent.state?.thinkingLevel;
+    const resolvedPool = resolveSubagentPool(profile, {
+      requestModel: request.model,
+      scopedModels: choices,
+      allModels: parentModelRuntime.getModels(),
+      choices,
+    });
+    const thinking = request.thinking ?? resolvedPool.thinking ?? profile.thinking ?? parent.inner.agent.state?.thinkingLevel;
     // Fixed at dispatch like thinking: the parent may switch models while this run is queued,
-    // and input_files were sized for this model.
-    const childModel = (requestedModel.model ?? parent.inner.model) as ReturnType<ModelRuntime["getModel"]>;
+    // and input_files were sized for this model. The byte cap uses the first pool member;
+    // the child may start on a later member when the first is cooling.
+    const firstPoolModel = (resolvedPool.pool[0] ?? parent.inner.model) as ReturnType<ModelRuntime["getModel"]>;
+    const childModel = (selectPoolStart(resolvedPool.pool) ?? parent.inner.model) as ReturnType<ModelRuntime["getModel"]>;
+    const poolSnapshot = resolvedPool.pool.map((model) => modelRef(model));
     if (thinking && !THINKING_LEVELS.has(thinking as ThinkingLevel)) {
       throw new Error(`Invalid subagent thinking level: ${thinking}. Use one of: ${VALID_THINKING_LEVELS.join(", ")}`);
     }
@@ -1018,7 +1125,7 @@ export function createSubagentController(
     const inputFiles = loadSubagentInputFiles(
       parent.cwd,
       request.inputFiles ?? [],
-      subagentInputByteLimit(childModel),
+      subagentInputByteLimit(firstPoolModel),
     );
     const projectInstructions = projectInstructionsForSubagent(
       profile,
@@ -1056,6 +1163,7 @@ export function createSubagentController(
       ...(turnLimit ? { maxTurns: turnLimit } : {}),
       ...(isolation ? { isolation } : {}),
       createdAt,
+      ...(poolSnapshot.length > 0 ? { pool: poolSnapshot } : {}),
       resourceSnapshot: {
         version: 1,
         appendSystemPrompt: [...appendSystemPrompt],
@@ -1167,6 +1275,7 @@ export function createSubagentController(
             customTools: createSubagentShellTools(childCwd, settingsManager, services.resourceLoader.getExtensions().extensions),
           });
           dependencies.registerSession(inner, { chatOnly });
+          installSubagentPoolFailover(inner, resolvedPool.pool);
           childWrapper = dependencies.getSession(sessionId);
           await childWrapper?.waitUntilReady();
           if (stored.abortRequested) {
@@ -1349,6 +1458,7 @@ export function createSubagentController(
             stored.run = { ...stored.run, status: "running" };
             request.onUpdate?.(stored.run);
             dependencies.invalidateSessionList();
+            installResumedSubagentPoolFailover(wrapper.inner, parent, currentMetadata);
             const outcome = await promptSubagent(wrapper.inner, request.task, stored, { turnLimit: maxTurns });
             let result: SubagentRunInfo = { ...stored.run, ...outcome, completedAt: new Date().toISOString() };
             if (isolated) {

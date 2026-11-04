@@ -14,6 +14,7 @@ import { skillExpansionToCommand } from "./slash-display";
 import { MAX_TOOL_RESULT_IMAGE_BYTES, TOOL_RESULT_IMAGE_MIMES } from "./tool-result-images";
 import { resolveProject, type ProjectInfo } from "./worktree";
 import { readSubagentRun, SUBAGENT_META_TYPE } from "./subagents";
+import { SUBAGENT_POOL_SWITCH_TYPE } from "./subagent-pool-schema";
 import { timingCallsByAt, type TimingCall } from "./model-timing";
 import { checkSessionMembership, listSessionsIncremental, type ScannedSessionInfo } from "./session-list-scanner";
 import { isRoutineRunEnd, routineRunTagOfEntry, type RoutineRunTag } from "./routine-run-entry";
@@ -974,6 +975,16 @@ function entryToUiMessage(
         content: entry.content,
         display: entry.display,
         details: entry.details,
+        timestamp: parseEntryTimestamp(entry.timestamp),
+      };
+    case "custom":
+      if (entry.customType !== SUBAGENT_POOL_SWITCH_TYPE) return null;
+      return {
+        role: "custom",
+        customType: SUBAGENT_POOL_SWITCH_TYPE,
+        content: "",
+        display: true,
+        details: entry.data,
         timestamp: parseEntryTimestamp(entry.timestamp),
       };
     default:

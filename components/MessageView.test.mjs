@@ -25,6 +25,29 @@ test("assistant block keys do not change when persistence supplies an entry id",
   assert.doesNotMatch(source, /key=\{`\$\{entryId/);
 });
 
+test("pool switch custom entries render a failover notice", () => {
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(MessageView, {
+      message: {
+        role: "custom",
+        customType: "pi-web:subagent-pool-switch",
+        display: true,
+        content: "",
+        details: {
+          version: 1,
+          from: { provider: "anthropic", id: "claude-sonnet-4-6" },
+          to: { provider: "openai", id: "gpt-5.4" },
+          error: "401",
+          reason: "auth",
+          memberIndex: 1,
+        },
+      },
+    })));
+  assert.match(html, /Model failover/);
+  assert.match(html, /anthropic\/claude-sonnet-4-6/);
+  assert.match(html, /openai\/gpt-5.4/);
+});
+
 test("a reused thinking block clears entry-specific content without resetting expansion", () => {
   const reset = source.slice(source.indexOf("  const receivedThinking ="), source.indexOf("  const tRef ="));
   assert.match(reset, /useState\(\{ sessionId, entryId, blockIndex \}\)/);

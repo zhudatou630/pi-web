@@ -425,7 +425,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [toolPreset, setToolPreset] = useState<ToolPreset>(CONFIGURED_TOOL_PRESET);
   // null until known (models not loaded yet / session state not read yet).
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelOption | null>(initialThinkingLevel);
-  const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string } | null>(null);
+  const [retryInfo, setRetryInfo] = useState<{ attempt: number; maxAttempts: number; errorMessage?: string; switchedTo?: string } | null>(null);
   const [contextUsage, setContextUsage] = useState<{ percent: number | null; contextWindow: number; tokens: number | null } | null>(null);
   const [liveActiveTime, setLiveActiveTime] = useState<{ sessionId: string; value: number } | null>(null);
   const contextUsageRequestIdRef = useRef(0);
@@ -1770,7 +1770,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       case "auto_retry_start":
-        setRetryInfo({ attempt: event.attempt as number, maxAttempts: event.maxAttempts as number, errorMessage: event.errorMessage as string | undefined });
+        setRetryInfo({
+          attempt: event.attempt as number,
+          maxAttempts: event.maxAttempts as number,
+          errorMessage: event.errorMessage as string | undefined,
+          ...(typeof event.switchedTo === "string" && event.switchedTo ? { switchedTo: event.switchedTo } : {}),
+        });
         break;
       case "auto_retry_end":
         setRetryInfo(null);

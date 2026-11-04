@@ -36,7 +36,7 @@ test("reuses the ChatInput model selector with scoped models", () => {
   assert.match(editorSource, /getJson<[^\n]*>\(settingsUrls\.chatModels\(cwd\)\)/);
   assert.match(editorSource, /import \{ ModelSelector \} from "\.\/ModelSelector"/);
   assert.match(chatInputSource, /import \{ ModelSelector, type ModelSelectorOption \} from "\.\/ModelSelector"/);
-  assert.match(editorSource, /<ModelSelector[\s\S]*?options=\{modelSelectorOptions\}[\s\S]*?variant="field"/);
+  assert.match(editorSource, /<ModelSelector[\s\S]*?options=\{addOptions\}[\s\S]*?variant="field"/);
   assert.match(chatInputSource, /<ModelSelector[\s\S]*?options=\{modelOptions\}/);
   assert.match(modelSelectorSource, /for \(const option of sortedOptions\)/);
   assert.doesNotMatch(modelSelectorSource, /<input|filterModels|setFilter|filterModelOptions/);
@@ -44,6 +44,19 @@ test("reuses the ChatInput model selector with scoped models", () => {
   assert.match(modelSelectorSource, /event\.key !== "Escape" \|\| !open[\s\S]*?event\.preventDefault\(\)[\s\S]*?event\.stopPropagation\(\)/);
   assert.match(editorSource, /agents\.modelUnavailable/);
   assert.doesNotMatch(editorSource, /placeholder="provider\/modelId"/);
+});
+
+test("the model field is an ordered pool, empty inherits, one item writes only model", () => {
+  assert.match(editorSource, /profilePool\(draft\)/);
+  assert.match(editorSource, /serializeProfilePool\(\{ models: refs \}\)/);
+  assert.match(editorSource, /agents\.modelMoveUp/);
+  assert.match(editorSource, /agents\.modelMoveDown/);
+  assert.match(editorSource, /agents\.modelRemove/);
+  assert.match(editorSource, /agents\.modelAdd/);
+  assert.match(editorSource, /agents\.modelPoolHelp/);
+  assert.match(editorSource, /\.\.\.\(profile\.models\?\.length \? \{ models: \[\.\.\.profile\.models\] \} : \{\}\)/);
+  assert.match(editorSource, /<Field label=\{t\("agents\.model"\)\}>/);
+  assert.match(cssSource, /\.agents-model-pool-list \{/);
 });
 
 test("uses the same form controls for editable and readonly profiles", () => {

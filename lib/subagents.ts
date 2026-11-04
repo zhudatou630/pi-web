@@ -14,6 +14,7 @@ import { isExistingPathWithinRoots } from "./path-security";
 import { PRESET_READ_ONLY } from "./tool-presets";
 import { IMAGE_TOOL_NAME } from "./image-generation";
 import type { SessionEntry, SubagentSessionStatus } from "./types";
+import { serializeProfilePool, uniqueModelRefs } from "./subagent-pool-schema";
 
 export const SUBAGENT_META_TYPE = "pi-web:subagent";
 export const SUBAGENT_STATUS_TYPE = "pi-web:subagent-status";
@@ -36,6 +37,8 @@ export interface SubagentProfile {
   loadSkills: boolean;
   loadExtensions: boolean;
   model?: string;
+  /** Ordered failover pool. Absent or empty with no `model` means inherit the parent. */
+  models?: string[];
   thinking?: ThinkingLevel;
   maxTurns?: number;
   inheritContext: boolean;
@@ -63,6 +66,8 @@ export interface SubagentMetadata {
   isolation?: "worktree" | "off";
   createdAt: string;
   resourceSnapshot: SubagentResourceSnapshot;
+  /** Catalog refs (`provider/id`) in user order at spawn. Resume uses this, not a later profile edit. */
+  pool?: string[];
   worktreePath?: string;
   worktreeBranch?: string;
 }
@@ -141,6 +146,7 @@ const MANAGED_FRONTMATTER_KEYS = new Set([
   "inherit_context",
   "run_in_background",
   "model",
+  "models",
   "thinking",
   "max_turns",
 ]);
@@ -365,6 +371,7 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
     if (!isProfileName(name)) return invalidProfile(filePath, scope, fileName, `Invalid agent name: ${name}`);
     const thinkingValue = stringValue(data?.thinking) as ThinkingLevel | undefined;
     const maxTurnsValue = typeof data?.max_turns === "number" ? Math.floor(data.max_turns) : undefined;
+    const parsedModels = uniqueModelRefs(stringList(data?.models));
     assertKnownProfileTools(data?.tools);
     const tools = parseTools(data?.tools, DEFAULT_TOOLS);
     const disallowedTools = new Set(parseTools(data?.disallowed_tools, []));
@@ -389,6 +396,7 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
       loadSkills,
       loadExtensions,
       ...(stringValue(data?.model) ? { model: stringValue(data?.model) } : {}),
+      ...(parsedModels.length > 0 ? { models: parsedModels } : {}),
       ...(thinkingValue && THINKING_LEVELS.has(thinkingValue) ? { thinking: thinkingValue } : {}),
       ...(maxTurnsValue && maxTurnsValue > 0 ? { maxTurns: maxTurnsValue } : {}),
       inheritContext: booleanValue(data?.inherit_context, false),
@@ -542,7 +550,9 @@ export function saveSubagentProfile(
   const displayName = profile.displayName.trim() || name;
   const description = profile.description.trim() || name;
   const systemPrompt = profile.systemPrompt.trim();
-  const model = profile.model?.trim() || undefined;
+  const serializedPool = serializeProfilePool(profile);
+  const model = serializedPool.model;
+  const models = serializedPool.models;
   const loadSkills = profile.loadSkills === true;
   const loadExtensions = profile.loadExtensions === true;
   const extensionTools = validateSavedExtensionTools(profile.extensionTools);
@@ -566,6 +576,7 @@ export function saveSubagentProfile(
   syncFlagAlias(managed, "skills", stored.skills, loadSkills);
   syncFlagAlias(managed, "extensions", stored.extensions, loadExtensions);
   if (model) managed.model = model;
+  if (models) managed.models = models;
   if (profile.thinking) managed.thinking = profile.thinking;
   if (maxTurns) managed.max_turns = maxTurns;
   if (profile.promptMode) managed.prompt_mode = profile.promptMode;
@@ -588,6 +599,7 @@ export function saveSubagentProfile(
     loadSkills,
     loadExtensions,
     ...(model ? { model } : { model: undefined }),
+    ...(models ? { models } : { models: undefined }),
     ...(maxTurns ? { maxTurns } : { maxTurns: undefined }),
     scope,
     filePath,

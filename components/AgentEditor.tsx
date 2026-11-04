@@ -8,6 +8,7 @@ import type { ModelsData } from "@/lib/models-cache";
 import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
 import { THINKING_LEVELS as THINKING_LEVEL_VALUES, THINKING_LEVEL_LABELS } from "@/lib/thinking-levels";
 import type { SubagentProfile, SubagentScope, SubagentWritableScope } from "@/lib/subagents";
+import { profilePool, serializeProfilePool } from "@/lib/subagent-pool-schema";
 import {
   ConfigButton,
   ConfigEmptyState,
@@ -83,6 +84,7 @@ function editableProfile(profile: SubagentProfile): EditableProfile {
     loadSkills: profile.loadSkills,
     loadExtensions: profile.loadExtensions,
     ...(profile.model ? { model: profile.model } : {}),
+    ...(profile.models?.length ? { models: [...profile.models] } : {}),
     ...(profile.thinking ? { thinking: profile.thinking } : {}),
     ...(profile.maxTurns ? { maxTurns: profile.maxTurns } : {}),
     inheritContext: profile.inheritContext,
@@ -434,14 +436,13 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
   })), [models.options]);
   if (!effective && mode !== "create") return <ConfigEmptyState>{t("agents.empty")}</ConfigEmptyState>;
 
-  const selectedModelAvailable = !draft.model || models.options.some((model) => `${model.provider}/${model.id}` === draft.model);
-  const selectedModel = (() => {
-    if (!draft.model) return null;
-    const separator = draft.model.indexOf("/");
-    return separator < 0
-      ? { provider: "", modelId: draft.model }
-      : { provider: draft.model.slice(0, separator), modelId: draft.model.slice(separator + 1) };
-  })();
+  const poolRefs = profilePool(draft);
+  const setPoolRefs = (refs: string[]) => {
+    const serialized = serializeProfilePool({ models: refs });
+    update("model", serialized.model);
+    update("models", serialized.models);
+  };
+  const addOptions = modelSelectorOptions.filter((option) => !poolRefs.includes(`${option.provider}/${option.modelId}`));
   const profileTitle = mode === "create" ? t("agents.new") : draft.displayName || draft.name;
   const sourceNotes = !writing && effective ? [
     ...(effective.disableStub && effective.scope !== "global" ? [t("agents.stubNote")] : []),
@@ -561,22 +562,78 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
 
       <SettingsGroup title={t("agents.runtime")}>
         <div className="settings-form">
-          <div className="settings-form-triple">
-            <Field label={t("agents.model")}>
+          <Field label={t("agents.model")}>
+            <div className="agents-model-pool">
+              {poolRefs.length > 0 && (
+                <ol className="agents-model-pool-list">
+                  {poolRefs.map((ref, index) => {
+                    const option = modelSelectorOptions.find((item) => `${item.provider}/${item.modelId}` === ref);
+                    const label = option
+                      ? option.name
+                      : t("agents.modelUnavailable", { model: ref });
+                    return (
+                      <li key={`${ref}:${index}`} className="agents-model-pool-row">
+                        <span className="agents-model-pool-label" title={ref}>{label}</span>
+                        <span className="agents-model-pool-actions">
+                          <ConfigButton
+                            size="small"
+                            disabled={disabled || index === 0}
+                            aria-label={t("agents.modelMoveUp")}
+                            onClick={() => {
+                              const next = [...poolRefs];
+                              [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                              setPoolRefs(next);
+                            }}
+                          >
+                            {t("agents.modelMoveUp")}
+                          </ConfigButton>
+                          <ConfigButton
+                            size="small"
+                            disabled={disabled || index === poolRefs.length - 1}
+                            aria-label={t("agents.modelMoveDown")}
+                            onClick={() => {
+                              const next = [...poolRefs];
+                              [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                              setPoolRefs(next);
+                            }}
+                          >
+                            {t("agents.modelMoveDown")}
+                          </ConfigButton>
+                          <ConfigButton
+                            size="small"
+                            disabled={disabled}
+                            aria-label={t("agents.modelRemove")}
+                            onClick={() => setPoolRefs(poolRefs.filter((_, itemIndex) => itemIndex !== index))}
+                          >
+                            {t("agents.modelRemove")}
+                          </ConfigButton>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
               <ModelSelector
-                options={modelSelectorOptions}
-                value={selectedModel}
-                onChange={(provider, modelId) => update("model", `${provider}/${modelId}`)}
-                onClear={() => update("model", undefined)}
-                emptyLabel={models.loading ? t("agents.modelsLoading") : t("agents.inherit")}
-                selectedLabel={draft.model && !selectedModelAvailable ? t("agents.modelUnavailable", { model: draft.model }) : undefined}
-                disabled={disabled || models.loading || (models.options.length === 0 && !draft.model)}
-                ariaLabel={t("agents.model")}
+                options={addOptions}
+                value={null}
+                onChange={(provider, modelId) => {
+                  const ref = `${provider}/${modelId}`;
+                  if (poolRefs.includes(ref)) return;
+                  setPoolRefs([...poolRefs, ref]);
+                }}
+                emptyLabel={models.loading
+                  ? t("agents.modelsLoading")
+                  : poolRefs.length === 0 ? t("agents.inherit") : t("agents.modelAdd")}
+                disabled={disabled || models.loading || (models.options.length === 0 && poolRefs.length === 0)}
+                ariaLabel={poolRefs.length === 0 ? t("agents.model") : t("agents.modelAdd")}
                 variant="field"
                 placement="auto"
               />
-              {models.error && <span className="settings-row-message is-error">{models.error}</span>}
-            </Field>
+            </div>
+            <span className="settings-row-message">{t("agents.modelPoolHelp")}</span>
+            {models.error && <span className="settings-row-message is-error">{models.error}</span>}
+          </Field>
+          <div className="settings-form-pair">
             <Field label={t("agents.thinking")}>
               <Select
                 ariaLabel={t("agents.thinking")}

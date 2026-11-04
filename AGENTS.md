@@ -2,7 +2,7 @@
 
 **What belongs here:** commands, environment, safety rules, and traps a reader of the code would get wrong. Feature specs, UX details, and design rationale go to `docs/*.md` or `docs/adr/`; rules already enforced by a test get one line pointing at the test. Keep entries short.
 
-Design docs: `docs/subagents.md`, `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/routines.md` (scheduled routines; scheduler on in production builds, off under `next dev` unless `PI_WEB_SCHEDULER=1`), `docs/adr/`.
+Design docs: `docs/subagents.md`, `docs/subagent-pool.md` (ordered account/model failover), `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/routines.md` (scheduled routines; scheduler on in production builds, off under `next dev` unless `PI_WEB_SCHEDULER=1`), `docs/adr/`.
 
 ## Quick Start
 
@@ -127,6 +127,7 @@ Full notes: `docs/subagents.md`, `docs/adr/0003-built-in-subagent-toggle.md`. Tr
 - `builtInEnabled` in `~/.pi/agent/agents/settings.json` defaults to true; malformed settings fail closed. A per-project override wins over the global default. The factory is always present but registers no tools while disabled; users must reload the session after a change, and `Agent` dispatch re-checks the setting.
 - `Agent`, `get_subagent_result`, `steer_subagent`, `abort_subagent` are reserved; `generate_image` is reserved for Pi Web.
 - Agent profile files may be shared with other runtimes: saves must round-trip frontmatter keys this app does not manage. Imports byte-copy files, never through the form.
+- Subagent pool failover (`lib/subagent-pool.ts`) wraps the child's `_isRetryableError` / `_prepareRetry` and calls `setModel(next, { persist: false })`. `persist: true` rewrites the user's global default. Never register a virtual model on the shared parent `ModelRuntime`. Pin: `lib/subagent-pool.test.mjs`.
 
 ### Auth
 - Provider listing is capability-driven (`lib/provider-listing.ts`), never by provider id: dual-auth providers must appear exactly once (#309).

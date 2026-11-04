@@ -11,6 +11,7 @@ import {
   type SubagentProfile,
   type SubagentRunInfo,
 } from "./subagents";
+import { profilePool } from "./subagent-pool-schema";
 import type { SessionEntry } from "./types";
 import { MAX_SUBAGENT_INPUT_FILES } from "./subagent-input";
 
@@ -113,7 +114,9 @@ function agentTypeDescription(profiles: readonly SubagentProfile[]): string {
   if (available.length === 0) return "No subagent profiles are currently enabled.";
   return available.map((profile) => {
     const details = [`Tools: ${profile.tools.length > 0 ? profile.tools.join(", ") : "none"}`];
-    if (profile.model) details.push(`Default model: ${profile.model}`);
+    const pool = profilePool(profile);
+    if (pool.length === 1) details.push(`Default model: ${pool[0]}`);
+    if (pool.length > 1) details.push(`Default model: ${pool[0]}; failover: ${pool.slice(1).join(", ")}`);
     if (profile.thinking) details.push(`Default thinking: ${profile.thinking}`);
     details.push(`Parent context: ${profile.inheritContext ? "chat text" : "none"}`);
     return `- ${profile.name}: ${profile.description} (${details.join("; ")})`;

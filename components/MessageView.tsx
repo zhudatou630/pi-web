@@ -36,6 +36,7 @@ import { iconStroke } from "./iconStroke";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionBody, skillExpansionToCommand } from "@/lib/slash-display";
 import type { SubagentToolDetails } from "@/lib/subagent-extension";
+import { SUBAGENT_POOL_SWITCH_TYPE, type SubagentPoolSwitchData } from "@/lib/subagent-pool-schema";
 import type {
   AgentMessage,
   UserMessage,
@@ -295,6 +296,9 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     }
     if (isSubagentNotificationMessage(customMessage)) {
       return <SubagentNotificationView message={customMessage} cwd={cwd} onOpenFile={onOpenFile} />;
+    }
+    if (customMessage.customType === SUBAGENT_POOL_SWITCH_TYPE) {
+      return <PoolSwitchMessageView message={customMessage} />;
     }
     return <CustomMessageView message={customMessage} cwd={cwd} onOpenFile={onOpenFile} isProcess={isProcess} />;
   }
@@ -1907,6 +1911,44 @@ function PairedResult({ text, images, isEmpty, isError }: {
           {isEmpty ? t("i18n.noOutput") : renderFullBlocks(text)}
         </pre>
       )}
+    </div>
+  );
+}
+
+function poolSwitchDetails(message: CustomMessage): SubagentPoolSwitchData | null {
+  const details = message.details;
+  if (!details || typeof details !== "object") return null;
+  const data = details as Partial<SubagentPoolSwitchData>;
+  if (!data.from || !data.to || typeof data.from.provider !== "string" || typeof data.from.id !== "string"
+    || typeof data.to.provider !== "string" || typeof data.to.id !== "string") {
+    return null;
+  }
+  return data as SubagentPoolSwitchData;
+}
+
+function PoolSwitchMessageView({ message }: { message: CustomMessage }) {
+  const { t, locale } = useI18n();
+  const data = poolSwitchDetails(message);
+  const from = data ? `${data.from.provider}/${data.from.id}` : "";
+  const to = data ? `${data.to.provider}/${data.to.id}` : "";
+  const time = formatTime(message.timestamp, locale);
+  return (
+    <div className="step-flat" style={{ margin: "4px 0 12px" }}>
+      <div data-step-card="">
+        <div className="step-head">
+          <span data-step-trigger="" style={{ cursor: "default" }}>
+            <span className="step-icon">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+            </span>
+            <span className="step-label">{t("chat.poolSwitchTitle")}</span>
+            <span className="step-preview">{from && to ? t("chat.poolSwitch", { from, to }) : ""}</span>
+            {time && <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontVariantNumeric: "tabular-nums" }}>{time}</span>}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

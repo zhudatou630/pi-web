@@ -33,6 +33,8 @@ test("the retry banner shows while a retry waits and goes once the retried run s
   handle({ type: "agent_end", willRetry: true });
   handle({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "overloaded" });
   assert.deepEqual({ ...banner.current }, { attempt: 1, maxAttempts: 3, errorMessage: "overloaded" });
+  handle({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 0, errorMessage: "401", switchedTo: "openai/gpt-5.4" });
+  assert.equal(banner.current.switchedTo, "openai/gpt-5.4");
   // pi emits the successful auto_retry_end only after the retry's first complete reply.
   handle({ type: "agent_start" });
   assert.equal(banner.current, null);
