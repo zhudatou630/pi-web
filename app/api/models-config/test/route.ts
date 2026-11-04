@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -111,6 +112,9 @@ export async function POST(req: Request) {
         timeoutMs: TEST_TIMEOUT_MS,
         maxRetries: 0,
         cacheRetention: "none",
+        // OpenCode rejects requests without x-opencode-session, which pi-ai derives from
+        // options.sessionId. A probe has no conversation to route, so it gets a throwaway id.
+        sessionId: randomUUID(),
         signal: controller.signal,
         onResponse: (response) => { status = response.status; },
       });
