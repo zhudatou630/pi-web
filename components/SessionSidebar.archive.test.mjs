@@ -87,7 +87,9 @@ test("the actual virtual row model hides archived families, keeps cross-project 
     runningSessionIds: new Set(["child"]), unreadSessionIds: new Set(["7"]), pinnedSessionIds: ["1"],
   };
   const dragging = workspaceRows({ ...scope, draggedProjectKey: "/p" });
-  assert.deepEqual(Array.from(dragging, (r) => r.kind), ["workspace", "workspace"], "drag only collapses the source group, without changing expansion storage");
+  assert.deepEqual(Array.from(dragging, (r) => r.project?.key), ["/p"], "drag only collapses the source group, without changing expansion storage");
+  assert.ok(!workspaceRows(scope).some((r) => r.kind === "workspace" && r.project.key === "/other"), "a fully archived project leaves the main list");
+  assert.ok(workspaceRows({ ...scope, selectedProject: { key: "/other", root: "/other" } }).some((r) => r.kind === "workspace" && r.project.key === "/other"), "the current project stays listed");
   assert.equal(scope.expandedWorkspaceKeys.has("/p"), true);
   const normal = workspaceRows(scope);
   assert.deepEqual(Array.from(normal.filter((r) => r.kind === "session"), (r) => r.family.root.id), ["2", "3", "4", "5", "6", "7", "8", "9"]);

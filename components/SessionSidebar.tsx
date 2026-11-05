@@ -1514,6 +1514,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         ? isFamilyArchived(family, archivedSessionIds, runningSessionIds)
         : !pinnedSessionIds.includes(family.root.id) && !isFamilyArchived(family, archivedSessionIds, runningSessionIds));
       if (archiveView && families.length === 0) continue;
+      // A project whose every family is archived lives only in the archive, unless it is the current project.
+      if (!archiveView && !selecting && !singleProject && project.key !== selectedProject?.key && projectFamilies.length > 0
+        && projectFamilies.every((family) => isFamilyArchived(family, archivedSessionIds, runningSessionIds))) continue;
       rows.push({
         kind: "workspace",
         project,
