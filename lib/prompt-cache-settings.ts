@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { importSdkFile } from "./builtin-extensions";
+import { CacheKeepalive } from "./cache-keepalive";
 
 /** Anthropic prompt-cache TTL: pi's `short` (provider default, 5m) or `long` (1h) retention. */
 export type AnthropicCacheTtl = "5m" | "1h";
@@ -67,8 +68,13 @@ export async function loadRuntimeStreamMarker(): Promise<void> {
   }
 }
 
-/** applyAnthropicCacheTtl() for a session, keeping pi's mark on its stream function (see loadRuntimeStreamMarker). */
-export function applyAnthropicCacheTtlToSession(session: { agent: unknown; modelRuntime: unknown }): void {
+/**
+ * applyAnthropicCacheTtl() plus the per-session keepalive (which overrides it while on) for a session,
+ * keeping pi's mark on its stream function (see loadRuntimeStreamMarker).
+ */
+export function applyAnthropicCacheTtlToSession(session: ConstructorParameters<typeof CacheKeepalive>[0] & { modelRuntime: unknown }): CacheKeepalive {
   applyAnthropicCacheTtl(session.agent);
-  markRuntimeStreamFunction?.((session.agent as { streamFunction: StreamFn }).streamFunction, session.modelRuntime);
+  const keepalive = new CacheKeepalive(session);
+  markRuntimeStreamFunction?.(keepalive.streamFunction as StreamFn, session.modelRuntime);
+  return keepalive;
 }

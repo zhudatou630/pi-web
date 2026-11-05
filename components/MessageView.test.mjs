@@ -629,15 +629,13 @@ test("collapses the compaction summary to its title and token count, as pi's TUI
   const html = renderMessage(message);
 
   assert.match(html, /<button[^>]*aria-expanded="false"/);
-  assert.match(html, /class="step-label">Compaction<\/span>/);
-  assert.doesNotMatch(html, /Conversation compacted/);
-  assert.ok(html.includes(`· Original context: ${(123456).toLocaleString()} tokens`));
-  assert.doesNotMatch(html, /Ship the parser fix|following summary|File context|lib\/read\.ts|lib\/changed\.ts/);
-  assert.doesNotMatch(html, /Compacted from/);
-  assert.doesNotMatch(renderMessage({ ...message, details: undefined }), /Original context:|·/);
-  // A step row like the turn's other steps; the summary mounts only under the expanded toggle.
-  assert.match(html, /data-step-card=""/);
-  assert.match(source, /\{expanded && \(\s*<div className="step-body"[\s\S]*?<MarkdownBody className="markdown-compaction-message"/);
+  // The same centered marker as routine runs and cache refreshes (docs/ui.md), with a compact count.
+  assert.match(html, /class="chat-marker" data-compaction=""/);
+  assert.ok(html.includes("Compacted · 123.5K tokens"));
+  assert.doesNotMatch(html, /Ship the parser fix|summarized|File context|lib\/read\.ts|lib\/changed\.ts/);
+  assert.doesNotMatch(renderMessage({ ...message, details: undefined }), /tokens|·/);
+  // The summary mounts only in the expanded panel.
+  assert.match(source, /\{expanded && children && <div className="chat-marker-panel">/);
 });
 
 test("renders subagent notifications as a compact collapsed step", () => {

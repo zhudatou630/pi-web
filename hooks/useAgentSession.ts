@@ -1795,6 +1795,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "extension_ui_request":
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
+      case "cache_keepalive_refreshed":
+        // Idle only: a running turn reloads at its end, and a reload mid-stream would disturb it.
+        if (sessionIdRef.current && !agentRunningRef.current) loadSession(sessionIdRef.current);
+        break;
       case "extension_ui_closed":
         setExtensionDialogs((queue) => queue.filter((dialog) => dialog.id !== event.id));
         setExtensionCustomUis((queue) => queue.filter((panel) => panel.id !== event.id));

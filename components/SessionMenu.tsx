@@ -2,6 +2,8 @@
 
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { isModalDialogOpen } from "./ModalDialog";
+import { MenuCheck } from "./MenuCheck";
+import type { CacheKeepaliveStatus } from "@/lib/cache-keepalive";
 
 const ICON_BUTTON_SIZE = 30;
 
@@ -17,6 +19,9 @@ type Props = {
   /** The info item whose data is still loading: it shows a spinner and the menu stays open. */
   infoPending?: "tools" | "system" | null;
   menuOpen: boolean;
+  /** Loaded when the menu opens; the row is hidden until then and for non-Anthropic models. */
+  cacheKeepalive?: CacheKeepaliveStatus | null;
+  cacheKeepalivePending?: boolean;
   exporting?: boolean;
   error?: string | null;
   labels: {
@@ -29,7 +34,11 @@ type Props = {
     exportMarkdownTitle: string;
     fork: string;
     forkTitle: string;
+    cacheKeepalive: string;
+    cacheKeepaliveTitle: string;
+    cacheKeepaliveNext: (time: string) => string;
   };
+  onToggleCacheKeepalive?: () => void;
   onOpenTools: () => void;
   onOpenSystem: () => void;
   onForkSession: () => void;
@@ -46,18 +55,27 @@ export function SessionMenu({
   forking = false,
   infoPending = null,
   menuOpen,
+  cacheKeepalive = null,
+  cacheKeepalivePending = false,
   exporting = false,
   error,
   labels,
   onOpenTools,
   onOpenSystem,
+  onToggleCacheKeepalive,
   onForkSession,
   onViewFullHistory,
   onExportMarkdown,
   onMenuOpenChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  // Measured, so a wider row (e.g. the cache refresh time) cannot push the menu off-screen.
+  const [menuWidth, setMenuWidth] = useState(202);
+  useLayoutEffect(() => {
+    if (menuRef.current) setMenuWidth(menuRef.current.offsetWidth);
+  }, [menuPos, cacheKeepalive]);
 
   useLayoutEffect(() => {
     if (!menuOpen) {
@@ -149,13 +167,14 @@ export function SessionMenu({
       </button>
       {menuOpen && !disabled && menuPos && (
         <div
+          ref={menuRef}
           role="menu"
           aria-label={labels.menu}
           className="menu-surface"
           style={{
             position: "fixed",
             top: menuPos.top + 2,
-            left: Math.max(8, Math.min(menuPos.left, (typeof window !== "undefined" ? window.innerWidth : 800) - 210)),
+            left: Math.max(8, Math.min(menuPos.left, (typeof window !== "undefined" ? window.innerWidth : 800) - menuWidth - 8)),
             minWidth: 195,
             zIndex: 520,
           }}
@@ -188,6 +207,25 @@ export function SessionMenu({
               </svg>
             )}
           </button>
+          {cacheKeepalive && cacheKeepalive.available !== false && onToggleCacheKeepalive && (() => {
+            const next = cacheKeepalive.enabled && cacheKeepalive.nextRefreshAt !== null
+              ? new Date(cacheKeepalive.nextRefreshAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              : null;
+            return (
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={cacheKeepalive.enabled}
+                disabled={historyDisabled || cacheKeepalivePending}
+                title={next ? `${labels.cacheKeepaliveTitle}\n${labels.cacheKeepaliveNext(next)}` : labels.cacheKeepaliveTitle}
+                onClick={onToggleCacheKeepalive}
+              >
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{labels.cacheKeepalive}</span>
+                {next && <span style={{ marginLeft: 8, color: "var(--text-dim)", fontSize: 11, flexShrink: 0 }}>{next}</span>}
+                <MenuCheck checked={cacheKeepalive.enabled} />
+              </button>
+            );
+          })()}
           <div role="separator" className="menu-surface-divider" />
           <button
             type="button"

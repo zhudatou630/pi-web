@@ -61,6 +61,7 @@ import { useAudio } from "@/hooks/useAudio";
 import { useOpenSessionLeases } from "@/hooks/useOpenSessionLeases";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
+import type { CacheKeepaliveStatus } from "@/lib/cache-keepalive";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
 import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getSideChatName } from "@/lib/side-chat";
@@ -604,6 +605,18 @@ export function AppShell() {
   const [historyExportError, setHistoryExportError] = useState<string | null>(null);
   const [historyShareReady, setHistoryShareReady] = useState(false);
   const historyExportRunRef = useRef(0);
+  const [cacheKeepalive, setCacheKeepalive] = useState<CacheKeepaliveStatus | null>(null);
+  const [cacheKeepalivePending, setCacheKeepalivePending] = useState(false);
+  const cacheKeepaliveSessionId = historyMenuOpen && selectedSession && !selectedSession.transient ? selectedSession.id : null;
+  useEffect(() => {
+    setCacheKeepalive(null);
+    if (!cacheKeepaliveSessionId) return;
+    let cancelled = false;
+    sendAgentCommand<CacheKeepaliveStatus>(cacheKeepaliveSessionId, { type: "get_cache_keepalive" })
+      .then((status) => { if (!cancelled) setCacheKeepalive(status); })
+      .catch(() => { /* the row stays hidden */ });
+    return () => { cancelled = true; };
+  }, [cacheKeepaliveSessionId]);
   const branchLeafChangeFnRef = useRef<((leafId: string | null, anchorEntryId?: string) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
 
@@ -2428,6 +2441,19 @@ export function AppShell() {
   }, [confirm, handleSessionForked, translate]);
 
   // Copies the viewed branch through its leaf into a new session; the source runtime stays alive.
+  const handleToggleCacheKeepalive = useCallback(async () => {
+    if (!cacheKeepaliveSessionId || !cacheKeepalive) return;
+    setHistoryExportError(null);
+    setCacheKeepalivePending(true);
+    try {
+      setCacheKeepalive(await sendAgentCommand<CacheKeepaliveStatus>(cacheKeepaliveSessionId, { type: "set_cache_keepalive", enabled: !cacheKeepalive.enabled }));
+    } catch (error) {
+      setHistoryExportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCacheKeepalivePending(false);
+    }
+  }, [cacheKeepalive, cacheKeepaliveSessionId]);
+
   const handleForkSession = useCallback(async () => {
     if (!selectedSession || forkInFlightRef.current) return;
     forkInFlightRef.current = true;
@@ -2853,6 +2879,9 @@ export function AppShell() {
           forkDisabled={!session || Boolean(session.transient)}
           forking={sessionForking}
           menuOpen={interactive && historyMenuOpen}
+          cacheKeepalive={cacheKeepalive}
+          cacheKeepalivePending={cacheKeepalivePending}
+          onToggleCacheKeepalive={() => { void handleToggleCacheKeepalive(); }}
           exporting={historyExporting}
           error={historyExportError}
           labels={{
@@ -2865,6 +2894,9 @@ export function AppShell() {
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
             fork: translate("session.fork"),
             forkTitle: translate("session.forkTitle"),
+            cacheKeepalive: translate("session.cacheKeepalive"),
+            cacheKeepaliveTitle: translate("session.cacheKeepaliveTitle"),
+            cacheKeepaliveNext: (time) => translate("session.cacheKeepaliveNext", { time }),
           }}
           onMenuOpenChange={handleHistoryMenuOpenChange}
           infoPending={infoPending}

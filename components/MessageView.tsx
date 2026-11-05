@@ -32,6 +32,7 @@ import { QuestionCard } from "./QuestionCard";
 import { TurnCreatedRoutines } from "./TurnArtifacts";
 import type { CreatedRoutine } from "@/lib/turn-routines";
 import { requestOpenRoutine } from "@/lib/routine-events";
+import { CACHE_WARM_MESSAGE_TYPE, type CacheWarmDetails } from "@/lib/cache-keepalive";
 import { iconStroke } from "./iconStroke";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionBody, skillExpansionToCommand } from "@/lib/slash-display";
@@ -292,6 +293,9 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     const customMessage = message as CustomMessage;
     if (customMessage.customType === "compaction") {
       return <CompactionMessageView message={customMessage} />;
+    }
+    if (customMessage.customType === CACHE_WARM_MESSAGE_TYPE) {
+      return <CacheWarmView message={customMessage} />;
     }
     if (isSubagentNotificationMessage(customMessage)) {
       return <SubagentNotificationView message={customMessage} cwd={cwd} onOpenFile={onOpenFile} />;
@@ -668,28 +672,73 @@ function RoutineRunView({ message, routineRun, searchTarget, cwd, onOpenFile }: 
   useEffect(() => { if (searchTarget) setExpanded(true); }, [searchTarget]);
   const name = routineRun.name ?? t("chat.routineRun");
   const time = formatTime(message.timestamp, locale);
-  const toggleLabel = expanded ? t("chat.routineRunHidePrompt") : t("chat.routineRunShowPrompt");
   return (
-    <div className="chat-routine-run" data-routine-run="">
-      <div className="chat-routine-run-line">
-        <button type="button" onClick={() => requestOpenRoutine(routineRun.routineId)} title={t("chat.openRoutine", { name })}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-          </svg>
-          {time ? `${name} · ${time}` : name}
-        </button>
-        <button type="button" className="chat-routine-run-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)} title={toggleLabel} aria-label={toggleLabel}>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="2 3.5 5 6.5 8 3.5" />
-          </svg>
-        </button>
+    <TranscriptMarker
+      data-routine-run=""
+      icon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>}
+      text={time ? `${name} · ${time}` : name}
+      title={t("chat.openRoutine", { name })}
+      onClick={() => requestOpenRoutine(routineRun.routineId)}
+      expanded={expanded}
+      onToggle={() => setExpanded((value) => !value)}
+      toggleLabel={expanded ? t("chat.routineRunHidePrompt") : t("chat.routineRunShowPrompt")}
+    >
+      <MarkdownBody className="markdown-compaction-message" cwd={cwd} onOpenFile={onOpenFile}>{getMessageText(message.content)}</MarkdownBody>
+    </TranscriptMarker>
+  );
+}
+
+/**
+ * A transcript event that is not a turn (routine run, compaction, cache refreshes): one centered
+ * dim line, icon + text, with an optional chevron that opens a panel below (docs/ui.md).
+ */
+function TranscriptMarker({ icon, text, title, onClick, expanded = false, onToggle, toggleLabel, children, ...data }: {
+  icon: ReactNode;
+  text: string;
+  title?: string;
+  onClick?: () => void;
+  expanded?: boolean;
+  onToggle?: () => void;
+  toggleLabel?: string;
+  children?: ReactNode;
+  [dataAttribute: `data-${string}`]: string;
+}) {
+  return (
+    <div className="chat-marker" {...data}>
+      <div className="chat-marker-line">
+        {onClick
+          ? <button type="button" onClick={onClick} title={title}>{icon}{text}</button>
+          : <span title={title}>{icon}{text}</span>}
+        {onToggle && (
+          <button type="button" className="chat-marker-toggle" aria-expanded={expanded} onClick={onToggle} title={toggleLabel} aria-label={toggleLabel}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="2 3.5 5 6.5 8 3.5" />
+            </svg>
+          </button>
+        )}
       </div>
-      {expanded && (
-        <div className="chat-routine-run-prompt">
-          <MarkdownBody className="markdown-compaction-message" cwd={cwd} onOpenFile={onOpenFile}>{getMessageText(message.content)}</MarkdownBody>
-        </div>
-      )}
+      {expanded && children && <div className="chat-marker-panel">{children}</div>}
     </div>
+  );
+}
+
+/** Refreshes of the kept-alive prompt cache during one idle stretch (lib/cache-keepalive.ts). */
+function CacheWarmView({ message }: { message: CustomMessage }) {
+  const { t, locale } = useI18n();
+  const details = message.details as CacheWarmDetails;
+  const time = formatTime(message.timestamp, locale);
+  const parts = [
+    t("chat.cacheWarmCount", { count: details.count }),
+    details.missed ? t("chat.cacheWarmMissed") : time,
+    details.cost > 0 ? `$${details.cost.toFixed(details.cost < 0.01 ? 4 : 2)}` : "",
+  ].filter(Boolean);
+  return (
+    <TranscriptMarker
+      data-cache-warm=""
+      icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><ellipse cx="8" cy="3.5" rx="5" ry="1.8" /><path d="M3 3.5v9a5 1.8 0 0 0 10 0v-9" /><path d="M3 8a5 1.8 0 0 0 10 0" /></svg>}
+      text={parts.join(" · ")}
+      title={t("chat.cacheWarmTitle")}
+    />
   );
 }
 
@@ -1921,48 +1970,31 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
   const time = formatTime(message.timestamp, locale);
   const tokensBefore = (message.details as { tokensBefore?: unknown } | undefined)?.tokensBefore;
   const tokens = typeof tokensBefore === "number" && Number.isFinite(tokensBefore)
-    ? t("i18n.compactedFromTokens", { tokens: tokensBefore.toLocaleString(locale) })
+    ? t("i18n.compactedFromTokens", { tokens: new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(tokensBefore) })
     : "";
 
+  const toggle = () => setExpanded((value) => !value);
+
   return (
-    <div className="step-flat" style={{ margin: "4px 0 12px" }}>
-      <div data-step-card="">
-        <div className="step-head">
-          <button
-            type="button"
-            data-step-trigger=""
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            <span className="step-icon">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 22v-6M12 8V2M4 12H2M10 12H8M16 12h-2M22 12h-2M15 19l-3-3-3 3M15 5l-3 3-3-3" />
-              </svg>
-            </span>
-            <span className="step-label">{t("i18n.conversationCompacted")}</span>
-            <span className="step-preview">{tokens && `· ${tokens}`}</span>
-            {time && <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontVariantNumeric: "tabular-nums" }}>{time}</span>}
-            <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="2 3.5 5 6.5 8 3.5" />
-            </svg>
-          </button>
-        </div>
-        {expanded && (
-          <div className="step-body" style={{ padding: "6px 10px 8px 20px" }}>
-            <p style={{ margin: "0 0 6px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.45 }}>
-              {t("i18n.compactionDescription")}
-            </p>
-            {parsedSummary.body ? (
-              <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
-            ) : (
-              <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noSummary")}</span>
-            )}
-            <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
-          </div>
-        )}
-        {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
-      </div>
-    </div>
+    <TranscriptMarker
+      data-compaction=""
+      icon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m7 20 5-4 5 4" /><path d="m7 4 5 4 5-4" /></svg>}
+      text={[t("i18n.conversationCompacted"), tokens, time].filter(Boolean).join(" · ")}
+      onClick={toggle}
+      expanded={expanded}
+      onToggle={toggle}
+      toggleLabel={t(expanded ? "chat.markerHide" : "chat.markerShow")}
+    >
+      <p style={{ margin: "0 0 6px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.45 }}>
+        {t("i18n.compactionDescription")}
+      </p>
+      {parsedSummary.body ? (
+        <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
+      ) : (
+        <span style={{ color: "var(--text-dim)", fontSize: 12 }}>{t("i18n.noSummary")}</span>
+      )}
+      <CompactionFileMetadata readFiles={parsedSummary.readFiles} modifiedFiles={parsedSummary.modifiedFiles} />
+    </TranscriptMarker>
   );
 }
 

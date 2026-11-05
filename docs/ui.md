@@ -65,6 +65,10 @@ Design notes moved out of AGENTS.md. Typography rules are enforced by `component
 - On the SDK's explicit manual-compaction refusal, the session wrapper parks prompts (including images) in admission order; a parked plain prompt is listed as a follow-up (it runs after the compaction), an explicit steer stays a steer. Queue state is shared across tabs and survives a browser reload, not a server restart. Successful, failed and aborted compactions flush through the same admission chain; automatic compaction keeps using the SDK's streaming queues.
 - Stop compaction only stops summarization: parked prompts still run, as in pi's TUI. Ordinary Stop first returns parked prompts to the sending composer's draft, then aborts; with no parked prompts neither action starts a run. Recall reads SDK delivery queues before clearing them, so image recovery remains fail-closed.
 
+## Transcript markers
+
+Events that are not turns share one look (`TranscriptMarker`, `components/MessageView.tsx`, `.chat-marker*`): a centered dim line, icon + `label · detail · time`, and a chevron when there is something to open, which shows a bordered panel below that scrolls past `min(60vh, 480px)`. Routine runs (click opens the routine), compaction summaries (click or chevron opens the summary) and cache refreshes (`pi-web:cache-warm`, display-only, folded per idle stretch by `buildSessionContext()`; no chevron). Do not give a new event its own card style.
+
 ## Scroll edges
 
 - The session list and file tree (`.scroll-fade-block`) and `.markdown-table-wrap` fade only edges with more content beyond them. All use the chat's subtle 16px transparent/black linear-gradient style. Markdown code blocks wrap long lines (including unbroken URLs/paths); numbered continuation lines stay after the gutter, so code `<pre>` needs no horizontal fade. Wide ASCII diagrams also wrap on narrow screens. This is a scroller edge mask, not another text-opacity tier; the existing `.chat-scroll-fade` behavior is unchanged.

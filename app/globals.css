@@ -2006,20 +2006,21 @@ button.question-card-option:not(:disabled):hover {
   border-top-color: color-mix(in srgb, var(--danger) 25%, transparent);
 }
 
-/* A routine run's prompt: a centered link to the routine, not a user bubble (docs/routines.md). */
-.chat-routine-run {
+/* Transcript events that are not turns (routine run, compaction, cache refreshes): one centered
+   dim line with an optional panel below (docs/ui.md, docs/routines.md). */
+.chat-marker {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   margin: 12px 0 16px;
 }
-.chat-routine-run-line {
+.chat-marker-line {
   display: flex;
   align-items: center;
   gap: 2px;
 }
-.chat-routine-run-line > button {
+.chat-marker-line > :is(button, span) {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2031,28 +2032,31 @@ button.question-card-option:not(:disabled):hover {
   font-size: 12px;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
+}
+.chat-marker-line > button {
   cursor: pointer;
 }
-.chat-routine-run-line > button:hover {
+.chat-marker-line > button:hover {
   color: var(--text);
 }
-.chat-routine-run-line > .chat-routine-run-toggle {
+.chat-marker-line > .chat-marker-toggle {
   justify-content: center;
   width: 18px;
   height: 18px;
   border-radius: var(--ui-radius-sm);
 }
-.chat-routine-run-toggle svg {
+.chat-marker-toggle svg {
   transition: transform var(--motion-fast);
 }
-.chat-routine-run-toggle[aria-expanded="true"] svg {
+.chat-marker-toggle[aria-expanded="true"] svg {
   transform: rotate(180deg);
 }
-.chat-routine-run-prompt {
+.chat-marker-panel {
   box-sizing: border-box;
   width: 100%;
   max-width: 560px;
-  max-height: 320px;
+  /* A compaction summary can run to pages: scroll inside rather than push the transcript. */
+  max-height: min(60vh, 480px);
   overflow: auto;
   padding: 8px 12px;
   border: 1px solid var(--border);
@@ -5381,7 +5385,7 @@ span.token.table {
   padding: 4px;
 }
 
-.menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="option"]) {
+.menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]) {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5470,7 +5474,7 @@ span.token.table {
 }
 
 @media (hover: hover) {
-  .menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="option"]):hover:not(:disabled) {
+  .menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):hover:not(:disabled) {
     background: var(--bg-hover);
   }
 }

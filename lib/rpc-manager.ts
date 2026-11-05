@@ -70,6 +70,7 @@ import { executeImageGeneration, generatedImagePreview, parseImageGenerationRequ
 import { retryStreamDrops } from "./retry-stream-drops";
 import { ROUTINE_RUN_END_ENTRY_TYPE, ROUTINE_RUN_ENTRY_TYPE, type RoutineRunTag } from "./routine-run-entry";
 import { applyAnthropicCacheTtlToSession, loadRuntimeStreamMarker } from "./prompt-cache-settings";
+import type { CacheKeepalive } from "./cache-keepalive";
 import {
   appendClearedSessionToolSelection,
   appendSessionToolSelection,
@@ -137,6 +138,7 @@ type AgentSessionWrapperOptions = {
   onAgentRunComplete?: AgentRunCompleteListener;
   suppressCompletionNotifications?: boolean;
   finishStartup?: () => Promise<void>;
+  cacheKeepalive?: CacheKeepalive;
 };
 
 const IDLE_RESET_EVENT_TYPES = new Set([
@@ -363,6 +365,7 @@ export class AgentSessionWrapper {
   private readonly beforeAgentRunComplete?: AgentRunCompletionGate;
   private readonly onAgentRunComplete?: AgentRunCompleteListener;
   private readonly suppressCompletionNotifications: boolean;
+  private readonly cacheKeepalive?: CacheKeepalive;
   private unsubscribe: (() => void) | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private onDestroyCallback: (() => void) | null = null;
@@ -386,6 +389,8 @@ export class AgentSessionWrapper {
     this.onAgentRunComplete = options.onAgentRunComplete;
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
     this.finishStartup = options.finishStartup;
+    this.cacheKeepalive = options.cacheKeepalive;
+    if (this.cacheKeepalive) this.cacheKeepalive.onRefreshed = () => this.emit({ type: "cache_keepalive_refreshed" });
   }
 
   get sessionId(): string {
@@ -805,7 +810,8 @@ export class AgentSessionWrapper {
     this.idleTimer = setTimeout(() => {
       // Background children report into this wrapper; disposing it would drop their results.
       const awaitingReports = this.canStartBackgroundFollowUp() && hasUnsettledSubagents(this.sessionId);
-      if (!this.forceShutdownOnIdle && (this.isRunning() || awaitingReports || this.hasConnectedKeepAlive() || hasActiveSessionLivenessProvider({
+      // A scheduled cache refresh replays from this runtime, so it must outlive viewers.
+      if (!this.forceShutdownOnIdle && (this.isRunning() || awaitingReports || this.hasConnectedKeepAlive() || this.cacheKeepalive?.isScheduled || hasActiveSessionLivenessProvider({
         sessionId: this.sessionId,
         sessionFile: this.sessionFile || undefined,
       }))) {
@@ -1496,6 +1502,18 @@ export class AgentSessionWrapper {
         return null;
       }
 
+      case "get_cache_keepalive":
+        return this.cacheKeepalive?.status() ?? { enabled: false, available: false, nextRefreshAt: null };
+
+      case "set_cache_keepalive": {
+        const keepalive = this.cacheKeepalive;
+        if (!keepalive) throw new Error("Cache keepalive is unavailable for this session");
+        if (typeof command.enabled !== "boolean") throw new Error("enabled must be a boolean");
+        if (command.enabled && !keepalive.status().available) throw new Error("Cache keepalive needs an Anthropic Messages model");
+        keepalive.setEnabled(command.enabled);
+        return keepalive.status();
+      }
+
       case "bash": {
         if (this.pendingPromptCount > 0 || this.directImageAbortController || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning) {
           throw new Error("Cannot run a shell command while the session is busy");
@@ -1546,6 +1564,7 @@ export class AgentSessionWrapper {
     }
     this.closeListeners.clear();
     if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.cacheKeepalive?.stop();
     this.directImageAbortController?.abort(new DOMException("Session closed", "AbortError"));
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
@@ -2032,8 +2051,9 @@ const SUBAGENT_CONTROLLER = createSubagentController({
   registerSession: (inner, options) => {
     const resources = readSubagentSessionResources(inner.sessionManager.getEntries() as unknown as SessionEntry[]);
     stampQueuedMessagesOnDelivery(inner.agent);
-    applyAnthropicCacheTtlToSession(inner);
+    const cacheKeepalive = applyAnthropicCacheTtlToSession(inner);
     const wrapper = new AgentSessionWrapper(inner, {
+      cacheKeepalive,
       chatOnly: options?.chatOnly,
       suppressCompletionNotifications: true,
       ...(resources?.exactSystemPrompt !== undefined
@@ -2808,8 +2828,9 @@ export async function startRpcSession(
     stampQueuedMessagesOnDelivery(inner.agent);
     // Before the wrapper exists: session_start handlers may compact. Subagents are registered later, so loaded.
     await loadRuntimeStreamMarker();
-    applyAnthropicCacheTtlToSession(inner);
+    const cacheKeepalive = applyAnthropicCacheTtlToSession(inner);
     const wrapper = new AgentSessionWrapper(inner, {
+      cacheKeepalive,
       chatOnly,
       finishStartup: async () => {
         if (!wrapper.isAlive()) return;

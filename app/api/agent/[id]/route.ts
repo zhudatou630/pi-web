@@ -1,6 +1,7 @@
 import { missingCwdFromBody } from "@/lib/missing-cwd";
 import { NextResponse } from "next/server";
-import { resolveSessionPath } from "@/lib/session-reader";
+import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
+import { readCacheKeepalive } from "@/lib/cache-keepalive";
 import { abortSubagent, getSubagentRun, sendSubagentUiMessage, startRpcSession, getRpcSession, isSubagentQueued, setRpcSessionTools } from "@/lib/rpc-manager";
 
 // POST /api/agent/[id] - Send a command to an existing session
@@ -65,6 +66,12 @@ export async function POST(
         success: true,
         data: { sessionId: changed.sessionId, recreated: changed.recreated },
       });
+    }
+    if (body.type === "get_cache_keepalive" && !existing?.isAlive()) {
+      // Opening the session menu must not start a runtime; the switch is on file.
+      const filePath = await resolveSessionPath(id);
+      if (!filePath) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      return NextResponse.json({ success: true, data: { enabled: readCacheKeepalive(getSessionEntries(filePath)), available: null, nextRefreshAt: null } });
     }
     if (existing?.isAlive()) {
       const result = await existing.send(body);
