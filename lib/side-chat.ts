@@ -14,6 +14,9 @@ import { PRESET_READ_ONLY } from "./tool-presets";
  * tools stay the parent's, so the first request reuses the parent's prompt cache (a removed
  * tool or a changed thinking level rewrites the prefix on providers without
  * mid-conversation updates). The header is not part of the prompt.
+ * The side chat's runtime rebuilds the prompt from disk, so a context file edited since the
+ * parent started (often by the parent itself) would append a section patch that rewrites the
+ * prefix the same way; sideChatToolGuard keeps such patches out of the request.
  */
 export const SIDE_CHAT_TYPE = "pi-web:side";
 
@@ -39,8 +42,21 @@ export function sideChatParentId(header: unknown): string | undefined {
   return typeof parentSessionId === "string" && parentSessionId ? parentSessionId : undefined;
 }
 
-/** Side chats run read tools only. Nested codemode calls pass this hook too. */
+/**
+ * Side chats run read tools only. Nested codemode calls pass this hook too.
+ * Requests keep the parent's prompt sections: system messages after the side boundary that only
+ * patch sections (no tool declaration change) are left out, so the parent's cache stays usable.
+ */
 export function sideChatToolGuard(pi: ExtensionAPI): void {
+  pi.on("context_with_system", (event, ctx) => {
+    if (!sideChatParentId(ctx.sessionManager.getHeader())) return;
+    const boundary = event.messages.findLastIndex((m) => m.role === "custom" && m.customType === SIDE_CHAT_TYPE);
+    if (boundary < 0) return;
+    return {
+      messages: event.messages.filter((m, i) =>
+        i < boundary || m.role !== "system" || Boolean(m.toolsAdded?.length || m.toolsRemoved?.length)),
+    };
+  });
   pi.on("tool_call", (event, ctx) => {
     if (SIDE_CHAT_TOOLS.includes(event.toolName)) return;
     if (!sideChatParentId(ctx.sessionManager.getHeader())) return;
