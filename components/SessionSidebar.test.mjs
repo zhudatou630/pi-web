@@ -18,7 +18,10 @@ test("folded summaries use the existing awaiting badge and show separate counts"
   assert.match(waiting, /Awaiting input \(2\)/);
   assert.match(waiting, /var\(--warning\)/);
   assert.doesNotMatch(waiting, /live-pulse-beacon/);
-  const mixed = render({ awaiting: 2, running: 1, unread: 3 });
+  const warm = render({ awaiting: 0, running: 0, unread: 0, keepalive: 2 });
+  assert.match(warm, /aria-label="Keeping prompt cache warm"/);
+  assert.doesNotMatch(warm, />2</);
+  const mixed = render({ awaiting: 2, running: 1, unread: 3, keepalive: 0 });
   assert.match(mixed, /Agent running… \(1\)/);
   assert.match(mixed, /live-pulse-beacon/);
   assert.match(mixed, /New session activity \(3\)/);
@@ -182,6 +185,12 @@ test("session rows use one compact line without message counts", async () => {
   assert.doesNotMatch(html, /987654|msgs|messagesCount/);
   assert.match(html, /class="session-row-meta"/);
   assert.match(html, /class="session-row-actions"/);
+  assert.doesNotMatch(html, /Keeping prompt cache warm/);
+  const warm = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SessionItem, {
+    session: { id: "warm", name: "Warm", firstMessage: "", modified: new Date().toISOString(), messageCount: 1 },
+    isSelected: false, cacheKeepaliveNextAt: Date.now() + 60_000, onClick() {},
+  })));
+  assert.match(warm, /aria-label="Keeping prompt cache warm · Next refresh /);
 });
 
 test("scrolling keeps the focused session and the viewport mounted without expanding the whole window", () => {

@@ -33,6 +33,7 @@ import { TurnCreatedRoutines } from "./TurnArtifacts";
 import type { CreatedRoutine } from "@/lib/turn-routines";
 import { requestOpenRoutine } from "@/lib/routine-events";
 import { CACHE_WARM_MESSAGE_TYPE, type CacheWarmDetails } from "@/lib/cache-keepalive";
+import { CacheKeepaliveIcon } from "./CacheKeepaliveIcon";
 import { iconStroke } from "./iconStroke";
 import type { WrittenFile } from "@/lib/turn-written-files";
 import { skillExpansionBody, skillExpansionToCommand } from "@/lib/slash-display";
@@ -735,7 +736,7 @@ function CacheWarmView({ message }: { message: CustomMessage }) {
   return (
     <TranscriptMarker
       data-cache-warm=""
-      icon={<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><ellipse cx="8" cy="3.5" rx="5" ry="1.8" /><path d="M3 3.5v9a5 1.8 0 0 0 10 0v-9" /><path d="M3 8a5 1.8 0 0 0 10 0" /></svg>}
+      icon={<CacheKeepaliveIcon />}
       text={parts.join(" · ")}
       title={t("chat.cacheWarmTitle")}
     />

@@ -719,6 +719,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.noSessions": "No sessions found",
     "sidebar.agentRunning": "Agent running…",
     "sidebar.awaitingInput": "Awaiting input",
+    "sidebar.cacheKeepalive": "Keeping prompt cache warm",
     "sidebar.newSessionActivity": "New session activity",
     "sidebar.deleteSession": "Delete session?",
     "sidebar.deleteProjectSessionsConfirm": "Delete {count} sessions?",

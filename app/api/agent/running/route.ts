@@ -3,6 +3,7 @@ import { getSessionIdsWithUnsettledSubagents } from "@/lib/subagent-runtime";
 import { getSessionListVersion } from "@/lib/session-reader";
 import {
   getAwaitingInputRpcSessionIds,
+  getCacheKeepaliveRpcSessions,
   getCompletionNotificationSuppressedRpcSessionIds,
   getRunningRpcSessionIds,
 } from "@/lib/rpc-manager";
@@ -17,6 +18,7 @@ export async function GET() {
       subagentsActiveSessionIds: getSessionIdsWithUnsettledSubagents(),
       runningSessionIds: getRunningRpcSessionIds(),
       awaitingInputSessionIds: getAwaitingInputRpcSessionIds(),
+      cacheKeepaliveSessions: getCacheKeepaliveRpcSessions(),
       completionNotificationSuppressedSessionIds: getCompletionNotificationSuppressedRpcSessionIds(),
     },
     { headers: { "Cache-Control": "no-store" } },

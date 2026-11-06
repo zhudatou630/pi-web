@@ -120,6 +120,8 @@ export interface ProjectActivity {
   running: number;
   awaiting: number;
   unread: number;
+  /** Families keeping their prompt cache warm (each scheduled refresh costs money). */
+  keepalive: number;
 }
 
 export function getProjectActivity(
@@ -127,6 +129,7 @@ export function getProjectActivity(
   runningSessionIds: ReadonlySet<string>,
   unreadSessionIds: ReadonlySet<string>,
   awaitingInputSessionIds: ReadonlySet<string>,
+  cacheKeepaliveSessionIds: ReadonlySet<string> = new Set(),
 ): Map<string, ProjectActivity> {
   const counts = new Map<string, ProjectActivity>();
   for (const family of listSessionFamilies(sessions)) {
@@ -134,12 +137,13 @@ export function getProjectActivity(
     if (!key) continue;
     let entry = counts.get(key);
     if (!entry) {
-      entry = { running: 0, awaiting: 0, unread: 0 };
+      entry = { running: 0, awaiting: 0, unread: 0, keepalive: 0 };
       counts.set(key, entry);
     }
     if (familyHasMemberIn(family, awaitingInputSessionIds)) entry.awaiting++;
     else if (familyHasMemberIn(family, runningSessionIds)) entry.running++;
     if (familyHasMemberIn(family, unreadSessionIds)) entry.unread++;
+    if (familyHasMemberIn(family, cacheKeepaliveSessionIds)) entry.keepalive++;
   }
   return counts;
 }

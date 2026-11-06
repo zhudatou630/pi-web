@@ -8,6 +8,7 @@ import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
+import { CacheKeepaliveIcon } from "./CacheKeepaliveIcon";
 import { applyProjectOrderUpdate, isProjectKey, orderProjects, getProjectActivity, getRecentProjects, projectDisplayName, type ProjectActivity, type ProjectOrderUpdate } from "@/lib/project-groups";
 import { createPortal } from "react-dom";
 import { useProjectDrag, type ProjectDragBlock } from "@/hooks/useProjectDrag";
@@ -360,6 +361,11 @@ function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
 }
 
 /** The polled ids as a Set, or `current` itself when nothing changed, so React skips the render. */
+function sameTimes(current: Map<string, number>, times: Record<string, number> | undefined): Map<string, number> {
+  const next = Object.entries(times ?? {});
+  return next.length === current.size && next.every(([id, at]) => current.get(id) === at) ? current : new Map(next);
+}
+
 function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string> {
   const next = ids ?? [];
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
@@ -471,6 +477,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     };
   }, []);
   const [awaitingInputSessionIds, setAwaitingInputSessionIds] = useState<Set<string>>(() => new Set());
+  /** Session id -> next scheduled cache refresh (`/api/agent/running`). */
+  const [cacheKeepaliveSessions, setCacheKeepaliveSessions] = useState<Map<string, number>>(() => new Map());
+  const cacheKeepaliveSessionIds = useMemo(() => new Set(cacheKeepaliveSessions.keys()), [cacheKeepaliveSessions]);
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const storedUnreadSessionIdsRef = useRef(unreadSessionIds);
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
@@ -823,6 +832,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           runningSessionIds?: string[];
           subagentsActiveSessionIds?: string[];
           awaitingInputSessionIds?: string[];
+          cacheKeepaliveSessions?: Record<string, number>;
           completionNotificationSuppressedSessionIds?: string[];
         };
         if (stopped || controller !== current) return;
@@ -833,6 +843,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         setSubagentsActiveSessionIds((current) => sameIdSet(current, data.subagentsActiveSessionIds));
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
+        setCacheKeepaliveSessions((current) => sameTimes(current, data.cacheKeepaliveSessions));
         if (data.sessionListVersion !== sessionListVersionRef.current) {
           // Reuse the invalidated cache; forcing a scan would change the version again.
           await loadSessions();
@@ -1376,21 +1387,23 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
 
   // Per-project activity counts count families, excluding the archive.
   const projectActivity = useMemo(
-    () => getProjectActivity(listedSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds),
-    [listedSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds],
+    () => getProjectActivity(listedSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds),
+    [listedSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds],
   );
 
   const otherProjectActivity = useMemo(() => {
     let running = 0;
     let awaiting = 0;
     let unread = 0;
+    let keepalive = 0;
     for (const [key, activity] of projectActivity) {
       if (key === selectedProject?.key) continue;
       running += activity.running;
       awaiting += activity.awaiting;
       unread += activity.unread;
+      keepalive += activity.keepalive;
     }
-    return { running, awaiting, unread };
+    return { running, awaiting, unread, keepalive };
   }, [projectActivity, selectedProject?.key]);
 
   const selectionProjectKey = selection?.archiveView === archiveView ? selection.projectKey : null;
@@ -1600,12 +1613,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
 
   const pinnedActivity = useMemo(() => [...getProjectActivity(
     pinnedFamilies.flatMap((family) => [family.root, ...family.subagents]),
-    runningSessionIds, unreadSessionIds, awaitingInputSessionIds,
+    runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds,
   ).values()].reduce((total, activity) => ({
     running: total.running + activity.running,
     awaiting: total.awaiting + activity.awaiting,
     unread: total.unread + activity.unread,
-  }), { running: 0, awaiting: 0, unread: 0 }), [pinnedFamilies, runningSessionIds, unreadSessionIds, awaitingInputSessionIds]);
+    keepalive: total.keepalive + activity.keepalive,
+  }), { running: 0, awaiting: 0, unread: 0, keepalive: 0 }), [pinnedFamilies, runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds]);
 
   const virtualIndices = getSessionListIndices(
     workspaceRows.length,
@@ -1915,6 +1929,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
           isAwaiting={familySessions.some((session) => awaitingInputSessionIds.has(session.id))}
           isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+          cacheKeepaliveNextAt={familySessions.reduce<number | null>((next, session) => {
+            const at = cacheKeepaliveSessions.get(session.id);
+            return at === undefined || (next !== null && next <= at) ? next : at;
+          }, null)}
           menuAt={sessionMenu?.id === family.root.id ? sessionMenu : null}
           onOpenMenu={(x, y) => { setProjectMenu(null); setDeleteConfirm(null); setSessionMenu({ id: family.root.id, x, y }); }}
           onCloseMenu={() => setSessionMenu(null)}
@@ -2093,7 +2111,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
             </ToolbarIconButton>
           )}
           <div style={{ display: "flex", alignItems: "center" }}>
-            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0) && (
+            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0 || otherProjectActivity.keepalive > 0) && (
               <span
                 role="status"
                 title={t("sidebar.otherProjectActivity")}
@@ -2713,6 +2731,12 @@ export function SessionActivitySummary({ activity }: { activity?: ProjectActivit
       {activity.unread > 0 && (
         <span aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ color: "var(--success)" }}>{activity.unread}</span>
       )}
+      {activity.keepalive > 0 && (
+        // Presence only: a count would read like the running/unread counts beside it.
+        <span role="img" title={t("sidebar.cacheKeepalive")} aria-label={t("sidebar.cacheKeepalive")} style={{ display: "inline-flex", alignItems: "center", color: "var(--text-dim)" }}>
+          <CacheKeepaliveIcon size={11} />
+        </span>
+      )}
     </span>
   );
 }
@@ -2735,6 +2759,7 @@ export function SessionItem({
   isRunning,
   isAwaiting = false,
   isUnread,
+  cacheKeepaliveNextAt = null,
   menuAt = null,
   onOpenMenu,
   onCloseMenu,
@@ -2765,6 +2790,8 @@ export function SessionItem({
   /** Running and parked on an extension dialog: the slot shows the dot instead of the beacon. */
   isAwaiting?: boolean;
   isUnread?: boolean;
+  /** Next scheduled prompt-cache refresh while keepalive is spending; null when none. */
+  cacheKeepaliveNextAt?: number | null;
   /** Open context-menu position; the sidebar owns which row's menu is open. */
   menuAt?: { x: number; y: number } | null;
   onOpenMenu?: (x: number, y: number) => void;
@@ -3047,6 +3074,11 @@ export function SessionItem({
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {title}
               </span>
+              {/* Keepalive refreshes cost money; a glyph here survives the hover actions that cover the time. */}
+              {cacheKeepaliveNextAt !== null && (() => {
+                const label = `${t("sidebar.cacheKeepalive")} · ${t("session.cacheKeepaliveNext", { time: new Date(cacheKeepaliveNextAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}`;
+                return <span role="img" title={label} aria-label={label} style={{ display: "inline-flex", flexShrink: 0, color: "var(--text-dim)" }}><CacheKeepaliveIcon /></span>;
+              })()}
               {/* Prompted by a routine (docs/routines.md). */}
               {session.routineId && (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={t("sidebar.routineSession")} style={{ flexShrink: 0, color: "var(--text-dim)" }}>

@@ -466,6 +466,11 @@ export class AgentSessionWrapper {
     return this._alive && (this.pendingPromptCount > 0 || this.directImageAbortController !== null || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
   }
 
+  /** When the kept-alive prompt cache refreshes next (a scheduled refresh costs money); null when none. */
+  cacheKeepaliveNextRefreshAt(): number | null {
+    return this._alive ? this.cacheKeepalive?.status().nextRefreshAt ?? null : null;
+  }
+
   /** A running session parked on an extension dialog only a person can answer (select/confirm/input/editor, or an open custom overlay). */
   isAwaitingInput(): boolean {
     if (!this.isRunning()) return false;
@@ -2568,6 +2573,16 @@ export function getAwaitingInputRpcSessionIds(): string[] {
     if (session.isAwaitingInput?.()) ids.add(session.sessionId || sessionId);
   }
   return [...ids];
+}
+
+/** Session id -> next scheduled cache refresh, for sessions whose keepalive is actually spending. */
+export function getCacheKeepaliveRpcSessions(): Record<string, number> {
+  const sessions: Record<string, number> = {};
+  for (const [sessionId, session] of getRegistry()) {
+    const next = session.cacheKeepaliveNextRefreshAt?.();
+    if (next != null) sessions[session.sessionId || sessionId] = next;
+  }
+  return sessions;
 }
 
 export function getCompletionNotificationSuppressedRpcSessionIds(): string[] {
