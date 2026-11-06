@@ -29,7 +29,6 @@ const DEFAULT_SUBAGENT_PROFILE = "general-purpose";
 
 function statusColor(status: SubagentSessionStatus): string {
   if (status === "running" || status === "starting") return "var(--accent)";
-  if (status === "completed") return "var(--success)";
   if (status === "failed") return "var(--danger)";
   if (status === "aborted") return "var(--warning)";
   return "var(--text-dim)";
@@ -74,11 +73,8 @@ function StatusIcon({ status }: { status: SubagentSessionStatus }) {
       </svg>
     );
   }
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" />
-    </svg>
-  );
+  // Completed rows show no status.
+  return null;
 }
 
 function AgentRow({
@@ -105,10 +101,15 @@ function AgentRow({
   const relation = session.relation?.kind === "subagent" ? session.relation : null;
   const side = session.relation?.kind === "side";
   const status = sessionStatus(session, running);
-  const primary = main ? t("agentSwitcher.main") : relation?.description || sessionTitle(session);
+  const sidePrefix = t("session.sideNamePrefix");
+  const title = sessionTitle(session);
+  // The row icon already says "side chat"; the name's prefix only crowds out the question.
+  const primary = main
+    ? t("agentSwitcher.main")
+    : relation?.description || (side && title.startsWith(sidePrefix) ? title.slice(sidePrefix.length) : title);
   const time = formatCompactRelativeTime(session.modified, locale);
   const secondary = main
-    ? sessionTitle(session)
+    ? title
     : relation
       ? [relation.profile !== DEFAULT_SUBAGENT_PROFILE && relation.profile, relation.model?.id, relation.thinkingLevel, time].filter(Boolean).join(" · ")
       : side ? time : `${t("agentSwitcher.subagent")} · ${time}`;
@@ -154,14 +155,15 @@ function AgentRow({
         </span>
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, whiteSpace: "nowrap" }}>
-        {/* A main or side chat shows a status only while it runs; "completed" means nothing for a chat. */}
-        {!((main || side) && !running) && (
+        {/* Completed is the resting state of every row (and all a chat can be when idle): only other states are shown. */}
+        {status !== "completed" && (
           <span style={{ display: "flex", alignItems: "center", gap: 6, color: statusColor(status) }}>
             <StatusIcon status={status} />
             <span>{t(`agentSwitcher.status.${status}`)}</span>
           </span>
         )}
-        <MenuCheck checked={selected} />
+        {/* Rows without Delete put the check in the trailing column, so checks and Delete line up. */}
+        {(!actionSlot || onDelete) && <MenuCheck checked={selected} />}
       </span>
     </button>
   );
@@ -184,7 +186,12 @@ function AgentRow({
             <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
           </svg>
         </button>
-      ) : <span className="menu-surface-row-action" aria-hidden="true" />}
+      ) : (
+        // Not .menu-surface-row-action: that one hides until hover, the check must not.
+        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", flexShrink: 0, width: "var(--ui-row-height)" }}>
+          <MenuCheck checked={selected} />
+        </span>
+      )}
     </div>
   );
 }
