@@ -6,6 +6,7 @@
  */
 import { join } from "path";
 import type { ProjectOverrideSyncKind } from "./api-types";
+import { readCodemodeState, writeProjectCodemode } from "./codemode-settings";
 import { samePath, toNativePath } from "./paths";
 import { resolveScopedResources, setProjectOverrides } from "./project-resource-overrides";
 import { git, listWorktrees, realPathOrSelf } from "./worktree";
@@ -55,4 +56,6 @@ export async function seedWorktreeOverrides(sourceCwd: string, worktreePath: str
     const targets = changed.filter((resource) => resource.enabled === enabled);
     if (targets.length > 0) await setProjectOverrides(worktreePath, agentDir, targets, enabled);
   }
+  const codemode = readCodemodeState(agentDir, sourceCwd).project;
+  if (codemode?.overridden) await writeProjectCodemode(worktreePath, agentDir, codemode.enabled);
 }

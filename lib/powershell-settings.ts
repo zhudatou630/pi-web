@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import lockfile from "proper-lockfile";
 
-const DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
+export const DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
 const SHELL_TOOLS = new Set(["bash", "powershell"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,12 +44,13 @@ export function getPowerShellSettingsPath(agentDir = getAgentDir()): string {
   return join(agentDir, "settings.json");
 }
 
-function parseSettings(path: string): Record<string, unknown> {
+export function parseSettings(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   const text = readFileSync(path, "utf8");
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    // pi strips a UTF-8 BOM before parsing.
+    parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
   } catch (error) {
     if (error instanceof SyntaxError) throw new SyntaxError(`${path}: ${error.message}`);
     throw error;
@@ -58,7 +59,7 @@ function parseSettings(path: string): Record<string, unknown> {
   return parsed;
 }
 
-function configuredTools(settings: Record<string, unknown>): string[] | undefined {
+export function configuredTools(settings: Record<string, unknown>): string[] | undefined {
   if (settings.defaultTools === undefined) return undefined;
   if (
     !Array.isArray(settings.defaultTools)
@@ -69,7 +70,7 @@ function configuredTools(settings: Record<string, unknown>): string[] | undefine
   return settings.defaultTools as string[];
 }
 
-const isToolModifier = (entry: string) => entry.startsWith("+") || entry.startsWith("-");
+export const isToolModifier = (entry: string) => entry.startsWith("+") || entry.startsWith("-");
 
 /** Pi's `defaultTools` resolution (not exported by the SDK): `+name`/`-name` edit the defaults or the plain list. */
 export function resolveDefaultTools(entries: readonly string[]): string[] {

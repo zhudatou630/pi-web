@@ -49,6 +49,7 @@ export const settingsUrls = {
   skills: (cwd: string) => `/api/skills?${q(cwd)}`,
   plugins: (cwd: string) => `/api/plugins?${q(cwd)}`,
   mcp: (cwd: string | null) => `/api/mcp${cwd ? `?${q(cwd)}` : ""}`,
+  codemodeSettings: (cwd: string | null) => `/api/tools/codemode${cwd ? `?${q(cwd)}` : ""}`,
   projectResources: (cwd: string) => `/api/project-overrides?${q(cwd)}`,
   usage: "/api/usage",
 };
@@ -59,8 +60,8 @@ export function prefetchSettings(cwd: string | null): void {
   const u = settingsUrls;
   const urls = cwd
     ? [u.modelsConfig, u.authProviders(cwd), u.modelsRuntime(cwd), u.modelsPicker(cwd), u.webAuth, u.toolSettings,
-      u.subagentSettings(cwd), u.subagentProfiles(cwd), u.chatModels(cwd), u.imageSettings(cwd), u.skills(cwd), u.plugins(cwd), u.mcp(cwd), u.projectResources(cwd), u.usage]
-    : [u.modelsConfig, u.authProviders(cwd), u.webAuth, u.toolSettings, u.subagentSettings(null), u.imageSettings(null), u.mcp(null), u.usage];
+      u.subagentSettings(cwd), u.subagentProfiles(cwd), u.chatModels(cwd), u.imageSettings(cwd), u.skills(cwd), u.plugins(cwd), u.mcp(cwd), u.codemodeSettings(cwd), u.projectResources(cwd), u.usage]
+    : [u.modelsConfig, u.authProviders(cwd), u.webAuth, u.toolSettings, u.subagentSettings(null), u.imageSettings(null), u.mcp(null), u.codemodeSettings(null), u.usage];
   for (const url of urls) if (!replies.has(url)) getJson(url).catch(() => {});
 }
 

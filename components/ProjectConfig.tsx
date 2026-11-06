@@ -42,10 +42,11 @@ interface FeatureState {
   project?: ProjectFeatureState;
 }
 
-/** Same settings as "Enable in this project" on the Agents and Images pages. */
+/** Same settings as "Enable in this project" on the Agents and Images pages; codemode is pi's project `defaultTools`, so it needs trust. */
 const FEATURES = [
-  { id: "subagents", label: "project.subagents", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings },
-  { id: "images", label: "project.images", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings },
+  { id: "subagents", label: "project.subagents", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings, needsTrust: false },
+  { id: "images", label: "project.images", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings, needsTrust: false },
+  { id: "codemode", label: "project.codemode", putUrl: "/api/tools/codemode", url: settingsUrls.codemodeSettings, needsTrust: true },
 ] as const;
 type FeatureId = (typeof FEATURES)[number]["id"];
 
@@ -170,8 +171,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cwd, projectEnabled }),
     });
-    const body = (await res.json()) as { error?: string };
+    const body = (await res.json()) as Partial<ProjectOverridesWriteResponse> & { error?: string };
     if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
+    if (body.failures?.length) setSyncFailures((current) => [...current, ...body.failures!]);
   };
   const featuresOverridden = FEATURES.filter((feature) => features[feature.id]?.project?.overridden);
 
@@ -398,7 +400,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                         {state.project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
                         <ConfigSwitch
                           checked={state.project.enabled}
-                          disabled={busy}
+                          disabled={busy || (feature.needsTrust && !trusted)}
                           label={t(feature.label)}
                           onChange={(enabled) => void run(() => putFeatureEnabled(feature.putUrl, enabled), true)}
                         />

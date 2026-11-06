@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
-import type { McpCheckResponse, McpConfigValue, McpServerView, McpSettingsResponse } from "@/lib/api-types";
+import type { McpCheckResponse, McpConfigValue, McpServerView, McpSettingsResponse, ProjectFeatureState } from "@/lib/api-types";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { parseMcpDraft } from "@/lib/mcp-draft";
 import { mcpLogRecords, toolExposureOf } from "@/lib/mcp-view";
@@ -22,6 +22,8 @@ type Draft = { name: string; scope: Scope; json: string; notes?: string[]; previ
 type CheckReport = McpCheckResponse["servers"][number];
 type View = { kind: "list" } | { kind: "detail"; key: string } | { kind: "add" } | { kind: "edit"; back: View };
 type Translate = ReturnType<typeof useI18n>["t"];
+/** `codemode` in pi's `defaultTools` (/api/tools/codemode). */
+type CodemodeDefault = { enabled: boolean; project?: ProjectFeatureState };
 
 const serverKey = (server: { name: string; scope: Scope }) => `${server.scope}:${server.name}`;
 
@@ -49,7 +51,7 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
   /** Built-in switches changed what the Project page shows. */
   onChanged?: () => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const confirm = useConfirm();
   const url = settingsUrls.mcp(cwd);
   const [settings, setSettings] = useState<McpSettingsResponse | null>(() => {
@@ -65,6 +67,22 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
   const [reports, setReports] = useState<Map<string, CheckReport>>(new Map());
   const [testing, setTesting] = useState<Set<string>>(new Set());
   const [checkNotes, setCheckNotes] = useState<string[]>([]);
+  const codemodeUrl = settingsUrls.codemodeSettings(cwd);
+  const [codemode, setCodemode] = useState<CodemodeDefault | null>(() => {
+    const reply = peekJson<CodemodeDefault & { error?: string }>(codemodeUrl);
+    return reply?.ok && !reply.data.error ? reply.data : null;
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    void getJson<CodemodeDefault & { error?: string }>(codemodeUrl)
+      .then((response) => {
+        if (!response.ok || response.data.error) throw new Error(response.data.error ?? `HTTP ${response.status}`);
+        if (!cancelled) setCodemode(response.data);
+      })
+      .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause)); });
+    return () => { cancelled = true; };
+  }, [codemodeUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,35 +310,49 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
 
         <SettingsGroup title={t("mcp.builtins")}>
           {settings.builtins.map((builtin) => (
-            <SettingsRow key={builtin.name} label={t(`mcp.builtin.${builtin.name}`)} description={t(`mcp.builtin.${builtin.name}.description`)}>
-              {builtin.enabled !== builtin.globalEnabled && (
-                <span className="settings-row-status" title={t("mcp.projectOverrideHint")}>
-                  {builtin.enabled ? t("mcp.onInProject") : t("mcp.offInProject")}
-                </span>
+            <Fragment key={builtin.name}>
+              <SettingsRow label={t(`mcp.builtin.${builtin.name}`)} description={t(`mcp.builtin.${builtin.name}.description`)}>
+                {builtin.enabled !== builtin.globalEnabled && (
+                  <span className="settings-row-status" title={t("mcp.projectOverrideHint")}>
+                    {builtin.enabled ? t("mcp.onInProject") : t("mcp.offInProject")}
+                  </span>
+                )}
+                <ConfigSwitch
+                  checked={builtin.globalEnabled}
+                  disabled={saving}
+                  label={t(`mcp.builtin.${builtin.name}`)}
+                  onChange={(enabled) => void run(async () => {
+                    await request("PATCH", { builtin: builtin.name, enabled });
+                    onChanged?.();
+                  })}
+                />
+              </SettingsRow>
+              {builtin.name === "codemode" && codemode && (
+                <SettingsRow nested label={t("mcp.codemodeDefault")} description={t("mcp.codemodeDefault.description")}>
+                  {codemode.project?.overridden && (
+                    <span className="settings-row-status" title={t("mcp.projectOverrideHint")}>
+                      {codemode.project.enabled ? t("mcp.onInProject") : t("mcp.offInProject")}
+                    </span>
+                  )}
+                  <ConfigSwitch
+                    checked={codemode.enabled}
+                    disabled={saving || !builtin.globalEnabled}
+                    label={t("mcp.codemodeDefault")}
+                    onChange={(enabled) => void run(async () => {
+                      setCodemode(await readJson<CodemodeDefault>(await fetch("/api/tools/codemode", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ enabled, ...(cwd ? { cwd } : {}) }),
+                      })));
+                      setReloadNeeded(true);
+                      onChanged?.();
+                    })}
+                  />
+                </SettingsRow>
               )}
-              <ConfigSwitch
-                checked={builtin.globalEnabled}
-                disabled={saving}
-                label={t(`mcp.builtin.${builtin.name}`)}
-                onChange={(enabled) => void run(async () => {
-                  await request("PATCH", { builtin: builtin.name, enabled });
-                  onChanged?.();
-                })}
-              />
-            </SettingsRow>
+            </Fragment>
           ))}
         </SettingsGroup>
-
-        {settings.logTail && settings.logModified && (
-          <SettingsGroup title={t("mcp.log")}>
-            <details className="mcp-log">
-              <summary title={new Date(settings.logModified).toLocaleString(locale)}>
-                {t("mcp.logSummary", { time: formatRelativeTime(settings.logModified, locale) })}
-              </summary>
-              <pre>{settings.logTail}</pre>
-            </details>
-          </SettingsGroup>
-        )}
       </>
     );
   }

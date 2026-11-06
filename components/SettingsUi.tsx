@@ -141,16 +141,18 @@ export function SettingsGroup({ title, action, children }: { title?: ReactNode; 
 
 /** Label and one-line explanation on the left, the control on the right.
     `stacked` puts a wide control (segmented, slider) under the copy on narrow screens. */
-export function SettingsRow({ label, description, htmlFor, stacked = false, title, children }: {
+export function SettingsRow({ label, description, htmlFor, stacked = false, nested = false, title, children }: {
   label: ReactNode;
   description?: ReactNode;
   htmlFor?: string;
   stacked?: boolean;
+  /** A setting that belongs to the row above. */
+  nested?: boolean;
   title?: string;
   children?: ReactNode;
 }) {
   return (
-    <div className={`settings-row${stacked ? " is-stacked" : ""}`} title={title}>
+    <div className={`settings-row${stacked ? " is-stacked" : ""}${nested ? " is-nested" : ""}`} title={title}>
       <div className="settings-row-copy">
         {htmlFor ? <label htmlFor={htmlFor} className="settings-row-label">{label}</label> : <span className="settings-row-label">{label}</span>}
         {description && <p className="settings-row-description">{description}</p>}
