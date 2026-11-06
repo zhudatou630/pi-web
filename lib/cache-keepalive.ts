@@ -7,7 +7,7 @@ export const CACHE_KEEPALIVE_REFRESH_MS = 54 * 60_000;
 /** A refresh this late (sleep, blocked loop) likely finds the entry gone and pays a full write. */
 const LATE_LIMIT_MS = 3 * 60_000;
 /** No refreshes once the last real request is this old. */
-export const CACHE_KEEPALIVE_MAX_MS = 8 * 60 * 60_000;
+export const CACHE_KEEPALIVE_MAX_MS = 10 * 60 * 60_000;
 
 /** Display-only transcript line for refreshes; never part of model context (that is pi's own). */
 export const CACHE_WARM_MESSAGE_TYPE = "pi-web:cache-warm";
@@ -86,25 +86,37 @@ export function readCacheKeepalive(entries: readonly SessionEntry[]): boolean {
 /**
  * Per-session 1h prompt cache that stays warm: while enabled, this session's Anthropic requests use
  * pi's `long` retention, and after each one the request is replayed with a one-token cap shortly
- * before the hour runs out (a cache read renews the TTL), for up to 8 h after the last real request.
+ * before the hour runs out (a cache read renews the TTL), for up to 10 h after the last real request.
  */
 export class CacheKeepalive {
   private enabled: boolean;
   private run: Run | undefined;
+  /** Newest own request that wrote a 1h entry, kept while off so turning on can keep that entry warm. */
+  private last: Run | undefined;
   private readonly agent: AgentLike;
   private readonly base: StreamFn;
   /** Called after a refresh is recorded, so open views can show it. */
   onRefreshed?: () => void;
 
-  constructor(private readonly session: SessionLike, private readonly now: () => number = Date.now) {
+  constructor(
+    private readonly session: SessionLike,
+    private readonly now: () => number = Date.now,
+    /** Whether requests go out with 1h retention while the switch is off (the global TTL setting). */
+    private readonly longByDefault: () => boolean = () => false,
+  ) {
     this.agent = session.agent as AgentLike;
     this.base = this.agent.streamFunction;
     this.enabled = readCacheKeepalive(session.sessionManager.getEntries() as SessionEntry[]);
     this.agent.streamFunction = (model, context, options) => {
       // Only this session's own requests: side chats send the parent's id, compaction and summaries their own.
-      if (!this.enabled || model.api !== "anthropic-messages" || options?.cacheRetention
+      if (model.api !== "anthropic-messages" || options?.cacheRetention
         || options?.sessionId !== this.session.sessionManager.getSessionId()) return this.base(model, context, options);
       const longOptions = { ...options, cacheRetention: "long" };
+      if (!this.enabled) {
+        // Replaying with explicit "long" matches what the global 1h setting sent.
+        this.last = this.longByDefault() ? this.capture(model, context, longOptions) : undefined;
+        return this.base(model, context, options);
+      }
       this.start(model, context, longOptions);
       return this.base(model, context, longOptions);
     };
@@ -131,8 +143,16 @@ export class CacheKeepalive {
     if (enabled === this.enabled) return;
     this.session.sessionManager.appendCustomEntry(CACHE_KEEPALIVE_TYPE, { version: 1, enabled });
     this.enabled = enabled;
-    // Turning on takes effect from the next request, which writes the 1h entry.
-    if (!enabled) this.stop();
+    if (!enabled) {
+      this.stop();
+      return;
+    }
+    // Continue the newest request's 1h entry if a refresh can still reach it; otherwise the next
+    // request writes one.
+    const last = this.last;
+    if (last && this.now() <= last.requestedAt + CACHE_KEEPALIVE_REFRESH_MS + LATE_LIMIT_MS) {
+      this.schedule({ ...last, timer: undefined, controller: new AbortController() }, last.requestedAt);
+    }
   }
 
   stop(): void {
@@ -145,11 +165,15 @@ export class CacheKeepalive {
 
   private start(model: Model, context: unknown, options: Options): void {
     this.stop();
+    const run = this.last = this.capture(model, context, options);
+    if (run) this.schedule(run, run.requestedAt);
+  }
+
+  private capture(model: Model, context: unknown, options: Options): Run | undefined {
     // pi's isReplayable(): budget-based Anthropic thinking derives budget_tokens from max_tokens, so a
     // one-token replay would carry a different budget (part of the cache key) and could still think.
-    if (options.reasoning && model.compat?.forceAdaptiveThinking !== true) return;
-    const requestedAt = this.now();
-    this.schedule({ model, context, options, messages: [...this.agent.state.messages], requestedAt, dueAt: 0, controller: new AbortController() }, requestedAt);
+    if (options.reasoning && model.compat?.forceAdaptiveThinking !== true) return undefined;
+    return { model, context, options, messages: [...this.agent.state.messages], requestedAt: this.now(), dueAt: 0, controller: new AbortController() };
   }
 
   private schedule(run: Run, from: number): void {

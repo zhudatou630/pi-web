@@ -545,7 +545,7 @@ export const enLocale: LocalePlugin = {
     "session.moreActions": "More actions",
     "session.fork": "Fork session",
     "session.cacheKeepalive": "Keep cache for 1 hour",
-    "session.cacheKeepaliveTitle": "Anthropic requests here use the 1-hour cache, refreshed every 54 min while idle (about one cache read each), up to 8 h",
+    "session.cacheKeepaliveTitle": "Anthropic requests here use the 1-hour cache, refreshed every 54 min while idle (about one cache read each), up to 10 h",
     "session.cacheKeepaliveNext": "Next refresh {time}",
     "session.forkTitle": "Copy this conversation (the branch you are viewing) into a new session; this one stays unchanged",
     "session.forkRunning": "Wait for the session to finish before forking",

@@ -74,7 +74,7 @@ export async function loadRuntimeStreamMarker(): Promise<void> {
  */
 export function applyAnthropicCacheTtlToSession(session: ConstructorParameters<typeof CacheKeepalive>[0] & { modelRuntime: unknown }): CacheKeepalive {
   applyAnthropicCacheTtl(session.agent);
-  const keepalive = new CacheKeepalive(session);
+  const keepalive = new CacheKeepalive(session, Date.now, () => effectiveAnthropicCacheTtl() === "1h");
   markRuntimeStreamFunction?.(keepalive.streamFunction as StreamFn, session.modelRuntime);
   return keepalive;
 }

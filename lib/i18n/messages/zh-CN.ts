@@ -545,7 +545,7 @@ export const zhCNLocale: LocalePlugin = {
     "session.moreActions": "更多操作",
     "session.fork": "分叉会话",
     "session.cacheKeepalive": "保持缓存 1 小时",
-    "session.cacheKeepaliveTitle": "本会话的 Anthropic 请求使用 1 小时缓存，空闲时每 54 分钟续期（每次约一次缓存读取的费用），最长 8 小时",
+    "session.cacheKeepaliveTitle": "本会话的 Anthropic 请求使用 1 小时缓存，空闲时每 54 分钟续期（每次约一次缓存读取的费用），最长 10 小时",
     "session.cacheKeepaliveNext": "下次续期 {time}",
     "session.forkTitle": "把当前对话（正在查看的分支）复制成新会话，原会话保持不变",
     "session.forkRunning": "会话运行结束后才能分叉",
