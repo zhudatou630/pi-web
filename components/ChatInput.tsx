@@ -1072,6 +1072,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const resizeTextarea = useCallback(() => {
     const ta = textareaRef.current;
     if (!ta) return;
+    // Already at max and still overflowing: the height cannot change. Collapsing anyway forces
+    // a layout at full content height, where the browser's pending scroll-to-caret finds the
+    // caret visible, so a new last line stayed hidden below.
+    if (ta.style.height === "200px" && ta.scrollHeight > 200) return;
     // Measure without a scrollbar: the fine-pointer ::-webkit-scrollbar takes
     // 5px of layout width, which would wrap a nearly-full last line during
     // measurement and leave a phantom blank line afterwards.
