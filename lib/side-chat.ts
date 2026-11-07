@@ -14,9 +14,10 @@ import { PRESET_READ_ONLY } from "./tool-presets";
  * tools stay the parent's, so the first request reuses the parent's prompt cache (a removed
  * tool or a changed thinking level rewrites the prefix on providers without
  * mid-conversation updates). The header is not part of the prompt.
- * The side chat's runtime rebuilds the prompt from disk, so a context file edited since the
- * parent started (often by the parent itself) would append a section patch that rewrites the
- * prefix the same way; sideChatToolGuard keeps such patches out of the request.
+ * The side chat's runtime rebuilds the prompt from disk, so a section that changed since the
+ * parent started (context files are frozen by freezeProjectContext; skills are not) would
+ * append a patch that rewrites the prefix the same way; sideChatToolGuard keeps such patches
+ * out of the request.
  */
 export const SIDE_CHAT_TYPE = "pi-web:side";
 

@@ -60,6 +60,7 @@ import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
 import { readOnlyToolGuard } from "./read-only-tool-guard";
 import { sideChatParentId, sideChatToolGuard } from "./side-chat";
+import { freezeProjectContext } from "./frozen-project-context";
 import { createBuiltinExtensions } from "./builtin-extensions";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension } from "./chat-only";
 import { createImageGenerationExtension, reservePiWebImageTool } from "./image-generation-extension";
@@ -2759,6 +2760,7 @@ export async function startRpcSession(
               ...(await createBuiltinExtensions()),
               { name: "read-only-guard", factory: readOnlyToolGuard, hidden: true },
               { name: "side-chat-guard", factory: sideChatToolGuard, hidden: true },
+              { name: "frozen-project-context", factory: freezeProjectContext, hidden: true },
               createProjectCommandBashExtension({
                 cwd: sessionCwd,
                 settings: settingsManager,
