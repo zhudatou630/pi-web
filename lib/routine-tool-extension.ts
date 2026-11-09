@@ -329,7 +329,8 @@ export function createRoutineToolExtension(store: () => RoutineStore = () => new
           if (!featureEnabled(store)) return fail("Routines are turned off in Pi Web settings.");
           // A routine run is unattended work: a read-only chat must not rewrite one without approval.
           if (!hasWriteCapableTool(pi.getActiveTools())) return fail("this chat uses read-only tools. The user can change routines on the Routines page.");
-          const change = params as UpdateRoutineParams;
+          // Some models fill every optional field with "": a blank field means "unchanged", like create_routine's cron/at.
+          const change = Object.fromEntries(Object.entries(params).filter(([key, value]) => key === "id" || value !== "")) as unknown as UpdateRoutineParams;
           if (["name", "instructions", "cron", "at", "enabled"].every((key) => change[key as keyof UpdateRoutineParams] === undefined)) {
             return fail("nothing to change.");
           }
