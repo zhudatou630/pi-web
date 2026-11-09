@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { loadFrameHistory, observeFrameHistory, startFrameHistory, stepFrameHistory } from "@/lib/frame-history";
 import { parsePreviewTarget, previewFrameUrl } from "@/lib/preview-target";
 import type { DevServer } from "@/lib/dev-servers";
 
@@ -24,11 +25,51 @@ export function BrowserPanel({ page, cwd, onNavigate }: {
   const [draft, setDraft] = useState(page.url);
   const [invalid, setInvalid] = useState(false);
   const [proxyUrl, setProxyUrl] = useState<string | null | undefined>(undefined);
+  const [frameHistory, setFrameHistory] = useState(() => startFrameHistory(window.history.length));
+  const lengthAtLoad = useRef(0);
+  // Steps taken by the buttons whose load has not finished yet; each excuses one load.
+  const ownSteps = useRef({ count: 0, at: 0 });
 
   useEffect(() => {
     setDraft(page.url);
     setInvalid(false);
   }, [page]);
+
+  // The frame is cross-origin: its navigations (SPA pushState too) show only as a longer top-level
+  // history, polled because no event reaches this page. A new frame (`page.id`) starts at the current entry.
+  useEffect(() => {
+    setFrameHistory(startFrameHistory(window.history.length));
+    lengthAtLoad.current = window.history.length;
+    ownSteps.current = { count: 0, at: 0 };
+    const timer = window.setInterval(() => setFrameHistory((state) => observeFrameHistory(state, window.history.length)), 500);
+    return () => window.clearInterval(timer);
+  }, [page.id]);
+
+  // Back/Forward traverse the joint history, which steps the frame. The length is read first: a
+  // navigation since the last poll would otherwise be counted after the step. If the inferred
+  // position is still wrong, Back would leave Pi Web, so a leave prompt covers the next second
+  // (not on iOS, which fires no beforeunload; `onFrameLoad` narrows that case).
+  const go = (delta: -1 | 1) => {
+    const observed = observeFrameHistory(frameHistory, window.history.length);
+    const next = stepFrameHistory(observed, delta);
+    setFrameHistory(next);
+    if (next === observed) return;
+    ownSteps.current = { count: ownSteps.current.count + 1, at: Date.now() };
+    const guard = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", guard);
+    window.setTimeout(() => window.removeEventListener("beforeunload", guard), 1000);
+    window.history.go(delta);
+  };
+
+  const onFrameLoad = () => {
+    const length = window.history.length;
+    const previous = lengthAtLoad.current;
+    // An SPA step loads nothing, so an unused excuse expires.
+    const ownStep = ownSteps.current.count > 0 && Date.now() - ownSteps.current.at < 3000;
+    if (ownStep) ownSteps.current.count -= 1;
+    lengthAtLoad.current = length;
+    setFrameHistory((state) => loadFrameHistory(state, length, previous, ownStep));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +114,12 @@ export function BrowserPanel({ page, cwd, onNavigate }: {
           autoCorrect="off"
           spellCheck={false}
         />
+        <button type="button" className="file-viewer-icon-button" onClick={() => go(-1)} disabled={!frameUrl || !frameHistory.back} title={t("browser.back")} aria-label={t("browser.back")}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <button type="button" className="file-viewer-icon-button" onClick={() => go(1)} disabled={!frameUrl || !frameHistory.forward} title={t("browser.forward")} aria-label={t("browser.forward")}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+        </button>
         <button type="button" className="file-viewer-icon-button" onClick={() => onNavigate(page.url)} disabled={!frameUrl} title={t("browser.reload")} aria-label={t("browser.reload")}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
         </button>
@@ -85,6 +132,7 @@ export function BrowserPanel({ page, cwd, onNavigate }: {
         <iframe
           key={page.id}
           className="browser-frame"
+          onLoad={onFrameLoad}
           src={frameUrl}
           title={page.url}
           // No allow-top-navigation: the previewed page cannot navigate Pi Web away.

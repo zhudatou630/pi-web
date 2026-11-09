@@ -975,6 +975,8 @@ export const enLocale: LocalePlugin = {
     "browser.open": "Open local service in a browser tab",
     "browser.address": "Local address",
     "browser.placeholder": "localhost:5173",
+    "browser.back": "Back",
+    "browser.forward": "Forward",
     "browser.reload": "Reload",
     "browser.openInNewWindow": "Open in new window, without cached files",
     "browser.close": "Close browser tab",

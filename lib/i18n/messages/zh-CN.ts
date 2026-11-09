@@ -975,6 +975,8 @@ export const zhCNLocale: LocalePlugin = {
     "browser.open": "在浏览器标签页打开本机服务",
     "browser.address": "本机地址",
     "browser.placeholder": "localhost:5173",
+    "browser.back": "后退",
+    "browser.forward": "前进",
     "browser.reload": "刷新",
     "browser.openInNewWindow": "在新窗口打开（不用缓存，相当于强制刷新）",
     "browser.close": "关闭浏览器标签页",

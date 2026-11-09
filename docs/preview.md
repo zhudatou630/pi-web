@@ -89,6 +89,30 @@ Safari, which has its own cookies: with `PI_WEB_PASSWORD` set, sign in there onc
   (also in a window opened with "Open in new window").
 - The address bar shows the address you opened, not in-page navigation; Reload
   reopens that address (normal reload, cached files may be reused).
+- Back/Forward step the browser's joint session history (the frame is
+  cross-origin, so its own history is out of reach). The position is inferred
+  from `history.length` (`lib/frame-history.ts`), so some steps go unseen: the
+  page's own back links, the browser's buttons, a navigation exactly one step
+  after Back, new pages while the history stays at 50 entries (the browser's
+  cap; Back may stay off; a fresh Pi Web tab resets it), and navigations of
+  other Pi Web frames (an HTML file preview), which a click may then step
+  instead. Unseen new pages only make Back more cautious. Reload starts a new
+  frame; after Back its Back stays off until a navigation shortens the history,
+  which bounds where the frame started (it may still count fewer steps than
+  exist). Unseen back steps (the page's links, the browser's buttons, a phone's
+  back gesture) could make it overshoot. Two guards:
+  - A heuristic: a frame load with the same `history.length` as the previous
+    load, unless it finishes one of the panel's own steps (each excuses one load
+    within 3 s), turns Back/Forward off until the next new page. It catches most
+    steps to another document, and also fires on a dev server's full reload or
+    an own step loading slower than 3 s. It misses SPA route steps (no load), and
+    a step back to another document after SPA routes changed the length (that
+    load looks like a new page).
+  - For a second after each click, any unload of Pi Web asks first (verified in
+    Chrome; iOS Safari fires no `beforeunload`, so there it leaves). Not tied to
+    that click: an unrelated unload in that second asks too, and a step to an
+    earlier Pi Web URL would not ask (Pi Web replaces its URL instead of adding
+    entries).
 - Remote pages that call another local port directly (a hardcoded
   `http://localhost:8000` API) fail, because that request runs in your browser.
   Same-origin `/api` proxies in the dev server work.
