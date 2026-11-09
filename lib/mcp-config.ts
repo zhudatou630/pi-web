@@ -122,6 +122,8 @@ export async function readMcpSettings(cwd: string | null, agentDir = getAgentDir
     if (trust.trusted) loaded = loadSafeMcpConfig({ agentDir, cwd, projectTrusted: true }, validator);
   }
   const effective = new Map(loaded.servers.map((server) => [server.name, server]));
+  const projectRaw = cwd && loaded !== globalOnly && loaded.servers.some((server) => server.override)
+    ? readRawServers(mcpConfigPath("project", cwd, agentDir), cwd) : {};
   const signedIn = await signedInServers(
     [...globalOnly.servers, ...loaded.servers].map((server) => ({ name: server.name, url: "url" in server.config ? server.config.url : undefined })),
     agentDir,
@@ -130,11 +132,16 @@ export async function readMcpSettings(cwd: string | null, agentDir = getAgentDir
   const servers: McpServerView[] = [
     ...globalOnly.servers.map((base) => {
       const current = effective.get(base.name);
+      const globalEnabled = base.config.enabled !== false;
       // A full project entry with the same name replaces the global one.
-      if (current?.scope === "project") return { ...view(base, "global"), overridden: true };
+      if (current?.scope === "project") return { ...view(base, "global"), overridden: true, globalEnabled };
       // A project entry without command/url only changes enabled/exposure/toolExposure of the global server.
-      if (current?.override) return { ...view(current, "global"), projectOverride: true };
-      return view(base, "global");
+      if (current?.override) {
+        const raw = projectRaw[base.name];
+        const keys = isRecord(raw) ? Object.keys(raw) : [];
+        return { ...view(current, "global"), projectOverride: true, projectOverrideKeys: keys, globalEnabled };
+      }
+      return { ...view(base, "global"), globalEnabled };
     }),
     ...loaded.servers.filter((server) => server.scope === "project").map((server) => view(server, "project")),
   ];
@@ -210,7 +217,8 @@ export async function saveMcpServer(
  */
 export async function updateMcpServer(
   input: {
-    cwd: string | null; scope: McpScope; name: string; enabled?: boolean; exposure?: McpExposure;
+    /** `null` (override only): drop the override's `enabled` so the server follows global again. */
+    cwd: string | null; scope: McpScope; name: string; enabled?: boolean | null; exposure?: McpExposure;
     /** Per-tool rules to set; `null` deletes that exact key. */
     toolExposure?: Record<string, McpExposure | null>;
     override?: boolean;
@@ -227,8 +235,20 @@ export async function updateMcpServer(
     inherited = (global[input.name] as Record<string, unknown>).toolExposure;
   }
   await assertWritable(input.scope, input.cwd, agentDir);
+  if (input.enabled === null && !input.override) throw new McpConfigError("enabled: null requires override");
+  const { enabled, ...rest } = input;
   await editMcpConfigFile(mcpConfigPath(input.scope, input.cwd, agentDir),
-    (servers) => patchMcpServer(servers, input.name, input, input.override, inherited),
+    (servers) => {
+      if (enabled !== null) return patchMcpServer(servers, input.name, { ...rest, enabled }, input.override, inherited);
+      patchMcpServer(servers, input.name, rest, true, inherited);
+      const entry = servers[input.name] as Record<string, unknown>;
+      if (!isMcpOverrideEntry(entry)) {
+        throw new McpConfigError(`"${input.name}" is this project's own server, not an override`);
+      }
+      delete entry.enabled;
+      // An empty override changes nothing; remove it so the project no longer differs.
+      if (Object.keys(entry).length === 0) delete servers[input.name];
+    },
     input.scope === "project" ? input.cwd! : undefined);
   // An override may have just created the project mcp.json: record trust like saveMcpServer.
   if (input.override && input.cwd) trustProject(input.cwd, agentDir);
@@ -243,6 +263,43 @@ export async function removeMcpServer(
     if (!Object.hasOwn(servers, input.name)) throw new McpConfigError(`No MCP server named "${input.name}"`);
     delete servers[input.name];
   }, input.scope === "project" ? input.cwd! : undefined);
+}
+
+/** A project entry that only changes enabled/exposure/toolExposure of a global server. */
+export function isMcpOverrideEntry(entry: unknown): boolean {
+  return isRecord(entry) && entry.command === undefined && entry.url === undefined && entry.type === undefined;
+}
+
+/** What `cwd`'s project mcp.json holds under `name`: an override of the global server, its own server, or nothing. */
+export function mcpProjectEntryKind(cwd: string, name: string, agentDir = getAgentDir()): "override" | "server" | null {
+  const servers = readRawServers(mcpConfigPath("project", cwd, agentDir), cwd);
+  if (!Object.hasOwn(servers, name)) return null;
+  return isMcpOverrideEntry(servers[name]) ? "override" : "server";
+}
+
+/** Deletes `cwd`'s override of `name`; a full project entry or a missing one is left alone. */
+export async function removeMcpOverride(cwd: string, name: string, agentDir = getAgentDir()): Promise<void> {
+  if (mcpProjectEntryKind(cwd, name, agentDir) !== "override") return;
+  await assertWritable("project", cwd, agentDir);
+  await editMcpConfigFile(mcpConfigPath("project", cwd, agentDir), (servers) => {
+    if (Object.hasOwn(servers, name) && isMcpOverrideEntry(servers[name])) delete servers[name];
+  }, cwd);
+}
+
+/** Gives a new worktree the source checkout's overrides of global servers (full project entries are content, not copied). */
+export async function copyMcpOverrides(sourceCwd: string, targetCwd: string, agentDir = getAgentDir()): Promise<void> {
+  // pi ignores an untrusted checkout's mcp.json; copying it would make it count.
+  if (!getProjectTrustStatus(sourceCwd, agentDir).trusted) return;
+  const source = readRawServers(mcpConfigPath("project", sourceCwd, agentDir), sourceCwd);
+  const overrides = Object.entries(source).filter(([, entry]) => isMcpOverrideEntry(entry));
+  if (overrides.length === 0) return;
+  await assertWritable("project", targetCwd, agentDir);
+  await editMcpConfigFile(mcpConfigPath("project", targetCwd, agentDir), (servers) => {
+    for (const [name, entry] of overrides) {
+      if (!Object.hasOwn(servers, name)) Object.defineProperty(servers, name, { value: entry, enumerable: true, configurable: true, writable: true });
+    }
+  }, targetCwd);
+  trustProject(targetCwd, agentDir);
 }
 
 /**

@@ -6,14 +6,17 @@ import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-acces
 import {
   MCP_EXPOSURES,
   McpConfigError,
+  mcpProjectEntryKind,
   readMcpServerEntry,
   readMcpSettings,
+  removeMcpOverride,
   removeMcpServer,
   saveMcpServer,
   updateMcpServer,
   type McpExposure,
   type McpScope,
 } from "@/lib/mcp-config";
+import { getOverrideSyncTargets, MCP_CONFIG } from "@/lib/project-override-sync";
 import { ProjectNotTrustedError, setGlobalResourceEnabled } from "@/lib/project-resource-overrides";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
 
@@ -26,6 +29,23 @@ async function cwdAllowed(cwd: string | null): Promise<boolean> {
 function failure(error: unknown) {
   const status = error instanceof ProjectNotTrustedError ? 403 : error instanceof McpConfigError ? 400 : 500;
   return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status });
+}
+
+/**
+ * Overrides of global servers are project settings, so like project overrides they go to every
+ * worktree checkout (unless .pi/mcp.json is tracked). Failures are reported, not fatal.
+ */
+async function syncOverride(cwd: string, write: (dir: string) => Promise<void>): Promise<{ path: string; error: string }[]> {
+  const failures: { path: string; error: string }[] = [];
+  const { dirs } = await getOverrideSyncTargets(cwd, MCP_CONFIG);
+  for (const dir of dirs.slice(1)) {
+    try {
+      await write(dir);
+    } catch (error) {
+      failures.push({ path: dir, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return failures;
 }
 
 /** Shared guard for writes; returns the parsed body or a response to send. */
@@ -100,7 +120,10 @@ export async function PATCH(req: Request) {
       return NextResponse.json(await readMcpSettings(cwd));
     }
     if (typeof body.name !== "string" || !body.scope) return NextResponse.json({ error: "scope and name required" }, { status: 400 });
-    if (body.enabled !== undefined && typeof body.enabled !== "boolean") return NextResponse.json({ error: "enabled must be boolean" }, { status: 400 });
+    // null (with override) drops the project override's `enabled`, following global again.
+    if (body.enabled !== undefined && typeof body.enabled !== "boolean" && !(body.enabled === null && body.override === true)) {
+      return NextResponse.json({ error: "enabled must be boolean, or null with override" }, { status: 400 });
+    }
     if (body.exposure !== undefined && !(MCP_EXPOSURES as readonly unknown[]).includes(body.exposure)) {
       return NextResponse.json({ error: `exposure must be one of ${MCP_EXPOSURES.join(", ")}` }, { status: 400 });
     }
@@ -111,16 +134,20 @@ export async function PATCH(req: Request) {
     )) {
       return NextResponse.json({ error: `toolExposure values must be null or one of ${MCP_EXPOSURES.join(", ")}` }, { status: 400 });
     }
-    await updateMcpServer({
-      cwd,
+    const update = {
       scope: body.scope as McpScope,
       name: body.name,
-      ...(body.enabled !== undefined ? { enabled: body.enabled as boolean } : {}),
+      ...(body.enabled !== undefined ? { enabled: body.enabled as boolean | null } : {}),
       ...(body.exposure !== undefined ? { exposure: body.exposure as McpExposure } : {}),
       ...(toolExposure !== undefined ? { toolExposure: toolExposure as Record<string, McpExposure | null> } : {}),
       ...(body.override === true ? { override: true } : {}),
-    });
-    return NextResponse.json(await readMcpSettings(cwd));
+    };
+    await updateMcpServer({ cwd, ...update });
+    const failures = update.override && cwd ? await syncOverride(cwd, async (dir) => {
+      // A checkout that defines its own server of this name keeps it.
+      if (mcpProjectEntryKind(dir, update.name) !== "server") await updateMcpServer({ cwd: dir, ...update });
+    }) : [];
+    return NextResponse.json({ ...(await readMcpSettings(cwd)), failures });
   } catch (error) {
     return failure(error);
   }
@@ -132,8 +159,12 @@ export async function DELETE(req: Request) {
     const body = await readWrite(req);
     if (body instanceof NextResponse) return body;
     if (typeof body.name !== "string" || !body.scope) return NextResponse.json({ error: "scope and name required" }, { status: 400 });
-    await removeMcpServer({ cwd: body.cwd as string | null, scope: body.scope as McpScope, name: body.name });
-    return NextResponse.json(await readMcpSettings(body.cwd as string | null));
+    const cwd = body.cwd as string | null;
+    const name = body.name;
+    const override = body.scope === "project" && cwd !== null && mcpProjectEntryKind(cwd, name) === "override";
+    await removeMcpServer({ cwd, scope: body.scope as McpScope, name });
+    const failures = override ? await syncOverride(cwd, (dir) => removeMcpOverride(dir, name)) : [];
+    return NextResponse.json({ ...(await readMcpSettings(cwd)), failures });
   } catch (error) {
     return failure(error);
   }

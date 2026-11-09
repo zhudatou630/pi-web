@@ -94,6 +94,12 @@ P3 — runtime
   and `inlineBudget` stay in `settings.json` as in the CLI); live per-session MCP status until pi
   offers a status API or event (Test in Settings and `/mcp` in a session cover it).
 
+### Later change
+
+The MCP page's Enabled switch shows and writes the global entry, like Skills and Plugins; project
+state is a tag and the Project page owns the per-project switch (`docs/settings.md`). This replaces
+the earlier "switches write to the override when present" rule, which pi's `/mcp` follows.
+
 ### Kept as is
 
 - The read-only preset blocks every `mcp__*` tool call; pi's resource tools stay allowed

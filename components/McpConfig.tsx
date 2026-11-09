@@ -100,13 +100,17 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
   };
 
   const request = async (method: "PUT" | "PATCH" | "DELETE", body: Record<string, unknown>) => {
-    const data = await readJson<McpSettingsResponse>(await fetch("/api/mcp", {
+    const data = await readJson<McpSettingsResponse & { failures?: { path: string; error: string }[] }>(await fetch("/api/mcp", {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, ...(cwd ? { cwd } : {}) }),
     }));
     setSettings(data);
+    // Project overrides also go to the repo's other worktrees.
+    if (data.failures?.length) setError(t("project.sync.failed") + data.failures.map((failure) => `\n${failure.path}: ${failure.error}`).join(""));
     setReloadNeeded(true);
+    // The Project page lists these servers too.
+    onChanged?.();
   };
 
   const run = async (action: () => Promise<void>) => {
@@ -193,7 +197,7 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
     return <div className="settings-page">{error ? <p role="alert" className="settings-row-message is-error">{error}</p> : <SettingsLoading label={t("i18n.loading")} />}</div>;
   }
 
-  const errorLine = error && <p role="alert" className="settings-row-message is-error">{error}</p>;
+  const errorLine = error && <p role="alert" className="settings-row-message is-error is-pre">{error}</p>;
   const backToList = <SettingsBackLink label={t("settings.mcp")} onClick={() => { setError(null); setView({ kind: "list" }); }} />;
   let content;
 
@@ -282,19 +286,19 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
               <SettingsLinkRow
                 key={serverKey(server)}
                 label={server.name}
-                description={[server.transport, state?.text].filter(Boolean).join(" · ")}
+                description={[server.description ?? server.transport, state?.text].filter(Boolean).join(" · ")}
                 muted={!server.enabled || server.overridden}
                 title={server.scope === "project" ? settings.project?.path : settings.globalPath}
                 onOpen={() => { setError(null); setView({ kind: "detail", key: serverKey(server) }); }}
               >
                 {state?.tone && <ConfigStatusDot tone={state.tone} title={state.text} />}
-                {(server.scope === "project" || server.projectOverride) && <span className="settings-row-status">{t("project.tag.override")}</span>}
+                <ProjectStateTag server={server} />
                 <ConfigSwitch
-                  checked={server.enabled}
+                  checked={switchValue(server)}
                   disabled={saving || server.overridden}
                   label={server.name}
                   onChange={(enabled) => void run(async () => {
-                    await request("PATCH", { ...patchTarget(server), enabled });
+                    await request("PATCH", { scope: server.scope, name: server.name, enabled });
                     forget(server.name);
                   })}
                 />
@@ -323,7 +327,6 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
                   label={t(`mcp.builtin.${builtin.name}`)}
                   onChange={(enabled) => void run(async () => {
                     await request("PATCH", { builtin: builtin.name, enabled });
-                    onChanged?.();
                   })}
                 />
               </SettingsRow>
@@ -365,9 +368,25 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
   );
 }
 
-/** Where a server's switches write: its project override when there is one (pi's /mcp does the same). */
-function patchTarget(server: McpServerView) {
-  return server.projectOverride
+/** Like the Skills and Plugins pages, a global server's switch is its global state; the project's shows as a tag. */
+function switchValue(server: McpServerView): boolean {
+  return server.scope === "global" ? server.globalEnabled ?? server.enabled : server.enabled;
+}
+
+function ProjectStateTag({ server }: { server: McpServerView }) {
+  const { t } = useI18n();
+  if (server.scope === "project") return <span className="settings-row-status">{t("project.tag.override")}</span>;
+  if (!server.projectOverride) return null;
+  const text = server.enabled !== switchValue(server) ? t(server.enabled ? "mcp.onInProject" : "mcp.offInProject") : t("project.tag.override");
+  return <span className="settings-row-status" title={t("mcp.projectOverrideHint")}>{text}</span>;
+}
+
+/**
+ * Exposure and per-tool rules have no switch on the Project page: they edit the project override
+ * when it already sets that key (else the global entry would change without effect here), otherwise the entry itself.
+ */
+function patchTarget(server: McpServerView, key: "exposure" | "toolExposure") {
+  return server.projectOverrideKeys?.includes(key)
     ? { scope: "project" as const, name: server.name, override: true }
     : { scope: server.scope, name: server.name };
 }
@@ -393,7 +412,8 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
   onDelete: () => void;
 }) {
   const { t, locale } = useI18n();
-  const target = patchTarget(server);
+  const exposureTarget = patchTarget(server, "exposure");
+  const toolTarget = patchTarget(server, "toolExposure");
   const path = server.scope === "project" ? settings.project?.path ?? "" : settings.globalPath;
   const canOverride = server.scope === "global" && !server.overridden && settings.project?.trusted === true;
   const state = server.overridden ? { text: t("mcp.overridden") } : stateText(server, report, t) ?? { text: t("mcp.state.untested") };
@@ -419,13 +439,14 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
       <SettingsGroup>
         <SettingsRow
           label={t("mcp.enabledLabel")}
-          description={server.overridden ? t("mcp.overridden") : server.projectOverride ? t("mcp.savedTo", { path: settings.project?.path ?? "" }) : undefined}
+          description={server.overridden ? t("mcp.overridden") : server.scope === "global" ? t("mcp.enabledGlobal") : undefined}
         >
+          <ProjectStateTag server={server} />
           <ConfigSwitch
-            checked={server.enabled}
+            checked={switchValue(server)}
             disabled={saving || server.overridden}
             label={t("mcp.enabledLabel")}
-            onChange={(enabled) => onPatch({ ...target, enabled })}
+            onChange={(enabled) => onPatch({ scope: server.scope, name: server.name, enabled })}
           />
         </SettingsRow>
         <SettingsRow label={t("mcp.connection")} description={state.text}>
@@ -451,14 +472,20 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
       )}
 
       <SettingsGroup title={t("mcp.tools")}>
-        <SettingsRow label={t("mcp.exposure")} description={t(`mcp.exposure.${server.exposure}.description`)}>
+        <SettingsRow
+          label={t("mcp.exposure")}
+          description={<>
+            {t(`mcp.exposure.${server.exposure}.description`)}
+            {exposureTarget.scope === "project" && server.scope === "global" && <> {t("mcp.savedTo", { path: settings.project?.path ?? "" })}</>}
+          </>}
+        >
           <Select
             className="select-trigger settings-select"
             ariaLabel={t("mcp.exposure")}
             align="end"
             value={server.exposure}
             disabled={saving || server.overridden}
-            onChange={(exposure) => onPatch({ ...target, exposure })}
+            onChange={(exposure) => onPatch({ ...exposureTarget, exposure })}
             options={exposureOptions}
           />
         </SettingsRow>
@@ -488,7 +515,7 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
                 align="end"
                 value={exact}
                 disabled={saving || server.overridden}
-                onChange={(exposure) => onPatch({ ...target, toolExposure: { [tool.name]: exposure || null } })}
+                onChange={(exposure) => onPatch({ ...toolTarget, toolExposure: { [tool.name]: exposure || null } })}
                 options={[{ value: "", label: t("mcp.toolDefault", { exposure: t(`mcp.exposure.${inherited}`) }) }, ...exposureOptions]}
               />
             </SettingsRow>

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  McpServerView,
+  McpSettingsResponse,
   ProjectOverridesWriteResponse,
   ProjectResourceGroup,
   ProjectResourceItem,
@@ -83,6 +85,11 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
       return reply?.ok && !reply.data.error ? [[feature.id, reply.data]] : [];
     }),
   ));
+  const mcpUrl = settingsUrls.mcp(cwd);
+  const [mcp, setMcp] = useState<McpSettingsResponse | null>(() => {
+    const reply = peekJson<McpSettingsResponse & { error?: string }>(mcpUrl);
+    return reply?.ok && !reply.data.error ? reply.data : null;
+  });
   const [agentPage, setAgentPage] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [agentProfiles, setAgentProfiles] = useState<SubagentProfile[] | null>(() => {
@@ -109,6 +116,12 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     setFeatures(Object.fromEntries(replies));
   }, [cwd]);
 
+  const loadMcp = useCallback(async () => {
+    const res = await getJson<McpSettingsResponse & { error?: string }>(mcpUrl);
+    if (!res.ok || res.data.error) throw new Error(res.data.error ?? `HTTP ${res.status}`);
+    setMcp(res.data);
+  }, [mcpUrl]);
+
   const loadAgentProfiles = useCallback(async () => {
     const res = await getJson<SubagentProfilesResponse & { error?: string }>(settingsUrls.subagentProfiles(cwd));
     if (!res.ok || res.data.error) throw new Error(res.data.error ?? `HTTP ${res.status}`);
@@ -134,6 +147,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
   useEffect(() => {
     loadAgentProfiles().catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [loadAgentProfiles]);
+  useEffect(() => {
+    loadMcp().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [loadMcp]);
 
   // Every change is saved immediately; an open session picks it up only after a reload.
   const run = useCallback(async (action: () => Promise<void>, needsReload: boolean) => {
@@ -142,7 +158,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     setSyncFailures([]);
     try {
       await action();
-      await Promise.all([load(), loadFeatures(), loadAgentProfiles()]);
+      await Promise.all([load(), loadFeatures(), loadAgentProfiles(), loadMcp()]);
       setReloadNeeded(needsReload);
       onChanged?.();
     } catch (err) {
@@ -150,7 +166,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     } finally {
       setBusy(false);
     }
-  }, [load, loadFeatures, loadAgentProfiles, onChanged]);
+  }, [load, loadFeatures, loadAgentProfiles, loadMcp, onChanged]);
 
   const post = async (targets: Target[], enabled: boolean) => {
     const res = await fetch("/api/project-overrides", {
@@ -176,6 +192,27 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     if (body.failures?.length) setSyncFailures((current) => [...current, ...body.failures!]);
   };
   const featuresOverridden = FEATURES.filter((feature) => features[feature.id]?.project?.overridden);
+
+  // Same writes as the MCP detail page: global servers through a project override in .pi/mcp.json.
+  const mcpRequest = async (method: "PATCH" | "DELETE", body: Record<string, unknown>) => {
+    const res = await fetch("/api/mcp", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, scope: "project", ...body }),
+    });
+    const reply = (await res.json()) as Partial<ProjectOverridesWriteResponse> & { error?: string };
+    if (!res.ok || reply.error) throw new Error(reply.error ?? `HTTP ${res.status}`);
+    if (reply.failures?.length) setSyncFailures((current) => [...current, ...reply.failures!]);
+  };
+  const setMcpEnabled = (server: McpServerView, enabled: boolean) => run(() => mcpRequest("PATCH", server.scope === "project"
+    ? { name: server.name, enabled }
+    // Back to the global state drops the override's `enabled` (and the override when nothing else is left).
+    : { name: server.name, override: true, enabled: server.projectOverride && enabled === server.globalEnabled ? null : enabled }), true);
+  // A full project entry of the same name replaces the global one; only the project's row is shown.
+  const mcpServers = (mcp?.servers ?? []).filter((server) => !server.overridden);
+  const mcpReplaced = new Set((mcp?.servers ?? []).filter((server) => server.overridden).map((server) => server.name));
+  const mcpOverrides = mcpServers.filter((server) => server.projectOverride);
+  const mcpBuiltinOff = mcp?.builtins.find((builtin) => builtin.name === "mcp")?.enabled === false;
 
   /** One row per agent name: is it available in this project? Project state wins over global. */
   const agentRows = useMemo(() => {
@@ -239,7 +276,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
   const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0);
   const enabledCount = groups.reduce((sum, group) => sum + group.items.filter((item) => item.enabled).length, 0);
   // Everything this project does differently from global: resource overrides plus the sub-agent switch.
-  const differences = overridden.length + featuresOverridden.length + agentDiffs.length;
+  const differences = overridden.length + featuresOverridden.length + agentDiffs.length + mcpOverrides.length;
   const resetAll = async () => {
     // A project copy is content, not just a switch: deleting it needs a yes.
     if (agentCustomized.length > 0 && !(await confirm(t("project.resetAgentsConfirm", { count: agentCustomized.length }), { danger: true, confirmLabel: t("project.resetAll") }))) return;
@@ -255,6 +292,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     for (const feature of featuresOverridden) await putFeatureEnabled(feature.putUrl, features[feature.id]!.enabled);
     // Project-only agents have no global counterpart to follow, so they stay.
     for (const row of agentDiffs) await followGlobal(row);
+    for (const server of mcpOverrides) await mcpRequest("DELETE", { name: server.name });
   }, true);
 
   // Same endpoint as the trust dialog; it also drops runtimes built without project resources.
@@ -277,8 +315,17 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
   const packages = visible
     .filter((group) => group.origin === "package")
     .sort((a, b) => a.label.localeCompare(b.label));
-  const standalone = visible.filter((group) => group.origin === "top-level");
+  // pi's built-in mcp/codemode/tool-search extensions (`builtin:<name>`) belong with the MCP servers.
+  const isBuiltin = (item: ProjectResourceItem) => item.type === "extensions" && item.path.startsWith("builtin:");
+  const builtinName = (item: ProjectResourceItem) => item.path.slice("builtin:".length);
+  const visibleBuiltins = groups.flatMap((group) => group.items.filter(isBuiltin))
+    .filter((item) => !needle || `mcp ${t(`mcp.builtin.${builtinName(item)}`)}`.toLowerCase().includes(needle));
+  const standalone = visible
+    .filter((group) => group.origin === "top-level")
+    .map((group) => ({ ...group, items: group.items.filter((item) => !isBuiltin(item)) }))
+    .filter((group) => group.items.some((item) => matches(group, item)));
   const visibleAgentRows = agentRows.filter((row) => !needle || `${row.label} ${row.name}`.toLowerCase().includes(needle));
+  const visibleMcpServers = mcpServers.filter((server) => !needle || `mcp ${server.name}`.toLowerCase().includes(needle));
   /** The whole feature can be off in this project; the rows still show what would apply. */
   const subagentsInactive = features.subagents ? !(features.subagents.project?.enabled ?? features.subagents.enabled) : false;
   const trusted = data?.projectResourcesLoaded ?? true;
@@ -301,25 +348,25 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
       ? item.globalEnabled ? t("project.globalOn") : t("project.globalOff")
       : null;
 
-  const itemRow = (item: ProjectResourceItem, nested: boolean) => {
+  const itemRow = (item: ProjectResourceItem, nested: boolean, label = item.name, description = typeLabel(item)) => {
     const state = itemState(item);
     return (
       <div key={`${item.type}:${item.path}`} className={`settings-row${nested ? " is-nested" : ""}`} title={item.path}>
         <div className="settings-row-copy">
           <span className={`settings-row-label${item.enabled ? "" : " is-dim"}`}>
-            {item.name}
+            {label}
             {item.manualOnly && (onOpenSkill ? (
               <button type="button" className="settings-row-tag is-link" onClick={() => onOpenSkill(item.path)}>{t("skills.tag.manual")}</button>
             ) : <span className="settings-row-tag">{t("skills.tag.manual")}</span>)}
           </span>
-          <span className="settings-row-description">{typeLabel(item)}{state && <> · {state}</>}</span>
+          <span className="settings-row-description">{description}{state && <> · {state}</>}</span>
         </div>
         <div className="settings-row-control">
           {item.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
           <ConfigSwitch
             checked={item.enabled}
             disabled={locked || !item.editable}
-            label={item.name}
+            label={label}
             onChange={(enabled) => void setEnabled([item], enabled)}
           />
         </div>
@@ -452,6 +499,38 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                   })}
                 </SettingsGroup>
               )}
+              {mcp?.errors.map((message) => <p key={message} role="alert" className="settings-row-message is-error">{message}</p>)}
+              {visibleMcpServers.length + visibleBuiltins.length > 0 && (
+                <SettingsGroup title={<CountedTitle label={t("settings.mcp")} count={visibleMcpServers.length + visibleBuiltins.length} />}>
+                  {mcpBuiltinOff && visibleMcpServers.length > 0 && <p role="status" className="settings-row-message">{t("mcp.builtinOff")}</p>}
+                  {/* First: the MCP servers switch describes "the servers below". */}
+                  {visibleBuiltins.map((item) => itemRow(item, false, t(`mcp.builtin.${builtinName(item)}`), t(`mcp.builtin.${builtinName(item)}.description`)))}
+                  {visibleMcpServers.map((server) => {
+                    const replaces = server.scope === "project" && mcpReplaced.has(server.name);
+                    const state = replaces ? t("project.agent.state.overridesGlobal")
+                      : server.scope === "project" ? t("project.projectOnly")
+                      : server.projectOverride ? t(server.globalEnabled ? "project.globalOn" : "project.globalOff")
+                      : null;
+                    return (
+                      <div key={`${server.scope}:${server.name}`} className="settings-row" title={server.scope === "project" ? mcp?.project?.path : mcp?.globalPath}>
+                        <div className="settings-row-copy">
+                          <span className={`settings-row-label${server.enabled ? "" : " is-dim"}`}>{server.name}</span>
+                          <span className="settings-row-description">{server.description ?? shortenPath(server.transport)}{state && <> · {state}</>}</span>
+                        </div>
+                        <div className="settings-row-control">
+                          {(server.projectOverride || replaces) && <span className="settings-row-status">{t("project.tag.override")}</span>}
+                          <ConfigSwitch
+                            checked={server.enabled}
+                            disabled={locked}
+                            label={server.name}
+                            onChange={(enabled) => void setMcpEnabled(server, enabled)}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </SettingsGroup>
+              )}
               {packages.length > 0 && (
                 <SettingsGroup title={<CountedTitle label={t("project.group.packages")} count={packages.length} />}>
                   {packages.flatMap((group) => {
@@ -503,7 +582,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                   {group.items.filter((item) => matches(group, item)).map((item) => itemRow(item, false))}
                 </SettingsGroup>
               ))}
-              {visible.length === 0 && visibleAgentRows.length === 0 && <p className="settings-row-message">{t("skills.noResults")}</p>}
+              {standalone.length === 0 && packages.length === 0 && visibleAgentRows.length === 0 && visibleMcpServers.length === 0 && visibleBuiltins.length === 0 && <p className="settings-row-message">{t("skills.noResults")}</p>}
             </>
           )}
         </div>

@@ -292,6 +292,10 @@ export interface McpServerView extends McpServerFacts {
    * command/url, pi 1.0.1+). `enabled`/`exposure` are the effective values; changes go to the override.
    */
   projectOverride?: boolean;
+  /** With `projectOverride`: the keys that override sets (`enabled`, `exposure`, `toolExposure`). */
+  projectOverrideKeys?: string[];
+  /** Global rows: the global entry's own `enabled`, whatever the project sets. */
+  globalEnabled?: boolean;
 }
 
 export interface McpSettingsResponse {

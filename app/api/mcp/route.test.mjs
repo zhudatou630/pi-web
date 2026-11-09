@@ -113,6 +113,8 @@ test("a project override changes only enabled/exposure of a global server (pi 1.
   await send(PATCH, "PATCH", { cwd: project, scope: "project", name: "shared", override: true, exposure: "direct" });
   assert.deepEqual(read(projectFile).mcpServers.shared, { enabled: false, exposure: "direct" });
   assert.equal(read(join(agentDir, "mcp.json")).mcpServers.shared.exposure, undefined);
+  body = await list();
+  assert.deepEqual([body.servers[0].globalEnabled, body.servers[0].projectOverrideKeys], [true, ["enabled", "exposure"]]);
 
   // Overrides need a global server; resetting removes the override.
   assert.equal((await send(PATCH, "PATCH", { cwd: project, scope: "project", name: "missing", override: true, enabled: false })).status, 400);

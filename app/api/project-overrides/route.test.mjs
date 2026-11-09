@@ -77,3 +77,56 @@ test("a new worktree starts with the overrides of the checkout it came from", as
   await seedWorktreeOverrides(repo, fresh, agentDir);
   assert.deepEqual(settings(fresh).packages, settings(worktree).packages);
 });
+
+test("MCP overrides of global servers follow the same worktree sync; own project servers are left alone", async () => {
+  const { PATCH, DELETE } = await jiti.import("../mcp/route.ts");
+  const send = (handler, method, body) => handler(new Request("http://localhost/api/mcp", {
+    method, headers: { "Content-Type": "application/json", Host: "localhost" }, body: JSON.stringify(body),
+  }));
+  const mcp = (dir) => JSON.parse(readFileSync(join(dir, ".pi", "mcp.json"), "utf8")).mcpServers;
+  writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { g: { command: "node" }, own: { command: "node" } } }));
+  writeFileSync(join(worktree, ".pi", "mcp.json"), JSON.stringify({ mcpServers: { own: { command: "local" } } }));
+
+  for (const name of ["g", "own"]) {
+    const response = await send(PATCH, "PATCH", { cwd: repo, scope: "project", name, override: true, enabled: false });
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).failures, []);
+  }
+  assert.deepEqual(mcp(repo), { g: { enabled: false }, own: { enabled: false } });
+  assert.deepEqual(mcp(worktree), { own: { command: "local" }, g: { enabled: false } });
+
+  const fresh = join(root, "repo-worktrees", "mcp-fresh");
+  git(repo, "worktree", "add", "-q", "-b", "mcp-fresh", fresh);
+  await seedWorktreeOverrides(repo, fresh, agentDir);
+  assert.deepEqual(mcp(fresh), mcp(repo));
+
+  await send(PATCH, "PATCH", { cwd: repo, scope: "project", name: "g", override: true, enabled: null });
+  await send(DELETE, "DELETE", { cwd: repo, scope: "project", name: "own" });
+  assert.deepEqual(mcp(repo), {});
+  assert.deepEqual(mcp(worktree), { own: { command: "local" } });
+  assert.deepEqual(mcp(fresh), {});
+});
+
+test("MCP sync skips a worktree whose branch tracks .pi/mcp.json, and an untrusted source is not seeded", async () => {
+  const { PATCH } = await jiti.import("../mcp/route.ts");
+  const { getProjectTrustStatus } = await jiti.import("../../../lib/project-trust.ts");
+  const tracked = join(root, "repo-worktrees", "tracked");
+  git(repo, "worktree", "add", "-q", "-b", "tracked", tracked);
+  mkdirSync(join(tracked, ".pi"), { recursive: true });
+  writeFileSync(join(tracked, ".pi", "mcp.json"), JSON.stringify({ mcpServers: {} }));
+  git(tracked, "add", "-f", ".pi/mcp.json");
+  writeFileSync(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { g: { command: "node" } } }));
+  await PATCH(new Request("http://localhost/api/mcp", {
+    method: "PATCH", headers: { "Content-Type": "application/json", Host: "localhost" },
+    body: JSON.stringify({ cwd: repo, scope: "project", name: "g", override: true, enabled: false }),
+  }));
+  assert.deepEqual(JSON.parse(readFileSync(join(tracked, ".pi", "mcp.json"), "utf8")).mcpServers, {});
+
+  const outside = join(root, "untrusted-src"), target = join(root, "seed-target");
+  mkdirSync(join(outside, ".pi"), { recursive: true });
+  mkdirSync(target);
+  writeFileSync(join(outside, ".pi", "mcp.json"), JSON.stringify({ mcpServers: { g: { enabled: true } } }));
+  assert.equal(getProjectTrustStatus(outside, agentDir).trusted, false);
+  await seedWorktreeOverrides(outside, target, agentDir);
+  assert.equal(existsSync(join(target, ".pi", "mcp.json")), false);
+});
