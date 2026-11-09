@@ -828,6 +828,8 @@
 .empty-hero-anchor {
   position: relative;
   z-index: 2;
+  /* mx-auto in a flex column shrinks it to the cwd line, leaving the update notice no room. */
+  width: 100%;
 }
 
 .app-update-home {
