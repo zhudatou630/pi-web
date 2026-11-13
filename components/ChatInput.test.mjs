@@ -86,6 +86,53 @@ test("preserves pasted HTML links as Markdown without changing plain text layout
   assert.equal(replaceLinksWithMarkdown("plain text", [link("missing", "https://example.com")]), null);
 });
 
+test("only a dropped native text paste is recovered; images, HTML links and edits are left alone", () => {
+  const text = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  const source = ts.createSourceFile("ChatInput.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function find(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "handlePaste") return node.initializer.arguments[0];
+    return ts.forEachChild(node, find);
+  }
+  const script = new Script(ts.transpileModule(find(source).getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText);
+  function paste({ text = "dictated", html = "", links = [], input = false, changed = false, prevented = false, connected = true, mounted = true, image = false } = {}) {
+    const timers = [];
+    const inserted = [];
+    const states = [];
+    const pendingPasteRef = { current: null };
+    const ta = { value: "a draft", selectionStart: 2, selectionEnd: 5, isConnected: connected };
+    const nativeEvent = { defaultPrevented: false };
+    const handler = script.runInNewContext({
+      compact: false, processImageFiles() {}, pendingPasteRef, textareaRef: { current: mounted ? ta : null },
+      setTimeout(fn, delay) { assert.equal(delay, 0); timers.push(fn); },
+      replaceTextareaRange(node, start, end, value) { inserted.push([start, end, value]); node.value = node.value.slice(0, start) + value + node.value.slice(end); },
+      replaceLinksWithMarkdown, valueRef: { current: ta.value }, setValue(value) { states.push(value); },
+      setCursorPosition() {}, setHistoryMenuOpen() {}, updateAtQuery() {}, requestAnimationFrame() {},
+      DOMParser: class { parseFromString() { return {
+        body: {}, querySelectorAll: () => links.map(([label, href]) => ({ textContent: label, getAttribute: () => href })),
+        createRange: () => ({ setStart() {}, setEndBefore() {}, toString: () => "" }),
+      }; } },
+    });
+    handler({
+      clipboardData: { items: image ? [{ type: "image/png", getAsFile: () => ({}) }] : [], getData: (type) => type === "text/plain" ? text : html },
+      currentTarget: ta, nativeEvent, preventDefault() { nativeEvent.defaultPrevented = true; },
+    });
+    if (input) pendingPasteRef.current = null;
+    if (changed) ta.value = "newer edit";
+    if (prevented) nativeEvent.defaultPrevented = true;
+    timers.forEach((fn) => fn());
+    return { inserted, states, prevented: nativeEvent.defaultPrevented };
+  }
+  assert.deepEqual(paste().inserted, [[2, 5, "dictated"]]);
+  assert.deepEqual(paste().states, ["a dictatedft"]);
+  assert.equal(paste().prevented, false);
+  assert.deepEqual(paste({ html: "<b>dictated</b>" }).inserted, [[2, 5, "dictated"]]);
+  for (const options of [{ input: true }, { changed: true }, { prevented: true }, { connected: false }, { mounted: false }, { text: "" }, { image: true }, { html: "<a>dictated</a>", links: [["dictated", "https://example.com"]] }]) {
+    assert.deepEqual(paste(options).inserted, [], JSON.stringify(options));
+  }
+  assert.deepEqual(paste({ text: "large\n".repeat(5000), input: true }).inserted, []);
+  assert.match(text, /onInput=\{\(\) => \{ pendingPasteRef\.current = null; \}\}/);
+});
+
 test("prepends quoted image paths to outgoing messages", () => {
   assert.equal(
     prependImageMentions("make the light warmer", [".pi/generated-images/old image.jpg"]),

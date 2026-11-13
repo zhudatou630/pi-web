@@ -734,6 +734,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndAtRef = useRef(0);
+  const pendingPasteRef = useRef<object | null>(null);
   const slashCommandsRequestedRef = useRef(false);
   const slashMenuRef = useRef<HTMLDivElement>(null);
   const slashItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -1583,6 +1584,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   );
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    pendingPasteRef.current = null;
     const items = Array.from(e.clipboardData?.items ?? []);
     const imageItems = items.filter((item) => item.type.startsWith("image/"));
     if (!compact && imageItems.length) {
@@ -1594,6 +1596,27 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
     const html = e.clipboardData.getData("text/html");
     const text = e.clipboardData.getData("text/plain");
+    if (text) {
+      // Chrome can abandon default insertion when dictation restores the clipboard mid-paste.
+      const ta = e.currentTarget;
+      const native = e.nativeEvent;
+      const before = ta.value;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const paste = {};
+      pendingPasteRef.current = paste;
+      setTimeout(() => {
+        if (pendingPasteRef.current !== paste) return;
+        pendingPasteRef.current = null;
+        if (native.defaultPrevented || !ta.isConnected || textareaRef.current !== ta || ta.value !== before) return;
+        replaceTextareaRange(ta, start, end, text);
+        valueRef.current = ta.value;
+        setValue(ta.value);
+        setCursorPosition(ta.selectionStart);
+        setHistoryMenuOpen(false);
+        updateAtQuery(ta.value, ta.selectionStart);
+      }, 0);
+    }
     if (!html || !text) return;
     const parsed = new DOMParser().parseFromString(html, "text/html");
     const links = Array.from(parsed.querySelectorAll("a[href]"), (link) => {
@@ -2568,6 +2591,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               : isCompacting ? t("chat.compactingQueueHint")
               : t(isMobile ? "chat.composerHintCompact" : "chat.composerHint")}
             value={value}
+            onInput={() => { pendingPasteRef.current = null; }}
             onChange={(e) => {
               valueRef.current = e.target.value;
               setValue(e.target.value);
