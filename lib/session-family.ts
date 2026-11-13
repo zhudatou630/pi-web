@@ -87,6 +87,22 @@ export function getSessionFamily(
   )) ?? null;
 }
 
+/** Creation-order numbers shared by tabs and Agents, independent of which tabs are open. */
+export function unnamedSideChatNumbers(sessions: readonly SessionInfo[]): Map<string, number> {
+  const numbers = new Map<string, number>();
+  const counts = new Map<string, number>();
+  const sides = sessions.filter((session) => session.relation?.kind === "side")
+    .sort((a, b) => a.created.localeCompare(b.created) || a.id.localeCompare(b.id));
+  for (const session of sides) {
+    const parent = familyParentId(session)!;
+    const number = (counts.get(parent) ?? 0) + 1;
+    counts.set(parent, number);
+    const name = session.name?.trim();
+    if (!name || ["Side:", "旁问：", "Side chat"].includes(name)) numbers.set(session.id, number);
+  }
+  return numbers;
+}
+
 export function familyHasMemberIn(family: SessionFamily, ids: ReadonlySet<string>): boolean {
   return ids.has(family.root.id) || family.subagents.some((session) => ids.has(session.id));
 }

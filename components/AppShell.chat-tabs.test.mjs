@@ -18,7 +18,7 @@ test("declares chat tabs and split view state in AppShell", () => {
 test("renders ChatTabBar when chat is active and tabs exist", () => {
   assert.match(source, /!isSplitActive && showChat && chatTabs\.length > 0/);
   assert.match(source, /<ChatTabBar/);
-  assert.match(source, /tabs=\{chatTabs\}/);
+  assert.match(source, /tabs=\{titledChatTabs\}/);
   assert.match(source, /onSelectTab=\{handleSelectChatTab\}/);
   assert.match(source, /onCloseTab=\{handleCloseChatTab\}/);
   assert.match(source, /onNewTab=\{handleNewChatTab\}/);
@@ -142,8 +142,8 @@ test("sidebar and explicit opens reveal existing tabs in their owning group", ()
 });
 
 test("pane membership is independent of active pointers; close-tab and merge-pane have separate actions", () => {
-  assert.match(source, /chatTabsInPane\(chatTabs, "primary"\)/);
-  assert.match(source, /chatTabsInPane\(chatTabs, "secondary"\)/);
+  assert.match(source, /chatTabsInPane\(titledChatTabs, "primary"\)/);
+  assert.match(source, /chatTabsInPane\(titledChatTabs, "secondary"\)/);
   assert.match(source, /tabs=\{primaryTabs\}/);
   assert.match(source, /tabs=\{secondaryTabs\}[\s\S]*?onCloseTab=\{handleCloseChatTab\}[\s\S]*?onMoveTab=\{handleMoveChatTab\}/);
   assert.doesNotMatch(source, /onClosePane/);

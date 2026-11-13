@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { unnamedSideChatNumbers } from "@/lib/session-family";
 import { useI18n } from "@/hooks/useI18n";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import type { SessionInfo, SubagentSessionStatus } from "@/lib/types";
@@ -79,6 +80,7 @@ function StatusIcon({ status }: { status: SubagentSessionStatus }) {
 
 function AgentRow({
   session,
+  displayTitle,
   main,
   selected,
   running,
@@ -88,6 +90,7 @@ function AgentRow({
   onDelete,
 }: {
   session: SessionInfo;
+  displayTitle?: string;
   main?: boolean;
   selected: boolean;
   running: boolean;
@@ -102,7 +105,7 @@ function AgentRow({
   const side = session.relation?.kind === "side";
   const status = sessionStatus(session, running);
   const sidePrefix = t("session.sideNamePrefix");
-  const title = sessionTitle(session);
+  const title = displayTitle ?? sessionTitle(session);
   // The row icon already says "side chat"; the name's prefix only crowds out the question.
   const primary = main
     ? t("agentSwitcher.main")
@@ -207,6 +210,7 @@ export function AgentSessionPanel({
 }: Props) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
+  const sideNumbers = useMemo(() => unnamedSideChatNumbers(subagents), [subagents]);
   const sortedSubagents = useMemo(() => [...subagents].sort((a, b) => {
     const rank = statusPriority(sessionStatus(a, runningSessionIds.has(a.id)))
       - statusPriority(sessionStatus(b, runningSessionIds.has(b.id)));
@@ -274,6 +278,7 @@ export function AgentSessionPanel({
             <AgentRow
               key={session.id}
               session={session}
+              displayTitle={sideNumbers.has(session.id) ? t("chat.unnamedSideChat", { number: sideNumbers.get(session.id)! }) : undefined}
               selected={session.id === selectedSessionId}
               running={runningSessionIds.has(session.id)}
               onSelect={() => onSelectSession(session)}

@@ -896,8 +896,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
   const visibleSessionKey = [selectedSessionId, ...visibleSessionIds].filter(Boolean).join("\n");
 
   useEffect(() => {
-    onSessionsChange?.(allSessions);
-  }, [allSessions, onSessionsChange]);
+    if (sessionListVersion !== null) onSessionsChange?.(allSessions);
+  }, [allSessions, onSessionsChange, sessionListVersion]);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;

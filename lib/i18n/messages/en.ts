@@ -885,6 +885,7 @@ export const enLocale: LocalePlugin = {
     "chat.askInCurrent": "Quote",
     "chat.askInNewChat": "Side chat",
     "chat.sideChatHint": "Asks in a read-only copy beside this chat, even while it runs. This chat is unchanged.",
+    "chat.unnamedSideChat": "Side chat {number}",
     "chat.sideChatDivider": "Side chat",
     "chat.sideChatPlaceholder": "Ask about the selection…",
     "chat.newQuoteChat": "New chat about selected text",

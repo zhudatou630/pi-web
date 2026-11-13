@@ -885,6 +885,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.askInCurrent": "引用",
     "chat.askInNewChat": "旁问",
     "chat.sideChatHint": "在旁边的只读副本中提问，运行中也可用；当前对话不受影响。",
+    "chat.unnamedSideChat": "旁问 {number}",
     "chat.sideChatDivider": "旁问",
     "chat.sideChatPlaceholder": "就选中内容提问…",
     "chat.newQuoteChat": "关于选中文字的新对话",

@@ -63,6 +63,7 @@ import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { CacheKeepaliveStatus } from "@/lib/cache-keepalive";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
+import { CHAT_WORKSPACE_STORAGE_KEY, restoreChatWorkspace, serializeChatWorkspace } from "@/lib/chat-workspace-state";
 import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getSideChatName } from "@/lib/side-chat";
 import { countFaviconUnread, syncFaviconBadge } from "@/lib/favicon-badge";
@@ -111,7 +112,7 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import { formatModelTiming } from "@/lib/model-timing";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import { PRESET_READ_ONLY, type ToolEntry } from "@/lib/tool-presets";
-import { getSessionFamily } from "@/lib/session-family";
+import { getSessionFamily, unnamedSideChatNumbers } from "@/lib/session-family";
 import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
 import { prefetchSettings } from "@/lib/settings-cache";
@@ -222,8 +223,10 @@ export function AppShell() {
   }, [playDoneSound, soundEnabledRef]);
   const [selectedSession, setSelectedSession] = useState<SessionInfo | null>(null);
   const [sessionCatalog, setSessionCatalog] = useState<SessionInfo[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const handleSessionsChange = useCallback((sessions: SessionInfo[]) => {
     setSessionCatalog(sessions);
+    setCatalogLoaded(true);
   }, []);
   const [projectPaths, setProjectPaths] = useState<string[]>([]);
   const [pinnedCwds, setPinnedCwds] = useState<string[]>(() => loadPinnedCwds());
@@ -301,6 +304,7 @@ export function AppShell() {
   // Chat Tabs & Split View State
   const [chatTabs, setChatTabs] = useState<ChatTabItem[]>([]);
   const [draftTabsRestored, setDraftTabsRestored] = useState(false);
+  const [chatWorkspaceRestored, setChatWorkspaceRestored] = useState(false);
   const [draftTabsPersistenceFailed, setDraftTabsPersistenceFailed] = useState(false);
   const chatTabsRef = useRef<ChatTabItem[]>([]);
   chatTabsRef.current = chatTabs;
@@ -1776,8 +1780,14 @@ export function AppShell() {
     }
   }, []);
 
-  const primaryTabs = useMemo(() => chatTabsInPane(chatTabs, "primary"), [chatTabs]);
-  const secondaryTabs = useMemo(() => chatTabsInPane(chatTabs, "secondary"), [chatTabs]);
+  const titledChatTabs = useMemo(() => {
+    const byId = new Map(chatTabs.flatMap((tab) => tab.session ? [[tab.session.id, tab.session] as const] : []));
+    for (const session of sessionCatalog) byId.set(session.id, session);
+    const numbers = unnamedSideChatNumbers([...byId.values()]);
+    return chatTabs.map((tab) => numbers.has(tab.id) ? { ...tab, title: translate("chat.unnamedSideChat", { number: numbers.get(tab.id)! }) } : tab);
+  }, [chatTabs, sessionCatalog, translate]);
+  const primaryTabs = useMemo(() => chatTabsInPane(titledChatTabs, "primary"), [titledChatTabs]);
+  const secondaryTabs = useMemo(() => chatTabsInPane(titledChatTabs, "secondary"), [titledChatTabs]);
 
   const primaryTab = useMemo(() => {
     return primaryTabs.find((t) => t.id === activeChatTabId) ?? primaryTabs[0] ?? null;
@@ -1824,6 +1834,45 @@ export function AppShell() {
     setActiveTopPanel(null);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
   }, [router, syncSessionMetadata]);
+
+  useEffect(() => {
+    if (chatWorkspaceRestored || !catalogLoaded || !draftTabsRestored) return;
+    try {
+      if (!initialNavigation.requestedCwd) {
+        const restored = restoreChatWorkspace(window.sessionStorage.getItem(CHAT_WORKSPACE_STORAGE_KEY), sessionCatalog, initialNavigation.sessionId);
+        if (restored?.tabs.length) {
+          // Legacy draft metadata may predate workspace storage; never discard a recoverable draft.
+          const ids = new Set(restored.tabs.map((tab) => tab.id));
+          const drafts = chatTabsRef.current.filter((tab) => tab.kind === "draft" && tab.dirty && !ids.has(tab.id));
+          const tabs = [...restored.tabs, ...drafts];
+          setChatTabs(tabs);
+          setActiveChatTabId(restored.activeId);
+          setSplitChatTabId(restored.splitId);
+          setActiveChatPane(restored.focusedPane);
+          setChatSplitRatio(restored.splitRatio);
+          const focusedId = restored.focusedPane === "secondary" ? restored.splitId : restored.activeId;
+          const focused = tabs.find((tab) => tab.id === focusedId);
+          if (focused) {
+            suppressCwdBumpRef.current = true;
+            setSelectedSession(focused.session);
+            setNewSessionCwd(focused.newSessionCwd);
+            activeNewSessionDraftKeyRef.current = focused.newSessionDraftKey;
+            if (!initialNavigation.sessionId && initialNavigation.routines === null && focused.session) {
+              router.replace(`?session=${encodeURIComponent(focused.session.id)}`, { scroll: false });
+            }
+          }
+        }
+      }
+    } catch { /* storage is optional */ }
+    setChatWorkspaceRestored(true);
+  }, [catalogLoaded, chatWorkspaceRestored, draftTabsRestored, initialNavigation, router, sessionCatalog]);
+
+  useEffect(() => {
+    if (!chatWorkspaceRestored) return;
+    try {
+      window.sessionStorage.setItem(CHAT_WORKSPACE_STORAGE_KEY, serializeChatWorkspace({ tabs: chatTabs, activeId: activeChatTabId, splitId: splitChatTabId, focusedPane: activeChatPane, splitRatio: chatSplitRatio }));
+    } catch { /* layout storage is best-effort; draft storage has its own warning */ }
+  }, [chatWorkspaceRestored, chatTabs, activeChatTabId, splitChatTabId, activeChatPane, chatSplitRatio]);
 
   const handleFocusPane = useCallback((pane: "primary" | "secondary") => {
     const targetTab = pane === "secondary" ? secondaryTab : primaryTab;
@@ -3247,7 +3296,7 @@ export function AppShell() {
               {!isSplitActive && showChat && chatTabs.length > 0 && (
                 <div style={{ flex: "0 1 auto", minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}>
                   <ChatTabBar
-                    tabs={chatTabs}
+                    tabs={titledChatTabs}
                     activeTabId={activeChatTabId ?? ""}
                     activePane="primary"
                     runningSessionIds={runningSessionIds}
@@ -3635,7 +3684,7 @@ export function AppShell() {
             }}
           >
             <ChatTabBar
-              tabs={chatTabs}
+              tabs={titledChatTabs}
               activeTabId={activeChatTabId ?? ""}
               activePane="primary"
               runningSessionIds={runningSessionIds}
