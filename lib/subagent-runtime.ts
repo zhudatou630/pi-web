@@ -523,9 +523,11 @@ function buildSubagentNotification(runs: SubagentRunInfo[]): {
   text: string;
   included: SubagentRunInfo[];
 } {
+  // Only a truncated preview needs the pointer; an unconditional one sent models to re-read complete reports.
   const footer = "\n\nUse get_subagent_result with a session ID for the full result.";
   const sections: string[] = [];
   const included: SubagentRunInfo[] = [];
+  let truncated = false;
   let remaining = SUBAGENT_NOTIFICATION_MAX_CHARS - SUBAGENT_NOTIFICATION_HEADER.length - footer.length - 80;
 
   for (const run of runs) {
@@ -540,6 +542,7 @@ function buildSubagentNotification(runs: SubagentRunInfo[]): {
     );
     if (bodyLimit < 80) break;
     const result = subagentNotificationResult(run);
+    if (result.length > bodyLimit) truncated = true;
     const body = result.length <= bodyLimit
       ? result
       : `${result.slice(0, Math.max(0, bodyLimit - 24))}\n[Preview truncated]`;
@@ -551,7 +554,7 @@ function buildSubagentNotification(runs: SubagentRunInfo[]): {
 
   const omitted = runs.length - included.length;
   const omittedNote = omitted > 0 ? `\n\n${omitted} additional result(s) remain pending.` : "";
-  const text = `${SUBAGENT_NOTIFICATION_HEADER}${sections.join("\n\n")}${omittedNote}${footer}`;
+  const text = `${SUBAGENT_NOTIFICATION_HEADER}${sections.join("\n\n")}${omittedNote}${truncated ? footer : ""}`;
   return {
     text: text.length <= SUBAGENT_NOTIFICATION_MAX_CHARS
       ? text

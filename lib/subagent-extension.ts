@@ -136,7 +136,7 @@ export function subagentDelegationSection(profiles: readonly SubagentProfile[]):
   rules.push(
     "Use several background Agent calls in one response for independent work. Parallel implementation only on non-overlapping files, or with isolation: \"worktree\".",
     "Use a foreground call when the next step cannot proceed without the result. Foreground waits use timeout_ms (default and maximum 30 minutes); on timeout the child continues and its unread result is delivered automatically.",
-    "Unread background results are delivered automatically after your current run settles. Call get_subagent_result with wait=true once only to join within this run; never poll.",
+    "Unread background results are delivered automatically after your current run settles. Do your own work first; when you need several results before continuing, call get_subagent_result with wait=true once per needed ID, all in one response: the waits run concurrently and return together. Never wait one response at a time or poll a running subagent; batch only results you need together, since the slowest holds the batch.",
     "Continue a subagent with resume instead of starting a new one, and do not duplicate work already delegated.",
     "Use abort_subagent to stop a subagent whose task became obsolete or is going wrong.",
   );
@@ -370,7 +370,7 @@ export function createSubagentExtension(
         name: "get_subagent_result",
         exposure: "model-only",
         label: "Get agent result",
-        description: "Retrieve a subagent's result, e.g. to re-read an earlier one. Unread background results are delivered automatically after your current run settles; use wait=true once only to join within this run. timeout_ms bounds the entire lookup and wait; it does not stop the child. Do not poll.",
+        description: "Retrieve a subagent's result, e.g. to re-read an earlier one. Unread background results are delivered automatically after your current run settles. wait=true joins within this run; to wait for several, call this once per ID in one response so the waits run concurrently. timeout_ms bounds the entire lookup and wait; it does not stop the child. Do not poll.",
         parameters: Type.Object({
           agent_id: Type.String({ description: "Subagent session ID." }),
           wait: Type.Optional(Type.Boolean({ description: "Wait until the subagent finishes." })),
