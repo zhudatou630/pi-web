@@ -167,11 +167,15 @@ reconciliation still reads the canonical file. SDK 1.5.2 re-reads its model befo
 each request, so a response already in flight keeps its original model. The server
 keeps its existing `persist: true` behavior; startup preferences run before commands,
 and branch recording adds nothing when the mid-run selection is already recorded.
-History reads capture the model-selection version: model/thinking sync requires
-that version to remain current and no switch to be pending, while messages still
-merge normally. Command results, live-state recovery and failed-switch rollback
-advance the version, fencing reads started before or during the switch even after
-its pending flag clears. Mount reads use the same guarded thinking sync.
+History and context-replacement reads guard the stored `context.model` and
+`context.thinkingLevel` as well as the override and live thinking state. They
+capture the model-selection version, require no pending switch, and use the
+existing monotonic request ids with an independent latest-applied selection fence.
+Stale replies preserve the current selection while still loading messages. This
+also protects the idle-switch order where a newer read clears the override before
+an older reply arrives, and out-of-order reads within one selection version.
+Command results, live-state recovery and failed-switch rollback advance the
+version; mount live-thinking sync must still belong to the accepted history read.
 
 ## Summarization retry feedback
 

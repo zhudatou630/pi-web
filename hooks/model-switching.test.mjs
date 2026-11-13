@@ -75,13 +75,13 @@ function historyRace() {
   const scope = {
     isNew: false, currentModelOverride: null, sessionIdRef: ref("s"), sessionHookMountedRef: ref(true),
     endedSessionRef: ref(null), navigationPendingRef: ref(false), historyBranchRef: ref(0), promptRunIdRef: ref(1),
-    contextUsageRequestIdRef: ref(0), localAppendSeqRef: ref(0), modelSwitchPendingRef: ref(false), modelSelectionVersionRef: ref(0),
+    contextUsageRequestIdRef: ref(0), localAppendSeqRef: ref(0), modelSwitchPendingRef: ref(false), modelSelectionVersionRef: ref(0), modelSelectionAppliedIdRef: ref(0),
     agentRunningRef: ref(true), bashRunningRef: ref(false), sessionToolsPinnedRef: ref(false),
     loadedHistoryRef: ref({ messages: [older, previous], entryIds: ["1", "2"], oldestEntryId: "1", hasMore: false }),
     mergeLoadedHistory, CONFIGURED_TOOL_PRESET: "configured", carryMessageKeys: () => new Map(),
     setCurrentModelOverride: (value) => { state.override = typeof value === "function" ? value(state.override) : value; },
     setThinkingLevel: (value) => { state.thinkingLevel = value; },
-    setData: (value) => { state.data = value; }, setMessages: (value) => { state.messages = value; },
+    setData: (value) => { state.data = typeof value === "function" ? value(state.data) : value; }, setMessages: (value) => { state.messages = typeof value === "function" ? value(state.messages) : value; },
     setEntryIds: (value) => { state.entryIds = value; }, setModelSwitching() {}, setLoading() {}, setError() {},
     setMessageKeyAliases() {}, setActiveLeafId() {}, setHistoryCursor() {}, setHasEarlierMessages() {}, setToolPresetState() {},
     applyContextUsage() {}, setSystemPrompt() {}, setQueuedMessages() {}, addNotice() {}, t: (key) => key,
@@ -94,7 +94,7 @@ function historyRace() {
   scope.loadSession = callback("loadSession", scope);
   const switchModel = () => callback("handleModelChange", scope)("faux", "new");
   const finishSwitch = () => command.resolve({ provider: "faux", id: "new", thinkingLevel: "off" });
-  const finishHistory = () => history.resolve({ ok: true, json: async () => snapshot });
+  const finishHistory = (response = { ok: true, json: async () => snapshot }) => history.resolve(response);
   return { scope, state, snapshot, recovered, switchModel, finishSwitch, finishHistory, liveState };
 }
 
@@ -150,4 +150,65 @@ test("history requested after a completed switch still aligns canonical model an
   assert.equal(f.state.override, null, "fresh history may clear the optimistic override");
   assert.deepEqual(f.state.data.context.model, { provider: "faux", modelId: "new" });
   assert.equal(f.state.thinkingLevel, "low");
+});
+
+for (const [busy, reader, missing = false] of [
+  ["idle", "loadSession"], ["agent", "loadSession"], ["bash", "loadSession"],
+  ["idle", "fetchContextPage"], ["idle", "loadSession", true],
+]) {
+  test(`${busy}/${reader}${missing ? "/404" : ""}: a fresh read clears the override before an older model snapshot returns`, async () => {
+    const f = historyRace();
+    f.scope.agentRunningRef.current = busy === "agent";
+    f.scope.bashRunningRef.current = busy === "bash";
+    const fresh = Promise.withResolvers();
+    const originalFetch = f.scope.fetch;
+    f.scope.fetch = (url) => {
+      if (f.state.reads.length === 0) return originalFetch(url);
+      f.state.reads.push(url);
+      return fresh.promise;
+    };
+    const oldRead = callback(reader, f.scope)("s", missing ? true : undefined);
+    const switching = f.switchModel();
+    f.finishSwitch();
+    const freshRead = busy === "idle" ? switching : switching.then(() => f.scope.loadSession("s"));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(f.state.reads.length, 2, "idle switch reloads itself; running switch uses the later reconciliation read");
+    const current = { ...f.snapshot, context: { ...f.snapshot.context, model: { provider: "faux", modelId: "new" }, thinkingLevel: "off" } };
+    fresh.resolve({ ok: true, json: async () => current });
+    await freshRead;
+    assert.equal(f.state.override, null);
+    assert.deepEqual(f.state.data.context.model, current.context.model);
+    f.finishHistory(missing ? { status: 404, ok: false } : undefined);
+    await oldRead;
+    assert.equal(f.state.override, null);
+    assert.deepEqual(f.state.override ?? f.state.data.context.model, current.context.model);
+    assert.equal(f.state.data.context.thinkingLevel, "off");
+    assert.equal(f.state.thinkingLevel, "off");
+    assert.deepEqual(f.state.entryIds, reader === "fetchContextPage" ? ["2", "3"] : ["1", "2", "3"]);
+    assert.equal(f.state.messages.at(-1), f.recovered);
+  });
+}
+
+for (const pending of ["history", "live-state"]) test(`within one selection version, an older ${pending} response cannot overwrite a newer accepted model/thinking snapshot`, async () => {
+  const f = historyRace();
+  const originalFetch = f.scope.fetch;
+  f.scope.fetch = (url) => url.endsWith("/state") ? f.liveState.promise
+    : f.state.reads.length === 0 ? originalFetch(url) : Promise.resolve({
+      ok: true, json: async () => ({ ...f.snapshot, context: { ...f.snapshot.context, model: { provider: "faux", modelId: "new" }, thinkingLevel: "off" } }),
+    });
+  const oldRead = f.scope.loadSession("s", false, true);
+  if (pending === "live-state") {
+    f.finishHistory();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(f.state.data.context.model.modelId, "old", "R1 history applied before its live-state read stalled");
+  }
+  await f.scope.loadSession("s");
+  assert.equal(f.state.override, null);
+  assert.equal(f.state.data.context.model.modelId, "new");
+  f.finishHistory();
+  f.liveState.resolve({ ok: true, json: async () => ({ running: true, state: { thinkingLevel: "high" } }) });
+  await oldRead;
+  assert.equal(f.state.data.context.model.modelId, "new");
+  assert.equal(f.state.data.context.thinkingLevel, "off");
+  assert.equal(f.state.thinkingLevel, "off");
 });

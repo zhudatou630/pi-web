@@ -527,6 +527,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const localAppendSeqRef = useRef(0);
   const modelSwitchPendingRef = useRef(false);
   const modelSelectionVersionRef = useRef(0);
+  const modelSelectionAppliedIdRef = useRef(0);
   const modelsRefreshKeyRef = useRef(modelsRefreshKey);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
@@ -701,7 +702,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
       if (sessionIdRef.current !== sid || historyBranchRef.current !== branch) return null;
       if (res.status === 404) {
-        if (showLoading && endedSessionRef.current !== sid) {
+        if (showLoading && endedSessionRef.current !== sid
+          && modelSelectionVersionRef.current === modelSelectionVersion && !modelSwitchPendingRef.current
+          && usageRequestId > modelSelectionAppliedIdRef.current) {
+          modelSelectionAppliedIdRef.current = usageRequestId;
           setData(null);
           setActiveLeafId(null);
           setMessages([]);
@@ -733,7 +737,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const merged = showLoading ? incoming : mergeLoadedHistory(previous, incoming);
       setMessageKeyAliases((aliases) => carryMessageKeys({ ...previous, aliases }, merged));
       loadedHistoryRef.current = merged;
-      setData({ ...d, context: { ...d.context, ...merged } });
+      const syncModelSelection = modelSelectionVersionRef.current === modelSelectionVersion
+        && !modelSwitchPendingRef.current && usageRequestId > modelSelectionAppliedIdRef.current;
+      if (syncModelSelection) modelSelectionAppliedIdRef.current = usageRequestId;
+      setData((prev) => ({
+        ...d,
+        context: {
+          ...d.context, ...merged,
+          model: syncModelSelection ? d.context.model : prev?.context.model ?? null,
+          thinkingLevel: syncModelSelection ? d.context.thinkingLevel : prev?.context.thinkingLevel ?? "",
+        },
+      }));
       setActiveLeafId(d.leafId);
       setMessages(merged.messages);
       setEntryIds(merged.entryIds);
@@ -741,7 +755,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setHasEarlierMessages(merged.hasMore);
       sessionToolsPinnedRef.current = d.toolNames !== undefined;
       setToolPresetState(d.toolNames !== undefined ? getPresetFromToolNames(d.toolNames) : CONFIGURED_TOOL_PRESET);
-      if (modelSelectionVersionRef.current === modelSelectionVersion && !modelSwitchPendingRef.current) {
+      if (syncModelSelection) {
         setCurrentModelOverride(null);
         if (d.context.thinkingLevel) setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
       }
@@ -764,7 +778,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (liveState) {
           applyContextUsage(liveState.contextUsage, sid, stateRunId, stateUsageRequestId, liveState.totalActiveMs);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.thinkingLevel && modelSelectionVersionRef.current === modelSelectionVersion && !modelSwitchPendingRef.current) {
+          if (liveState.thinkingLevel && modelSelectionVersionRef.current === modelSelectionVersion
+            && !modelSwitchPendingRef.current && usageRequestId === modelSelectionAppliedIdRef.current) {
             setThinkingLevel(liveState.thinkingLevel as ThinkingLevelOption);
           }
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
@@ -806,6 +821,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const fetchContextPage = useCallback(async (sid: string, leafId: string | null, before?: string | null, options?: { tail?: number; signal?: AbortSignal }) => {
     if (before && navigationPendingRef.current) return;
     const branch = historyBranchRef.current;
+    const modelSelectionVersion = modelSelectionVersionRef.current;
+    const requestId = ++contextUsageRequestIdRef.current;
     try {
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
       if (leafId) params.set("leafId", leafId);
@@ -820,6 +837,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (sessionIdRef.current !== sid || historyBranchRef.current !== branch || options?.signal?.aborted || !sessionHookMountedRef.current) return;
       setHistoryCursor(d.context.oldestEntryId);
       setHasEarlierMessages(d.context.hasMore);
+      const syncModelSelection = !before && modelSelectionVersionRef.current === modelSelectionVersion
+        && !modelSwitchPendingRef.current && requestId > modelSelectionAppliedIdRef.current;
+      if (syncModelSelection) modelSelectionAppliedIdRef.current = requestId;
       setData((prev) => {
         if (!prev || prev.sessionId !== sid) return prev;
         const context = before ? {
@@ -828,7 +848,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           entryIds: [...d.context.entryIds, ...prev.context.entryIds],
           oldestEntryId: d.context.oldestEntryId,
           hasMore: d.context.hasMore,
-        } : d.context;
+        } : {
+          ...d.context,
+          model: syncModelSelection ? d.context.model : prev.context.model,
+          thinkingLevel: syncModelSelection ? d.context.thinkingLevel : prev.context.thinkingLevel,
+        };
         return { ...prev, context };
       });
       if (before) {

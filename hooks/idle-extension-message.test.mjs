@@ -25,7 +25,7 @@ function fixture() {
   const scope = {
     sessionHookMountedRef: ref(true), endedSessionRef: ref(null), navigationPendingRef: ref(false), historyBranchRef: ref(0), sessionIdRef: ref("s"),
     promptRunIdRef: ref(0), contextUsageRequestIdRef: ref(0), localAppendSeqRef: ref(0), loadedHistoryRef: ref(previous),
-    agentRunningRef: ref(false), bashRunningRef: ref(false), modelSwitchPendingRef: ref(false), modelSelectionVersionRef: ref(0), sessionToolsPinnedRef: ref(false),
+    agentRunningRef: ref(false), bashRunningRef: ref(false), modelSwitchPendingRef: ref(false), modelSelectionVersionRef: ref(0), modelSelectionAppliedIdRef: ref(0), sessionToolsPinnedRef: ref(false),
     idleMessageReadRef: ref({ sid: "", dirty: false, reading: false }), mergeLoadedHistory, isHiddenCustomMessage,
     rpcPromptPendingRef: ref(false), sdkAgentActiveRef: ref(false),
     eventConnectionRef: ref({ close() {} }),
