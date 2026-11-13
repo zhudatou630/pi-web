@@ -24,6 +24,12 @@ export interface SessionSearchResponse {
   truncated: boolean;
 }
 
+// Quotes delimit a phrase only at a term boundary; embedded quotes stay literal.
+export function sessionSearchTerms(query: string): string[] {
+  const terms = Array.from(query.matchAll(/"([^"]*)(?:"|$)|(\S+)/g), (match) => match[1] ?? match[2]).filter(Boolean);
+  return [...new Set(terms.length ? terms : [query])];
+}
+
 // ponytail: scan recent files without an index; add indexing if measured latency warrants it.
 export async function searchSessionContents(
   sessions: readonly SessionInfo[],
@@ -35,7 +41,7 @@ export async function searchSessionContents(
   if (!needle) return response;
   if (needle.length > 200) throw new RangeError("Search query exceeds 200 characters");
   // Escape every operator: this is literal search, with offsets in the original text.
-  const matcher = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  const matchers = sessionSearchTerms(needle).map((term) => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
   const deadline = Date.now() + TIME_BUDGET_MS;
   const timeout = AbortSignal.timeout(TIME_BUDGET_MS);
   const signal = requestSignal ? AbortSignal.any([requestSignal, timeout]) : timeout;
@@ -50,6 +56,9 @@ export async function searchSessionContents(
     }
     const stream = createReadStream(session.path, { encoding: "utf8", end: MAX_FILE_BYTES - 1, signal });
     const lines = createInterface({ input: stream, crlfDelay: Infinity });
+    const title = getSessionDisplayTitle(session);
+    let pending = matchers.filter((matcher) => !matcher.test(title));
+    let snippet: SessionSearchResult | undefined;
     let found = false;
     try {
       for await (const line of lines) {
@@ -68,8 +77,12 @@ export async function searchSessionContents(
         const blocks = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
         const textBlocks = blocks.flatMap((block, blockIndex) => block?.type === "text" && typeof block.text === "string" ? [{ text: block.text as string, blockIndex }] : []);
         const text = textBlocks.map((block) => block.text).join("\n");
-        const match = matcher.exec(text);
-        if (!match) continue;
+        pending = pending.filter((matcher) => !matcher.test(text));
+        const match = snippet ? null : matchers.map((matcher) => matcher.exec(text)).find(Boolean);
+        if (!match) {
+          if (snippet && !pending.length) break;
+          continue;
+        }
         const start = match.index;
         const end = start + match[0].length;
         let blockOffset = 0;
@@ -78,16 +91,15 @@ export async function searchSessionContents(
           blockOffset = blockEnd + 1;
           return start <= blockEnd;
         });
-        response.results.push({
+        snippet = {
           session,
           ...(typeof entry.id === "string" ? { entryId: entry.id } : {}),
           blockIndex: matchedBlock!.blockIndex,
           before: (start > 80 ? "..." : "") + text.slice(Math.max(0, start - 80), start).replace(/\s+/g, " ").trimStart(),
           match: match[0].replace(/\s+/g, " "),
           after: text.slice(end, end + 80).replace(/\s+/g, " ").trimEnd() + (end + 80 < text.length ? "..." : ""),
-        });
-        found = true;
-        break;
+        };
+        if (!pending.length) break;
       }
     } catch {
       // Missing/unreadable files and interrupted reads must not hide other results.
@@ -96,11 +108,14 @@ export async function searchSessionContents(
       lines.close();
       stream.destroy();
     }
+    if (snippet && !pending.length) {
+      response.results.push(snippet);
+      found = true;
+    }
     if (!found && stream.bytesRead >= MAX_FILE_BYTES) response.truncated = true;
     // The catalog already resolves the latest session_info; share the sidebar's fallback too.
     if (!found && !signal.aborted && Date.now() < deadline) {
-      const title = getSessionDisplayTitle(session);
-      const hit = matcher.exec(title);
+      const hit = matchers.every((matcher) => matcher.test(title)) ? matchers[0].exec(title) : null;
       if (hit) response.results.push({
         session,
         titleOnly: true,
