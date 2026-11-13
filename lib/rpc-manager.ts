@@ -738,6 +738,7 @@ export class AgentSessionWrapper {
 
   private async navigateTree(targetId: string, options: { summarize?: boolean }): Promise<{ cancelled: boolean }> {
     if (this.isRunning()) throw new Error("Cannot navigate while the session is running");
+    this.renewExtensionUiStop();
     const activeBefore = this.inner.getActiveToolNames();
     const result = await this.inner.navigateTree(targetId, options);
     if (!result.cancelled) {
@@ -1028,9 +1029,7 @@ export class AgentSessionWrapper {
           if (this.shellRunning || this.directImageAbortController) {
             throw new Error("Cannot send a prompt while another session command is running");
           }
-          if (this.extensionUiAbortController.signal.aborted) {
-            this.extensionUiAbortController = new AbortController();
-          }
+          this.renewExtensionUiStop();
           const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
           // pi resizes queued (steer/follow-up) images itself when it delivers them (1.5.1).
           const promptImages = command.images as PromptImage[] | undefined;
@@ -1213,8 +1212,11 @@ export class AgentSessionWrapper {
         if (this.isSessionRunningForReplacement()) {
           throw new Error("Cannot fork while the session is running");
         }
+        const entryId = command.entryId as string;
+        if (this.inner.sessionManager.isPersisted() && this.inner.sessionManager.getEntry(entryId)
+          && await this.forkCancelledByExtension(entryId, "before")) return { cancelled: true };
+        this.validateCopyAfterHook("fork");
         return this.withSessionReplacement("fork", async () => {
-          const entryId = command.entryId as string;
           const sessionManager = this.inner.sessionManager;
           const currentSessionFile = this.inner.sessionFile;
 
@@ -1281,6 +1283,10 @@ export class AgentSessionWrapper {
         if (!sessionManager.isPersisted() || !leafId || !branchHasAssistant) return { cancelled: true };
         if (!currentSessionFile || !existsSync(currentSessionFile)) return { cancelled: true };
 
+        if (await this.forkCancelledByExtension(leafId, "at")) return { cancelled: true, byExtension: true };
+        this.validateCopyAfterHook("clone");
+        if (!sessionManager.getEntry(leafId) || this.inner.sessionFile !== currentSessionFile
+          || !existsSync(currentSessionFile)) return { cancelled: true };
         return this.withSessionReplacement("clone", async () => {
           const sessionDir = sessionManager.getSessionDir();
           const sourceManager = SessionManager.open(currentSessionFile, sessionDir);
@@ -1328,6 +1334,7 @@ export class AgentSessionWrapper {
 
       case "compact": {
         if (this.shellRunning) throw new Error("Cannot compact while a shell command is running");
+        this.renewExtensionUiStop();
         try {
           return await this.withFinalIdleReset(() =>
             this.inner.compact(command.customInstructions as string | undefined)
@@ -1494,9 +1501,7 @@ export class AgentSessionWrapper {
         if (this.isSessionRunningForReplacement()) {
           throw new Error("Wait for the current response to finish before reloading.");
         }
-        if (this.extensionUiAbortController.signal.aborted) {
-          this.extensionUiAbortController = new AbortController();
-        }
+        this.renewExtensionUiStop();
         const activeToolNames = this.inner.getActiveToolNames();
         await this.waitForExtensionsBound();
         // A prompt may have been admitted while extensions were binding.
@@ -2044,6 +2049,27 @@ export class AgentSessionWrapper {
         });
       },
     };
+  }
+
+  private renewExtensionUiStop(): AbortSignal {
+    if (this.extensionUiAbortController.signal.aborted) this.extensionUiAbortController = new AbortController();
+    return this.extensionUiAbortController.signal;
+  }
+
+  private async forkCancelledByExtension(entryId: string, position: "before" | "at"): Promise<boolean> {
+    await this.waitForExtensionsBound();
+    const signal = this.renewExtensionUiStop();
+    const runner = this.inner.extensionRunner;
+    if (!runner.hasHandlers?.("session_before_fork")) return false;
+    const result = await runner.emit?.({ type: "session_before_fork", entryId, position });
+    // pi logs and swallows a rejected dialog; Stop must not turn that into approval.
+    return signal.aborted || (result as { cancel?: unknown } | undefined)?.cancel === true;
+  }
+
+  private validateCopyAfterHook(type: "fork" | "clone"): void {
+    if (!this.isAlive()) throw new Error("Session is closing");
+    if (this.isSessionRunningForReplacement()) throw new Error(`Cannot ${type} while the session is running`);
+    if (isRpcSessionFileMutationReserved(this.sessionId)) throw new Error("Session file is reserved for deletion");
   }
 
   private syncProjectTrust(): void {
