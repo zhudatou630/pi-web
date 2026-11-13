@@ -478,7 +478,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const unreadSessionIds = useMemo(() => new Set(unreadMarks.keys()), [unreadMarks]);
   const storedUnreadMarksRef = useRef(unreadMarks);
   const lastInputAtRef = useRef<number | null>(null);
-  const manualReadIdsRef = useRef(new Set<string>());
+  const manualReadIdsRef = useRef(new Map<string, number>());
   const visibleReadIdsRef = useRef<string[]>([]);
   visibleReadIdsRef.current = [...new Set((visibleSessionIds ?? [selectedSessionId]).filter((id): id is string => Boolean(id)))];
   const readSnapshotRef = useRef<{ serverNow: number; receivedAt: number; readAt: Record<string, number>; completedAt: Record<string, number>; pendingIds: Set<string> }>({ serverNow: 0, receivedAt: 0, readAt: {}, completedAt: {}, pendingIds: new Set() });
@@ -834,11 +834,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         const attended = hasRecentAttention(lastInputAtRef.current, performance.now(), document.visibilityState === "visible", document.hasFocus());
         const observed = readSnapshotRef.current;
         const readSessionIds = attended && observed.serverNow
-          ? [...new Set([...visibleReadIdsRef.current, ...manualReadIdsRef.current])].filter((id) => !observed.pendingIds.has(id)).slice(0, 10) : [];
+          ? [...new Set([...visibleReadIdsRef.current, ...manualReadIdsRef.current.keys()])].filter((id) => !observed.pendingIds.has(id)).slice(0, 10) : [];
+        // Retrying a manual read must never acknowledge replies newer than the click.
+        const observedAt = Math.min(observed.serverNow, ...readSessionIds.map((id) => manualReadIdsRef.current.get(id) ?? observed.serverNow));
         const res = await fetch("/api/agent/running", {
           cache: "no-store",
           signal: current.signal,
-          ...(readSessionIds.length ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ readSessionIds, observedAt: observed.serverNow }) } : {}),
+          ...(readSessionIds.length ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ readSessionIds, observedAt }) } : {}),
         });
         if (!res.ok) return;
         const data = await res.json() as {
@@ -853,7 +855,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           completionNotificationSuppressedSessionIds?: string[];
         };
         if (stopped || controller !== current) return;
-        for (const id of readSessionIds) if ((data.readAt?.[id] ?? -1) >= observed.serverNow) manualReadIdsRef.current.delete(id);
+        for (const id of readSessionIds) {
+          const manualAt = manualReadIdsRef.current.get(id);
+          if (manualAt !== undefined && (data.readAt?.[id] ?? -1) >= manualAt) manualReadIdsRef.current.delete(id);
+        }
         readSnapshotRef.current = { serverNow: data.serverNow, receivedAt: performance.now(), readAt: data.readAt ?? {}, completedAt: data.completedAt ?? {}, pendingIds: new Set([...(data.runningSessionIds ?? []), ...(data.subagentsActiveSessionIds ?? [])]) };
         setUnreadMarks((marks) => withoutReadMarks(marks, data.readAt ?? {}));
         runningPollAuthoritativeRef.current = true;
@@ -1983,7 +1988,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
           onToggleRead={() => {
             const read = familySessions.some((session) => unreadMarks.has(session.id));
-            if (read) manualReadIdsRef.current.add(family.root.id);
+            if (read) manualReadIdsRef.current.set(family.root.id, readSnapshotRef.current.serverNow);
             else manualReadIdsRef.current.delete(family.root.id);
             setUnreadMarks((current) => {
               const ids = markSessionFamilyRead(family, new Set(current.keys()), read);

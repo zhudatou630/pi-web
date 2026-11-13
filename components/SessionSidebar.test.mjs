@@ -120,7 +120,7 @@ test("background completion waits across waves, respects Stop, and treats either
 test("idle reads require attention and carry only the last server-observed snapshot", () => {
   assert.match(source, /hasRecentAttention\(lastInputAtRef.current, performance.now\(\), document.visibilityState === "visible", document.hasFocus\(\)\)/);
   assert.match(source, /filter\(\(id\) => !observed.pendingIds.has\(id\)\)/);
-  assert.match(source, /JSON.stringify\(\{ readSessionIds, observedAt: observed.serverNow \}\)/);
+  assert.match(source, /JSON.stringify\(\{ readSessionIds, observedAt \}\)/);
   assert.doesNotMatch(source, /markVisibleRead/);
 });
 
