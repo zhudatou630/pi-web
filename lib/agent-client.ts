@@ -13,6 +13,8 @@ import { invalidateModelsClientCache } from "./models-client-cache";
 // These commands also persist the default model/effort for new sessions.
 const DEFAULT_CHANGING_COMMANDS = new Set(["set_model", "set_thinking_level"]);
 
+export const EXTENSION_REPORTED_CODE = "extension_reported";
+
 export class AgentCommandError extends Error {
   constructor(
     message: string,

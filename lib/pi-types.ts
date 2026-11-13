@@ -5,6 +5,8 @@ import type {
   SettingsManager,
   SlashCommandInfo,
   Theme,
+  UserBashEvent,
+  UserBashEventResult,
 } from "@earendil-works/pi-coding-agent";
 import type { ModelTiming } from "./model-timing";
 import type {
@@ -92,6 +94,7 @@ interface ExtensionRunnerLike {
     sourceInfo: SlashCommandInfo["sourceInfo"];
   }>;
   emit?(event: { type: "session_shutdown"; reason: "quit" }): Promise<unknown>;
+  emitUserBash?(event: UserBashEvent): Promise<UserBashEventResult | undefined>;
   setUIContext?(uiContext?: unknown, mode?: "tui" | "rpc" | "json" | "print"): void;
 }
 
@@ -206,6 +209,7 @@ export interface AgentSessionLike {
     excludeFromContext?: boolean;
     operations?: BashOperations;
   }): Promise<{ output: string; exitCode?: number; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string }>;
+  recordBashResult(command: string, result: NonNullable<UserBashEventResult["result"]>, options?: { excludeFromContext?: boolean }): void;
   abortBash(): void;
   readonly isBashRunning: boolean;
   setModel(model: ModelLike, options?: { persist?: boolean }): Promise<void>;

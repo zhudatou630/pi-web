@@ -1,3 +1,4 @@
+import { EXTENSION_REPORTED_CODE } from "./agent-client";
 import { assertAppNotUpdating } from "./app-update-state";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
@@ -373,6 +374,8 @@ export class AgentSessionWrapper {
   private shutdownPromise: Promise<void> | null = null;
   private sessionShutdownEmitted = false;
   private forceShutdownOnIdle = false;
+  /** Includes the extension hook, before pi starts its own bash executor. */
+  private userBashAbortController: AbortController | null = null;
   private forcedIdleTimerArmed = false;
   private resolveDisposed: () => void = () => {};
   private readonly disposed = new Promise<void>((resolve) => { this.resolveDisposed = resolve; });
@@ -459,8 +462,12 @@ export class AgentSessionWrapper {
     }
   }
 
+  private get shellRunning(): boolean {
+    return this.userBashAbortController !== null || this.inner.isBashRunning;
+  }
+
   isRunning(): boolean {
-    return this._alive && (this.pendingPromptCount > 0 || this.directImageAbortController !== null || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning);
+    return this._alive && (this.pendingPromptCount > 0 || this.directImageAbortController !== null || this.inner.isStreaming || this.inner.isCompacting || this.shellRunning);
   }
 
   /** When the kept-alive prompt cache refreshes next (a scheduled refresh costs money); null when none. */
@@ -679,6 +686,7 @@ export class AgentSessionWrapper {
 
   private shouldWaitUntilReady(type: string): boolean {
     return type === "prompt"
+      || type === "bash"
       || type === "steer"
       || type === "follow_up"
       || type === "get_commands"
@@ -901,7 +909,7 @@ export class AgentSessionWrapper {
   }
 
   private isSessionRunningForReplacement(): boolean {
-    return this.inner.isBashRunning
+    return this.shellRunning
       || this.inner.isStreaming
       || this.inner.isCompacting
       || this.pendingPromptCount > 0
@@ -972,7 +980,7 @@ export class AgentSessionWrapper {
             this.compactionQueue.splice(index, 1);
             this.emit({ type: "queue_update" });
           }
-          if (this.inner.isBashRunning || this.directImageAbortController) {
+          if (this.shellRunning || this.directImageAbortController) {
             throw new Error("Cannot send a prompt while another session command is running");
           }
           if (this.extensionUiAbortController.signal.aborted) {
@@ -1106,7 +1114,7 @@ export class AgentSessionWrapper {
           isPromptRunning: this.pendingPromptCount > 0,
           lastRunAborted: this.lastRunAborted,
           subagentsActive: hasUnsettledSubagents(this.sessionId),
-          isBashRunning: this.inner.isBashRunning,
+          isBashRunning: this.shellRunning,
           isCompacting: this.inner.isCompacting,
           autoCompactionEnabled: this.inner.autoCompactionEnabled,
           autoRetryEnabled: this.inner.autoRetryEnabled,
@@ -1504,24 +1512,40 @@ export class AgentSessionWrapper {
       }
 
       case "bash": {
-        if (this.pendingPromptCount > 0 || this.directImageAbortController || this.inner.isStreaming || this.inner.isCompacting || this.inner.isBashRunning) {
+        if (this.pendingPromptCount > 0 || this.directImageAbortController || this.inner.isStreaming || this.inner.isCompacting || this.shellRunning) {
           throw new Error("Cannot run a shell command while the session is busy");
         }
-        const execution = this.inner.executeBash(
-          command.command as string,
-          undefined,
-          {
-            excludeFromContext: command.excludeFromContext as boolean | undefined,
-            operations: createProjectCommandBashOperations({
-              shellPath: this.inner.settingsManager.getShellPath(),
-            }),
-          },
-        );
+        const bashCommand = command.command as string;
+        const excludeFromContext = command.excludeFromContext === true;
+        const controller = new AbortController();
+        this.userBashAbortController = controller;
+        if (this.extensionUiAbortController.signal.aborted) this.extensionUiAbortController = new AbortController();
         try {
-          const result = await execution;
+          const hooked = await this.inner.extensionRunner.emitUserBash?.({
+            type: "user_bash", command: bashCommand, excludeFromContext, cwd: this.cwd,
+          }).catch((error: unknown) => {
+            // The SDK runner already emitted extension_error; never fall back to a local shell.
+            throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), { code: EXTENSION_REPORTED_CODE });
+          });
+          controller.signal.throwIfAborted();
+          if (!this.isAlive()) throw new Error("Session is closing");
+          let result;
+          if (hooked?.result) {
+            result = hooked.result;
+            this.inner.recordBashResult(bashCommand, result, { excludeFromContext });
+          } else {
+            result = await this.inner.executeBash(bashCommand, undefined, {
+              excludeFromContext,
+              // A remote executor owns its environment; do not inject host credentials or PATH.
+              operations: hooked?.operations ?? createProjectCommandBashOperations({
+                shellPath: this.inner.settingsManager.getShellPath(),
+              }),
+            });
+          }
           this.persistCommandOnlySession();
           return result;
         } finally {
+          this.userBashAbortController = null;
           this.resetIdleTimer();
           invalidateSessionListCache();
           this.resumeReportsWhenIdle();
@@ -1532,6 +1556,8 @@ export class AgentSessionWrapper {
         this.forceShutdownOnIdle = true;
         this.resetIdleTimer();
         getPausedAutomaticFollowUps().add(this.sessionId);
+        this.userBashAbortController?.abort();
+        this.extensionUiAbortController.abort(new DOMException("Extension UI cancelled by Stop", "AbortError"));
         this.inner.abortBash();
         return null;
       }
@@ -1555,6 +1581,7 @@ export class AgentSessionWrapper {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.cacheKeepalive?.stop();
     this.directImageAbortController?.abort(new DOMException("Session closed", "AbortError"));
+    this.userBashAbortController?.abort();
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
     for (const pending of this.pendingUiResponses.values()) pending.cancel();

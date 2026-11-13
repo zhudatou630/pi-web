@@ -15,7 +15,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
-import { isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
+import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
 import { getDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
@@ -2090,7 +2090,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const result = await dispatchBashRun({
         abortRequested: () => bashAbortRequestedRef.current,
-        prepare: async () => sessionIdRef.current ?? session?.id ?? await ensureNewSession(),
+        prepare: async () => {
+          const sid = sessionIdRef.current ?? session?.id ?? await ensureNewSession();
+          // Extension dialogs need SSE; keep this inside prepare so Stop can still cancel an unsent command.
+          if (sid && !bashAbortRequestedRef.current) await ensureEventsConnected(sid);
+          return sid;
+        },
         send: async (sid) => {
           await sendAgentCommand(sid, {
             type: "bash",
@@ -2108,14 +2113,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
     } catch (e) {
       console.error("Failed to execute shell command:", e);
-      addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      if (!(e instanceof AgentCommandError && e.code === EXTENSION_REPORTED_CODE)) {
+        addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+      }
       restoreSubmission(inputText, undefined, composerDraftKey);
     } finally {
       bashRunningRef.current = false;
       setPendingBash(null);
       setBashRunning(false);
     }
-  }, [addNotice, composerDraftKey, ensureNewSession, loadSession, promoteNewSession, restoreSubmission, session]);
+  }, [addNotice, composerDraftKey, ensureEventsConnected, ensureNewSession, loadSession, promoteNewSession, restoreSubmission, session]);
   executeBashRef.current = executeBash;
 
   const handleAbort = useCallback(async () => {

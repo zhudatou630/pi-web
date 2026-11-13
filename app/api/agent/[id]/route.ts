@@ -1,3 +1,4 @@
+import { EXTENSION_REPORTED_CODE } from "@/lib/agent-client";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
 import { NextResponse } from "next/server";
 import { getSessionEntries, resolveSessionPath } from "@/lib/session-reader";
@@ -100,6 +101,7 @@ export async function POST(
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
       ...missingCwdFromBody(error),
+      ...((error as { code?: unknown } | null)?.code === EXTENSION_REPORTED_CODE ? { code: EXTENSION_REPORTED_CODE } : {}),
       ...(commandType === "prompt" && !promptAccepted
         ? { code: "prompt_rejected", accepted: false }
         : {}),
