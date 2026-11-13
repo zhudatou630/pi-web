@@ -92,14 +92,13 @@ export function Select({ value, onChange, options, required }: { value: string; 
 }
 
 /** A labelled on/off row, matching the switch rows on the General settings page. */
-export function SwitchRow({ label, description, checked, onChange }: {
+export function SwitchRow({ label, checked, onChange }: {
   label: string;
-  description?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <SettingsRow label={label} description={description}>
+    <SettingsRow label={label}>
       <ConfigSwitch checked={checked} label={label} onChange={onChange} />
     </SettingsRow>
   );

@@ -7,7 +7,6 @@ export const enLocale: LocalePlugin = {
   messages: {
     "settings.scope.default": "On by default",
     "settings.scope.project": "This project",
-    "settings.scope.follows": "Follows default",
     "settings.scope.reset": "Reset to default",
     "common.ok": "OK",
     "common.discard": "Discard",
@@ -1222,7 +1221,6 @@ export const enLocale: LocalePlugin = {
     "models.apiProtocol": "API protocol",
     "models.apiKeyTitle": "API key",
     "models.saveKey": "Save key",
-    "models.apiKeyStoredHint": "Stored in ~/.pi/agent/auth.json.",
     "models.endpointKeyPlaceholder": "ENV_VAR_NAME, !shell-command, or literal key",
     "models.addHeader": "+ Add header",
     "models.useDefault": "Default",

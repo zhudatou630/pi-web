@@ -7,7 +7,6 @@ export const zhCNLocale: LocalePlugin = {
   messages: {
     "settings.scope.default": "默认启用",
     "settings.scope.project": "本项目",
-    "settings.scope.follows": "跟随默认",
     "settings.scope.reset": "恢复默认",
     "common.ok": "确定",
     "common.discard": "放弃",
@@ -1222,7 +1221,6 @@ export const zhCNLocale: LocalePlugin = {
     "models.apiProtocol": "API 协议",
     "models.apiKeyTitle": "API 密钥",
     "models.saveKey": "保存密钥",
-    "models.apiKeyStoredHint": "保存在 ~/.pi/agent/auth.json。",
     "models.endpointKeyPlaceholder": "环境变量名、!shell 命令或密钥原文",
     "models.addHeader": "+ 添加 Header",
     "models.useDefault": "默认",

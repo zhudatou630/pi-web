@@ -42,19 +42,17 @@ for (const locale of [en, zh]) {
     const html = (extra) => renderToStaticMarkup(React.createElement(SettingsScopeRow, { ...props, ...extra }));
     const global = html({});
     assert.ok(global.includes(locale.messages["settings.scope.default"]));
-    assert.ok(!global.includes(locale.messages["settings.scope.follows"]));
     assert.doesNotMatch(global, /settings-row-description|settings-chat-reset/);
     for (const path of ["/home/person/pi-web", "C:\\projects\\pi-web\\"]) {
       const inherited = html({ projectPath: path, overridden: false });
       assert.match(inherited, />pi-web<|>pi-web<\/span>/);
       assert.ok(inherited.includes(`title="${path}"`));
-      assert.ok(inherited.includes(locale.messages["settings.scope.follows"]));
-      assert.doesNotMatch(inherited, /settings-chat-reset/);
+      assert.doesNotMatch(inherited, /settings-row-status|settings-chat-reset/, "inherited rows carry no mark");
     }
     const own = html({ projectPath: "/repo", overridden: true, onReset() {} });
     assert.match(own, /settings-row-status/);
     assert.ok(own.includes(`aria-label="${locale.messages["settings.scope.reset"]}"`));
-    assert.ok(!own.includes(locale.messages["settings.scope.follows"]));
+    assert.ok(own.indexOf("settings-row-status") < own.indexOf('role="switch"'), "status precedes the switch");
   });
 }
 
@@ -63,7 +61,7 @@ test("project toggles and reset call separate existing save paths; false is stil
   const changes = [];
   let resets = 0;
   const control = SettingsScopeControl({ checked: false, label: "repo", overridden: true, onChange: (next) => changes.push(next), onReset: () => resets++ });
-  const [toggle, reset] = buttons(control);
+  const [reset, toggle] = buttons(control);
   assert.equal(toggle["aria-checked"], false);
   toggle.onClick();
   assert.deepEqual(changes, [true]);

@@ -15,6 +15,7 @@ export function SettingsResetButton({ onClick, disabled = false }: { onClick: ()
   );
 }
 
+// Inherited rows show nothing: only an override is worth a mark.
 export function SettingsScopeStatus({ overridden, onReset, disabled = false }: { overridden: boolean; onReset?: () => void; disabled?: boolean }) {
   const { t } = useI18n();
   return overridden ? (
@@ -22,10 +23,10 @@ export function SettingsScopeStatus({ overridden, onReset, disabled = false }: {
       <span className="settings-row-status">{t("settings.scope.project")}</span>
       {onReset && <SettingsResetButton onClick={onReset} disabled={disabled} />}
     </>
-  ) : <span className="settings-scope-inherited">{t("settings.scope.follows")}</span>;
+  ) : null;
 }
 
-/** Global rows omit `overridden`; project rows put their status after the switch. */
+/** Global rows omit `overridden`; the status sits before the switch so switches stay in one column. */
 export function SettingsScopeControl({ checked, onChange, label, overridden, onReset, disabled = false, loading = false }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -37,8 +38,8 @@ export function SettingsScopeControl({ checked, onChange, label, overridden, onR
 }) {
   return (
     <>
-      <ConfigSwitch checked={checked} onChange={onChange} label={label} disabled={disabled} loading={loading} />
       {overridden !== undefined && <SettingsScopeStatus overridden={overridden} onReset={onReset} disabled={disabled || loading} />}
+      <ConfigSwitch checked={checked} onChange={onChange} label={label} disabled={disabled} loading={loading} />
     </>
   );
 }

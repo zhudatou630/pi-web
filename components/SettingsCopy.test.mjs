@@ -49,13 +49,13 @@ test("agent definition state stays separate from project availability, including
   const own = detail({ effective: { scope: "project", enabled: true }, effectiveTag: "project", followsOwnCopy: true });
   assert.match(own, /Project definition/);
   assert.match(own, /↺ Use global version/);
-  assert.doesNotMatch(own, /Global definition|Follows default/);
+  assert.doesNotMatch(own, /Global definition/);
   const stub = detail({ effective: { scope: "project", disableStub: true, enabled: false }, effectiveTag: "project" });
   assert.match(stub, /Global definition/);
   assert.match(stub, /Off in this project/);
   assert.match(stub, /aria-checked="false"/);
   assert.doesNotMatch(stub, /On by default/);
-  assert.match(detail({ fixedScope: "project", canCustomize: true }), /Follows default/);
+  assert.doesNotMatch(detail({ fixedScope: "project", canCustomize: true }), /settings-row-status/);
   assert.match(detail({ overriding: true, pendingFile: true, targetScope: "project" }), /Project definition/);
 });
 
