@@ -11,6 +11,7 @@ const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const {
   MessageView,
+  ToolCallBlock,
   ThinkingBlock,
   getToolCallInputText,
   replaceUserMessageText,
@@ -36,6 +37,23 @@ test("stopped replies keep one footer through answer/process partitioning", asyn
     assert.match(renderMessage(message), /data-answer-footer[^>]*><span data-answer-stopped[^>]*>Stopped/);
   }
   assert.doesNotMatch(renderMessage({ role: "assistant", content: [], stopReason: "error", errorMessage: "This operation was aborted" }), /data-answer-stopped/);
+});
+
+test("pending edit diffs are replaced by results and absent for calls that never ran", () => {
+  const block = { type: "toolCall", toolCallId: "edit-preview", toolName: "edit", input: { path: "f", edits: [{ oldText: "old preview", newText: "new preview" }] } };
+  const render = (props = {}) => renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(ToolCallBlock, { block, defaultExpanded: true, ...props })));
+  assert.match(render(), /old preview[\s\S]*new preview/);
+  assert.doesNotMatch(render(), /&quot;edits&quot;/);
+  assert.doesNotMatch(render({ notRun: true }), /old preview|new preview/);
+  assert.doesNotMatch(render({ block: { ...block, rawInput: "{}" } }), /new preview/);
+  const result = { role: "toolResult", toolCallId: block.toolCallId, content: [{ type: "text", text: "Failed replacement" }], isError: true };
+  assert.match(render({ result }), /Failed replacement/);
+  assert.doesNotMatch(render({ result }), /new preview/);
+  result.isError = false;
+  result.details = { patch: "--- f\n+++ f\n@@ -1 +1 @@\n-old result\n+real result\n" };
+  assert.match(render({ result }), /real result/);
+  assert.doesNotMatch(render({ result }), /new preview/);
+  assert.match(source, /toolsNotRun=\{toolsNotRun \|\| message.stopReason === "aborted" \|\| message.stopReason === "error"\}/);
 });
 
 test("assistant block keys do not change when persistence supplies an entry id", () => {
@@ -743,7 +761,7 @@ test("apply_patch renders as a split diff and keeps its files in the changed lis
   assert.match(source, /<ApplyPatchView patch=\{applyPatchText\} \/>/);
   // The raw JSON input must not be shown for a patch tool: the diff replaces it.
   // The generic raw-JSON input view is skipped entirely for patch tools.
-  assert.match(source, /!isEditTool\) && !isApplyPatchTool &&/);
+  assert.match(source, /!pendingDiff\)\) && !isApplyPatchTool &&/);
 });
 
 test("a streaming apply_patch shows its patch text, never the JSON wrapper", async () => {
@@ -766,7 +784,7 @@ test("a streaming apply_patch shows its patch text, never the JSON wrapper", asy
 
   const source = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
   // The generic raw-input <pre> must be skipped for patch tools in every case.
-  assert.match(source, /\(isStreamingInput \|\| !isEditTool\) && !isApplyPatchTool &&/);
+  assert.match(source, /\(isStreamingInput \|\| !isEditTool \|\| \(!result && !notRun && !pendingDiff\)\) && !isApplyPatchTool &&/);
   assert.match(source, /isApplyPatchTool && applyPatchText === undefined && \(/);
 });
 

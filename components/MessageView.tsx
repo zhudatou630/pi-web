@@ -23,6 +23,7 @@ import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getToolPreview } from "@/lib/tool-preview";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
 import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
+import { editPreview } from "@/lib/edit-preview";
 import { parseApplyPatch } from "@/lib/apply-patch";
 import { displayToolName, isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
 import { resolveLocalFilePath } from "@/lib/file-links";
@@ -193,6 +194,8 @@ interface Props {
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
   turnTiming?: string;
   isProcess?: boolean;
+  /** Original assistant failed/aborted, even when partitioning moved its terminal notice. */
+  toolsNotRun?: boolean;
   /** Tool calls still executing (from `tool_execution_start/end`); their cards tick live. */
   runningToolIds?: ReadonlySet<string>;
   /** Set on the session's last message when its turn stopped unfinished; sent by the Continue action. */
@@ -277,7 +280,7 @@ function haveSameRelevantToolResults(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, toolsNotRun, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user" && message.routineRun) {
     return <RoutineRunView message={message} routineRun={message.routineRun} searchTarget={searchTarget} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -285,7 +288,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} toolsNotRun={toolsNotRun} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -310,6 +313,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
   return null;
 }, (prev, next) => {
   return prev.message === next.message
+    && prev.toolsNotRun === next.toolsNotRun
     && prev.isStreaming === next.isStreaming
     && haveSameRelevantToolResults(prev.message, prev.toolResults, next.toolResults)
     && prev.cwd === next.cwd
@@ -764,6 +768,7 @@ function AssistantMessageView({
   turnDurationSeconds,
   turnTiming,
   isProcess,
+  toolsNotRun,
   runningToolIds,
   continuePrompt,
   onContinue,
@@ -791,6 +796,7 @@ function AssistantMessageView({
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
   turnTiming?: string;
   isProcess?: boolean;
+  toolsNotRun?: boolean;
   runningToolIds?: ReadonlySet<string>;
   continuePrompt?: string;
   onContinue?: (prompt: string) => void;
@@ -875,6 +881,7 @@ function AssistantMessageView({
               block={block}
               searchTarget={block === searchBlock}
               toolResults={toolResults}
+              toolsNotRun={toolsNotRun || message.stopReason === "aborted" || message.stopReason === "error"}
               questionAnswer={block.type === "toolCall" ? questionAnswers?.get(block.toolCallId) : undefined}
               questionActive={block.type === "toolCall" && block.toolCallId === activeQuestionId && !isStreaming}
               onAnswer={onAnswer}
@@ -1148,7 +1155,7 @@ function StepDuration({ seconds, startTime, live }: { seconds?: number; startTim
   );
 }
 
-function BlockView({ block, searchTarget, toolResults, questionAnswer, questionActive, onAnswer, isStreaming, streamingDuration, startTime, live, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; questionAnswer?: string | null; questionActive?: boolean; onAnswer?: (answer: string) => Promise<void>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, searchTarget, toolResults, toolsNotRun, questionAnswer, questionActive, onAnswer, isStreaming, streamingDuration, startTime, live, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; toolsNotRun?: boolean; questionAnswer?: string | null; questionActive?: boolean; onAnswer?: (answer: string) => Promise<void>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     const text = (block as TextContent).text;
     if (!text?.trim()) return null;
@@ -1173,7 +1180,7 @@ function BlockView({ block, searchTarget, toolResults, questionAnswer, questionA
       return <QuestionCard key={tc.toolCallId} block={tc} result={result} answer={questionAnswer} active={questionActive} onAnswer={onAnswer} />;
     }
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} startTime={startTime} live={live} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
+    return <ToolCallBlock block={tc} result={result} notRun={toolsNotRun} duration={duration} startTime={startTime} live={live} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
   }
   return null;
 }
@@ -1353,7 +1360,7 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
-export function ToolCallBlock({ block, result, duration, startTime, live, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
+export function ToolCallBlock({ block, result, notRun, duration, startTime, live, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; notRun?: boolean; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [commandCopied, setCommandCopied] = useState(false);
@@ -1377,6 +1384,8 @@ export function ToolCallBlock({ block, result, duration, startTime, live, cwd, o
   // A codemode script is shown as written, not as an escaped JSON string.
   const codemodeCode = !isStreamingInput && block.toolName === "codemode" && typeof block.input?.code === "string" ? block.input.code : undefined;
   const isEditTool = isEditToolName(block.toolName);
+  const pendingInput = expanded && isEditTool && !isStreamingInput && !result && !notRun ? block.input : null;
+  const pendingDiff = useMemo(() => editPreview(pendingInput), [pendingInput]);
   // Codex-style patch tools carry the whole edit in a `patch` argument instead of
   // a `file_path`, so they render through the same split diff as `edit`.
   const isApplyPatchTool = isApplyPatchToolName(block.toolName);
@@ -1479,7 +1488,7 @@ export function ToolCallBlock({ block, result, duration, startTime, live, cwd, o
       </div>
 
       {/* ── Expanded: input args ── */}
-      {expanded && (isStreamingInput || !isEditTool) && !isApplyPatchTool && (
+      {expanded && (isStreamingInput || !isEditTool || (!result && !notRun && !pendingDiff)) && !isApplyPatchTool && (
         writtenText === null && shellCommand === undefined && codemodeCode === undefined
           ? <ToolArguments input={fieldInput} fallback={inputStr} />
           : <pre
@@ -1499,6 +1508,7 @@ export function ToolCallBlock({ block, result, duration, startTime, live, cwd, o
         </pre>
       )}
 
+      {pendingDiff && <PairedDiffResult diff={{ files: pendingDiff }} />}
       {/* ── Paired result — only shown when expanded ── */}
       {expanded && isApplyPatchTool && applyPatchText !== undefined && (
         <div className="step-body">
@@ -1644,16 +1654,14 @@ function ToolResultImages({ images, thumbnails = false }: { images: ImageContent
   return <ImageGallery images={items} variant={thumbnails ? "thumb" : "figure"} />;
 }
 
-interface ResultDiff {
-  text: string;
-}
+type ResultDiff = { text: string; files?: never } | { files: SplitDiffFile[]; text?: never };
 
 function PairedDiffResult({ diff }: {
   diff: ResultDiff;
 }) {
   return (
     <div className="step-body">
-      <SplitPatchView text={diff.text} />
+      {diff.files ? <SplitDiffFiles files={diff.files} /> : <SplitPatchView text={diff.text} />}
     </div>
   );
 }

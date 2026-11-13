@@ -65,6 +65,16 @@ Design notes moved out of AGENTS.md. Typography rules are enforced by `component
 - On the SDK's explicit manual-compaction refusal, the session wrapper parks prompts (including images) in admission order; a parked plain prompt is listed as a follow-up (it runs after the compaction), an explicit steer stays a steer. Queue state is shared across tabs and survives a browser reload, not a server restart. Successful, failed and aborted compactions flush through the same admission chain; automatic compaction keeps using the SDK's streaming queues.
 - Stop compaction only stops summarization: parked prompts still run, as in pi's TUI. Ordinary Stop first returns parked prompts to the sending composer's draft, then aborts; with no parked prompts neither action starts a run. Recall reads SDK delivery queues before clearing them, so image recovery remains fail-closed.
 
+## Pending edit previews
+
+Expanded edit calls with complete SDK-shaped arguments and no result show their
+old/new text through the normal paired diff renderer, without file line numbers.
+Edits are separate hunks, capped at 1000 rows and 4000 UTF-16 units per line.
+Results (including errors) replace the preview. Aborted/failed assistant calls
+never execute: ChatWindow carries that fact from the original message even when
+partitioning moves its terminal notice to the answer. No file reads or speculative
+application are involved; unlike the TUI, this is an argument-only preview.
+
 ## Tool summaries and notice links
 
 Collapsed tool headers prefer command, pattern/query, then path (with the existing

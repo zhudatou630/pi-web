@@ -2113,6 +2113,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   <MessageView
                     key={`${keyPrefix}-view-${messageKey}`}
                     message={msg}
+                    toolsNotRun={messages[idx].role === "assistant" && ["aborted", "error"].includes((messages[idx] as AssistantMessage).stopReason ?? "")}
                     modelName={options.isTurnEnd && msg.role === "assistant"
                       ? getModelDisplayName(msg.provider ?? "", msg.model ?? "", modelNames)
                       : undefined}
