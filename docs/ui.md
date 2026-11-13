@@ -199,7 +199,7 @@ Plain-text paste stays native (important for large text). The paste handler reme
 
 ## Completion notifications
 
-Page and Web Push completion notifications share `pi-session-complete:<id>`. Page service-worker notifications stamp `data.shownAt`; the push handler checks `getNotifications({ tag })` and quietly replaces a notification under 10 seconds old (`renotify: false`). Every valid push still calls `showNotification` (required to keep iOS subscriptions healthy), retaining icon/badge and same-origin click validation. Older/missing timestamps or failed listing alert normally.
+Page and Web Push completion notifications share `pi-session-complete:<id>` and stamp `data.shownAt`. Both the page's service-worker delivery and the push handler check `getNotifications({ tag })`, quietly replacing a notification under 10 seconds old (`renotify: false`) whichever arrives first. Every valid push still calls `showNotification` (required to keep iOS subscriptions healthy), retaining icon/badge and same-origin click validation. Older/missing timestamps or unsupported/failed listing alert normally; listing failure does not trigger window-notification fallback.
 
 <!-- shortcut: a 10-second time window approximates one completion; use a shared run id if very short consecutive runs or delayed pushes need exact deduplication. -->
 

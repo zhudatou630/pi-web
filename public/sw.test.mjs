@@ -107,6 +107,54 @@ test("push quietly replaces a recent same-tag notification but alerts for older 
   assert.equal(noTag.shown[0].options.data.url, "/");
 });
 
+for (const order of [["push", "page"], ["page", "push"]]) {
+  test(`completion notifications alert once for ${order.join(" then ")}`, async (t) => {
+    const { showBrowserNotification } = await import("../lib/browser-notifications.ts");
+    let now = 100000;
+    t.mock.method(Date, "now", () => now);
+    const shown = [];
+    const tray = new Map();
+    const tag = "pi-session-complete:session-1";
+    const payload = { title: "Complete", body: "Done", url: "/?session=session-1", tag };
+    const registration = {
+      async getNotifications(options) {
+        assert.deepEqual(options, { tag });
+        return tray.has(tag) ? [tray.get(tag)] : [];
+      },
+      async showNotification(title, options) {
+        shown.push({ title, ...options });
+        tray.set(options.tag, options);
+      },
+    };
+    self.registration = registration;
+    const page = () => showBrowserNotification({ ...payload, sessionUrl: payload.url, onClick() {} }, {
+      getServiceWorkerRegistration: async () => registration,
+      createWindowNotification: () => assert.fail("service worker owns delivery"),
+    });
+    for (const delivery of order) {
+      if (delivery === "page") assert.equal(await page(), "service-worker");
+      else {
+        let pending;
+        listeners.get("push")({ data: { json: () => payload }, waitUntil: (promise) => { pending = promise; } });
+        await pending;
+      }
+      now += 600;
+    }
+    assert.deepEqual(shown.map((notice) => notice.renotify), [true, false]);
+    assert.equal(shown.length, 2, "both deliveries still display, including every iOS push");
+    for (const notice of shown) {
+      assert.equal(notice.tag, tag);
+      assert.equal(notice.icon, "/icons/icon-192.png");
+      assert.equal(notice.badge, "/icons/icon-192.png");
+      assert.equal(notice.data.url, payload.url);
+      assert.equal(typeof notice.data.shownAt, "number");
+    }
+    now += 10000;
+    await page();
+    assert.equal(shown[2].renotify, true, "a later completion alerts again");
+  });
+}
+
 test("push ignores malformed payloads", async () => {
   const event = dispatchPush(
     { title: "", body: 42 },

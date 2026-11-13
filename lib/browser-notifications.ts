@@ -6,6 +6,7 @@ interface WindowNotificationLike {
 }
 
 interface ServiceWorkerRegistrationLike {
+  getNotifications?: (filter: GetNotificationOptions) => Promise<Pick<Notification, "data">[]>;
   showNotification: (title: string, options?: NotificationOptions) => Promise<void>;
 }
 
@@ -106,9 +107,23 @@ export async function showBrowserNotification(
     try {
       const registration = await environment.getServiceWorkerRegistration();
       if (registration) {
+        const shownAt = Date.now();
+        let renotify = true;
+        if (options.tag) {
+          try {
+            const existing = await registration.getNotifications?.({ tag: options.tag });
+            renotify = !existing?.some((notification) => {
+              const previous = notification.data?.shownAt;
+              return typeof previous === "number" && shownAt >= previous && shownAt - previous < 10000;
+            });
+          } catch {
+            // A failed lookup must not prevent service-worker delivery.
+          }
+        }
         await registration.showNotification(options.title, {
           ...notificationOptions,
-          data: { url: options.sessionUrl, shownAt: Date.now() },
+          ...(options.tag ? { renotify } : {}),
+          data: { url: options.sessionUrl, shownAt },
         });
         return "service-worker";
       }
