@@ -23,6 +23,7 @@ function setup() {
   const calls = [], restored = [], notices = [];
   const bindings = {
     agentRunningRef: { current: false }, bashRunningRef: { current: false }, bashAbortRequestedRef: { current: false },
+    endedSessionRef: { current: false }, idleMessageReadRef: { current: { dirty: false } }, refreshIdleMessages: noop,
     sessionIdRef: { current: null }, session: null, ensureNewSession: async () => "new-session",
     ensureEventsConnected: async (sid) => { calls.push(["connect", sid]); await ready.promise; },
     sendAgentCommand: async (sid, command) => calls.push(["send", sid, command]),
@@ -48,7 +49,7 @@ test("busy ! input is explicitly refused with a notice and kept in the original 
 test("snapshots replace output and an old identical command's late snapshot is ignored", () => {
   let pending = { id: "current", command: "pwd", startedAt: 1, excludeFromContext: false };
   const handle = callback("handleAgentEvent", {
-    flushStreamDeltas: noop, unconfirmedPromptsRef: { current: new Map() }, promptRunIdRef: { current: 0 },
+    flushStreamDeltas: noop, unconfirmedPromptsRef: { current: new Map() }, promptRunIdRef: { current: 0 }, endedSessionRef: { current: false },
     bashRunningRef: { current: true }, setPendingBash: (update) => { pending = update(pending); }, stripAnsi: (text) => text,
   });
   handle({ type: "bash_output", id: "current", command: "pwd", startedAt: 2, output: "first" });
