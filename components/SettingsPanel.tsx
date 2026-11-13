@@ -16,6 +16,7 @@ import {
   useChatAppearance,
 } from "@/hooks/useChatAppearance";
 import { sendAgentCommand } from "@/lib/agent-client";
+import { SETTINGS_BUILTIN_TOOLS } from "@/lib/tool-presets";
 import type { ShellToolSettingsResponse } from "@/lib/api-types";
 import { getJson, peekJson, prefetchSettings, revalidateSettings, settingsUrls } from "@/lib/settings-cache";
 import {
@@ -215,6 +216,27 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     }
   };
 
+  const toggleBuiltinTool = async (name: string, enabled: boolean) => {
+    if (!shellSettings || shellSaving) return;
+    setShellSaving(true);
+    setShellError(null);
+    try {
+      const builtinTools = enabled ? [...shellSettings.builtinTools, name] : shellSettings.builtinTools.filter((tool) => tool !== name);
+      const response = await fetch("/api/tools/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ builtinTools }),
+      });
+      const data = await response.json() as ShellToolSettingsResponse & { error?: string };
+      if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+      setShellSettings(data);
+    } catch (cause) {
+      setShellError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setShellSaving(false);
+    }
+  };
+
   const registerPush = async () => {
     if (pushRegistering) return;
     setPushRegistering(true);
@@ -383,6 +405,19 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           </SettingsRow>
         )}
         {routinesError && <p role="alert" className="settings-row-message is-error">{routinesError}</p>}
+        {shellSettings?.builtinTools && (
+          <SettingsRow label={t("settings.builtinTools")} description={t("settings.builtinToolsDescription")} stacked>
+            <div className="settings-checkbox-grid" role="group" aria-label={t("settings.builtinTools")}>
+              {SETTINGS_BUILTIN_TOOLS.map((name) => (
+                <label className="settings-checkbox" key={name}>
+                  <input type="checkbox" checked={shellSettings.builtinTools.includes(name)} disabled={shellSaving}
+                    onChange={(event) => void toggleBuiltinTool(name, event.target.checked)} />
+                  {name === "bash" && shellSettings.powerShellEnabled ? "powershell" : name}
+                </label>
+              ))}
+            </div>
+          </SettingsRow>
+        )}
         {shellSettings?.isWindows && (
           <SettingsRow label={t("settings.usePowerShell")} description={t("settings.shellToolDescription")}>
             <ConfigSwitch

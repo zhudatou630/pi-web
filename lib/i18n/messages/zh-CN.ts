@@ -175,6 +175,8 @@ export const zhCNLocale: LocalePlugin = {
     "auth.logoutFailed": "退出失败，请重试。",
     "settings.shellTool": "Shell 工具",
     "settings.shellToolDescription": "选择模型执行命令时使用的 Shell。直接输入的 ! 和 !! 命令仍使用 Bash。",
+    "settings.builtinTools": "内置工具",
+    "settings.builtinToolsDescription": "选择新 configured 会话使用的内置工具，保存到全局 settings.json；现有会话不变。",
     "settings.usePowerShell": "使用 PowerShell 替代 Bash",
     "settings.projectRequired": "打开项目后才能配置此项",
     "settings.images": "生图",

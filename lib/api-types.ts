@@ -49,6 +49,8 @@ export interface ImageGenerationSettingsResponse {
 export interface ShellToolSettingsResponse {
   isWindows: boolean;
   powerShellEnabled: boolean;
+  /** Selected global built-ins; bash denotes the active shell, including PowerShell on Windows. */
+  builtinTools: string[];
 }
 
 export interface SkillSearchResult {

@@ -175,6 +175,8 @@ export const enLocale: LocalePlugin = {
     "auth.logoutFailed": "Could not log out. Try again.",
     "settings.shellTool": "Shell tool",
     "settings.shellToolDescription": "Choose which shell the model uses for commands. Direct ! and !! commands still use Bash.",
+    "settings.builtinTools": "Built-in tools",
+    "settings.builtinToolsDescription": "Choose the built-in tools for new configured sessions. Saved to global settings.json; existing sessions are unchanged.",
     "settings.usePowerShell": "Use PowerShell instead of Bash",
     "settings.projectRequired": "Open a project to configure this section",
     "settings.images": "Images",
