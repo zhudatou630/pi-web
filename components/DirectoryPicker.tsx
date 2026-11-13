@@ -162,6 +162,8 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
               autoComplete="off"
               spellCheck={false}
               onChange={(event) => {
+                navigationRef.current += 1;
+                setLoading(false);
                 setPathInput(event.target.value);
                 setLoadError(null);
               }}

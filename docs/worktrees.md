@@ -88,7 +88,7 @@ Explorer 跟随当前选择的 worktree；聊天跟随打开的会话。如果�
 
 ## Directory picker
 
-The path field browses on Enter, not while typing. Select accepts a typed path directly: it first calls the same browse route to obtain the realpath, then selects that canonical folder. A refusal keeps the dialog open and returns focus to the field. Cancellation or unmount invalidates the existing latest-request lane, so a pending Select cannot choose a folder afterwards.
+The path field browses on Enter, not while typing. Select accepts a typed path directly: it first calls the same browse route to obtain the realpath, then selects that canonical folder. A refusal keeps the dialog open and returns focus to the field. Editing the path, cancellation or unmount invalidates the existing latest-request lane, so a pending Select cannot choose a folder afterwards. Editing also ends loading immediately without disabling or moving focus from the input.
 
 ## Implementation notes
 
