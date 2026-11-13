@@ -7,6 +7,7 @@ export interface DiscoveredModel {
   // Capabilities the upstream list publishes, as models.json fields.
   reasoning?: true;
   thinkingLevelMap?: Partial<Record<EffortLevel | "off", string | null>>;
+  input?: ("text" | "image")[];
   contextWindow?: number;
   maxTokens?: number;
 }
@@ -19,7 +20,8 @@ const CONTEXT_WINDOW_FIELDS = [
 ];
 const MAX_TOKENS_FIELDS = ["max_output_tokens", "maxOutputTokens", "max_completion_tokens", "outputTokenLimit"];
 const REASONING_FIELDS = ["supports_reasoning", "supportsReasoning", "reasoning", "thinking"];
-const EFFORT_LIST_FIELDS = ["supported_efforts", "supportedEfforts"];
+// Pricing is also omitted: gateways disagree on per-token vs per-million units.
+const EFFORT_LIST_FIELDS = ["supported_efforts", "supportedEfforts", "reasoning_levels"];
 // Cursor-style `parameters: [{ id: "reasoning_effort", values: [{ value }] }]`.
 const EFFORT_PARAMETER_IDS = new Set(["reasoning_effort", "reasoningEffort", "effort"]);
 const CAN_DISABLE_FIELDS = ["can_disable_thinking", "canDisableThinking"];
@@ -90,16 +92,27 @@ function thinkingLevelMapFrom(value: Record<string, unknown>, efforts: Set<strin
   return Object.keys(map).length ? map : undefined;
 }
 
+function inputModalities(value: Record<string, unknown>): DiscoveredModel["input"] {
+  const nested = isRecord(value.modalities) ? value.modalities.input : undefined;
+  const list = Array.isArray(nested) ? nested : value.input;
+  if (!Array.isArray(list)) return undefined;
+  const input = [...new Set(list.map((entry) => typeof entry === "string" ? entry.trim().toLowerCase() : entry)
+    .filter((entry): entry is "text" | "image" => entry === "text" || entry === "image"))];
+  return input.length ? input : undefined;
+}
+
 function capabilitiesFromValue(value: Record<string, unknown>): Omit<DiscoveredModel, "id" | "name"> {
   const efforts = advertisedEfforts(value);
   const reasoning = REASONING_FIELDS.some((field) => value[field] === true)
     || EFFORT_LEVELS.some((level) => efforts?.has(level));
   const thinkingLevelMap = reasoning ? thinkingLevelMapFrom(value, efforts) : undefined;
+  const input = inputModalities(value);
   const contextWindow = firstPositiveInteger(value, CONTEXT_WINDOW_FIELDS);
   const maxTokens = firstPositiveInteger(value, MAX_TOKENS_FIELDS);
   return {
     ...(reasoning ? { reasoning: true } : {}),
     ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+    ...(input ? { input } : {}),
     ...(contextWindow ? { contextWindow } : {}),
     ...(maxTokens ? { maxTokens } : {}),
   };
