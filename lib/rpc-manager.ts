@@ -776,6 +776,29 @@ export class AgentSessionWrapper {
     return recalled;
   }
 
+  private recallQueue(stopping = false) {
+    // Snapshot, validate and clear in one JS turn: delivery must not drain between them.
+    const snapshot = snapshotAgentQueuedMessages(this.inner.agent);
+    const custom: Parameters<AgentSessionLike["sendCustomMessage"]>[0][] = [];
+    const userMessages = (messages: unknown[]) => messages.filter((message) => {
+      if (!stopping || !message || typeof message !== "object" || (message as { role?: unknown }).role !== "custom") return true;
+      custom.push(message as Parameters<AgentSessionLike["sendCustomMessage"]>[0]);
+      return false;
+    });
+    const recalled = parseQueuedDeliverySnapshot({ steering: userMessages(snapshot.steering), followUp: userMessages(snapshot.followUp) });
+    // triggerTurn:false lets pi defer these until tool results land, preserving custom
+    // identity and provider message ordering without starting another run after Stop.
+    for (const message of custom) {
+      void this.inner.sendCustomMessage(message, { triggerTurn: false }).catch((error) => {
+        console.error("[pi-web] failed to preserve stopped extension message:", error);
+        this.emit({ type: "extension_error", extensionPath: "queue", event: "abort", error: String(error) });
+      });
+    }
+    this.inner.clearQueue();
+    const parked = this.recallCompactionQueue();
+    return { steering: [...recalled.steering, ...parked.steering], followUp: [...recalled.followUp, ...parked.followUp] };
+  }
+
   private flushCompactionQueue(): void {
     if (this.forceShutdownOnIdle) return; // Ordinary Stop may precede a late SDK refusal.
     for (const item of this.compactionQueue) {
@@ -1110,7 +1133,9 @@ export class AgentSessionWrapper {
 
       case "abort": {
         this.lastRunAborted = true; // Extension commands may stop before an SDK run starts.
-        const recalled = this.recallCompactionQueue();
+        let recalled: ReturnType<AgentSessionWrapper["recallQueue"]> | undefined;
+        let recallError: unknown;
+        try { recalled = this.recallQueue(true); } catch (error) { recallError = error; }
         this.forceShutdownOnIdle = true;
         this.resetIdleTimer();
         getPausedAutomaticFollowUps().add(this.sessionId);
@@ -1119,7 +1144,8 @@ export class AgentSessionWrapper {
         this.extensionUiAbortController.abort(new DOMException("Extension UI cancelled by Stop", "AbortError"));
         try {
           await this.withFinalIdleReset(() => this.inner.abort());
-          return recalled.steering.length || recalled.followUp.length ? recalled : null;
+          if (recallError) throw recallError; // A corrupt queue must not prevent the abort itself.
+          return recalled && (recalled.steering.length || recalled.followUp.length) ? recalled : null;
         } finally {
           if (!this.isRunning()) this.forceShutdownOnIdle = false;
         }
@@ -1339,21 +1365,7 @@ export class AgentSessionWrapper {
       }
 
       case "clear_queue": {
-        // Full clear only: pi has no single-item dequeue, and clear+requeue
-        // races against the agent loop pulling messages mid-flight.
-        // Public AgentSession queues are strings; images remain on the Agent
-        // delivery queues until clearAllQueues() drops them.
-        // Snapshot and parse the authoritative delivery queues first. A missing
-        // runtime shape, unrecoverable image, or non-user message must fail
-        // before this destructive clear. Empty delivery queues mean already
-        // drained work and must not fall back to leftover public strings.
-        // Keep snapshot, parsing and clear synchronous in this same JS turn;
-        // an await here would allow delivery to drain the snapshot in between.
-        const snapshot = snapshotAgentQueuedMessages(this.inner.agent);
-        const recalled = parseQueuedDeliverySnapshot(snapshot);
-        this.inner.clearQueue();
-        const parked = this.recallCompactionQueue();
-        return { steering: [...recalled.steering, ...parked.steering], followUp: [...recalled.followUp, ...parked.followUp] };
+        return this.recallQueue();
       }
 
       case "steer": {

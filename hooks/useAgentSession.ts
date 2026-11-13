@@ -1914,7 +1914,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const abortDispatchedPrompt = async (sid: string) => {
       try {
-        restoreRecalledQueue(await sendAgentCommand<RecalledQueue>(sid, { type: "abort" }));
+        const recalled = await sendAgentCommand<RecalledQueue>(sid, { type: "abort" });
+        setQueuedMessages({ steering: [], followUp: [] });
+        restoreRecalledQueue(recalled);
       } catch (abortError) {
         addNotice({
           type: "error",
@@ -2149,7 +2151,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (!sid || stopRequestPendingRef.current) return;
       stopRequestPendingRef.current = true;
       try {
-        restoreRecalledQueue(await sendAgentCommand<RecalledQueue>(sid, { type }));
+        const recalled = await sendAgentCommand<RecalledQueue>(sid, { type });
+        if (type === "abort") setQueuedMessages({ steering: [], followUp: [] });
+        restoreRecalledQueue(recalled);
       } catch (e) {
         console.error("Failed to abort:", e);
         addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
