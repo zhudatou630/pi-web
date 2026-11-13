@@ -683,7 +683,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false, idleOnly = false) => {
     if (navigationPendingRef.current) return null;
-    if (endedSessionRef.current === sid) return null;
     const branch = historyBranchRef.current;
     const modelSelectionVersion = modelSelectionVersionRef.current;
     const runId = promptRunIdRef.current;
@@ -697,12 +696,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // server probe the file tail for writes made by another pi process: ordinary
       // reads keep serving the live snapshot instead of stat-ing on every poll.
       if (includeState) params.set("force", "1");
-      const anchor = idleOnly ? loadedHistoryRef.current.entryIds.at(-1) : undefined;
+      const anchor = idleOnly || endedSessionRef.current === sid ? loadedHistoryRef.current.entryIds.at(-1) : undefined;
       if (anchor) params.set("anchor", anchor);
       const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
       if (sessionIdRef.current !== sid || historyBranchRef.current !== branch) return null;
       if (res.status === 404) {
-        if (showLoading) {
+        if (showLoading && endedSessionRef.current !== sid) {
           setData(null);
           setActiveLeafId(null);
           setMessages([]);
@@ -798,7 +797,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (bashRunningRef.current || navigationPendingRef.current) return;
         read.dirty = false;
         const current = read.sid;
-        if (!sessionHookMountedRef.current || sessionIdRef.current !== current || agentRunningRef.current || navigationPendingRef.current) continue;
+        if (!sessionHookMountedRef.current || sessionIdRef.current !== current || endedSessionRef.current === current || agentRunningRef.current || navigationPendingRef.current) continue;
         await loadSession(current, false, false, true);
       }
     } finally { read.reading = false; }
@@ -1581,6 +1580,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setQueuedMessages({ steering: [], followUp: [] });
       setExtensionDialogs([]);
       setExtensionCustomUis([]);
+      // Disposal precedes this event: recover final custom messages from the read-only route.
+      historyBranchRef.current += 1;
+      navigationPendingRef.current = false;
+      idleMessageReadRef.current.dirty = false;
+      void loadSession(event.sessionId as string);
       return;
     }
     if (event.type !== "message_update") flushStreamDeltas();
@@ -2379,7 +2383,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         if (result?.cancelled || result?.aborted) return false;
       }
-      if (!sessionHookMountedRef.current || sessionIdRef.current !== sid) return false;
+      if (!sessionHookMountedRef.current || sessionIdRef.current !== sid || endedSessionRef.current === sid) return false;
       setActiveLeafId(leafId);
       return Boolean(await loadContext(sid, leafId));
     } catch (e) {

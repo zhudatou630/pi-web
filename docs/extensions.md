@@ -8,6 +8,8 @@
 
 结束视图的整个 composer 控件区（含模型、thinking、tools、compact）禁用，分支面板保留行但不提供导航操作。hook 和窗格顶栏的公共 agent 命令入口按视图状态拒绝全部 RPC（包括可能隐式启动 runtime 的查询），以挡住旧回调或已经打开的菜单；模型、thinking、tools 的乐观偏好更新也在结束后跳过。这个限制不在服务端保存，关闭重开不受影响。
 
+收到 `session_ended` 后废弃旧 HTTP 响应和待调度的空闲刷新，再通过只读 `/api/sessions/[id]` 做一次最终历史同步；该 GET 读取 SessionManager/文件，不创建 AgentSession，也不重连 SSE。它使用最后已加载 entry 作为 anchor，保留分页并补齐紧接退出的 custom 消息和 `session_shutdown` hook 最后保存的内容。退出后仍可读取历史；404 不清空现有 transcript（包括手动重试），晚到的导航结果也不能覆盖最终快照。
+
 清理后丢弃路径、只读解析和列表缓存。start、工具设置和重命名在等待旧 wrapper dispose 后重新检查文件存在，返回 404 而非让 SDK 在旧路径创建新会话。收到退出请求的 Bash/扩展命令也不再把未保存或被删除的文件通过 command-only fallback 写回。旧 SDK hook 本身若超时后继续执行，其外部副作用不可能由宿主撤销。
 
 ## 空闲 custom 消息

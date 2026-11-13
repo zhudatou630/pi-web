@@ -14,6 +14,8 @@ function pane(sid) {
   const calls = [];
   const scope = {
     sessionIdRef: ref(sid), endedSessionRef: ref(null), localAppendSeqRef: ref(0), promptRunIdRef: ref(0),
+    historyBranchRef: ref(0), navigationPendingRef: ref(false), idleMessageReadRef: ref({ dirty: false }),
+    loadSession: () => calls.push("final-history-read"),
     rpcPromptPendingRef: ref(true), sdkAgentActiveRef: ref(true), bashRunningRef: ref(false),
     eventConnectionRef: ref({ close: () => calls.push("close") }),
     setLoading() {}, setError() {},
@@ -32,6 +34,7 @@ test("explicit exit marks only its pane read-only, cancels reconnect/grace, and 
   assert.equal(left.scope.endedSessionRef.current, "left");
   assert.ok(left.calls.some((call) => Array.isArray(call) && call[0] === "ended" && call[1]));
   assert.ok(left.calls.includes("close"));
+  assert.ok(left.calls.includes("final-history-read"));
   const count = left.calls.length;
   left.event(ended); left.event({ type: "connected", isStreaming: true }); left.event({ type: "agent_start" });
   assert.equal(left.calls.length, count);

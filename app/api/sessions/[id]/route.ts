@@ -75,7 +75,7 @@ export async function GET(
     const force = new URL(req.url).searchParams.get("force") === "1";
     const liveRpc = getEvictableWrapperForExternalWrite(id, force);
     const resolvedPath = liveRpc ? null : await resolveSessionPath(id);
-    if (!liveRpc && !resolvedPath) {
+    if (!liveRpc && (!resolvedPath || !existsSync(resolvedPath))) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 

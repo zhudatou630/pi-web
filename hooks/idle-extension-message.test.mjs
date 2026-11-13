@@ -19,7 +19,7 @@ const tick = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => 
 const ref = (current) => ({ current });
 const custom = (text, display = true) => ({ role: "custom", customType: "watcher", content: text, display, timestamp: text.length });
 function fixture() {
-  const server = { messages: [custom("one"), custom("two"), custom("three")], entryIds: ["1", "2", "3"], hold: false, held: [], reads: 0 };
+  const server = { messages: [custom("one"), custom("two"), custom("three")], entryIds: ["1", "2", "3"], hold: false, held: [], reads: 0, deleted: false, requests: [] };
   const previous = { messages: server.messages.slice(), entryIds: server.entryIds.slice(), oldestEntryId: "1", hasMore: true };
   const writes = { history: previous };
   const scope = {
@@ -27,13 +27,19 @@ function fixture() {
     promptRunIdRef: ref(0), contextUsageRequestIdRef: ref(0), localAppendSeqRef: ref(0), loadedHistoryRef: ref(previous),
     agentRunningRef: ref(false), bashRunningRef: ref(false), modelSwitchPendingRef: ref(false), modelSelectionVersionRef: ref(0), sessionToolsPinnedRef: ref(false),
     idleMessageReadRef: ref({ sid: "", dirty: false, reading: false }), mergeLoadedHistory, isHiddenCustomMessage,
+    rpcPromptPendingRef: ref(false), sdkAgentActiveRef: ref(false),
+    eventConnectionRef: ref({ close() {} }),
+    setSessionEnded(value) { writes.ended = value; }, cancelEventStreamGrace() {}, settleUiStage() {},
+    setBashRunning() {}, setPendingBash() {}, setIsCompacting() {}, setQueuedMessages() {}, setExtensionDialogs() {}, setExtensionCustomUis() {},
     setLoading() {}, setError() {}, setMessageKeyAliases() {},
     setData(value) { writes.data = typeof value === "function" ? value(writes.data) : value; },
     setActiveLeafId(value) { writes.leaf = value; }, setMessages(value) { writes.messages = value; }, setEntryIds(value) { writes.ids = value; },
     setHistoryCursor() {}, setHasEarlierMessages() {}, setToolPresetState() {}, setCurrentModelOverride() {}, applyContextUsage() {},
     CONFIGURED_TOOL_PRESET: "configured", carryMessageKeys: () => new Map(),
-    async fetch(url) {
+    async fetch(url, init) {
       server.reads++;
+      server.requests.push([url, init?.method ?? "GET"]);
+      if (server.deleted) return { status: 404, ok: false };
       const anchor = new URL(url, "http://test").searchParams.get("anchor");
       const at = anchor ? server.entryIds.indexOf(anchor) : -1;
       const start = at >= 0 ? at : Math.max(0, server.entryIds.length - 2);
@@ -47,8 +53,51 @@ function fixture() {
   scope.refreshIdleMessages = callback("refreshIdleMessages", scope);
   const event = eventHandler(scope);
   const post = (id, message) => { server.entryIds.push(id); server.messages.push(message); event({ type: "message_end", message }); };
-  return { scope, server, writes, post };
+  const end = () => callback("handleAgentEvent", scope)({ type: "session_ended", sessionId: "s" });
+  return { scope, server, writes, post, end };
 }
+for (const pending of [false, true]) {
+  test(`shutdown recovers the final custom message (${pending ? "idle HTTP already pending" : "same event batch"}) without runtime RPC`, async () => {
+    const f = fixture();
+    f.server.hold = pending;
+    f.post("4", custom("visible immediately before shutdown"));
+    if (pending) await tick();
+    // session_shutdown can append another message without any SSE reaching the page.
+    f.server.messages.push(custom("written by session_shutdown")); f.server.entryIds.push("5");
+    f.server.hold = false;
+    f.end();
+    if (pending) f.server.held.shift().resolve();
+    await tick();
+    assert.equal(f.writes.ended, true);
+    assert.deepEqual(f.writes.ids, ["1", "2", "3", "4", "5"]);
+    assert.equal(f.writes.leaf, "5");
+    assert.deepEqual(f.writes.messages.slice(-2).map((message) => message.content), ["visible immediately before shutdown", "written by session_shutdown"]);
+    assert.ok(f.server.requests.every(([url, method]) => url.startsWith("/api/sessions/s?") && method === "GET"));
+    assert.equal(f.server.reads, pending ? 2 : 1, "queued idle refresh is superseded by one final read");
+  });
+}
+test("a file deleted by shutdown preserves the existing transcript even on a subsequent read", async () => {
+  const f = fixture();
+  await f.scope.loadSession("s");
+  const before = f.writes.messages;
+  f.server.deleted = true;
+  f.end(); await tick();
+  assert.equal(f.writes.messages, before);
+  await f.scope.loadSession("s", true, true);
+  assert.equal(f.writes.messages, before);
+  assert.equal(f.writes.ended, true);
+});
+for (const boundary of ["session", "unmount"]) {
+  test(`the final read stays isolated after ${boundary}`, async () => {
+    const f = fixture(); f.server.hold = true;
+    f.end();
+    if (boundary === "session") f.scope.sessionIdRef.current = "another";
+    else f.scope.sessionHookMountedRef.current = false;
+    f.server.held.shift().resolve(); await tick();
+    assert.equal(f.writes.messages, undefined);
+  });
+}
+
 test("visible idle custom messages merge real ids/leaf without dropping loaded pages or duplicating events", async () => {
   const f = fixture();
   f.post("4", custom("four")); await tick();
