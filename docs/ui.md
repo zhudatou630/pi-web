@@ -79,6 +79,12 @@ Events that are not turns share one look (`TranscriptMarker`, `components/Messag
 
 - Display math in messages reuses the code block's copy glyph, 11px action and 1.5s Copied feedback to copy LaTeX. The borderless action overlays the formula's top-right corner and appears only on hover/focus (a tap on touch), so formulas keep their spacing; Copied feedback stays visible. Inline math and file previews stay unchanged. The source attribute is added only after sanitizing, before KaTeX; user HTML cannot supply it. Image exports omit the action.
 
+## Completion notifications
+
+Page and Web Push completion notifications share `pi-session-complete:<id>`. Page service-worker notifications stamp `data.shownAt`; the push handler checks `getNotifications({ tag })` and quietly replaces a notification under 10 seconds old (`renotify: false`). Every valid push still calls `showNotification` (required to keep iOS subscriptions healthy), retaining icon/badge and same-origin click validation. Older/missing timestamps or failed listing alert normally.
+
+<!-- shortcut: a 10-second time window approximates one completion; use a shared run id if very short consecutive runs or delayed pushes need exact deduplication. -->
+
 ## Clipboard feedback
 
 `copyText()` rejects refused `execCommand` copies as well as thrown failures and always removes its temporary textarea. Copy buttons only set Copied on success; failures remain silent (no unhandled rejection). The `/copy` command instead reports a localized permission-failure notice. `copyPendingText()` still starts Safari's pending-Blob clipboard write inside the user gesture. FileViewer/Mermaid/math already use the shared `MarkdownCopyButton`, which handles rejection; tab path actions also already handle it.

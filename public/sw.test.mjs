@@ -27,7 +27,7 @@ function dispatchNotificationClick(data) {
   return { pending, wasClosed: () => closed };
 }
 
-function dispatchPush(payload, clients) {
+function dispatchPush(payload, clients, getNotifications = async () => []) {
   let pending;
   const shown = [];
   self.clients = {
@@ -35,6 +35,7 @@ function dispatchPush(payload, clients) {
     openWindow: async () => assert.fail("push must not open windows"),
   };
   self.registration = {
+    getNotifications,
     showNotification: async (title, options) => { shown.push({ title, options }); },
   };
   listeners.get("push")({
@@ -59,17 +60,51 @@ test("push always shows a notification, even when a window is visible", async ()
   );
   await event.pending;
 
+  assert.equal(event.shown.length, 1);
+  const shownAt = event.shown[0].options.data.shownAt;
+  assert.equal(typeof shownAt, "number");
   assert.deepEqual(event.shown, [{
     title: "Session complete",
     options: {
       body: "Task finished.",
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      data: { url: "/?session=session-1" },
+      data: { url: "/?session=session-1", shownAt },
       tag: "pi-session-complete:session-1",
       renotify: true,
     },
   }]);
+});
+
+test("push quietly replaces a recent same-tag notification but alerts for older or invalid timestamps", async () => {
+  const tag = "pi-session-complete:session-1";
+  const payload = { title: "Complete", body: "Done", url: "/?session=session-1", tag };
+  for (const [age, expected] of [[600, false], [9999, false], [10000, true], [60000, true], [-1, true], [NaN, true]]) {
+    const now = Date.now();
+    const originalNow = Date.now;
+    Date.now = () => now;
+    try {
+      const event = dispatchPush(payload, [], async (options) => {
+        assert.deepEqual(options, { tag });
+        return [{ tag, data: { shownAt: now - age } }];
+      });
+      await event.pending;
+      assert.equal(event.shown.length, 1, "iOS requires a display for every push");
+      assert.equal(event.shown[0].options.renotify, expected, `age ${age}`);
+      assert.equal(event.shown[0].options.icon, "/icons/icon-192.png");
+      assert.equal(event.shown[0].options.badge, "/icons/icon-192.png");
+    } finally { Date.now = originalNow; }
+  }
+  for (const listing of [async () => [{ data: {} }], async () => { throw new Error("unavailable"); }]) {
+    const event = dispatchPush(payload, [], listing);
+    await event.pending;
+    assert.equal(event.shown[0].options.renotify, true);
+  }
+  const noTag = dispatchPush({ title: "Notice", body: "Done" }, [], () => assert.fail("untagged notices need no lookup"));
+  await noTag.pending;
+  assert.equal(noTag.shown.length, 1);
+  assert.equal(noTag.shown[0].options.renotify, undefined);
+  assert.equal(noTag.shown[0].options.data.url, "/");
 });
 
 test("push ignores malformed payloads", async () => {

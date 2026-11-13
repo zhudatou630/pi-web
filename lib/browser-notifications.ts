@@ -108,7 +108,7 @@ export async function showBrowserNotification(
       if (registration) {
         await registration.showNotification(options.title, {
           ...notificationOptions,
-          data: { url: options.sessionUrl },
+          data: { url: options.sessionUrl, shownAt: Date.now() },
         });
         return "service-worker";
       }

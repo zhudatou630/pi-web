@@ -113,16 +113,32 @@ self.addEventListener("push", (event) => {
   // subscription in the background-delivery case. Notifications sharing a tag
   // replace each other instead of stacking, so a visible window merely sees
   // the completion notification re-appear.
-  event.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      data: { url: typeof url === "string" && url ? url : "/" },
-      ...(typeof tag === "string" && tag ? { tag, renotify: true } : {}),
-    }),
-  );
+  event.waitUntil(showPushNotification(title, body, url, tag));
 });
+
+async function showPushNotification(title, body, url, tag) {
+  const shownAt = Date.now();
+  const hasTag = typeof tag === "string" && tag;
+  let renotify = true;
+  if (hasTag) {
+    try {
+      const existing = await self.registration.getNotifications({ tag });
+      renotify = !existing.some((notification) => {
+        const previous = notification.data?.shownAt;
+        return typeof previous === "number" && shownAt >= previous && shownAt - previous < 10000;
+      });
+    } catch {
+      // Listing is optional; failure must not stop the notification iOS requires.
+    }
+  }
+  return self.registration.showNotification(title, {
+    body,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: { url: typeof url === "string" && url ? url : "/", shownAt },
+    ...(hasTag ? { tag, renotify } : {}),
+  });
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
