@@ -6,8 +6,10 @@ import { useConfirm } from "@/hooks/useConfirm";
 import type { McpCheckResponse, McpConfigValue, McpServerView, McpSettingsResponse, ProjectFeatureState } from "@/lib/api-types";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { parseMcpDraft } from "@/lib/mcp-draft";
-import { mcpLogRecords, toolExposureOf } from "@/lib/mcp-view";
+import { mcpLogRecords, mcpNeedsCodemode, toolExposureOf } from "@/lib/mcp-view";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
+import { SettingsScopeRow } from "./SettingsScope";
+import { ProjectOverrideTag } from "./ProjectOverride";
 import { ReloadNotice } from "./ReloadNotice";
 import { Select } from "./Select";
 import {
@@ -244,6 +246,7 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
           report={server.overridden ? undefined : reports.get(server.name)}
           testing={testing.has(server.name) || testing.has("*")}
           saving={saving}
+          needsCodemode={codemode !== null && mcpNeedsCodemode(server, settings, codemode.project?.enabled ?? codemode.enabled)}
           onTest={() => void test(server.name)}
           onPatch={(body) => void run(async () => {
             await request("PATCH", body);
@@ -278,10 +281,9 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
           )}
         >
           {mcpBuiltin && !mcpBuiltin.enabled && <p className="settings-row-message is-warning">{t("mcp.builtinOff")}</p>}
-          {settings.autoEnableCodemode === false && <p className="settings-row-message is-warning">{t("mcp.autoEnableOff")}</p>}
           {settings.servers.length === 0 && <p className="settings-row-message">{t("mcp.empty")}</p>}
           {settings.servers.map((server) => {
-            const state = server.overridden ? { text: t("mcp.overridden") } : stateText(server, reports.get(server.name), t);
+            const state = server.overridden ? null : stateText(server, reports.get(server.name), t);
             return (
               <SettingsLinkRow
                 key={serverKey(server)}
@@ -292,6 +294,8 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
                 onOpen={() => { setError(null); setView({ kind: "detail", key: serverKey(server) }); }}
               >
                 {state?.tone && <ConfigStatusDot tone={state.tone} title={state.text} />}
+                {server.overridden && <span className="settings-row-status">{t("mcp.overridden")}</span>}
+                {codemode && mcpNeedsCodemode(server, settings, codemode.project?.enabled ?? codemode.enabled) && <span className="settings-row-status is-warning">{t("mcp.needsCodemode")}</span>}
                 <ProjectStateTag server={server} />
                 <ConfigSwitch
                   checked={switchValue(server)}
@@ -315,12 +319,8 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
         <SettingsGroup title={t("mcp.builtins")}>
           {settings.builtins.map((builtin) => (
             <Fragment key={builtin.name}>
-              <SettingsRow label={t(`mcp.builtin.${builtin.name}`)} description={t(`mcp.builtin.${builtin.name}.description`)}>
-                {builtin.enabled !== builtin.globalEnabled && (
-                  <span className="settings-row-status" title={t("mcp.projectOverrideHint")}>
-                    {builtin.enabled ? t("mcp.onInProject") : t("mcp.offInProject")}
-                  </span>
-                )}
+              <SettingsRow label={t(`mcp.builtin.${builtin.name}`)}>
+                <ProjectOverrideTag value={builtin.enabled === builtin.globalEnabled ? "inherit" : builtin.enabled ? "load" : "unload"} />
                 <ConfigSwitch
                   checked={builtin.globalEnabled}
                   disabled={saving}
@@ -331,12 +331,8 @@ export function McpConfig({ cwd = null, sessionId = null, onReloaded, onChanged 
                 />
               </SettingsRow>
               {builtin.name === "codemode" && codemode && (
-                <SettingsRow nested label={t("mcp.codemodeDefault")} description={t("mcp.codemodeDefault.description")}>
-                  {codemode.project?.overridden && (
-                    <span className="settings-row-status" title={t("mcp.projectOverrideHint")}>
-                      {codemode.project.enabled ? t("mcp.onInProject") : t("mcp.offInProject")}
-                    </span>
-                  )}
+                <SettingsRow nested label={t("mcp.codemodeDefault")}>
+                  <ProjectOverrideTag value={codemode.project?.overridden ? codemode.project.enabled ? "load" : "unload" : "inherit"} />
                   <ConfigSwitch
                     checked={codemode.enabled}
                     disabled={saving || !builtin.globalEnabled}
@@ -375,10 +371,8 @@ function switchValue(server: McpServerView): boolean {
 
 function ProjectStateTag({ server }: { server: McpServerView }) {
   const { t } = useI18n();
-  if (server.scope === "project") return <span className="settings-row-status">{t("project.tag.override")}</span>;
-  if (!server.projectOverride) return null;
-  const text = server.enabled !== switchValue(server) ? t(server.enabled ? "mcp.onInProject" : "mcp.offInProject") : t("project.tag.override");
-  return <span className="settings-row-status" title={t("mcp.projectOverrideHint")}>{text}</span>;
+  if (server.scope === "project") return <span className="settings-row-status">{t("project.projectOnly")}</span>;
+  return <ProjectOverrideTag value={server.projectOverride ? server.enabled === switchValue(server) ? "mixed" : server.enabled ? "load" : "unload" : "inherit"} />;
 }
 
 /**
@@ -397,13 +391,14 @@ function describeValue(value: McpConfigValue, t: Translate): string {
   return `${value.name} — ${t("mcp.value.literal")}`;
 }
 
-function McpServerDetail({ server, settings, cwd, report, testing, saving, onTest, onPatch, onRemoveOverride, onSignedChange, onEdit, onDelete }: {
+function McpServerDetail({ server, settings, cwd, report, testing, saving, needsCodemode, onTest, onPatch, onRemoveOverride, onSignedChange, onEdit, onDelete }: {
   server: McpServerView;
   settings: McpSettingsResponse;
   cwd: string | null;
   report: CheckReport | undefined;
   testing: boolean;
   saving: boolean;
+  needsCodemode: boolean;
   onTest: () => void;
   onPatch: (body: Record<string, unknown>) => void;
   onRemoveOverride: () => void;
@@ -431,24 +426,21 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
           <span className={`config-scope-tag${server.scope === "project" ? " is-project" : ""}`}>
             {server.scope === "project" ? t("mcp.scopeProject") : t("mcp.scopeGlobal")}
           </span>
+          {server.overridden && <span className="settings-row-status">{t("mcp.overridden")}</span>}
+          {needsCodemode && <span className="settings-row-status is-warning">{t("mcp.needsCodemode")}</span>}
+          {server.authProvider && <span className="settings-row-status">{t("mcp.authProviderHint", { provider: server.authProvider })}</span>}
           <span className="config-detail-path" title={path}>{path}</span>
         </>
       )}
       description={server.description}
     >
       <SettingsGroup>
-        <SettingsRow
-          label={t("mcp.enabledLabel")}
-          description={server.overridden ? t("mcp.overridden") : server.scope === "global" ? t("mcp.enabledGlobal") : undefined}
-        >
-          <ProjectStateTag server={server} />
-          <ConfigSwitch
-            checked={switchValue(server)}
-            disabled={saving || server.overridden}
-            label={t("mcp.enabledLabel")}
-            onChange={(enabled) => onPatch({ scope: server.scope, name: server.name, enabled })}
-          />
-        </SettingsRow>
+        <SettingsScopeRow
+          projectPath={server.scope === "project" ? cwd ?? undefined : undefined}
+          checked={switchValue(server)}
+          disabled={saving || server.overridden}
+          onChange={(enabled) => onPatch({ scope: server.scope, name: server.name, enabled })}
+        />
         <SettingsRow label={t("mcp.connection")} description={state.text}>
           {!server.overridden && server.enabled && (
             <ConfigButton size="small" disabled={testing} onClick={onTest}>{testing ? t("mcp.testing") : t("mcp.test")}</ConfigButton>
@@ -461,23 +453,15 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
         )}
       </SettingsGroup>
 
-      {(server.usesOAuth || server.authProvider) && (
+      {server.usesOAuth && !server.authProvider && (
         <SettingsGroup title={t("mcp.signIn")}>
-          {server.authProvider ? (
-            <p className="settings-row-message">{t("mcp.authProviderHint", { provider: server.authProvider })}</p>
-          ) : (
-            <McpSignIn server={server} cwd={cwd} disabled={server.overridden || !server.enabled} onChanged={onSignedChange} />
-          )}
+          <McpSignIn server={server} cwd={cwd} disabled={server.overridden || !server.enabled} onChanged={onSignedChange} />
         </SettingsGroup>
       )}
 
       <SettingsGroup title={t("mcp.tools")}>
         <SettingsRow
           label={t("mcp.exposure")}
-          description={<>
-            {t(`mcp.exposure.${server.exposure}.description`)}
-            {exposureTarget.scope === "project" && server.scope === "global" && <> {t("mcp.savedTo", { path: settings.project?.path ?? "" })}</>}
-          </>}
         >
           <Select
             className="select-trigger settings-select"
@@ -490,7 +474,9 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
           />
         </SettingsRow>
         {!report || report.state !== "connected" ? (
-          <p className="settings-row-message">{t("mcp.toolsUntested")}</p>
+          <SettingsRow label={t("mcp.toolsUntested")}>
+            <ConfigButton size="small" disabled={testing || saving || server.overridden || !server.enabled} onClick={onTest}>{testing ? t("mcp.testing") : t("mcp.test")}</ConfigButton>
+          </SettingsRow>
         ) : report.tools.length === 0 ? (
           <p className="settings-row-message">{t("mcp.toolsNone")}</p>
         ) : report.tools.map((tool) => {
@@ -524,7 +510,7 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
         {otherRules.length > 0 && (
           <p className="settings-row-message">{t("mcp.rules", { rules: otherRules.map(([rule, exposure]) => `${rule} → ${exposure}`).join(", ") })}</p>
         )}
-        {report?.resources && <p className="settings-row-message">{t("mcp.resources")}</p>}
+        {report?.resources && <span className="settings-row-status">{t("mcp.resources")}</span>}
       </SettingsGroup>
 
       <SettingsGroup title={t("mcp.details")}>
@@ -540,20 +526,18 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
           {server.clientSecret && <SettingsProperty label={t("mcp.prop.clientSecret")}>{describeValue(server.clientSecret, t)}</SettingsProperty>}
         </SettingsProperties>
         {/\/sse\/?(\?|$)/.test(server.transport) && <p className="settings-row-message is-warning">{t("mcp.sseHint")}</p>}
-        {(server.env.length > 0 || server.headers.length > 0 || server.clientSecret) && <p className="settings-row-message">{t("mcp.secretsHidden")}</p>}
       </SettingsGroup>
 
       {(canOverride || server.projectOverride) && (
         <SettingsGroup>
-          <SettingsRow label={t("mcp.thisProject")} description={server.projectOverride ? t("mcp.projectOverride") : t("mcp.thisProjectDescription")}>
-            <ConfigButton
-              size="small"
-              disabled={saving}
-              onClick={() => server.projectOverride ? onRemoveOverride() : onPatch({ scope: "project", name: server.name, override: true, enabled: !server.enabled })}
-            >
-              {server.projectOverride ? t("mcp.resetInProject") : server.enabled ? t("mcp.disableInProject") : t("mcp.enableInProject")}
-            </ConfigButton>
-          </SettingsRow>
+          <SettingsScopeRow
+            projectPath={cwd ?? undefined}
+            checked={server.enabled}
+            overridden={Boolean(server.projectOverride)}
+            onReset={onRemoveOverride}
+            disabled={saving}
+            onChange={(enabled) => onPatch({ scope: "project", name: server.name, override: true, enabled })}
+          />
         </SettingsGroup>
       )}
 
@@ -571,10 +555,10 @@ function McpServerDetail({ server, settings, cwd, report, testing, saving, onTes
       )}
 
       <SettingsGroup>
-        <SettingsRow label={t("mcp.editJson")} description={t("mcp.editJsonDescription")}>
+        <SettingsRow label={t("mcp.editJson")}>
           <ConfigButton size="small" disabled={saving} onClick={onEdit}>{t("i18n.edit")}</ConfigButton>
         </SettingsRow>
-        <SettingsRow label={t("i18n.delete")} description={t("mcp.deleteDescription")}>
+        <SettingsRow label={t("i18n.delete")}>
           <ConfigButton variant="danger" size="small" disabled={saving} onClick={onDelete}>{t("i18n.delete")}</ConfigButton>
         </SettingsRow>
       </SettingsGroup>
@@ -654,7 +638,7 @@ function McpSignIn({ server, cwd, disabled, onChanged }: { server: McpServerView
   const busy = state.phase === "connecting" || state.phase === "auth" || state.phase === "finishing";
   return (
     <>
-      <SettingsRow label={server.signedIn ? t("mcp.signedIn") : t("mcp.notSignedIn")} description={server.signedIn || state.phase !== "idle" ? undefined : t("mcp.signInDescription")}>
+      <SettingsRow label={server.signedIn ? t("mcp.signedIn") : t("mcp.notSignedIn")}>
         {busy ? (
           <ConfigButton size="small" onClick={cancel}>{t("i18n.cancel")}</ConfigButton>
         ) : (
@@ -718,13 +702,14 @@ function McpAddPaste({ onRead, onWriteJson }: { onRead: (draft: Draft) => void; 
   return (
     <SettingsDetailPage title={t("mcp.addTitle")}>
       <form className="settings-form" onSubmit={(event) => { event.preventDefault(); void read(); }}>
-        <ConfigField label={t("mcp.pasteLabel")}>
+        <ConfigField label={t("mcp.addTitle")}>
           <textarea
             className="mcp-config-json"
             spellCheck={false}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder={"https://mcp.example.com/mcp\nnpx -y @modelcontextprotocol/server-filesystem .\nclaude mcp add --transport http docs https://…\n{ \"mcpServers\": { … } }"}
+            placeholder={t("mcp.pasteLabel")}
+            aria-label={t("mcp.pasteLabel")}
           />
         </ConfigField>
         {error && <p role="alert" className="settings-row-message is-error mcp-server-description">{error}</p>}
@@ -778,7 +763,6 @@ function McpDraftForm({ draft, saving, projectAvailable, projectTrusted, onChang
           placeholder={'{\n  "command": "npx",\n  "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]\n}'}
         />
       </ConfigField>
-      <p className="settings-row-message">{t("mcp.configHint")}</p>
       <div className="settings-inline-form-actions">
         <ConfigButton type="submit" variant="primary" size="small" disabled={saving || !draft.json.trim()}>
           {saving ? t("agents.saving") : t("agents.save")}

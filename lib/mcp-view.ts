@@ -3,7 +3,7 @@
  * kinds, never values, and connection text with secret-looking parts masked. The raw entry only
  * leaves the server through an explicit "Edit JSON" request.
  */
-import type { McpConfigValue, McpServerFacts } from "./api-types";
+import type { McpConfigValue, McpServerFacts, McpServerView, McpSettingsResponse } from "./api-types";
 import type { McpValueParsers } from "./mcp-transport";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -54,6 +54,17 @@ export function toolExposureOf(rules: Record<string, string>, serverExposure: st
     if (new RegExp(`^${source}$`).test(tool)) return exposure;
   }
   return serverExposure;
+}
+
+/** Either discovery tool can reach MCP tools; pi auto-activates them from the enabled servers' exposure. */
+export function mcpNeedsCodemode(server: McpServerView, settings: McpSettingsResponse, codemodeEnabled: boolean): boolean {
+  if (!server.enabled || server.overridden) return false;
+  const exposures = (entry: McpServerView) => [entry.exposure, ...Object.values(entry.toolExposure)];
+  if (!exposures(server).some((value) => value === "codemode" || value === "deferred")) return false;
+  const enabled = (name: string) => settings.builtins.some((builtin) => builtin.name === name && builtin.enabled);
+  if (!enabled("mcp") || enabled("tool-search")) return false;
+  const autoCodemode = settings.autoEnableCodemode !== false && settings.servers.some((entry) => entry.enabled && !entry.overridden && exposures(entry).includes("codemode"));
+  return !(enabled("codemode") && (codemodeEnabled || autoCodemode));
 }
 
 /** One server's records in an `mcp.log` tail; continuation lines (indented) stay with their record. */
