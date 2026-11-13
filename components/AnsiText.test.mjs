@@ -4,6 +4,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createJiti } from "jiti";
+import postcss from "postcss";
 
 const jiti = createJiti(import.meta.url, {
   jsx: { runtime: "automatic" },
@@ -58,6 +59,61 @@ test("16 ANSI colors and low indexed colors use theme classes; every class has C
   }
   assert.match(css, /html\.dark \{\s*--ansi-green:/);
   assert.match(css, /--ansi-blue: var\(--accent\)/);
+});
+
+test("neutral ANSI foreground/background pairs retain readable contrast in both themes", async () => {
+  const css = postcss.parse(await readFile(new URL("../app/globals.css", import.meta.url), "utf8"));
+  const claudeCss = postcss.parse(await readFile(new URL("../app/theme-claude.css", import.meta.url), "utf8"));
+  const declarations = (sheet, selectors) => {
+    const values = {};
+    sheet.walkRules((rule) => {
+      const candidates = rule.selectors.flatMap((selector) => selector.startsWith(":where(")
+        ? selector.slice(7, -1).split(",").map((part) => part.trim()) : [selector]);
+      if (!candidates.some((selector) => selectors.includes(selector))) return;
+      rule.walkDecls(({ prop, value }) => { values[prop] = value; });
+    });
+    return values;
+  };
+  const resolve = (value, variables) => value.replace(/var\((--[\w-]+)\)/g, (_, name) => {
+    assert.ok(variables[name], `undefined CSS variable ${name}`);
+    return resolve(variables[name], variables);
+  });
+  const luminance = (hex) => {
+    assert.match(hex, /^#[\da-f]{6}$/i);
+    const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  };
+  for (const dark of [false, true]) {
+    for (const claude of [false, true]) {
+      const root = {
+        ...declarations(css, [":root", ...(dark ? ["html.dark"] : [])]),
+        ...declarations(claudeCss, claude ? ['html[data-theme="claude"]', ...(dark ? ['html[data-theme="claude"].dark'] : [])] : []),
+      };
+      // Inherited custom properties have already resolved against the root's theme.
+      const inherited = Object.fromEntries(Object.keys(root).filter((key) => key.startsWith("--ansi-") || key.startsWith("--text"))
+        .map((key) => [key, resolve(root[key], root)]));
+      for (const [foregrounds, backgrounds] of [[[97, 37, null], [40, 100]], [[30, 90, null], [47, 107]]]) {
+        for (const fg of foregrounds) for (const bg of backgrounds) {
+          const index = (sgr, base) => sgr < 90 ? sgr - base : sgr - base - 60 + 8;
+          const standard = fg === null ? `${bg}` : `${fg};${bg}`;
+          const indexed = (fg === null ? "" : `38;5;${index(fg, 30)};`) + `48;5;${index(bg, 40)}`;
+          for (const codes of [standard, indexed]) {
+            const html = toHtml(`\x1b[${codes}mReadable terminal banner\x1b[0m`);
+            const selectors = html.match(/class="([^"]+)"/)[1].split(" ").map((name) => `.${name}`);
+            const style = declarations(css, selectors);
+            const variables = { ...inherited, ...style };
+            const foreground = resolve(style.color, variables);
+            const background = resolve(style["background-color"], variables);
+            const description = `${dark ? "dark" : "light"}/${claude ? "claude" : "default"} SGR ${codes}: ${foreground} on ${background}`;
+            assert.notEqual(foreground, background, description);
+            const [hi, lo] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+            assert.ok((hi + 0.05) / (lo + 0.05) >= 4.5, description);
+          }
+        }
+      }
+    }
+  }
 });
 
 test("extension plain-text outlets strip ANSI without changing select response values", async () => {

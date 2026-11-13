@@ -314,6 +314,10 @@ html.dark {
   --ansi-bright-magenta: #6d28d9;
   --ansi-bright-cyan: #155e75;
   --ansi-bright-white: var(--text);
+  --ansi-black-bg: #1a1a1a;
+  --ansi-bright-black-bg: #3b4452;
+  --ansi-white-bg: #e5e7eb;
+  --ansi-bright-white-bg: #ffffff;
 }
 html.dark {
   --ansi-green: #4ade80;
@@ -326,6 +330,19 @@ html.dark {
   --ansi-bright-magenta: #d8b4fe;
   --ansi-bright-cyan: #67e8f9;
 }
+/* Neutral backgrounds need terminal neutrals, not the page's foreground text tiers. */
+.ansi-black-bg,
+.ansi-white-bg,
+.ansi-bright-black-bg,
+.ansi-bright-white-bg {
+  --ansi-black: var(--ansi-black-bg);
+  --ansi-white: var(--ansi-white-bg);
+  --ansi-bright-black: var(--ansi-bright-black-bg);
+  --ansi-bright-white: var(--ansi-bright-white-bg);
+}
+/* A background without an explicit foreground still needs contrasting text. */
+:where(.ansi-black-bg, .ansi-bright-black-bg) { color: var(--ansi-bright-white); }
+:where(.ansi-white-bg, .ansi-bright-white-bg) { color: var(--ansi-black); }
 .ansi-black-fg { color: var(--ansi-black); }
 .ansi-red-fg { color: var(--ansi-red); }
 .ansi-green-fg { color: var(--ansi-green); }
@@ -342,22 +359,22 @@ html.dark {
 .ansi-bright-magenta-fg { color: var(--ansi-bright-magenta); }
 .ansi-bright-cyan-fg { color: var(--ansi-bright-cyan); }
 .ansi-bright-white-fg { color: var(--ansi-bright-white); }
-.ansi-black-bg { background-color: var(--ansi-black); }
+.ansi-black-bg { background-color: var(--ansi-black-bg); }
 .ansi-red-bg { background-color: var(--ansi-red); }
 .ansi-green-bg { background-color: var(--ansi-green); }
 .ansi-yellow-bg { background-color: var(--ansi-yellow); }
 .ansi-blue-bg { background-color: var(--ansi-blue); }
 .ansi-magenta-bg { background-color: var(--ansi-magenta); }
 .ansi-cyan-bg { background-color: var(--ansi-cyan); }
-.ansi-white-bg { background-color: var(--ansi-white); }
-.ansi-bright-black-bg { background-color: var(--ansi-bright-black); }
+.ansi-white-bg { background-color: var(--ansi-white-bg); }
+.ansi-bright-black-bg { background-color: var(--ansi-bright-black-bg); }
 .ansi-bright-red-bg { background-color: var(--ansi-bright-red); }
 .ansi-bright-green-bg { background-color: var(--ansi-bright-green); }
 .ansi-bright-yellow-bg { background-color: var(--ansi-bright-yellow); }
 .ansi-bright-blue-bg { background-color: var(--ansi-bright-blue); }
 .ansi-bright-magenta-bg { background-color: var(--ansi-bright-magenta); }
 .ansi-bright-cyan-bg { background-color: var(--ansi-bright-cyan); }
-.ansi-bright-white-bg { background-color: var(--ansi-bright-white); }
+.ansi-bright-white-bg { background-color: var(--ansi-bright-white-bg); }
 
 /* Shared header rules. Keep the original 36px row; only remove layout-shifting marks. */
 .workspace-header {
