@@ -86,6 +86,10 @@ Git 有时会保留 prunable worktree 记录。Pi Web 会过滤这些记录，�
 **Explorer 和当前聊天看起来不在同一个分支？**
 Explorer 跟随当前选择的 worktree；聊天跟随打开的会话。如果点开的会话在另一个还活着的 worktree 里，侧边栏会切到那个 checkout。同一 checkout 里点历史会话不会改 Explorer，已删除 worktree 的会话也不会把 Explorer 拽走。
 
+## Directory picker
+
+The path field browses on Enter, not while typing. Select accepts a typed path directly: it first calls the same browse route to obtain the realpath, then selects that canonical folder. A refusal keeps the dialog open and returns focus to the field. Cancellation or unmount invalidates the existing latest-request lane, so a pending Select cannot choose a folder afterwards.
+
 ## Implementation notes
 
 - `lib/worktree.ts` resolves linked worktree top-levels back to the main repo `projectRoot`; `listAllSessions()` attaches that to each `SessionInfo` so all worktrees for one repo are grouped together in the sidebar.

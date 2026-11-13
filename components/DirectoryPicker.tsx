@@ -69,22 +69,29 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
   const [loading, setLoading] = useState(true);
   // Only the latest navigation lands: an earlier one resolving late must not show its folder as selectable.
   const navigationRef = useRef(0);
+  const pathInputRef = useRef<HTMLInputElement>(null);
+  const cancel = () => {
+    navigationRef.current += 1;
+    onCancel();
+  };
 
-  const navigateTo = useCallback(async (directory?: string) => {
+  const navigateTo = useCallback(async (directory?: string): Promise<string | null> => {
     const navigation = ++navigationRef.current;
     setLoading(true);
     setLoadError(null);
     try {
       const data = await loadDirectories(directory);
-      if (navigation !== navigationRef.current) return;
+      if (navigation !== navigationRef.current) return null;
       const nextPath = data.path ?? directory ?? "/";
       setCurrentPath(nextPath);
       setParentDirectory(data.parentPath ?? null);
       setPathInput(nextPath);
       setDirectories(data.directories ?? []);
       setDrives(data.drives ?? null);
+      return nextPath;
     } catch (cause) {
       if (navigation === navigationRef.current) setLoadError(cause instanceof Error ? cause.message : String(cause));
+      return null;
     } finally {
       if (navigation === navigationRef.current) setLoading(false);
     }
@@ -93,16 +100,27 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
   useEffect(() => {
     setPortalTarget(document.body);
     void navigateTo(initialPath || undefined);
+    return () => { navigationRef.current += 1; };
   }, [initialPath, navigateTo]);
+
+  useEffect(() => {
+    if (!loading && (loadError || error)) pathInputRef.current?.focus();
+  }, [loading, loadError, error]);
 
   const handlePathSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const candidate = pathInput.trim();
     if (candidate) void navigateTo(candidate);
   };
-  const hasUncommittedPath = pathInput.trim() !== currentPath;
-  // While a folder loads, currentPath is still the previous folder.
-  const canSelect = Boolean(currentPath) && !hasUncommittedPath && !busy && !loading;
+  const typedPath = pathInput.trim();
+  const hasUncommittedPath = typedPath !== currentPath;
+  const canSelect = Boolean(typedPath) && !busy && !loading;
+  const handleSelect = async () => {
+    if (!canSelect) return;
+    // Browse resolves links, .. and trailing separators exactly like Enter + Select.
+    const path = hasUncommittedPath ? await navigateTo(typedPath) : currentPath;
+    if (path) onSelect(path);
+  };
   const canNavigateUp = Boolean(parentDirectory) || isWindowsDriveRoot(currentPath);
 
   if (!portalTarget) return null;
@@ -111,7 +129,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
     <ModalDialog
       className="models-dialog-backdrop"
       aria-label={t("directoryPicker.selectDirectory")}
-      onClose={busy ? undefined : onCancel}
+      onClose={busy ? undefined : cancel}
     >
       <div className="models-dialog directory-picker-panel">
         <div className="models-dialog-header">
@@ -133,6 +151,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
           </button>
           <label className="settings-search-field">
             <input
+              ref={pathInputRef}
               id="directory-path"
               type="text"
               value={pathInput}
@@ -192,14 +211,14 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
         </div>
 
         <div className="models-dialog-footer directory-picker-footer">
-          <ConfigButton variant="secondary" onClick={onCancel} disabled={busy}>
+          <ConfigButton variant="secondary" onClick={cancel} disabled={busy}>
             {t("i18n.cancel")}
           </ConfigButton>
           <ConfigButton
             variant="primary"
-            onClick={() => onSelect(currentPath)}
+            onClick={() => void handleSelect()}
             disabled={!canSelect}
-            title={hasUncommittedPath ? t("directoryPicker.openBeforeSelecting") : t("directoryPicker.selectCurrentDirectory")}
+            title={hasUncommittedPath && typedPath ? t("directoryPicker.selectTypedPath", { path: typedPath }) : t("directoryPicker.selectCurrentDirectory")}
           >
             {busy ? t("i18n.checking") : t("directoryPicker.selectThisFolder")}
           </ConfigButton>
