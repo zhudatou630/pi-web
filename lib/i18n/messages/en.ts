@@ -5,6 +5,10 @@ export const enLocale: LocalePlugin = {
   id: "en",
   label: "English",
   messages: {
+    "settings.scope.default": "On by default",
+    "settings.scope.project": "This project",
+    "settings.scope.follows": "Follows default",
+    "settings.scope.reset": "Reset to default",
     "common.ok": "OK",
     "common.discard": "Discard",
     "common.keepEditing": "Keep editing",

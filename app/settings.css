@@ -1272,6 +1272,11 @@
   text-align: right;
 }
 
+.settings-scope-inherited {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
 .settings-chat-reset {
   width: var(--ui-row-height);
   height: var(--ui-row-height);

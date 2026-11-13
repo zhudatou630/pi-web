@@ -5,6 +5,10 @@ export const zhCNLocale: LocalePlugin = {
   id: "zh-CN",
   label: "简体中文",
   messages: {
+    "settings.scope.default": "默认启用",
+    "settings.scope.project": "本项目",
+    "settings.scope.follows": "跟随默认",
+    "settings.scope.reset": "恢复默认",
     "common.ok": "确定",
     "common.discard": "放弃",
     "common.keepEditing": "继续编辑",
