@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 
 const panelSource = await readFile(new URL("./SettingsPanel.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
@@ -131,13 +132,68 @@ test("uses a left section nav on desktop and push navigation on mobile", () => {
   assert.doesNotMatch(panelSource, /style=\{\{/);
 });
 
-test("every General row explains itself in place, not in a hover title", () => {
+test("General keeps labels and controls without descriptive copy or hover help", () => {
   const general = panelSource.slice(panelSource.indexOf("function GeneralSettings"), panelSource.indexOf("export function SettingsPanel"));
-  assert.doesNotMatch(general, /title=\{t\("settings\.\w+Description"\)\}/);
-  for (const key of ["chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault", "shiftEnterToSend", "autoSessionTitle", "quoteSelection", "sidebarSingleProject", "browserNotifications", "pushPermission", "shellTool"]) {
-    assert.match(general, new RegExp(`t\\("settings\\.${key}Description"\\)`));
-    assert.match(enSource, new RegExp(`"settings\\.${key}Description":`));
-    assert.match(zhSource, new RegExp(`"settings\\.${key}Description":`));
+  assert.doesNotMatch(general, /description=|settings\.\w+Description/);
+  for (const key of ["chatContentWidth", "chatContentFontSize", "thinkingExpandedDefault", "exportImageFooter", "shiftEnterToSend", "autoSessionTitle", "quoteSelection", "sidebarSingleProject", "routines", "builtinTools", "completionSound", "browserNotifications", "pushPermission", "shellTool", "logOut"]) {
+    for (const messages of [enSource, zhSource]) assert.doesNotMatch(messages, new RegExp(`"settings\\.${key}Description":`));
+  }
+});
+
+test("Routines confirms only scheduled enabled tasks, cancels without saving, and fails closed on list errors", async () => {
+  const file = ts.createSourceFile("SettingsPanel.tsx", panelSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function find(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(file) === "toggleRoutines") return node.initializer;
+    return ts.forEachChild(node, find);
+  }
+  const callback = find(file);
+  assert.ok(callback);
+  const js = ts.transpileModule(`return (${callback.getText(file)});`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const scheduled = { enabled: true, schedule: { kind: "daily" } };
+  for (const scenario of [
+    { routines: [scheduled, scheduled, { ...scheduled, enabled: false }, { enabled: true, schedule: { kind: "manual" } }], accept: true, count: 2 },
+    { routines: [scheduled], accept: false, count: 1 },
+    { routines: [], count: 0 },
+    { routines: [{ ...scheduled, enabled: false }, { enabled: true, schedule: { kind: "manual" } }], count: 0 },
+    { enabled: true, count: 0 },
+    { listError: true, count: 0 },
+    { malformed: true, count: 0 },
+    { saveError: true, routines: [], count: 0 },
+  ]) {
+    const calls = [];
+    const confirmations = [];
+    let error = null;
+    let saving;
+    let changed;
+    let announced;
+    const enabled = scenario.enabled ?? false;
+    const bindings = {
+      setRoutinesSaving: (value) => { saving = value; },
+      setRoutinesError: (value) => { error = value; },
+      setRoutinesEnabled: (value) => { changed = value; },
+      announceRoutinesFeature: (value) => { announced = value; },
+      t: (key, params) => `${key}:${params?.count ?? ""}`,
+      confirm: async (message) => { confirmations.push(message); return scenario.accept; },
+      fetch: async (url, options) => {
+        calls.push([url, options]);
+        if (url === "/api/routines") {
+          if (scenario.listError) throw new Error("list failed");
+          return { ok: true, json: async () => scenario.malformed ? {} : { routines: scenario.routines } };
+        }
+        return { ok: !scenario.saveError, status: 500, json: async () => scenario.saveError ? { error: "save failed" } : { enabled } };
+      },
+    };
+    await new Function(...Object.keys(bindings), js)(...Object.values(bindings))(enabled);
+    assert.equal(saving, false);
+    assert.deepEqual(confirmations, scenario.count ? [`settings.routinesDisableConfirm:${scenario.count}`] : []);
+    const blocked = scenario.accept === false || scenario.listError || scenario.malformed;
+    const save = calls.find(([url]) => url === "/api/routines/settings");
+    assert.equal(Boolean(save), !blocked);
+    if (save) assert.deepEqual(JSON.parse(save[1].body), { enabled });
+    assert.equal(changed, blocked || scenario.saveError ? undefined : enabled);
+    assert.equal(announced, changed);
+    assert.equal(Boolean(error), Boolean(scenario.listError || scenario.malformed || scenario.saveError));
+    if (enabled) assert.equal(calls.length, 1, "enabling does not fetch or confirm routines");
   }
 });
 

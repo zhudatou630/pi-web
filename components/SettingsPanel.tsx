@@ -97,6 +97,7 @@ function ThemeIcon({ preference }: { preference: ThemePreference }) {
 
 function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange" | "soundEnabled" | "onSoundToggle">) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
+  const confirm = useConfirm();
   const { preference, setThemePreference, palette, setThemePalette } = useTheme();
   const { scheme: fontScheme, setFontScheme } = useFontScheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
@@ -177,6 +178,13 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     setRoutinesSaving(true);
     setRoutinesError(null);
     try {
+      if (!enabled) {
+        const listResponse = await fetch("/api/routines", { cache: "no-store" });
+        const list = await listResponse.json() as { routines?: { enabled: boolean; schedule: { kind: string } }[]; error?: string };
+        if (!listResponse.ok || list.error || !Array.isArray(list.routines)) throw new Error(list.error ?? `HTTP ${listResponse.status}`);
+        const count = list.routines.filter((routine) => routine.enabled && routine.schedule.kind !== "manual").length;
+        if (count > 0 && !await confirm(t("settings.routinesDisableConfirm", { count }), { confirmLabel: t("settings.routinesDisable") })) return;
+      }
       const response = await fetch("/api/routines/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -278,8 +286,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5" />
     </svg>
   );
-  const switchRow = (label: string, description: string, checked: boolean, onChange: (enabled: boolean) => void) => (
-    <SettingsRow label={label} description={description}>
+  const switchRow = (label: string, checked: boolean, onChange: (enabled: boolean) => void) => (
+    <SettingsRow label={label}>
       <ConfigSwitch checked={checked} label={label} onChange={onChange} />
     </SettingsRow>
   );
@@ -369,44 +377,44 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
             ))}
           </div>
         </SettingsRow>
-        <SettingsRow label={t("settings.chatContentWidth")} description={t("settings.chatContentWidthDescription")} htmlFor="settings-chat-content-width" stacked>
+        <SettingsRow label={t("settings.chatContentWidth")} htmlFor="settings-chat-content-width" stacked>
           {rangeControl("settings-chat-content-width", chatContentWidth, CHAT_CONTENT_WIDTH_MIN, CHAT_CONTENT_WIDTH_MAX, 10, CHAT_CONTENT_WIDTH_DEFAULT, t("settings.resetChatContentWidth"), setChatContentWidth)}
         </SettingsRow>
-        <SettingsRow label={t("settings.chatContentFontSize")} description={t("settings.chatContentFontSizeDescription")} htmlFor="settings-chat-content-font-size" stacked>
+        <SettingsRow label={t("settings.chatContentFontSize")} htmlFor="settings-chat-content-font-size" stacked>
           {rangeControl("settings-chat-content-font-size", fontSize, CHAT_CONTENT_FONT_SIZE_MIN, CHAT_CONTENT_FONT_SIZE_MAX, 1, CHAT_CONTENT_FONT_SIZE_DEFAULT, t("settings.resetChatContentFontSize"), setFontSize)}
         </SettingsRow>
-        {switchRow(t("settings.thinkingExpandedDefault"), t("settings.thinkingExpandedDefaultDescription"), thinkingExpanded, (enabled) => {
+        {switchRow(t("settings.thinkingExpandedDefault"), thinkingExpanded, (enabled) => {
           setThinkingExpandedByDefault(enabled);
           setThinkingExpanded(enabled);
         })}
-        {switchRow(t("settings.exportImageFooter"), t("settings.exportImageFooterDescription"), exportImageFooter, (enabled) => {
+        {switchRow(t("settings.exportImageFooter"), exportImageFooter, (enabled) => {
           setExportImageFooterEnabled(enabled);
           setExportImageFooter(enabled);
         })}
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.chat")}>
-        {switchRow(t("settings.shiftEnterToSend"), t("settings.shiftEnterToSendDescription"), shiftEnterToSend, (enabled) => {
+        {switchRow(t("settings.shiftEnterToSend"), shiftEnterToSend, (enabled) => {
           setShiftEnterToSend(enabled);
           setShiftEnterToSendState(enabled);
         })}
-        {switchRow(t("settings.autoSessionTitle"), t("settings.autoSessionTitleDescription"), autoSessionTitle, (enabled) => {
+        {switchRow(t("settings.autoSessionTitle"), autoSessionTitle, (enabled) => {
           setAutoSessionTitleEnabled(enabled);
           setAutoSessionTitle(enabled);
         })}
-        {switchRow(t("settings.quoteSelection"), t("settings.quoteSelectionDescription"), quoteSelectionEnabled, onQuoteSelectionChange)}
-        {switchRow(t("settings.sidebarSingleProject"), t("settings.sidebarSingleProjectDescription"), singleProject, (enabled) => {
+        {switchRow(t("settings.quoteSelection"), quoteSelectionEnabled, onQuoteSelectionChange)}
+        {switchRow(t("settings.sidebarSingleProject"), singleProject, (enabled) => {
           setSidebarSingleProject(enabled);
           setSingleProject(enabled);
         })}
         {routinesEnabled !== null && (
-          <SettingsRow label={t("settings.routines")} description={t("settings.routinesDescription")}>
+          <SettingsRow label={t("settings.routines")}>
             <ConfigSwitch checked={routinesEnabled} loading={routinesSaving} label={t("settings.routines")} onChange={(enabled) => void toggleRoutines(enabled)} />
           </SettingsRow>
         )}
         {routinesError && <p role="alert" className="settings-row-message is-error">{routinesError}</p>}
         {shellSettings?.builtinTools && (
-          <SettingsRow label={t("settings.builtinTools")} description={t("settings.builtinToolsDescription")} stacked>
+          <SettingsRow label={t("settings.builtinTools")} stacked>
             <div className="settings-checkbox-grid" role="group" aria-label={t("settings.builtinTools")}>
               {SETTINGS_BUILTIN_TOOLS.map((name) => (
                 <label className="settings-checkbox" key={name}>
@@ -419,7 +427,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           </SettingsRow>
         )}
         {shellSettings?.isWindows && (
-          <SettingsRow label={t("settings.usePowerShell")} description={t("settings.shellToolDescription")}>
+          <SettingsRow label={t("settings.usePowerShell")}>
             <ConfigSwitch
               checked={shellSettings.powerShellEnabled}
               loading={shellSaving}
@@ -432,9 +440,9 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.notifications")}>
-        {switchRow(t("settings.completionSound"), t("settings.completionSoundDescription"), soundEnabled, onSoundToggle)}
+        {switchRow(t("settings.completionSound"), soundEnabled, onSoundToggle)}
         {notificationPermission && (
-          <SettingsRow label={t("settings.browserNotifications")} description={t("settings.browserNotificationsDescription")}>
+          <SettingsRow label={t("settings.browserNotifications")}>
             {notificationPermission === "granted" ? (
               <span className="settings-row-status">{t("settings.browserNotificationsOn")}</span>
             ) : notificationPermission === "denied" ? (
@@ -446,7 +454,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
             )}
           </SettingsRow>
         )}
-        <SettingsRow label={t("settings.pushPermission")} description={t("settings.pushPermissionDescription")}>
+        <SettingsRow label={t("settings.pushPermission")}>
           <ConfigButton size="small" disabled={pushRegistering} onClick={() => void registerPush()}>
             {pushRegistering ? t("settings.pushRegisterLoading") : t("settings.pushRegister")}
           </ConfigButton>
@@ -461,7 +469,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       <SettingsGroup title={t("settings.about")}>
         <AppUpdateNotice showCurrentVersion />
         {webAuthEnabled && (
-          <SettingsRow label={t("auth.logOut")} description={t("settings.logOutDescription")}>
+          <SettingsRow label={t("auth.logOut")}>
             <ConfigButton size="small" variant="danger" disabled={loggingOut} onClick={() => void logOut()}>
               {loggingOut ? t("auth.loggingOut") : t("auth.logOut")}
             </ConfigButton>
