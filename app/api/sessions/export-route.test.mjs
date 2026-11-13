@@ -4,6 +4,13 @@ import test from "node:test";
 
 const routeSrc = readFileSync(new URL("./[id]/export/route.ts", import.meta.url), "utf8");
 
+test("HTML exports use a private per-request directory and clean all exporter output", () => {
+  assert.match(routeSrc, /mkdtempSync\(join\(tmpdir\(\), "pi-web-export-"\)\)/);
+  assert.doesNotMatch(routeSrc, /join\(tmpdir\(\), "pi-web-export"\)/);
+  assert.match(routeSrc, /finally \{\s*rmSync\(tempDir, \{ recursive: true, force: true \}\)/);
+  assert.ok(routeSrc.indexOf("format ===") < routeSrc.indexOf("const tempDir"));
+});
+
 test("markdown export is a current-branch download, not HTML inline", () => {
   assert.match(routeSrc, /format === "md" \|\| format === "markdown"/);
   assert.match(routeSrc, /searchParams\.get\("leafId"\)/);
