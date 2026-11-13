@@ -1,6 +1,7 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readlinkSync, readSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { CONFIG_DIR_NAME, type McpServerConfig, type McpTransportFactory } from "@earendil-works/pi-coding-agent";
+import { mcpNamespace } from "@earendil-works/pi-mcp";
 import { isPathWithinRoots } from "./path-security";
 import { assertSafeMcpValues, type McpValueParsers } from "./mcp-transport";
 
@@ -88,7 +89,6 @@ export function readMcpConfigFile(path: string, projectRoot?: string): {
 export type McpEntry = Parameters<McpTransportFactory>[0];
 export interface McpConfigValidator {
   validateMcpServerConfig(name: string, value: unknown): McpServerConfig | string;
-  mcpNamespace(name: string): string;
 }
 
 /** SDK 1.0.4 precedence/override rules, with our bounded reader instead of its readFileSync. */
@@ -125,7 +125,7 @@ export function loadSafeMcpConfig(options: {
         try { assertSafeMcpValues(config, parsers); }
         catch { errors.push(`${path}: server "${name}" references PI_WEB_PASSWORD`); continue; }
       }
-      const clash = [...servers.keys()].find((other) => other !== name && sdk.mcpNamespace(other) === sdk.mcpNamespace(name));
+      const clash = [...servers.keys()].find((other) => other !== name && mcpNamespace(other) === mcpNamespace(name));
       if (clash) { errors.push(`${path}: server "${name}" conflicts with "${clash}"`); continue; }
       if (!override && scope === "project" && "url" in config && config.auth) {
         errors.push(`${path}: server "${name}": auth is only allowed in the global mcp.json`);

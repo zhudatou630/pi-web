@@ -1,6 +1,6 @@
 import { assertAppNotUpdating } from "./app-update-state";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, resizeImage, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
 import { computeLiveSessionTotalActiveMs } from "./session-timing";
@@ -448,18 +448,14 @@ export class AgentSessionWrapper {
    * in-session edit or branch switch the new branch still names the old choice, which
    * startup restore and file-based reads would bring back, so record it here.
    */
-  private recordSelectionOnBranch(): void {
+  // pi records only virtual models here (and, since 1.5.1, the clamped thinking level itself).
+  private recordModelOnBranch(): void {
     const model = this.inner.model;
     if (!model) return;
     const manager = this.inner.sessionManager;
-    const branch = manager.getBranch() as unknown as SessionEntry[];
-    const savedModel = getLatestModelChange(branch);
+    const savedModel = getLatestModelChange(manager.getBranch() as unknown as SessionEntry[]);
     if (savedModel && (savedModel.provider !== model.provider || savedModel.modelId !== model.id)) {
       manager.appendModelChange(model.provider, model.id);
-    }
-    const savedLevel = branch.findLast((entry) => entry.type === "thinking_level_change");
-    if (savedLevel?.type === "thinking_level_change" && savedLevel.thinkingLevel !== this.inner.thinkingLevel) {
-      manager.appendThinkingLevelChange(this.inner.thinkingLevel);
     }
   }
 
@@ -923,19 +919,6 @@ export class AgentSessionWrapper {
     }
   }
 
-  /**
-   * pi resizes images for a new prompt, but its steer/follow-up queues send them unchanged.
-   * Apply the same model limits here; an image pi cannot resize is kept as sent.
-   */
-  private async fitQueuedImages(images: PromptImage[] | undefined): Promise<PromptImage[] | undefined> {
-    if (!images?.length || !this.inner.settingsManager.getImageAutoResize()) return images;
-    const limits = this.inner.model?.inputLimits?.images?.resize;
-    return Promise.all(images.map(async (image) => {
-      const resized = await resizeImage(Buffer.from(image.data, "base64"), image.mimeType, limits);
-      return resized ? { type: "image" as const, data: resized.data, mimeType: resized.mimeType } : image;
-    }));
-  }
-
   async send(command: Record<string, unknown>, compactionDelivery?: CompactionQueuedPrompt): Promise<unknown> {
     assertAppNotUpdating();
     const type = command.type as string;
@@ -996,9 +979,9 @@ export class AgentSessionWrapper {
             this.extensionUiAbortController = new AbortController();
           }
           const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
-          const rawImages = command.images as PromptImage[] | undefined;
-          const promptImages = streamingBehavior ? await this.fitQueuedImages(rawImages) : rawImages;
-          if (!streamingBehavior && !this.isRunning()) this.recordSelectionOnBranch();
+          // pi resizes queued (steer/follow-up) images itself when it delivers them (1.5.1).
+          const promptImages = command.images as PromptImage[] | undefined;
+          if (!streamingBehavior && !this.isRunning()) this.recordModelOnBranch();
           let parked = false;
           let started = false;
           let preflightAccepted = false;
@@ -1343,13 +1326,13 @@ export class AgentSessionWrapper {
       }
 
       case "steer": {
-        const steerImages = await this.fitQueuedImages(command.images as PromptImage[] | undefined);
+        const steerImages = command.images as PromptImage[] | undefined;
         await this.inner.steer(command.message as string, steerImages?.length ? steerImages : undefined, { source: "rpc" });
         return null;
       }
 
       case "follow_up": {
-        const followImages = await this.fitQueuedImages(command.images as PromptImage[] | undefined);
+        const followImages = command.images as PromptImage[] | undefined;
         await this.inner.followUp(command.message as string, followImages?.length ? followImages : undefined, { source: "rpc" });
         return null;
       }
