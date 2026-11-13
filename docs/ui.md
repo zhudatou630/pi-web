@@ -132,6 +132,19 @@ Truncated results keep their full-output actions in the expanded card's existing
 
 Unlike upstream, agent and user-shell execution remain mutually exclusive in this implementation. `sendQueued()` routes unquoted, image-free `!` / `!!` input to the command path, never to steering or follow-up; busy rejection explains the refusal and restores the originating draft. The server also refuses busy shell commands and refuses compaction while shell work is active. Parallel execution is deferred because this app has a parked compaction queue, shared Stop forced-cleanup deadline and post-bash subagent-report delivery; enabling it safely also requires reconciling SDK-deferred bash history against forced session reads, not just relaxing admission. Keeping mutual exclusion preserves existing Stop, completion and sidebar/favicon semantics.
 
+## Tool step timing
+
+Running tool steps reuse `StepDuration` and the existing row layout. The server
+keeps each top-level call's start on `performance.now()`, replaying its start with
+`elapsedMs` before the latest update. The client subtracts that elapsed value from
+its own monotonic clock, never a server wall timestamp. Parallel calls therefore
+have independent clocks. `tool_execution_end.durationMs` freezes the value while
+batch siblings still run; reconnect keeps those frozen values and replaces only
+running clocks. Result messages remove their clocks, and settlement clears the map.
+SDK durations in persisted results still win; old history retains its timestamp
+fallback. Thinking and standalone shell rows keep their existing timing behavior.
+The wire already forwards start/end timing fields unchanged, covered by tests.
+
 ## Fork drafts
 
 The user-message Fork button copies history *before* that message, then restores

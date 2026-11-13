@@ -143,6 +143,7 @@ test("every SSE handshake reloads missed history, whether the agent is busy or i
     "event", "sessionIdRef", "loadSession", "dispatch", "cancelEventStreamGrace",
     "sdkAgentActiveRef", "agentRunningRef", "setAgentRunning", "setAgentPhase", "handshakePhase",
     "rpcPromptPendingRef = { current: false }", "promptRunIdRef = { current: 0 }",
+    "setToolClocks = () => {}", "endedToolClocks = (clocks) => clocks",
     `switch (event.type) { ${connectedSource} }`,
   );
   const noop = () => {};

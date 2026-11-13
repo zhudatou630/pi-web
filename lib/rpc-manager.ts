@@ -330,7 +330,7 @@ type CompactionQueuedPrompt = {
 
 export class AgentSessionWrapper {
   private subscriptions: EventSubscription[] = [];
-  private activeToolEvents = new Map<string, AgentEvent>();
+  private activeToolEvents = new Map<string, { start: AgentEvent; startedAt: number; update?: AgentEvent }>();
   private bashOutput: { event: BashOutputEvent; timer: ReturnType<typeof setTimeout> | null } | null = null;
   private readonly timing = new TimingRecorder();
   private readonly streamingToolInput = new StreamingToolInput();
@@ -565,13 +565,17 @@ export class AgentSessionWrapper {
         invalidateSessionListCache();
       }
       const toolCallId = event.toolCallId;
-      if (typeof toolCallId === "string") {
-        if (event.type === "tool_execution_start" || event.type === "tool_execution_update") {
-          this.activeToolEvents.set(toolCallId, event);
+      if (typeof toolCallId === "string" && !event.parentToolCallId) {
+        if (event.type === "tool_execution_start") {
+          this.activeToolEvents.set(toolCallId, { start: event, startedAt: performance.now() });
+        } else if (event.type === "tool_execution_update") {
+          const active = this.activeToolEvents.get(toolCallId);
+          if (active) active.update = event;
         } else if (event.type === "tool_execution_end") {
           this.activeToolEvents.delete(toolCallId);
         }
       }
+      if (event.type === "agent_end") this.activeToolEvents.clear();
       if (IDLE_RESET_EVENT_TYPES.has(event.type)) this.resetIdleTimer();
       this.timing.observe(event);
       this.streamingToolInput.observe(event);
@@ -942,7 +946,11 @@ export class AgentSessionWrapper {
     const noticeCutoff = Date.now() - UNDELIVERED_NOTICE_MAX_AGE_MS;
     for (const { event, at } of this.undeliveredNotices) if (at >= noticeCutoff) listener(event);
     this.undeliveredNotices = this.undeliveredNotices.filter(({ at }) => at >= noticeCutoff);
-    for (const event of this.activeToolEvents.values()) listener(event);
+    const now = performance.now();
+    for (const { start, startedAt, update } of this.activeToolEvents.values()) {
+      listener({ ...start, elapsedMs: Math.max(0, now - startedAt) });
+      if (update) listener(update);
+    }
     if (this.bashOutput) listener(this.bashOutput.event);
     this.resetIdleTimer();
     return () => {

@@ -850,7 +850,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [onBranchDataChange, branchSessionId]);
 
   const {
-    data, loading, error, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
+    data, loading, error, messages, activeToolResults, toolClocks, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
     agentRunning, sessionEnded, directImageRunning, bashRunning, pendingBash, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -1643,10 +1643,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     // While a history message is being edited, a send goes to that edit, not after the question.
     messages, toolResultsMap, !sessionBusy && !isCompacting && !streamState.isStreaming && !loading && editEntryId === null,
   ), [messages, toolResultsMap, sessionBusy, isCompacting, streamState.isStreaming, loading, editEntryId]);
-  const runningToolIds = useMemo<ReadonlySet<string>>(
-    () => new Set(agentPhase?.kind === "running_tools" ? agentPhase.tools.map((tool) => tool.id) : []),
-    [agentPhase],
-  );
   const completedAssistantParts = useMemo(() => messages.map((message) => (
     message.role === "assistant" ? partitionAssistantMessage(message) : null
   )), [messages]);
@@ -2152,7 +2148,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     onCompact={idx === messages.length - 1 && recoverTruncation ? handleCompact : undefined}
                     isCompacting={isCompacting}
                     compactError={idx === messages.length - 1 && recoverTruncation ? compactError : undefined}
-                    runningToolIds={msg.role === "assistant" && msg.content.some((block) => block.type === "toolCall" && runningToolIds.has(block.toolCallId)) ? runningToolIds : undefined}
+                    toolClocks={toolClocks}
                   />
                 );
                 if (!isVisible) return view;

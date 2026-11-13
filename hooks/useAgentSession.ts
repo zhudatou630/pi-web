@@ -15,7 +15,6 @@ import { useI18n } from "@/hooks/useI18n";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
-import { stripAnsi } from "@/lib/ansi";
 import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
 import { getDraft, rekeyDraft, restoreDraftSubmission, setDraft, type ChatDraft } from "@/lib/draft-store";
@@ -30,6 +29,7 @@ import {
   AgentEventConnectionError,
   buildAgentEventSourceUrl,
 } from "@/lib/agent-event-connection";
+import { applyToolClockEvent, endedToolClocks, NO_TOOL_CLOCKS, withoutToolClock, type ToolClocks } from "@/lib/tool-clock";
 import { isSystemMessageEvent } from "@/lib/agent-event-wire";
 import {
   CHAT_SCROLL_REATTACH_TOLERANCE,
@@ -388,6 +388,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [activeLeafId, setActiveLeafId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [activeToolResults, setActiveToolResults] = useState<Map<string, ToolResultMessage>>(new Map());
+  const [toolClocks, setToolClocks] = useState<ToolClocks>(NO_TOOL_CLOCKS);
   const [entryIds, setEntryIds] = useState<string[]>([]);
   const [messageKeyAliases, setMessageKeyAliases] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
@@ -1235,6 +1236,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setAgentPhase(null);
     setRetryInfo(null);
     setActiveToolResults(new Map());
+    setToolClocks(NO_TOOL_CLOCKS);
     dispatch({ type: "end" });
     return wasRunning;
   }, [flushStreamDeltas]);
@@ -1592,6 +1594,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // the disconnect may have ended while events were lost, so drop it: the
         // server re-sends the in-flight message as `message_start` right after this.
         dispatch({ type: event.isStreaming === true ? "reconnect" : "end" });
+        setToolClocks(endedToolClocks);
         if (event.isStreaming === true) {
           cancelEventStreamGrace();
           sdkAgentActiveRef.current = true;
@@ -1757,6 +1760,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           });
         } else if (completed) {
           const normalized = normalizeToolCalls(completed) as AgentMessage;
+          if (normalized.role === "toolResult") {
+            setToolClocks((prev) => withoutToolClock(prev, normalized.toolCallId));
+          }
           if (normalized.role === "assistant") {
             const usageTokens = assistantUsageTokens(normalized);
             if (usageTokens !== null) {
@@ -1789,6 +1795,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         break;
       }
       case "tool_execution_start": {
+        const now = performance.now();
+        setToolClocks((prev) => applyToolClockEvent(prev, event, now));
         const id = event.toolCallId as string;
         const name = event.toolName as string;
         setAgentPhase((prev) => {
@@ -1832,6 +1840,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "tool_execution_end": {
         const id = event.toolCallId as string;
         onToolEnd?.(event.toolName as string);
+        const now = performance.now();
+        setToolClocks((prev) => applyToolClockEvent(prev, event, now));
         setActiveToolResults((prev) => {
           if (!prev.has(id)) return prev;
           const next = new Map(prev);
@@ -2998,7 +3008,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   return {
     // State
-    data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
+    data, loading, error, activeLeafId, messages, activeToolResults, toolClocks, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
     agentRunning, sessionEnded, directImageRunning, modelNames, modelList, allModelList, providerNames, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting,

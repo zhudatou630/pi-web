@@ -42,7 +42,7 @@ function render(messages, locate = null, overrides = {}) {
     streamState: { isStreaming: false }, streamingParts: {}, streamingAssistant: null,
     completedAssistantParts: messages.map((message) => message.role === "assistant" ? display.partitionAssistantMessage(message) : null),
     writtenFilesByAssistantIndex: new Map(), routinesByAssistantIndex: new Map(), turnActivityByAssistantIndex: new Map(),
-    toolResultsMap: new Map(), runningToolIds: new Set(), agentPhase: null,
+    toolResultsMap: new Map(), toolClocks: new Map(), agentPhase: null,
     questionState: { answers: new Map(), activeQuestionId: null, cardAnswerIndexes: new Set() }, handleChatSend() {},
     liveProcessSummaryRef: { current: null }, isCompacting: false, isMobile: false,
     pendingOutlineJump: locate ? { entryId: locate, signal: { aborted: false } } : null,

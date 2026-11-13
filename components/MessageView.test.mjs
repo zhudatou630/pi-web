@@ -137,6 +137,23 @@ function renderMessage(message, props = {}) {
   );
 }
 
+test("tool steps use per-call monotonic clocks and frozen SDK durations, not server timestamps", (t) => {
+  t.mock.method(performance, "now", () => 10000);
+  t.mock.method(Date, "now", () => 9000000);
+  const message = { role: "assistant", timestamp: 9999999, completedAt: 9999999, content: [
+    { type: "toolCall", toolCallId: "a", toolName: "bash", input: { command: "first" } },
+    { type: "toolCall", toolCallId: "b", toolName: "bash", input: { command: "second" } },
+  ] };
+  const toolClocks = new Map([["a", { startedAt: 5000 }], ["b", { startedAt: 8000 }]]);
+  const live = renderMessage(message, { toolClocks });
+  assert.match(live, />5s</); assert.match(live, />2s</);
+  const frozen = renderMessage(message, { toolClocks: new Map([["a", { durationMs: 4200 }], ["b", toolClocks.get("b")]]) });
+  assert.match(frozen, />4s</); assert.match(frozen, />2s</);
+  const props = { message, toolClocks };
+  assert.equal(MessageView.compare(props, { ...props, toolClocks: new Map(toolClocks).set("unrelated", { startedAt: 1 }) }), true);
+  assert.equal(MessageView.compare(props, { ...props, toolClocks: new Map(toolClocks).set("a", { durationMs: 4200 }) }), false);
+});
+
 test("renders ask_user cards in answer and process views, and only selected options after an answer", () => {
   const block = { type: "toolCall", toolCallId: "question-1", toolName: "ask_user", input: {} };
   const message = { role: "assistant", content: [block] };

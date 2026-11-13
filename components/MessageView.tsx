@@ -19,6 +19,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { ExportImageIcon, useExportImage } from "./ExportImage";
 import { formatDuration } from "@/lib/i18n/format";
+import { toolClockMs, type ToolClock, type ToolClocks } from "@/lib/tool-clock";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getToolPreview } from "@/lib/tool-preview";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
@@ -196,8 +197,8 @@ interface Props {
   isProcess?: boolean;
   /** Original assistant failed/aborted, even when partitioning moved its terminal notice. */
   toolsNotRun?: boolean;
-  /** Tool calls still executing (from `tool_execution_start/end`); their cards tick live. */
-  runningToolIds?: ReadonlySet<string>;
+  /** Per-call monotonic clocks, including ended calls waiting for batch results. */
+  toolClocks?: ToolClocks;
   /** Set on the session's last message when its turn stopped unfinished; sent by the Continue action. */
   continuePrompt?: string;
   onContinue?: (prompt: string) => void;
@@ -264,10 +265,10 @@ export function replaceUserMessageText(message: UserMessage, text: string): User
   return { ...message, content };
 }
 
-function haveSameRelevantToolResults(
+function haveSameRelevantToolEntries<T>(
   message: AgentMessage,
-  previous: Map<string, ToolResultMessage> | undefined,
-  next: Map<string, ToolResultMessage> | undefined,
+  previous: ReadonlyMap<string, T> | undefined,
+  next: ReadonlyMap<string, T> | undefined,
 ): boolean {
   if (previous === next || message.role !== "assistant") return true;
   for (const block of (message as AssistantMessage).content ?? []) {
@@ -280,7 +281,7 @@ function haveSameRelevantToolResults(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, toolsNotRun, runningToolIds, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, toolsNotRun, toolClocks, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user" && message.routineRun) {
     return <RoutineRunView message={message} routineRun={message.routineRun} searchTarget={searchTarget} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -288,7 +289,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} toolsNotRun={toolsNotRun} runningToolIds={runningToolIds} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} toolsNotRun={toolsNotRun} toolClocks={toolClocks} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -315,7 +316,8 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
   return prev.message === next.message
     && prev.toolsNotRun === next.toolsNotRun
     && prev.isStreaming === next.isStreaming
-    && haveSameRelevantToolResults(prev.message, prev.toolResults, next.toolResults)
+    && haveSameRelevantToolEntries(prev.message, prev.toolResults, next.toolResults)
+    && haveSameRelevantToolEntries(prev.message, prev.toolClocks, next.toolClocks)
     && prev.cwd === next.cwd
     && prev.onOpenFile === next.onOpenFile
     && prev.onOpenSession === next.onOpenSession
@@ -769,7 +771,7 @@ function AssistantMessageView({
   turnTiming,
   isProcess,
   toolsNotRun,
-  runningToolIds,
+  toolClocks,
   continuePrompt,
   onContinue,
   onCompact,
@@ -797,7 +799,7 @@ function AssistantMessageView({
   turnTiming?: string;
   isProcess?: boolean;
   toolsNotRun?: boolean;
-  runningToolIds?: ReadonlySet<string>;
+  toolClocks?: ToolClocks;
   continuePrompt?: string;
   onContinue?: (prompt: string) => void;
   onCompact?: () => void;
@@ -887,8 +889,9 @@ function AssistantMessageView({
               onAnswer={onAnswer}
               isStreaming={isStreaming}
               streamingDuration={thinkingDuration}
-              startTime={block.type === "toolCall" ? toolStartedAt : thinkingStart}
-              live={isLiveThinking || (block.type === "toolCall" && Boolean(runningToolIds?.has(block.toolCallId)))}
+              startTime={thinkingStart}
+              live={isLiveThinking}
+              toolClock={block.type === "toolCall" ? toolClocks?.get(block.toolCallId) : undefined}
               toolCallDurations={toolCallDurations}
               cwd={cwd}
               onOpenFile={onOpenFile}
@@ -1133,20 +1136,23 @@ function ProcessErrorCard({ error }: { error: string }) {
 }
 
 /** The one time slot on a step card: frozen duration when done, ticking while live, start time on hover. */
-function StepDuration({ seconds, startTime, live }: { seconds?: number; startTime?: number; live?: boolean }) {
+function StepDuration({ seconds, startTime, live, clock }: { seconds?: number; startTime?: number; live?: boolean; clock?: ToolClock }) {
   const { t, locale } = useI18n();
-  const [now, setNow] = useState(Date.now);
+  const monotonic = clock !== undefined;
+  const ticking = clock ? "startedAt" in clock : live;
+  const [now, setNow] = useState(() => monotonic ? performance.now() : Date.now());
   useEffect(() => {
-    if (!live) return;
-    const id = setInterval(() => setNow(Date.now()), 500);
+    if (!ticking) return;
+    const id = setInterval(() => setNow(monotonic ? performance.now() : Date.now()), 500);
     return () => clearInterval(id);
-  }, [live]);
+  }, [monotonic, ticking]);
   // Intl formatting is costly and this renders on every streaming chunk; the title
   // only changes with the start time or locale.
   const title = useMemo(() => startTime !== undefined
     ? t("chat.stepStartedAt", { time: new Date(startTime).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) })
     : undefined, [locale, startTime, t]);
-  const value = live && startTime !== undefined ? Math.max(0, Math.round((now - startTime) / 1000)) : seconds;
+  const value = clock ? Math.round(toolClockMs(clock, now) / 1000)
+    : live && startTime !== undefined ? Math.max(0, Math.round((now - startTime) / 1000)) : seconds;
   if (value === undefined) return null;
   return (
     <span title={title} style={{ fontSize: 11, color: "var(--text-dim)", flexShrink: 0, fontVariantNumeric: "tabular-nums", lineHeight: 1.35 }}>
@@ -1155,7 +1161,7 @@ function StepDuration({ seconds, startTime, live }: { seconds?: number; startTim
   );
 }
 
-function BlockView({ block, searchTarget, toolResults, toolsNotRun, questionAnswer, questionActive, onAnswer, isStreaming, streamingDuration, startTime, live, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; toolsNotRun?: boolean; questionAnswer?: string | null; questionActive?: boolean; onAnswer?: (answer: string) => Promise<void>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, searchTarget, toolResults, toolsNotRun, questionAnswer, questionActive, onAnswer, isStreaming, streamingDuration, startTime, live, toolClock, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; searchTarget?: boolean; toolResults?: Map<string, ToolResultMessage>; toolsNotRun?: boolean; questionAnswer?: string | null; questionActive?: boolean; onAnswer?: (answer: string) => Promise<void>; isStreaming?: boolean; streamingDuration?: number; startTime?: number; live?: boolean; toolClock?: ToolClock; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     const text = (block as TextContent).text;
     if (!text?.trim()) return null;
@@ -1180,7 +1186,7 @@ function BlockView({ block, searchTarget, toolResults, toolsNotRun, questionAnsw
       return <QuestionCard key={tc.toolCallId} block={tc} result={result} answer={questionAnswer} active={questionActive} onAnswer={onAnswer} />;
     }
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} notRun={toolsNotRun} duration={duration} startTime={startTime} live={live} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
+    return <ToolCallBlock block={tc} result={result} notRun={toolsNotRun} duration={duration} clock={toolClock} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
   }
   return null;
 }
@@ -1360,7 +1366,7 @@ function isSubagentToolDetails(value: unknown): value is SubagentToolDetails {
   return details.kind === "pi-web-subagent" && typeof details.sessionId === "string";
 }
 
-export function ToolCallBlock({ block, result, notRun, duration, startTime, live, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; notRun?: boolean; duration?: number; startTime?: number; live?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
+export function ToolCallBlock({ block, result, notRun, duration, startTime, live, clock, cwd, onOpenFile, onOpenSession, defaultExpanded = false, label, labelTitle, headerExtra, footer }: { block: ToolCallContent; result?: ToolResultMessage; notRun?: boolean; duration?: number; startTime?: number; live?: boolean; clock?: ToolClock; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; defaultExpanded?: boolean; label?: ReactNode; labelTitle?: string; headerExtra?: ReactNode; footer?: ReactNode }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [commandCopied, setCommandCopied] = useState(false);
@@ -1480,7 +1486,7 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
         )}
         {/* After the actions so every row's duration lines up at the right edge; the trigger stays the focusable control. */}
         <div className="step-tail" aria-hidden="true" onClick={() => setExpanded((v) => !v)}>
-          <StepDuration seconds={duration} startTime={startTime} live={live} />
+          <StepDuration key={clock && "startedAt" in clock ? clock.startedAt : "settled"} seconds={duration} startTime={startTime} live={live} clock={clock} />
           <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <polyline points="2 3.5 5 6.5 8 3.5" />
           </svg>

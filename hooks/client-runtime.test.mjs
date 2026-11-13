@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
+import { createJiti } from "jiti";
+const { applyToolClockEvent, endedToolClocks } = await createJiti(import.meta.url).import("../lib/tool-clock.ts");
 
 const source = await readFile(new URL("./useAgentSession.ts", import.meta.url), "utf8");
 const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
@@ -16,6 +18,7 @@ const useCallback = (fn) => fn;
 function uiHarness() {
   let dialogs = [];
   let panels = [];
+  let clocks = new Map();
   const bindings = {
     useCallback, t: (key) => key, isBlockingExtensionUiRequest: () => false, addNotice: noop,
     onAttentionNeeded: noop, opts: {},
@@ -25,11 +28,29 @@ function uiHarness() {
     cancelEventStreamGrace: noop, sdkAgentActiveRef: ref(false), rpcPromptPendingRef: ref(false),
     agentRunningRef: ref(false), setAgentRunning: noop, setAgentPhase: noop, setRetryInfo: noop, handshakePhase: noop,
     promptRunIdRef: ref(0),
+    setToolClocks: (update) => { clocks = typeof update === "function" ? update(clocks) : update; },
+    applyToolClockEvent, endedToolClocks, setActiveToolResults: noop, onToolEnd: noop,
   };
   const request = evaluate(between("  const handleExtensionUiRequest", "  const flushStreamDeltas"), bindings, "return handleExtensionUiRequest;");
-  const event = (event) => evaluate(`switch (event.type) { ${between('      case "connected":', '      case "agent_start":')} ${between('      case "extension_ui_closed":', '\n    }\n  }, [addNotice, opts.chatInputRef, applyContextUsage')} }`, { ...bindings, event });
-  return { request, event, bindings, dialogs: () => dialogs, panels: () => panels };
+  const event = (event) => evaluate(`switch (event.type) { ${between('      case "connected":', '      case "agent_start":')} ${between('      case "tool_execution_start":', '      case "queue_update":')} ${between('      case "extension_ui_closed":', '\n    }\n  }, [addNotice, opts.chatInputRef, applyContextUsage')} }`, { ...bindings, event });
+  return { request, event, bindings, dialogs: () => dialogs, panels: () => panels, clocks: () => clocks };
 }
+
+test("tool events freeze SDK durations until results arrive and reconnect replays only running clocks", (t) => {
+  let now = 1000;
+  t.mock.method(performance, "now", () => now);
+  const ui = uiHarness();
+  ui.event({ type: "tool_execution_start", toolCallId: "first", toolName: "bash" });
+  now = 6000;
+  ui.event({ type: "tool_execution_start", toolCallId: "second", toolName: "read" });
+  ui.event({ type: "tool_execution_end", toolCallId: "second", toolName: "read", durationMs: 1200 });
+  assert.deepEqual([...ui.clocks()], [["first", { startedAt: 1000 }], ["second", { durationMs: 1200 }]]);
+  ui.event({ type: "connected", isStreaming: true });
+  assert.deepEqual([...ui.clocks()], [["second", { durationMs: 1200 }]]);
+  now = 50000;
+  ui.event({ type: "tool_execution_start", toolCallId: "first", toolName: "bash", elapsedMs: 37400 });
+  assert.deepEqual(ui.clocks().get("first"), { startedAt: 12600 });
+});
 
 test("custom panels queue by id, update in place, and closing any id removes only that request", () => {
   const ui = uiHarness();
