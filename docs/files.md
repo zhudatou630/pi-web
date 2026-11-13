@@ -8,6 +8,12 @@ Untracked line totals use four asynchronous workers, each reusing a 64 KiB buffe
 
 Media/document URLs use page-wide monotonically increasing versions, including reopen, watch changes and returning to a visible page. The existing heartbeat/reconnecting `FileWatchEventSource` remains responsible for recovering watches; no second reconnect mechanism is added. PDF page fragments remain separate from the cache-busting query.
 
+## Diff rendering
+
+Added, removed and context text reuse Source's Prism pipeline and both palettes. Language detection lives in `lib/file-types.ts` and is shared with the read route, so deleted files highlight without fetching missing content. Memoized inline line components reset theme pre/code geometry so gutters, row backgrounds and wrapping stay unchanged; Git mode/rename metadata stays plain. Diffs exceeding 1,000 rows or the 128 KiB UTF-8 highlighting budget fall back to plain text.
+
+<!-- shortcut: line-by-line highlighting cannot track multiline comments/template strings; tokenize both full file versions if that becomes necessary. -->
+
 ## Session export
 
 HTML exports create a private `mkdtemp` directory for each request, avoiding cross-user ownership conflicts and concurrent-export interference. The entire directory is removed in `finally`, including partial output after a failure. Markdown exports never create it.

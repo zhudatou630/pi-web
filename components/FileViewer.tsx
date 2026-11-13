@@ -18,6 +18,7 @@ import {
   BINARY_FILE_ERROR,
   DOCX_PREVIEW_MAX_BYTES,
   getFileExt,
+  getFileLanguage,
   isAudioPath,
   isDocumentPreviewPath,
   isFilePreviewPath,
@@ -458,11 +459,37 @@ function diffMetadataLines(patch: string): string[] {
   return patch.split(/\r?\n/).filter((line) => /^(?:similarity index|dissimilarity index|rename from|rename to|copy from|copy to|old mode|new mode|new file mode|deleted file mode|Binary files|Submodule )/.test(line));
 }
 
-function DiffView({ patch, wrapLines }: { patch: string; wrapLines: boolean }) {
+// shortcut: per-line tokens lose multiline comment/template state; tokenize both file versions if needed.
+const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, palette, wrapLines }: {
+  text: string; language: string; isDark: boolean; palette: string; wrapLines: boolean;
+}) {
+  return (
+    <SyntaxHighlighter
+      language={language}
+      style={palette === "claude" ? (isDark ? claudeDarkCodeStyle : claudeCodeStyle) : isDark ? vscDarkPlus : vs}
+      PreTag="span"
+      CodeTag="span"
+      wrapLongLines={wrapLines}
+      customStyle={{
+        margin: 0, padding: 0, border: 0, backgroundColor: "transparent",
+        display: "inline", overflow: "visible", fontFamily: "inherit",
+        fontSize: "inherit", lineHeight: "inherit", whiteSpace: "inherit", overflowWrap: "inherit",
+      }}
+      codeTagProps={{ style: { fontFamily: "inherit", fontSize: "inherit", lineHeight: "inherit" } }}
+    >
+      {text || "\u00a0"}
+    </SyntaxHighlighter>
+  );
+});
+
+function DiffView({ patch, wrapLines, language = "text", prismReady = false, isDark = false, palette = "default" }: {
+  patch: string; wrapLines: boolean; language?: string; prismReady?: boolean; isDark?: boolean; palette?: string;
+}) {
   const { t } = useI18n();
   const diff = useMemo(() => diffLines(patch), [patch]);
   const metadata = diffMetadataLines(patch);
   const pinLineNumbers = diff.length <= SOURCE_HIGHLIGHT_MAX_LINES;
+  const highlight = prismReady && language !== "text" && pinLineNumbers && patch.length <= SOURCE_HIGHLIGHT_MAX_BYTES && new TextEncoder().encode(patch).byteLength <= SOURCE_HIGHLIGHT_MAX_BYTES;
   const oldLineNumberStyle: CSSProperties = pinLineNumbers
     ? { ...FILE_DIFF_LINE_NUMBER_STYLE, position: "sticky", left: 0, zIndex: 1 }
     : FILE_DIFF_LINE_NUMBER_STYLE;
@@ -551,7 +578,9 @@ function DiffView({ patch, wrapLines }: { patch: string; wrapLines: boolean }) {
                   color: "var(--text)",
                 }}
               >
-                {line.text || "\u00a0"}
+                {highlight
+                  ? <DiffLineCode text={line.text} language={language} isDark={isDark} palette={palette} wrapLines={wrapLines} />
+                  : (line.text || "\u00a0")}
               </span>
             </div>
           );
@@ -559,6 +588,8 @@ function DiffView({ patch, wrapLines }: { patch: string; wrapLines: boolean }) {
     </div>
   );
 }
+
+const MemoizedDiffView = memo(DiffView);
 
 function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAtMention }: Props) {
   const { t } = useI18n();
@@ -1719,9 +1750,9 @@ function TextFileViewer({
 
   const viewerContent = data?.content ?? "";
   const sourceLines = useMemo(() => viewerContent.split("\n"), [viewerContent]);
-  const language = data?.language ?? "text";
-  // Plain text needs no Prism languages; any other file loads them once.
-  const prismReady = usePrismLanguages(Boolean(data) && language !== "text");
+  const language = data?.language ?? getFileLanguage(filePath);
+  // Deleted files still have a language even though the reader returned no data.
+  const prismReady = usePrismLanguages((Boolean(data) || hasGitDiff) && language !== "text");
   const isHtml = language === "html";
   const isMarkdown = language === "markdown";
   // A CSV/TSV table shows a loaded prefix too; its cut last record waits for "Load more".
@@ -2253,7 +2284,7 @@ function TextFileViewer({
         style={{ flex: 1, overflow: "auto", background: "var(--bg)", paddingBottom: data?.truncated && !(isHtml && effectiveDisplayMode === "preview") ? 48 : undefined }}
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
-          <DiffView patch={gitDiff.patch!} wrapLines={wrapLines} />
+          <MemoizedDiffView patch={gitDiff.patch!} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
         ) : isHtml && effectiveDisplayMode === "preview" && data?.truncated && !htmlFull?.text ? (
           <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, color: htmlFull?.error ? "var(--danger)" : "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
             {htmlFull?.error ?? t("i18n.loading")}

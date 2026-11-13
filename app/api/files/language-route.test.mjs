@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import test from "node:test";
 import ts from "typescript";
 import React from "react";
@@ -8,15 +7,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createJiti } from "jiti";
 import { refractor } from "refractor/core";
 
-const source = await readFile(new URL("./[...path]/route.ts", import.meta.url), "utf8");
-const file = ts.createSourceFile("route.ts", source, ts.ScriptTarget.Latest, true);
-// Run the route's mapping without loading its unrelated filesystem/session handlers.
+const source = await readFile(new URL("../../../lib/file-types.ts", import.meta.url), "utf8");
+const file = ts.createSourceFile("file-types.ts", source, ts.ScriptTarget.Latest, true);
+// Run the shared mapping without loading unrelated filesystem/session handlers.
 const declarations = file.statements.filter((node) =>
   (ts.isVariableStatement(node) && node.declarationList.declarations.some((d) => d.name.getText(file) === "EXT_TO_LANGUAGE"))
-  || (ts.isFunctionDeclaration(node) && node.name?.text === "getLanguage"),
-).map((node) => node.getText(file)).join("\n");
-const { outputText } = ts.transpileModule(`${declarations}\nreturn { getLanguage, EXT_TO_LANGUAGE };`, {});
-const { getLanguage, EXT_TO_LANGUAGE } = new Function("path", outputText)(path);
+  || (ts.isFunctionDeclaration(node) && ["getFileLanguage", "getBaseName"].includes(node.name?.text)),
+).map((node) => node.getText(file).replace(/^export /, "")).join("\n");
+const { outputText } = ts.transpileModule(`${declarations}\nreturn { getLanguage: getFileLanguage, EXT_TO_LANGUAGE };`, {});
+const { getLanguage, EXT_TO_LANGUAGE } = new Function(outputText)();
 const jiti = createJiti(import.meta.url);
 const { loadPrismLanguages } = await jiti.import("../../../lib/prism-languages.ts");
 await loadPrismLanguages();
@@ -44,6 +43,8 @@ test("common extensions use their own supported grammars", () => {
   for (const [ext, language] of Object.entries(expected)) assert.equal(getLanguage(`file.${ext}`), language);
   assert.equal(getLanguage("analysis.R"), "r");
   assert.equal(getLanguage("plot.m"), "text");
+  assert.equal(getLanguage(String.raw`D:\repo\App.tsx`), "tsx");
+  assert.equal(getLanguage("/repo/deleted.ts"), "typescript");
   assert.equal(getLanguage("unknown.extension"), "text");
   for (const ext of ["tsx", "jsx"]) {
     const tokens = JSON.stringify(refractor.highlight('const a = <a href="x">text</a>;', getLanguage(`App.${ext}`)));

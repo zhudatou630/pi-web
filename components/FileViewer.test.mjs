@@ -82,6 +82,7 @@ test("lightweight source rows are skipped for highlighted, diff, and preview vie
   ).map((node) => node.getText(file)).join("\n");
   const { outputText } = ts.transpileModule(`
     return (data, displayMode, hasGitDiff = false, isDeletedDiff = false, wrapLines = false, filePath = "/tmp/file.txt") => {
+      const getFileLanguage = () => "text";
       const isDelimitedTablePath = (path) => /\.(csv|tsv)$/i.test(path);
       const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
       const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;
@@ -123,6 +124,16 @@ test("diff view preserves Git hunk and metadata rows", () => {
   assert.doesNotMatch(source, /const CONTEXT = 3/);
   assert.match(source, /line\.oldLineNo/);
   assert.match(source, /line\.newLineNo/);
+});
+
+test("diff code tokens inherit the row box, wrap and palette without painting over change backgrounds", () => {
+  const line = source.slice(source.indexOf("const DiffLineCode"), source.indexOf("function DiffView"));
+  for (const rule of [/border: 0/, /backgroundColor: "transparent"/, /fontFamily: "inherit"/, /lineHeight: "inherit"/, /whiteSpace: "inherit"/, /wrapLongLines=\{wrapLines\}/, /claudeDarkCodeStyle/]) assert.match(line, rule);
+  assert.doesNotMatch(line, /\bbackground:/);
+  assert.match(source, /const language = data\?\.language \?\? getFileLanguage\(filePath\)/);
+  assert.match(source, /usePrismLanguages\(\(Boolean\(data\) \|\| hasGitDiff\)/);
+  assert.match(source, /const DiffLineCode = memo\(/);
+  assert.match(source, /const MemoizedDiffView = memo\(DiffView\)/);
 });
 
 test("an explicit diff request bypasses native media viewers", () => {
@@ -174,7 +185,7 @@ test("the markdown preview gets a stable open-file callback, so shell changes do
 
 test("highlighted and bounded diff gutters stay pinned with matching line boxes", () => {
   const file = ts.createSourceFile("FileViewer.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const names = ["FILE_CODE_STYLE", "FILE_LINE_NUMBER_STYLE", "FILE_PINNED_LINE_NUMBER_STYLE", "FILE_DIFF_LINE_NUMBER_STYLE", "SOURCE_HIGHLIGHT_MAX_LINES"];
+  const names = ["FILE_CODE_STYLE", "FILE_LINE_NUMBER_STYLE", "FILE_PINNED_LINE_NUMBER_STYLE", "FILE_DIFF_LINE_NUMBER_STYLE", "SOURCE_HIGHLIGHT_MAX_LINES", "SOURCE_HIGHLIGHT_MAX_BYTES"];
   const declarations = names.map((name) => file.statements.find((node) =>
     ts.isVariableStatement(node) && node.declarationList.declarations.some((d) => d.name.getText(file) === name),
   ).getText(file)).join("\n");
@@ -202,13 +213,24 @@ test("highlighted and bounded diff gutters stay pinned with matching line boxes"
   assert.match(source, /overflow: "visible"/, "the viewer, not the pre, must own scrolling");
 
   const diffView = file.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "DiffView").getText(file);
-  const render = (rowCount) => evaluate(`${declarations}\nreturn (${diffView})({ patch: "" });`, {
+  const render = (rowCount, props = {}) => evaluate(`${declarations}\nreturn (${diffView})({ patch: "", ...props });`, {
+    props,
+    TextEncoder,
+    DiffLineCode: "highlighted-code",
     React,
     useMemo: (fn) => fn(),
     useI18n: () => ({ t: (key) => key }),
     diffMetadataLines: () => [],
     diffLines: () => Array.from({ length: rowCount }, () => ({ type: "added", text: "wide line", oldLineNo: null, newLineNo: 1 })),
   });
+  const lineContent = (props, count = 1) => render(count, props).props.children[1][0].props.children[3].props.children;
+  const highlightProps = { language: "typescript", prismReady: true, isDark: true, palette: "claude", wrapLines: true };
+  assert.equal(lineContent(highlightProps).type, "highlighted-code");
+  assert.equal(lineContent(highlightProps).props.wrapLines, true);
+  for (const props of [{ ...highlightProps, prismReady: false }, { ...highlightProps, language: "text" }, { ...highlightProps, patch: "x".repeat(128 * 1024 + 1) }, { ...highlightProps, patch: "中".repeat(50_000) }]) {
+    assert.equal(lineContent(props), "wide line");
+  }
+  assert.equal(lineContent(highlightProps, maxRows + 1), "wide line");
   for (const rowCount of [maxRows, maxRows + 1]) {
     const tree = render(rowCount);
     assert.equal(tree.props.style.width, "max-content");
