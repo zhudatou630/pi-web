@@ -8,7 +8,7 @@ import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachmen
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
-import { normalizeCustomPanelLines } from "@/lib/ansi";
+import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isHiddenCustomMessage, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
@@ -2808,9 +2808,9 @@ function NoticeShelf({ notices, floating = false, onPauseChange, onOpenMcpSettin
 type ExtensionDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
 
 function getExtensionDialogSummary(request: ExtensionDialogRequest): string | undefined {
-  if (request.method === "select" && request.options.length > 0) return request.options[0];
+  if (request.method === "select" && request.options.length > 0) return stripAnsi(request.options[0]);
   if (request.method === "confirm") {
-    const firstLine = request.message.split("\n").find((line) => line.trim());
+    const firstLine = stripAnsi(request.message).split("\n").find((line) => line.trim());
     return firstLine?.trim();
   }
   return undefined;
@@ -2824,7 +2824,7 @@ function ExtensionDialog({
   onRespond: (request: ExtensionDialogRequest, response: { value: string } | { confirmed: boolean } | { cancelled: true }) => void;
 }) {
   const { t } = useI18n();
-  const [value, setValue] = useState(request.method === "editor" ? request.prefill ?? "" : "");
+  const [value, setValue] = useState(request.method === "editor" ? stripAnsi(request.prefill ?? "") : "");
   const [collapsed, setCollapsed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const focusFirstOption = useCallback((element: HTMLDivElement | null) => element?.focus(), []);
@@ -2882,7 +2882,7 @@ function ExtensionDialog({
           style={{ pointerEvents: "auto", maxWidth: "min(560px, 100%)" }}
         >
           <span className="extension-collapsed-tag">{t("chat.extensionPending")}</span>
-          <span className="extension-collapsed-title">{request.title}</span>
+          <span className="extension-collapsed-title">{stripAnsi(request.title)}</span>
           {summary && <span className="extension-collapsed-summary">{summary}</span>}
           {countdown}
           <span className="extension-collapsed-action">{t("chat.extensionExpand")}</span>
@@ -2890,13 +2890,13 @@ function ExtensionDialog({
       ) : (
       <div
         role="dialog"
-        aria-label={request.title}
+        aria-label={stripAnsi(request.title)}
         className="models-dialog extension-dialog"
         style={{ pointerEvents: "auto", width: request.method === "select" ? "min(440px, 100%)" : "min(560px, 100%)", maxHeight: "min(760px, 100%)" }}
       >
         <div className="extension-dialog-header">
           <div className="extension-dialog-heading">
-            <strong>{request.title}</strong>
+            <strong>{stripAnsi(request.title)}</strong>
             <span>
               {t("chat.extensionRequest")}
               {countdown}
@@ -2918,7 +2918,7 @@ function ExtensionDialog({
 
         <div className="extension-dialog-body">
           {request.method === "confirm" && (
-            <MarkdownBody>{request.message}</MarkdownBody>
+            <MarkdownBody>{stripAnsi(request.message)}</MarkdownBody>
           )}
           {request.method === "select" && (
             <div
@@ -2942,7 +2942,7 @@ function ExtensionDialog({
                   role="button"
                   tabIndex={0}
                   data-extension-option
-                  aria-label={option}
+                  aria-label={stripAnsi(option)}
                   ref={index === 0 ? focusFirstOption : undefined}
                   className="extension-option"
                   onClick={() => onRespond(request, { value: option })}
@@ -2953,7 +2953,7 @@ function ExtensionDialog({
                   }}
                 >
                   <div inert>
-                    <MarkdownBody>{option}</MarkdownBody>
+                    <MarkdownBody>{stripAnsi(option)}</MarkdownBody>
                   </div>
                 </div>
               ))}
@@ -2964,7 +2964,7 @@ function ExtensionDialog({
               autoFocus
               className="models-input"
               value={value}
-              placeholder={request.placeholder}
+              placeholder={request.placeholder === undefined ? undefined : stripAnsi(request.placeholder)}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) submitValue();
@@ -3018,7 +3018,7 @@ function ExtensionCustomPanel({
   const composingRef = useRef(false);
   const [collapsed, setCollapsed] = useState(false);
   const displayLines = normalizeCustomPanelLines(request.lines);
-  const summary = displayLines.find((line) => line.trim())?.trim();
+  const summary = displayLines.map(stripAnsi).find((line) => line.trim())?.trim();
 
   useEffect(() => {
     if (!collapsed) inputRef.current?.focus();

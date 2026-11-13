@@ -296,6 +296,69 @@ html.dark {
   --ui-shadow-popover: 0 4px 16px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.20);
 }
 
+/* ANSI palette colors inherit the app scheme, never the server terminal's. */
+:root {
+  --ansi-black: var(--text);
+  --ansi-red: var(--danger);
+  --ansi-green: #15803d;
+  --ansi-yellow: var(--warning);
+  --ansi-blue: var(--accent);
+  --ansi-magenta: #7c3aed;
+  --ansi-cyan: #0e7490;
+  --ansi-white: var(--text-muted);
+  --ansi-bright-black: var(--text-dim);
+  --ansi-bright-red: #b91c1c;
+  --ansi-bright-green: #047857;
+  --ansi-bright-yellow: #92400e;
+  --ansi-bright-blue: #1d4ed8;
+  --ansi-bright-magenta: #6d28d9;
+  --ansi-bright-cyan: #155e75;
+  --ansi-bright-white: var(--text);
+}
+html.dark {
+  --ansi-green: #4ade80;
+  --ansi-magenta: #c084fc;
+  --ansi-cyan: #22d3ee;
+  --ansi-bright-red: #fca5a5;
+  --ansi-bright-green: #86efac;
+  --ansi-bright-yellow: #fde047;
+  --ansi-bright-blue: #93c5fd;
+  --ansi-bright-magenta: #d8b4fe;
+  --ansi-bright-cyan: #67e8f9;
+}
+.ansi-black-fg { color: var(--ansi-black); }
+.ansi-red-fg { color: var(--ansi-red); }
+.ansi-green-fg { color: var(--ansi-green); }
+.ansi-yellow-fg { color: var(--ansi-yellow); }
+.ansi-blue-fg { color: var(--ansi-blue); }
+.ansi-magenta-fg { color: var(--ansi-magenta); }
+.ansi-cyan-fg { color: var(--ansi-cyan); }
+.ansi-white-fg { color: var(--ansi-white); }
+.ansi-bright-black-fg { color: var(--ansi-bright-black); }
+.ansi-bright-red-fg { color: var(--ansi-bright-red); }
+.ansi-bright-green-fg { color: var(--ansi-bright-green); }
+.ansi-bright-yellow-fg { color: var(--ansi-bright-yellow); }
+.ansi-bright-blue-fg { color: var(--ansi-bright-blue); }
+.ansi-bright-magenta-fg { color: var(--ansi-bright-magenta); }
+.ansi-bright-cyan-fg { color: var(--ansi-bright-cyan); }
+.ansi-bright-white-fg { color: var(--ansi-bright-white); }
+.ansi-black-bg { background-color: var(--ansi-black); }
+.ansi-red-bg { background-color: var(--ansi-red); }
+.ansi-green-bg { background-color: var(--ansi-green); }
+.ansi-yellow-bg { background-color: var(--ansi-yellow); }
+.ansi-blue-bg { background-color: var(--ansi-blue); }
+.ansi-magenta-bg { background-color: var(--ansi-magenta); }
+.ansi-cyan-bg { background-color: var(--ansi-cyan); }
+.ansi-white-bg { background-color: var(--ansi-white); }
+.ansi-bright-black-bg { background-color: var(--ansi-bright-black); }
+.ansi-bright-red-bg { background-color: var(--ansi-bright-red); }
+.ansi-bright-green-bg { background-color: var(--ansi-bright-green); }
+.ansi-bright-yellow-bg { background-color: var(--ansi-bright-yellow); }
+.ansi-bright-blue-bg { background-color: var(--ansi-bright-blue); }
+.ansi-bright-magenta-bg { background-color: var(--ansi-bright-magenta); }
+.ansi-bright-cyan-bg { background-color: var(--ansi-bright-cyan); }
+.ansi-bright-white-bg { background-color: var(--ansi-bright-white); }
+
 /* Shared header rules. Keep the original 36px row; only remove layout-shifting marks. */
 .workspace-header {
   display: flex;

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -41,8 +42,33 @@ test("xterm 256-color palette", () => {
 
 test("standard 16 colors and full reset", () => {
   const html = toHtml("\x1b[32mgreen\x1b[0m tail");
-  assert.match(html, /color:rgb\(0,187,0\)/);
+  assert.match(html, /class="ansi-green-fg"/);
   assert.match(html, /tail/);
+});
+
+test("16 ANSI colors and low indexed colors use theme classes; every class has CSS", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const names = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
+  for (let i = 0; i < 16; i++) {
+    const name = (i > 7 ? "bright-" : "") + names[i % 8];
+    const html = toHtml(`\x1b[38;5;${i}mfg\x1b[48;5;${i}mbg`);
+    assert.match(html, new RegExp(`ansi-${name}-fg`));
+    assert.match(html, new RegExp(`ansi-${name}-bg`));
+    for (const side of ["fg", "bg"]) assert.ok(css.includes(`.ansi-${name}-${side} {`));
+  }
+  assert.match(css, /html\.dark \{\s*--ansi-green:/);
+  assert.match(css, /--ansi-blue: var\(--accent\)/);
+});
+
+test("extension plain-text outlets strip ANSI without changing select response values", async () => {
+  const chat = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
+  const hook = await readFile(new URL("../hooks/useAgentSession.ts", import.meta.url), "utf8");
+  for (const value of ["request.title", "request.message", "option", 'request.prefill ?? ""', "request.placeholder"]) {
+    assert.ok(chat.includes(`stripAnsi(${value})`), value);
+  }
+  assert.match(chat, /onRespond\(request, \{ value: option \}\)/);
+  assert.match(chat, /displayLines\.map\(stripAnsi\)/);
+  for (const value of ["request.title", "request.text", "request.message"]) assert.ok(hook.includes(`stripAnsi(${value})`), value);
 });
 
 test("decoration codes render as styles (not dropped)", () => {
@@ -72,6 +98,6 @@ test("newlines inside text are preserved", () => {
 });
 
 test("styles do not leak between complete widget snapshots", () => {
-  assert.match(toHtml("\x1b[31mred"), /color:rgb\(187,0,0\)/);
+  assert.match(toHtml("\x1b[31mred"), /class="ansi-red-fg"/);
   assert.equal(toHtml("plain"), "<span>plain</span>");
 });

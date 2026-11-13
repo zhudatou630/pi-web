@@ -71,6 +71,16 @@ Plain-text cleaning and ANSI rendering both remove pi-tui APC cursor/fake-cursor
 markers before rendering. Markers cannot span CR/LF: a truncated marker must not
 consume later body text. Empty custom-panel normalization also cleans its fallback.
 
+`AnsiText` renders the 16 ANSI palette slots (including indexed 0–15) as CSS
+classes. Semantic red/blue/yellow and neutral text inherit the app palette;
+other hues use our terminal's light/dark colors. Explicit 256/24-bit colors stay
+exact. Keep `WebExtensionTheme`: it already emits theme-independent ANSI slots.
+pi's `generateSystemThemeColors({})` also yields palette slots, but importing its
+private SDK module and asynchronously replacing the theme adds no needed behavior
+here. `custom()` stays `PlainTextTheme`, widgets remain no-op. Dialog display
+text, editor prefill/placeholder, title, inserted editor text, collapsed summaries
+and notices strip ANSI. Select replies retain the original option value.
+
 ## Pending edit previews
 
 Expanded edit calls with complete SDK-shaped arguments and no result show their

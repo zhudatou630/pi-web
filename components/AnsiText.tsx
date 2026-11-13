@@ -14,7 +14,12 @@ import { TUI_CURSOR_MARKER_RE } from "@/lib/ansi";
  */
 
 export function AnsiText({ text }: { text: string }) {
-  const html = useMemo(() => new AnsiUp().ansi_to_html(text.replace(TUI_CURSOR_MARKER_RE, ""))
-    .replaceAll("<a ", '<a target="_blank" rel="noopener noreferrer" '), [text]);
+  const html = useMemo(() => {
+    const ansi = new AnsiUp();
+    // Palette indices follow the app theme; explicit 256/truecolor values stay exact.
+    ansi.use_classes = true;
+    return ansi.ansi_to_html(text.replace(TUI_CURSOR_MARKER_RE, ""))
+      .replaceAll("<a ", '<a target="_blank" rel="noopener noreferrer" ');
+  }, [text]);
   return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }
