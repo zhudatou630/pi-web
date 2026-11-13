@@ -18,9 +18,8 @@ import { samePath } from "./paths";
 // Design: docs/routines.md ("Create from chat").
 
 export const ROUTINE_TOOL_NAME = "create_routine";
-export const LIST_ROUTINES_TOOL_NAME = "list_routines";
-export const UPDATE_ROUTINE_TOOL_NAME = "update_routine";
-const TOOL_SEARCH = "tool_search";
+/** Lists the project's routines, or changes one (replaced `list_routines` and `update_routine`). */
+export const ROUTINES_TOOL_NAME = "routines";
 /** An unattended run (or a closed tab) must not hold the turn forever; no answer = not created. */
 const CONFIRM_TIMEOUT_MS = 15 * 60_000;
 
@@ -108,6 +107,8 @@ export interface UpdateRoutineParams {
   enabled?: boolean;
 }
 
+const UPDATE_FIELDS = ["name", "instructions", "cron", "at", "enabled"] as const;
+
 /**
  * The stored routine with the chat's partial change applied, validated like a form save.
  * Only name, instructions, schedule and on/off: where it runs (project, chat, model, tools)
@@ -180,52 +181,44 @@ async function inProject(routine: Routine, cwd: string): Promise<boolean> {
   return samePath(theirs.projectRoot, ours.projectRoot);
 }
 
-/** An unreadable routines file must not take the tool away; creating reports the real error. */
-function featureEnabled(store: () => RoutineStore): boolean {
-  try { return store().isFeatureEnabled(); } catch { return true; }
+/**
+ * Whether this chat gets the routines tools: the feature is on and its project has not switched
+ * them off. An unreadable routines file must not take the tools away; creating reports the real error.
+ */
+function toolsEnabled(store: () => RoutineStore, projectRoot?: string): boolean {
+  try {
+    return projectRoot ? store().projectState(projectRoot).enabled : store().isFeatureEnabled();
+  } catch {
+    return true;
+  }
 }
 
 /**
- * `create_routine`, loaded on demand: deferred, so only `tool_search` (activated here when
- * Pi Web's tool-search extension is present) and a one-line hint sit in the context until
- * the model asks for scheduling. Nothing is saved before the user confirms in the web UI.
+ * Pi Web's routines tools, plain host tools like `generate_image`: declared while the feature
+ * (and the project's switch) is on, absent otherwise. `model-only`: they ask for approval or end
+ * the turn, so codemode scripts must not call them. Nothing is saved before the user confirms in
+ * the web UI. Design: docs/routines.md ("Create from chat").
  */
-export function createRoutineToolExtension(store: () => RoutineStore = () => new RoutineStore()): InlineExtension {
+export function createRoutineToolExtension(
+  store: () => RoutineStore = () => new RoutineStore(),
+  projectRoot?: string,
+): InlineExtension {
   return {
     name: "pi-web-routines",
     hidden: true,
     factory: (pi: ExtensionAPI) => {
-      // Switched off in Settings: no tool, no tool_search activation, no prompt line. A session
-      // started before the switch keeps its tool until reloaded, so execute() checks again.
-      if (!featureEnabled(store)) return;
-      const searchable = () => pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH && tool.reachesTools);
-      pi.on("session_start", () => {
-        const active = pi.getActiveTools();
-        if (searchable() && !active.includes(TOOL_SEARCH)) pi.setActiveTools([...active, TOOL_SEARCH]);
-      });
-      // Any routines tool found brings the whole set: pi declares tool changes once per request,
-      // so they arrive in one addition. A later separate load would break the prompt cache again
-      // on providers that fold additions into the leading prompt.
-      const routineTools = [ROUTINE_TOOL_NAME, LIST_ROUTINES_TOOL_NAME, UPDATE_ROUTINE_TOOL_NAME, ASK_USER_TOOL_NAME];
-      pi.on("tool_result", (event) => {
-        if (event.toolName !== TOOL_SEARCH) return;
-        const loaded = (event.details as { loaded?: unknown } | undefined)?.loaded;
-        if (!Array.isArray(loaded) || !loaded.some((name) => routineTools.includes(name))) return;
-        const active = pi.getActiveTools();
-        const missing = routineTools.filter((name) => !active.includes(name));
-        if (missing.length > 0) pi.setActiveTools([...active, ...missing]);
-      });
-      pi.on("before_agent_start", (event) => {
-        if (!event.systemPromptOptions.selectedTools.includes(TOOL_SEARCH)) return;
-        event.systemPromptOptions.sections.routines = `For scheduled or later work (Pi Web routines), load \`${ROUTINE_TOOL_NAME}\`, \`${LIST_ROUTINES_TOOL_NAME}\` or \`${UPDATE_ROUTINE_TOOL_NAME}\` with ${TOOL_SEARCH}.`;
-      });
+      // Switched off: no tools. A session started before the switch keeps them until reloaded,
+      // so execute() checks again.
+      if (!toolsEnabled(store, projectRoot)) return;
+      const enabledNow = () => toolsEnabled(store, projectRoot);
+      const OFF = "Routines are turned off in Pi Web settings.";
       pi.registerTool({
         name: ROUTINE_TOOL_NAME,
         label: "Create routine",
-        exposure: "deferred",
+        exposure: "model-only",
         description: [
           "Create a Pi Web routine: instructions run later or repeatedly in this project. The user approves it before it is saved.",
-          `Steps: 1) settle choices that change the result (ask with ${ASK_USER_TOOL_NAME} if you cannot); 2) do one trial run now with the exact method the routine will use, then end your turn showing the user its result (skip for plain reminders); 3) once they agree, create it, writing the verified method into instructions: sources, tools, filters, output format, how to skip what was already reported, what to report when blocked. To change a routine use ${UPDATE_ROUTINE_TOOL_NAME}, never a second one.`,
+          `Steps: 1) settle choices that change the result (ask with ${ASK_USER_TOOL_NAME} if you cannot); 2) do one trial run now with the exact method the routine will use, then end your turn showing the user its result (skip for plain reminders); 3) once they agree, create it, writing the verified method into instructions: sources, tools, filters, output format, how to skip what was already reported, what to report when blocked. To change a routine use ${ROUTINES_TOOL_NAME}, never a second one.`,
           "run_in: new_chat starts each run fresh, without this conversation, so instructions must be self-contained; this_chat continues this chat (ongoing work). Times are server local time.",
         ].join("\n"),
         parameters: Type.Object({
@@ -241,7 +234,7 @@ export function createRoutineToolExtension(store: () => RoutineStore = () => new
             content: [{ type: "text" as const, text: `Not created: ${message}\nServer time now: ${new Date().toLocaleString("sv-SE").slice(0, 16)} (${Intl.DateTimeFormat().resolvedOptions().timeZone}).` }],
             details: { created: false },
           });
-          if (!featureEnabled(store)) return fail("Routines are turned off in Pi Web settings.");
+          if (!enabledNow()) return fail(OFF);
           let input: RoutineInput;
           try {
             input = routineInputFromToolParams(params as RoutineToolParams, {
@@ -275,46 +268,27 @@ export function createRoutineToolExtension(store: () => RoutineStore = () => new
             approved = false; // aborted
           }
           if (!approved) return fail("the user declined. Ask what to change before trying again.");
+          // The switch may have been turned off while the card waited.
+          if (!enabledNow()) return fail(OFF);
           // The answer may come minutes later: a one-time run due meanwhile would never fire.
           try { validateSchedule(input.schedule, minIntervalMs(input.target.kind), true, new Date()); }
           catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
           const routine = await store().create(input);
           const text = [
-            `Created routine "${routine.name}". Next run: ${nextRunText(routine, new Date())}. Change it later with ${UPDATE_ROUTINE_TOOL_NAME}.`,
+            `Created routine "${routine.name}". Next run: ${nextRunText(routine, new Date())}. Change it later with ${ROUTINES_TOOL_NAME}.`,
             ...(schedulerOn ? [] : ["Scheduling is off in this Pi Web process, so it runs only when the user clicks Run now."]),
           ].join("\n");
           return { content: [{ type: "text" as const, text }], details: { created: true, routineId: routine.id } };
         },
       });
-      registerAskUserTool(pi);
+      registerAskUserTool(pi, enabledNow);
       pi.registerTool({
-        name: LIST_ROUTINES_TOOL_NAME,
-        label: "List routines",
-        exposure: "deferred",
-        description: "List this project's routines: id, schedule, next and last run. With id: also its instructions and recent runs (due vs start time, status, error), to explain a late or failed run.",
+        name: ROUTINES_TOOL_NAME,
+        label: "Routines",
+        exposure: "model-only",
+        description: "List this project's routines: id, schedule, next and last run. With id: also its instructions and recent runs (due vs start time, status, error), to explain a late or failed run. With id and any of name, instructions, cron, at, enabled: change that routine when the user asks or a run shows it is wrong (instructions replaces the whole text; cron or at replaces the whole schedule). Changes apply without approval, so tell the user what changed. Project, chat, model and tools change on the Routines page only.",
         parameters: Type.Object({
           id: Type.Optional(Type.String()),
-        }),
-        async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-          const text = (value: string) => ({ content: [{ type: "text" as const, text: value }], details: undefined });
-          if (!featureEnabled(store)) return text("Routines are turned off in Pi Web settings.");
-          const { id } = params as { id?: string };
-          const all = store().list().filter((routine) => !id || routine.id === id);
-          const mine = (await Promise.all(all.map(async (routine) => (await inProject(routine, ctx.cwd) ? routine : null))))
-            .filter((routine): routine is Routine => routine !== null);
-          if (id && mine.length === 0) return text(`No routine ${id} in this project.`);
-          return text(describeRoutines(mine, ctx.sessionManager.getSessionId(), new Date(), Boolean(id)));
-        },
-      });
-      pi.registerTool({
-        name: UPDATE_ROUTINE_TOOL_NAME,
-        label: "Update routine",
-        exposure: "deferred",
-        description: [
-          "Change a routine of this project (id from list_routines) when the user asks or a run shows it is wrong. Give only what changes; instructions replaces the whole text. Applied without approval, so tell the user what changed. Project, chat, model and tools change on the Routines page only.",
-        ].join("\n"),
-        parameters: Type.Object({
-          id: Type.String(),
           name: Type.Optional(Type.String()),
           instructions: Type.Optional(Type.String()),
           cron: Type.Optional(Type.String({ description: "New repeating schedule (5-field cron)." })),
@@ -322,20 +296,29 @@ export function createRoutineToolExtension(store: () => RoutineStore = () => new
           enabled: Type.Optional(Type.Boolean({ description: "false pauses, true resumes." })),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+          // Some models fill every optional field with "": a blank field means "unchanged", like create_routine's cron/at.
+          const given = Object.fromEntries(Object.entries(params).filter(([, value]) => value !== "")) as Partial<UpdateRoutineParams>;
+          const changing = UPDATE_FIELDS.some((key) => given[key] !== undefined);
+          if (!changing) {
+            const text = (value: string) => ({ content: [{ type: "text" as const, text: value }], details: undefined });
+            if (!enabledNow()) return text(OFF);
+            const all = store().list().filter((routine) => !given.id || routine.id === given.id);
+            const mine = (await Promise.all(all.map(async (routine) => (await inProject(routine, ctx.cwd) ? routine : null))))
+              .filter((routine): routine is Routine => routine !== null);
+            if (given.id && mine.length === 0) return text(`No routine ${given.id} in this project.`);
+            return text(describeRoutines(mine, ctx.sessionManager.getSessionId(), new Date(), Boolean(given.id)));
+          }
           const fail = (message: string) => ({
             content: [{ type: "text" as const, text: `Not updated: ${message}\nServer time now: ${serverNow()}.` }],
             details: { updated: false },
           });
-          if (!featureEnabled(store)) return fail("Routines are turned off in Pi Web settings.");
+          if (!enabledNow()) return fail(OFF);
+          if (!given.id) return fail("give the id of the routine to change; call without fields to list them.");
           // A routine run is unattended work: a read-only chat must not rewrite one without approval.
           if (!hasWriteCapableTool(pi.getActiveTools())) return fail("this chat uses read-only tools. The user can change routines on the Routines page.");
-          // Some models fill every optional field with "": a blank field means "unchanged", like create_routine's cron/at.
-          const change = Object.fromEntries(Object.entries(params).filter(([key, value]) => key === "id" || value !== "")) as unknown as UpdateRoutineParams;
-          if (["name", "instructions", "cron", "at", "enabled"].every((key) => change[key as keyof UpdateRoutineParams] === undefined)) {
-            return fail("nothing to change.");
-          }
+          const change = given as UpdateRoutineParams;
           const before = store().list().find((routine) => routine.id === change.id);
-          if (!before || !(await inProject(before, ctx.cwd))) return fail(`no routine ${change.id} in this project; see list_routines.`);
+          if (!before || !(await inProject(before, ctx.cwd))) return fail(`no routine ${change.id} in this project; call ${ROUTINES_TOOL_NAME} without fields to list them.`);
           let after: Routine;
           try {
             after = structuredClone(await store().update(change.id, (current) => applyRoutineUpdate(current, change)));

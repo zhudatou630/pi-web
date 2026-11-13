@@ -13,7 +13,8 @@ export function extractTurnCreatedRoutines(
 ): CreatedRoutine[] {
   const routines = new Map<string, CreatedRoutine>();
   for (const block of content) {
-    if (block.type !== "toolCall" || (block.toolName !== "create_routine" && block.toolName !== "update_routine")) continue;
+    // `update_routine`: older chats, before it merged into `routines`.
+    if (block.type !== "toolCall" || !["create_routine", "routines", "update_routine"].includes(block.toolName)) continue;
     const result = toolResults?.get(block.toolCallId);
     const details = result?.details as { created?: unknown; updated?: unknown; routineId?: unknown; name?: unknown } | undefined;
     const action = block.toolName === "create_routine" ? "created" : "updated";

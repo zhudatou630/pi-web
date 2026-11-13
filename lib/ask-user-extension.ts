@@ -31,15 +31,17 @@ export function parseAskUserParams(params: AskUserParams): AskUserParams {
  * the turn (`terminate`) and the answer arrives as the user's next message, clicked on the
  * card or typed. Nothing hangs in an unattended run or after the runtime is disposed.
  *
- * Part of the routines tools, not a general tool: no prompt hint of its own, so chats that do
- * not schedule anything see no change. `create_routine`'s description points to it.
+ * Part of the routines tools, not a general tool: its description scopes it to setting up a
+ * routine, and `create_routine`'s description points to it. `model-only`: a codemode script
+ * calling it would neither show the card nor end the turn.
  */
-export function registerAskUserTool(pi: ExtensionAPI): void {
+/** `enabled`: the routines switch, checked again on each call (a loaded chat keeps the tool until reloaded). */
+export function registerAskUserTool(pi: ExtensionAPI, enabled: () => boolean = () => true): void {
   pi.registerTool({
     name: ASK_USER_TOOL_NAME,
     label: "Ask user",
-    exposure: "deferred",
-    description: "Ask the user one question with 2-6 short options, shown as a card they click or answer by typing. It ends your turn: put context in your text before it and call it last and alone. The answer is the user's next message (chosen options, one per line). Ask only what changes your next step and you cannot find out yourself.",
+    exposure: "model-only",
+    description: "While setting up a routine, ask the user one question with 2-6 short options, shown as a card they click or answer by typing. It ends your turn: put context in your text before it and call it last and alone. The answer is the user's next message (chosen options, one per line). Ask only what changes your next step and you cannot find out yourself.",
     parameters: Type.Object({
       question: Type.String(),
       options: Type.Array(Type.String()),
@@ -48,6 +50,7 @@ export function registerAskUserTool(pi: ExtensionAPI): void {
     async execute(_toolCallId, params) {
       let question: AskUserParams;
       try {
+        if (!enabled()) throw new Error("Routines are turned off in Pi Web settings.");
         question = parseAskUserParams(params as AskUserParams);
       } catch (error) {
         return {

@@ -2960,7 +2960,7 @@ export async function startRpcSession(
                 settings: settingsManager,
               }),
               createImageGenerationExtension(agentDir, { projectRoot }),
-              createRoutineToolExtension(),
+              createRoutineToolExtension(undefined, projectRoot),
               createSubagentExtension(
                 SUBAGENT_CONTROLLER.extensionRuntime,
                 () => listSubagentProfiles(sessionCwd),

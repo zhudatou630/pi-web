@@ -17,7 +17,7 @@
 
 1. **P1（MVP）**：新会话目标、调度器、运行历史、Routines 页面、通知。
 2. **P2**：同一个对话目标（已实现）。
-3. **P3（可选）**：agent 工具 `create_routine`（聊天里创建，需 UI 确认，已实现）、`list_routines` / `update_routine`（聊天里查看、修改，已实现）；每次运行使用独立 worktree；会话级 `/loop`。
+3. **P3（可选）**：agent 工具 `create_routine`（聊天里创建，需 UI 确认，已实现）、`routines`（聊天里查看、修改，已实现）；每次运行使用独立 worktree；会话级 `/loop`。
 
 不做：云端运行、事件触发（GitHub/webhook）、自然语言调度表单、Inbox/未读、模板。
 
@@ -27,7 +27,9 @@
 
 - 底栏不显示 ROUTINES，`?routines` 链接回到聊天；聊天里已创建任务的小标签点了不再打开。
 - 调度器不认领任何 occurrence，"立即运行"返回 409。任务定义和历史都保留。
-- `create_routine` 不注册，也不激活 `tool_search`、不加 `<routines>` 提示行。开关前已启动的会话在重新加载前仍带着这个工具，所以 `execute()` 再查一次并拒绝。
+- agent 工具（`create_routine`、`routines`、`ask_user`）不注册。开关前已启动的会话在重新加载前仍带着这些工具，所以 `execute()` 再查一次并拒绝。
+
+项目设置页另有"Agent 定时任务工具"开关（`projects: { [项目根]: false }`，同在 `routines.json`，按侧边栏项目根记录，worktree 共用；`RoutineStore.projectState()` / `setProjectEnabled()`，`GET/PUT /api/routines/settings?cwd=`）。它只管这个项目的对话里有没有这三个工具，不管调度：该项目已有的任务照常运行，在 Routines 页面管理。全局关闭时项目开关不可用，也不可写（409）。
 - 重新打开时，所有任务的 `lastScheduledFor` 设为当前时间：关闭期间错过的不补跑（与恢复暂停的任务一致）。
 
 ## 运行环境与单实例
@@ -145,7 +147,7 @@ Pi Web 中这类对话框会挂起并重放给打开该会话的页面。P1 不�
 - 上下文增长交给 pi 的自动压缩；prompt 应写成可重复执行的形式。
 - 每次运行前追加 `pi-web:routine-run` 标记。
 
-## 在聊天里创建、查看和修改（`create_routine` / `list_routines` / `update_routine`）
+## 在聊天里创建、查看和修改（`create_routine` / `routines`）
 
 实现：`lib/routine-tool-extension.ts`，挂在 `startRpcSession()` 的宿主扩展列表里（Chat only 与子代理没有）。
 
@@ -153,24 +155,24 @@ Pi Web 中这类对话框会挂起并重放给打开该会话的页面。P1 不�
   1. 弄清目标；会改变结果的选择（来源、范围、筛选、频率、输出）自己定不了就问（`ask_user`，见下节）。
   2. 在当前对话里用正式运行的同一套方法（同样的工具、页面、访问方式）试跑一轮，结束本轮把结果给用户看；访问受阻当场暴露，不留到第一次定时运行。纯提醒类可跳过。
   3. 用户认可后创建，指令里写进验证过的做法：去哪看、用什么工具、筛选、输出格式、如何避免重复上次、受阻时报告什么。
-  4. 之后用户说要调整，或某次运行暴露出指令/计划有问题，直接 `update_routine`，不另建一个再让用户停旧的。
+  4. 之后用户说要调整，或某次运行暴露出指令/计划有问题，直接用 `routines` 改，不另建一个再让用户停旧的。
   这套流程写在 `create_routine` 的工具描述里（只是提示，模型仍可能跳过试跑；不做强制拦截，免得简单提醒也变重）。
-- **按需加载**：三个工具都是 `exposure: "deferred"`，加载前不声明给模型。为了能找到它们，扩展在 `session_start` 激活 `tool_search`（Pi Web 的内置 tool-search 存在时；MCP 的 deferred 服务器也会这样做），并在系统提示里加一行 `<routines>`，点名三个工具及各自用途。常驻开销约 290 token（Claude 分词器经 count_tokens 实测：`tool_search` 是 pi 自带的，定义 232，若 MCP 已激活则为 0；`<routines>` 提示 55）。加载后另加四个定义共 1041：`create_routine` 466、`update_routine` 274、`ask_user` 195、`list_routines` 106。描述只写模型从参数名和校验错误推不出来的东西；长度、条数、最小间隔、cron 步长这些限制只在服务端校验（错误连同服务器时间返回给模型），不写进 JSON schema。"试跑后结束本轮、给用户看结果、同意后再建"必须写成明确的步骤：写成"试跑并展示结果"时，模型会试跑完直接创建，结果在批准之后才给。提示是静态文本，不含当前时间，不破坏提示缓存。
+- **普通宿主工具**（与 `generate_image` 同一模式）：开关打开就注册、直接声明给模型，关掉就不注册；不用 `deferred`，不激活 `tool_search`，不加提示行。三个工具都是 `exposure: "model-only"`：要等用户批准或要结束本轮，codemode 脚本里调用会占住 worker 或让卡片和 `terminate` 失效。以前是 `deferred` + 每个会话强制激活 `tool_search`：在只有 codemode MCP 服务器的项目里，pi CLI 不开 `tool_search`，Pi Web 却开了，模型（实测 grok）就用它把 codemode 服务器的工具直接加载出来。现在发现工具开不开完全按用户的 pi 配置。旧会话例外：会话记录里已声明的 `tool_search` 和它加载过的工具会照常恢复，不自动清理（分不清来自旧 routines、用户选择还是 deferred MCP）。同理，项目关掉工具期间继续过的对话，记录里写着这三个工具被移除，重新打开后要在该对话里 Reload 才回来（与生图开关相同）。常驻开销是三个定义，旧 `deferred` 时期实测 `create_routine` 466、`ask_user` 195，合并后的 `routines` 未实测（原 `update_routine` 274 + `list_routines` 106）；不想要的项目用项目开关关掉。描述只写模型从参数名和校验错误推不出来的东西；长度、条数、最小间隔、cron 步长这些限制只在服务端校验（错误连同服务器时间返回给模型），不写进 JSON schema。"试跑后结束本轮、给用户看结果、同意后再建"必须写成明确的步骤：写成"试跑并展示结果"时，模型会试跑完直接创建，结果在批准之后才给。描述是静态文本，不含当前时间，不破坏提示缓存。
 - **参数**（刻意比表单少，介于 Claude 的"只有 cron、只能新会话"和完整表单之间）：`name`、`instructions`、`run_in`（`new_chat` / `this_chat`）、`cron`（一条）或 `at`（一次）。一天多个不同分钟的时间、每 N 周、截止日期这类少见形状，创建后在 Routines 页面改。项目固定为当前对话的 cwd。`new_chat` 复制当前对话的模型、思考级别和工具选择（`readSessionToolSelection`，缺省即跟随 `defaultTools`），所以不会比当前对话权限更大；`this_chat` 绑定当前对话 id（首轮会话文件可能还没落盘，所以不像表单那样校验文件存在）。
 - **校验**与表单保存一致（`parseRoutineInput`：最小间隔、never runs 等），错误作为工具结果返回，附服务器当前时间，模型据此修正。用户确认后按当时时间再校验一次：确认期间已过期的一次性任务不创建。
 - **确认**：`ctx.ui.confirm` 额外带 `piWebCard`（结构化的 `RoutineApprovalCard`：名称、计划、服务器时区、下次运行、运行方式、指令、调度是否开启），`rpc-manager` 原样放进 confirm 请求的 `card`。Pi Web 据此在聊天末尾、工具调用下方内联渲染 `RoutineApprovalCard`（不是居中弹窗，也没有"extension request · 倒计时"字样）。与输入框同一层次：只有一条外边框，没有标题条、分隔线或内部灰框。依次是小字说明"定时任务 · 待确认"、任务名、一行事实（计划用 `describeSchedule` 的人话 · 下次运行按服务器时区并带相对时间 · 运行方式）、指令作为引用段落（左侧细线，次级文字色，超过约 6 行淡出并给"展开全部"），右下"取消 / 创建任务"，Esc 取消。按浏览器语言显示。Markdown 的 title/message 只给其他扩展 UI 客户端兜底。15 分钟无人回答或被中止 = 未创建；无人值守的 routine 运行里调用它同样会超时放弃。
 - **创建之后**：卡片消失，工具调用和其他步骤一起收进本轮的过程组；不另起结果卡片（与 Claude 一样克制）。本轮回答下方多一个小标签（与"写入的文件"同款，`TurnArtifactChip`，`components/TurnArtifacts.tsx`）：时钟图标 + 任务名，点击打开 Routines 页面的该任务（`lib/routine-events.ts` 的 `pi-web:open-routine` 事件 → AppShell 切到 routines 视图并传 `openRequest`；表单有未保存修改时先确认）。标签来自本轮 `create_routine` 结果的 `details.created/routineId`（`lib/turn-routines.ts`），被拒绝的不显示。
 - 结果文本：创建成功一句话（名称、下一次运行）；失败或被拒绝时附服务器当前时间，供模型改正。调度器关闭时额外说明只能"立即运行"。
-- **范围**：`list_routines` / `update_routine` 看得到、改得了当前对话所在项目的全部任务（按 `resolveProject()` 的项目根比较，worktree 算同一项目），其他项目的任务当作不存在。
-- **`list_routines`**（只读）：每个任务一行：id、名称、开/停、计划人话、下次运行、在哪运行（每次新开 / 本对话 / 某对话）、上次运行。带 `id` 时再给完整指令和最近 10 次运行（应触发时间、实际开始时间、状态、跳过原因、错误、会话 id），用来回答"为什么没按时发""上次为什么失败"。
-- **`update_routine`**：只改名称、指令（整段替换）、计划（一条 cron 或一次 `at`，会替换原计划，包括表单才有的多时间、每 N 周、截止日期）和启用/暂停；项目、绑定的对话、模型、工具只在 Routines 页面改，所以聊天里的修改不会扩大运行权限。校验与表单保存相同（`parseRoutineInput`），在存储锁内基于最新定义合并（`RoutineStore.update` 接受函数）。**不弹确认**，与 Grok 一致：改动立即生效，结果文本列出改了什么（"schedule: Every hour → Every day at 09:00 AM"），由 agent 告诉用户；本轮回答下方出现"已更新 · 任务名"小标签，点开就是任务页，改动是白箱的。只读工具预设的对话拒绝修改（无人值守的运行不能在没有写权限、也没有确认的对话里被改写）。删除仍只在 Routines 页面，需要停掉就暂停。
+- **范围**：`routines` 看得到、改得了当前对话所在项目的全部任务（按 `resolveProject()` 的项目根比较，worktree 算同一项目），其他项目的任务当作不存在。
+- **`routines` 不带要改的字段 = 查看**（只读；空字符串算没给）：每个任务一行：id、名称、开/停、计划人话、下次运行、在哪运行（每次新开 / 本对话 / 某对话）、上次运行。带 `id` 时再给完整指令和最近 10 次运行（应触发时间、实际开始时间、状态、跳过原因、错误、会话 id），用来回答"为什么没按时发""上次为什么失败"。
+- **`routines` 带 `id` 和要改的字段 = 修改**（以前的 `update_routine`，旧对话里的调用照样出小标签）：只改名称、指令（整段替换）、计划（一条 cron 或一次 `at`，会替换原计划，包括表单才有的多时间、每 N 周、截止日期）和启用/暂停；项目、绑定的对话、模型、工具只在 Routines 页面改，所以聊天里的修改不会扩大运行权限。校验与表单保存相同（`parseRoutineInput`），在存储锁内基于最新定义合并（`RoutineStore.update` 接受函数）。**不弹确认**，与 Grok 一致：改动立即生效，结果文本列出改了什么（"schedule: Every hour → Every day at 09:00 AM"），由 agent 告诉用户；本轮回答下方出现"已更新 · 任务名"小标签，点开就是任务页，改动是白箱的。只读工具预设的对话拒绝修改（无人值守的运行不能在没有写权限、也没有确认的对话里被改写）。删除仍只在 Routines 页面，需要停掉就暂停。
 - **风险**：不确认意味着被提示注入的内容（例如运行时读到的网页）也可能让 agent 改写任务。有写权限的对话本来就能用 bash 改任何文件，所以这不是新的边界；只读对话被挡住。
 
 ## 向用户提问（`ask_user`）
 
 实现：`lib/ask-user-extension.ts`（由 routines 扩展注册，随定时任务开关），界面 `components/QuestionCard.tsx`，纯函数 `lib/ask-user-answer.ts`。参照 Grok 的选项卡片。
 
-- **只属于定时任务**：没有自己的系统提示行，`<routines>` 提示里也不提它；只在 `create_routine` 的描述里出现（"定不了就用 ask_user 问"）。`tool_search` 找到这组工具中的任何一个时（哪怕模型传了 `limit: 1`），扩展在同一个 `tool_result` 里把四个（三个 routine 工具和 `ask_user`）都激活：pi 每次请求前只声明一次工具变化，所以它们落在同一条 `toolsAdded` 里。没开原位追加的模型（`models.json` 里没设 `supportsMidConvoSystemMessages` 等 compat）每次工具变化都会让该次请求的提示缓存整体失效，这样建任务的流程只失效一次，也少一次来回。代价是谈定时任务时即使不提问也多带 `ask_user` 的定义（195 token）。所以不涉及定时任务的对话，上下文和行为都不变：系统提示里只有原来那行 `<routines>`。模型自己用 tool_search 搜"问用户"时仍可能找到它，这是模型主动选择，不算默认行为。想把它变成通用工具，只需给它加一行提示，界面无需改动。
+- **只属于定时任务**：随 routines 工具一起注册，描述以"While setting up a routine"开头，`create_routine` 的描述里也指向它（"定不了就用 ask_user 问"）。想把它变成通用工具，改描述即可，界面无需改动。
 - 参数：`question`、2–6 个单行短 `options`、`multi_select`。选项不能以 `!` 或 `/` 开头：点卡片走的是输入框的发送路径，`!` 会直接执行 shell 命令、`/` 会执行斜杠命令（模型生成的文字不能变成用户命令，网页里的提示注入也可能让模型写出这种选项）。应当单独调用：`terminate` 只有整批工具都要求时才生效，和别的工具同批时本轮会继续，只能靠结果文字让模型停下。不设单独的说明字段：背景写在调用前的回答文字里（卡片紧跟其后），否则模型会把同一句话写两遍。长度限制只在 `parseAskUserParams` 里校验，不写进 JSON schema（schema 每次请求都要带）。
 - **不阻塞**：调用立即返回并带 `terminate: true`，本轮就此结束；答案作为用户的下一条普通消息到来（点卡片发送选中的选项，每行一个；或在输入框里随便打字）。所以没有等待中的扩展对话框：无人值守的运行、关掉的页面、10 分钟空闲回收都不会卡住。
 - 显示：`ask_user` 调用算作回答的一部分（`lib/message-display.ts`），不收进过程组。卡片：问题、带字母的选项，不加固定提示文字。最新且未回答、会话空闲、没有正在编辑的历史消息时可点（编辑中发送会进那条编辑）：单选点一下即发送；多选勾选后点卡片右下的"发送"。已回答时只留选中的选项（答案的某一行与选项文字相同）；用户自己打字回答时全部选项变灰。

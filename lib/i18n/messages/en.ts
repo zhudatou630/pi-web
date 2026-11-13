@@ -148,6 +148,7 @@ export const enLocale: LocalePlugin = {
     "settings.projectRequired": "Open a project to configure this section",
     "settings.images": "Images",
     "project.images": "Image generation",
+    "project.routines": "Routine tools for the agent",
     "project.codemode": "Offer Codemode to the model",
     "settings.imagesDefault": "Default connection",
     "settings.imagesBuiltin": "Account sign-in",

@@ -148,6 +148,7 @@ export const zhCNLocale: LocalePlugin = {
     "settings.projectRequired": "打开项目后才能配置此项",
     "settings.images": "生图",
     "project.images": "生图",
+    "project.routines": "Agent 定时任务工具",
     "project.codemode": "向模型提供 Codemode",
     "settings.imagesDefault": "默认连接",
     "settings.imagesBuiltin": "账号登录",

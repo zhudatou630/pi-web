@@ -6,6 +6,8 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import lockfile from "proper-lockfile";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { validateSessionToolSelection } from "./session-tool-selection";
+import { projectOverride, withProjectOverride } from "./project-feature-switch";
+import type { ProjectFeatureState } from "./api-types";
 import { SESSION_ID_PATTERN } from "./sidebar-state";
 import { firesTooOften, isOnceAt, latestRun, MAX_EVERY, MAX_EXPRS, minIntervalMs, nextRuns, normalizeExpr, REPEAT_UNITS, type RepeatUnit, type RoutineSchedule } from "./routine-schedule";
 
@@ -68,8 +70,10 @@ export interface Routine {
 
 interface RoutinesFile {
   version: 1;
-  /** Settings › General "Routines" switched off: no entry, no create_routine tool, nothing fires. */
+  /** Settings › General "Routines" switched off: no entry, no routines tools, nothing fires. */
   featureDisabled?: true;
+  /** Projects whose chats get no routines tools (`false`), keyed by project root; their routines still run. */
+  projects?: Record<string, boolean>;
   routines: Routine[];
 }
 
@@ -308,6 +312,25 @@ export class RoutineStore {
   /** Whether the Routines feature is on (Settings › General). On unless switched off. */
   isFeatureEnabled(): boolean {
     return loadFile(this.path).featureDisabled !== true;
+  }
+
+  /**
+   * This project's switch for the routines tools in its chats. Only off can be stored: with the
+   * feature off the project is off too, and on is the default.
+   */
+  projectState(projectRoot: string): ProjectFeatureState {
+    const state = loadFile(this.path);
+    const enabled = state.featureDisabled !== true && projectOverride(state as unknown as Record<string, unknown>, projectRoot) !== false;
+    return { root: projectRoot, enabled, overridden: state.featureDisabled !== true && !enabled };
+  }
+
+  async setProjectEnabled(projectRoot: string, enabled: boolean): Promise<void> {
+    await this.mutate((state) => {
+      if (state.featureDisabled) throw new RoutineError("Routines are turned off", 409);
+      const { projects } = withProjectOverride(state as unknown as Record<string, unknown>, projectRoot, enabled, true);
+      if (projects) state.projects = projects as Record<string, boolean>;
+      else delete state.projects;
+    });
   }
 
   /**
