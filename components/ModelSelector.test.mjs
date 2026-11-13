@@ -39,6 +39,7 @@ function picker(props) {
     { innerHeight: 800, innerWidth: 1200 },
   );
   let tree;
+  let focused = "trigger";
   function visit(node, predicate, output = []) {
     if (Array.isArray(node)) { node.forEach((child) => visit(child, predicate, output)); return output; }
     if (!React.isValidElement(node)) return output;
@@ -50,11 +51,21 @@ function picker(props) {
   const render = () => {
     cursor = 0;
     tree = loaded.exports.ModelSelector(props);
-    button().props.ref.current = { getBoundingClientRect: () => ({ top: 600, bottom: 634, left: 10, right: 210, width: 200 }) };
+    button().props.ref.current = { focus: () => { focused = "trigger"; }, getBoundingClientRect: () => ({ top: 600, bottom: 634, left: 10, right: 210, width: 200 }) };
+    const search = visit(tree, (node) => node.type === "input")[0];
+    if (search?.props.ref) search.props.ref.current = { focus: () => { focused = "search"; } };
   };
   const button = () => visit(tree, (node) => node.props.role === "combobox")[0];
   render();
   return {
+    click: () => { button().props.onClick(); render(); },
+    focused: () => focused,
+    filterKey: (key, shiftKey = false) => {
+      let prevented = false;
+      visit(tree, (node) => node.type === "input")[0].props.onKeyDown({ key, shiftKey, preventDefault() { prevented = true; } });
+      render();
+      return prevented;
+    },
     key: (key) => { button().props.onKeyDown({ key, preventDefault() {} }); render(); },
     options: () => visit(tree, (node) => node.props.role === "option"),
     groups: () => visit(tree, (node) => node.props.className === "menu-surface-group"),
@@ -69,6 +80,31 @@ function picker(props) {
     html: () => renderToStaticMarkup(tree),
   };
 }
+
+test("keyboard users can reach scoped search and return to option navigation; pointer opening never focuses search", () => {
+  const scoped = [{ provider: "p", modelId: "one", name: "One" }];
+  const all = [...scoped, { provider: "p", modelId: "two", name: "Two" }];
+  const chosen = [];
+  const state = picker({ options: scoped, allOptions: all, value: scoped[0], onChange: (...args) => chosen.push(args) });
+  state.key("ArrowDown");
+  state.key("Tab");
+  assert.equal(state.focused(), "search");
+  assert.equal(state.scope().value, "scoped", "Tab from the trigger must not steal search focus to change scope");
+  state.filterKey("Tab");
+  assert.equal(state.scope().value, "all");
+  assert.equal(state.focused(), "search");
+  assert.equal(state.filterKey("Tab", true), false, "Shift+Tab can leave the search normally");
+  state.filter("Two");
+  state.filterKey("ArrowDown");
+  assert.equal(state.focused(), "trigger");
+  assert.equal(state.active().props.children[0].props.children, "Two");
+  state.key("Enter");
+  assert.deepEqual(chosen, [["p", "two"]]);
+
+  const touch = picker({ options: scoped, allOptions: all, onChange() {} });
+  touch.click();
+  assert.equal(touch.focused(), "trigger", "opening by mouse/touch must not summon a software keyboard");
+});
 
 test("custom definitions follow file order even in a scope; built-in models keep name order", () => {
   const options = [
@@ -143,6 +179,8 @@ test("while the scope narrows the list, In chat | All switches by tap or Tab, an
   assert.equal(inScope.scope().value, "scoped");
   assert.deepEqual(labels(inScope), ["A1"]);
   inScope.key("Tab");
+  assert.equal(inScope.focused(), "search");
+  inScope.filterKey("Tab");
   assert.equal(inScope.scope().value, "all");
   assert.deepEqual(labels(inScope), ["A1", "B1"]);
 

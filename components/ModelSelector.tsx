@@ -65,6 +65,7 @@ export function ModelSelector({
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const [open, setOpen] = useState(false);
@@ -220,10 +221,10 @@ export function ModelSelector({
             });
             return;
           }
-          // Tab switches Scoped | All, as in pi's /model.
-          if (open && allOptions && event.key === "Tab") {
+          // Reach search from keyboard navigation without focusing it on pointer/touch opening.
+          if (open && event.key === "Tab" && !event.shiftKey) {
             event.preventDefault();
-            switchScope(!showAll);
+            searchRef.current?.focus();
             return;
           }
           if (!open || !selectableOptions.length) return;
@@ -296,12 +297,18 @@ export function ModelSelector({
           >
             <div className="model-selector-scope">
               <input
+                ref={searchRef}
                 className="model-selector-filter"
                 value={query}
                 placeholder={t("models.pickFilterPlaceholder")}
                 aria-label={t("models.pickFilter")}
                 onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); }}
                 onKeyDown={(event) => {
+                  if (allOptions && event.key === "Tab" && !event.shiftKey) {
+                    event.preventDefault();
+                    switchScope(!showAll);
+                    return;
+                  }
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
                     setActiveIndex(event.key === "ArrowDown" ? 0 : selectableOptions.length - 1);
