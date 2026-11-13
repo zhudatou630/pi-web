@@ -19,7 +19,7 @@ const CUSTOM_PROVIDER_SOURCES = new Set(["models_json_key", "models_json_command
 
 /** Friendlier names for OAuth entries whose provider name is not self-explanatory. */
 const OAUTH_DISPLAY_NAMES: Record<string, string> = {
-  "openai-codex": "ChatGPT Plus/Pro",
+  "openai-codex": "OpenAI Codex",
   "github-copilot": "GitHub Copilot",
 };
 

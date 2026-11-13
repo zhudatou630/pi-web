@@ -50,36 +50,35 @@ export async function GET(
   const { provider } = await params;
 
   const encoder = new TextEncoder();
+  let closed = false;
   const send = (controller: ReadableStreamDefaultController, data: unknown) => {
-    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+    if (closed) return;
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+    } catch {
+      closed = true;
+    }
+  };
+  const close = (controller: ReadableStreamDefaultController) => {
+    if (closed) return;
+    closed = true;
+    try { controller.close(); } catch { /* The reader may already have cancelled. */ }
   };
 
   // AbortController propagates client disconnect into ModelRuntime.login().
   const abort = new AbortController();
-  req.signal.addEventListener("abort", () => abort.abort());
+  const disconnect = () => abort.abort();
+  req.signal.addEventListener("abort", disconnect);
+  if (req.signal.aborted) abort.abort();
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Composed runtime so an extension-registered OAuth provider is seen at all.
-      const resolved = await resolveOptionalCwd(new URL(req.url).searchParams.get("cwd"));
-      if ("error" in resolved) {
-        send(controller, { type: "error", message: resolved.error });
-        controller.close();
-        return;
-      }
-      const services = await createModelsConfigServices(resolved.cwd);
-      const modelRuntime = services.modelRuntime;
-      if (!modelRuntime.getProvider(provider)?.auth.oauth) {
-        send(controller, { type: "error", message: `Unknown provider: ${provider}` });
-        controller.close();
-        return;
-      }
-
       const registry = getCallbackRegistry();
       const activeTokens = new Set<string>();
       let pendingManualRequest: { token: string; promise: Promise<string> } | undefined;
 
       const createClientInputRequest = () => {
+        if (closed || abort.signal.aborted) throw new Error("Login cancelled");
         // Unpredictable: this token authorizes a pending login, so a guessable one
         // would let an attacker who knows the provider and timing window complete it.
         const token = `${provider}-${randomUUID()}`;
@@ -128,6 +127,18 @@ export async function GET(
       abort.signal.addEventListener("abort", cleanup);
 
       try {
+        const resolved = await resolveOptionalCwd(new URL(req.url).searchParams.get("cwd"));
+        if ("error" in resolved) throw new Error(resolved.error);
+        const { modelRuntime, settingsManager } = await createModelsConfigServices(resolved.cwd);
+        if (!modelRuntime.getProvider(provider)?.auth.oauth) throw new Error(`Unknown provider: ${provider}`);
+        const loadError = settingsManager.drainErrors()[0];
+        if (loadError) throw loadError.error;
+        // Persist before login: an unwritable settings file must not produce a throwaway host ID.
+        const deviceId = settingsManager.getOrCreateDeviceId();
+        await settingsManager.flush();
+        const writeError = settingsManager.drainErrors()[0];
+        if (writeError) throw writeError.error;
+        if (abort.signal.aborted) throw new Error("Login cancelled");
         await modelRuntime.login(provider, "oauth", {
           prompt: async (prompt: AuthPrompt) => {
             const request = prompt.type === "manual_code"
@@ -151,6 +162,7 @@ export async function GET(
             return request.promise;
           },
           notify: (event: AuthEvent) => {
+            if (closed || abort.signal.aborted) return;
             if (event.type === "auth_url") {
               const request = getManualInputRequest();
               send(controller, {
@@ -172,7 +184,7 @@ export async function GET(
             }
           },
           signal: abort.signal,
-        });
+        }, { getDeviceId: () => deviceId });
 
         invalidateModelsCache();
         send(controller, { type: "success" });
@@ -185,10 +197,13 @@ export async function GET(
         }
       } finally {
         cleanup();
-        controller.close();
+        abort.signal.removeEventListener("abort", cleanup);
+        req.signal.removeEventListener("abort", disconnect);
+        close(controller);
       }
     },
     cancel() {
+      closed = true;
       abort.abort();
     },
   });
