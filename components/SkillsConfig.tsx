@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { isImeComposing } from "@/lib/ime";
 import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
@@ -294,8 +295,10 @@ function AddSkillPanel({
     inputRef.current?.focus();
   }, []);
 
+  const searchInFlight = useRef(false);
   const search = useCallback(async (q: string) => {
-    if (!q.trim()) return;
+    if (!q.trim() || searchInFlight.current) return;
+    searchInFlight.current = true;
     setSearching(true);
     setSearchError(null);
     setResults([]);
@@ -318,6 +321,7 @@ function AddSkillPanel({
     } catch (e) {
       setSearchError(String(e));
     } finally {
+      searchInFlight.current = false;
       setSearching(false);
     }
   }, [t]);
@@ -374,7 +378,8 @@ function AddSkillPanel({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") search(query);
+                if (isImeComposing(e)) return;
+                if (e.key === "Enter" && !searching) void search(query);
               }}
               placeholder={t("i18n.skillSearchPlaceholder")}
               aria-label={t("i18n.skillSearchPlaceholder")}

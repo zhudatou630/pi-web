@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PluginPackageInfo, PluginResourceInfo, PluginStandaloneExtensionInfo, PluginUpdateResult, PluginsResponse } from "@/lib/api-types";
+import { isImeComposing } from "@/lib/ime";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import { ProjectOverrideTag } from "./ProjectOverride";
@@ -221,6 +222,7 @@ function AddPluginPanel({
             onBlur={(e) => onSourceChange(normalizePluginSourceInput(e.currentTarget.value))}
             placeholder="npm:@scope/package"
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === "Enter" && source.trim() && !busy) onInstall();
             }}
           />

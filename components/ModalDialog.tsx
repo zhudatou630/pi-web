@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type DialogHTMLAttributes } from "react";
+import { isImeComposing } from "@/lib/ime";
 
 /** Document-level Escape handlers (menus, panels) stand down while a dialog is open: it owns Escape. */
 export const isModalDialogOpen = () => document.querySelector("dialog[open]") !== null;
@@ -19,9 +20,10 @@ type ModalDialogProps = Omit<DialogHTMLAttributes<HTMLDialogElement>, "open" | "
  * A descendant with React's `autoFocus` keeps the initial focus; otherwise the browser focuses
  * the first focusable descendant.
  */
-export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onClick, onPointerDown, children, ...rest }: ModalDialogProps) {
+export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onCompositionStartCapture, onCompositionEndCapture, onClick, onPointerDown, children, ...rest }: ModalDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const pressedScrimRef = useRef(false);
+  const composingRef = useRef(false);
   // Read during the first render: by the layout effect an autoFocus descendant already has focus.
   const [opener] = useState(() => (typeof document === "undefined" ? null : document.activeElement as HTMLElement | null));
   const onCloseRef = useRef(onClose);
@@ -43,7 +45,7 @@ export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onCl
       // Reopen before asking: an owner that stays (Settings going up a level, a discard confirm
       // it opens on top) keeps its dialog; one that closes unmounts it.
       dialog.showModal();
-      onCloseRef.current?.();
+      if (!composingRef.current) onCloseRef.current?.();
     };
     dialog.addEventListener("close", handleNativeClose);
     const autoFocused = dialog.contains(document.activeElement) ? document.activeElement as HTMLElement : null;
@@ -64,17 +66,29 @@ export function ModalDialog({ className, onClose, focusFallback, onKeyDown, onCl
       {...rest}
       ref={ref}
       className={className ? `modal-shell ${className}` : "modal-shell"}
+      onCompositionStartCapture={(event) => {
+        composingRef.current = true;
+        onCompositionStartCapture?.(event);
+      }}
+      onCompositionEndCapture={(event) => {
+        composingRef.current = false;
+        onCompositionEndCapture?.(event);
+      }}
       onKeyDown={(event) => {
         onKeyDown?.(event);
         // A nested control (select menu, rename field) that handled Escape prevents it first.
-        if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
-        event.preventDefault(); // no native cancel: the owner decides
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        event.preventDefault(); // also suppress native cancel during IME Escape
         event.stopPropagation(); // an outer dialog must not close too
-        onCloseRef.current?.();
+        if (!composingRef.current && !isImeComposing(event)) onCloseRef.current?.();
       }}
       onCancel={(event) => {
         // React walks a nested dialog's cancel up the component tree; only this dialog's own counts.
         if (event.target !== event.currentTarget) return;
+        if (composingRef.current) {
+          event.preventDefault();
+          return;
+        }
         // Without user activation since the last one (a repeated Android back) the browser closes
         // anyway: answering here too would call onClose twice; the close handler answers once.
         if (!event.cancelable) return;
