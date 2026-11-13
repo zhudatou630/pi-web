@@ -146,6 +146,10 @@ export function removeExactRef(
   });
 }
 
+export function allPatternsUnmatched(matches: EnabledModelsPanelState["matches"]): boolean {
+  return Object.values(matches).every((models) => models.length === 0);
+}
+
 export function removePattern(patterns: readonly string[], pattern: string): string[] {
   const target = pattern.trim();
   return normalizePatterns(patterns).filter((item) => item !== target);

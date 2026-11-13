@@ -143,7 +143,7 @@ test("chat membership comes from the resolved list, not the rules behind it", ()
 });
 
 test("removing the last model reports instead of silently doing nothing", () => {
-  assert.match(source, /if \(patterns\.length === 0\) \{\n\s*setScopeError\(t\("models\.keepOneModel"\)\);/);
+  assert.match(source, /if \(patterns\.length === 0 && !allPatternsUnmatched\(current\.matches\)\) \{\n\s*setScopeError\(t\("models\.keepOneModel"\)\);/);
 });
 
 test("a glob removal says so, so the changed setting is not a surprise", () => {
@@ -251,10 +251,9 @@ test("the provider list is a page; a provider opens as its own page with a way b
   assert.match(source, /data-settings-back className="models-breadcrumb"/);
 });
 
-test("no action can write an empty list, because that would mean every model", () => {
+test("emptying a resolved scope is refused; a wholly unmatched scope may be cleared explicitly", () => {
   const saveScope = source.slice(source.indexOf("const saveScope = useCallback"), source.indexOf("const openAdd = useCallback"));
-  // The single writer refuses an empty result, whatever updater produced it.
-  assert.match(saveScope, /if \(patterns\.length === 0\) \{\n\s*setScopeError\(t\("models\.keepOneModel"\)\);/);
+  assert.match(saveScope, /if \(patterns\.length === 0 && !allPatternsUnmatched\(current\.matches\)\) \{\n\s*setScopeError\(t\("models\.keepOneModel"\)\);/);
   assert.match(saveScope, /if \(current\.readOnly\) return false;/);
 });
 

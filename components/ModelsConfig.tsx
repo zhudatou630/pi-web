@@ -19,6 +19,7 @@ import {
   type ModelOverrideFields,
 } from "./models-config-helpers";
 import {
+  allPatternsUnmatched,
   appendExactRef,
   definitionsLost,
   exactRefOf,
@@ -366,7 +367,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
    * current server document instead of the snapshot its caller read.
    *
    * An empty list deletes the key, which means "every model", so a write that
-   * would produce one is refused.
+   * would produce one is refused unless every old rule is unmatched (the
+   * all-model fallback already applies, so clearing the rules loses no model).
    */
   const scopeWriteRef = useRef<Promise<unknown>>(Promise.resolve());
   const saveScope = useCallback((update: (current: EnabledModelsPanelState) => string[]) => {
@@ -379,7 +381,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       }
       if (current.readOnly) return false;
       const patterns = update(current);
-      if (patterns.length === 0) {
+      if (patterns.length === 0 && !allPatternsUnmatched(current.matches)) {
         setScopeError(t("models.keepOneModel"));
         return false;
       }
