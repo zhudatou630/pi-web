@@ -1,5 +1,11 @@
 # Web 扩展兼容
 
+## 空闲 custom 消息
+
+仅可见 custom 的空闲 `message_end` 请求历史刷新（隐藏判定复用 `message-display.ts`），不直接把 SSE 对象塞进 transcript；SDK 已先保存消息，因此 HTTP 快照提供真实 entry id、leaf 和树。同步连发共用一次读取，读取期间的后续通知只追加一次读取。通知递增既有 local-append fence，旧 HTTP 响应不能覆盖它；空闲读取跨运行、分支、会话切换或卸载时丢弃。Bash 和导航期间推迟刷新，完成后再读，避免 pending command 与已保存记录双显。
+
+与上游的 tail/cache 增量方案不同，本项目复用 `/sessions/[id]` 和 `mergeLoadedHistory`，同步刷新 leaf/tree，Clone 无需另存 leaf。空闲请求带最后已加载 entry 的 `anchor`，服务端仅在它属于当前分支时扩展尾窗以保证重叠：超长连发也不丢间隙，合并保留已经向上翻出的分页。普通刷新和分页行为不变。
+
 ## 启动和重载诊断
 
 SDK service diagnostics、loader errors/warnings 和绑定时 `session_start` 错误写完整服务端日志，通过现有 notify / extension_error 通道显示。诊断复用通知缓冲，最多保留七条明细加一条省略提示；普通扩展通知保留最近十条、两分钟。缓冲不被第一个订阅者消费，后续页面和 split pane 都能收到相同 id；每个 hook 自己记住最近 200 个通知 id，重连不重复弹出，也不会让另一个窗格漏看。

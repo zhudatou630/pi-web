@@ -37,6 +37,7 @@ import {
   getLiveFollowAttached,
 } from "@/lib/chat-lazy-load";
 import { mergeLoadedHistory } from "@/lib/chat-history-merge";
+import { isHiddenCustomMessage } from "@/lib/message-display";
 import { carryMessageKeys, messageRenderKeys } from "@/lib/message-keys";
 import {
   INITIAL_STREAMING_STATE,
@@ -666,7 +667,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setContextUsage((prev) => keepContextUsage(prev, next));
   }, []);
 
-  const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
+  const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false, idleOnly = false) => {
     if (navigationPendingRef.current) return null;
     const branch = historyBranchRef.current;
     const runId = promptRunIdRef.current;
@@ -680,6 +681,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       // server probe the file tail for writes made by another pi process: ordinary
       // reads keep serving the live snapshot instead of stat-ing on every poll.
       if (includeState) params.set("force", "1");
+      const anchor = idleOnly ? loadedHistoryRef.current.entryIds.at(-1) : undefined;
+      if (anchor) params.set("anchor", anchor);
       const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
       if (sessionIdRef.current !== sid || historyBranchRef.current !== branch) return null;
       if (res.status === 404) {
@@ -698,7 +701,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as SessionData;
-      if (sessionIdRef.current !== sid || historyBranchRef.current !== branch) return null;
+      if (sessionIdRef.current !== sid || historyBranchRef.current !== branch || !sessionHookMountedRef.current) return null;
+      if (idleOnly && (agentRunningRef.current || promptRunIdRef.current !== runId)) return null;
       if (localAppendSeqRef.current !== appendSeq) {
         messagesLoaded = true;
         if (showLoading) setLoading(false);
@@ -713,6 +717,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const previous = loadedHistoryRef.current;
       const merged = showLoading ? incoming : mergeLoadedHistory(previous, incoming);
       setMessageKeyAliases((aliases) => carryMessageKeys({ ...previous, aliases }, merged));
+      loadedHistoryRef.current = merged;
       setData({ ...d, context: { ...d.context, ...merged } });
       setActiveLeafId(d.leafId);
       setMessages(merged.messages);
@@ -762,6 +767,25 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, [applyContextUsage, setToolPresetState]);
 
+  const idleMessageReadRef = useRef({ sid: "", dirty: false, reading: false });
+  const refreshIdleMessages = useCallback(async (sid: string) => {
+    const read = idleMessageReadRef.current;
+    read.sid = sid;
+    read.dirty = true;
+    if (read.reading || bashRunningRef.current || navigationPendingRef.current) return;
+    read.reading = true;
+    try {
+      await Promise.resolve(); // A synchronous notification burst shares a read.
+      while (read.dirty) {
+        if (bashRunningRef.current || navigationPendingRef.current) return;
+        read.dirty = false;
+        const current = read.sid;
+        if (!sessionHookMountedRef.current || sessionIdRef.current !== current || agentRunningRef.current || navigationPendingRef.current) continue;
+        await loadSession(current, false, false, true);
+      }
+    } finally { read.reading = false; }
+  }, [loadSession]);
+
   const fetchContextPage = useCallback(async (sid: string, leafId: string | null, before?: string | null, options?: { tail?: number; signal?: AbortSignal }) => {
     if (before && navigationPendingRef.current) return;
     const branch = historyBranchRef.current;
@@ -801,6 +825,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setMessages(d.context.messages);
         setEntryIds(d.context.entryIds ?? []);
       }
+      loadedHistoryRef.current = before ? {
+        messages: [...d.context.messages, ...loadedHistoryRef.current.messages],
+        entryIds: [...d.context.entryIds, ...loadedHistoryRef.current.entryIds],
+        oldestEntryId: d.context.oldestEntryId,
+        hasMore: d.context.hasMore,
+      } : d.context;
       return d.context;
     } catch (e) {
       if (!options?.signal?.aborted) console.error("Failed to load context:", e);
@@ -1664,7 +1694,15 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // Same late-event guard: after reconcile finished this run,
         // loadSession already loaded this message from the session file —
         // appending it again would duplicate it.
-        if (!agentRunningRef.current) break;
+        if (!agentRunningRef.current) {
+          const idle = event.message as AgentMessage | undefined;
+          if (idle?.role === "custom" && !isHiddenCustomMessage(idle) && sessionIdRef.current) {
+            // The SDK persisted it before this event; fence every earlier snapshot.
+            localAppendSeqRef.current += 1;
+            void refreshIdleMessages(sessionIdRef.current);
+          }
+          break;
+        }
         if (isSystemMessageEvent(event)) break;
         const completed = event.message as AgentMessage | undefined;
         if (completed) localAppendSeqRef.current += 1;
@@ -1832,7 +1870,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setExtensionCustomUis((queue) => queue.filter((panel) => panel.id !== event.id));
         break;
     }
-  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement, t]);
+  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement, refreshIdleMessages, t]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -2155,8 +2193,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       bashRunningRef.current = false;
       setPendingBash(null);
       setBashRunning(false);
+      const idleRead = idleMessageReadRef.current;
+      if (idleRead.dirty) void refreshIdleMessages(idleRead.sid);
     }
-  }, [addNotice, composerDraftKey, ensureEventsConnected, ensureNewSession, loadSession, promoteNewSession, restoreSubmission, session, t]);
+  }, [addNotice, composerDraftKey, ensureEventsConnected, ensureNewSession, loadSession, promoteNewSession, refreshIdleMessages, restoreSubmission, session, t]);
   executeBashRef.current = executeBash;
 
   const handleAbort = useCallback(async () => {
@@ -2268,8 +2308,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       return false;
     } finally {
       navigationPendingRef.current = false;
+      if (idleMessageReadRef.current.dirty) void refreshIdleMessages(idleMessageReadRef.current.sid);
     }
-  }, [addNotice, isCompacting, loadContext]);
+  }, [addNotice, isCompacting, loadContext, refreshIdleMessages]);
 
   const handleNavigate = handleLeafChange;
   handleNavigateRef.current = handleNavigate;

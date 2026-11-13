@@ -90,7 +90,14 @@ export async function GET(
     const rawTail = Number(searchParams.get("tail"));
     // See the /context route: the enclosing open parses the whole file either way,
     // so a narrow default only buys extra paging round trips.
-    const tail = Number.isFinite(rawTail) && rawTail > 0 ? Math.min(rawTail, 1000) : 200;
+    let tail = Number.isFinite(rawTail) && rawTail > 0 ? Math.min(rawTail, 1000) : 200;
+    // An idle refresh must overlap its loaded window even after a large burst.
+    const anchor = searchParams.get("anchor");
+    if (anchor) {
+      const branch = sm.getBranch(leafId ?? undefined);
+      const at = branch.findIndex((entry) => entry.id === anchor);
+      if (at >= 0) tail = Math.max(tail, branch.length - at);
+    }
     const context = {
       ...buildSessionContext(entries as never, leafId, {
         deferThinking,
