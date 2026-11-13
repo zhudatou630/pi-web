@@ -303,20 +303,11 @@ function getFileApiUrl(
 // Page-wide versions keep reopened media URLs out of the browser's old cache.
 let previewVersion = 0;
 function usePreviewUrl(filePath: string, type: "read" | "preview", sourceSessionId: string | null | undefined, bust: number): string {
-  const [visibleVersion, setVisibleVersion] = useState(0);
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") setVisibleVersion((v) => v + 1);
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, []);
   return useMemo(() => {
-    // Both a watch change and returning to the page require a fresh URL.
+    // Watch changes (including version comparisons on reconnect) request a fresh URL.
     void bust;
-    void visibleVersion;
     return getFileApiUrl(filePath, type, sourceSessionId, { v: ++previewVersion });
-  }, [filePath, type, sourceSessionId, bust, visibleVersion]);
+  }, [filePath, type, sourceSessionId, bust]);
 }
 
 function MentionButton({ filePath, cwd, onAtMention }: Pick<Props, "filePath" | "cwd" | "onAtMention">) {

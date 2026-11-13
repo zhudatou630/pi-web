@@ -6,7 +6,7 @@ Untracked line totals use four asynchronous workers, each reusing a 64 KiB buffe
 
 ## Mutable previews
 
-Media/document URLs use page-wide monotonically increasing versions, including reopen, watch changes and returning to a visible page. The existing heartbeat/reconnecting `FileWatchEventSource` remains responsible for recovering watches; no second reconnect mechanism is added. PDF page fragments remain separate from the cache-busting query.
+Media/document URLs use page-wide monotonically increasing versions on reopen and file changes. Visibility alone never changes a mounted preview's URL/key, so unchanged playback and document reading positions survive tab switches (including hidden mounted previews). The existing heartbeat/reconnecting `FileWatchEventSource` recovers watches; a resumed/reconnected `connected` version is compared with the last seen version and only a changed file bumps the URL. No second reconnect mechanism is added. PDF page fragments remain separate from the cache-busting query.
 
 ## Diff rendering
 

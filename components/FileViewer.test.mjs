@@ -6,35 +6,116 @@ import ts from "typescript";
 
 const source = await readFile(new URL("./FileViewer.tsx", import.meta.url), "utf8");
 
-test("preview URLs advance across reopen, watch changes and page visibility", () => {
-  const hook = source.slice(source.indexOf("let previewVersion ="), source.indexOf("function MentionButton"));
-  const evaluate = new Function("useState", "useEffect", "useMemo", "getFileApiUrl", "document", ts.transpileModule(`${hook}\nreturn usePreviewUrl;`, {}).outputText);
-  let state = 0;
-  let previous;
-  let result;
-  let visible;
-  let cleanup;
-  const document = { visibilityState: "hidden", addEventListener: (_, fn) => { visible = fn; }, removeEventListener: (_, fn) => { assert.equal(fn, visible); } };
-  const url = evaluate(() => [state, (fn) => { state = fn(state); }], (effect) => { cleanup = effect(); }, (fn, deps) => {
-    if (!previous || deps.some((v, i) => v !== previous[i])) result = fn();
-    previous = deps;
-    return result;
-  }, (_, __, ___, params) => params.v, document);
-  const first = url("image.png", "read", null, 0);
-  assert.equal(url("image.png", "read", null, 0), first, "unrelated renders reuse URL");
-  const changed = url("image.png", "read", null, 1);
-  assert.ok(changed > first);
-  previous = undefined; // a new viewer's memo starts empty
-  const reopened = url("image.png", "read", null, 0);
-  assert.ok(reopened > changed);
-  visible();
-  assert.equal(url("image.png", "read", null, 0), reopened, "hidden event does not reload");
-  document.visibilityState = "visible";
-  visible();
-  assert.ok(url("image.png", "read", null, 0) > reopened);
-  cleanup();
-  assert.equal((source.match(/usePreviewUrl\(filePath,/g) ?? []).length, 4);
-});
+function previewHarness(name, filePath) {
+  const file = ts.createSourceFile("FileViewer.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const functions = [name, "getFileApiUrl", "usePreviewUrl", "parseWatchVersion", "formatSize", "formatDuration"];
+  const code = file.statements.filter((node) =>
+    (ts.isFunctionDeclaration(node) && functions.includes(node.name?.text))
+    || (ts.isVariableStatement(node) && node.declarationList.declarations.some((d) => d.name.getText(file) === "previewVersion")),
+  ).map((node) => node.getText(file)).join("\n");
+  let slots = [], cursor = 0, effects = [], dirty = false;
+  let props = { filePath, watchEnabled: true };
+  const document = new EventTarget();
+  const sources = [];
+  const changed = (previous, next) => !previous || next.some((value, i) => value !== previous[i]);
+  const bindings = {
+    React, document, MediaToolbar: "toolbar", ImagePreview: "image-preview", DOCX_PREVIEW_MAX_BYTES: 10 * 1024 * 1024,
+    useI18n: () => ({ t: (key) => key }),
+    getFileName: (path) => path.split("/").pop(), getFileExt: (path) => path.split(".").pop(),
+    encodeFilePathForApi: (path) => path,
+    fetch: async () => ({ json: async () => ({ size: 100 }) }),
+    EventSource: class extends EventTarget {
+      constructor() { super(); sources.push(this); }
+      close() { this.closed = true; }
+    },
+    useState(initial) {
+      const index = cursor++;
+      slots[index] ??= { value: typeof initial === "function" ? initial() : initial };
+      return [slots[index].value, (update) => {
+        const next = typeof update === "function" ? update(slots[index].value) : update;
+        if (!Object.is(next, slots[index].value)) { slots[index].value = next; dirty = true; }
+      }];
+    },
+    useRef(value) { const index = cursor++; return slots[index] ??= { current: value }; },
+    useMemo(calculate, deps) {
+      const index = cursor++;
+      if (changed(slots[index]?.deps, deps)) slots[index] = { value: calculate(), deps };
+      return slots[index].value;
+    },
+    useEffect(effect, deps) {
+      const index = cursor++;
+      if (changed(slots[index]?.deps, deps)) effects.push(() => {
+        slots[index]?.cleanup?.();
+        slots[index] = { deps, cleanup: effect() };
+      });
+    },
+  };
+  const output = ts.transpileModule(`${code}\nreturn ${name};`, { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
+  const viewer = new Function(...Object.keys(bindings), output)(...Object.values(bindings));
+  let tree;
+  const render = () => {
+    do {
+      cursor = 0; dirty = false; effects = [];
+      tree = viewer(props);
+      effects.forEach((effect) => effect());
+    } while (dirty);
+  };
+  const findMedia = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (["img", "audio", "video", "iframe"].includes(node.type)) return node;
+    for (const child of React.Children.toArray(node.props?.children)) {
+      const found = findMedia(child);
+      if (found) return found;
+    }
+  };
+  return {
+    async flush(nextProps) {
+      props = { ...props, ...nextProps };
+      render();
+      await new Promise((resolve) => setImmediate(resolve));
+      render();
+      const media = findMedia(tree);
+      return { src: media.props.src, key: media.key };
+    },
+    visible() { document.visibilityState = "visible"; document.dispatchEvent(new Event("visibilitychange")); },
+    event(type, version) {
+      const watch = sources.at(-1);
+      assert.ok(!watch.closed);
+      watch.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ version, size: 100 }) }));
+    },
+    unmount() { slots.forEach((slot) => slot.cleanup?.()); slots = []; },
+  };
+}
+
+for (const [name, path] of [["ImageViewer", "image.png"], ["AudioViewer", "audio.mp3"], ["VideoViewer", "movie.mp4"], ["DocumentViewer", "report.pdf"], ["DocumentViewer", "report.docx"]]) {
+  test(`${name} ${path} preserves its URL/key until the file changes, including hidden and reopened previews`, async () => {
+    const viewer = previewHarness(name, path);
+    const first = await viewer.flush();
+    viewer.event("connected", "version-1");
+    assert.deepEqual(await viewer.flush(), first, "first watch connection only refreshes metadata");
+    viewer.visible();
+    assert.deepEqual(await viewer.flush(), first, "returning to the page must not reset playback/reading");
+    viewer.event("connected", "version-1");
+    assert.deepEqual(await viewer.flush(), first, "unchanged reconnect must keep the React key");
+    await viewer.flush({ watchEnabled: false });
+    viewer.visible();
+    assert.deepEqual(await viewer.flush(), first, "hidden mounted previews must not reload on visibility");
+    await viewer.flush({ watchEnabled: true });
+    viewer.event("connected", "version-1");
+    assert.deepEqual(await viewer.flush(), first, "resuming an unchanged watch keeps its URL");
+    viewer.event("connected", "version-2");
+    const changed = await viewer.flush();
+    assert.notEqual(changed.src, first.src, "a changed connected version reloads the preview");
+    viewer.event("change", "version-3");
+    const written = await viewer.flush();
+    assert.notEqual(written.src, changed.src, "a live file change reloads the preview");
+    viewer.event("connected", "version-3");
+    assert.deepEqual(await viewer.flush(), written, "reconnect after a delivered change does not reload twice");
+    viewer.unmount();
+    assert.notEqual((await viewer.flush()).src, written.src, "reopening still gets a page-unique URL");
+    viewer.unmount();
+  });
+}
 
 test("highlighted source gutters use generated digits while keeping their layout styles", async () => {
   const renderer = source.slice(source.indexOf("function SourceCodeRenderer"), source.indexOf("function getFileApiUrl"));
