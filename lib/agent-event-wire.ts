@@ -11,6 +11,7 @@ export interface BashOutputEvent extends AgentEventLike {
   id: string;
   command: string;
   excludeFromContext: boolean;
+  /** Server time, strictly increasing across commands in this runtime (not the browser's clock). */
   startedAt: number;
   /** Bounded output tail, replacing rather than extending the previous snapshot. */
   output: string;

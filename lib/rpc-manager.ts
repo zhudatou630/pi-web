@@ -332,6 +332,7 @@ export class AgentSessionWrapper {
   private subscriptions: EventSubscription[] = [];
   private activeToolEvents = new Map<string, { start: AgentEvent; startedAt: number; update?: AgentEvent }>();
   private bashOutput: { event: BashOutputEvent; timer: ReturnType<typeof setTimeout> | null } | null = null;
+  private lastBashOutputStartedAt = 0;
   private readonly timing = new TimingRecorder();
   private readonly streamingToolInput = new StreamingToolInput();
   private closeListeners = new Set<() => void>();
@@ -1628,10 +1629,12 @@ export class AgentSessionWrapper {
             result = hooked.result;
             this.inner.recordBashResult(bashCommand, result, { excludeFromContext });
           } else {
+            // A strict server-side order distinguishes back-to-back commands without an observed idle gap.
+            this.lastBashOutputStartedAt = Math.max(Date.now(), this.lastBashOutputStartedAt + 1);
             this.bashOutput = {
               event: {
                 type: "bash_output", id: typeof command.id === "string" ? command.id : randomUUID(),
-                command: bashCommand, excludeFromContext, startedAt: Date.now(), output: "",
+                command: bashCommand, excludeFromContext, startedAt: this.lastBashOutputStartedAt, output: "",
               },
               timer: null,
             };

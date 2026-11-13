@@ -25,6 +25,7 @@ function setup() {
     agentRunningRef: { current: false }, bashRunningRef: { current: false }, bashAbortRequestedRef: { current: false },
     bashRunRef: { current: { id: null, settled: true } }, bashRecoveryIdRef: { current: 0 },
     endedSessionRef: { current: false }, idleMessageReadRef: { current: { dirty: false } }, refreshIdleMessages: noop,
+    localAppendSeqRef: { current: 0 },
     sessionIdRef: { current: null }, session: null, ensureNewSession: async () => "new-session",
     ensureEventsConnected: async (sid) => { calls.push(["connect", sid]); await ready.promise; },
     sendAgentCommand: async (sid, command) => calls.push(["send", sid, command]),
@@ -66,7 +67,7 @@ test("an idle observer adopts another browser's snapshots and replaces its pendi
   const delayed = [], history = [];
   let pending = null, running = false, reads = 0, loads = 0, idleRefreshes = 0, serverRunning = true;
   const bindings = {
-    sessionIdRef: { current: "observed" }, endedSessionRef: { current: null },
+    sessionIdRef: { current: "observed" }, endedSessionRef: { current: null }, localAppendSeqRef: { current: 0 },
     bashRunningRef: { current: false }, bashRecoveryIdRef: { current: 0 },
     bashRunRef: { current: { id: null, settled: true } },
     idleMessageReadRef: { current: { sid: "observed", dirty: false } },
@@ -116,6 +117,101 @@ test("an idle observer adopts another browser's snapshots and replaces its pendi
   await poll();
   assert.equal(running, false);
   assert.equal(pending, null);
+});
+
+for (const oldWait of ["sleeping", "status", "history"]) {
+  test(`an observer follows B without seeing idle after A, fencing A's ${oldWait} wait`, async () => {
+    const delayed = [], persisted = [], history = [];
+    const stale = Promise.withResolvers();
+    let pending = null, running = false, serverRunning = true, reads = 0, loads = 0;
+    const bindings = {
+      sessionIdRef: { current: "observed" }, endedSessionRef: { current: null }, localAppendSeqRef: { current: 0 },
+      bashRunningRef: { current: false }, bashRecoveryIdRef: { current: 0 }, bashRunRef: { current: { id: null, settled: true } },
+      idleMessageReadRef: { current: { dirty: false } }, refreshIdleMessages: noop,
+      flushStreamDeltas: noop, unconfirmedPromptsRef: { current: new Map() }, promptRunIdRef: { current: 0 },
+      setBashRunning: (value) => { running = value; },
+      setPendingBash: (value) => { pending = typeof value === "function" ? value(pending) : value; },
+      stripAnsi: (text) => text, BASH_STATE_RECONCILE_MS: 1000,
+      delay: () => new Promise((resolve) => delayed.push(resolve)),
+      fetch: async () => {
+        const isBashRunning = serverRunning;
+        if (++reads === 1 && oldWait === "status") await stale.promise;
+        return { ok: true, json: async () => ({ state: { isBashRunning } }) };
+      },
+      loadSession: async () => {
+        const snapshot = [...persisted];
+        if (++loads === 1 && oldWait === "history") await stale.promise;
+        history.splice(0, history.length, ...snapshot);
+      },
+    };
+    bindings.waitForBashSettlement = callback("waitForBashSettlement", bindings);
+    bindings.resumeBash = callback("resumeBash", bindings);
+    const handle = callback("handleAgentEvent", bindings);
+    const tick = () => new Promise((resolve) => setImmediate(resolve));
+    const poll = async () => { assert.ok(delayed.length); delayed.shift()(); await tick(); };
+    const snapshot = (id, startedAt, output) => ({ type: "bash_output", id, command: "same command", startedAt, output });
+
+    handle(snapshot("A", 100, "A live"));
+    persisted.push({ role: "bashExecution", output: "A result" });
+    if (oldWait !== "sleeping") {
+      serverRunning = false;
+      await poll();
+    }
+    serverRunning = true; // A's idle interval is over before the observer can settle it.
+    const oldGeneration = bindings.bashRecoveryIdRef.current;
+    handle(snapshot("B", 200, "B live"));
+    assert.equal(pending.id, "B");
+    assert.equal(pending.liveOutput, "B live");
+    assert.equal(pending.startedAt, 200, "B has its own card identity, not A's start time");
+    assert.ok(bindings.bashRecoveryIdRef.current > oldGeneration);
+    if (oldWait === "sleeping") await poll();
+    else { stale.resolve(); await tick(); }
+    assert.equal(pending.id, "B", "A's late status/read must not clear B");
+    assert.equal(running, true);
+    assert.deepEqual(history, persisted, "A's result is shown through persisted history while B runs");
+    handle(snapshot("A", 100, "late A"));
+    handle(snapshot("B", 200, "B later"));
+    assert.equal(pending.liveOutput, "B later");
+    assert.equal(delayed.length, 1, "only B's settlement loop remains active");
+    await poll(); // Still busy, but now it is B, not A.
+    assert.equal(pending.id, "B");
+    persisted.push({ role: "bashExecution", output: "B result" });
+    serverRunning = false;
+    await poll();
+    assert.equal(pending, null);
+    assert.equal(running, false);
+    assert.deepEqual(history, persisted);
+    handle(snapshot("A", 100, "very late A"));
+    handle(snapshot("B", 200, "late B"));
+    assert.equal(pending, null, "neither finished command can be resurrected");
+  });
+}
+
+test("a local A response cannot settle or clear a newer observed B", async () => {
+  const h = setup();
+  const response = Promise.withResolvers();
+  let pending = null, running = false;
+  Object.assign(h.bindings, {
+    sessionIdRef: { current: "new-session" },
+    sendAgentCommand: async () => response.promise,
+    setPendingBash: (value) => { pending = typeof value === "function" ? value(pending) : value; },
+    setBashRunning: (value) => { running = value; },
+    flushStreamDeltas: noop, unconfirmedPromptsRef: { current: new Map() }, promptRunIdRef: { current: 0 }, stripAnsi: (text) => text,
+    waitForBashSettlement: () => { h.bindings.bashRecoveryIdRef.current++; },
+  });
+  h.ready.resolve();
+  const sending = h.run();
+  await new Promise((resolve) => setImmediate(resolve));
+  const handle = callback("handleAgentEvent", h.bindings);
+  const id = h.bindings.bashRunRef.current.id;
+  handle({ type: "bash_output", id, command: "pwd", startedAt: 100, output: "A" });
+  handle({ type: "bash_output", id: "B", command: "pwd", startedAt: 200, output: "B" });
+  assert.equal(pending.id, "B");
+  response.resolve();
+  await sending;
+  assert.equal(pending.id, "B");
+  assert.equal(running, true);
+  assert.equal(h.bindings.bashRunRef.current.settled, false);
 });
 
 test("a first ! command waits for SSE, and Stop during connection restores without sending", async () => {

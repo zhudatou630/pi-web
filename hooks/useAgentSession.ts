@@ -481,7 +481,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const rpcPromptPendingRef = useRef(false);
   const notifiedPromptRunIdRef = useRef(-1);
   const bashRunningRef = useRef(false);
-  const bashRunRef = useRef<{ id: string | null; settled: boolean }>({ id: null, settled: true });
+  const bashRunRef = useRef<{ id: string | null; settled: boolean; startedAt?: number }>({ id: null, settled: true });
   const stopRequestPendingRef = useRef(false);
   const bashRecoveryIdRef = useRef(0);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
@@ -1443,6 +1443,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       && sessionIdRef.current === sid
     ) {
       await delay(BASH_STATE_RECONCILE_MS);
+      if (bashRecoveryIdRef.current !== recoveryId || sessionIdRef.current !== sid) return;
       try {
         const res = await fetch(`/api/agent/${encodeURIComponent(sid)}?systemPrompt=0`);
         if (!res.ok) continue;
@@ -1947,15 +1948,21 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const sid = sessionIdRef.current;
         if (!sid) break;
         const run = bashRunRef.current;
+        const replacesRun = run.id !== null && run.id !== id;
         if ((run.settled && run.id === id)
-          || (bashRunningRef.current && !run.settled && run.id !== null && run.id !== id)) break;
-        // An idle observer has no local POST to start/finish the card; recover it just as on mount.
-        bashRunRef.current = { id, settled: false };
+          || (replacesRun && run.startedAt !== undefined && startedAt <= run.startedAt)) break;
+        // Server start times order runs even when polling missed the idle gap between them.
+        bashRunRef.current = { id, settled: false, startedAt };
         if (!bashRunningRef.current) resumeBash(sid);
-        setPendingBash((pending) => pending?.id && pending.id !== id ? pending : {
-          id, command, startedAt: pending?.startedAt ?? startedAt,
+        else if (replacesRun) void waitForBashSettlement(sid);
+        if (replacesRun && !run.settled) {
+          localAppendSeqRef.current += 1; // Fence history reads started for the previous command.
+          void loadSession(sid);
+        }
+        setPendingBash((pending) => ({
+          id, command, startedAt: pending?.id === id ? pending.startedAt : startedAt,
           excludeFromContext: excludeFromContext === true, liveOutput: stripAnsi(output),
-        });
+        }));
         break;
       }
       case "editor_paste":
@@ -1973,7 +1980,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setExtensionCustomUis((queue) => queue.filter((panel) => panel.id !== event.id));
         break;
     }
-  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement, refreshIdleMessages, resumeBash, t]);
+  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement, refreshIdleMessages, resumeBash, waitForBashSettlement, t]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -2259,7 +2266,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     bashRunningRef.current = true;
     bashRecoveryIdRef.current += 1;
     const id = crypto.randomUUID();
-    bashRunRef.current = { id, settled: false };
+    bashRunRef.current = { id, settled: false, startedAt: bashRunRef.current.startedAt };
     setPendingBash({ id, command, excludeFromContext, startedAt: Date.now() });
     setBashRunning(true);
     try {
@@ -2285,7 +2292,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         restoreUnsent: () => restoreSubmission(inputText, undefined, composerDraftKey),
       });
       if (result.status === "completed" || result.status === "cancelled_after_dispatch") {
-        bashRunRef.current.settled = true;
+        if (bashRunRef.current.id === id) bashRunRef.current.settled = true;
         promoteNewSession(1, inputText);
       }
     } catch (e) {
@@ -2296,9 +2303,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       restoreSubmission(inputText, undefined, composerDraftKey);
     } finally {
-      bashRunningRef.current = false;
-      setPendingBash(null);
-      setBashRunning(false);
+      if (bashRunRef.current.id === id) {
+        bashRunningRef.current = false;
+        setPendingBash(null);
+        setBashRunning(false);
+      }
       const idleRead = idleMessageReadRef.current;
       if (idleRead.dirty) void refreshIdleMessages(idleRead.sid);
     }
