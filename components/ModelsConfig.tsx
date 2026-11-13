@@ -2,11 +2,15 @@
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
 import { InvalidProviderEntryError, validateProviderEntries } from "@/lib/model-config-validation";
 import { providerDisplayName } from "@/lib/provider-listing";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
+  modelDropIndex,
+  moveModelEntry,
+  sortModelEntries,
   assignRuntimeOverride,
   diffModelOverride,
   findInvalidSamplingParams,
@@ -98,6 +102,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { t } = useI18n();
+  const isMobile = useIsMobile();
+  const modelKeys = useRef(new WeakMap<ModelEntry, number>());
+  const nextModelKey = useRef(0);
+  const draggedModel = useRef<{ provider: string; model: ModelEntry } | null>(null);
+  const [modelDrop, setModelDrop] = useState<{ index: number; after: boolean } | null>(null);
   const [config, setConfig] = useState<ModelsJson>({ providers: {} });
   const [savedConfig, setSavedConfig] = useState<ModelsJson>({ providers: {} });
   const [loading, setLoading] = useState(true);
@@ -280,6 +289,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     setConfig((prev) => {
       const provider = prev.providers?.[providerName] ?? {};
       const models = [...(provider.models ?? [])];
+      const key = modelKeys.current.get(models[index]);
+      if (key !== undefined) modelKeys.current.set(m, key);
       models[index] = m;
       return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models } } };
     });
@@ -304,6 +315,18 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: nextProvider } };
     });
   }, []);
+
+  const applyModelOrder = (providerName: string, models: ModelEntry[] | null) => {
+    if (!models || saving || loadError) return;
+    const provider = config.providers?.[providerName];
+    if (!provider) return;
+    if (view.provider === providerName && view.model?.kind === "definition") {
+      const selected = provider.models?.[view.model.index];
+      if (selected) setView({ ...view, model: { kind: "definition", index: models.indexOf(selected) } });
+    }
+    updateProvider(providerName, { ...provider, models });
+    setSavedOk(false);
+  };
 
   const removeModel = useCallback((providerName: string, index: number) => {
     setConfig((prev) => {
@@ -631,27 +654,22 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const isOverrideExpanded = expandedOverrides[row.id] ?? hasEndpointOverrides;
     // Catalog models plus definitions that do not resolve yet, so every
     // definition stays reachable whether or not the provider is connected.
+    const definedIds = new Set(definitions.map((model) => model.id));
     const modelRows: { id: string; name?: string; ref: ModelRef; usable: boolean; definition: boolean }[] = [
-      ...row.models.map((model) => {
-        const index = definitions.findIndex((entry) => entry.id === model.id);
-        return {
-          id: model.id,
-          name: model.name,
-          ref: index >= 0 ? { kind: "definition", index } as const : { kind: "runtime", id: model.id } as const,
-          usable: true,
-          definition: index >= 0,
-        };
-      }),
-      ...definitions
-        .map((model, index) => ({ model, index }))
-        .filter(({ model }) => !usableRefs.has(`${row.id}/${model.id}`))
-        .map(({ model, index }) => ({
-          id: model.id,
-          name: model.name,
-          ref: { kind: "definition", index } as const,
-          usable: false,
-          definition: true,
-        })),
+      ...definitions.map((model, index) => ({
+        id: model.id,
+        name: model.name,
+        ref: { kind: "definition", index } as const,
+        usable: usableRefs.has(`${row.id}/${model.id}`),
+        definition: true,
+      })),
+      ...row.models.filter((model) => !definedIds.has(model.id)).map((model) => ({
+        id: model.id,
+        name: model.name,
+        ref: { kind: "runtime", id: model.id } as const,
+        usable: true,
+        definition: false,
+      })),
     ];
     const endpointSection = json && (
       <section className="models-section">
@@ -719,6 +737,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                 <ConfigButton size="small" disabled={!json?.baseUrl?.trim()} title={json?.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
                   {t("models.discoveryFetch")}
                 </ConfigButton>
+                {definitions.length > 1 && (
+                  <ConfigButton size="small" title={t("models.sortByName")} disabled={saving || Boolean(loadError)} onClick={() => applyModelOrder(row.id, sortModelEntries(definitions))}>
+                    {t("models.sortAZ")}
+                  </ConfigButton>
+                )}
                 <ConfigButton size="small" onClick={() => addModel(row.id)}>{t("models.newModel")}</ConfigButton>
               </>
             )}
@@ -737,8 +760,59 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             <div className="models-list">
               {modelRows.map((model) => {
                 const ref = modelPickerRef(row.id, model.id);
+                const index = model.ref.kind === "definition" ? model.ref.index : -1;
+                const definition = definitions[index];
+                if (definition && !modelKeys.current.has(definition)) modelKeys.current.set(definition, ++nextModelKey.current);
+                const reorderable = Boolean(definition) && !saving && !loadError;
+                const dropTarget = (event: React.DragEvent<HTMLDivElement>) => {
+                  if (!reorderable || draggedModel.current?.provider !== row.id) return null;
+                  const from = definitions.indexOf(draggedModel.current.model);
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const after = event.clientY >= rect.top + rect.height / 2;
+                  return from < 0 ? null : { from, after, to: modelDropIndex(from, index, after) };
+                };
+                const endDrag = () => { draggedModel.current = null; setModelDrop(null); };
                 return (
-                  <div key={`${model.ref.kind}:${model.id}:${model.ref.kind === "definition" ? model.ref.index : ""}`} className="models-row">
+                  <div
+                    key={definition ? `definition:${modelKeys.current.get(definition)}` : `runtime:${model.id}`}
+                    className="models-row"
+                    style={{ position: "relative" }}
+                    draggable={reorderable && !isMobile}
+                    aria-keyshortcuts={reorderable ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+                    onKeyDown={(event) => {
+                      if (!reorderable || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                      event.preventDefault();
+                      applyModelOrder(row.id, moveModelEntry(definitions, index, index + (event.key === "ArrowUp" ? -1 : 1)));
+                    }}
+                    onDragStart={(event) => {
+                      if (!reorderable || isMobile) { event.preventDefault(); return; }
+                      draggedModel.current = { provider: row.id, model: definition };
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", model.id);
+                    }}
+                    onDragOver={(event) => {
+                      const drop = dropTarget(event);
+                      if (!drop) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setModelDrop(drop.from === drop.to ? null : { index, after: drop.after });
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setModelDrop(null);
+                    }}
+                    onDrop={(event) => {
+                      const drop = dropTarget(event);
+                      if (!drop) return;
+                      event.preventDefault();
+                      applyModelOrder(row.id, moveModelEntry(definitions, drop.from, drop.to));
+                      endDrag();
+                    }}
+                    onDragEnd={endDrag}
+                  >
+                    {definition && modelDrop?.index === index && (
+                      <span aria-hidden="true" className="drop-indicator" style={{ position: "absolute", height: 2, left: 0, right: 0, [modelDrop.after ? "bottom" : "top"]: 0 }} />
+                    )}
                     {rowButton(
                       model.name && model.name !== model.id ? model.name : (model.id || t("models.untitledModel")),
                       model.name && model.name !== model.id ? model.id : undefined,

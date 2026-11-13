@@ -451,7 +451,7 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const models = useModelOptions(draft.cwd || defaultCwd);
-  const modelOptions = useMemo(() => models.options.map((model) => ({ provider: model.provider, modelId: model.id, name: model.name })), [models.options]);
+  const modelOptions = useMemo(() => models.options.map((model) => ({ provider: model.provider, modelId: model.id, name: model.name, modelOrder: model.modelOrder })), [models.options]);
   // Like the chat composer, always show the concrete model and thinking level a run will use.
   const levelsFor = (model: Draft["model"]) => model ? models.data?.thinkingLevels?.[`${model.provider}:${model.modelId}`] : undefined;
   const defaultThinkingFor = (model: Draft["model"]): string => {

@@ -3,6 +3,7 @@ export type ModelEntry = {
   name: string;
   provider: string;
   input?: string[];
+  modelOrder?: number;
 };
 
 export type ModelsResponse = {

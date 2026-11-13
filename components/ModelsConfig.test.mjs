@@ -5,6 +5,9 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
 const {
+  moveModelEntry,
+  modelDropIndex,
+  sortModelEntries,
   diffModelOverride,
   findInvalidSamplingParams,
   hasModelCostDraftValue,
@@ -25,6 +28,29 @@ const source = (await Promise.all(
     .map((path) => readFile(new URL(path, import.meta.url), "utf8")),
 )).join("\n");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
+
+test("model ordering preserves objects and drafts, accepts insertion slots, and sorts naturally", () => {
+  const models = [{ id: "ten", name: "Model 10" }, { id: "two", name: "model 2" }, { id: "same", name: "Model 2" }];
+  assert.deepEqual(sortModelEntries(models), [models[1], models[2], models[0]]);
+  const moved = moveModelEntry(models, 0, modelDropIndex(0, 2, true));
+  assert.deepEqual(moved, [models[1], models[2], models[0]]);
+  assert.equal(moved[2], models[0], "row identity and focus key survive a move");
+  assert.equal(modelDropIndex(2, 0, false), 0);
+  assert.equal(modelDropIndex(0, 1, false), 0);
+  assert.equal(moveModelEntry(models, 0, -1), null);
+  assert.equal(moveModelEntry(models, 0, 3), null);
+  assert.equal(moveModelEntry(models, 1, 1), null);
+  assert.equal(models[0].id, "ten", "the saved draft is not mutated");
+});
+
+test("model definition rows expose desktop drag, Alt arrows, stable keys and one-shot sort", () => {
+  assert.match(source, /draggable=\{reorderable && !isMobile\}/);
+  assert.match(source, /Alt\+ArrowUp Alt\+ArrowDown/);
+  assert.match(source, /modelKeys\.current\.set\(m, key\)/);
+  assert.match(source, /models\.indexOf\(selected\)/);
+  assert.match(source, /className="drop-indicator"/);
+  assert.match(source, /applyModelOrder\(row\.id, sortModelEntries\(definitions\)\)/);
+});
 
 test("provider model counts use the existing singular/many key convention", async () => {
   const { getLocalePlugin } = await jiti.import("../lib/i18n/registry.ts");
@@ -72,14 +98,14 @@ test("every model definition is reachable from its provider, connected or not", 
   // list, so a definition must not become unreachable just because the provider
   // is signed out or the model is not in chat.
   assert.match(source, /const definitions = json\?\.models \?\? \[\]/);
-  assert.match(source, /\.filter\(\(\{ model \}\) => !usableRefs\.has\(`\$\{row\.id\}\/\$\{model\.id\}`\)\)/);
+  assert.match(source, /\.\.\.definitions\.map\(\(model, index\)/);
   assert.match(source, /\(\) => openProvider\(row\.id, model\.ref\),/);
   // Every models.json provider gets a sidebar row, connected or not.
   assert.match(source, /Object\.keys\(config\.providers \?\? \{\}\)\.forEach\(addId\)/);
 });
 
 test("a definition that does not resolve is marked, not hidden", () => {
-  assert.match(source, /usable: false,\n\s*definition: true/);
+  assert.match(source, /usable: usableRefs\.has\(`\$\{row\.id\}\/\$\{model\.id\}`\)/);
   assert.match(source, /\{!model\.usable && <span className="models-tag is-warning">\{t\("models\.notUsable"\)\}<\/span>\}/);
 });
 

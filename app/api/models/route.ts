@@ -11,6 +11,7 @@ import {
 import { orderAllModels, orderSelectorModels, resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { collectProviderListingInputs, providerDisplayNames } from "@/lib/provider-listing-runtime";
+import { isRecord } from "@/lib/model-config-validation";
 import { readModelsConfig } from "@/lib/models-config-store";
 import { projectTrustReloadOptions } from "@/lib/project-trust";
 
@@ -36,7 +37,17 @@ async function loadModels(cwd: string): Promise<ModelsData> {
     agentDir,
     ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
   });
-  const providerNames = providerDisplayNames(await collectProviderListingInputs(services.modelRuntime), readModelsConfig().providers);
+  const definitions = readModelsConfig().providers;
+  const providerNames = providerDisplayNames(await collectProviderListingInputs(services.modelRuntime), definitions);
+  const definitionOrder = new Map<string, number>();
+  if (isRecord(definitions)) {
+    for (const [provider, config] of Object.entries(definitions)) {
+      if (!isRecord(config) || !Array.isArray(config.models)) continue;
+      config.models.forEach((model, index) => {
+        if (isRecord(model) && typeof model.id === "string") definitionOrder.set(`${provider}:${model.id}`, index);
+      });
+    }
+  }
   const modelError = services.modelRuntime.getError();
   const settings: SettingsManager = services.settingsManager;
   // `enabledModels` supports globs and fuzzy patterns, so resolve it the same
@@ -46,7 +57,7 @@ async function loadModels(cwd: string): Promise<ModelsData> {
     settings.getEnabledModels(),
   );
   const { available, thinkingLevelPins, warnings } = scope;
-  const entry = (m: (typeof available)[number]) => ({ id: m.id, name: m.name, provider: m.provider, input: m.input });
+  const entry = (m: (typeof available)[number]) => ({ id: m.id, name: m.name, provider: m.provider, input: m.input, modelOrder: definitionOrder.get(`${m.provider}:${m.id}`) });
   modelList = orderSelectorModels(scope).map(entry);
   // Names and levels cover every model: a session may run one outside the scope.
   for (const m of available) {

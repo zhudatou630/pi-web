@@ -1156,6 +1156,8 @@ export const zhCNLocale: LocalePlugin = {
     "models.catalogUndo": "撤销",
     "models.noExtraModels": "没有还能加进聊天的模型。",
     "models.keepOneModel": "聊天里至少要留一个模型。",
+    "models.sortByName": "按模型名称排序（仅修改草稿）",
+    "models.sortAZ": "A–Z",
     "models.addProvider": "添加服务商",
     "models.createProvider": "创建服务商",
     "models.providerId": "服务商 ID",

@@ -60,9 +60,9 @@ interface Props {
   model?: { provider: string; modelId: string } | null;
   isAutoModelSelection?: boolean;
   modelNames?: Record<string, string>;
-  modelList?: { id: string; name: string; provider: string; input?: string[] }[];
+  modelList?: { id: string; name: string; provider: string; input?: string[]; modelOrder?: number }[];
   /** Every available model while `enabledModels` narrows `modelList` (the selector's "All"). */
-  allModelList?: { id: string; name: string; provider: string; input?: string[] }[] | null;
+  allModelList?: { id: string; name: string; provider: string; input?: string[]; modelOrder?: number }[] | null;
   providerNames?: Record<string, string>;
   missingCwd?: string | null;
   modelError?: string | null;
@@ -1749,7 +1749,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // Build model options: prefer modelList (has provider info), fallback to modelNames
   const modelOptions: ModelSelectorOption[] = (() => {
     if (modelList && modelList.length > 0) {
-      return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name }));
+      return modelList.map((m) => ({ provider: m.provider, modelId: m.id, name: m.name, modelOrder: m.modelOrder }));
     }
     return Object.entries(modelNames ?? {}).map(([modelId, name]) => ({
       provider: model?.provider ?? "unknown",
@@ -1757,7 +1757,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       name,
     }));
   })();
-  const allModelOptions = allModelList?.map((m): ModelSelectorOption => ({ provider: m.provider, modelId: m.id, name: m.name }));
+  const allModelOptions = allModelList?.map((m): ModelSelectorOption => ({ provider: m.provider, modelId: m.id, name: m.name, modelOrder: m.modelOrder }));
 
   const compactSavedTokens = compactResult
     ? Math.max(0, compactResult.tokensBefore - compactResult.estimatedTokensAfter)

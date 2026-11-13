@@ -9,6 +9,7 @@ export interface ModelSelectorOption {
   provider: string;
   modelId: string;
   name: string;
+  modelOrder?: number;
 }
 
 interface ModelSelectorProps {
@@ -34,6 +35,7 @@ const MODEL_OPTION_COLLATOR = new Intl.Collator(undefined, { numeric: true, sens
 
 function compareModelOptions(a: ModelSelectorOption, b: ModelSelectorOption): number {
   return MODEL_OPTION_COLLATOR.compare(a.provider, b.provider)
+    || (a.modelOrder ?? Number.MAX_SAFE_INTEGER) - (b.modelOrder ?? Number.MAX_SAFE_INTEGER)
     || MODEL_OPTION_COLLATOR.compare(a.name || a.modelId, b.name || b.modelId)
     || MODEL_OPTION_COLLATOR.compare(a.modelId, b.modelId);
 }

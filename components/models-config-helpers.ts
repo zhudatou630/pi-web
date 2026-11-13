@@ -1,6 +1,25 @@
 import { isRecord } from "../lib/model-config-validation";
 export { findInvalidSamplingParams } from "../lib/model-config-validation";
 
+const MODEL_NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+export function sortModelEntries<T extends { id: string; name?: string }>(models: readonly T[]): T[] {
+  return [...models].sort((a, b) => MODEL_NAME_COLLATOR.compare(a.name?.trim() || a.id, b.name?.trim() || b.id));
+}
+
+export function moveModelEntry<T>(models: readonly T[], from: number, to: number): T[] | null {
+  if (from === to || from < 0 || to < 0 || from >= models.length || to >= models.length) return null;
+  const next = [...models];
+  next.splice(to, 0, ...next.splice(from, 1));
+  return next;
+}
+
+/** Convert an insertion slot to the final index after removing the dragged row. */
+export function modelDropIndex(from: number, target: number, after: boolean): number {
+  const slot = target + Number(after);
+  return slot > from ? slot - 1 : slot;
+}
+
 export interface CompatEntry {
   compat?: Record<string, unknown>;
 }

@@ -431,6 +431,7 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
     provider: model.provider,
     modelId: model.id,
     name: model.name,
+    modelOrder: model.modelOrder,
   })), [models.options]);
   if (!effective && mode !== "create") return <ConfigEmptyState>{t("agents.empty")}</ConfigEmptyState>;
 

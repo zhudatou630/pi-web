@@ -70,6 +70,19 @@ function picker(props) {
   };
 }
 
+test("custom definitions follow file order even in a scope; built-in models keep name order", () => {
+  const options = [
+    { provider: "custom", modelId: "second", name: "A", modelOrder: 1 },
+    { provider: "built-in", modelId: "z", name: "Z" },
+    { provider: "custom", modelId: "first", name: "Z", modelOrder: 0 },
+    { provider: "built-in", modelId: "a", name: "A" },
+  ];
+  const state = picker({ options, value: options[0], onChange() {} });
+  state.key("ArrowDown");
+  assert.deepEqual(state.options().map(option => option.props.children[0].props.children), ["A", "Z", "Z", "A"]);
+  assert.equal(state.groups().length, 2, "file order must never split a provider");
+});
+
 test("provider display names label groups and match search without changing provider ids", () => {
   const chosen = [];
   const state = picker({

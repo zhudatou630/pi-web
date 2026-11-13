@@ -1156,6 +1156,8 @@ export const enLocale: LocalePlugin = {
     "models.catalogUndo": "Undo",
     "models.noExtraModels": "No models left to add.",
     "models.keepOneModel": "Chat must keep at least one model.",
+    "models.sortByName": "Sort models by name (draft only)",
+    "models.sortAZ": "A–Z",
     "models.addProvider": "Add provider",
     "models.createProvider": "Create provider",
     "models.providerId": "Provider ID",
