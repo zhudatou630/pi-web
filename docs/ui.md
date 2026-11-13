@@ -167,6 +167,11 @@ reconciliation still reads the canonical file. SDK 1.5.2 re-reads its model befo
 each request, so a response already in flight keeps its original model. The server
 keeps its existing `persist: true` behavior; startup preferences run before commands,
 and branch recording adds nothing when the mid-run selection is already recorded.
+History reads capture the model-selection version: model/thinking sync requires
+that version to remain current and no switch to be pending, while messages still
+merge normally. Command results, live-state recovery and failed-switch rollback
+advance the version, fencing reads started before or during the switch even after
+its pending flag clears. Mount reads use the same guarded thinking sync.
 
 ## Summarization retry feedback
 

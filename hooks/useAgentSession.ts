@@ -525,6 +525,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // before an append must not overwrite it; the run's settle reload refreshes later.
   const localAppendSeqRef = useRef(0);
   const modelSwitchPendingRef = useRef(false);
+  const modelSelectionVersionRef = useRef(0);
   const modelsRefreshKeyRef = useRef(modelsRefreshKey);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
@@ -676,6 +677,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (navigationPendingRef.current) return null;
     if (endedSessionRef.current === sid) return null;
     const branch = historyBranchRef.current;
+    const modelSelectionVersion = modelSelectionVersionRef.current;
     const runId = promptRunIdRef.current;
     const usageRequestId = ++contextUsageRequestIdRef.current;
     let messagesLoaded = false;
@@ -732,11 +734,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setHasEarlierMessages(merged.hasMore);
       sessionToolsPinnedRef.current = d.toolNames !== undefined;
       setToolPresetState(d.toolNames !== undefined ? getPresetFromToolNames(d.toolNames) : CONFIGURED_TOOL_PRESET);
-      setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
-      setError(null);
-      if (d.context.thinkingLevel) {
-        setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
+      if (modelSelectionVersionRef.current === modelSelectionVersion && !modelSwitchPendingRef.current) {
+        setCurrentModelOverride(null);
+        if (d.context.thinkingLevel) setThinkingLevel(d.context.thinkingLevel as ThinkingLevelOption);
       }
+      setError(null);
       applyContextUsage(d.contextUsage, sid, runId, usageRequestId);
 
       messagesLoaded = true;
@@ -755,7 +757,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         if (liveState) {
           applyContextUsage(liveState.contextUsage, sid, stateRunId, stateUsageRequestId, liveState.totalActiveMs);
           if (liveState.systemPrompt !== undefined) setSystemPrompt(liveState.systemPrompt ?? null);
-          if (liveState.thinkingLevel) setThinkingLevel(liveState.thinkingLevel as ThinkingLevelOption);
+          if (liveState.thinkingLevel && modelSelectionVersionRef.current === modelSelectionVersion && !modelSwitchPendingRef.current) {
+            setThinkingLevel(liveState.thinkingLevel as ThinkingLevelOption);
+          }
           if (liveState.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(liveState.queuedMessages));
         } else if (!agentState.running) {
           setQueuedMessages({ steering: [], followUp: [] });
@@ -2399,6 +2403,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const stillHere = () => sessionHookMountedRef.current && sessionIdRef.current === sid;
     const syncSelection = (selected: { provider: string; id: string; thinkingLevel?: string }) => {
       if (!stillHere()) return;
+      modelSelectionVersionRef.current += 1;
       setCurrentModelOverride({ provider: selected.provider, modelId: selected.id });
       if (selected.thinkingLevel) setThinkingLevel(selected.thinkingLevel as ThinkingLevelOption);
     };
@@ -2411,6 +2416,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to set model:", e);
       if (!stillHere()) return;
+      modelSelectionVersionRef.current += 1;
       modelSwitchPendingRef.current = false;
       setCurrentModelOverride(previousOverride);
       addNotice({
@@ -2860,7 +2866,6 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state.isCompacting !== undefined) setIsCompacting(agentState.state.isCompacting);
           if (typeof agentState.state.autoCompactionEnabled === "boolean") setAutoCompactionEnabled(agentState.state.autoCompactionEnabled);
           if (agentState.state.systemPrompt !== undefined) setSystemPrompt(agentState.state.systemPrompt ?? null);
-          if (agentState.state.thinkingLevel) setThinkingLevel(agentState.state.thinkingLevel as ThinkingLevelOption);
           if (agentState.state.queuedMessages !== undefined) setQueuedMessages(normalizeQueuedMessages(agentState.state.queuedMessages));
         }
       });
