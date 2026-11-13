@@ -2767,26 +2767,30 @@ function ProjectNameInput({ open, initial, onCommit, onCancel }: {
   );
 }
 
+// Each state is its row glyph (same meaning at every level); a count only from 2, so "1 1" never appears.
 export function SessionActivitySummary({ activity }: { activity?: ProjectActivity }) {
   const { t } = useI18n();
   if (!activity) return null;
+  const count = (n: number) => n > 1 ? n : null;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-ui)" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-ui)" }}>
       {activity.awaiting > 0 && (
         <span role="status" aria-label={`${t("sidebar.awaitingInput")} (${activity.awaiting})`} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "var(--warning)" }}>
-          <AwaitingSessionIndicator />{activity.awaiting}
+          <AwaitingSessionIndicator />{count(activity.awaiting)}
         </span>
       )}
       {activity.running > 0 && (
         <span role="status" aria-label={`${t("sidebar.agentRunning")} (${activity.running})`} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-          <LivePulseBeacon size={11} />{activity.running}
+          <LivePulseBeacon size={11} />{count(activity.running)}
         </span>
       )}
       {activity.unread > 0 && (
-        <span aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ color: "var(--success)" }}>{activity.unread}</span>
+        <span role="status" aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "var(--success)" }}>
+          <UnreadSessionIndicator />{count(activity.unread)}
+        </span>
       )}
       {activity.keepalive > 0 && (
-        // Presence only: a count would read like the running/unread counts beside it.
+        // Presence only, like every glyph here at a count of 1.
         <span role="img" title={t("sidebar.cacheKeepalive")} aria-label={t("sidebar.cacheKeepalive")} style={{ display: "inline-flex", alignItems: "center", color: "var(--text-dim)" }}>
           <CacheKeepaliveIcon size={11} />
         </span>

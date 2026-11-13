@@ -10,7 +10,7 @@ const { parseUnreadMarks, sameUnreadMarks, withoutReadMarks, hasRecentAttention 
 const { getSessionListIndices, SessionItem, SessionActivitySummary } = await jiti.import("./SessionSidebar.tsx");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
-test("folded summaries use the existing awaiting badge and show separate counts", async () => {
+test("folded summaries use each state's row glyph and count only from 2", async () => {
   const React = await jiti.import("react");
   const { renderToStaticMarkup } = await jiti.import("react-dom/server");
   const { I18nProvider } = await jiti.import("@/hooks/useI18n");
@@ -26,6 +26,12 @@ test("folded summaries use the existing awaiting badge and show separate counts"
   assert.match(mixed, /Agent running… \(1\)/);
   assert.match(mixed, /live-pulse-beacon/);
   assert.match(mixed, /New session activity \(3\)/);
+  assert.match(mixed, /var\(--success\)[^]*<path d="M3\.6 6\.2/, "unread uses the row's check badge");
+  assert.match(mixed, />3</);
+  const single = render({ awaiting: 0, running: 1, unread: 1, keepalive: 0 });
+  assert.doesNotMatch(single, />1</, "a single running/unread family shows its glyph alone");
+  assert.match(single, /Agent running… \(1\)/);
+  assert.match(single, /New session activity \(1\)/);
   assert.match(source, /!pinnedOpen && <SessionActivitySummary activity=\{pinnedActivity\}/);
   assert.equal((source.match(/<SessionActivitySummary activity=\{activity\}/g) ?? []).length, 2);
 });
