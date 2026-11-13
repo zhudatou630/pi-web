@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { iconStroke } from "./iconStroke";
@@ -12,7 +12,7 @@ import { parsePreviewTarget, requestPreview } from "@/lib/preview-target";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { isAudioPath, isVideoPath } from "@/lib/file-types";
 import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownTextLayoutRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
-import { splitMarkdownBlocks } from "@/lib/markdown-blocks";
+import { parseStreamingFence, splitMarkdownBlocks } from "@/lib/markdown-blocks";
 import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
 import { MarkdownMedia } from "./MarkdownMedia";
@@ -195,7 +195,10 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
 
   return (
     <div className={["markdown-body", className].filter(Boolean).join(" ")}>
-      {blocks.map((block, index) => (
+      {blocks.map((block, index) => {
+        const fence = isStreaming ? parseStreamingFence(block) : null;
+        if (fence) return <Fragment key={index}><CodeBlock code={fence.code} lang={fence.lang} isStreaming /></Fragment>;
+        return (
         <MarkdownBlock
           key={index}
           markdown={block}
@@ -204,7 +207,8 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
           urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
           components={components}
         />
-      ))}
+        );
+      })}
     </div>
   );
 });

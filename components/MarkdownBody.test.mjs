@@ -29,6 +29,19 @@ function renderMarkdown(markdown, { sessionId = null, ...props } = {}) {
   );
 }
 
+test("a plain streaming fence uses the normal code box and settles through the parser", async () => {
+  const { CodeBlock } = await jiti.import("./MermaidBlock.tsx");
+  const code = "const x = 1;\n\n";
+  const streaming = renderMarkdown("```js\n" + code + "```", { isStreaming: true });
+  const direct = renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(CodeBlock, { code: code.replace(/\n$/, ""), lang: "js", isStreaming: true })));
+  assert.equal(streaming, `<div class="markdown-body">${direct}</div>`);
+  assert.doesNotMatch(renderMarkdown("```js\nx\n```"), /markdown-code-stream-piece/);
+  for (const language of ["math", "mermaid", "svg"]) {
+    const html = renderMarkdown(`\`\`\`${language}\nx\n\`\`\``, { isStreaming: true });
+    assert.match(html, language === "math" ? /katex/ : language === "svg" ? /Preview/ : /mermaid/);
+  }
+});
+
 test("table borders surround the scroller without entering its mask", () => {
   const html = renderMarkdown("| a | b |\n| - | - |\n| 1 | 2 |");
   assert.match(html, /<div class="markdown-table-block"><div class="markdown-table-frame"><div class="markdown-table-wrap"><table>/);

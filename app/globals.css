@@ -2529,6 +2529,13 @@ button.question-card-option:not(:disabled):hover {
 .file-source-line-number::before {
   content: attr(data-line-number);
 }
+.markdown-code-stream-piece {
+  display: block;
+}
+.markdown-code-stream-piece.is-frozen {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto calc(64 * 1.54em);
+}
 .markdown-code-line {
   display: flex;
 }

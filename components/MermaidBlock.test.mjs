@@ -86,6 +86,20 @@ test("CodeBlock highlights code when not streaming", async () => {
   assert.match(html, /const/);
 });
 
+test("streaming code keeps 64-line frozen pieces and only a live tail", () => {
+  const code = Array.from({ length: 150 }, (_, i) => `line ${i}`).join("\n");
+  const html = renderCode({ code, lang: "text", isStreaming: true });
+  const pieces = [...html.matchAll(/<span class="markdown-code-stream-piece( is-frozen)?">([^<]*)<\/span>/g)];
+  assert.deepEqual(pieces.map((piece) => Boolean(piece[1])), [true, true, false]);
+  assert.equal(pieces.map((piece) => piece[2]).join("\n"), code);
+  const finished = renderCode({ code, lang: "text" });
+  assert.doesNotMatch(finished, /markdown-code-stream-piece/);
+  for (const style of ["font-size:calc(13px + var(--chat-font-size-offset, 0px))", "line-height:1.54", "background-color:transparent", "border-radius:0"]) {
+    assert.ok(html.includes(style), style);
+    assert.ok(finished.includes(style), style);
+  }
+});
+
 test("CodeBlock renders plain text without tokenization while streaming", () => {
   const html = renderCode({ code: "const x = 1;", lang: "javascript", isStreaming: true });
 

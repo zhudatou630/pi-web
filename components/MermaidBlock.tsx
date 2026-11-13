@@ -13,6 +13,7 @@ import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 import { usePrismLanguages } from "@/hooks/usePrismLanguages";
 import { takeHighlightBudget, waitForHighlight } from "@/lib/highlight-queue";
+import { streamingCodePieces, type StreamingCodePieces } from "@/lib/markdown-blocks";
 import { prismLanguagesLoaded } from "@/lib/prism-languages";
 import { MarkdownCopyButton } from "./MarkdownCopyButton";
 import { ExportImageIcon, useExportImage } from "./ExportImage";
@@ -368,6 +369,20 @@ function renderCodeLines({ rows, stylesheet, useInlineStyles }: CodeLinesProps) 
   });
 }
 
+const FrozenCodePiece = memo(function FrozenCodePiece({ text }: { text: string }) {
+  return <span className="markdown-code-stream-piece is-frozen">{text}</span>;
+});
+
+function StreamingCode({ code }: { code: string }) {
+  const previous = useRef<StreamingCodePieces | undefined>(undefined);
+  const pieces = streamingCodePieces(code, previous.current);
+  previous.current = pieces;
+  return <>
+    {pieces.frozen.map((text, index) => <FrozenCodePiece key={index} text={text} />)}
+    <span className="markdown-code-stream-piece">{code.slice(pieces.offset)}</span>
+  </>;
+}
+
 /**
  * Syntax-highlighted code block with copy button.
  * Used as the "source" view for mermaid blocks and for all non-mermaid code fences.
@@ -422,7 +437,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             backgroundColor: "transparent",
           }}
         >
-          <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
+          <code style={{ fontFamily: "var(--font-mono)" }}><StreamingCode code={code} /></code>
         </pre>
       ) : (
         <SyntaxHighlighter

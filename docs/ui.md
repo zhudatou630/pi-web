@@ -65,6 +65,21 @@ Design notes moved out of AGENTS.md. Typography rules are enforced by `component
 - On the SDK's explicit manual-compaction refusal, the session wrapper parks prompts (including images) in admission order; a parked plain prompt is listed as a follow-up (it runs after the compaction), an explicit steer stays a steer. Queue state is shared across tabs and survives a browser reload, not a server restart. Successful, failed and aborted compactions flush through the same admission chain; automatic compaction keeps using the SDK's streaming queues.
 - Stop compaction only stops summarization: parked prompts still run, as in pi's TUI. Ordinary Stop first returns parked prompts to the sending composer's draft, then aborts; with no parked prompts neither action starts a run. Recall reads SDK delivery queues before clearing them, so image recovery remains fail-closed.
 
+## Streaming code fences
+
+While streaming, only an unambiguous top-level plain fence skips react-markdown
+(`parseStreamingFence`). Math, Mermaid, SVG, indented fences, CR line endings,
+info escapes/entities and trailing prose keep the original parser. Finished
+messages always return to the normal whole-message parse and deferred highlighting.
+The same CodeBlock owns both boxes, typography and wrapping. Its streaming code
+is cut into 64-line pieces: completed pieces are memoized and use
+`content-visibility:auto`; only the tail changes. Piece scanning resumes at the
+new suffix (and resets after a rewrite), rather than splitting every old line on
+every chunk. The block boundary supplies the inter-piece newline; copy uses the
+original code. Existing markdown normalization/block detection still scan the
+message; this change removes repeated Markdown parsing and full-pre layout, not
+all per-chunk string work.
+
 ## Extension terminal text
 
 Plain-text cleaning and ANSI rendering both remove pi-tui APC cursor/fake-cursor
