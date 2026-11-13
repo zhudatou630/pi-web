@@ -101,7 +101,8 @@ export async function POST(
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
       ...missingCwdFromBody(error),
-      ...((error as { code?: unknown } | null)?.code === EXTENSION_REPORTED_CODE ? { code: EXTENSION_REPORTED_CODE } : {}),
+      ...([EXTENSION_REPORTED_CODE, "bash_busy"].includes((error as { code?: string } | null)?.code ?? "")
+        ? { code: (error as { code: string }).code } : {}),
       ...(commandType === "prompt" && !promptAccepted
         ? { code: "prompt_rejected", accepted: false }
         : {}),

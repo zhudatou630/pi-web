@@ -6,6 +6,16 @@ export interface AgentEventLike {
   [key: string]: unknown;
 }
 
+export interface BashOutputEvent extends AgentEventLike {
+  type: "bash_output";
+  id: string;
+  command: string;
+  excludeFromContext: boolean;
+  startedAt: number;
+  /** Bounded output tail, replacing rather than extending the previous snapshot. */
+  output: string;
+}
+
 type JsonMessageUpdateEvent = Extract<
   JsonAgentSessionEvent,
   { type: "message_update" }
@@ -27,6 +37,8 @@ export type ClientMessageUpdateEvent = Omit<JsonMessageUpdateEvent, "assistantMe
 const OMITTED_EVENT_TYPES = new Set([
   "turn_start",
   "turn_end",
+  // The host sends throttled, bounded bash_output snapshots instead of SDK chunks.
+  "bash_execution_update",
 ]);
 
 function isObject(value: unknown): value is Record<string, unknown> {

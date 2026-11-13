@@ -29,10 +29,35 @@ function setup() {
     loadSession: async (sid) => calls.push(["load", sid]), promoteNewSession: noop,
     setPendingBash: noop, setBashRunning: noop, dispatchBashRun,
     restoreSubmission: (...args) => restored.push(args), composerDraftKey: "original-draft",
-    addNotice: (notice) => notices.push(notice), console: { error: noop }, AgentCommandError, EXTENSION_REPORTED_CODE,
+    addNotice: (notice) => notices.push(notice), t: (key) => key, console: { error: noop }, AgentCommandError, EXTENSION_REPORTED_CODE,
   };
   return { bindings, ready, calls, restored, notices, run: () => callback("executeBash", bindings)("pwd", false) };
 }
+
+test("busy ! input is explicitly refused with a notice and kept in the original draft", async () => {
+  for (const flag of ["agentRunningRef", "bashRunningRef"]) {
+    const h = setup();
+    h.bindings[flag].current = true;
+    await callback("handleSend", h.bindings)("!!pwd");
+    assert.deepEqual(h.calls, []);
+    assert.deepEqual(h.restored, [["!!pwd", undefined, "original-draft"]]);
+    assert.deepEqual(h.notices, [{ type: "warning", message: "chat.bashBusy" }]);
+  }
+});
+
+test("snapshots replace output and an old identical command's late snapshot is ignored", () => {
+  let pending = { id: "current", command: "pwd", startedAt: 1, excludeFromContext: false };
+  const handle = callback("handleAgentEvent", {
+    flushStreamDeltas: noop, unconfirmedPromptsRef: { current: new Map() }, promptRunIdRef: { current: 0 },
+    bashRunningRef: { current: true }, setPendingBash: (update) => { pending = update(pending); }, stripAnsi: (text) => text,
+  });
+  handle({ type: "bash_output", id: "current", command: "pwd", startedAt: 2, output: "first" });
+  handle({ type: "bash_output", id: "current", command: "pwd", startedAt: 2, output: "second" });
+  assert.equal(pending.liveOutput, "second");
+  assert.equal(pending.startedAt, 1);
+  handle({ type: "bash_output", id: "old", command: "pwd", startedAt: 0, output: "old" });
+  assert.equal(pending.liveOutput, "second");
+});
 
 test("a first ! command waits for SSE, and Stop during connection restores without sending", async () => {
   for (const stop of [false, true]) {

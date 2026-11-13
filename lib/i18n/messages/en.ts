@@ -997,6 +997,7 @@ export const enLocale: LocalePlugin = {
     "chat.outputModel": "output sent to model",
     "chat.local": "Local",
     "chat.bashExitCode": "exit {code}",
+    "chat.bashBusy": "Wait for the current run or shell command to finish before running a ! command.",
     "chat.bashCancelled": "cancelled",
     "chat.bashTruncated": "Output truncated",
     "chat.bashViewFull": "view all",

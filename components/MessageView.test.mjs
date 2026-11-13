@@ -56,6 +56,20 @@ test("pending edit diffs are replaced by results and absent for calls that never
   assert.match(source, /toolsNotRun=\{toolsNotRun \|\| message.stopReason === "aborted" \|\| message.stopReason === "error"\}/);
 });
 
+test("running bash output uses the existing result body without losing its live indicator", () => {
+  const output = Array.from({ length: 25 }, (_, i) => `line-${i + 1}`).join("\n");
+  const message = { role: "bashExecution", command: "seq 25", output, timestamp: 100 };
+  const render = (isStreaming) => renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(MessageView, { message, isStreaming, expandOutput: true })));
+  const live = render(true);
+  assert.match(live, /line-25/);
+  assert.doesNotMatch(live, /line-1\n/);
+  assert.match(live, /live-pulse/);
+  const done = render(false);
+  assert.match(done, /line-1\n/);
+  assert.doesNotMatch(done, /live-pulse/);
+});
+
 test("assistant block keys do not change when persistence supplies an entry id", () => {
   assert.match(source, /<BlockView\s+key=\{originalIndex\}/);
   assert.doesNotMatch(source, /key=\{`\$\{entryId/);

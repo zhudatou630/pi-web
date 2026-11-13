@@ -15,6 +15,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
+import { stripAnsi } from "@/lib/ansi";
 import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
 import { getDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
@@ -405,7 +406,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   streamStateRef.current = streamState;
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
-  const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean; startedAt: number } | null>(null);
+  const [pendingBash, setPendingBash] = useState<{ id?: string; command: string; excludeFromContext: boolean; startedAt: number; liveOutput?: string } | null>(null);
   const [directImageRunning, setDirectImageRunning] = useState(false);
   const directImageRunningRef = useRef(false);
   const directImageRequestIdRef = useRef<string | null>(null);
@@ -1794,6 +1795,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (sessionIdRef.current) loadSession(sessionIdRef.current);
         }
         break;
+      case "bash_output": {
+        const { id, command, output, startedAt, excludeFromContext } = event;
+        if (!bashRunningRef.current || typeof id !== "string" || typeof command !== "string"
+          || typeof output !== "string" || typeof startedAt !== "number") break;
+        setPendingBash((pending) => pending?.id && pending.id !== id ? pending : {
+          id, command, startedAt: pending?.startedAt ?? startedAt,
+          excludeFromContext: excludeFromContext === true, liveOutput: stripAnsi(output),
+        });
+        break;
+      }
       case "extension_ui_request":
         handleExtensionUiRequest(event as ExtensionUiRequest);
         break;
@@ -1813,6 +1824,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const trimmedMessage = message.trim();
     if (!trimmedMessage && !images?.length) return;
     if (agentRunningRef.current || bashRunningRef.current) {
+      if (!images?.length && trimmedMessage.startsWith("!")) {
+        addNotice({ type: "warning", message: t("chat.bashBusy") });
+      }
       restoreSubmission(message, images, composerDraftKey);
       return;
     }
@@ -2041,7 +2055,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (isSlashCommandPrompt && result.sessionId) {
       void waitForPromptSettlement(result.sessionId, promptRunId);
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreRecalledQueue, restoreSubmission, setEdit, settleUiStage, queuedMessages]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreRecalledQueue, restoreSubmission, setEdit, settleUiStage, queuedMessages, t]);
 
   const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[] = []): Promise<ImageGenerationResult> => {
     if (agentRunningRef.current || bashRunningRef.current || directImageRunningRef.current) throw new Error("Cannot generate an image while the session is busy");
@@ -2085,7 +2099,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const inputText = `${excludeFromContext ? "!!" : "!"}${command}`;
     bashAbortRequestedRef.current = false;
     bashRunningRef.current = true;
-    setPendingBash({ command, excludeFromContext, startedAt: Date.now() });
+    const id = crypto.randomUUID();
+    setPendingBash({ id, command, excludeFromContext, startedAt: Date.now() });
     setBashRunning(true);
     try {
       const result = await dispatchBashRun({
@@ -2099,6 +2114,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         send: async (sid) => {
           await sendAgentCommand(sid, {
             type: "bash",
+            id,
             command,
             excludeFromContext,
           });
@@ -2114,7 +2130,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to execute shell command:", e);
       if (!(e instanceof AgentCommandError && e.code === EXTENSION_REPORTED_CODE)) {
-        addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
+        addNotice({ type: "error", message: e instanceof AgentCommandError && e.code === "bash_busy"
+          ? t("chat.bashBusy") : e instanceof Error ? e.message : String(e) });
       }
       restoreSubmission(inputText, undefined, composerDraftKey);
     } finally {
@@ -2122,7 +2139,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setPendingBash(null);
       setBashRunning(false);
     }
-  }, [addNotice, composerDraftKey, ensureEventsConnected, ensureNewSession, loadSession, promoteNewSession, restoreSubmission, session]);
+  }, [addNotice, composerDraftKey, ensureEventsConnected, ensureNewSession, loadSession, promoteNewSession, restoreSubmission, session, t]);
   executeBashRef.current = executeBash;
 
   const handleAbort = useCallback(async () => {
@@ -2715,6 +2732,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (agentState.state?.isBashRunning) {
             bashRunningRef.current = true;
             setBashRunning(true);
+            refreshEventStream(session.id); // Replay the latest output after restoring shell-running state.
             void waitForBashSettlement(session.id);
           }
         }

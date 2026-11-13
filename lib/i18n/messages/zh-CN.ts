@@ -997,6 +997,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.outputModel": "输出发送给模型",
     "chat.local": "本地",
     "chat.bashExitCode": "退出码 {code}",
+    "chat.bashBusy": "请等待当前 Agent 或 Shell 命令结束后再执行 ! 命令。",
     "chat.bashCancelled": "已取消",
     "chat.bashTruncated": "输出已截断",
     "chat.bashViewFull": "查看全部",

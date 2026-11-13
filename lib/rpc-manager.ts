@@ -26,7 +26,7 @@ import { forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fo
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { computeSessionStats } from "./session-stats";
 import { TimingRecorder } from "./model-timing";
-import { StreamingToolInput } from "./agent-event-wire";
+import { StreamingToolInput, type BashOutputEvent } from "./agent-event-wire";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { persistExplicitStartupPreferences } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
@@ -330,6 +330,7 @@ type CompactionQueuedPrompt = {
 export class AgentSessionWrapper {
   private subscriptions: EventSubscription[] = [];
   private activeToolEvents = new Map<string, AgentEvent>();
+  private bashOutput: { event: BashOutputEvent; timer: ReturnType<typeof setTimeout> | null } | null = null;
   private readonly timing = new TimingRecorder();
   private readonly streamingToolInput = new StreamingToolInput();
   private closeListeners = new Set<() => void>();
@@ -460,6 +461,26 @@ export class AgentSessionWrapper {
     if (savedModel && (savedModel.provider !== model.provider || savedModel.modelId !== model.id)) {
       manager.appendModelChange(model.provider, model.id);
     }
+  }
+
+  /** Keep at most 16K UTF-16 units (<=64 KiB UTF-8), and send at most once per 150ms. */
+  private updateBashOutput(chunk: string): void {
+    const snapshot = this.bashOutput;
+    if (!snapshot || !this._alive) return;
+    const limit = 16 * 1024;
+    let output = (snapshot.event.output + chunk.slice(-limit)).slice(-limit);
+    if (/^[\uDC00-\uDFFF]/.test(output)) output = output.slice(1);
+    snapshot.event = { ...snapshot.event, output };
+    if (snapshot.timer !== null) return;
+    snapshot.timer = setTimeout(() => {
+      snapshot.timer = null;
+      if (this.bashOutput === snapshot && this._alive) this.emit(snapshot.event);
+    }, 150);
+  }
+
+  private clearBashOutput(): void {
+    if (this.bashOutput?.timer) clearTimeout(this.bashOutput.timer);
+    this.bashOutput = null;
   }
 
   private get shellRunning(): boolean {
@@ -865,6 +886,7 @@ export class AgentSessionWrapper {
     for (const { event, at } of this.undeliveredNotices) if (at >= noticeCutoff) listener(event);
     this.undeliveredNotices = [];
     for (const event of this.activeToolEvents.values()) listener(event);
+    if (this.bashOutput) listener(this.bashOutput.event);
     this.resetIdleTimer();
     return () => {
       const i = this.subscriptions.indexOf(subscription);
@@ -1279,6 +1301,7 @@ export class AgentSessionWrapper {
       }
 
       case "compact": {
+        if (this.shellRunning) throw new Error("Cannot compact while a shell command is running");
         try {
           return await this.withFinalIdleReset(() =>
             this.inner.compact(command.customInstructions as string | undefined)
@@ -1512,8 +1535,9 @@ export class AgentSessionWrapper {
       }
 
       case "bash": {
+        // shortcut: shell/agent work stays mutually exclusive; parallel execution needs pending-result, compaction and Stop reconciliation.
         if (this.pendingPromptCount > 0 || this.directImageAbortController || this.inner.isStreaming || this.inner.isCompacting || this.shellRunning) {
-          throw new Error("Cannot run a shell command while the session is busy");
+          throw Object.assign(new Error("Cannot run a shell command while the session is busy"), { code: "bash_busy" });
         }
         const bashCommand = command.command as string;
         const excludeFromContext = command.excludeFromContext === true;
@@ -1534,7 +1558,14 @@ export class AgentSessionWrapper {
             result = hooked.result;
             this.inner.recordBashResult(bashCommand, result, { excludeFromContext });
           } else {
-            result = await this.inner.executeBash(bashCommand, undefined, {
+            this.bashOutput = {
+              event: {
+                type: "bash_output", id: typeof command.id === "string" ? command.id : randomUUID(),
+                command: bashCommand, excludeFromContext, startedAt: Date.now(), output: "",
+              },
+              timer: null,
+            };
+            result = await this.inner.executeBash(bashCommand, (chunk) => this.updateBashOutput(chunk), {
               excludeFromContext,
               // A remote executor owns its environment; do not inject host credentials or PATH.
               operations: hooked?.operations ?? createProjectCommandBashOperations({
@@ -1546,6 +1577,7 @@ export class AgentSessionWrapper {
           return result;
         } finally {
           this.userBashAbortController = null;
+          this.clearBashOutput();
           this.resetIdleTimer();
           invalidateSessionListCache();
           this.resumeReportsWhenIdle();
@@ -1589,6 +1621,7 @@ export class AgentSessionWrapper {
     this.pendingUiResponses.clear();
     this.pendingUiRequests.clear();
     this.activeToolEvents.clear();
+    this.clearBashOutput();
     const finishDispose = () => {
       try {
         this.inner.dispose();

@@ -25,7 +25,7 @@ let lastBackpressureLogAt = 0;
 
 /** Only deltas and partial output are repaired by later authoritative end events. */
 function isDroppableEvent(event: AgentEventLike): boolean {
-  if (event.type === "tool_execution_update") return true;
+  if (event.type === "tool_execution_update" || event.type === "bash_output") return true;
   if (event.type !== "message_update") return false;
   const update = event.assistantMessageEvent as { type?: unknown } | null;
   return typeof update?.type === "string" && update.type.endsWith("_delta");

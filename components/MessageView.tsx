@@ -308,7 +308,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     return <CustomMessageView message={customMessage} cwd={cwd} onOpenFile={onOpenFile} isProcess={isProcess} />;
   }
   if (message.role === "bashExecution") {
-    return <BashExecutionView message={message as BashExecutionMessage} sessionId={sessionId} expanded={expandOutput} />;
+    return <BashExecutionView message={message as BashExecutionMessage} sessionId={sessionId} expanded={expandOutput} live={isStreaming} />;
   }
   return null;
 }, (prev, next) => {
@@ -2274,19 +2274,19 @@ function ToolPathPreview({ path, cwd }: { path: string; cwd?: string }) {
   );
 }
 
-function BashExecutionView({ message, sessionId, expanded }: { message: BashExecutionMessage; sessionId?: string; expanded?: boolean }) {
+function BashExecutionView({ message, sessionId, expanded, live = false }: { message: BashExecutionMessage; sessionId?: string; expanded?: boolean; live?: boolean }) {
   const { t } = useI18n();
   const [fullOutput, setFullOutput] = useState<string | null>(null);
   const [loadingFull, setLoadingFull] = useState(false);
   const [fullError, setFullError] = useState<string | null>(null);
 
-  const isPending = !message.output && message.exitCode === undefined && !message.cancelled;
+  const isPending = live;
   const failed = !message.cancelled && message.exitCode !== undefined && message.exitCode !== 0;
   const fullOutputUrl = sessionId && message.fullOutputPath
     ? `/api/agent/${encodeURIComponent(sessionId)}/bash-output?path=${encodeURIComponent(message.fullOutputPath)}`
     : null;
   const showFullButton = message.truncated && fullOutputUrl && fullOutput === null;
-  const displayOutput = fullOutput ?? message.output;
+  const displayOutput = live ? message.output.replace(/\n+$/, "").split("\n").slice(-20).join("\n") : fullOutput ?? message.output;
 
   async function loadFullOutput() {
     if (!fullOutputUrl) return;
@@ -2315,7 +2315,7 @@ function BashExecutionView({ message, sessionId, expanded }: { message: BashExec
     toolName: "bash",
     input: { command: message.command },
   };
-  const result: ToolResultMessage | undefined = isPending
+  const result: ToolResultMessage | undefined = isPending && !displayOutput
     ? undefined
     : {
         role: "toolResult",

@@ -249,6 +249,39 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
   }
 });
 
+test("a ! draft is sent as a command for either queued delivery mode, never steering text", () => {
+  const source = ts.createSourceFile("ChatInput.tsx", readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function find(node) {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "sendQueued") return node.initializer.arguments[0];
+    return ts.forEachChild(node, find);
+  }
+  const script = new Script(`(${ts.transpileModule(find(source).getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText.trim().replace(/;$/, "")})(mode)`);
+  for (const mode of ["steer", "followup"]) {
+    for (const command of ["!pwd", "!!pwd"]) {
+      const calls = [];
+      script.runInNewContext({
+        mode, value: command, attachedImages: [], mentionedImages: [], quotes: [], isEditing: false,
+        exceedsAttachedImageSendLimit: () => false, buildQuotedPrompt: (_quotes, text) => text, prependImageMentions,
+        onAudioUnlock() {}, onBuiltinCommand: undefined, onPromptWithStreamingBehavior: undefined,
+        onSend: (text) => calls.push(["command", text]), clearInput: () => calls.push(["clear"]),
+        onSteer: () => calls.push(["steer"]), onFollowUp: () => calls.push(["followup"]),
+      });
+      assert.deepEqual(calls, [["clear"], ["command", command]]);
+    }
+  }
+});
+
+test("a running ! draft offers Send without a misleading steering menu", () => {
+  const draftKey = "test:bash-busy";
+  try {
+    setDraft(draftKey, { value: "!pwd", images: [] });
+    const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+      React.createElement(ChatInput, { draftKey, isStreaming: true, onSend() {}, onAbort() {}, onSteer() {}, onFollowUp() {} })));
+    assert.match(html, /class="composer-send" aria-label="Send"/);
+    assert.doesNotMatch(html, /aria-haspopup="menu" aria-expanded="false"/);
+  } finally { clearDraft(draftKey); }
+});
+
 test("keeps the main composer compact in idle and streaming states", () => {
   for (const isStreaming of [false, true]) {
     const html = renderToStaticMarkup(React.createElement(

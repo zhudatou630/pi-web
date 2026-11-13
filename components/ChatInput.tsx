@@ -1436,6 +1436,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       void runBuiltinCommand(msg);
       return;
     }
+    if (!attachedImages.length && !quotes.length && outgoing.startsWith("!")) {
+      clearInput();
+      onSend(outgoing);
+      return;
+    }
     const streamingBehavior = mode === "steer" ? "steer" : "followUp";
     const images = attachedImages.length ? attachedImages : undefined;
     if (msg.startsWith("/") && !quotes.length && onPromptWithStreamingBehavior) {
@@ -1449,7 +1454,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     } else if (mode === "followup" && onFollowUp) {
       onFollowUp(outgoing, images);
     }
-  }, [isEditing, value, quotes, attachedImages, mentionedImages, onBuiltinCommand, onPromptWithStreamingBehavior, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
+  }, [isEditing, value, quotes, attachedImages, mentionedImages, onBuiltinCommand, onPromptWithStreamingBehavior, onSend, onSteer, onFollowUp, clearInput, onAudioUnlock, runBuiltinCommand]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1940,7 +1945,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   // cannot clear a draft that nothing would accept.
   const queueStreamingActions = isStreaming && Boolean(onSteer || onFollowUp) && canQueueStreamingMessage;
   // A click chooses the delivery; the keyboard already names it (Enter / Alt+Enter).
-  const chooseDelivery = queueStreamingActions && Boolean(onSteer && onFollowUp);
+  const chooseDelivery = queueStreamingActions && !bashMode && Boolean(onSteer && onFollowUp);
   const actionButtons = !isStreaming ? (
     <button
       type="button"
@@ -1970,9 +1975,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       <button
         type="button"
         className={`composer-send${queueStreamingActions ? "" : " is-stop"}`}
-        aria-label={!queueStreamingActions ? t("chat.stop") : chooseDelivery ? t("chat.send") : onSteer ? t("chat.steer") : t("chat.followUp")}
+        aria-label={!queueStreamingActions ? t("chat.stop") : chooseDelivery || bashMode ? t("chat.send") : onSteer ? t("chat.steer") : t("chat.followUp")}
         title={!queueStreamingActions
           ? `${t("chat.stopAgent")} (Esc)`
+          : bashMode
+            ? t("chat.bashBusy")
           : chooseDelivery
             ? `${t("chat.sendOptions")} (${enterPrefix}Enter: steer · ${enterPrefix}Alt+Enter: follow-up)`
             : `${onSteer ? t("chat.steerHint") : t("chat.followUpHint")} (${enterPrefix}Enter)`}
@@ -1981,6 +1988,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         aria-expanded={chooseDelivery ? sendMenuOpen : undefined}
         onClick={!queueStreamingActions
           ? onAbort
+          : bashMode
+            ? handleSend
           : chooseDelivery
             ? () => setSendMenuOpen((open) => !open)
             : () => sendQueued(onSteer ? "steer" : "followup")}

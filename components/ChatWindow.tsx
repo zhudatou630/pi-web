@@ -2509,10 +2509,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
             {pendingBash && (
               <MessageView
+                key={pendingBash.startedAt}
+                isStreaming
                 message={{
                   role: "bashExecution",
                   command: pendingBash.command,
-                  output: "",
+                  output: pendingBash.liveOutput ?? "",
                   excludeFromContext: pendingBash.excludeFromContext,
                   timestamp: pendingBash.startedAt,
                 } as BashExecutionMessage}
