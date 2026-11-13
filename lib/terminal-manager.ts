@@ -206,9 +206,11 @@ export function killTerminal(id: string, force = false): boolean {
   if (record.cleanupTimer) clearTimeout(record.cleanupTimer);
   registry().delete(id);
   if (!record.exited) {
-    record.pty.kill(force ? "SIGKILL" : undefined);
+    // Windows node-pty rejects signals, sometimes from a deferred callback.
+    if (process.platform === "win32") record.pty.kill();
+    else record.pty.kill(force ? "SIGKILL" : undefined);
     // A shell may trap SIGHUP; explicit close and lease expiry must still finish.
-    if (!force) {
+    if (!force && process.platform !== "win32") {
       record.cleanupTimer = setTimeout(() => {
         if (!record.exited) record.pty.kill("SIGKILL");
       }, 2000);

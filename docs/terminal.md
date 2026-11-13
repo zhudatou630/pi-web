@@ -25,8 +25,10 @@ mounted behind inactive tabs, hidden panels, and session or project switches.
   ID. Failed termination leaves the tab available to retry.
 - A shell exit closes the SSE stream and retains its output and exit code in
   the browser. Unobserved server records expire after the same grace period.
-- Explicit termination and expiry signal the shell, escalating to SIGKILL after
+- On Unix, explicit termination and expiry signal the shell, escalating to SIGKILL after
   two seconds if it ignores SIGHUP. Server shutdown force-kills shells immediately.
+  Windows always uses node-pty's no-argument `kill()` with no escalation timer:
+  it already closes the console processes and rejects any signal (even asynchronously).
 
 ## Transport
 
