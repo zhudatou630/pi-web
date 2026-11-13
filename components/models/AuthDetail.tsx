@@ -270,10 +270,13 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
 
   // Reset state when provider changes
   useEffect(() => {
-    setServerUrl(provider.configured ? "" : DEFAULT_LLAMA_ROUTER_URL);
     setApiKey("");
     setError(null);
     setSavedOk(false);
+  }, [provider.id]);
+
+  useEffect(() => {
+    setServerUrl(provider.configured ? "" : DEFAULT_LLAMA_ROUTER_URL);
   }, [provider.id, provider.configured]);
 
   const handleSave = useCallback(async () => {
