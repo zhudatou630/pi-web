@@ -481,6 +481,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const rpcPromptPendingRef = useRef(false);
   const notifiedPromptRunIdRef = useRef(-1);
   const bashRunningRef = useRef(false);
+  const bashRunRef = useRef<{ id: string | null; settled: boolean }>({ id: null, settled: true });
   const stopRequestPendingRef = useRef(false);
   const bashRecoveryIdRef = useRef(0);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
@@ -1416,19 +1417,30 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const res = await fetch(`/api/agent/${encodeURIComponent(sid)}?systemPrompt=0`);
         if (!res.ok) continue;
         const data = await res.json() as { state?: AgentStateResponse };
+        if (bashRecoveryIdRef.current !== recoveryId || sessionIdRef.current !== sid) return;
         if (data.state?.isBashRunning) continue;
 
         await loadSession(sid);
         if (bashRecoveryIdRef.current !== recoveryId || sessionIdRef.current !== sid) return;
+        bashRunRef.current.settled = true;
         bashRunningRef.current = false;
         setBashRunning(false);
         setPendingBash(null);
+        const idleRead = idleMessageReadRef.current;
+        if (idleRead.dirty) void refreshIdleMessages(idleRead.sid);
         return;
       } catch {
         // Keep polling while the page is mounted; network recovery is transparent.
       }
     }
-  }, [loadSession]);
+  }, [loadSession, refreshIdleMessages]);
+
+  const resumeBash = useCallback((sid: string) => {
+    if (endedSessionRef.current || sessionIdRef.current !== sid || bashRunningRef.current) return;
+    bashRunningRef.current = true;
+    setBashRunning(true);
+    void waitForBashSettlement(sid);
+  }, [waitForBashSettlement]);
 
   // Reconcile client streaming state with the server. When SSE events are
   // missed (network drop, mobile tab backgrounded, half-open connection),
@@ -1895,8 +1907,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         break;
       case "bash_output": {
         const { id, command, output, startedAt, excludeFromContext } = event;
-        if (!bashRunningRef.current || typeof id !== "string" || typeof command !== "string"
-          || typeof output !== "string" || typeof startedAt !== "number") break;
+        if (typeof id !== "string" || typeof command !== "string"
+          || typeof output !== "string" || typeof startedAt !== "number" || !Number.isFinite(startedAt)) break;
+        const sid = sessionIdRef.current;
+        if (!sid) break;
+        const run = bashRunRef.current;
+        if ((run.settled && run.id === id)
+          || (bashRunningRef.current && !run.settled && run.id !== null && run.id !== id)) break;
+        // An idle observer has no local POST to start/finish the card; recover it just as on mount.
+        bashRunRef.current = { id, settled: false };
+        if (!bashRunningRef.current) resumeBash(sid);
         setPendingBash((pending) => pending?.id && pending.id !== id ? pending : {
           id, command, startedAt: pending?.startedAt ?? startedAt,
           excludeFromContext: excludeFromContext === true, liveOutput: stripAnsi(output),
@@ -1918,7 +1938,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setExtensionCustomUis((queue) => queue.filter((panel) => panel.id !== event.id));
         break;
     }
-  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement, refreshIdleMessages, t]);
+  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement, refreshIdleMessages, resumeBash, t]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
@@ -2202,7 +2222,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     const inputText = `${excludeFromContext ? "!!" : "!"}${command}`;
     bashAbortRequestedRef.current = false;
     bashRunningRef.current = true;
+    bashRecoveryIdRef.current += 1;
     const id = crypto.randomUUID();
+    bashRunRef.current = { id, settled: false };
     setPendingBash({ id, command, excludeFromContext, startedAt: Date.now() });
     setBashRunning(true);
     try {
@@ -2228,6 +2250,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         restoreUnsent: () => restoreSubmission(inputText, undefined, composerDraftKey),
       });
       if (result.status === "completed" || result.status === "cancelled_after_dispatch") {
+        bashRunRef.current.settled = true;
         promoteNewSession(1, inputText);
       }
     } catch (e) {
@@ -2856,10 +2879,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             }
           }
           if (agentState.state?.isBashRunning) {
-            bashRunningRef.current = true;
-            setBashRunning(true);
+            resumeBash(session.id);
             refreshEventStream(session.id); // Replay the latest output after restoring shell-running state.
-            void waitForBashSettlement(session.id);
           }
         }
         if (agentState?.state) {

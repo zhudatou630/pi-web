@@ -23,6 +23,7 @@ function setup() {
   const calls = [], restored = [], notices = [];
   const bindings = {
     agentRunningRef: { current: false }, bashRunningRef: { current: false }, bashAbortRequestedRef: { current: false },
+    bashRunRef: { current: { id: null, settled: true } }, bashRecoveryIdRef: { current: 0 },
     endedSessionRef: { current: false }, idleMessageReadRef: { current: { dirty: false } }, refreshIdleMessages: noop,
     sessionIdRef: { current: null }, session: null, ensureNewSession: async () => "new-session",
     ensureEventsConnected: async (sid) => { calls.push(["connect", sid]); await ready.promise; },
@@ -50,7 +51,8 @@ test("snapshots replace output and an old identical command's late snapshot is i
   let pending = { id: "current", command: "pwd", startedAt: 1, excludeFromContext: false };
   const handle = callback("handleAgentEvent", {
     flushStreamDeltas: noop, unconfirmedPromptsRef: { current: new Map() }, promptRunIdRef: { current: 0 }, endedSessionRef: { current: false },
-    bashRunningRef: { current: true }, setPendingBash: (update) => { pending = update(pending); }, stripAnsi: (text) => text,
+    bashRunningRef: { current: true }, bashRunRef: { current: { id: "current", settled: false } }, sessionIdRef: { current: "observed" },
+    setPendingBash: (update) => { pending = update(pending); }, stripAnsi: (text) => text,
   });
   handle({ type: "bash_output", id: "current", command: "pwd", startedAt: 2, output: "first" });
   handle({ type: "bash_output", id: "current", command: "pwd", startedAt: 2, output: "second" });
@@ -58,6 +60,62 @@ test("snapshots replace output and an old identical command's late snapshot is i
   assert.equal(pending.startedAt, 1);
   handle({ type: "bash_output", id: "old", command: "pwd", startedAt: 0, output: "old" });
   assert.equal(pending.liveOutput, "second");
+});
+
+test("an idle observer adopts another browser's snapshots and replaces its pending card with persisted history", async () => {
+  const delayed = [], history = [];
+  let pending = null, running = false, reads = 0, loads = 0, idleRefreshes = 0, serverRunning = true;
+  const bindings = {
+    sessionIdRef: { current: "observed" }, endedSessionRef: { current: null },
+    bashRunningRef: { current: false }, bashRecoveryIdRef: { current: 0 },
+    bashRunRef: { current: { id: null, settled: true } },
+    idleMessageReadRef: { current: { sid: "observed", dirty: false } },
+    refreshIdleMessages: () => { idleRefreshes++; bindings.idleMessageReadRef.current.dirty = false; },
+    flushStreamDeltas: noop, unconfirmedPromptsRef: { current: new Map() }, promptRunIdRef: { current: 0 },
+    setBashRunning: (value) => { running = value; },
+    setPendingBash: (value) => { pending = typeof value === "function" ? value(pending) : value; },
+    stripAnsi: (text) => text, BASH_STATE_RECONCILE_MS: 1000,
+    delay: () => new Promise((resolve) => delayed.push(resolve)),
+    fetch: async () => { reads++; return { ok: true, json: async () => ({ state: { isBashRunning: serverRunning } }) }; },
+    loadSession: async () => { loads++; history.splice(0, history.length, { role: "bashExecution", command: "pwd", output: "persisted output" }); },
+  };
+  bindings.waitForBashSettlement = callback("waitForBashSettlement", bindings);
+  bindings.resumeBash = callback("resumeBash", bindings);
+  const handle = callback("handleAgentEvent", bindings);
+  const snapshot = { type: "bash_output", id: "other-browser", command: "pwd", startedAt: 10, output: "first" };
+  const poll = async () => { assert.ok(delayed.length); delayed.shift()(); await new Promise((resolve) => setImmediate(resolve)); };
+
+  for (const invalid of [{ ...snapshot, id: 1 }, { ...snapshot, output: null }, { ...snapshot, startedAt: "10" }, { ...snapshot, startedAt: NaN }]) handle(invalid);
+  assert.equal(running, false);
+  handle(snapshot);
+  assert.equal(running, true, "a snapshot starts observation even without a local send or remount");
+  assert.equal(pending.liveOutput, "first");
+  handle({ ...snapshot, output: "second" });
+  handle({ ...snapshot, id: "old", output: "wrong command" });
+  assert.equal(pending.liveOutput, "second");
+  assert.equal(delayed.length, 1, "chunks do not restart the settlement poll");
+  await poll();
+  assert.equal(reads, 1);
+  assert.equal(loads, 0);
+  assert.equal(running, true);
+  serverRunning = false;
+  bindings.idleMessageReadRef.current.dirty = true;
+  await poll();
+  assert.equal(running, false);
+  assert.equal(bindings.bashRunningRef.current, false);
+  assert.equal(pending, null);
+  assert.deepEqual(history, [{ role: "bashExecution", command: "pwd", output: "persisted output" }]);
+  assert.equal(loads, 1);
+  assert.equal(idleRefreshes, 1, "idle extension messages deferred during bash are resumed");
+  handle({ ...snapshot, output: "late output" });
+  assert.equal(pending, null, "late snapshots must not resurrect a settled command");
+  assert.equal(delayed.length, 0);
+  handle({ ...snapshot, id: "next-command", startedAt: 20, output: "new output" });
+  assert.equal(running, true);
+  assert.equal(pending.id, "next-command");
+  await poll();
+  assert.equal(running, false);
+  assert.equal(pending, null);
 });
 
 test("a first ! command waits for SSE, and Stop during connection restores without sending", async () => {
