@@ -298,8 +298,8 @@ export function ModelSelector({
               <input
                 className="model-selector-filter"
                 value={query}
-                placeholder={t("chat.filterModels")}
-                aria-label={t("chat.filterModels")}
+                placeholder={t("models.pickFilterPlaceholder")}
+                aria-label={t("models.pickFilter")}
                 onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); }}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {

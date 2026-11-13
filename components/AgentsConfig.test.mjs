@@ -39,7 +39,8 @@ test("reuses the ChatInput model selector with scoped models", () => {
   assert.match(editorSource, /<ModelSelector[\s\S]*?options=\{modelSelectorOptions\}[\s\S]*?variant="field"/);
   assert.match(chatInputSource, /<ModelSelector[\s\S]*?options=\{modelOptions\}/);
   assert.match(modelSelectorSource, /for \(const option of sortedOptions\)/);
-  assert.doesNotMatch(modelSelectorSource, /<input|filterModels|setFilter|filterModelOptions/);
+  assert.match(modelSelectorSource, /filterModelOptions\(\[\.\.\.listed\][\s\S]*?query, providerNames\)/);
+  assert.doesNotMatch(editorSource, /filterModelOptions|setFilter/);
   assert.match(modelSelectorSource, /modelsByProvider\.map/);
   assert.match(modelSelectorSource, /event\.key !== "Escape" \|\| !open[\s\S]*?event\.preventDefault\(\)[\s\S]*?event\.stopPropagation\(\)/);
   assert.match(editorSource, /agents\.modelUnavailable/);

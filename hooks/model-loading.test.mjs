@@ -57,7 +57,7 @@ function setup(fetchImpl) {
   };
   defaultModelResolverScript.runInNewContext(context);
   defaultThinkingResolverScript.runInNewContext(context);
-  for (const name of ["ModelsMissingCwd", "ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "AllModelList", "NewSessionDefaultModel", "NewSessionModel", "PendingModel", "ThinkingLevel"]) {
+  for (const name of ["ModelsMissingCwd", "ModelError", "ModelNames", "ModelScopeWarnings", "ModelThinkingLevels", "ModelThinkingLevelMaps", "ModelThinkingLevelPins", "ModelDefaultThinkingLevel", "ModelList", "ProviderNames", "AllModelList", "NewSessionDefaultModel", "NewSessionModel", "PendingModel", "ThinkingLevel"]) {
     context[`set${name}`] = (value) => writes.push([name, value]);
   }
   context.loadModels = loadScript.runInNewContext(context);
@@ -84,6 +84,7 @@ test("model-load failures stay visible through bounded retries and clear on reco
       models: { "custom:test": "Test" },
       modelList: [{ provider: "custom", id: "test", name: "Test" }],
       defaultModel: { provider: "custom", modelId: "test" },
+      providerNames: { custom: "Custom Gateway" },
       thinkingLevelPins: { "custom/test": "high" },
     });
   });
@@ -91,6 +92,7 @@ test("model-load failures stay visible through bounded retries and clear on reco
   assert.equal(attempts, 2);
   assert.deepEqual(recovered.delays, [2_000]);
   assert.deepEqual(recovered.writes.filter(([name]) => name === "ModelError"), [["ModelError", "Failed to fetch"], ["ModelError", null]]);
+  assert.ok(recovered.writes.some(([name, value]) => name === "ProviderNames" && value.custom === "Custom Gateway"));
   assert.ok(recovered.writes.some(([name, value]) => name === "ModelList" && value[0].id === "test"));
   assert.ok(recovered.writes.some(([name, value]) => name === "NewSessionDefaultModel" && value.modelId === "test"));
   assert.ok(recovered.writes.some(([name, value]) => name === "ThinkingLevel" && value === "high"));
