@@ -2428,7 +2428,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const copied = copyPendingText(text.then((value) => value || Promise.reject(new Error("empty"))));
           copied.catch(() => {});
           if (!(await text)) return complete({ handled: true, error: "No assistant message to copy" });
-          await copied;
+          try {
+            await copied;
+          } catch {
+            return complete({ handled: true, error: t("chat.copyFailed") });
+          }
           return complete({ handled: true, message: "Copied last assistant message" });
         }
 
@@ -2491,7 +2495,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       return complete({ handled: true, error: e instanceof Error ? e.message : String(e) });
     }
-  }, [activeLeafId, addNotice, ensureNewSession, handleCompact, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionForked, onSessionStatsPanelOpen]);
+  }, [activeLeafId, addNotice, ensureNewSession, handleCompact, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionForked, onSessionStatsPanelOpen, t]);
 
   // Let AgentSession.prompt decide atomically whether to queue against the
   // current run or start a new turn if it settled while the request was in

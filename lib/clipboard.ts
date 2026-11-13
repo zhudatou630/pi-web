@@ -15,17 +15,18 @@ export function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     return navigator.clipboard.writeText(text);
   }
+  let ta: HTMLTextAreaElement | null = null;
   try {
-    const ta = document.createElement("textarea");
+    ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
     ta.style.opacity = "0";
     document.body.appendChild(ta);
     ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    return Promise.resolve();
-  } catch {
-    return Promise.reject();
+    return document.execCommand("copy") ? Promise.resolve() : Promise.reject(new Error("Copy was refused"));
+  } catch (error) {
+    return Promise.reject(error);
+  } finally {
+    ta?.remove();
   }
 }

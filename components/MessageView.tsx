@@ -461,7 +461,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
     copyText(copyTarget).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }, () => {});
   };
 
   return (
@@ -840,7 +840,7 @@ function AssistantMessageView({
     copyText(textContent).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }, () => {});
   };
 
 
@@ -1367,7 +1367,7 @@ export function ToolCallBlock({ block, result, duration, startTime, live, cwd, o
     copyText(commandText).then(() => {
       setCommandCopied(true);
       setTimeout(() => setCommandCopied(false), 1500);
-    });
+    }, () => {});
   };
   // A command-only input is already the header preview; the expanded body shows it as typed, not as JSON.
   const shellCommand = isStreamingInput ? undefined : getShellCommand(block);
@@ -2092,7 +2092,7 @@ function CustomMessageView({ message, cwd, onOpenFile, isProcess }: { message: C
     copyText(copyValue).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
+    }, () => {});
   };
 
   const card = (

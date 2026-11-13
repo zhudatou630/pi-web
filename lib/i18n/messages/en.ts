@@ -1385,6 +1385,7 @@ export const enLocale: LocalePlugin = {
     "chat.continuePromptError": "The previous turn was interrupted by an error. Please continue the task from where it stopped.",
     "chat.continuePromptTruncated": "The previous response was cut off at the output limit. Please continue from where it stopped.",
     "chat.copyCommand": "Copy command",
+    "chat.copyFailed": "Copy failed. Check your browser's clipboard permissions.",
     "chat.collapseStep": "Collapse",
     "chat.copyTable": "Copy table as Markdown",
     "chat.copyLatex": "Copy LaTeX",

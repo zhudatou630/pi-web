@@ -79,6 +79,10 @@ Events that are not turns share one look (`TranscriptMarker`, `components/Messag
 
 - Display math in messages reuses the code block's copy glyph, 11px action and 1.5s Copied feedback to copy LaTeX. The borderless action overlays the formula's top-right corner and appears only on hover/focus (a tap on touch), so formulas keep their spacing; Copied feedback stays visible. Inline math and file previews stay unchanged. The source attribute is added only after sanitizing, before KaTeX; user HTML cannot supply it. Image exports omit the action.
 
+## Clipboard feedback
+
+`copyText()` rejects refused `execCommand` copies as well as thrown failures and always removes its temporary textarea. Copy buttons only set Copied on success; failures remain silent (no unhandled rejection). The `/copy` command instead reports a localized permission-failure notice. `copyPendingText()` still starts Safari's pending-Blob clipboard write inside the user gesture. FileViewer/Mermaid/math already use the shared `MarkdownCopyButton`, which handles rejection; tab path actions also already handle it.
+
 ## Images
 
 - Prompt picks, paste and chat drops share `ChatInput.readPromptImageFile()`: preserve original bytes and sniff PNG/JPEG/GIF/WebP MIME from the bytes, keeping the 10 MiB/file and 10-image limits. The browser only falls back to the existing 2000px / JPEG 0.85 white-background re-encode at **4.5 MiB of base64** (3.375 MiB of file bytes) or above, including GIFs. This is conservative even for ordinary prompts: pi skips resizing when disabled. As before, unavailable/failed browser decoding or canvas encoding falls back to the original. `@` image mentions remain paths in the prompt, not browser-read attachments.

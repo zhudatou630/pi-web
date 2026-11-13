@@ -1385,6 +1385,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.continuePromptError": "上一轮因错误中断，请从中断处继续完成任务。",
     "chat.continuePromptTruncated": "上一轮回复因输出长度上限被截断，请从中断处继续。",
     "chat.copyCommand": "复制命令",
+    "chat.copyFailed": "复制失败，请检查浏览器的剪贴板权限。",
     "chat.collapseStep": "收起",
     "chat.copyTable": "复制表格（Markdown）",
     "chat.copyLatex": "复制 LaTeX",
