@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
-import { ConfigButton } from "../SettingsUi";
-import { Notice, SecretTextInput } from "./fields";
+import { DEFAULT_LLAMA_ROUTER_URL, LLAMA_CPP_PROVIDER_ID } from "@/lib/provider-listing";
+import { ConfigButton, ConfigField } from "../SettingsUi";
+import { Notice, SecretTextInput, TextInput } from "./fields";
 import type { ApiKeyProvider, OAuthProvider } from "./types";
 
 type OAuthLoginState =
@@ -256,6 +257,8 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
   onRefresh: () => void;
   cwd: string | null;
 }) {
+  const llama = provider.id === LLAMA_CPP_PROVIDER_ID;
+  const [serverUrl, setServerUrl] = useState(provider.configured ? "" : DEFAULT_LLAMA_ROUTER_URL);
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -263,16 +266,18 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
   const [savedOk, setSavedOk] = useState(false);
   const { t } = useI18n();
   const confirm = useConfirm();
+  const canSave = llama ? Boolean(serverUrl.trim()) : Boolean(apiKey.trim());
 
   // Reset state when provider changes
   useEffect(() => {
+    setServerUrl(provider.configured ? "" : DEFAULT_LLAMA_ROUTER_URL);
     setApiKey("");
     setError(null);
     setSavedOk(false);
-  }, [provider.id]);
+  }, [provider.id, provider.configured]);
 
   const handleSave = useCallback(async () => {
-    if (!apiKey.trim()) return;
+    if (!canSave || saving) return;
     setSaving(true);
     setError(null);
     setSavedOk(false);
@@ -280,13 +285,15 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
       const res = await fetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey.trim(), cwd }),
+        body: JSON.stringify({ apiKey: apiKey.trim(), cwd, ...(llama ? { serverUrl: serverUrl.trim() } : {}) }),
       });
-      const d = await res.json() as { success?: boolean; error?: string };
+      const d = await res.json() as { success?: boolean; error?: string; catalog?: { completed: boolean } };
       if (!res.ok || d.error) {
         setError(d.error ?? `HTTP ${res.status}`);
       } else {
         setApiKey("");
+        if (llama) setServerUrl("");
+        if (llama && !d.catalog?.completed) setError(t("models.llamaCatalogUnavailable"));
         setSavedOk(true);
         setTimeout(() => setSavedOk(false), 2000);
         onRefresh();
@@ -296,7 +303,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
     } finally {
       setSaving(false);
     }
-  }, [apiKey, provider.id, onRefresh, cwd]);
+  }, [apiKey, provider.id, onRefresh, cwd, llama, serverUrl, canSave, saving, t]);
 
   const handleRemove = useCallback(async () => {
     if (!(await confirm(t("models.disconnectConfirm", { name: provider.displayName }), { danger: true, confirmLabel: t("i18n.disconnect") }))) return;
@@ -322,7 +329,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
     <div className="models-auth">
       <div className="models-auth-row">
         <div className="models-auth-copy">
-          <strong>{t("models.apiKeyTitle")}</strong>
+          <strong>{llama ? provider.displayName : t("models.apiKeyTitle")}</strong>
           <StatusPill tone={provider.configured ? "success" : "muted"}>
             {provider.configured ? t("i18n.configured") : t("i18n.notConfigured")}
           </StatusPill>
@@ -336,21 +343,26 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
         )}
       </div>
 
+      {llama && (
+        <ConfigField label={t("models.llamaRouterUrl")}>
+          <TextInput value={serverUrl} onChange={setServerUrl} placeholder={DEFAULT_LLAMA_ROUTER_URL} />
+        </ConfigField>
+      )}
       <div className="models-inline-form">
         <SecretTextInput
           value={apiKey}
           onChange={setApiKey}
-          onKeyDown={(e) => { if (e.key === "Enter" && apiKey.trim()) void handleSave(); }}
-          placeholder={provider.configured ? t("models.replaceKeyPlaceholder") : "sk-…"}
+          onKeyDown={(e) => { if (e.key === "Enter") void handleSave(); }}
+          placeholder={llama ? t("models.optionalApiKey") : provider.configured ? t("models.replaceKeyPlaceholder") : "sk-…"}
         />
         <ConfigButton
           variant="primary"
           size="small"
           onClick={handleSave}
-          disabled={saving || !apiKey.trim() || savedOk}
+          disabled={saving || !canSave || savedOk}
           className={savedOk ? "is-success" : undefined}
         >
-          {savedOk ? t("i18n.saved") : saving ? t("i18n.saving") : provider.configured ? t("models.updateKey") : t("models.saveKey")}
+          {savedOk ? t("i18n.saved") : saving ? t("i18n.saving") : llama ? t("models.llamaConnect") : provider.configured ? t("models.updateKey") : t("models.saveKey")}
         </ConfigButton>
       </div>
 

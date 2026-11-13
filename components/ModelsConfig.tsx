@@ -5,7 +5,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
 import { InvalidProviderEntryError, validateProviderEntries } from "@/lib/model-config-validation";
-import { providerDisplayName } from "@/lib/provider-listing";
+import { LLAMA_CPP_PROVIDER_ID, providerDisplayName } from "@/lib/provider-listing";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   modelDropIndex,
@@ -755,7 +755,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             />
           )}
           {modelRows.length === 0 ? (
-            <p className="models-empty">{json ? t("models.noDefinitions") : t("models.connectToSeeModels")}</p>
+            <p className="models-empty">{row.id === LLAMA_CPP_PROVIDER_ID && row.apiKey?.configured ? t("models.llamaEmptyCatalog") : json ? t("models.noDefinitions") : t("models.connectToSeeModels")}</p>
           ) : (
             <div className="models-list">
               {modelRows.map((model) => {

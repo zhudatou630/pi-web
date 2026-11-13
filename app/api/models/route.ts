@@ -13,6 +13,7 @@ import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-acces
 import { collectProviderListingInputs, providerDisplayNames } from "@/lib/provider-listing-runtime";
 import { isRecord } from "@/lib/model-config-validation";
 import { readModelsConfig } from "@/lib/models-config-store";
+import { llamaCppExtension } from "@/lib/builtin-extensions";
 import { projectTrustReloadOptions } from "@/lib/project-trust";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ async function loadModels(cwd: string): Promise<ModelsData> {
   const services = await createAgentSessionServices({
     cwd,
     agentDir,
+    resourceLoaderOptions: { extensionFactories: [llamaCppExtension] },
     ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
   });
   const definitions = readModelsConfig().providers;

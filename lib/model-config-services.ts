@@ -4,6 +4,7 @@ import { createAgentSessionServices, getAgentDir, ModelRuntime } from "@earendil
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "@/lib/project-trust";
+import { llamaCppExtension } from "@/lib/builtin-extensions";
 import { getModelsCacheGeneration } from "@/lib/models-cache";
 
 export async function resolveAllowedCwd(requestedCwd: string): Promise<
@@ -37,6 +38,7 @@ export async function createModelsConfigServices(cwd: string) {
   return createAgentSessionServices({
     cwd,
     agentDir,
+    resourceLoaderOptions: { extensionFactories: [llamaCppExtension] },
     ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
   });
 }

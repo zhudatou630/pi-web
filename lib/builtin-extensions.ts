@@ -14,13 +14,14 @@ import {
   type InlineExtension,
   type McpTransportFactory,
 } from "@earendil-works/pi-coding-agent";
+import type { Provider } from "@earendil-works/pi-ai";
 import { sanitizeProjectCommandEnvironment } from "./project-command-env";
 import { safeMcpTransportFactory, type McpValueParsers } from "./mcp-transport";
 import { loadSafeMcpConfig, type McpConfigValidator } from "./mcp-config-read";
 import { editMcpConfigFileSync, patchMcpServer } from "./mcp-config-file";
 
 /**
- * The CLI's built-in extensions that the SDK exports (`llama.cpp` is not). SDK sessions get
+ * The CLI's built-in extensions. SDK sessions get
  * none of them by default. As `builtin: true` entries they are `builtin:<name>` resources:
  * `-builtin:<name>` in `extensions` and `--no-extensions` disable them, and `replaceable`
  * lets an installed extension that registers `/mcp` (pi-mcp-adapter) take over.
@@ -117,12 +118,23 @@ export function deferMcpStart(factory: ExtensionFactory): ExtensionFactory {
   };
 }
 
+// Only the provider: /llama's command and widgets require the CLI's TUI.
+export const llamaCppExtension: InlineExtension = {
+  name: "llama.cpp",
+  builtin: true,
+  async factory(pi) {
+    const { createLlamaProvider } = await importSdkFile<{ createLlamaProvider(): { provider: Provider } }>("extensions/llama/provider.js");
+    pi.registerProvider(createLlamaProvider().provider);
+  },
+};
+
 export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
   const [createTransport, validator, parsers] = await Promise.all([
     loadSafeMcpTransport(), importSdkFile<McpConfigValidator>("core/mcp-servers.js"),
     importSdkFile<McpValueParsers>("core/resolve-config-value.js"),
   ]);
   return [
+    llamaCppExtension,
     { name: "codemode", factory: createCodemodeExtension(), replaceable: true, builtin: true },
     { name: "tool-search", factory: createToolSearchExtension(), replaceable: true, builtin: true },
     // The OAuth page must open in the user's browser, not on the server: the URL is

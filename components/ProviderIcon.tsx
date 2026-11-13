@@ -1,3 +1,5 @@
+import { iconStroke } from "./iconStroke";
+
 const PROVIDER_ICONS: Record<string, { symbol: string; color: boolean }> = {
   anthropic: { symbol: "anthropic", color: false },
   openai: { symbol: "openai", color: false },
@@ -44,6 +46,12 @@ const PROVIDER_ICONS: Record<string, { symbol: string; color: boolean }> = {
 };
 
 export function ProviderIcon({ id, size }: { id: string; size: number }) {
+  // Generic local-server mark; no third-party llama.cpp artwork or license dependency.
+  if (id === "llama.cpp") return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(size)} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <rect x="3" y="3" width="18" height="7" rx="2" /><rect x="3" y="14" width="18" height="7" rx="2" /><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6" />
+    </svg>
+  );
   const icon = PROVIDER_ICONS[id];
   if (icon) {
     return (
