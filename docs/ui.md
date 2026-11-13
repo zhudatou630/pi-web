@@ -65,6 +65,15 @@ Design notes moved out of AGENTS.md. Typography rules are enforced by `component
 - On the SDK's explicit manual-compaction refusal, the session wrapper parks prompts (including images) in admission order; a parked plain prompt is listed as a follow-up (it runs after the compaction), an explicit steer stays a steer. Queue state is shared across tabs and survives a browser reload, not a server restart. Successful, failed and aborted compactions flush through the same admission chain; automatic compaction keeps using the SDK's streaming queues.
 - Stop compaction only stops summarization: parked prompts still run, as in pi's TUI. Ordinary Stop first returns parked prompts to the sending composer's draft, then aborts; with no parked prompts neither action starts a run. Recall reads SDK delivery queues before clearing them, so image recovery remains fail-closed.
 
+## Stopped replies
+
+Only a settled assistant `stopReason: "aborted"` gets the translated Stopped mark,
+first in `data-answer-footer` (11px, dim, regular). Its provider error text is not a
+stop reason. `partitionAssistantMessage()` keeps an answer even before the first
+token or during tool arguments, and removes the process copy's abort metadata,
+so grouped replies say it once outside the process details. Existing error and
+output-limit recovery behavior is unchanged.
+
 ## Transcript markers
 
 Events that are not turns share one look (`TranscriptMarker`, `components/MessageView.tsx`, `.chat-marker*`): a centered dim line, icon + `label · detail · time`, and a chevron when there is something to open, which shows a bordered panel below that scrolls past `min(60vh, 480px)`. Routine runs (click opens the routine), compaction summaries (click or chevron opens the summary) and cache refreshes (`pi-web:cache-warm`, display-only, folded per idle stretch by `buildSessionContext()`; no chevron). Do not give a new event its own card style.

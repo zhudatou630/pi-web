@@ -116,6 +116,10 @@ export function isAbortedAssistantError(message: AssistantMessage): boolean {
     && /^(?:(?:This|The) operation was aborted|Request was aborted)\.?$/.test(message.errorMessage?.trim() ?? "");
 }
 
+export function isAssistantAborted(message: AssistantMessage, options: DisplayOptions = {}): boolean {
+  return !options.isStreaming && message.stopReason === "aborted";
+}
+
 /**
  * A response cut off by the model's output limit ends with `stopReason: "length"`.
  * Without a notice it looks exactly like a normally finished reply.
@@ -185,12 +189,16 @@ export function countToolCallBlocks(blocks: AssistantContentBlock[]): number {
 function withAssistantBlocks(
   message: AssistantMessage,
   content: AssistantContentBlock[],
-  options: { omitUsage?: boolean; omitError?: boolean } = {},
+  options: { omitUsage?: boolean; omitError?: boolean; omitAbort?: boolean } = {},
 ): AssistantMessage {
   const next = { ...message, content };
   if (options.omitUsage) next.usage = undefined;
   if (options.omitError) {
     if (next.stopReason === "error") next.stopReason = "stop";
+    next.errorMessage = undefined;
+  }
+  if (options.omitAbort && next.stopReason === "aborted") {
+    next.stopReason = "stop";
     next.errorMessage = undefined;
   }
   return next;
@@ -203,7 +211,8 @@ export function partitionAssistantMessage(
   const split = splitFinalAssistantBlocks(message, options);
   const hasTrailingAnswer = hasTrailingFinalAnswer(message, options);
   const hasError = Boolean(getAssistantErrorMessage(message, options));
-  const answerMessage = split.answerBlocks.length > 0
+  const aborted = isAssistantAborted(message, options);
+  const answerMessage = split.answerBlocks.length > 0 || aborted
     ? withAssistantBlocks(message, split.answerBlocks, { omitError: !hasTrailingAnswer })
     : null;
   const processVisible = getDisplayableAssistantBlocks(
@@ -214,6 +223,7 @@ export function partitionAssistantMessage(
     ? withAssistantBlocks(message, split.processBlocks, {
         omitUsage: Boolean(answerMessage) && !options.isStreaming,
         omitError: hasTrailingAnswer,
+        omitAbort: aborted && Boolean(answerMessage),
       })
     : null;
   return { processMessage, answerMessage };

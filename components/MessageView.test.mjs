@@ -20,6 +20,24 @@ const { I18nProvider } = await jiti.import("@/hooks/useI18n");
 const { splitFinalAssistantBlocks } = await jiti.import("@/lib/message-display");
 const source = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
 
+test("stopped replies keep one footer through answer/process partitioning", async () => {
+  const { partitionAssistantMessage } = await jiti.import("@/lib/message-display");
+  for (const content of [[], [{ type: "text", text: "Half an ans" }],
+    [{ type: "thinking", thinking: "Plan" }],
+    [{ type: "toolCall", toolCallId: "stopped-tool", toolName: "write", input: { path: "a.txt" }, rawInput: '{"path":"a.txt"' }]]) {
+    const message = { role: "assistant", content, stopReason: "aborted", errorMessage: "Provider aborted its stream" };
+    const parts = partitionAssistantMessage(message);
+    const html = (parts.processMessage ? renderMessage(parts.processMessage, { isProcess: true }) : "")
+      + renderMessage(parts.answerMessage, { isTurnEnd: true, modelName: "Test model", turnDurationSeconds: 12 });
+    assert.equal((html.match(/data-answer-stopped/g) ?? []).length, 1);
+    assert.match(html, /data-answer-footer[^>]*><span data-answer-stopped[^>]*>Stopped<\/span><span data-answer-model/);
+    assert.doesNotMatch(html, /Provider aborted its stream/);
+    assert.doesNotMatch(renderMessage(message, { isStreaming: true }), /data-answer-stopped/);
+    assert.match(renderMessage(message), /data-answer-footer[^>]*><span data-answer-stopped[^>]*>Stopped/);
+  }
+  assert.doesNotMatch(renderMessage({ role: "assistant", content: [], stopReason: "error", errorMessage: "This operation was aborted" }), /data-answer-stopped/);
+});
+
 test("assistant block keys do not change when persistence supplies an entry id", () => {
   assert.match(source, /<BlockView\s+key=\{originalIndex\}/);
   assert.doesNotMatch(source, /key=\{`\$\{entryId/);

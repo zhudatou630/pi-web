@@ -20,7 +20,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { ExportImageIcon, useExportImage } from "./ExportImage";
 import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
-import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
+import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
 import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { parseApplyPatch } from "@/lib/apply-patch";
 import { displayToolName, isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
@@ -825,6 +825,7 @@ function AssistantMessageView({
     return map;
   }, [message.content, toolResults, toolStartedAt]);
   const providerError = getAssistantErrorMessage(message, { isStreaming });
+  const aborted = isAssistantAborted(message, { isStreaming });
   const truncated = isAssistantTruncated(message, { isStreaming });
   const unansweredTruncation = truncated && !hasAssistantAnswer(message);
   const textContent = blocks
@@ -835,7 +836,7 @@ function AssistantMessageView({
   const modelLabel = isTurnEnd && !isStreaming ? (modelName || message.model || null) : null;
   const duration = isTurnEnd && !isStreaming && turnDurationSeconds ? formatDuration(turnDurationSeconds, t) : null;
   const timing = isTurnEnd && !isStreaming ? turnTiming ?? null : null;
-  const showFooter = isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent);
+  const showFooter = aborted || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent));
   const copyContent = () => {
     copyText(textContent).then(() => {
       setCopied(true);
@@ -846,7 +847,7 @@ function AssistantMessageView({
 
   // A truncated turn whose only block was empty thinking must still render, so its
   // notice is not silently swallowed by the empty-content guard.
-  if (blocks.length === 0 && !isStreaming && !providerError && !truncated) return null;
+  if (blocks.length === 0 && !isStreaming && !providerError && !truncated && !aborted) return null;
 
   return (
     <div
@@ -963,6 +964,7 @@ function AssistantMessageView({
       {showFooter && (
         // Who answered, how long the turn took, when it ended; copy sits right after them.
         <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>
+          {aborted && <span data-answer-stopped>{t("chat.operationAborted")}</span>}
           {modelLabel && (
             <span data-answer-model style={{ fontVariantNumeric: "normal", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
           )}
