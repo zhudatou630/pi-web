@@ -12,6 +12,7 @@ import type {
   ImageGenerationSettingsResponse,
 } from "@/lib/api-types";
 import { ConfigButton, ConfigSwitch, CountedTitle, SettingsGroup, SettingsLoading, SettingsRow } from "./SettingsUi";
+import { SettingsScopeRow } from "./SettingsScope";
 import { ReloadNotice } from "./ReloadNotice";
 
 type Draft =
@@ -245,32 +246,19 @@ export function ImagesConfig({
     {reloadNeeded && <ReloadNotice sessionId={sessionId} onReloaded={onReloaded} onDone={() => setReloadNeeded(false)} />}
     <div key="ready" className="settings-page">
       <SettingsGroup>
-        <SettingsRow label={t("settings.imagesEnabled")} description={t("settings.imagesDescription")}>
-          <ConfigSwitch
-            checked={globalOn}
-            disabled={loading || !settings}
-            loading={saving && !draft && !rename}
-            label={t("settings.imagesEnabled")}
-            onChange={(enabled) => void save({ enabled })}
-          />
-        </SettingsRow>
+        <SettingsScopeRow checked={globalOn} disabled={loading || !settings} loading={saving && !draft && !rename} onChange={(enabled) => void save({ enabled })} />
         {project && (
-          <SettingsRow
-            label={t("agents.projectTitle")}
-            description={t("settings.imagesProjectDescription", { path: project.root.replace(/^\/(?:Users|home)\/[^/]+/, "~") })}
-            title={project.root}
-          >
-            {project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
-            <ConfigSwitch
-              checked={project.enabled}
-              disabled={loading || saving}
-              label={t("agents.projectTitle")}
-              onChange={(projectEnabled) => void save({ projectEnabled })}
-            />
-          </SettingsRow>
+          <SettingsScopeRow
+            projectPath={project.root}
+            checked={project.enabled}
+            overridden={project.overridden}
+            disabled={loading || saving}
+            onChange={(projectEnabled) => void save({ projectEnabled })}
+            onReset={() => void save({ projectEnabled: globalOn })}
+          />
         )}
         {activeHere && settings && settings.connections.some((connection) => connection.enabled) && (
-          <SettingsRow label={t("settings.imagesDefault")} description={t("settings.imagesDefaultDescription")}>
+          <SettingsRow label={t("settings.imagesDefault")}>
             <Select
               className="select-trigger settings-select"
               ariaLabel={t("settings.imagesDefault")}

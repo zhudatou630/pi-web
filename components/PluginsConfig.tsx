@@ -6,6 +6,7 @@ import { isImeComposing } from "@/lib/ime";
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import { ProjectOverrideTag } from "./ProjectOverride";
+import { SettingsScopeRow } from "./SettingsScope";
 import { ReloadNotice } from "./ReloadNotice";
 import {
   ConfigButton,
@@ -62,12 +63,6 @@ function versionSummary(pkg: PluginPackageInfo, t: ReturnType<typeof useI18n>["t
   return parts.length ? parts.join(" · ") : t("i18n.unknown");
 }
 
-function installLocation(scope: PluginScope, cwd: string): string {
-  return scope === "project"
-    ? `${shortenPath(cwd)}/.pi/{npm,git}`
-    : "~/.pi/agent/{npm,git}";
-}
-
 function findInstalledPackage(
   packages: PluginPackageInfo[],
   source: string,
@@ -90,15 +85,15 @@ function ResourceControls({ resource, busyKey, disabled, onToggle }: {
   onToggle: ToggleResource;
 }) {
   const { t } = useI18n();
-  if (resource.globalEnabled === null) return <span className="settings-row-status">{t("project.projectOnly")}</span>;
   const key = `resource:${resource.path}`;
   return (
     <>
+      {resource.globalEnabled === null && <span className="settings-row-status">{t("project.projectOnly")}</span>}
       <ProjectOverrideTag value={resource.projectOverride} />
       <ConfigSwitch
-        checked={resource.globalEnabled}
+        checked={resource.globalEnabled ?? resource.enabled}
         loading={busyKey === key}
-        disabled={disabled || (busyKey !== null && busyKey !== key)}
+        disabled={resource.globalEnabled === null || disabled || (busyKey !== null && busyKey !== key)}
         label={resource.name}
         onChange={() => onToggle(resource)}
       />
@@ -165,7 +160,6 @@ const STATUS_LABELS = {
 } as const;
 
 function AddPluginPanel({
-  cwd,
   source,
   scope,
   projectResourcesLoaded,
@@ -175,7 +169,6 @@ function AddPluginPanel({
   onScopeChange,
   onInstall,
 }: {
-  cwd: string;
   source: string;
   scope: PluginScope;
   projectResourcesLoaded: boolean;
@@ -195,13 +188,7 @@ function AddPluginPanel({
 
   return (
     <SettingsDetailPage
-      title={t("i18n.addPlugin")}
-      description={(
-        <>
-          {t("plugins.addDescription")}{" "}
-          <a href="https://pi.dev/packages" target="_blank" rel="noopener noreferrer" className="settings-link">pi.dev/packages ↗</a>
-        </>
-      )}
+      title={<>{t("i18n.addPlugin")} <a href="https://pi.dev/packages" target="_blank" rel="noopener noreferrer" className="settings-link settings-title-link">pi.dev/packages ↗</a></>}
     >
       <SettingsGroup>
         <div className="settings-search">
@@ -220,7 +207,7 @@ function AddPluginPanel({
               onSourceChange(normalized);
             }}
             onBlur={(e) => onSourceChange(normalizePluginSourceInput(e.currentTarget.value))}
-            placeholder="npm:@scope/package"
+            placeholder={t("plugins.sourcePlaceholder")}
             onKeyDown={(e) => {
               if (isImeComposing(e)) return;
               if (e.key === "Enter" && source.trim() && !busy) onInstall();
@@ -230,7 +217,7 @@ function AddPluginPanel({
             {busy ? t("i18n.installing") : t("i18n.install")}
           </ConfigButton>
         </div>
-        <SettingsRow label={t("skills.installTo")} description={installLocation(scope, cwd)}>
+        <SettingsRow label={t("skills.installTo")}>
           <SettingsSegmented
             label={t("skills.installTo")}
             value={scope}
@@ -318,14 +305,12 @@ function PackageDetail({
       )}
     >
       <SettingsGroup>
-        <SettingsRow label={t("plugins.enabled")} description={t("plugins.enabledDescription")}>
-          <ConfigSwitch
-            checked={enabled}
-            loading={busy}
-            onChange={() => onAction(pkg.disabled ? "enable" : "disable", pkg)}
-            label={pkg.disabled ? t("i18n.enablePackage") : t("i18n.disablePackage")}
-          />
-        </SettingsRow>
+        <SettingsScopeRow
+          label={pkg.scope === "project" ? t("settings.scope.project") : undefined}
+          checked={enabled}
+          loading={busy}
+          onChange={() => onAction(pkg.disabled ? "enable" : "disable", pkg)}
+        />
         <SettingsRow
           label={t("i18n.version")}
           description={(
@@ -373,7 +358,7 @@ function PackageDetail({
       <ResourceList pkg={pkg} busyKey={busyKey} onToggleResource={onToggleResource} />
 
       <SettingsGroup>
-        <SettingsRow label={t("plugins.removeTitle")} description={t("plugins.removeDescription")}>
+        <SettingsRow label={t("plugins.removeTitle")}>
           <ConfigButton variant="danger" size="small" onClick={() => onAction("remove", pkg)} disabled={busy}>
             {busyKey === `remove:${key}` ? t("i18n.removing") : t("i18n.remove")}
           </ConfigButton>
@@ -403,15 +388,19 @@ function StandaloneExtensionDetail({ extension, busyKey, actionError, actionMess
         </>
       )}
     >
-      {extension.globalEnabled !== null && (
-        <SettingsGroup>
-          <SettingsRow label={t("plugins.enabled")} description={t("plugins.extensionEnabledDescription")}>
-            <ResourceControls resource={extension} busyKey={busyKey} onToggle={onToggle} />
-          </SettingsRow>
-          {actionMessage && <p role="status" className="settings-row-message is-success">{actionMessage}</p>}
-          {actionError && <p role="alert" className="settings-row-message is-error">{actionError}</p>}
-        </SettingsGroup>
-      )}
+      <SettingsGroup>
+        <SettingsScopeRow
+          checked={extension.globalEnabled ?? extension.enabled}
+          disabled={extension.globalEnabled === null || busyKey !== null}
+          loading={busyKey === `resource:${extension.path}`}
+          onChange={() => onToggle(extension)}
+        >
+          {extension.globalEnabled === null && <span className="settings-row-status">{t("project.projectOnly")}</span>}
+          <ProjectOverrideTag value={extension.projectOverride} />
+        </SettingsScopeRow>
+        {actionMessage && <p role="status" className="settings-row-message is-success">{actionMessage}</p>}
+        {actionError && <p role="alert" className="settings-row-message is-error">{actionError}</p>}
+      </SettingsGroup>
       <SettingsGroup title={t("settings.details")}>
         <SettingsProperties>
           <SettingsProperty label={t("i18n.status")}>
@@ -682,7 +671,6 @@ export function PluginsConfig({
             <>
               <SettingsBackLink label={t("common.plugins")} onClick={openList} />
               <AddPluginPanel
-                cwd={cwd}
                 source={installSource}
                 scope={installScope}
                 projectResourcesLoaded={projectResourcesLoaded}
@@ -753,12 +741,10 @@ export function PluginsConfig({
                 <ConfigButton size="small" onClick={() => { setActionError(null); setView("add"); }}>{t("i18n.addPlugin")}</ConfigButton>
               </div>
               {data?.diagnostics.length ? (
-                <p
-                  className={`settings-row-message ${data.diagnostics.some((d) => d.type === "error") ? "is-error" : "is-warning"}`}
-                  title={data.diagnostics.map((d) => `${d.type}: ${d.source ? `${d.source}: ` : ""}${d.message}`).join("\n")}
-                >
-                  {t("plugins.diagnostics", { count: data.diagnostics.length })}
-                </p>
+                <details className={`settings-row-message ${data.diagnostics.some((d) => d.type === "error") ? "is-error" : "is-warning"}`}>
+                  <summary>{t("plugins.diagnostics", { count: data.diagnostics.length })}</summary>
+                  {data.diagnostics.map((d, index) => <p key={index}>{d.source && `${d.source}: `}{d.message}</p>)}
+                </details>
               ) : null}
               {actionMessage && <p role="status" className="settings-row-message is-success">{actionMessage}</p>}
               {(actionError || updateError) && <p role="alert" className="settings-row-message is-error is-pre">{actionError || updateError}</p>}

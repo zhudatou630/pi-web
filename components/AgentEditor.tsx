@@ -13,11 +13,11 @@ import {
   ConfigEmptyState,
   ConfigField,
   ConfigFooter,
-  ConfigSwitch,
   SettingsDetailPage,
   SettingsGroup,
   SettingsRow,
 } from "./SettingsUi";
+import { SettingsScopeRow } from "./SettingsScope";
 import { ModelSelector } from "./ModelSelector";
 import { Select } from "./Select";
 
@@ -444,9 +444,10 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
       : { provider: draft.model.slice(0, separator), modelId: draft.model.slice(separator + 1) };
   })();
   const profileTitle = mode === "create" ? t("agents.new") : draft.displayName || draft.name;
-  const sourceNotes = !writing && effective ? [
-    ...(effective.disableStub && effective.scope !== "global" ? [t("agents.stubNote")] : []),
-  ] : [];
+  const definitionScope = effective?.disableStub ? shadowed[0]?.scope : effective?.scope;
+  const projectDefinition = overriding || (writing ? editor.targetScope !== "global" : definitionScope === "project" || definitionScope === "workspace");
+  const projectStubbed = !writing && effective?.disableStub && effective.scope !== "global";
+  const projectScoped = Boolean(projectDefinition || fixedScope || projectStubbed);
   const restoresDefault = shadowed[0]?.scope === "builtin";
   const enabledChecked = pendingFile ? draft.enabled : Boolean(effective?.enabled);
 
@@ -460,48 +461,35 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
               {effectiveTag === "modified" ? t("agents.tag.modified") : t("agents.tag.project")}
             </span>
           )}
+          {projectStubbed && <span className="settings-row-status">{t("agents.stubNote")}</span>}
           {displayedPath && <span title={fullPath ?? undefined} className="config-detail-path">{displayedPath}</span>}
         </>
       )}
-      description={sourceNotes.length > 0 && (
-        <span className="agents-source-note">
-          {sourceNotes.map((note) => <span key={note}>{note}</span>)}
-        </span>
-      )}
     >
-      {followsOwnCopy && (
-        <SettingsGroup>
-          <SettingsRow label={t("agents.ownCopyTitle")} description={t("agents.ownCopyDescription")}>
-            <ConfigButton size="small" onClick={() => void editor.remove()} disabled={saving || toggling}>
-              {t("agents.restoreGlobal")}
+      <SettingsGroup>
+        <SettingsRow label={t(projectDefinition ? "agents.definition.project" : "agents.definition.global")}>
+          {followsOwnCopy && (
+            <ConfigButton variant="ghost" size="small" onClick={() => void editor.remove()} disabled={saving || toggling}>
+              ↺ {t("agents.restoreGlobal")}
             </ConfigButton>
-          </SettingsRow>
-        </SettingsGroup>
-      )}
-      {editor.canCustomize && (
-        <SettingsGroup>
-          <SettingsRow label={t("agents.inheritedTitle")} description={t("agents.inheritedDescription")}>
+          )}
+          {editor.canCustomize && (
             <ConfigButton size="small" onClick={editor.beginCustomize} disabled={saving || toggling}>
               {t("agents.customize")}
             </ConfigButton>
-          </SettingsRow>
-        </SettingsGroup>
-      )}
+          )}
+        </SettingsRow>
+      </SettingsGroup>
 
       <SettingsGroup>
-        <SettingsRow
-          label={t("agents.enabled")}
-          description={fixedScope || (effectiveTag === "project" && !writing) || overriding
-            ? t("agents.enabledProjectDescription")
-            : t("agents.enabledDescription")}
-        >
-          <ConfigSwitch
-            checked={enabledChecked}
-            disabled={saving || toggling || (!writing && Boolean(effective?.configurationError)) || (!pendingFile && editor.enableBlocked)}
-            label={enabledChecked ? t("agents.disable") : t("agents.enable")}
-            onChange={(value) => void editor.toggleEnabled(value)}
-          />
-        </SettingsRow>
+        <SettingsScopeRow
+          projectPath={projectScoped ? editor.cwd : undefined}
+          checked={enabledChecked}
+          overridden={projectScoped ? Boolean(effectiveTag === "project") : undefined}
+          onReset={!pendingFile && effective?.scope === "project" && shadowed.length > 0 ? () => void editor.remove() : undefined}
+          disabled={saving || toggling || (!writing && Boolean(effective?.configurationError)) || (!pendingFile && editor.enableBlocked)}
+          onChange={(value) => void editor.toggleEnabled(value)}
+        />
       </SettingsGroup>
 
       <SettingsGroup title={t("agents.profile")}>
@@ -518,7 +506,6 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
                   { value: "project", label: writing ? t("agents.saveLocation.project") : t("agents.saveLocation.override") },
                 ]}
               />
-              {overriding && <span className="settings-row-message">{t("agents.overrideNote")}</span>}
             </Field>
           )}
           <div className="settings-form-pair">
@@ -601,13 +588,12 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
 
       {shown && !writing && (
         <SettingsGroup>
-          <SettingsRow label={t("agents.duplicate")} description={t("agents.duplicateDescription")}>
+          <SettingsRow label={t("agents.duplicate")}>
             <ConfigButton size="small" onClick={editor.beginDuplicate} disabled={saving || toggling}>{t("agents.duplicate")}</ConfigButton>
           </SettingsRow>
           {removable && !followsOwnCopy && (
             <SettingsRow
               label={!shadowed[0] ? t("agents.deleteTitle") : restoresDefault ? t("agents.restoreDefault") : t("agents.restoreGlobal")}
-              description={!shadowed[0] ? t("agents.deleteDescription") : restoresDefault ? t("agents.restoreDefaultDescription") : t("agents.restoreGlobalDescription")}
             >
               <ConfigButton variant="danger" size="small" onClick={() => void editor.remove()} disabled={saving || toggling}>
                 {!shadowed[0] ? t("agents.delete") : restoresDefault ? t("agents.restoreDefault") : t("agents.restoreGlobal")}

@@ -151,8 +151,9 @@ test("keeps image generation on its own settings page", async () => {
   assert.match(imagesSource, /t\("settings\.imagesDefault"\)/);
   assert.match(imagesSource, /save\(\{ default: value \}\)/);
   assert.doesNotMatch(imagesSource, /settings-image-presets|addPreset|missingPresets/);
-  assert.match(enSource, /"settings\.imagesEnabled": "On by default"/);
-  assert.match(zhSource, /"settings\.imagesEnabled": "默认启用"/);
+  assert.match(imagesSource, /<SettingsScopeRow checked=\{globalOn\}/);
+  assert.match(enSource, /"settings\.scope\.default": "On by default"/);
+  assert.match(zhSource, /"settings\.scope\.default": "默认启用"/);
 });
 
 test("labels agent profiles as sub-agents", () => {

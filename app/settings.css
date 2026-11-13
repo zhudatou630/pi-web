@@ -96,15 +96,6 @@
   outline: none;
 }
 
-.agents-source-note {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  color: var(--text-dim);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
 /* "Reload to apply" banner shared by every settings page (components/ReloadNotice.tsx). */
 .settings-reload-notice {
   display: flex;
@@ -1270,6 +1261,12 @@
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+.settings-title-link {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .settings-scope-inherited {

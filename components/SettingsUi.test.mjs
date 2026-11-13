@@ -109,13 +109,12 @@ test("skills and plugins pages show translated state and never edit package-owne
   // Auto-invoke is a property of the skill file, editable even while the skill is off globally (97c3c156d).
   assert.match(sources.SkillsConfig, /checked=\{autoInvoke\}\s*disabled=\{isPackageSkill\(skill\)\}/);
   // The list switch is the global load switch; auto-invoke lives in the detail page.
-  assert.match(sources.SkillsConfig, /<ConfigSwitch\s+checked=\{skill\.globalEnabled\}[\s\S]*?label=\{t\("skills\.enabled"\)\}/);
+  assert.match(sources.SkillsConfig, /<ConfigSwitch\s+checked=\{skill\.globalEnabled \?\? skill\.enabled\}[\s\S]*?disabled=\{skill\.globalEnabled === null\}/);
   assert.match(sources.SkillsConfig, /patchSkill\(skill, \{ enabled: !skill\.globalEnabled \}\)/);
   // No raw English status or scope strings reach the page.
   assert.doesNotMatch(sources.PluginsConfig, /setActionMessage\("/);
   assert.match(sources.PluginsConfig, /t\(STATUS_LABELS\[pkg\.status\]\)/);
-  // pi installs project packages under <cwd>/.pi/{npm,git}.
-  assert.match(sources.PluginsConfig, /\/\.pi\/\{npm,git\}`/);
+  assert.doesNotMatch(sources.PluginsConfig, /installLocation/);
 });
 
 test("keeps shared static presentation in the stylesheet", () => {
@@ -189,14 +188,15 @@ test("the Images page follows the shared switch, banner, and wording rules", asy
   assert.doesNotMatch(images, /sendAgentCommand/);
   // "改图" is the image dialog's edit action, not "edit this connection".
   assert.doesNotMatch(images, /editLabel=\{t\("image\.edit"\)\}/);
-  assert.match(images, /checked=\{project\.enabled\}\s*disabled=\{loading \|\| saving\}/);
+  assert.match(images, /checked=\{project\.enabled\}[\s\S]*?disabled=\{loading \|\| saving\}/);
   assert.match(images, /const activeHere = globalOn \|\| project\?\.enabled === true;/);
   assert.match(images, /save\(\{ projectEnabled \}\)/);
 });
 
 test("feature rows on the This project page say whether they follow the default, not how they are wired", async () => {
   const project = await readFile(new URL("./ProjectConfig.tsx", import.meta.url), "utf8");
-  assert.match(project, /state\.project\.overridden\s*\? t\("project\.feature\.overridden"/);
-  assert.match(project, /: t\("project\.feature\.follows"\)/);
+  assert.match(project, /<SettingsScopeControl\s+overridden=\{state\.project\.overridden\}/);
+  assert.match(project, /onReset=\{\(\) => void run\(\(\) => putFeatureEnabled\(feature\.putUrl, state\.enabled\), true\)\}/);
+  assert.doesNotMatch(project, /project\.feature\.overridden|project\.feature\.follows/);
   assert.doesNotMatch(enSource + zhSource, /Same switch as|是同一个开关/);
 });

@@ -16,6 +16,7 @@ import { ProjectOverrideTag } from "./ProjectOverride";
 import { ReloadNotice } from "./ReloadNotice";
 import { MarkdownBody } from "./MarkdownBody";
 import { parseFrontmatter } from "@/lib/frontmatter";
+import { SettingsScopeRow } from "./SettingsScope";
 import {
   ConfigButton,
   ConfigPanelShell,
@@ -175,26 +176,19 @@ function SkillDetail({
       description={skill.description}
     >
       <SettingsGroup>
-        <SettingsRow
-          label={t("skills.enabled")}
-          description={skill.globalEnabled === null ? t("skills.noGlobalSwitch") : t("skills.enabledDescription")}
+        <SettingsScopeRow
+          checked={skill.globalEnabled ?? skill.enabled}
+          disabled={skill.globalEnabled === null}
+          loading={toggling}
+          onChange={() => onToggleEnabled(skill)}
         >
-          {skill.globalEnabled !== null && (
-            <ConfigSwitch
-              checked={skill.globalEnabled}
-              loading={toggling}
-              label={t("skills.enabled")}
-              onChange={() => onToggleEnabled(skill)}
-            />
-          )}
-        </SettingsRow>
+          {skill.globalEnabled === null && <span className="settings-row-status">{t("project.projectOnly")}</span>}
+        </SettingsScopeRow>
         {/* A property of the skill file: it applies wherever the skill is loaded, so a skill off globally but on in a project stays editable. */}
         <SettingsRow
           label={t("skills.modelInvocation")}
-          description={isPackageSkill(skill)
-            ? t("skills.packageManaged")
-            : autoInvoke ? t("skills.modelInvocationOn") : t("i18n.hiddenButInvocable")}
         >
+          {isPackageSkill(skill) && <span className="settings-row-status">{t("skills.fromPlugin")}</span>}
           <ConfigSwitch
             checked={autoInvoke}
             disabled={isPackageSkill(skill)}
@@ -251,15 +245,11 @@ function SkillDetail({
       </SettingsGroup>
 
       <SettingsGroup>
-        <SettingsRow
-          label={t("skills.deleteTitle")}
-          description={skill.removable ? t("skills.deleteDescription") : t("skills.notRemovable")}
-        >
-          {skill.removable && (
-            <ConfigButton variant="danger" size="small" onClick={onDelete} disabled={deleting}>
-              {t("i18n.delete")}
-            </ConfigButton>
-          )}
+        <SettingsRow label={t("skills.deleteTitle")}>
+          {!skill.removable && <span className="settings-row-status">{t(isProjectFile(skill) ? "project.projectOnly" : "skills.fromPlugin")}</span>}
+          <ConfigButton variant="danger" size="small" onClick={onDelete} disabled={deleting || !skill.removable}>
+            {t("i18n.delete")}
+          </ConfigButton>
         </SettingsRow>
         {deleteError && <p role="alert" className="settings-row-message is-error">{deleteError}</p>}
       </SettingsGroup>
@@ -354,20 +344,9 @@ function AddSkillPanel({
     [onInstalled, scope, cwd],
   );
 
-  const installPath =
-    scope === "global"
-      ? "~/.pi/agent/skills/"
-      : `${shortenPath(cwd)}/.pi/skills/`;
-
   return (
     <SettingsDetailPage
-      title={t("i18n.addSkill")}
-      description={(
-        <>
-          {t("skills.addDescription")}{" "}
-          <a href="https://skills.sh" target="_blank" rel="noreferrer" className="settings-link">skills.sh ↗</a>
-        </>
-      )}
+      title={<>{t("i18n.addSkill")} <a href="https://skills.sh" target="_blank" rel="noreferrer" className="settings-link settings-title-link">skills.sh ↗</a></>}
     >
       <SettingsGroup>
         <div className="settings-search">
@@ -393,7 +372,7 @@ function AddSkillPanel({
             {searching ? t("i18n.searching") : t("i18n.search")}
           </ConfigButton>
         </div>
-        <SettingsRow label={t("skills.installTo")} description={installPath}>
+        <SettingsRow label={t("skills.installTo")}>
           <SettingsSegmented
             label={t("skills.installTo")}
             value={scope}
@@ -655,7 +634,6 @@ export function SkillsConfig({
     const message = [
       t("skills.deleteConfirm", { path: shortenPath(skill.filePath) }),
       skill.install ? t("skills.deleteViaSkillsSh") : null,
-      t("skills.deleteReloadHint"),
     ].filter(Boolean).join("\n\n");
     if (!(await confirm(message, { danger: true, confirmLabel: t("i18n.delete") }))) return;
     setDeletingSkill(skill.filePath);
@@ -783,17 +761,14 @@ export function SkillsConfig({
                       >
                         {hasUpdate && <span className="settings-row-status is-accent">{t("i18n.updateAvailable")}</span>}
                         <ProjectOverrideTag value={skill.projectOverride} />
-                        {skill.globalEnabled === null ? (
-                          // No global switch: a project file or project package, switched on the This project page.
-                          !isProjectFile(skill) && <span className="settings-row-status">{t("project.projectOnly")}</span>
-                        ) : (
-                          <ConfigSwitch
-                            checked={skill.globalEnabled}
-                            loading={toggling.has(skill.filePath)}
-                            label={t("skills.enabled")}
-                            onChange={() => void toggleEnabled(skill)}
-                          />
-                        )}
+                        {skill.globalEnabled === null && <span className="settings-row-status">{t("project.projectOnly")}</span>}
+                        <ConfigSwitch
+                          checked={skill.globalEnabled ?? skill.enabled}
+                          disabled={skill.globalEnabled === null}
+                          loading={toggling.has(skill.filePath)}
+                          label={t("settings.scope.default")}
+                          onChange={() => void toggleEnabled(skill)}
+                        />
                       </SettingsLinkRow>
                     );
                   })}

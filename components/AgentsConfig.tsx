@@ -17,6 +17,7 @@ import {
   SettingsLoading,
   SettingsRow,
 } from "./SettingsUi";
+import { SettingsScopeRow } from "./SettingsScope";
 import { ReloadNotice } from "./ReloadNotice";
 import { AgentsImportDialog } from "./AgentsImportDialog";
 import { AgentDetail, AgentSaveFooter, profileTag, shortenPath, useAgentEditor } from "./AgentEditor";
@@ -172,32 +173,19 @@ export function AgentsConfig({
           {page === "list" ? (
             <>
               <SettingsGroup>
-                <SettingsRow label={t("agents.builtInTitle")} description={t("agents.builtInDescription")}>
-                  <ConfigSwitch
-                    checked={builtInEnabled}
+                <SettingsScopeRow checked={builtInEnabled} disabled={settingsLoading} loading={settingsSaving} onChange={(enabled) => void putSubagentSwitch({ enabled })} />
+                {project && (
+                  <SettingsScopeRow
+                    projectPath={project.root}
+                    checked={project.enabled}
+                    overridden={project.overridden}
                     disabled={settingsLoading}
                     loading={settingsSaving}
-                    label={t("agents.builtInTitle")}
-                    onChange={(enabled) => void putSubagentSwitch({ enabled })}
+                    onChange={(projectEnabled) => void putSubagentSwitch({ projectEnabled })}
+                    onReset={() => void putSubagentSwitch({ projectEnabled: builtInEnabled })}
                   />
-                </SettingsRow>
-                {project && (
-                  <SettingsRow
-                    label={t("agents.projectTitle")}
-                    description={t("agents.projectDescription", { path: shortenPath(project.root) })}
-                    title={project.root}
-                  >
-                    {project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
-                    <ConfigSwitch
-                      checked={project.enabled}
-                      disabled={settingsLoading}
-                      loading={settingsSaving}
-                      label={t("agents.projectTitle")}
-                      onChange={(projectEnabled) => void putSubagentSwitch({ projectEnabled })}
-                    />
-                  </SettingsRow>
                 )}
-                <SettingsRow label={t("agents.maxConcurrent")} description={t("agents.maxConcurrentDescription")}>
+                <SettingsRow label={t("agents.maxConcurrent")}>
                   <input
                     aria-label={t("agents.maxConcurrent")}
                     className="settings-inline-input agents-number-input"

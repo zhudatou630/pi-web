@@ -16,17 +16,18 @@ test("offers a persisted built-in sub-agent switch with explicit session reload"
   assert.match(source, /putSubagentSwitch\(\{ enabled \}\)/);
   assert.match(source, /JSON\.stringify\(\{ maxConcurrent: value \}\)/);
   assert.match(source, /t\("agents\.maxConcurrent"\)/);
-  assert.match(source, /<ConfigSwitch[\s\S]*?checked=\{builtInEnabled\}[\s\S]*?t\("agents\.builtInTitle"\)/);
+  assert.match(source, /<SettingsScopeRow checked=\{builtInEnabled\}/);
   assert.match(source, /\{reloadNeeded && <ReloadNotice sessionId=\{sessionId\}/);
   assert.match(cssSource, /\.settings-reload-notice \{[\s\S]*?border-bottom: 1px solid var\(--border\)/);
-  assert.match(source, /<SettingsRow label=\{t\("agents\.builtInTitle"\)\} description=\{t\("agents\.builtInDescription"\)\}>/);
+  assert.doesNotMatch(source, /agents\.builtInDescription|agents\.maxConcurrentDescription/);
 });
 
 test("a project switch overrides the default either way and dims the profiles when off here", () => {
   assert.match(source, /settingsUrls\.subagentSettings\(cwd\)/);
   // Never locked by the default: a project can switch sub-agents on while the default is off.
-  assert.match(source, /checked=\{project\.enabled\}\s*disabled=\{settingsLoading\}/);
-  assert.match(source, /project\.overridden && <span className="settings-row-status">/);
+  assert.match(source, /checked=\{project\.enabled\}[\s\S]*?disabled=\{settingsLoading\}/);
+  assert.match(source, /overridden=\{project\.overridden\}/);
+  assert.match(source, /onReset=\{\(\) => void putSubagentSwitch\(\{ projectEnabled: builtInEnabled \}\)\}/);
   assert.match(source, /putSubagentSwitch\(\{ projectEnabled \}\)/);
   assert.match(source, /const activeHere = project\?\.enabled \?\? builtInEnabled;/);
   assert.match(source, /!activeHere && <p role="status"[^>]*>\{t\("agents\.inactiveNotice"\)\}/);
@@ -99,7 +100,7 @@ test("shows a disable stub as the definition it hides; built-ins are edited as a
   // A project stub only hides the agent there: the Agents form still edits the definition below it.
   assert.match(editorSource, /return top\.disableStub && top\.scope !== "global" \? below \?\? top : top;/);
   assert.match(editorSource, /enabled: fixedScope \? top\.enabled : owner\.enabled/);
-  assert.match(editorSource, /effective\.disableStub && effective\.scope !== "global" \? \[t\("agents\.stubNote"\)\]/);
+  assert.match(editorSource, /projectStubbed && <span className="settings-row-status">\{t\("agents\.stubNote"\)\}/);
   // Opening an agent and pressing Save without changes must not fork a built-in.
   assert.match(editorSource, /disabled=\{editor\.saving \|\| editor\.savedOk \|\| editor\.toggling \|\| !editor\.dirty/);
 });
@@ -139,7 +140,7 @@ test("duplicates the shown definition into a new global agent", () => {
   assert.match(editorSource, /function duplicateProfileName\(name: string, profiles: readonly SubagentProfile\[\]\)/);
   assert.match(editorSource, /\.\.\.editableProfile\(shown\),[\s\S]*?name: duplicateProfileName\(shown\.name, profiles\),[\s\S]*?displayName: t\("agents\.copyName"/);
   // Enable switch leads the page; duplicate and remove sit at the bottom, remove last.
-  assert.match(editorSource, /<ConfigSwitch\s+checked=\{enabledChecked\}[\s\S]*?onClick=\{editor\.beginDuplicate\}[\s\S]*?onClick=\{\(\) => void editor\.remove\(\)\}/);
+  assert.match(editorSource, /<SettingsScopeRow[\s\S]*?checked=\{enabledChecked\}[\s\S]*?onClick=\{editor\.beginDuplicate\}[\s\S]*?onClick=\{\(\) => void editor\.remove\(\)\}/);
 });
 
 test("removing a file names the version that takes over", () => {

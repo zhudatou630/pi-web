@@ -19,7 +19,6 @@ import { getJson, peekJson, settingsUrls } from "@/lib/settings-cache";
 import {
   ConfigButton,
   ConfigPanelShell,
-  ConfigSwitch,
   CountedTitle,
   SettingsBackLink,
   SettingsGroup,
@@ -28,6 +27,7 @@ import {
   SettingsRow,
   SettingsSearch,
 } from "./SettingsUi";
+import { SettingsScopeControl } from "./SettingsScope";
 import { ReloadNotice } from "./ReloadNotice";
 import { AgentDetail, AgentSaveFooter, useAgentEditor } from "./AgentEditor";
 import { AgentsImportDialog } from "./AgentsImportDialog";
@@ -282,12 +282,14 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     if (agentCustomized.length > 0 && !(await confirm(t("project.resetAgentsConfirm", { count: agentCustomized.length }), { danger: true, confirmLabel: t("project.resetAll") }))) return;
     return resetAllNow();
   };
-  const resetAllNow = () => run(async () => {
-    const back = (item: ProjectResourceItem) => item.globalEnabled ?? true;
-    const on = overridden.filter(back);
-    const off = overridden.filter((item) => !back(item));
+  const resetResources = async (items: ProjectResourceItem[]) => {
+    const on = items.filter((item) => item.overridden && (item.globalEnabled ?? true));
+    const off = items.filter((item) => item.overridden && item.globalEnabled === false);
     if (on.length) await post(on, true);
     if (off.length) await post(off, false);
+  };
+  const resetAllNow = () => run(async () => {
+    await resetResources(overridden);
     // Setting a project back to the global default drops its override.
     for (const feature of featuresOverridden) await putFeatureEnabled(feature.putUrl, features[feature.id]!.enabled);
     // Project-only agents have no global counterpart to follow, so they stay.
@@ -344,9 +346,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
     ? t("project.handWritten")
     : item.globalEnabled === null
     ? t("project.projectOnly")
-    : item.overridden
-      ? item.globalEnabled ? t("project.globalOn") : t("project.globalOff")
-      : null;
+    : null;
 
   const itemRow = (item: ProjectResourceItem, nested: boolean, label = item.name, description = typeLabel(item)) => {
     const state = itemState(item);
@@ -359,12 +359,13 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
               <button type="button" className="settings-row-tag is-link" onClick={() => onOpenSkill(item.path)}>{t("skills.tag.manual")}</button>
             ) : <span className="settings-row-tag">{t("skills.tag.manual")}</span>)}
           </span>
-          <span className="settings-row-description">{description}{state && <> · {state}</>}</span>
+          {(description || state) && <span className="settings-row-description">{description}{description && state ? " · " : ""}{state}</span>}
         </div>
         <div className="settings-row-control">
-          {item.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
-          <ConfigSwitch
+          <SettingsScopeControl
             checked={item.enabled}
+            overridden={item.globalEnabled === null ? undefined : item.overridden}
+            onReset={() => void run(() => resetResources([item]), true)}
             disabled={locked || !item.editable}
             label={label}
             onChange={(enabled) => void setEnabled([item], enabled)}
@@ -395,12 +396,10 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
       <div className="settings-scroll">
         <div className="settings-page">
           <div className="settings-sticky-head">
-            <div className="project-head" title={`${cwd}/.pi/settings.json`}>
+            <div className="project-head" title={cwd}>
               <span className="project-head-name">{projectName}</span>
-              <span className="project-head-path">
-                {shortenPath(cwd)}
-                {syncHint && <> · {syncHint}</>}
-              </span>
+              {syncHint && <span className="settings-row-status">{syncHint}</span>}
+              <span className="project-head-path">{shortenPath(cwd)}</span>
             </div>
             <div className="settings-toolbar">
               <SettingsSearch value={filter} onChange={setFilter} placeholder={t("project.filterPlaceholder")} />
@@ -440,12 +439,10 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                       <SettingsRow
                         key={feature.id}
                         label={t(feature.label)}
-                        description={state.project.overridden
-                          ? t("project.feature.overridden", { state: t(state.enabled ? "project.feature.on" : "project.feature.off") })
-                          : t("project.feature.follows")}
                       >
-                        {state.project.overridden && <span className="settings-row-status">{t("project.tag.override")}</span>}
-                        <ConfigSwitch
+                        <SettingsScopeControl
+                          overridden={state.project.overridden}
+                          onReset={() => void run(() => putFeatureEnabled(feature.putUrl, state.enabled), true)}
                           checked={state.project.enabled}
                           disabled={busy || (feature.needsTrust && !trusted)}
                           label={t(feature.label)}
@@ -468,11 +465,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                 >
                   {subagentsInactive && <p role="status" className="settings-row-message">{t("agents.inactiveNotice")}</p>}
                   {visibleAgentRows.map((row) => {
-                    const state = row.stub ? t("project.agent.state.stub")
-                      : row.customized ? t("project.agent.state.overridesGlobal")
-                      : row.projectOnly ? t("project.agent.state.projectOnly")
-                      : !row.available ? t("project.agent.state.globalOff")
-                      : null;
+                    const state = row.projectOnly ? t("project.projectOnly") : null;
                     return (
                       <SettingsLinkRow
                         key={row.name}
@@ -482,13 +475,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                         title={row.name}
                         onOpen={() => { editor.open(row.name); setAgentPage(true); }}
                       >
-                        {row.stub && <span className="settings-row-status">{t("project.tag.override")}</span>}
-                        {row.customized && (
-                          <ConfigButton size="small" variant="ghost" onClick={() => restoreAgent(row)} disabled={locked}>
-                            {t("agents.restoreGlobal")}
-                          </ConfigButton>
-                        )}
-                        <ConfigSwitch
+                        <SettingsScopeControl
+                          overridden={row.projectOnly ? undefined : row.stub || row.customized}
+                          onReset={() => restoreAgent(row)}
                           checked={row.available}
                           disabled={locked || row.enableBlocked}
                           label={row.label}
@@ -504,13 +493,10 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                 <SettingsGroup title={<CountedTitle label={t("settings.mcp")} count={visibleMcpServers.length + visibleBuiltins.length} />}>
                   {mcpBuiltinOff && visibleMcpServers.length > 0 && <p role="status" className="settings-row-message">{t("mcp.builtinOff")}</p>}
                   {/* First: the MCP servers switch describes "the servers below". */}
-                  {visibleBuiltins.map((item) => itemRow(item, false, t(`mcp.builtin.${builtinName(item)}`), t(`mcp.builtin.${builtinName(item)}.description`)))}
+                  {visibleBuiltins.map((item) => itemRow(item, false, t(`mcp.builtin.${builtinName(item)}`), ""))}
                   {visibleMcpServers.map((server) => {
                     const replaces = server.scope === "project" && mcpReplaced.has(server.name);
-                    const state = replaces ? t("project.agent.state.overridesGlobal")
-                      : server.scope === "project" ? t("project.projectOnly")
-                      : server.projectOverride ? t(server.globalEnabled ? "project.globalOn" : "project.globalOff")
-                      : null;
+                    const state = server.scope === "project" ? t(replaces ? "mcp.overridden" : "project.projectOnly") : null;
                     return (
                       <div key={`${server.scope}:${server.name}`} className="settings-row" title={server.scope === "project" ? mcp?.project?.path : mcp?.globalPath}>
                         <div className="settings-row-copy">
@@ -518,8 +504,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                           <span className="settings-row-description">{server.description ?? shortenPath(server.transport)}{state && <> · {state}</>}</span>
                         </div>
                         <div className="settings-row-control">
-                          {(server.projectOverride || replaces) && <span className="settings-row-status">{t("project.tag.override")}</span>}
-                          <ConfigSwitch
+                          <SettingsScopeControl
+                            overridden={server.scope === "project" ? undefined : Boolean(server.projectOverride)}
+                            onReset={() => void run(() => mcpRequest("DELETE", { name: server.name }), true)}
                             checked={server.enabled}
                             disabled={locked}
                             label={server.name}
@@ -559,10 +546,9 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                         title={group.source}
                         onOpen={toggleOpen}
                       >
-                        {group.items.some((item) => item.overridden) && (
-                          <span className="settings-row-status">{t("project.tag.override")}</span>
-                        )}
-                        <ConfigSwitch
+                        <SettingsScopeControl
+                          overridden={group.scope === "project" ? undefined : group.items.some((item) => item.overridden)}
+                          onReset={() => void run(() => resetResources(group.items), true)}
                           checked={loaded > 0}
                           disabled={locked || !editable}
                           label={group.label}
