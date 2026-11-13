@@ -41,8 +41,8 @@ async function snapshot(readIds: string[] = [], observedAt = 0, knownReadAtVersi
   );
 }
 
-export async function GET(request?: Request) {
-  return snapshot([], 0, request ? new URL(request.url).searchParams.get("readAtVersion") : undefined);
+export async function GET(request: Request) {
+  return snapshot([], 0, new URL(request.url).searchParams.get("readAtVersion"));
 }
 
 // The normal poll carries attended panes too: no extra read-sync request or catalog invalidation.

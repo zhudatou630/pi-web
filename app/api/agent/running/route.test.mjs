@@ -23,23 +23,23 @@ test("running poll shares server-clock reads for both panes, never reads active 
   let now = Date.now();
   t.mock.method(Date, "now", () => now);
   const post = (body) => POST(new Request("http://localhost/api/agent/running", { method: "POST", body: JSON.stringify(body) }));
-  const first = await (await GET()).json();
+  const first = await (await GET(new Request("http://localhost/api/agent/running"))).json();
   assert.equal(first.serverNow, now);
   assert.deepEqual(first.runningSessionIds, ["root"]);
   assert.deepEqual(first.readAt, {});
   await post({ readSessionIds: ["root", "other-pane"], observedAt: first.serverNow });
-  let snapshot = await (await GET()).json();
+  let snapshot = await (await GET(new Request("http://localhost/api/agent/running"))).json();
   assert.deepEqual(snapshot.readAt, { "other-pane": now });
   now += 100; running = false;
-  const done = await (await GET()).json();
+  const done = await (await GET(new Request("http://localhost/api/agent/running"))).json();
   assert.equal(done.completedAt.root, now);
   // A delayed request carries the time the page actually saw, not its arrival time.
   now += 100;
   await post({ readSessionIds: ["root"], observedAt: first.serverNow });
-  snapshot = await (await GET()).json();
+  snapshot = await (await GET(new Request("http://localhost/api/agent/running"))).json();
   assert.ok(snapshot.readAt.root < snapshot.completedAt.root);
   await post({ readSessionIds: ["root", "other-pane"], observedAt: snapshot.serverNow });
-  snapshot = await (await GET()).json();
+  snapshot = await (await GET(new Request("http://localhost/api/agent/running"))).json();
   assert.ok(snapshot.readAt.root >= snapshot.completedAt.root);
   assert.equal(snapshot.sessionListVersion, first.sessionListVersion, "read writes do not trigger full catalog fetches");
   const path = join(agentDir, "pi-web", "sidebar-state.json");
