@@ -111,6 +111,8 @@ interface Props {
 export interface ChatInputHandle {
   focus: () => void;
   insertText: (text: string) => void;
+  setText: (text: string) => void;
+  pasteText: (text: string) => void;
   insertIfEmpty: (text: string) => void;
   addQuote: (quote: Quote) => void;
   replaceMessage: (message: UserMessage) => Promise<boolean>;
@@ -934,6 +936,24 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       quotesRef.current = next;
       setQuotes(next);
       requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    setText(text: string) {
+      const ta = textareaRef.current;
+      if (ta) replaceTextareaRange(ta, 0, ta.value.length, text);
+      valueRef.current = text;
+      setValue(text);
+      setCursorPosition(text.length);
+      setAtQuery(null);
+    },
+    pasteText(text: string) {
+      if (!text) return; // Empty paste must not delete a selection.
+      const ta = textareaRef.current;
+      if (ta) replaceTextareaRange(ta, ta.selectionStart, ta.selectionEnd, text);
+      const next = ta ? ta.value : valueRef.current + text;
+      valueRef.current = next;
+      setValue(next);
+      setCursorPosition(ta ? ta.selectionStart : next.length);
+      setAtQuery(null);
     },
     insertText(text: string) {
       const ta = textareaRef.current;
