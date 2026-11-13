@@ -5,13 +5,16 @@ import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import type { SessionInfo } from "@/lib/types";
 import type { SessionSearchResponse } from "@/lib/session-search";
+import { workspaceKeyOf } from "@/lib/workspace-key";
+import { getFileName } from "@/lib/file-paths";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 
-export function SessionSearch({ open, query, refreshKey, children, archivedSessionIds, selectedSessionId, onSelectSession }: {
+export function SessionSearch({ open, query, refreshKey, children, projectNames, archivedSessionIds, selectedSessionId, onSelectSession }: {
   open: boolean;
   query: string;
   refreshKey: number | null;
   children: ReactNode;
+  projectNames: ReadonlyMap<string, string>;
   archivedSessionIds?: ReadonlySet<string>;
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, entryId?: string, blockIndex?: number) => void;
@@ -67,7 +70,10 @@ export function SessionSearch({ open, query, refreshKey, children, archivedSessi
             {archivedSessionIds?.has(session.id) && <span className="shrink-0 text-[10px] text-text-dim">{t("sidebar.archived")}</span>}
           </span>
           <span className="mt-1 flex min-w-0 gap-2 text-[11px] text-text-dim">
-            <span className="min-w-0 flex-1 truncate" title={session.cwd}>{session.cwd}</span>
+            <span className="min-w-0 flex-1 truncate" title={session.cwd}>
+              {projectNames.get(workspaceKeyOf(session)) ?? getFileName(session.projectRoot ?? session.cwd)}
+              {session.cwd !== (session.projectRoot ?? session.cwd) && ` · ${session.cwd}`}
+            </span>
             <span className="shrink-0">{formatRelativeTime(session.modified, locale)}</span>
           </span>
           {!titleOnly && <span className="mt-1 block text-xs leading-relaxed wrap-anywhere text-text-muted">

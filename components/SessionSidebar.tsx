@@ -2350,7 +2350,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
         );
       })()}
 
-      <SessionSearch archivedSessionIds={archivedMemberIds} open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
+      <SessionSearch projectNames={projectNames} archivedSessionIds={archivedMemberIds} open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
       {projectsOpen && (
       <div
         ref={listScrollRef}
