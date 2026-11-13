@@ -94,7 +94,7 @@ function sendHarness() {
   let messages = [];
   const bindings = {
     ...state.bindings, console: { error: noop },
-    agentRunningRef: ref(false), bashRunningRef: ref(false),
+    agentRunningRef: ref(false), endedSessionRef: ref(null), bashRunningRef: ref(false),
     handleNavigateRef: ref(async (id) => { calls.push(["navigate", id]); return true; }),
     restoreSubmission: (...args) => restored.push(args),
     executeBashRef: ref(async (command) => calls.push(["bash", command])),

@@ -1012,6 +1012,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.changeToolPreset": "更改工具预设",
     "chat.stopCompaction": "停止压缩",
     "chat.compactConfirm": "确认压缩",
+    "chat.sessionEnded": "扩展已结束此会话。此标签页仅供阅读；关闭后重新打开即可再次启动，草稿会保留。",
     "chat.extensionIssuesOmitted": "更多扩展问题未逐条显示，完整详情请查看服务端日志。",
     "chat.extensionError": "扩展“{path}”出错：{error}",
     "chat.extensionCommandFailed": "扩展命令失败",

@@ -56,6 +56,7 @@ export class AgentEventConnection {
   private current: Connection | null = null;
   private retry: { sessionId: string; timer: ReturnType<typeof setTimeout> } | null = null;
   private retryGeneration = 0;
+  private endedSessionId: string | null = null;
   private epoch = 0;
 
   constructor(private readonly options: AgentEventConnectionOptions) {}
@@ -67,7 +68,7 @@ export class AgentEventConnection {
   }
 
   maintain(sessionId: string): void {
-    if (!this.options.shouldMaintain(sessionId)) return;
+    if (this.endedSessionId === sessionId || !this.options.shouldMaintain(sessionId)) return;
     const retryGeneration = this.retryGeneration;
     void this.ensureConnected(sessionId).catch((error) => {
       if (retryGeneration !== this.retryGeneration) return;
@@ -85,6 +86,7 @@ export class AgentEventConnection {
   }
 
   async ensureConnected(sessionId: string, force = false): Promise<void> {
+    if (this.endedSessionId === sessionId) throw new AgentEventConnectionError("closed");
     const epoch = this.epoch;
     let forceOpen = force;
     while (true) {
@@ -174,6 +176,12 @@ export class AgentEventConnection {
         return;
       }
 
+      if (event.type === "session_ended" && event.sessionId === sessionId) {
+        this.endedSessionId = sessionId;
+        this.close();
+        this.options.onEvent(event);
+        return;
+      }
       if (event.type === "heartbeat") return;
       if (event.type === "connected") {
         watchdog.touch();
@@ -212,7 +220,7 @@ export class AgentEventConnection {
   }
 
   private scheduleRetry(sessionId: string): void {
-    if (!this.options.shouldMaintain(sessionId)) return;
+    if (this.endedSessionId === sessionId || !this.options.shouldMaintain(sessionId)) return;
     if (this.retry?.sessionId === sessionId) return;
     this.clearRetry();
 

@@ -851,7 +851,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const {
     data, loading, error, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, directImageRunning, bashRunning, pendingBash, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
+    agentRunning, sessionEnded, directImageRunning, bashRunning, pendingBash, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -1860,10 +1860,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     && session.relation.status === "queued";
   // A turn that stopped on a provider error or the output limit offers one click to pick it back up.
   const lastMessage = messages.at(-1);
-  const continuePrompt = session && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent && lastMessage?.role === "assistant"
+  const continuePrompt = session && !sessionEnded && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent && lastMessage?.role === "assistant"
     ? (lastMessage.stopReason === "error" && !isAbortedAssistantError(lastMessage) ? t("chat.continuePromptError") : lastMessage.stopReason === "length" && hasAssistantAnswer(lastMessage) ? t("chat.continuePromptTruncated") : null)
     : null;
-  const recoverTruncation = Boolean(session && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent
+  const recoverTruncation = Boolean(session && !sessionEnded && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent
     && lastMessage?.role === "assistant" && lastMessage.stopReason === "length" && !hasAssistantAnswer(lastMessage));
   const handleContinue = useCallback((prompt: string) => { void handleChatSend(prompt); }, [handleChatSend]);
 
@@ -1878,7 +1878,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
       onPromptWithStreamingBehavior={agentRunning ? handlePromptWithStreamingBehaviorWithSubmit : undefined}
       isStreaming={sessionBusy || isQueuedSubagent}
-      disabled={isQueuedSubagent}
+      disabled={isQueuedSubagent || sessionEnded}
       model={isSessionLoading ? null : displayModelValue}
       isAutoModelSelection={isSessionLoading ? false : isAutoModelSelection}
       modelNames={modelNames}
@@ -2019,7 +2019,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           pointerEvents: "none",
         }}
       >
-        <NoticeShelf notices={notices} floating onPauseChange={setNoticePaused} onOpenMcpSettings={onOpenMcpSettings} />
+        <NoticeShelf notices={sessionEnded ? [...notices, { id: "session-ended", type: "info", message: t("chat.sessionEnded") }] : notices} floating onPauseChange={setNoticePaused} onOpenMcpSettings={onOpenMcpSettings} />
       </div>
 
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -2127,10 +2127,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     entryId={entryIds[idx]}
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
                     searchTarget={msg.role === "user" && entryIds[idx] === pendingSearchScroll?.entryId}
-                    onFork={sessionBusy || isNew ? undefined : handleChatFork}
+                    onFork={sessionBusy || sessionEnded || isNew ? undefined : handleChatFork}
                     forking={forkingEntryId === entryIds[idx]}
                     prevAssistantEntryId={prevAssistantEntryId}
-                    onEditContent={sessionBusy || isCompacting ? undefined : handleEditContent}
+                    onEditContent={sessionBusy || sessionEnded || isCompacting ? undefined : handleEditContent}
                     onCancelEdit={cancelEdit}
                     isEditing={!!prevAssistantEntryId && editEntryId === prevAssistantEntryId}
                     isTurnEnd={options.isTurnEnd}

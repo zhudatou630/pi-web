@@ -37,7 +37,7 @@ function sendHarness({ mounted, creation = false, visible = true }) {
   const sessionIdRef = ref(null);
   const bindings = {
     composerDraftKey: "new:draft", composerDraftKeyRef: ref("new:draft"), pendingHistoryEdits: new Map(), handleNavigateRef: ref(undefined),
-    setEdit: noop, agentRunningRef: ref(false), bashRunningRef: ref(false), executeBashRef: ref(undefined),
+    setEdit: noop, endedSessionRef: ref(null), agentRunningRef: ref(false), bashRunningRef: ref(false), executeBashRef: ref(undefined),
     restoreSubmission: (text) => calls.push(["restore", text]),
     promptRunIdRef: ref(0), cancelEventStreamGrace: noop, rpcPromptPendingRef: ref(false),
     setMessages: noop, localAppendSeqRef: ref(0), optimisticUserMessageKeyRef: ref(null), userMessageKey: () => "key",

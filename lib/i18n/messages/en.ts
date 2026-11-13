@@ -1012,6 +1012,7 @@ export const enLocale: LocalePlugin = {
     "chat.changeToolPreset": "Change tool preset",
     "chat.stopCompaction": "Stop compaction",
     "chat.compactConfirm": "compact now",
+    "chat.sessionEnded": "An extension ended this session. This tab is read-only; close and reopen it to start again. Your draft is kept.",
     "chat.extensionIssuesOmitted": "More extension issues were omitted. See the server log for full details.",
     "chat.extensionError": "Extension \"{path}\" error: {error}",
     "chat.extensionCommandFailed": "Extension command failed",

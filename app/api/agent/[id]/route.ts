@@ -106,7 +106,7 @@ export async function POST(
       ...(commandType === "prompt" && !promptAccepted
         ? { code: "prompt_rejected", accepted: false }
         : {}),
-    }, { status: 500 });
+    }, { status: (error as { status?: unknown })?.status === 404 ? 404 : 500 });
   }
 }
 

@@ -195,6 +195,11 @@ export function createAgentEventStream(
           const bufferedEvents: AgentEventLike[] = [];
           let snapshotPublished = false;
           const handleEvent = (event: AgentEventLike) => {
+            if (event.type === "session_ended") {
+              encode(event);
+              cleanup(true);
+              return;
+            }
             if (!snapshotPublished) {
               bufferedEvents.push(event);
               return;

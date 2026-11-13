@@ -16,12 +16,12 @@ test("loading keeps the composer and does not report stats until ready", () => {
 });
 
 test("renders temporary notices once at the top right of the chat column", () => {
-  const noticeShelfUsages = source.match(/<NoticeShelf notices=\{notices\}/g) ?? [];
+  const noticeShelfUsages = source.match(/<NoticeShelf notices=/g) ?? [];
 
   assert.equal(noticeShelfUsages.length, 1);
   assert.match(
     source,
-    /position: "absolute",\s*top: 12,\s*left: 0,\s*right: 0,[\s\S]*?justifyContent: "flex-end",[\s\S]*?<NoticeShelf notices=\{notices\} floating onPauseChange=\{setNoticePaused\} onOpenMcpSettings=\{onOpenMcpSettings\} \/>/,
+    /position: "absolute",\s*top: 12,\s*left: 0,\s*right: 0,[\s\S]*?justifyContent: "flex-end",[\s\S]*?<NoticeShelf notices=\{[\s\S]*?\} floating onPauseChange=\{setNoticePaused\} onOpenMcpSettings=\{onOpenMcpSettings\} \/>/,
   );
 });
 

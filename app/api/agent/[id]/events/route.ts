@@ -15,7 +15,7 @@ export async function GET(
   // Fast path: already-running session
   const session = getRpcSession(id);
   let sessionPromise;
-  if (session?.isAlive()) {
+  if (session?.isAlive() || session?.isExtensionShutdownRequested?.()) {
     sessionPromise = Promise.resolve(session);
   } else {
     const filePath = await resolveSessionPath(id);

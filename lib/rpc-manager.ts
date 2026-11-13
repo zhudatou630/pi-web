@@ -22,7 +22,7 @@ import {
   createProjectCommandBashOperations,
   preferUserBashExtension,
 } from "./project-command-env";
-import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, resolveSessionPath } from "./session-reader";
+import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, invalidateSessionPathCache, resolveSessionPath } from "./session-reader";
 import { forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fork";
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { computeSessionStats } from "./session-stats";
@@ -361,6 +361,7 @@ export class AgentSessionWrapper {
   private routineRunMarker: { id: string; runId: string } | null = null;
   private promptAdmissionTail: Promise<void> = Promise.resolve();
   private extensionsBound = false;
+  private extensionBindingSettled = false;
   private extensionBindingPromise: Promise<void> | null = null;
   private extensionBindingError: unknown = null;
   private startupPromise: Promise<void> | null = null;
@@ -376,6 +377,9 @@ export class AgentSessionWrapper {
   private onDestroyCallback: (() => void) | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private sessionShutdownEmitted = false;
+  private extensionShutdownRequested = false;
+  private extensionShutdownComplete = false;
+  private extensionShutdownScheduled = false;
   private forceShutdownOnIdle = false;
   /** Includes the extension hook, before pi starts its own bash executor. */
   private userBashAbortController: AbortController | null = null;
@@ -437,6 +441,10 @@ export class AgentSessionWrapper {
 
   isAlive(): boolean {
     return this._alive && !this._closing;
+  }
+
+  isExtensionShutdownRequested(): boolean {
+    return this.extensionShutdownRequested;
   }
 
   isClosing(): boolean {
@@ -542,7 +550,7 @@ export class AgentSessionWrapper {
   }
 
   canStartBackgroundFollowUp(): boolean {
-    return this._alive && !this._closing && !getPausedAutomaticFollowUps().has(this.sessionId);
+    return this._alive && !this._closing && !this.extensionShutdownRequested && !getPausedAutomaticFollowUps().has(this.sessionId);
   }
 
   start(): void {
@@ -589,6 +597,7 @@ export class AgentSessionWrapper {
       }
       this.emit(event.type === "agent_settled" ? this.withSubagentsActive(event) : event);
       if (event.type === "agent_settled") this.notifyAgentRunCompleteIfIdle();
+      this.checkExtensionShutdown();
     });
     this.resetIdleTimer();
   }
@@ -601,7 +610,7 @@ export class AgentSessionWrapper {
   }
 
   private notifyAgentRunCompleteIfIdle(): void {
-    if (!this.agentRunNeedsCompletion || this.isRunning()) return;
+    if (!this.agentRunNeedsCompletion || this.isRunning() || this.extensionShutdownRequested) return;
     if (this.lastRunAborted) {
       this.agentRunNeedsCompletion = false;
       return;
@@ -660,13 +669,10 @@ export class AgentSessionWrapper {
           uiContext,
           mode: "rpc",
           commandContextActions: this.createExtensionCommandContextActions(),
-          shutdownHandler: () => this.emit({
-            type: "extension_ui_request",
-            id: randomUUID(),
-            method: "notify",
-            notifyType: "warning",
-            message: "Extension requested shutdown, but shutdown is not supported in Pi Web.",
-          } as ExtensionUiRequest as AgentEvent),
+          shutdownHandler: () => {
+            this.extensionShutdownRequested = true;
+            this.checkExtensionShutdown();
+          },
           onError: (error) => this.emit({
             type: "extension_error",
             extensionPath: error.extensionPath,
@@ -689,9 +695,23 @@ export class AgentSessionWrapper {
         error: err instanceof Error ? err.message : String(err),
       });
       throw err;
+    }).finally(() => {
+      this.extensionBindingSettled = true;
+      this.checkExtensionShutdown();
     });
 
     return this.extensionBindingPromise;
+  }
+
+  private checkExtensionShutdown(): void {
+    if (!this.extensionShutdownRequested || this.extensionShutdownScheduled) return;
+    this.extensionShutdownScheduled = true;
+    queueMicrotask(() => {
+      this.extensionShutdownScheduled = false;
+      if (!this.isAlive() || this.isRunning() || this.activeMutatingCommands > 0
+        || (this.extensionBindingPromise && !this.extensionBindingSettled)) return;
+      void this.shutdown().catch((error) => console.error("[pi-web] extension-requested shutdown failed:", error));
+    });
   }
 
   private async waitForExtensionsBound(): Promise<void> {
@@ -891,7 +911,7 @@ export class AgentSessionWrapper {
   private persistCommandOnlySession(): void {
     const manager = this.inner.sessionManager;
     const sessionFile = manager.getSessionFile();
-    if (!sessionFile || existsSync(sessionFile)) return;
+    if (!sessionFile || existsSync(sessionFile) || this.extensionShutdownRequested) return;
 
     const header = manager.getHeader();
     if (!header) return;
@@ -909,6 +929,10 @@ export class AgentSessionWrapper {
   }
 
   onEvent(listener: EventListener, keepAlive = false): () => void {
+    if (this.extensionShutdownComplete) {
+      listener({ type: "session_ended", sessionId: this.sessionId });
+      return () => {};
+    }
     const subscription: EventSubscription = {
       listener,
       keepAlive: keepAlive === true,
@@ -929,7 +953,7 @@ export class AgentSessionWrapper {
   }
 
   onClose(listener: () => void): () => void {
-    if (!this._alive) {
+    if (!this._alive && (!this.extensionShutdownRequested || this.extensionShutdownComplete)) {
       listener();
       return () => {};
     }
@@ -1071,6 +1095,7 @@ export class AgentSessionWrapper {
             this.pendingPromptCount = Math.max(0, this.pendingPromptCount - 1);
             this.resetIdleTimer();
             this.notifyAgentRunCompleteIfIdle();
+            this.checkExtensionShutdown();
           };
 
           this.pendingPromptCount += 1;
@@ -1231,6 +1256,7 @@ export class AgentSessionWrapper {
 
           if (!sessionManager.isPersisted()) return { cancelled: true };
           if (!currentSessionFile) throw new Error("Persisted session is missing a session file");
+          assertSessionFileExists(this.sessionId, currentSessionFile);
 
           const entry = sessionManager.getEntry(entryId);
           if (!entry) throw new Error("Invalid entry ID for forking");
@@ -1626,17 +1652,22 @@ export class AgentSessionWrapper {
       }
     } finally {
       if (tracksMutation) this.activeMutatingCommands = Math.max(0, this.activeMutatingCommands - 1);
+      this.checkExtensionShutdown();
     }
+  }
+
+  private closeStreams(): void {
+    for (const listener of this.closeListeners) {
+      try { listener(); } catch { /* one consumer must not block shutdown */ }
+    }
+    this.closeListeners.clear();
   }
 
   destroy(): void {
     if (!this._alive) return;
     this._closing = true;
     this._alive = false;
-    for (const listener of this.closeListeners) {
-      try { listener(); } catch { /* one consumer must not block shutdown */ }
-    }
-    this.closeListeners.clear();
+    if (!this.extensionShutdownRequested) this.closeStreams();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.cacheKeepalive?.stop();
     this.directImageAbortController?.abort(new DOMException("Session closed", "AbortError"));
@@ -1653,7 +1684,19 @@ export class AgentSessionWrapper {
       try {
         this.inner.dispose();
       } finally {
-        try { this.onDestroyCallback?.(); } finally { this.resolveDisposed(); }
+        try {
+          this.onDestroyCallback?.();
+        } finally {
+          if (this.extensionShutdownRequested) {
+            invalidateSessionPathCache(this.sessionId);
+            if (this.sessionFile) globalThis.__piSessionReadCache?.delete(this.sessionFile);
+            invalidateSessionListCache();
+            this.extensionShutdownComplete = true;
+            this.emit({ type: "session_ended", sessionId: this.sessionId });
+            this.closeStreams();
+          }
+          this.resolveDisposed();
+        }
       }
     };
 
@@ -2112,6 +2155,7 @@ export class AgentSessionWrapper {
   private validateCopyAfterHook(type: "fork" | "clone"): void {
     if (!this.isAlive()) throw new Error("Session is closing");
     if (this.isSessionRunningForReplacement()) throw new Error(`Cannot ${type} while the session is running`);
+    if (this.activeMutatingCommands > 1) throw new Error(`Cannot ${type} while another session command is running`);
     if (isRpcSessionFileMutationReserved(this.sessionId)) throw new Error("Session file is reserved for deletion");
   }
 
@@ -2221,6 +2265,13 @@ function getLocks(): Map<string, SessionStartLock> {
   return globalThis.__piStartLocks;
 }
 
+function assertSessionFileExists(sessionId: string, sessionFile: string): void {
+  if (existsSync(sessionFile)) return;
+  invalidateSessionPathCache(sessionId);
+  invalidateSessionListCache();
+  throw Object.assign(new Error("Session not found"), { status: 404 });
+}
+
 const closingSessionWaits = new WeakMap<AgentSessionWrapper, { done: boolean; promise: Promise<void> }>();
 
 function closingRpcSessionWait(sessionId: string): Promise<void> | null {
@@ -2262,6 +2313,7 @@ export async function renameRpcSession(sessionId: string, sessionFile: string, n
       await (starting.registered ?? starting).catch(() => undefined);
       continue;
     }
+    assertSessionFileExists(sessionId, sessionFile);
     // No await between checking ownership and appending to the file.
     SessionManager.open(sessionFile).appendSessionInfo(name);
     return;
@@ -2394,6 +2446,7 @@ export async function setRpcSessionTools(
 
   if (!existing?.isAlive()) {
     if (!sessionFile) throw new Error("Session not found");
+    assertSessionFileExists(sessionId, sessionFile);
     const manager = SessionManager.open(sessionFile, undefined);
     if (readSubagentSessionResources(manager.getEntries() as unknown as SessionEntry[])) {
       throw new Error("Subagent tool selection is fixed by its profile");
@@ -2759,6 +2812,7 @@ export async function startRpcSession(
 
   let sessionManager: SessionManager;
   if (sessionFile) {
+    assertSessionFileExists(sessionId, sessionFile);
     sessionManager = SessionManager.open(sessionFile, undefined, cwdOverride);
   } else {
     if (!cwd) throw new Error("cwd is required for a new session");

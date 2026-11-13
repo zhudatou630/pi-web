@@ -23,7 +23,7 @@ function fixture() {
   const previous = { messages: server.messages.slice(), entryIds: server.entryIds.slice(), oldestEntryId: "1", hasMore: true };
   const writes = { history: previous };
   const scope = {
-    sessionHookMountedRef: ref(true), navigationPendingRef: ref(false), historyBranchRef: ref(0), sessionIdRef: ref("s"),
+    sessionHookMountedRef: ref(true), endedSessionRef: ref(null), navigationPendingRef: ref(false), historyBranchRef: ref(0), sessionIdRef: ref("s"),
     promptRunIdRef: ref(0), contextUsageRequestIdRef: ref(0), localAppendSeqRef: ref(0), loadedHistoryRef: ref(previous),
     agentRunningRef: ref(false), bashRunningRef: ref(false), modelSwitchPendingRef: ref(false), sessionToolsPinnedRef: ref(false),
     idleMessageReadRef: ref({ sid: "", dirty: false, reading: false }), mergeLoadedHistory, isHiddenCustomMessage,

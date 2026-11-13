@@ -1,5 +1,13 @@
 # Web 扩展兼容
 
+## 扩展主动结束
+
+`ctx.shutdown()` 记录退出请求，等待绑定、当前 prompt、手动 compaction、Bash 和正在执行的变更完成；等待期间仍接受 Stop、steer 和 follow-up，不预先关闭 admission。空闲后使用现有五秒 `session_shutdown` 清理期限，最终 dispose/unregister，然后通过 SSE 发 `session_ended`，最后关闭流。已经在 `session_start` 中结束的冷启动 wrapper 也回放终止事件；清理期间新订阅不会被当作 idle 回收重连。
+
+结束只影响当前视图的连接实例：它停止主动/被动重连，保留 transcript、标签位置、分屏和草稿，以现有通知栏持续提示只读状态，禁用 composer。用户关闭再打开标签或刷新页面得到新的连接，可以正常恢复同一个 session id；没有进程级永久禁止重开列表。与上游自动关闭标签不同，稳定标签组件是本项目保留草稿、滚动位置和 split pane 的边界，因此不强制切走。
+
+清理后丢弃路径、只读解析和列表缓存。start、工具设置和重命名在等待旧 wrapper dispose 后重新检查文件存在，返回 404 而非让 SDK 在旧路径创建新会话。收到退出请求的 Bash/扩展命令也不再把未保存或被删除的文件通过 command-only fallback 写回。旧 SDK hook 本身若超时后继续执行，其外部副作用不可能由宿主撤销。
+
 ## 空闲 custom 消息
 
 仅可见 custom 的空闲 `message_end` 请求历史刷新（隐藏判定复用 `message-display.ts`），不直接把 SSE 对象塞进 transcript；SDK 已先保存消息，因此 HTTP 快照提供真实 entry id、leaf 和树。同步连发共用一次读取，读取期间的后续通知只追加一次读取。通知递增既有 local-append fence，旧 HTTP 响应不能覆盖它；空闲读取跨运行、分支、会话切换或卸载时丢弃。Bash 和导航期间推迟刷新，完成后再读，避免 pending command 与已保存记录双显。

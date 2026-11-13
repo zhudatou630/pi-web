@@ -408,6 +408,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const streamStateRef = useRef(streamState);
   streamStateRef.current = streamState;
   const [agentRunning, setAgentRunning] = useState(false);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
   const [pendingBash, setPendingBash] = useState<{ id?: string; command: string; excludeFromContext: boolean; startedAt: number; liveOutput?: string } | null>(null);
   const [directImageRunning, setDirectImageRunning] = useState(false);
@@ -469,6 +470,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // labelling it with whichever preset the resolved tools happen to match.
   const sessionToolsPinnedRef = useRef(false);
   const sessionIdRef = useRef<string | null>(session?.id ?? null);
+  const endedSessionRef = useRef<string | null>(null);
   const sessionPropIdRef = useRef<string | null>(session?.id ?? null);
   const sessionRunningRef = useRef(Boolean(sessionRunning));
   const visiblePaneRef = useRef(isVisiblePane);
@@ -534,6 +536,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       onEvent: (event) => handleAgentEventRef.current?.(event as AgentEvent),
       shouldMaintain: (sid) => (
         sessionHookMountedRef.current
+        && endedSessionRef.current !== sid
         && sessionIdRef.current === sid
         && (
           visiblePaneRef.current
@@ -669,6 +672,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false, idleOnly = false) => {
     if (navigationPendingRef.current) return null;
+    if (endedSessionRef.current === sid) return null;
     const branch = historyBranchRef.current;
     const runId = promptRunIdRef.current;
     const usageRequestId = ++contextUsageRequestIdRef.current;
@@ -743,7 +747,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const stateRes = await fetch(`/api/sessions/${encodeURIComponent(sid)}/state`);
         if (!stateRes.ok) throw new Error(`HTTP ${stateRes.status}`);
         const agentState = await stateRes.json() as { running: boolean; state?: AgentStateResponse };
-        if (sessionIdRef.current !== sid) return null;
+        if (sessionIdRef.current !== sid || endedSessionRef.current === sid || !sessionHookMountedRef.current) return null;
 
         const liveState = agentState.state;
         if (liveState) {
@@ -760,7 +764,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         return null;
       }
     } catch (e) {
-      setError(String(e));
+      if (endedSessionRef.current !== sid) setError(String(e));
       return null;
     } finally {
       if (showLoading && !messagesLoaded) setLoading(false);
@@ -863,6 +867,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [fetchContextPage, isOlderPageRequested]);
 
   const loadTools = useCallback(async (sid: string) => {
+    if (endedSessionRef.current === sid) return null;
     try {
       const tools = await sendAgentCommand<ToolEntry[]>(sid, { type: "get_tools" });
       if (!tools || !sessionHookMountedRef.current || sessionIdRef.current !== sid) return null;
@@ -983,6 +988,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // session. This is deliberately a non-prompt command: it creates no message
   // or model run, but lets users inspect the exact prompt before sending one.
   const loadSystemInfo = useCallback(async () => {
+    if (endedSessionRef.current) return;
     const sid = sessionIdRef.current ?? await ensureNewSession();
     if (!sid) return;
 
@@ -995,6 +1001,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [ensureNewSession, loadTools]);
 
   const loadSlashCommands = useCallback(async () => {
+    if (endedSessionRef.current) return [] as SlashCommandInfo[];
     const sid = sessionIdRef.current ?? await ensureNewSession();
     if (!sid) {
       setSlashCommands([]);
@@ -1528,6 +1535,28 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [agentRunning]);
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
+    if (endedSessionRef.current) return;
+    if (event.type === "session_ended" && event.sessionId === sessionIdRef.current) {
+      endedSessionRef.current = sessionIdRef.current;
+      setSessionEnded(true);
+      setLoading(false);
+      setError(null);
+      localAppendSeqRef.current += 1;
+      promptRunIdRef.current += 1;
+      rpcPromptPendingRef.current = false;
+      sdkAgentActiveRef.current = false;
+      bashRunningRef.current = false;
+      cancelEventStreamGrace();
+      eventConnectionRef.current?.close();
+      settleUiStage();
+      setBashRunning(false);
+      setPendingBash(null);
+      setIsCompacting(false);
+      setQueuedMessages({ steering: [], followUp: [] });
+      setExtensionDialogs([]);
+      setExtensionCustomUis([]);
+      return;
+    }
     if (event.type !== "message_update") flushStreamDeltas();
     const unconfirmed = unconfirmedPromptsRef.current.get(promptRunIdRef.current);
     if (unconfirmed && event.type === "queue_update") {
@@ -1876,8 +1905,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {
     const trimmedMessage = message.trim();
     if (!trimmedMessage && !images?.length) return;
-    if (agentRunningRef.current || bashRunningRef.current) {
-      if (!images?.length && trimmedMessage.startsWith("!")) {
+    if (endedSessionRef.current || agentRunningRef.current || bashRunningRef.current) {
+      if (!endedSessionRef.current && !images?.length && trimmedMessage.startsWith("!")) {
         addNotice({ type: "warning", message: t("chat.bashBusy") });
       }
       restoreSubmission(message, images, composerDraftKey);
@@ -2950,7 +2979,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, directImageRunning, modelNames, modelList, allModelList, providerNames, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, sessionEnded, directImageRunning, modelNames, modelList, allModelList, providerNames, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting,
     autoCompactionEnabled, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
