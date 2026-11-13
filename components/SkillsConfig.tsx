@@ -246,7 +246,7 @@ function SkillDetail({
 
       <SettingsGroup>
         <SettingsRow label={t("skills.deleteTitle")}>
-          {!skill.removable && <span className="settings-row-status">{t(isProjectFile(skill) ? "project.projectOnly" : "skills.fromPlugin")}</span>}
+          {!skill.removable && (isPackageSkill(skill) || isProjectFile(skill)) && <span className="settings-row-status">{t(isProjectFile(skill) ? "project.projectOnly" : "skills.fromPlugin")}</span>}
           <ConfigButton variant="danger" size="small" onClick={onDelete} disabled={deleting || !skill.removable}>
             {t("i18n.delete")}
           </ConfigButton>

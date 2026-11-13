@@ -9,6 +9,30 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
 const { AgentDetail } = await jiti.import("./AgentEditor.tsx");
 const { I18nProvider } = await jiti.import("../hooks/useI18n.tsx");
+const ui = await jiti.import("./SettingsUi.tsx");
+const scopeUi = await jiti.import("./SettingsScope.tsx");
+const { enLocale } = await jiti.import("../lib/i18n/messages/en.ts");
+
+const skills = ts.createSourceFile("SkillsConfig.tsx", readFileSync(new URL("./SkillsConfig.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const skillFunctions = new Set(["SkillDetail", "sourceGroup", "isPackageSkill", "isProjectFile", "shortenPath", "shortVersion", "packageDisplayName"]);
+const bindings = { ...ui, ...scopeUi, useState: React.useState, useEffect: React.useEffect, useI18n: () => ({ t: (key) => enLocale.messages[key] }) };
+const SkillDetail = new Function(...Object.keys(bindings), "React", ts.transpileModule(
+  skills.statements.filter((node) => ts.isFunctionDeclaration(node) && skillFunctions.has(node.name?.text)).map((node) => node.getText(skills).replace(/^export /, "")).join("\n") + "\nreturn SkillDetail;",
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } },
+).outputText)(...Object.values(bindings), React);
+
+test("skill restrictions disable controls and badge only sources they actually belong to", () => {
+  const html = (sourceInfo) => renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SkillDetail, {
+    cwd: "/repo", skill: { name: "Test", filePath: "/skills/test/SKILL.md", sourceInfo, removable: false, globalEnabled: true, enabled: true },
+  })));
+  const settingsSkill = html({ origin: "top-level", scope: "global" });
+  assert.match(settingsSkill, /disabled=""[^>]*>Delete/);
+  assert.doesNotMatch(settingsSkill, /From plugin|This project only/);
+  const packageSkill = html({ origin: "package", scope: "global", source: "npm:test" });
+  assert.match(packageSkill, /From plugin/);
+  assert.match(packageSkill, /aria-label="Model can invoke automatically"[^>]*disabled=""/);
+  assert.match(html({ origin: "top-level", scope: "project" }), /This project only/);
+});
 
 function detail(extra = {}) {
   const profile = { name: "reader", displayName: "Reader", enabled: true, tools: [] };
