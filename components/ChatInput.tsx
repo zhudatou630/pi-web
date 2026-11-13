@@ -2097,7 +2097,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   return (
     <fieldset
-      disabled={builtinCommandPending}
+      disabled={disabled || builtinCommandPending}
       aria-busy={builtinCommandPending}
       className={compact ? "chat-input is-compact" : "chat-input"}
       style={{
@@ -2757,6 +2757,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   value={model}
                   onChange={onModelChange}
                   onReselect={onModelChange}
+                  disabled={disabled}
                   busy={modelSwitching}
                   isAutoSelection={isAutoModelSelection}
                 />

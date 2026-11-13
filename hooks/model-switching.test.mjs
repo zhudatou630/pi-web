@@ -41,7 +41,7 @@ for (const busy of ["agent", "bash", "idle"]) for (const fails of [false, true])
   test(`${busy} model switch ${fails ? "recovers a lost response" : "syncs the effective choice"} without replacing live history`, async () => {
     const calls = [], selected = { provider: "faux", id: "new", thinkingLevel: "off" };
     const scope = {
-      isNew: false, sessionIdRef: { current: "s" }, sessionHookMountedRef: { current: true }, modelSwitchPendingRef: { current: false }, modelSelectionVersionRef: { current: 0 },
+      isNew: false, endedSessionRef: { current: null }, sessionIdRef: { current: "s" }, sessionHookMountedRef: { current: true }, modelSwitchPendingRef: { current: false }, modelSelectionVersionRef: { current: 0 },
       agentRunningRef: { current: busy === "agent" }, bashRunningRef: { current: busy === "bash" }, currentModelOverride: null,
       setCurrentModelOverride: (v) => calls.push(["model", v]), setModelSwitching() {}, setThinkingLevel: (v) => calls.push(["level", v]),
       loadSession: async () => calls.push(["reload"]), addNotice: (v) => calls.push(["notice", v]), t: (key) => key, console: { error() {} },

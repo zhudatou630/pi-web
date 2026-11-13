@@ -1236,7 +1236,7 @@ test("wraps @ file picker selection and caps the menu above the composer", () =>
   const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   assert.match(source, /setAtActiveIndex\(\(i\) => atMatches\.length === 0 \? 0 : \(i \+ 1\) % atMatches\.length\)/);
   assert.match(source, /min\(48vh, 400px, \$\{atMenuMaxHeight\}px\)/);
-  assert.match(source, /<fieldset\s+disabled=\{builtinCommandPending\}\s+aria-busy=\{builtinCommandPending\}/);
+  assert.match(source, /<fieldset\s+disabled=\{disabled \|\| builtinCommandPending\}\s+aria-busy=\{builtinCommandPending\}/);
 });
 
 test("manual compaction leaves the composer editable, labels parked rows and exposes Stop", () => {

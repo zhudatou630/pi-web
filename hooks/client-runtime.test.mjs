@@ -92,7 +92,7 @@ test("both navigation callers block busy sessions and only switch after successf
   const calls = [];
   let result = {};
   const bindings = {
-    useCallback, bashRunningRef: ref(false), agentRunningRef: ref(false), sessionRunningRef: ref(false),
+    useCallback, endedSessionRef: ref(null), bashRunningRef: ref(false), agentRunningRef: ref(false), sessionRunningRef: ref(false),
     isCompacting: false, navigationPendingRef: ref(false), idleMessageReadRef: ref({ dirty: false }), refreshIdleMessages: noop, historyBranchRef: ref(0), handleNavigateRef: ref(null), sessionIdRef: ref("session"), sessionHookMountedRef: ref(true),
     sendAgentCommand: async () => { calls.push("navigate"); if (result instanceof Error) throw result; return result; },
     setActiveLeafId: (id) => calls.push(["leaf", id]), loadContext: async () => { calls.push("context"); return {}; },

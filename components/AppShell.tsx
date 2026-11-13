@@ -60,7 +60,7 @@ import { useResizablePanel } from "@/hooks/useResizablePanel";
 import { useAudio } from "@/hooks/useAudio";
 import { useOpenSessionLeases } from "@/hooks/useOpenSessionLeases";
 import { copyText } from "@/lib/clipboard";
-import { sendAgentCommand } from "@/lib/agent-client";
+import { sendAgentCommand as postAgentCommand } from "@/lib/agent-client";
 import type { CacheKeepaliveStatus } from "@/lib/cache-keepalive";
 import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
 import { CHAT_WORKSPACE_STORAGE_KEY, restoreChatWorkspace, serializeChatWorkspace } from "@/lib/chat-workspace-state";
@@ -610,6 +610,13 @@ export function AppShell() {
   const historyExportRunRef = useRef(0);
   const [cacheKeepalive, setCacheKeepalive] = useState<CacheKeepaliveStatus | null>(null);
   const [cacheKeepalivePending, setCacheKeepalivePending] = useState(false);
+  const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null; onLeafChange: ((leafId: string | null, anchorEntryId?: string) => void) | undefined }>>(new Map());
+  const [, refreshBranchControls] = useState(0);
+  const sendAgentCommand = useCallback(async <T = unknown>(sid: string, command: Record<string, unknown>): Promise<T> => {
+    const view = branchDataCacheRef.current.get(sid);
+    if (view && !view.onLeafChange) throw new Error(translate("chat.sessionEnded"));
+    return postAgentCommand<T>(sid, command);
+  }, [translate]);
   const cacheKeepaliveSessionId = historyMenuOpen && selectedSession && !selectedSession.transient ? selectedSession.id : null;
   useEffect(() => {
     setCacheKeepalive(null);
@@ -619,23 +626,23 @@ export function AppShell() {
       .then((status) => { if (!cancelled) setCacheKeepalive(status); })
       .catch(() => { /* the row stays hidden */ });
     return () => { cancelled = true; };
-  }, [cacheKeepaliveSessionId]);
+  }, [cacheKeepaliveSessionId, sendAgentCommand]);
   const branchLeafChangeFnRef = useRef<((leafId: string | null, anchorEntryId?: string) => void) | null>(null);
   const sessionHasBranches = hasSessionBranches(branchTree);
 
   // Session-keyed metadata caches — enables instant flicker-free switching between split panes and tabs
   const sessionStatsCacheRef = useRef<Map<string, SessionStatsInfo>>(new Map());
   const contextUsageCacheRef = useRef<Map<string, { percent: number | null; contextWindow: number; tokens: number | null }>>(new Map());
-  const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null; onLeafChange: (leafId: string | null, anchorEntryId?: string) => void }>>(new Map());
 
-  const handleBranchDataChange = useCallback((sessionId: string | null, tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => {
+  const handleBranchDataChange = useCallback((sessionId: string | null, tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: ((leafId: string | null, anchorEntryId?: string) => void) | undefined) => {
     if (sessionId) {
       branchDataCacheRef.current.set(sessionId, { tree, activeLeafId, onLeafChange });
+      refreshBranchControls((version) => version + 1);
     }
     if (sessionId !== activeSessionIdRef.current) return;
     setBranchTree(tree);
     setBranchActiveLeafId(activeLeafId);
-    branchLeafChangeFnRef.current = onLeafChange;
+    branchLeafChangeFnRef.current = onLeafChange ?? null;
   }, []);
 
   const handleBranchLeafChange = useCallback((leafId: string | null, anchorEntryId?: string) => {
@@ -1658,7 +1665,7 @@ export function AppShell() {
     const sourceRelation = chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session?.relation;
     const relation = sourceRelation?.kind === "side" ? sourceRelation : { kind: "side" as const, parentSessionId: sourceSessionId };
     handleSessionForked(result.newSessionId, sourceSessionId, { name, parentSessionId: sourceSessionId, relation }, sourceSessionId, true);
-  }, [handleSessionForked, translate]);
+  }, [handleSessionForked, translate, sendAgentCommand]);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
     setRefreshKey((k) => k + 1);
@@ -2500,7 +2507,7 @@ export function AppShell() {
     } finally {
       setCacheKeepalivePending(false);
     }
-  }, [cacheKeepalive, cacheKeepaliveSessionId]);
+  }, [cacheKeepalive, cacheKeepaliveSessionId, sendAgentCommand]);
 
   const handleForkSession = useCallback(async () => {
     if (!selectedSession || forkInFlightRef.current) return;
@@ -2524,7 +2531,7 @@ export function AppShell() {
       forkInFlightRef.current = false;
       setSessionForking(false);
     }
-  }, [branchActiveLeafId, handleSessionForked, selectedSession, translate]);
+  }, [branchActiveLeafId, handleSessionForked, selectedSession, translate, sendAgentCommand]);
 
   // Show chat area if a session is selected, or if we have a cwd to start a new session in
   const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
@@ -2706,7 +2713,7 @@ export function AppShell() {
   const getBranchDataForSession = (session: SessionInfo | null) => {
     if (!session) return null;
     if (session.id === selectedSession?.id) {
-      return { tree: branchTree, activeLeafId: branchActiveLeafId };
+      return { tree: branchTree, activeLeafId: branchActiveLeafId, onLeafChange: branchLeafChangeFnRef.current ?? undefined };
     }
     return branchDataCacheRef.current.get(session.id) ?? null;
   };
@@ -2870,6 +2877,7 @@ export function AppShell() {
             }}
             className="workspace-header-action"
             data-mobile-toolbar-action="branches"
+            disabled={!branchData?.onLeafChange}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="6" y1="3" x2="6" y2="15" />
@@ -2885,6 +2893,7 @@ export function AppShell() {
             open={interactive && activeTopPanel === "branches"}
             onToggle={() => toggleTopPanel("branches")}
             hasSession
+            disabled={!branchData?.onLeafChange}
           />
         ))}
         {sessionTools && mobile && (
@@ -3358,7 +3367,7 @@ export function AppShell() {
               )}
               {activeTopPanel === "branches" && !isMobile && (
                 <div className="popover-surface" style={{ overflow: "hidden" }}>
-                  <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} hasSession={showChat} />
+                  <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={branchLeafChangeFnRef.current ? handleBranchLeafChange : undefined} hasSession={showChat} />
                 </div>
               )}
               {(activeTopPanel === "session" || activeTopPanel === "outline" || (activeTopPanel === "branches" && isMobile)) && (
@@ -3366,7 +3375,7 @@ export function AppShell() {
               // (the outline list, the branch tree, or the stats body), so there is never a second scrollbar.
               <div className="popover-surface" style={{ maxHeight: "inherit", display: "flex", flexDirection: "column", overflow: "hidden" }}>
               {activeTopPanel === "branches" && (
-                <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={handleBranchLeafChange} hasSession={showChat} />
+                <BranchTreeList tree={branchTree} activeLeafId={branchActiveLeafId} onLeafChange={branchLeafChangeFnRef.current ? handleBranchLeafChange : undefined} hasSession={showChat} />
               )}
               {activeTopPanel === "outline" && (
                 <MobileOutlineList view={outlineView ?? { items: [], onJumpToEntry: async () => {} }} onClose={closeTopPanel} />

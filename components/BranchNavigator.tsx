@@ -11,7 +11,7 @@ interface TreeProps {
   tree: SessionTreeNode[];
   activeLeafId: string | null;
   /** `leafId` is the branch to switch to (null when already on it); `anchorEntryId` is the message to scroll to. */
-  onLeafChange: (leafId: string | null, anchorEntryId?: string) => void;
+  onLeafChange?: (leafId: string | null, anchorEntryId?: string) => void;
   /** Whether a session is currently active (used to show appropriate empty reason) */
   hasSession?: boolean;
 }
@@ -129,7 +129,8 @@ export function BranchTreeList({ tree, activeLeafId, onLeafChange, hasSession }:
             type="button"
             title={row.preview}
             className="branch-tree-row"
-            onClick={() => { if (row.leafId || row.anchorId) onLeafChange(row.leafId, row.anchorId); }}
+            disabled={!onLeafChange}
+            onClick={() => { if (row.leafId || row.anchorId) onLeafChange?.(row.leafId, row.anchorId); }}
             aria-current={row.current ? "true" : undefined}
             style={{
               display: "flex",

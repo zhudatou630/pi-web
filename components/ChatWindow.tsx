@@ -97,7 +97,7 @@ interface Props {
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
   isFocusedPane?: boolean;
   isVisiblePane?: boolean;
-  onBranchDataChange?: (sessionId: string | null, tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null, anchorEntryId?: string) => void) => void;
+  onBranchDataChange?: (sessionId: string | null, tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: ((leafId: string | null, anchorEntryId?: string) => void) | undefined) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
   onSystemInfoLoaderChange?: (loader: (() => Promise<void>) | null) => void;
@@ -842,11 +842,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // Branch panel click: switch branch (when needed), then scroll to the row's first message.
   const [pendingBranchJump, setPendingBranchJump] = useState<string | null>(null);
   const branchSessionId = session?.id ?? null;
-  const branchDataChange = useCallback((tree: SessionTreeNode[], leafId: string | null, switchLeaf: (leafId: string | null) => Promise<boolean>) => {
-    onBranchDataChange?.(branchSessionId, tree, leafId, async (targetLeafId, anchorEntryId) => {
+  const branchDataChange = useCallback((tree: SessionTreeNode[], leafId: string | null, switchLeaf: ((leafId: string | null) => Promise<boolean>) | undefined) => {
+    onBranchDataChange?.(branchSessionId, tree, leafId, switchLeaf ? async (targetLeafId, anchorEntryId) => {
       if (targetLeafId && !(await switchLeaf(targetLeafId))) return;
       if (anchorEntryId) setPendingBranchJump(anchorEntryId);
-    });
+    } : undefined);
   }, [onBranchDataChange, branchSessionId]);
 
   const {
@@ -1872,7 +1872,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       ref={setChatInputElement}
       isEditing={editEntryId !== null}
       onSend={handleChatSend}
-      onOpenImageGeneration={imageConfig && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImages) => { setImageEdit(null); setImageSourceSeed(sourceImages); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
+      onOpenImageGeneration={imageConfig && !sessionEnded && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImages) => { setImageEdit(null); setImageSourceSeed(sourceImages); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
       onAbort={handleActiveAbort}
       onSteer={agentRunning ? handleSteerWithSubmit : undefined}
       onFollowUp={agentRunning ? handleFollowUpWithSubmit : undefined}
@@ -2023,7 +2023,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       </div>
 
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {imageDialogOpen && imageConfig && (
+        {imageDialogOpen && !sessionEnded && imageConfig && (
           <ImageGenerationDialog
             config={imageConfig}
             edit={imageEdit}

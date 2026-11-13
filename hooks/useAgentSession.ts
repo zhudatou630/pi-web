@@ -15,7 +15,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
-import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
+import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand as postAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
 import { getDraft, rekeyDraft, restoreDraftSubmission, setDraft, type ChatDraft } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
@@ -236,7 +236,7 @@ export interface UseAgentSessionOptions {
   onSessionForked?: (newSessionId: string) => void;
   modelsRefreshKey?: number;
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
-  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: (leafId: string | null) => Promise<boolean>) => void;
+  onBranchDataChange?: (tree: SessionTreeNode[], activeLeafId: string | null, onLeafChange: ((leafId: string | null) => Promise<boolean>) | undefined) => void;
   onSystemPromptChange?: (prompt: string | null) => void;
   onSystemToolsChange?: (tools: ToolEntry[] | null) => void;
   /** Registers an action that lazily starts the session and loads its prompt and tools. */
@@ -530,6 +530,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const modelsRefreshKeyRef = useRef(modelsRefreshKey);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
+  const sendAgentCommand = useCallback(async <T = unknown>(sid: string, command: Record<string, unknown>): Promise<T> => {
+    // Even read-style agent commands can create a runtime; ended views only read history.
+    if (endedSessionRef.current === sid) {
+      throw new AgentCommandError(t("chat.sessionEnded"), 409, command.type === "prompt" ? "prompt_rejected" : "session_ended", false);
+    }
+    return postAgentCommand<T>(sid, command);
+  }, [t]);
 
   sessionPropIdRef.current = session?.id ?? null;
   sessionRunningRef.current = Boolean(sessionRunning);
@@ -886,7 +893,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to load tools:", e);
       return null;
     }
-  }, [onSystemToolsChange, setToolPresetState]);
+  }, [onSystemToolsChange, setToolPresetState, sendAgentCommand]);
 
   const promoteNewSession = useCallback((messageCount = 0, firstMessage = "(no messages)") => {
     const sid = sessionIdRef.current;
@@ -1005,7 +1012,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     ]);
     if (!sessionHookMountedRef.current || sessionIdRef.current !== sid) return;
     setSystemPrompt(state.systemPrompt ?? "");
-  }, [ensureNewSession, loadTools]);
+  }, [ensureNewSession, loadTools, sendAgentCommand]);
 
   const loadSlashCommands = useCallback(async () => {
     if (endedSessionRef.current) return [] as SlashCommandInfo[];
@@ -1027,7 +1034,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       setSlashCommandsLoading(false);
     }
-  }, [ensureNewSession]);
+  }, [ensureNewSession, sendAgentCommand]);
 
   const cancelEventStreamGrace = useCallback(() => {
     eventStreamGraceGenerationRef.current += 1;
@@ -1129,7 +1136,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to send extension UI response:", e);
     }
-  }, []);
+  }, [sendAgentCommand]);
 
   const sendExtensionCustomInput = useCallback(async (request: ExtensionUiCustomRequest, data: string) => {
     const sid = sessionIdRef.current;
@@ -1143,7 +1150,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to send extension custom UI input:", e);
     }
-  }, []);
+  }, [sendAgentCommand]);
 
   const shownNoticeIdsRef = useRef(new Set<string>());
   const addNotice = useCallback((notice: { id?: string; message: string; type?: NoticeType }) => {
@@ -2178,7 +2185,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (isSlashCommandPrompt && result.sessionId) {
       void waitForPromptSettlement(result.sessionId, promptRunId);
     }
-  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreRecalledQueue, restoreSubmission, setEdit, settleUiStage, queuedMessages, t]);
+  }, [isNew, newSessionCwd, newSessionModel, session, ensureNewSession, ensureEventsConnected, promoteNewSession, waitForPromptSettlement, addNotice, cancelEventStreamGrace, closeEvents, composerDraftKey, reconcileAgentState, restoreRecalledQueue, restoreSubmission, setEdit, settleUiStage, queuedMessages, t, sendAgentCommand]);
 
   const handleDirectImageGeneration = useCallback(async (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[] = []): Promise<ImageGenerationResult> => {
     if (agentRunningRef.current || bashRunningRef.current || directImageRunningRef.current) throw new Error("Cannot generate an image while the session is busy");
@@ -2208,14 +2215,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setDirectImageRunning(false);
       }
     }
-  }, [ensureNewSession, isNew, loadSession, newSessionCwd, promoteNewSession, session?.id]);
+  }, [ensureNewSession, isNew, loadSession, newSessionCwd, promoteNewSession, session?.id, sendAgentCommand]);
 
   const abortDirectImageGeneration = useCallback(async () => {
     directImageCancelledRef.current = true;
     const sid = sessionIdRef.current;
     const requestId = directImageRequestIdRef.current;
     if (sid && requestId) await sendAgentCommand(sid, { type: IMAGE_ABORT_COMMAND, requestId });
-  }, []);
+  }, [sendAgentCommand]);
 
   const executeBash = useCallback(async (command: string, excludeFromContext: boolean) => {
     if (agentRunningRef.current || bashRunningRef.current) return;
@@ -2267,7 +2274,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const idleRead = idleMessageReadRef.current;
       if (idleRead.dirty) void refreshIdleMessages(idleRead.sid);
     }
-  }, [addNotice, composerDraftKey, ensureEventsConnected, ensureNewSession, loadSession, promoteNewSession, refreshIdleMessages, restoreSubmission, session, t]);
+  }, [addNotice, composerDraftKey, ensureEventsConnected, ensureNewSession, loadSession, promoteNewSession, refreshIdleMessages, restoreSubmission, session, t, sendAgentCommand]);
   executeBashRef.current = executeBash;
 
   const handleAbort = useCallback(async () => {
@@ -2334,7 +2341,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
     if (command === "none" || !sid) return;
     await sendStop(command === "abort_bash" ? "abort_bash" : "abort");
-  }, [addNotice, composerDraftKey, restoreRecalledQueue, restoreSubmission, session]);
+  }, [addNotice, composerDraftKey, restoreRecalledQueue, restoreSubmission, session, sendAgentCommand]);
 
   const handleFork = useCallback(async (entryId: string, name?: string, draft?: () => Promise<ChatDraft>) => {
     if (bashRunningRef.current) return;
@@ -2357,10 +2364,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       setForkingEntryId(null);
     }
-  }, [onSessionForked]);
+  }, [onSessionForked, sendAgentCommand]);
 
   const handleLeafChange = useCallback(async (leafId: string | null): Promise<boolean> => {
-    if (bashRunningRef.current || agentRunningRef.current || sessionRunningRef.current || isCompacting || navigationPendingRef.current) return false;
+    if (endedSessionRef.current || bashRunningRef.current || agentRunningRef.current || sessionRunningRef.current || isCompacting || navigationPendingRef.current) return false;
     const sid = sessionIdRef.current;
     if (!sid) return false;
     navigationPendingRef.current = true;
@@ -2382,12 +2389,13 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       navigationPendingRef.current = false;
       if (idleMessageReadRef.current.dirty) void refreshIdleMessages(idleMessageReadRef.current.sid);
     }
-  }, [addNotice, isCompacting, loadContext, refreshIdleMessages]);
+  }, [addNotice, isCompacting, loadContext, refreshIdleMessages, sendAgentCommand]);
 
   const handleNavigate = handleLeafChange;
   handleNavigateRef.current = handleNavigate;
 
   const handleModelChange = useCallback(async (provider: string, modelId: string) => {
+    if (endedSessionRef.current) return;
     if (isNew) {
       const selectedModel = { provider, modelId };
       newSessionModelOverrideRef.current = selectedModel;
@@ -2457,7 +2465,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       modelSwitchPendingRef.current = false;
       if (stillHere()) setModelSwitching(false);
     }
-  }, [addNotice, currentModelOverride, isNew, loadSession, modelDefaultThinkingLevel, modelThinkingLevelPins, modelThinkingLevels, setNewSessionModel, t]);
+  }, [addNotice, currentModelOverride, isNew, loadSession, modelDefaultThinkingLevel, modelThinkingLevelPins, modelThinkingLevels, setNewSessionModel, t, sendAgentCommand]);
 
   const handleCompact = useCallback(async (options?: { customInstructions?: string; restoreCommand?: string }) => {
     const sid = sessionIdRef.current;
@@ -2482,7 +2490,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       setIsCompacting(false);
     }
-  }, [composerDraftKey, isCompacting, loadSession, promoteNewSession, restoreSubmission]);
+  }, [composerDraftKey, isCompacting, loadSession, promoteNewSession, restoreSubmission, sendAgentCommand]);
 
   // The banner otherwise stays until the next compaction, e.g. "Nothing to compact".
   const dismissCompactError = useCallback(() => setCompactError(null), []);
@@ -2671,7 +2679,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       return complete({ handled: true, error: e instanceof Error ? e.message : String(e) });
     }
-  }, [activeLeafId, addNotice, ensureNewSession, handleCompact, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionForked, onSessionStatsPanelOpen, t]);
+  }, [activeLeafId, addNotice, ensureNewSession, handleCompact, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionForked, onSessionStatsPanelOpen, t, sendAgentCommand]);
 
   // Let AgentSession.prompt decide atomically whether to queue against the
   // current run or start a new turn if it settled while the request was in
@@ -2715,7 +2723,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         message: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [addNotice, composerDraftKey, restoreSubmission, t]);
+  }, [addNotice, composerDraftKey, restoreSubmission, t, sendAgentCommand]);
 
   const handleSteer = useCallback(async (message: string, images?: AttachedImage[]) => {
     await sendStreamingPrompt(message, "steer", images);
@@ -2741,7 +2749,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to abort compaction:", e);
     }
-  }, []);
+  }, [sendAgentCommand]);
 
   const handleRecallQueue = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -2756,9 +2764,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       console.error("Failed to recall queued messages:", e);
       addNotice({ type: "error", message: e instanceof Error ? e.message : "Failed to recall queued messages" });
     }
-  }, [addNotice, restoreRecalledQueue]);
+  }, [addNotice, restoreRecalledQueue, sendAgentCommand]);
 
   const handleThinkingLevelChange = useCallback(async (level: ThinkingLevelOption) => {
+    if (endedSessionRef.current) return;
     setThinkingLevel(level);
     if (isNew && !sessionIdRef.current) thinkingLevelOverrideRef.current = level;
     const sid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
@@ -2768,9 +2777,10 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to set thinking level:", e);
     }
-  }, [isNew]);
+  }, [isNew, sendAgentCommand]);
 
   const handleToolPresetChange = useCallback(async (preset: ToolPreset) => {
+    if (endedSessionRef.current) return;
     const toolNames = getToolNamesForPreset(preset);
     setPreferredToolPreset(preset);
     setToolPresetState(preset);
@@ -2811,7 +2821,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } catch (e) {
       console.error("Failed to set tools:", e);
     }
-  }, [cancelEventStreamGrace, closeEvents, loadTools, refreshEventStream, setToolPresetState]);
+  }, [cancelEventStreamGrace, closeEvents, loadTools, refreshEventStream, setToolPresetState, sendAgentCommand]);
 
   const scrollToMessage = useCallback((element: HTMLElement, viewportOffset = 16) => {
     const container = scrollContainerRef.current;
@@ -2916,8 +2926,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   useEffect(() => {
     if (!onBranchDataChange) return;
-    onBranchDataChange(data?.tree ?? [], activeLeafId, handleLeafChange);
-  }, [data?.tree, activeLeafId, handleLeafChange, onBranchDataChange]);
+    onBranchDataChange(data?.tree ?? [], activeLeafId, sessionEnded ? undefined : handleLeafChange);
+  }, [data?.tree, activeLeafId, handleLeafChange, onBranchDataChange, sessionEnded]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
