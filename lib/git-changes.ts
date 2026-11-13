@@ -57,8 +57,10 @@ export function toCwdSpelledGitPath(
   repositoryRoot: string,
   gitRelativePath: string,
 ): string | null {
-  const realCwd = realPathOrSelf(cwd);
-  const realRoot = realPathOrSelf(repositoryRoot);
+  return mapCwdGitPath(cwd, realPathOrSelf(cwd), realPathOrSelf(repositoryRoot), gitRelativePath);
+}
+
+function mapCwdGitPath(cwd: string, realCwd: string, realRoot: string, gitRelativePath: string): string | null {
   const absFromRoot = path.resolve(realRoot, gitRelativePath);
   const relFromCwd = path.relative(realCwd, absFromRoot);
   if (isEscapingRelative(relFromCwd)) return null;
@@ -101,7 +103,7 @@ async function readTrackedLineStats(
   repositoryRoot: string,
   cwd: string,
 ): Promise<{ additions: number; deletions: number }> {
-  const relativeCwd = toGitPath(path.relative(realPathOrSelf(repositoryRoot), realPathOrSelf(cwd)));
+  const relativeCwd = toGitPath(path.relative(repositoryRoot, cwd));
   const pathspec = relativeCwd || ".";
   try {
     const output = await git(repositoryRoot, [
@@ -129,20 +131,54 @@ async function readTrackedLineStats(
   }
 }
 
-function countUntrackedTextLines(filePath: string): number {
+async function countUntrackedTextLines(filePath: string, buffer: Buffer, signal?: AbortSignal): Promise<number> {
   try {
-    const stat = fs.lstatSync(filePath);
-    if (!stat.isFile() || stat.size > TEXT_PREVIEW_MAX_BYTES) return 0;
-    const content = fs.readFileSync(filePath);
-    if (hasNullByte(content) || content.length === 0) return 0;
-    const text = content.toString("utf8");
-    return text.endsWith("\n") ? text.split("\n").length - 1 : text.split("\n").length;
+    const stat = await fs.promises.lstat(filePath);
+    if (!stat.isFile() || stat.size === 0 || stat.size > TEXT_PREVIEW_MAX_BYTES || signal?.aborted) return 0;
+    const handle = await fs.promises.open(filePath, "r");
+    try {
+      let read = 0;
+      let lines = 0;
+      let last = -1;
+      while (read < stat.size && !signal?.aborted) {
+        const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, stat.size - read), null);
+        if (!bytesRead) break;
+        const chunk = buffer.subarray(0, bytesRead);
+        if (hasNullByte(chunk)) return 0;
+        for (let i = chunk.indexOf(10); i !== -1; i = chunk.indexOf(10, i + 1)) lines++;
+        last = chunk[bytesRead - 1];
+        read += bytesRead;
+      }
+      return read ? lines + (last === 10 ? 0 : 1) : 0;
+    } finally {
+      await handle.close();
+    }
   } catch {
     return 0;
   }
 }
 
-export async function getGitStatus(cwd: string): Promise<GitStatusResponse> {
+async function countUntrackedLines(files: GitFileStatus[], signal?: AbortSignal): Promise<number> {
+  let next = 0;
+  let total = 0;
+  // Four workers share libuv's default pool without queueing thousands of reads.
+  await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    while (next < files.length && !signal?.aborted) {
+      const file = files[next++];
+      if (file.status === "untracked") {
+        const lines = await countUntrackedTextLines(file.filePath, buffer, signal);
+        total += lines;
+      }
+      if (next % 1000 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }));
+  signal?.throwIfAborted();
+  return total;
+}
+
+export async function getGitStatus(cwd: string, signal?: AbortSignal): Promise<GitStatusResponse> {
+  signal?.throwIfAborted();
   const repositoryRoot = await findRepositoryRoot(cwd);
   if (!repositoryRoot) {
     return {
@@ -154,37 +190,45 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResponse> {
     };
   }
 
+  // Resolve once per request, not twice for each status/rename entry.
+  const [realRoot, realCwd] = await Promise.all([repositoryRoot, cwd].map(async (p) =>
+    fs.promises.realpath(p).catch(() => path.resolve(p))));
+  signal?.throwIfAborted();
   const [entries, trackedLineStats] = await Promise.all([
     readStatusEntries(repositoryRoot),
-    readTrackedLineStats(repositoryRoot, cwd),
+    readTrackedLineStats(realRoot, realCwd),
   ]);
-  const files = entries.flatMap((entry): GitFileStatus[] => {
-    let filePath = toCwdSpelledGitPath(cwd, repositoryRoot, entry.path);
+  const files: GitFileStatus[] = [];
+  for (let index = 0; index < entries.length; index++) {
+    if (index % 1000 === 0) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      signal?.throwIfAborted();
+    }
+    const entry = entries[index];
+    let filePath = mapCwdGitPath(cwd, realCwd, realRoot, entry.path);
     const classified = classifyGitStatus(entry);
     if (!filePath && entry.originalPath) {
-      filePath = toCwdSpelledGitPath(cwd, repositoryRoot, entry.originalPath);
+      filePath = mapCwdGitPath(cwd, realCwd, realRoot, entry.originalPath);
       if (filePath) {
-        return [{
+        files.push({
           filePath,
           status: "deleted",
           code: "D",
           indexStatus: entry.indexStatus,
           worktreeStatus: entry.worktreeStatus,
-        }];
+        });
+        continue;
       }
     }
-    if (!filePath) return [];
-    return [{
+    if (!filePath) continue;
+    files.push({
       filePath,
       ...classified,
       indexStatus: entry.indexStatus,
       worktreeStatus: entry.worktreeStatus,
-    }];
-  });
-  const untrackedAdditions = files.reduce(
-    (total, file) => total + (file.status === "untracked" ? countUntrackedTextLines(file.filePath) : 0),
-    0,
-  );
+    });
+  }
+  const untrackedAdditions = await countUntrackedLines(files, signal);
 
   return {
     isGitRepository: true,

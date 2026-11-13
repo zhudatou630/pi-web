@@ -98,9 +98,9 @@ async function fetchEntries(dirPath: string): Promise<FileNode[]> {
   }));
 }
 
-async function fetchGitStatus(cwd: string): Promise<GitStatusResponse> {
+async function fetchGitStatus(cwd: string, signal: AbortSignal): Promise<GitStatusResponse> {
   const params = new URLSearchParams({ cwd });
-  const res = await fetch(`/api/git/status?${params.toString()}`);
+  const res = await fetch(`/api/git/status?${params.toString()}`, { signal });
   if (!res.ok) throw new Error(`Failed to load Git status (HTTP ${res.status})`);
   return res.json() as Promise<GitStatusResponse>;
 }
@@ -958,7 +958,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       setGitLineStats({ additions: 0, deletions: 0 });
     }
     setGitError(null);
-    fetchGitStatus(cwd)
+    const controller = new AbortController();
+    fetchGitStatus(cwd, controller.signal)
       .then((status) => {
         if (!cancelled) {
           setGitFiles(status.isGitRepository ? status.files : []);
@@ -974,7 +975,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           setGitError(error instanceof Error ? error.message : String(error));
         }
       });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [cwd, refreshKey, treeRefreshKey]);
 
   useEffect(() => {
