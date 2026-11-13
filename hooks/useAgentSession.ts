@@ -1852,9 +1852,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
       case "auto_retry_start":
+      case "summarization_retry_scheduled":
         setRetryInfo({ attempt: event.attempt as number, maxAttempts: event.maxAttempts as number, errorMessage: event.errorMessage as string | undefined });
         break;
       case "auto_retry_end":
+      case "summarization_retry_attempt_start":
+      case "summarization_retry_finished":
         setRetryInfo(null);
         break;
       case "auto_compaction_start":
@@ -1866,6 +1869,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "auto_compaction_end":
       case "compaction_end":
         setIsCompacting(false);
+        setRetryInfo(null);
         if (event.errorMessage) {
           setCompactError(event.errorMessage as string);
           setCompactResult(null);

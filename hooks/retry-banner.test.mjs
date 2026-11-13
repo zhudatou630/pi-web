@@ -1,41 +1,46 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
 import test from "node:test";
-import { Script, createContext } from "node:vm";
 import ts from "typescript";
-
-const source = ts.createSourceFile("useAgentSession.ts", await readFile(new URL("./useAgentSession.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
-const nodes = [];
-function visit(node) { nodes.push(node); ts.forEachChild(node, visit); }
+import { createJiti } from "jiti";
+const { toClientAgentEvent } = await createJiti(import.meta.url).import("../lib/agent-event-wire.ts");
+const source = ts.createSourceFile("hook.ts", await readFile(new URL("./useAgentSession.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
+const clauses = [];
+function visit(node) {
+  if (ts.isCaseClause(node) && /^("(?:agent_start|agent_end|auto_retry_start|auto_retry_end|summarization_retry_.*|auto_compaction_end|compaction_end)")$/.test(node.expression.getText(source))) clauses.push(node.getText(source));
+  ts.forEachChild(node, visit);
+}
 visit(source);
-
-// The event handler's cases for one run that fails, waits and retries.
-const cases = ["agent_end", "auto_retry_start", "agent_start", "auto_retry_end"].map((type) => {
-  const clause = nodes.find((node) => ts.isCaseClause(node) && node.expression.getText(source) === `"${type}"`);
-  assert.ok(clause, `missing case ${type}`);
-  return clause.getText(source);
-});
-const handler = new Script(ts.transpileModule(`((event) => { switch (event.type) { ${cases.join("\n")} } })`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText);
-
 function setup() {
-  const banner = { current: null };
-  const context = createContext({
-    agentRunningRef: { current: true }, sdkAgentActiveRef: { current: true }, sessionIdRef: { current: null },
+  let banner;
+  const handle = vm.runInNewContext(ts.transpileModule(`(event) => { switch(event.type) { ${clauses.join("\n")} } }`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText, {
+    setRetryInfo: (value) => { banner = value; }, setIsCompacting() {}, setCompactError() {}, setCompactResult() {}, readCompactResult() {},
+    sessionIdRef: { current: null }, agentRunningRef: { current: true }, sdkAgentActiveRef: { current: true },
     promptRunIdRef: { current: 0 }, rpcPromptPendingRef: { current: false },
-    setRetryInfo: (value) => { banner.current = value; },
     cancelEventStreamGrace() {}, setAgentRunning() {}, setAgentPhase() {}, dispatch() {},
   });
-  return { handle: handler.runInContext(context), banner };
+  return { handle, banner: () => banner };
 }
-
-test("the retry banner shows while a retry waits and goes once the retried run starts", () => {
-  const { handle, banner } = setup();
-  handle({ type: "agent_end", willRetry: true });
-  handle({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "overloaded" });
-  assert.deepEqual({ ...banner.current }, { attempt: 1, maxAttempts: 3, errorMessage: "overloaded" });
-  // pi emits the successful auto_retry_end only after the retry's first complete reply.
-  handle({ type: "agent_start" });
-  assert.equal(banner.current, null);
-  handle({ type: "auto_retry_end", success: true, attempt: 1 });
-  assert.equal(banner.current, null);
+test("turn retries still show only during backoff, not during the retried response", () => {
+  const h = setup();
+  h.handle({ type: "agent_end", willRetry: true });
+  h.handle({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "overloaded" });
+  assert.deepEqual({ ...h.banner() }, { attempt: 1, maxAttempts: 3, errorMessage: "overloaded" });
+  h.handle({ type: "agent_start" });
+  assert.equal(h.banner(), null);
+  h.handle({ type: "auto_retry_end", success: true, attempt: 1 });
+  assert.equal(h.banner(), null);
 });
+
+for (const end of ["summarization_retry_attempt_start", "summarization_retry_finished", "compaction_end", "auto_compaction_end"]) {
+  test(`summarizer wait crosses the wire and clears on ${end}`, () => {
+    const h = setup();
+    const event = { type: "summarization_retry_scheduled", attempt: 2, maxAttempts: 3, delayMs: 4000, errorMessage: "503 overloaded" };
+    assert.deepEqual(toClientAgentEvent(event), event);
+    h.handle(event);
+    assert.deepEqual({ ...h.banner() }, { attempt: 2, maxAttempts: 3, errorMessage: "503 overloaded" });
+    h.handle({ type: end });
+    assert.equal(h.banner(), null);
+  });
+}

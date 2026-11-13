@@ -131,6 +131,13 @@ Truncated results keep their full-output actions in the expanded card's existing
 
 Unlike upstream, agent and user-shell execution remain mutually exclusive in this implementation. `sendQueued()` routes unquoted, image-free `!` / `!!` input to the command path, never to steering or follow-up; busy rejection explains the refusal and restores the originating draft. The server also refuses busy shell commands and refuses compaction while shell work is active. Parallel execution is deferred because this app has a parked compaction queue, shared Stop forced-cleanup deadline and post-bash subagent-report delivery; enabling it safely also requires reconciling SDK-deferred bash history against forced session reads, not just relaxing admission. Keeping mutual exclusion preserves existing Stop, completion and sidebar/favicon semantics.
 
+## Summarization retry feedback
+
+Compaction and branch summaries use the composer's existing retry banner for SDK
+`summarization_retry_scheduled` (attempt, budget and error). The next attempt,
+retry completion, and either compaction-end event clear it. The event wire already
+passes these events through; no separate status UI or polling is needed.
+
 ## Transcript markers
 
 Events that are not turns share one look (`TranscriptMarker`, `components/MessageView.tsx`, `.chat-marker*`): a centered dim line, icon + `label · detail · time`, and a chevron when there is something to open, which shows a bordered panel below that scrolls past `min(60vh, 480px)`. Routine runs (click opens the routine), compaction summaries (click or chevron opens the summary) and cache refreshes (`pi-web:cache-warm`, display-only, folded per idle stretch by `buildSessionContext()`; no chevron). Do not give a new event its own card style.
