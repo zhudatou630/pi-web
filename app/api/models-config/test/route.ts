@@ -82,6 +82,9 @@ export async function POST(req: Request) {
     }, null, 2), "utf8");
 
     const modelRuntime = await ModelRuntime.create({ modelsPath });
+    // Reuse the native provider already loaded by the composed services, not its saved models.json layer.
+    const nativeProvider = composed.getRegisteredNativeProvider(providerName);
+    if (nativeProvider) modelRuntime.registerNativeProvider(nativeProvider);
     const loadError = modelRuntime.getError();
     if (loadError) return NextResponse.json({ ok: false, error: loadError });
 
