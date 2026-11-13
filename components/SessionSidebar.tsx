@@ -37,6 +37,14 @@ const MENU_ROW_HEIGHT = 26;
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
 const WORKSPACE_SESSION_PAGE_SIZE = 20;
 
+export function sessionRevealScrollTop(index: number, scrollTop: number, viewportHeight: number): number {
+  const top = index * SESSION_LIST_ITEM_HEIGHT;
+  const bottom = top + SESSION_LIST_ITEM_HEIGHT;
+  if (top >= scrollTop && bottom <= scrollTop + viewportHeight) return scrollTop;
+  if (bottom > scrollTop && top < scrollTop + viewportHeight) return top < scrollTop ? top : bottom - viewportHeight;
+  return Math.max(0, top - (viewportHeight - SESSION_LIST_ITEM_HEIGHT) / 2);
+}
+
 export function getSessionListIndices(count: number, scrollTop: number, viewportHeight: number, focusedIndex = -1, renamingIndex = -1): number[] {
   const overscan = 8;
   const visibleCount = Math.ceil((viewportHeight || 600) / SESSION_LIST_ITEM_HEIGHT) + overscan * 2;
@@ -492,6 +500,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
 
   // Virtualized session list: only the visible window of rows is mounted.
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const pinnedListRef = useRef<HTMLDivElement>(null);
+  const openRevealRef = useRef<{ id: string | null; done: boolean }>({ id: null, done: false });
   const listInnerRef = useRef<HTMLDivElement>(null);
   const projectDropdownScrollRef = useRef<HTMLDivElement>(null);
   const projectDropdownInnerRef = useRef<HTMLDivElement>(null);
@@ -581,7 +591,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     setListViewportH(el.clientHeight);
     setListScrollTop(el.scrollTop);
     return () => ro.disconnect();
-  }, [sessionSearchActive]);
+  }, [sessionSearchActive, projectsOpen]);
 
   const loadSessions = useCallback(async (showLoading = false) => {
     const loadId = ++sessionLoadIdRef.current;
@@ -1611,6 +1621,38 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     [allFamilies, archivedMemberIds, pinnedSessionIds, selectionProjectKey],
   );
 
+  // One reveal per focused id; hidden search/archive views defer rather than change navigation.
+  useLayoutEffect(() => {
+    if (openRevealRef.current.id !== selectedSessionId) openRevealRef.current = { id: selectedSessionId, done: false };
+    if (!selectedSessionId || openRevealRef.current.done || loading || sessionListVersion === null || sessionSearchActive || selectionProjectKey) return;
+    const family = allFamilies.find((item) => item.root.id === selectedSessionId || item.subagents.some((session) => session.id === selectedSessionId));
+    if (!family || archivedMemberIds.has(family.root.id) !== archiveView) return;
+    const projectKey = workspaceKeyOf(family.root);
+    if (!archiveView && pinnedFamilies.some((item) => item.root.id === family.root.id)) {
+      if (!pinnedOpen) { setPinnedOpen(true); return; }
+      const list = pinnedListRef.current;
+      if (!list || !list.clientHeight) return;
+      const index = pinnedFamilies.findIndex((item) => item.root.id === family.root.id);
+      list.scrollTop = sessionRevealScrollTop(index, list.scrollTop, list.clientHeight);
+    } else {
+      if (!projectsOpen) { setProjectsOpen(true); return; }
+      if (singleProject && selectedProject?.key !== projectKey) { setSelectedCwd(family.root.cwd); return; }
+      const expanded = archiveView ? expandedArchiveProjectKeys : expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys;
+      if (!singleProject && !expanded.has(projectKey)) {
+        const update = new Set(expanded).add(projectKey);
+        if (archiveView) setExpandedArchiveProjectKeys(update);
+        else setExpandedWorkspaceKeys(update);
+        return;
+      }
+      const index = workspaceRows.findIndex((row) => row.kind === "session" && row.family.root.id === family.root.id);
+      const list = listScrollRef.current;
+      if (index < 0 || !list || !list.clientHeight) return;
+      list.scrollTop = sessionRevealScrollTop(index, list.scrollTop, list.clientHeight);
+      setListScrollTop(list.scrollTop);
+    }
+    openRevealRef.current.done = true;
+  }, [selectedSessionId, loading, sessionListVersion, sessionSearchActive, selectionProjectKey, allFamilies, archivedMemberIds, archiveView, pinnedFamilies, pinnedOpen, projectsOpen, singleProject, selectedProject, expandedArchiveProjectKeys, expandedWorkspaceKeys, defaultExpandedWorkspaceKeys, workspaceRows, listViewportH]);
+
   const pinnedActivity = useMemo(() => [...getProjectActivity(
     pinnedFamilies.flatMap((family) => [family.root, ...family.subagents]),
     runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds,
@@ -2047,7 +2089,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
             </button>
           </div>
           {pinnedOpen && (
-            <div className="sidebar-list-scroll">
+            <div ref={pinnedListRef} className="sidebar-list-scroll">
               {pinnedFamilies.map((family) => <div key={family.root.id}>{renderSessionFamily(family, true)}</div>)}
             </div>
           )}
