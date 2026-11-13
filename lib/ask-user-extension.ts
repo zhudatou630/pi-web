@@ -50,7 +50,7 @@ export function registerAskUserTool(pi: ExtensionAPI, enabled: () => boolean = (
     async execute(_toolCallId, params) {
       let question: AskUserParams;
       try {
-        if (!enabled()) throw new Error("Routines are turned off in Pi Web settings.");
+        if (!enabled()) throw new Error("Routine tools are turned off for this project in Pi Web settings.");
         question = parseAskUserParams(params as AskUserParams);
       } catch (error) {
         return {

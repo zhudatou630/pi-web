@@ -6,7 +6,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import lockfile from "proper-lockfile";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { validateSessionToolSelection } from "./session-tool-selection";
-import { projectOverride, withProjectOverride } from "./project-feature-switch";
+import { projectFeatureState, withProjectOverride } from "./project-feature-switch";
 import type { ProjectFeatureState } from "./api-types";
 import { SESSION_ID_PATTERN } from "./sidebar-state";
 import { firesTooOften, isOnceAt, latestRun, MAX_EVERY, MAX_EXPRS, minIntervalMs, nextRuns, normalizeExpr, REPEAT_UNITS, type RepeatUnit, type RoutineSchedule } from "./routine-schedule";
@@ -70,9 +70,11 @@ export interface Routine {
 
 interface RoutinesFile {
   version: 1;
-  /** Settings › General "Routines" switched off: no entry, no routines tools, nothing fires. */
+  /** Settings › General: the routines tools are off by default in every project. Scheduling is unaffected. */
+  toolsDisabled?: true;
+  /** Legacy master switch (entry, scheduler and tools); migrated by `migrate()`. */
   featureDisabled?: true;
-  /** Projects whose chats get no routines tools (`false`), keyed by project root; their routines still run. */
+  /** Per-project override of `toolsDisabled`, keyed by project root; the project wins either way. */
   projects?: Record<string, boolean>;
   routines: Routine[];
 }
@@ -276,6 +278,21 @@ function loadFile(path: string): RoutinesFile {
   return value as unknown as RoutinesFile;
 }
 
+/**
+ * The old master switch stopped every schedule. It now only sets the tools default, so the
+ * routines it kept from firing are paused instead: switching it off must not start them.
+ */
+function migrate(state: RoutinesFile): RoutinesFile {
+  if (state.featureDisabled) {
+    delete state.featureDisabled;
+    state.toolsDisabled = true;
+    for (const routine of state.routines) {
+      if (routine.schedule.kind !== "manual") routine.enabled = false;
+    }
+  }
+  return state;
+}
+
 /** Current routine names by id for the chat's run rows, read once on first use; unreadable file = none. */
 export function routineNameLookup(path = getRoutinesPath()): (id: string) => string | undefined {
   let names: Map<string, string> | undefined;
@@ -304,48 +321,34 @@ export class RoutineStore {
 
   /** Read-only snapshot; orphaned runs are shown as failed without a write. */
   list(): Routine[] {
-    const state = loadFile(this.path);
+    const state = migrate(loadFile(this.path));
     settleOrphans(state, this.isAlive);
     return state.routines;
   }
 
-  /** Whether the Routines feature is on (Settings › General). On unless switched off. */
-  isFeatureEnabled(): boolean {
-    return loadFile(this.path).featureDisabled !== true;
+  /** Settings › General: the default for the routines tools in every project. On unless switched off. */
+  isToolsEnabled(): boolean {
+    return migrate(loadFile(this.path)).toolsDisabled !== true;
   }
 
-  /**
-   * This project's switch for the routines tools in its chats. Only off can be stored: with the
-   * feature off the project is off too, and on is the default.
-   */
+  /** This project's routines tools: the global default unless the project overrides it either way. */
   projectState(projectRoot: string): ProjectFeatureState {
-    const state = loadFile(this.path);
-    const enabled = state.featureDisabled !== true && projectOverride(state as unknown as Record<string, unknown>, projectRoot) !== false;
-    return { root: projectRoot, enabled, overridden: state.featureDisabled !== true && !enabled };
+    const state = migrate(loadFile(this.path));
+    return projectFeatureState(state as unknown as Record<string, unknown>, projectRoot, state.toolsDisabled !== true);
   }
 
   async setProjectEnabled(projectRoot: string, enabled: boolean): Promise<void> {
     await this.mutate((state) => {
-      if (state.featureDisabled) throw new RoutineError("Routines are turned off", 409);
-      const { projects } = withProjectOverride(state as unknown as Record<string, unknown>, projectRoot, enabled, true);
+      const { projects } = withProjectOverride(state as unknown as Record<string, unknown>, projectRoot, enabled, state.toolsDisabled !== true);
       if (projects) state.projects = projects as Record<string, boolean>;
       else delete state.projects;
     });
   }
 
-  /**
-   * Switches the feature. Turning it back on restarts every schedule from now, like resuming a
-   * paused routine: what was missed while it was off is not caught up.
-   */
-  async setFeatureEnabled(enabled: boolean, now = new Date()): Promise<void> {
+  async setToolsEnabled(enabled: boolean): Promise<void> {
     await this.mutate((state) => {
-      if (enabled === (state.featureDisabled !== true)) return;
-      if (enabled) {
-        delete state.featureDisabled;
-        for (const routine of state.routines) routine.lastScheduledFor = now.toISOString();
-      } else {
-        state.featureDisabled = true;
-      }
+      if (enabled) delete state.toolsDisabled;
+      else state.toolsDisabled = true;
     });
   }
 
@@ -365,6 +368,7 @@ export class RoutineStore {
     try {
       const state = loadFile(this.path);
       const before = JSON.stringify(state);
+      migrate(state);
       settleOrphans(state, this.isAlive);
       const result = mutate(state);
       if (compromised) throw compromised;
@@ -421,7 +425,6 @@ export class RoutineStore {
   /** Claims a manual run. Throws 409 while the previous run is still going. */
   async claimManualRun(id: string, now = new Date()): Promise<{ routine: Routine; run: RoutineRun }> {
     return this.mutate((state) => {
-      if (state.featureDisabled) throw new RoutineError("Routines are turned off", 409);
       const routine = findRoutine(state, id);
       if (isRunning(routine)) throw new RoutineError("The previous run is still in progress", 409);
       const run: RoutineRun = {
@@ -441,7 +444,6 @@ export class RoutineStore {
     return this.mutate((state) => {
       const started: ClaimedRun[] = [];
       const skipped: ClaimedRun[] = [];
-      if (state.featureDisabled) return { started, skipped };
       let active = state.routines.filter(isRunningScheduled).length;
       for (const routine of state.routines) {
         // One routine whose schedule cannot be computed must not stop the others from firing.

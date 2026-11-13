@@ -23,14 +23,14 @@
 
 ## 功能开关
 
-设置 › 常规 › 对话里的"定时任务"开关（默认开），存在 `routines.json` 顶层的 `featureDisabled: true`（`RoutineStore.isFeatureEnabled()` / `setFeatureEnabled()`，`GET/PUT /api/routines/settings`）。关闭后：
+开关只管 agent 的三个定时任务工具（`create_routine`、`routines`、`ask_user`），与子代理、图片生成的开关规则一致：
 
-- 底栏不显示 ROUTINES，`?routines` 链接回到聊天；聊天里已创建任务的小标签点了不再打开。
-- 调度器不认领任何 occurrence，"立即运行"返回 409。任务定义和历史都保留。
-- agent 工具（`create_routine`、`routines`、`ask_user`）不注册。开关前已启动的会话在重新加载前仍带着这些工具，所以 `execute()` 再查一次并拒绝。
+- 设置 › 常规 › 对话里的"Agent 定时任务工具"是全局默认值（默认开），存在 `routines.json` 顶层的 `toolsDisabled: true`（`RoutineStore.isToolsEnabled()` / `setToolsEnabled()`，`GET/PUT /api/routines/settings`）。
+- 项目设置页的同名开关可向两个方向覆盖全局（`projects: { [项目根]: boolean }`，按侧边栏项目根记录，worktree 共用；`RoutineStore.projectState()` / `setProjectEnabled()`，`GET/PUT /api/routines/settings?cwd=`），项目优先；切回与全局相同即去掉覆盖。
+- 关闭的项目不注册这三个工具。开关前已启动的会话在重新加载前仍带着它们，所以 `execute()` 再查一次并拒绝。
+- 开关不影响调度和入口：底栏 ROUTINES 始终显示，任务是否运行只看它自己的暂停/启用状态。
 
-项目设置页另有"Agent 定时任务工具"开关（`projects: { [项目根]: false }`，同在 `routines.json`，按侧边栏项目根记录，worktree 共用；`RoutineStore.projectState()` / `setProjectEnabled()`，`GET/PUT /api/routines/settings?cwd=`）。它只管这个项目的对话里有没有这三个工具，不管调度：该项目已有的任务照常运行，在 Routines 页面管理。全局关闭时项目开关不可用，也不可写（409）。
-- 重新打开时，所有任务的 `lastScheduledFor` 设为当前时间：关闭期间错过的不补跑（与恢复暂停的任务一致）。
+旧版本的 `featureDisabled: true` 是总开关（隐藏入口、停调度、去工具）。读到它时迁移为 `toolsDisabled: true`，并把非手动的启用任务改为暂停（关闭期间它们本就不跑，迁移后也不能突然开跑）；下次写入时落盘。
 
 ## 运行环境与单实例
 

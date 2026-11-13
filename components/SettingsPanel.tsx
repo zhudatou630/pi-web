@@ -54,7 +54,6 @@ import { setupPushSubscription } from "@/lib/push-client";
 import { AppUpdateNotice } from "./AppUpdateNotice";
 import { ConfigButton, ConfigSwitch, SettingsGroup, SettingsRow } from "./SettingsUi";
 import { SubagentIcon } from "./SubagentIcon";
-import { announceRoutinesFeature } from "@/lib/routine-events";
 
 interface Props {
   cwd: string | null;
@@ -97,7 +96,6 @@ function ThemeIcon({ preference }: { preference: ThemePreference }) {
 
 function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, onQuoteSelectionChange, soundEnabled, onSoundToggle }: Pick<Props, "sessionId" | "onSessionReloaded" | "quoteSelectionEnabled" | "onQuoteSelectionChange" | "soundEnabled" | "onSoundToggle">) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
-  const confirm = useConfirm();
   const { preference, setThemePreference, palette, setThemePalette } = useTheme();
   const { scheme: fontScheme, setFontScheme } = useFontScheme();
   const { width: chatContentWidth, setWidth: setChatContentWidth, fontSize, setFontSize } = useChatAppearance();
@@ -107,7 +105,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     return reply?.ok && !reply.data.error ? reply.data : null;
   });
   const [shellSaving, setShellSaving] = useState(false);
-  // Routines on/off is server state: it also gates the scheduler and the create_routine tool.
+  // Server state: the global default for the agent's routines tools (projects may override it).
   const [routinesEnabled, setRoutinesEnabled] = useState<boolean | null>(null);
   const [routinesSaving, setRoutinesSaving] = useState(false);
   const [routinesError, setRoutinesError] = useState<string | null>(null);
@@ -178,13 +176,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     setRoutinesSaving(true);
     setRoutinesError(null);
     try {
-      if (!enabled) {
-        const listResponse = await fetch("/api/routines", { cache: "no-store" });
-        const list = await listResponse.json() as { routines?: { enabled: boolean; schedule: { kind: string } }[]; error?: string };
-        if (!listResponse.ok || list.error || !Array.isArray(list.routines)) throw new Error(list.error ?? `HTTP ${listResponse.status}`);
-        const count = list.routines.filter((routine) => routine.enabled && routine.schedule.kind !== "manual").length;
-        if (count > 0 && !await confirm(t("settings.routinesDisableConfirm", { count }), { confirmLabel: t("settings.routinesDisable") })) return;
-      }
       const response = await fetch("/api/routines/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -193,7 +184,6 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       const data = await response.json() as { enabled?: boolean; error?: string };
       if (!response.ok || data.error || typeof data.enabled !== "boolean") throw new Error(data.error ?? `HTTP ${response.status}`);
       setRoutinesEnabled(data.enabled);
-      announceRoutinesFeature(data.enabled);
     } catch (cause) {
       setRoutinesError(cause instanceof Error ? cause.message : String(cause));
     } finally {

@@ -121,7 +121,7 @@ import { iconStroke } from "./iconStroke";
 import { isModalDialogOpen } from "./ModalDialog";
 import { BrowserPanel, BROWSER_TAB_ID, type BrowserState } from "./BrowserPanel";
 import { parsePreviewTarget, PREVIEW_OPEN_EVENT } from "@/lib/preview-target";
-import { OPEN_ROUTINE_EVENT, ROUTINES_FEATURE_EVENT } from "@/lib/routine-events";
+import { OPEN_ROUTINE_EVENT } from "@/lib/routine-events";
 
 const BROWSER_TAB_KEY = "pi-web:browser-tab";
 
@@ -441,32 +441,11 @@ export function AppShell() {
     // Back in the chat, the address names its session again (RoutinesView names its own page).
     router.replace(selectedSessionId ? `?session=${encodeURIComponent(selectedSessionId)}` : window.location.pathname, { scroll: false });
   }, [router, selectedSessionId]);
-  // Settings › General can switch Routines off: no footer entry and no page. Null until known,
-  // so a switched-off install never flashes the entry.
-  const [routinesEnabled, setRoutinesEnabled] = useState<boolean | null>(null);
-  const routinesEnabledRef = useRef(routinesEnabled);
-  routinesEnabledRef.current = routinesEnabled;
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/routines/settings", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() as Promise<{ enabled?: unknown }> : null))
-      .then((data) => { if (!cancelled && typeof data?.enabled === "boolean") setRoutinesEnabled(data.enabled); })
-      .catch(() => {});
-    const sync = (event: Event) => {
-      const enabled = (event as CustomEvent<{ enabled?: unknown }>).detail?.enabled;
-      if (typeof enabled === "boolean") setRoutinesEnabled(enabled);
-    };
-    window.addEventListener(ROUTINES_FEATURE_EVENT, sync);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(ROUTINES_FEATURE_EVENT, sync);
-    };
-  }, []);
   // A chat's created-routine chip asks to show that routine (lib/routine-events.ts).
   useEffect(() => {
     const open = (event: Event) => {
       const id = (event as CustomEvent<{ id?: unknown }>).detail?.id;
-      if (typeof id !== "string" || routinesEnabledRef.current === false) return;
+      if (typeof id !== "string") return;
       setMainView("routines");
       setRoutinesOpened(true);
       setRoutineOpenRequest({ id });
@@ -474,11 +453,6 @@ export function AppShell() {
     window.addEventListener(OPEN_ROUTINE_EVENT, open);
     return () => window.removeEventListener(OPEN_ROUTINE_EVENT, open);
   }, []);
-  // Switched off while shown (or opened by a stale ?routines link): back to the chat.
-  useEffect(() => {
-    if (routinesEnabled !== false || mainView !== "routines") return;
-    closeRoutines();
-  }, [routinesEnabled, mainView, closeRoutines]);
   const [routinesHeaderSlot, setRoutinesHeaderSlot] = useState<HTMLElement | null>(null);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
@@ -2687,25 +2661,23 @@ export function AppShell() {
               the button's accessible name and tooltip are translated. */}
           <span className="sidebar-footer-label" aria-hidden="true">Settings</span>
         </button>
-        {routinesEnabled && (
-          <button
-            type="button"
-            onClick={() => {
-              if (mainView === "routines") closeRoutines();
-              else {
-                setMainView("routines");
-                setRoutinesOpened(true);
-              }
-              if (isMobile) setSidebarOpen(false);
-            }}
-            title={translate("routines.title")}
-            aria-label={translate("routines.title")}
-            aria-pressed={mainView === "routines"}
-            className="sidebar-footer-item is-end"
-          >
-            <span className="sidebar-footer-label" aria-hidden="true">Routines</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            if (mainView === "routines") closeRoutines();
+            else {
+              setMainView("routines");
+              setRoutinesOpened(true);
+            }
+            if (isMobile) setSidebarOpen(false);
+          }}
+          title={translate("routines.title")}
+          aria-label={translate("routines.title")}
+          aria-pressed={mainView === "routines"}
+          className="sidebar-footer-item is-end"
+        >
+          <span className="sidebar-footer-label" aria-hidden="true">Routines</span>
+        </button>
       </div>
     </>
   );

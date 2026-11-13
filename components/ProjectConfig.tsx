@@ -46,13 +46,13 @@ interface FeatureState {
 
 /**
  * Same settings as "Enable in this project" on the Agents and Images pages; codemode is pi's project `defaultTools`, so it needs trust.
- * Routines only switch the tools of a feature that is on globally (its routines keep running).
+ * Routines switch only the agent tools; scheduling is per routine (its routines keep running).
  */
 const FEATURES = [
-  { id: "subagents", label: "project.subagents", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings, needsTrust: false, needsGlobal: false },
-  { id: "images", label: "project.images", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings, needsTrust: false, needsGlobal: false },
-  { id: "routines", label: "project.routines", putUrl: "/api/routines/settings", url: settingsUrls.routineSettings, needsTrust: false, needsGlobal: true },
-  { id: "codemode", label: "project.codemode", putUrl: "/api/tools/codemode", url: settingsUrls.codemodeSettings, needsTrust: true, needsGlobal: false },
+  { id: "subagents", label: "project.subagents", putUrl: "/api/subagents/settings", url: settingsUrls.subagentSettings, needsTrust: false },
+  { id: "images", label: "project.images", putUrl: "/api/image-generation/settings", url: settingsUrls.imageSettings, needsTrust: false },
+  { id: "routines", label: "project.routines", putUrl: "/api/routines/settings", url: settingsUrls.routineSettings, needsTrust: false },
+  { id: "codemode", label: "project.codemode", putUrl: "/api/tools/codemode", url: settingsUrls.codemodeSettings, needsTrust: true },
 ] as const;
 type FeatureId = (typeof FEATURES)[number]["id"];
 
@@ -448,7 +448,7 @@ export function ProjectConfig({ cwd, sessionId, onReloaded, onChanged, onOpenSki
                           overridden={state.project.overridden}
                           onReset={() => void run(() => putFeatureEnabled(feature.putUrl, state.enabled), true)}
                           checked={state.project.enabled}
-                          disabled={busy || (feature.needsTrust && !trusted) || (feature.needsGlobal && !state.enabled)}
+                          disabled={busy || (feature.needsTrust && !trusted)}
                           label={t(feature.label)}
                           onChange={(enabled) => void run(() => putFeatureEnabled(feature.putUrl, enabled), true)}
                         />

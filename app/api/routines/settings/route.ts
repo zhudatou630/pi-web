@@ -6,9 +6,9 @@ import { routineErrorResponse } from "../errors";
 
 export const dynamic = "force-dynamic";
 
-/** With a cwd, the response also carries that project's switch for the routines tools. */
+/** The global default for the routines tools; with a cwd, also that project's effective state. */
 async function settingsResponse(store: RoutineStore, cwd: unknown) {
-  const enabled = store.isFeatureEnabled();
+  const enabled = store.isToolsEnabled();
   if (cwd === null || cwd === undefined) return { enabled };
   return { enabled, project: store.projectState(await projectRootForRequest(cwd)) };
 }
@@ -18,7 +18,7 @@ function errorResponse(error: unknown): NextResponse {
   return routineErrorResponse(error);
 }
 
-// GET /api/routines/settings[?cwd=] — whether the Routines feature is on (Settings › General), and the project's switch.
+// GET /api/routines/settings[?cwd=] — the routines tools default (Settings › General), and the project's switch.
 export async function GET(req: Request) {
   try {
     return NextResponse.json(await settingsResponse(new RoutineStore(), new URL(req.url).searchParams.get("cwd")));
@@ -41,8 +41,8 @@ export async function PUT(req: Request) {
       return NextResponse.json(await settingsResponse(store, body.cwd));
     }
     if (typeof body.enabled !== "boolean") return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
-    await store.setFeatureEnabled(body.enabled);
-    return NextResponse.json({ enabled: store.isFeatureEnabled() });
+    await store.setToolsEnabled(body.enabled);
+    return NextResponse.json({ enabled: store.isToolsEnabled() });
   } catch (error) {
     return errorResponse(error);
   }

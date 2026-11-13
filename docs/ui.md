@@ -52,7 +52,7 @@ Design notes moved out of AGENTS.md. Typography rules are enforced by `component
 
 ## Settings copy
 
-Design carries the meaning; the page does not explain itself. Visible text is limited to labels, values and units, empty states, and missing/failed states with their next step (one sentence). Scope, side effects, file names (`settings.json`, `mcp.json`, …) and implementation notes stay out of the UI, with no help icon: they belong in these docs. Consequences that lose data go in the confirm dialog, only when they apply (e.g. turning Routines off with routines present). Format rules appear only as the error for an invalid value; field guidance is a placeholder or an example value.
+Design carries the meaning; the page does not explain itself. Visible text is limited to labels, values and units, empty states, and missing/failed states with their next step (one sentence). Scope, side effects, file names (`settings.json`, `mcp.json`, …) and implementation notes stay out of the UI, with no help icon: they belong in these docs. Consequences that lose data go in the confirm dialog, only when they apply (e.g. deleting a project copy of an agent). Format rules appear only as the error for an invalid value; field guidance is a placeholder or an example value.
 
 Global vs project uses one pattern (`components/SettingsScope.tsx`): the global row is "On by default"; the project row is labelled with the project name (full path in `title`). An inherited row shows nothing extra; an override shows the "This project" status plus the ↺ reset button, both before the switch so switches stay in one column.
 

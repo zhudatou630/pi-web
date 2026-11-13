@@ -182,20 +182,20 @@ async function inProject(routine: Routine, cwd: string): Promise<boolean> {
 }
 
 /**
- * Whether this chat gets the routines tools: the feature is on and its project has not switched
- * them off. An unreadable routines file must not take the tools away; creating reports the real error.
+ * Whether this chat gets the routines tools: its project's switch, or the global default
+ * (Settings › General) when the project does not override it. An unreadable routines file must not take the tools away; creating reports the real error.
  */
 function toolsEnabled(store: () => RoutineStore, projectRoot?: string): boolean {
   try {
-    return projectRoot ? store().projectState(projectRoot).enabled : store().isFeatureEnabled();
+    return projectRoot ? store().projectState(projectRoot).enabled : store().isToolsEnabled();
   } catch {
     return true;
   }
 }
 
 /**
- * Pi Web's routines tools, plain host tools like `generate_image`: declared while the feature
- * (and the project's switch) is on, absent otherwise. `model-only`: they ask for approval or end
+ * Pi Web's routines tools, plain host tools like `generate_image`: declared while they are on
+ * for this project (see `toolsEnabled`), absent otherwise. `model-only`: they ask for approval or end
  * the turn, so codemode scripts must not call them. Nothing is saved before the user confirms in
  * the web UI. Design: docs/routines.md ("Create from chat").
  */
@@ -211,7 +211,7 @@ export function createRoutineToolExtension(
       // so execute() checks again.
       if (!toolsEnabled(store, projectRoot)) return;
       const enabledNow = () => toolsEnabled(store, projectRoot);
-      const OFF = "Routines are turned off in Pi Web settings.";
+      const OFF = "Routine tools are turned off for this project in Pi Web settings.";
       pi.registerTool({
         name: ROUTINE_TOOL_NAME,
         label: "Create routine",
