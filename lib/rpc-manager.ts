@@ -383,6 +383,7 @@ export class AgentSessionWrapper {
   private forceShutdownOnIdle = false;
   /** Includes the extension hook, before pi starts its own bash executor. */
   private userBashAbortController: AbortController | null = null;
+  private bashStopGeneration = 0;
   private forcedIdleTimerArmed = false;
   private resolveDisposed: () => void = () => {};
   private readonly disposed = new Promise<void>((resolve) => { this.resolveDisposed = resolve; });
@@ -1028,6 +1029,7 @@ export class AgentSessionWrapper {
       throw new Error(`Cannot ${type} while another session command is running`);
     }
 
+    const bashStopGeneration = this.bashStopGeneration;
     const tracksMutation = !allowedDuringReplacement;
     if (tracksMutation) this.activeMutatingCommands += 1;
 
@@ -1035,6 +1037,10 @@ export class AgentSessionWrapper {
       // Status reconciliation must not postpone forced cleanup after Stop.
       if (type !== "get_state") this.resetIdleTimer();
       if (this.shouldWaitUntilReady(type)) await this.waitUntilReady();
+      // Stop also invalidates shell requests that have not reached their executor/controller yet.
+      if (type === "bash" && bashStopGeneration !== this.bashStopGeneration) {
+        throw new DOMException("Shell command cancelled by Stop", "AbortError");
+      }
       if (!this._alive || this._closing) throw new Error("Session is closing");
       if ((type === "fork" || type === "fork_branch" || type === "clone") && isRpcSessionFileMutationReserved(this.sessionId)) {
         throw new Error("Session file is reserved for deletion");
@@ -1173,6 +1179,9 @@ export class AgentSessionWrapper {
       }
 
       case "abort": {
+        this.bashStopGeneration += 1;
+        this.userBashAbortController?.abort();
+        if (this.inner.isBashRunning) this.inner.abortBash();
         this.lastRunAborted = true; // Extension commands may stop before an SDK run starts.
         let recalled: ReturnType<AgentSessionWrapper["recallQueue"]> | undefined;
         let recallError: unknown;
@@ -1646,6 +1655,7 @@ export class AgentSessionWrapper {
       }
 
       case "abort_bash": {
+        this.bashStopGeneration += 1;
         this.forceShutdownOnIdle = true;
         this.resetIdleTimer();
         getPausedAutomaticFollowUps().add(this.sessionId);
