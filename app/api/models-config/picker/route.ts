@@ -5,7 +5,6 @@ import { createModelsConfigServices, getModelsConfigReadServices, resolveAllowed
 import {
   describeEnabledModels,
   enabledModelsWriteScope,
-  exactRefOf,
   modelPickerRef,
   normalizePatterns,
   patternsToStore,
@@ -57,7 +56,7 @@ async function readPanelState(
   const snapshot = { getAvailable: async () => available } as ModelRuntime;
   const scope = await resolveVisibleModels(snapshot, document.patterns);
   const matches = Object.fromEntries(await Promise.all(
-    document.patterns.filter((pattern) => exactRefOf(pattern) !== null).map(async (pattern) => {
+    document.patterns.map(async (pattern) => {
       const resolved = await resolveVisibleModels(snapshot, [pattern]);
       return [pattern, resolved.scopedModels.map(({ model, thinkingLevel }) => ({
         ref: modelPickerRef(model.provider, model.id),

@@ -1173,7 +1173,7 @@ export const zhCNLocale: LocalePlugin = {
     "models.ambiguous": "有歧义（{count}）",
     "models.ambiguousHint": "这些条目在多个提供方下都有同名模型，已全部启用。改写成 provider/modelId 可只保留一个。",
     "models.unavailable": "不可用（{count}）",
-    "models.unavailableHint": "这些条目还在名单里，但当前解析不到对应模型（未登录，或上游已下线）。移出只影响聊天名单。",
+    "models.unavailableHint": "这些条目或规则当前匹配不到任何可用模型（未登录，或上游已下线）。移出只影响聊天名单，重新登录后不会恢复。",
     "models.removedWithDefinition": "已从聊天名单移除 {count} 项",
     "models.removeFromChat": "移出",
     "models.thinkingPin": "思考 {level}",

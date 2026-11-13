@@ -519,7 +519,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   // List entries that no longer resolve. Chat ignores them, but they still hold
   // the list back, so they must stay visible and removable.
   const unresolved = scopeDoc
-    ? unresolvedPatterns({ patterns: scopeDoc.patterns, visible: [...listedRefs] })
+    ? unresolvedPatterns({ patterns: scopeDoc.patterns, visible: [...listedRefs], matches: scopeDoc.matches })
       // An ambiguous entry is not "unavailable" — it enables the model on every
       // provider that offers it. It gets its own notice.
       .filter((pattern) => !(scopeDoc.ambiguous ?? []).includes(pattern))

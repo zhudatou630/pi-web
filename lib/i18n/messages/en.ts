@@ -1173,7 +1173,7 @@ export const enLocale: LocalePlugin = {
     "models.ambiguous": "Ambiguous ({count})",
     "models.ambiguousHint": "These entries match the same model on several providers; all of them are enabled. Write provider/modelId to keep one.",
     "models.unavailable": "Unavailable ({count})",
-    "models.unavailableHint": "These entries are in the list but no model resolves to them right now (signed out, or removed upstream). Removing one only changes the chat list.",
+    "models.unavailableHint": "These entries or rules match no available model right now (signed out, or removed upstream). Removing one only changes the chat list; signing back in will not restore it.",
     "models.removedWithDefinition": "Removed {count} entries from the chat list",
     "models.removeFromChat": "Remove",
     "models.thinkingPin": "Thinking {level}",

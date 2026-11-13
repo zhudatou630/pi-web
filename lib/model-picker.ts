@@ -32,7 +32,7 @@ export interface EnabledModelsDocument {
 export interface EnabledModelsPanelState extends EnabledModelsDocument {
   visible: { provider: string; id: string }[];
   pins: Record<string, string>;
-  /** SDK-resolved expansions of exact-list entries, without the all-model fallback. */
+  /** SDK-resolved expansions of each pattern, without the all-model fallback. */
   matches: Record<string, { ref: string; pin?: string }[]>;
   /**
    * Every model the definition layers know, credentials aside. Comparing two
@@ -152,7 +152,7 @@ export function removePattern(patterns: readonly string[], pattern: string): str
 }
 
 /**
- * Exact patterns in the file that name no visible model. Chat ignores them, but
+ * Patterns in the file that name no available model. Chat ignores them, but
  * they still occupy the list, so the panel shows them and offers removal.
  *
  * A bare id is included when no visible model carries that id: the entry is
@@ -162,10 +162,13 @@ export function removePattern(patterns: readonly string[], pattern: string): str
 export function unresolvedPatterns(input: {
   patterns: readonly string[];
   visible: readonly string[];
+  matches?: EnabledModelsPanelState["matches"];
 }): string[] {
   const visibleRefs = new Set(input.visible);
   const visibleIds = new Set(input.visible.map((ref) => ref.slice(ref.indexOf("/") + 1)));
   return normalizePatterns(input.patterns).filter((pattern) => {
+    // Only server SDK resolution can judge globs/fuzzy patterns; visible has an all-model fallback.
+    if (input.matches) return (input.matches[pattern]?.length ?? 0) === 0;
     const exact = exactRefOf(pattern);
     if (exact === null) return false;
     if (!exact.provider) return !visibleIds.has(exact.id);
