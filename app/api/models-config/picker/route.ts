@@ -94,8 +94,8 @@ function writeEnabledModels(
   }
   // SDK writes this key only through the private project updater. It keeps the file lock and other keys.
   (settings as unknown as ProjectEnabledModelsWriter).updateProjectSettings("enabledModels", (project) => {
-    if (patterns && patterns.length > 0) project.enabledModels = patterns;
-    else delete project.enabledModels;
+    // [] overrides a global scope; deleting the key would silently inherit that restriction.
+    project.enabledModels = patterns ?? [];
   });
 }
 
@@ -146,7 +146,9 @@ export async function PUT(req: Request) {
 
     const next = normalizePatterns(body.patterns);
     const deleting = next.length === 0;
-    const unchanged = deleting ? current.source === "none" : samePickerPatterns(current.patterns, next);
+    const unchanged = current.source === "project"
+      ? samePickerPatterns(current.patterns, next)
+      : deleting ? current.source === "none" : samePickerPatterns(current.patterns, next);
     if (!unchanged) {
       writeEnabledModels(settings, enabledModelsWriteScope(current.source), patternsToStore(next));
       await settings.flush();
