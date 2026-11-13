@@ -2519,6 +2519,16 @@ button.question-card-option:not(:disabled):hover {
   background: transparent !important;
   background-color: transparent !important;
 }
+/* Generated gutters stay out of cross-line selections even in WebKit. */
+.markdown-code-line-number,
+.file-source-line-number {
+  flex-shrink: 0;
+  user-select: none;
+}
+.markdown-code-line-number::before,
+.file-source-line-number::before {
+  content: attr(data-line-number);
+}
 .markdown-code-line {
   display: flex;
 }

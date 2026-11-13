@@ -36,6 +36,14 @@ test("preview URLs advance across reopen, watch changes and page visibility", ()
   assert.equal((source.match(/usePreviewUrl\(filePath,/g) ?? []).length, 4);
 });
 
+test("highlighted source gutters use generated digits while keeping their layout styles", async () => {
+  const renderer = source.slice(source.indexOf("function SourceCodeRenderer"), source.indexOf("function getFileApiUrl"));
+  assert.match(renderer, /className="file-source-line-number" data-line-number=\{lineIndex \+ 1\} aria-hidden="true" style=\{lineNumberNode.properties\?\.style\}/);
+  assert.doesNotMatch(renderer, /node: lineNumberNode/);
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.file-source-line-number::before \{\s*content: attr\(data-line-number\)/);
+});
+
 test("large source previews bypass the per-line syntax highlighter", () => {
   assert.match(source, /const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;/);
   assert.match(source, /const SOURCE_HIGHLIGHT_MAX_BYTES = 128 \* 1024;/);
@@ -112,6 +120,10 @@ test("lightweight source rows are skipped for highlighted, diff, and preview vie
     const rows = render(large, mode);
     assert.equal(rows.length, 1_001, `${mode} must retain its source fallback`);
     assert.equal(rows[0].props["data-line-number"], 1);
+    const gutter = rows[0].props.children[0];
+    assert.equal(gutter.props["data-line-number"], 1);
+    assert.equal(gutter.props["aria-hidden"], "true");
+    assert.equal(gutter.props.children, undefined);
     assert.equal(rows[0].props.children[1].props.children, "line");
   }
   assert.equal(render(large, "source", false, false, true)[0].props.children[1].props.style.whiteSpace, "pre-wrap");

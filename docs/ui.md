@@ -140,6 +140,12 @@ Page and Web Push completion notifications share `pi-session-complete:<id>`. Pag
 
 `copyText()` rejects refused `execCommand` copies as well as thrown failures and always removes its temporary textarea. Copy buttons only set Copied on success; failures remain silent (no unhandled rejection). The `/copy` command instead reports a localized permission-failure notice. `copyPendingText()` still starts Safari's pending-Blob clipboard write inside the user gesture. FileViewer/Mermaid/math already use the shared `MarkdownCopyButton`, which handles rejection; tab path actions also already handle it.
 
+## Code gutters
+
+- Code fence and file Source gutters use `data-line-number` + `::before`, with empty,
+  aria-hidden DOM spans. Unlike `user-select:none` text nodes, these stay out of
+  WebKit cross-line selection/copy; highlighter gutter widths and wrapping stay unchanged.
+
 ## Images
 
 - Prompt picks, paste and chat drops share `ChatInput.readPromptImageFile()`: preserve original bytes and sniff PNG/JPEG/GIF/WebP MIME from the bytes, keeping the 10 MiB/file and 10-image limits. The browser only falls back to the existing 2000px / JPEG 0.85 white-background re-encode at **4.5 MiB of base64** (3.375 MiB of file bytes) or above, including GIFs. This is conservative even for ordinary prompts: pi skips resizing when disabled. As before, unavailable/failed browser decoding or canvas encoding falls back to the original. `@` image mentions remain paths in the prompt, not browser-read attachments.

@@ -73,7 +73,8 @@ test("CodeBlock renders the same numbered lines without tokens until the Prism l
   const html = renderCode({ code: "const x = 1;\nlet y = 2;", lang: "javascript" });
 
   assert.doesNotMatch(html, /class="token/);
-  assert.equal(html.match(/react-syntax-highlighter-line-number/g)?.length, 2);
+  assert.equal(html.match(/class="markdown-code-line-number"/g)?.length, 2);
+  assert.doesNotMatch(html, />[12]<\/span>/);
   assert.match(html, /const x = 1;/);
 });
 
@@ -105,7 +106,9 @@ test("CodeBlock wraps numbered text separately, preserving blank lines and multi
   const rows = find(root, "markdown-code-line");
   assert.equal(rows.length, code.split("\n").length);
   for (const [index, row] of rows.entries()) {
-    assert.equal(textContent(row.children[0]), String(index + 1));
+    assert.equal(textContent(row.children[0]), "");
+    assert.equal(row.children[0].properties.dataLineNumber, String(index + 1));
+    assert.equal(row.children[0].properties.ariaHidden, "true");
     assert.match(row.children[0].properties.style, /flex-shrink:0/);
     const text = find(row, "markdown-code-line-text")[0];
     assert.equal(textContent(text), code.split("\n")[index] + (index < rows.length - 1 ? "\n" : ""));

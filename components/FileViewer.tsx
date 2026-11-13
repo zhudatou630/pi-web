@@ -263,12 +263,7 @@ function SourceCodeRenderer({ rows, stylesheet, useInlineStyles, wrapLines }: So
         key={`source-line-${lineIndex}`}
         style={{ display: "flex", minWidth: "100%" }}
       >
-        {lineNumberNode && renderSyntaxNode({
-          node: lineNumberNode,
-          stylesheet,
-          useInlineStyles,
-          key: `source-line-number-${lineIndex}`,
-        })}
+        {lineNumberNode && <span className="file-source-line-number" data-line-number={lineIndex + 1} aria-hidden="true" style={lineNumberNode.properties?.style} />}
         <span
           className="file-source-line-content"
           style={{
@@ -1830,9 +1825,7 @@ function TextFileViewer({
         key={`source-line-${lineIndex}`}
         style={{ display: "flex", minWidth: "100%" }}
       >
-        <span aria-hidden="true" style={FILE_LINE_NUMBER_STYLE}>
-          {lineIndex + 1}
-        </span>
+        <span className="file-source-line-number" data-line-number={lineIndex + 1} aria-hidden="true" style={FILE_LINE_NUMBER_STYLE} />
         <span
           className="file-source-line-content"
           style={{
