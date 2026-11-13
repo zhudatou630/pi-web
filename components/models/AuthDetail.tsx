@@ -183,9 +183,6 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
         </div>
       </div>
 
-      {loginState.phase === "idle" && !provider.loggedIn && (
-        <p className="models-muted">{t("models.oauthConnectHint", { name: provider.name })}</p>
-      )}
       {loginState.phase === "connecting" && <p className="models-muted">{t("i18n.openingBrowser")}</p>}
       {loginState.phase === "select" && (
         <div className="models-auth-flow">

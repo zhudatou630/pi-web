@@ -677,7 +677,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       <section className="models-section">
         <SectionHeading
           title={builtIn ? t("models.sectionEndpointOverride") : t("models.sectionEndpoint")}
-          hint={builtIn ? t("models.sectionOverrideHint") : undefined}
           actions={builtIn ? (
             <ConfigButton
               size="small"
@@ -733,7 +732,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         <section className="models-section">
           <SectionHeading
             title={<CountedTitle label={t("models.sectionModelsTitle")} count={modelRows.length} />}
-            hint={cwd && scopeDoc ? t("models.chatSwitchHint") : undefined}
             actions={(json || builtIn) && (
               <>
                 <ConfigButton size="small" disabled={!json?.baseUrl?.trim()} title={json?.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
@@ -821,7 +819,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                       <>
                         {/* A definition with a shipped id replaces that model whole; say so. */}
                         {model.definition && builtInRefs.has(ref) ? (
-                          <span className="models-tag is-warning" title={t("models.replacesBuiltInHint")}>{t("models.replacesBuiltIn")}</span>
+                          <span className="settings-row-status">{t("models.replacesBuiltIn")}</span>
                         ) : builtIn && model.definition && (
                           // Every model of a custom provider is a definition; only mark those added to a built-in provider.
                           <span className="models-tag">{t("models.kindDefinition")}</span>
@@ -843,7 +841,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           <SettingsGroup>
             <SettingsRow
               label={builtIn ? t("models.deleteOverride") : t("models.deleteEndpoint")}
-              description={builtIn ? t("models.deleteOverrideDescription") : t("models.deleteEndpointDescription")}
             >
               <ConfigButton size="small" variant="danger" onClick={() => { deleteProvider(row.id); if (builtIn) openProvider(row.id); }}>
                 {builtIn ? t("i18n.remove") : t("i18n.delete")}
@@ -1006,7 +1003,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               )}
-              <span>{savedOk ? t("i18n.saved") : saving ? t("i18n.saving") : t("models.saveModelsJson")}</span>
+              <span>{savedOk ? t("i18n.saved") : saving ? t("i18n.saving") : t("i18n.save")}</span>
             </ConfigButton>
           )}
         </ConfigFooter>
@@ -1027,7 +1024,6 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       <ModelPickerDialog
         catalog={catalog}
         listedRefs={modelPick === "replace" ? new Set() : listedRefs}
-        mode={modelPick}
         providerLabel={providerLabel}
         saving={scopeSaving}
         error={scopeError}

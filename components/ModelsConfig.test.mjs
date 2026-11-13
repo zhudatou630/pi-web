@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
@@ -24,7 +25,7 @@ const {
 // The panel is split across ModelsConfig.tsx and components/models/; the
 // structural checks below read them as one source.
 const source = (await Promise.all(
-  ["./ModelsConfig.tsx", ...(await readdir(new URL("./models/", import.meta.url))).map((name) => `./models/${name}`)]
+  ["./ModelsConfig.tsx", ...(await readdir(new URL("./models/", import.meta.url))).filter((name) => /\.tsx?$/.test(name)).map((name) => `./models/${name}`)]
     .map((path) => readFile(new URL(path, import.meta.url), "utf8")),
 )).join("\n");
 const cssSource = await readFile(new URL("../app/settings.css", import.meta.url), "utf8");
@@ -177,10 +178,60 @@ test("the picker refuses to open before the list is loaded", () => {
 
 test("one picker dialog serves first-time setup and later additions", () => {
   assert.match(source, /function ModelPickerDialog\(/);
-  assert.match(source, /mode: "replace" \| "add"/);
+  assert.match(source, /useState<"replace" \| "add" \| null>/);
   // The mode decides whether the write replaces the list or appends to it.
   assert.match(source, /mode === "replace"\n\s*\? refs/);
   assert.doesNotMatch(source, /function AddChatModelsDialog/);
+});
+
+test("Provider ID errors appear only for invalid drafts and clear after correction; submission stays validated", async () => {
+  const dialogs = await readFile(new URL("./models/dialogs.tsx", import.meta.url), "utf8");
+  const pattern = dialogs.match(/const PROVIDER_ID_PATTERN = (.*);/)?.[1];
+  const logic = dialogs.slice(dialogs.indexOf("  const trimmedId"), dialogs.indexOf("  const card"));
+  assert.ok(pattern);
+  const validate = new Function("customId", "existingIds", `const PROVIDER_ID_PATTERN = ${pattern}; ${logic} return { trimmedId, customIdError, customIdValid };`);
+  const file = ts.createSourceFile("dialogs.tsx", dialogs, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function findSubmit(node) {
+    if (ts.isJsxAttribute(node) && node.name.getText(file) === "onSubmit") return node.initializer.expression;
+    return ts.forEachChild(node, findSubmit);
+  }
+  const submitNode = findSubmit(file);
+  assert.ok(submitNode);
+  const js = ts.transpileModule(`return (${submitNode.getText(file)});`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const existingIds = new Set(["existing"]);
+  for (const [customId, error, valid] of [
+    ["", null, false], ["UPPER", "models.providerIdFormat", false],
+    ["my-provider", null, true], ["bad/id", "models.providerIdFormat", false],
+    ["-bad", "models.providerIdFormat", false], [" ", "models.providerIdFormat", false],
+    ["existing", "models.providerIdTaken", false], ["existing-2", null, true],
+    [" 9.my_provider-2 ", null, true], ["", null, false],
+  ]) {
+    const state = validate(customId, existingIds);
+    assert.equal(state.customIdError, error, customId);
+    assert.equal(state.customIdValid, valid, customId);
+    const added = [];
+    let closed = false;
+    let prevented = false;
+    new Function("customIdValid", "trimmedId", "onAddCustom", "onClose", js)(
+      state.customIdValid, state.trimmedId, (id) => added.push(id), () => { closed = true; },
+    )({ preventDefault: () => { prevented = true; } });
+    assert.deepEqual(added, valid ? [customId.trim()] : []);
+    assert.equal(closed, valid);
+    assert.equal(prevented, true);
+  }
+  assert.match(dialogs, /aria-invalid=\{Boolean\(customIdError\) \|\| undefined\}/);
+  assert.match(dialogs, /aria-describedby=\{customIdError \? "custom-provider-id-error" : undefined\}/);
+  assert.match(dialogs, /\{customIdError && \(\s*<span id="custom-provider-id-error" role="alert"/);
+});
+
+test("Models keeps concise status copy, real URL placeholders, and built-in override badges", () => {
+  for (const key of ["deleteOverrideDescription", "deleteEndpointDescription", "deleteDefinitionDescription", "testDescription", "reasoningDescription", "imageInputDescription", "chatSwitchHint", "oauthConnectHint", "pickAddHint", "pickReplaceHint", "providerHeadersHelp", "headersHelp", "endpointKeyHint", "replacesBuiltInHint", "sectionOverrideHint", "baseUrlHelp", "samplingParamsHelp", "catalogFillDescription", "builtInKeyPlaceholder"]) {
+    assert.ok(!source.includes(`models.${key}`), key);
+  }
+  assert.match(source, /className="settings-row-status">\{t\("models\.replacesBuiltIn"\)\}/);
+  assert.match(source, /placeholder=\{builtIn \? undefined : "https:\/\/api\.example\.com\/v1"\}/);
+  assert.match(source, /placeholder=\{'\{"temperature": 0\.6\}'\}/);
+  assert.match(source, /models\.samplingParamsUnsupported/);
 });
 
 test("provider searches match names and ids without exposing connected providers", async () => {
@@ -496,8 +547,8 @@ test("runtime override diffs never write SDK-ignored keys", () => {
 test("Base URL uses the neighbouring field components and is definition-only", () => {
   assert.match(source, /\{!lockId && \(\s*<ConfigField label=\{t\("models\.baseUrlOverride"\)\}>/);
   assert.match(source, /onChange=\{\(v\) => set\("baseUrl", v\.trim\(\) \|\| undefined\)\}/);
-  assert.match(source, /placeholder=\{provider\.baseUrl \?\? t\("models\.providerDefaults"\)\}/);
-  assert.match(source, /<Hint>\{t\("models\.baseUrlHelp"\)\}<\/Hint>/);
+  assert.match(source, /placeholder=\{provider\.baseUrl\}/);
+  assert.doesNotMatch(source, /models\.baseUrlHelp|models\.builtInDefault/);
 });
 
 test("the api protocol field is only editable for model definitions", () => {

@@ -6,7 +6,7 @@ import { LLAMA_CPP_PROVIDER_ID } from "@/lib/provider-listing";
 import { modelPickerRef, type RuntimeCatalogModel } from "@/lib/model-picker";
 import { ConfigButton } from "../SettingsUi";
 import { ProviderIcon } from "../ProviderIcon";
-import { Hint, ModelsDialog, Notice } from "./fields";
+import { ModelsDialog, Notice } from "./fields";
 import type { ApiKeyProvider, OAuthProvider } from "./types";
 
 const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
@@ -41,7 +41,10 @@ export function AddProviderPicker({
   const showCustom = !q || "custom".includes(q) || "openai-compatible".includes(q) || "anthropic-compatible".includes(q);
   const totalCount = availableOAuth.length + availableApiKey.length + (showCustom ? 1 : 0);
   const trimmedId = customId.trim();
-  const customIdValid = PROVIDER_ID_PATTERN.test(trimmedId) && !existingIds.has(trimmedId);
+  const customIdError = !customId ? null
+    : !PROVIDER_ID_PATTERN.test(trimmedId) ? "models.providerIdFormat"
+      : existingIds.has(trimmedId) ? "models.providerIdTaken" : null;
+  const customIdValid = trimmedId.length > 0 && !customIdError;
 
   const card = (key: string, title: string, subtitle: string, icon: React.ReactNode, onClick: () => void) => (
     <button key={key} type="button" className="models-card" onClick={onClick}>
@@ -103,11 +106,12 @@ export function AddProviderPicker({
                 value={customId}
                 onChange={(event) => setCustomId(event.target.value)}
                 placeholder="my-provider"
-                aria-describedby="custom-provider-id-hint"
+                aria-invalid={Boolean(customIdError) || undefined}
+                aria-describedby={customIdError ? "custom-provider-id-error" : undefined}
               />
-              <span id="custom-provider-id-hint">
-                <Hint>{existingIds.has(trimmedId) ? t("models.providerIdTaken") : t("models.providerIdFormat")}</Hint>
-              </span>
+              {customIdError && (
+                <span id="custom-provider-id-error" role="alert" className="settings-row-message is-error">{t(customIdError)}</span>
+              )}
               <div className="models-form-actions">
                 <ConfigButton size="small" onClick={() => setCustomOpen(false)}>{t("i18n.cancel")}</ConfigButton>
                 <ConfigButton size="small" type="submit" variant="primary" disabled={!customIdValid}>
@@ -136,7 +140,6 @@ export function AddProviderPicker({
 export function ModelPickerDialog({
   catalog,
   listedRefs,
-  mode,
   providerLabel,
   saving,
   error,
@@ -146,7 +149,6 @@ export function ModelPickerDialog({
   catalog: RuntimeCatalogModel[];
   /** Models already in chat. Empty when picking a list from scratch. */
   listedRefs: ReadonlySet<string>;
-  mode: "replace" | "add";
   providerLabel: (providerId: string) => string;
   saving: boolean;
   error: string | null;
@@ -183,7 +185,6 @@ export function ModelPickerDialog({
   return (
     <ModelsDialog
       title={t("models.pickModels")}
-      description={mode === "replace" ? t("models.pickReplaceHint") : t("models.pickAddHint")}
       onClose={onClose}
       footer={(
         <>

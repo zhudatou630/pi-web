@@ -20,7 +20,7 @@ import {
   SettingsGroup,
   SettingsRow,
 } from "../SettingsUi";
-import { HeaderListEditor, Hint, Notice, NumInput, SectionHeading, Select, SwitchRow, TextInput, ThinkingLevelMapEditor } from "./fields";
+import { HeaderListEditor, Notice, NumInput, SectionHeading, Select, SwitchRow, TextInput, ThinkingLevelMapEditor } from "./fields";
 import { API_OPTIONS, type ModelEntry, type ProviderEntry } from "./types";
 
 type ModelTestState =
@@ -369,17 +369,12 @@ export function ModelDetail({
         <h2 className="settings-detail-title">{model.name || model.id || t("models.untitledModel")}</h2>
         <div className="settings-detail-meta">
           <span className="config-scope-tag">{lockId ? t("models.kindOverride") : t("models.kindDefinition")}</span>
+          {shadowsBuiltIn && <span className="settings-row-status">{t("models.replacesBuiltIn")}</span>}
+          {shadowsBuiltIn && onDelete && (
+            <ConfigButton size="small" onClick={onDelete}>{t("models.restoreBuiltIn")}</ConfigButton>
+          )}
         </div>
       </header>
-
-      {shadowsBuiltIn && onDelete && (
-        <Notice
-          tone="warning"
-          action={<ConfigButton size="small" onClick={onDelete}>{t("models.restoreBuiltIn")}</ConfigButton>}
-        >
-          {t("models.replacesBuiltInHint")}
-        </Notice>
-      )}
 
       {testSummary && (
         <Notice tone={testState.phase === "success" ? "success" : "danger"}>
@@ -393,15 +388,7 @@ export function ModelDetail({
       </div>
 
       <div className="models-switch-list">
-        <SettingsRow
-          label={t("models.catalogFill")}
-          description={(
-            <>
-              {t("models.catalogFillDescription")}{" "}
-              <a href="https://github.com/anomalyco/models.dev" target="_blank" rel="noreferrer" className="settings-link">models.dev ↗</a>
-            </>
-          )}
-        >
+        <SettingsRow label={t("models.catalogFill")}>
           <ConfigButton
             size="small"
             onClick={() => void handleCatalogFill()}
@@ -410,7 +397,7 @@ export function ModelDetail({
             {catalogState.phase === "loading" ? t("models.catalogFilling") : t("models.catalogFillAction")}
           </ConfigButton>
         </SettingsRow>
-        <SettingsRow label={t("i18n.testConnection")} description={t("models.testDescription")}>
+        <SettingsRow label={t("i18n.testConnection")}>
           <ConfigButton
             size="small"
             onClick={handleTest}
@@ -434,8 +421,8 @@ export function ModelDetail({
       <section className="models-section">
         <SectionHeading title={t("models.capabilities")} />
         <div className="models-switch-list">
-          <SwitchRow label={t("models.reasoning")} description={t("models.reasoningDescription")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
-          <SwitchRow label={t("models.imageInput")} description={t("models.imageInputDescription")} checked={model.input?.includes("image") ?? false}
+          <SwitchRow label={t("models.reasoning")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
+          <SwitchRow label={t("models.imageInput")} checked={model.input?.includes("image") ?? false}
             onChange={(v) => set("input", v ? ["text", "image"] : undefined)} />
         </div>
       </section>
@@ -506,8 +493,7 @@ export function ModelDetail({
             {!lockId && (
               <ConfigField label={t("models.baseUrlOverride")}>
                 <TextInput value={model.baseUrl ?? ""} onChange={(v) => set("baseUrl", v.trim() || undefined)}
-                  placeholder={provider.baseUrl ?? t("models.providerDefaults")} />
-                <Hint>{t("models.baseUrlHelp")}</Hint>
+                  placeholder={provider.baseUrl} />
               </ConfigField>
             )}
 
@@ -522,7 +508,6 @@ export function ModelDetail({
                 headers={model.headers}
                 onChange={(headers) => set("headers", headers)}
               />
-              <Hint>{t("models.headersHelp")}</Hint>
             </ConfigField>
 
             <ConfigField label={t("models.samplingParams")}>
@@ -536,12 +521,11 @@ export function ModelDetail({
                   setSamplingText(event.target.value);
                   set("samplingParams", parseSamplingParamsDraft(event.target.value));
                 }}
-                placeholder={'{\n  "temperature": 0.2\n}'}
+                placeholder={'{"temperature": 0.6}'}
               />
               {samplingInvalid && (
                 <span aria-live="polite" className="models-hint is-warning">{t("models.samplingParamsInvalid")}</span>
               )}
-              <Hint>{t("models.samplingParamsHelp", { apis: SAMPLING_PARAMS_APIS.join(", ") })}</Hint>
               {samplingApiSupported === false && (
                 <span className="models-hint is-warning">{t("models.samplingParamsUnsupported", { api: effectiveApi ?? "" })}</span>
               )}
@@ -588,7 +572,7 @@ export function ModelDetail({
       </section>
       {onDelete && (
         <SettingsGroup>
-          <SettingsRow label={t("models.deleteDefinition")} description={t("models.deleteDefinitionDescription")}>
+          <SettingsRow label={t("models.deleteDefinition")}>
             <ConfigButton size="small" variant="danger" onClick={onDelete}>{t("i18n.delete")}</ConfigButton>
           </SettingsRow>
         </SettingsGroup>
