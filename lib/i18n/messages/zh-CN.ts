@@ -1329,6 +1329,7 @@ export const zhCNLocale: LocalePlugin = {
     "i18n.default": "默认",
     "modelSelector.select": "选择模型",
     "modelSelector.none": "没有模型",
+    "chat.modelSwitchFailed": "切换模型失败：{error}",
     "modelSelector.switching": "正在切换模型",
     "modelSelector.change": "切换模型",
     "modelSelector.noneAvailable": "没有可用的模型",

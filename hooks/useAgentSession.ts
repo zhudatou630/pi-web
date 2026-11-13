@@ -93,6 +93,7 @@ interface LastAssistantTextResponse {
 }
 
 type AgentStateResponse = {
+  model?: { provider: string; id: string };
   totalActiveMs?: number;
   contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
   systemPrompt?: string;
@@ -2382,28 +2383,41 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     modelSwitchPendingRef.current = true;
     setCurrentModelOverride(target);
     setModelSwitching(true);
+    // A file reload mid-run would replace live messages. The next request uses this choice.
+    const midRun = agentRunningRef.current || bashRunningRef.current;
+    const stillHere = () => sessionHookMountedRef.current && sessionIdRef.current === sid;
+    const syncSelection = (selected: { provider: string; id: string; thinkingLevel?: string }) => {
+      if (!stillHere()) return;
+      setCurrentModelOverride({ provider: selected.provider, modelId: selected.id });
+      if (selected.thinkingLevel) setThinkingLevel(selected.thinkingLevel as ThinkingLevelOption);
+    };
     try {
-      await sendAgentCommand(sid, { type: "set_model", provider, modelId });
-      // Pi persists model_change synchronously. Reload the canonical session so
-      // the model, thinking level, and active leaf all advance together.
+      const selected = await sendAgentCommand<{ provider: string; id: string; thinkingLevel?: string }>(sid, { type: "set_model", provider, modelId });
+      if (!stillHere()) return;
+      syncSelection(selected);
       modelSwitchPendingRef.current = false;
-      await loadSession(sid);
+      if (!midRun && !agentRunningRef.current && !bashRunningRef.current) await loadSession(sid);
     } catch (e) {
       console.error("Failed to set model:", e);
+      if (!stillHere()) return;
       modelSwitchPendingRef.current = false;
       setCurrentModelOverride(previousOverride);
       addNotice({
         type: "error",
-        message: `Failed to switch model: ${e instanceof Error ? e.message : String(e)}`,
+        message: t("chat.modelSwitchFailed", { error: e instanceof Error ? e.message : String(e) }),
       });
-      // A failed response can still follow a server-side write (for example, a
-      // dropped connection), so let the session file settle the displayed model.
-      await loadSession(sid);
+      // A lost response can follow a successful write: recover from live state, never disk mid-run.
+      if (midRun || agentRunningRef.current || bashRunningRef.current) {
+        const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" }).catch(() => null);
+        if (state?.model) syncSelection({ ...state.model, thinkingLevel: state.thinkingLevel });
+      } else {
+        await loadSession(sid);
+      }
     } finally {
       modelSwitchPendingRef.current = false;
-      setModelSwitching(false);
+      if (stillHere()) setModelSwitching(false);
     }
-  }, [addNotice, currentModelOverride, isNew, loadSession, modelDefaultThinkingLevel, modelThinkingLevelPins, modelThinkingLevels, setNewSessionModel]);
+  }, [addNotice, currentModelOverride, isNew, loadSession, modelDefaultThinkingLevel, modelThinkingLevelPins, modelThinkingLevels, setNewSessionModel, t]);
 
   const handleCompact = useCallback(async (options?: { customInstructions?: string; restoreCommand?: string }) => {
     const sid = sessionIdRef.current;

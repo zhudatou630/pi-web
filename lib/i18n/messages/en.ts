@@ -1329,6 +1329,7 @@ export const enLocale: LocalePlugin = {
     "i18n.default": "Default",
     "modelSelector.select": "Select model",
     "modelSelector.none": "No models",
+    "chat.modelSwitchFailed": "Failed to switch model: {error}",
     "modelSelector.switching": "Switching model",
     "modelSelector.change": "Change model",
     "modelSelector.noneAvailable": "No available models",
