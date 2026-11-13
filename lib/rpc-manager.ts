@@ -3,7 +3,8 @@ import { assertAppNotUpdating } from "./app-update-state";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { createAgentSessionFromServices, createAgentSessionServices, getAgentDir, getPackageDir, initTheme, loadProjectContextFiles, SessionManager, SettingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager as TuiKeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { collectExtensionIssues, type ExtensionIssue } from "./extension-diagnostics";
 import { computeLiveSessionTotalActiveMs } from "./session-timing";
 import { cwdMissingError } from "./missing-cwd";
 import { existsSync, realpathSync, writeFileSync } from "fs";
@@ -341,6 +342,7 @@ export class AgentSessionWrapper {
    * session is created and before its SSE connects. The next view gets the recent ones.
    */
   private undeliveredNotices: { event: AgentEvent; at: number }[] = [];
+  private diagnosticGeneration = 0;
   private activeCustomUis = new Map<string, ActiveCustomUi>();
   private extensionUiAbortController = new AbortController();
   // shortcut: parked prompts survive browser reloads, not server restarts; persist if crash recovery is needed.
@@ -817,7 +819,14 @@ export class AgentSessionWrapper {
     }
   }
 
-  private emit(event: AgentEvent): void {
+  private emit(event: AgentEvent, diagnosticReplay = false): void {
+    if (event.type === "extension_error" && !diagnosticReplay) {
+      console.warn(`[pi-web] extension ${event.extensionPath} (${event.event}): ${event.error}`);
+      if (event.event === "session_start") {
+        this.reportDiagnosticEvent(event);
+        return;
+      }
+    }
     // The run's prompt ended without a user message (a command, a rejected prompt): tag nothing later.
     if (event.type === "prompt_done" || event.type === "prompt_error") this.pendingRoutineRun = null;
     if (event.type === "queue_update") event = { ...event, ...this.queuedMessages() };
@@ -908,7 +917,7 @@ export class AgentSessionWrapper {
     for (const event of this.pendingUiRequests.values()) listener(event);
     const noticeCutoff = Date.now() - UNDELIVERED_NOTICE_MAX_AGE_MS;
     for (const { event, at } of this.undeliveredNotices) if (at >= noticeCutoff) listener(event);
-    this.undeliveredNotices = [];
+    this.undeliveredNotices = this.undeliveredNotices.filter(({ at }) => at >= noticeCutoff);
     for (const event of this.activeToolEvents.values()) listener(event);
     if (this.bashOutput) listener(this.bashOutput.event);
     this.resetIdleTimer();
@@ -1510,7 +1519,8 @@ export class AgentSessionWrapper {
           throw new Error("Wait for the current response to finish before reloading.");
         }
         this.syncProjectTrust();
-        await this.inner.reload();
+        this.beginExtensionReload();
+        try { await this.inner.reload(); } finally { this.reportExtensionIssues(); }
         this.setActiveToolSelection(activeToolNames);
         if (typeof this.inner.bindExtensions !== "function") {
           this.inner.extensionRunner.setUIContext?.(this.createExtensionUiContext(), "rpc");
@@ -1948,9 +1958,10 @@ export class AgentSessionWrapper {
           message: stripAnsi(message),
           notifyType: type,
         } as ExtensionUiRequest as AgentEvent;
-        if (this.subscriptions.length === 0) {
-          this.undeliveredNotices = [...this.undeliveredNotices, { event, at: Date.now() }].slice(-MAX_UNDELIVERED_NOTICES);
-        }
+        this.undeliveredNotices = [
+          ...this.undeliveredNotices.filter((item) => item.at === Infinity),
+          ...this.undeliveredNotices.filter((item) => item.at !== Infinity).concat({ event, at: Date.now() }).slice(-MAX_UNDELIVERED_NOTICES),
+        ];
         this.emit(event);
       },
       onTerminalInput: () => () => {},
@@ -2042,13 +2053,45 @@ export class AgentSessionWrapper {
           return;
         }
         this.syncProjectTrust();
-        await this.inner.reload({
-          beforeSessionStart: () => {
-            this.inner.extensionRunner.setUIContext?.(this.createExtensionUiContext(), "rpc");
-          },
-        });
+        this.beginExtensionReload();
+        try {
+          await this.inner.reload({
+            beforeSessionStart: () => {
+              this.inner.extensionRunner.setUIContext?.(this.createExtensionUiContext(), "rpc");
+            },
+          });
+        } finally { this.reportExtensionIssues(); }
       },
     };
+  }
+
+  private reportDiagnosticEvent(event: AgentEvent): void {
+    const id = `extension-diagnostic:${this.sessionId}:${this.diagnosticGeneration}:${createHash("sha256").update(JSON.stringify(event)).digest("hex").slice(0, 16)}`;
+    if (this.undeliveredNotices.some((item) => item.event.id === id)) return;
+    const count = this.undeliveredNotices.filter((item) => item.at === Infinity).length;
+    if (count >= 8) return;
+    const notice = count === 7 ? {
+      type: "extension_ui_request", id: `extension-diagnostic:${this.sessionId}:${this.diagnosticGeneration}:overflow`,
+      method: "notify", notifyType: "warning", message: "", messageKey: "chat.extensionIssuesOmitted",
+    } : { ...event, id };
+    this.undeliveredNotices.push({ event: notice, at: Infinity });
+    this.emit(notice, true);
+  }
+
+  reportExtensionIssues(diagnostics?: Parameters<typeof collectExtensionIssues>[0]["diagnostics"]): void {
+    const issues = collectExtensionIssues({ diagnostics, extensions: this.inner.resourceLoader?.getExtensions?.() });
+    for (const issue of issues) this.reportExtensionIssue(issue);
+  }
+
+  reportExtensionIssue(issue: ExtensionIssue): void {
+    console.warn(`[pi-web] session ${this.sessionId}: ${issue.message}`);
+    this.reportDiagnosticEvent({ type: "extension_ui_request", method: "notify", notifyType: issue.type, message: issue.message });
+  }
+
+  private beginExtensionReload(): void {
+    this.diagnosticGeneration += 1;
+    this.undeliveredNotices = this.undeliveredNotices.filter((item) => item.at !== Infinity);
+    this.renewExtensionUiStop();
   }
 
   private renewExtensionUiStop(): AbortSignal {
@@ -2882,7 +2925,7 @@ export async function startRpcSession(
     const startupModel = restoredModel && services.modelRuntime.hasConfiguredAuth(restoredModel.provider)
       ? restoredModel
       : initial?.model;
-    const { session: inner } = await createAgentSessionFromServices({
+    const { session: inner, modelFallbackMessage } = await createAgentSessionFromServices({
       services: { ...services, cwd: sessionCwd },
       sessionManager,
       ...(startupModel ? { model: startupModel } : {}),
@@ -2976,6 +3019,14 @@ export async function startRpcSession(
             clearTimeout(timer);
             controller.abort();
           }
+        }
+        wrapper.reportExtensionIssues(services.diagnostics);
+        // The SDK decided fallback before session_start and our model recovery.
+        // Only report it if the saved/requested choice still was not recovered.
+        const desired = savedModel ?? (defaultProvider && defaultModelId ? { provider: defaultProvider, modelId: defaultModelId } : undefined);
+        if (modelFallbackMessage && inner.model && (!desired
+          || inner.model.provider !== desired.provider || inner.model.id !== desired.modelId)) {
+          wrapper.reportExtensionIssue({ type: "warning", message: modelFallbackMessage });
         }
         if (!wrapper.isAlive() || !persistStartupPreferences) return;
         const persistedPreferences = await persistExplicitStartupPreferences(

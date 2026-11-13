@@ -214,6 +214,7 @@ export type ExtensionUiRequest =
       method: "notify";
       message: string;
       notifyType?: "info" | "warning" | "error";
+      messageKey?: "chat.extensionIssuesOmitted";
     }
   | {
       type: "extension_ui_request";

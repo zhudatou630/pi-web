@@ -17,7 +17,7 @@ function uiHarness() {
   let dialogs = [];
   let panels = [];
   const bindings = {
-    useCallback, isBlockingExtensionUiRequest: () => false, addNotice: noop,
+    useCallback, t: (key) => key, isBlockingExtensionUiRequest: () => false, addNotice: noop,
     onAttentionNeeded: noop, opts: {},
     setExtensionDialogs: (update) => { dialogs = update(dialogs); },
     setExtensionCustomUis: (update) => { panels = update(panels); },
@@ -27,7 +27,7 @@ function uiHarness() {
     promptRunIdRef: ref(0),
   };
   const request = evaluate(between("  const handleExtensionUiRequest", "  const flushStreamDeltas"), bindings, "return handleExtensionUiRequest;");
-  const event = (event) => evaluate(`switch (event.type) { ${between('      case "connected":', '      case "agent_start":')} ${between('      case "extension_ui_closed":', '\n    }\n  }, [addNotice, applyContextUsage')} }`, { ...bindings, event });
+  const event = (event) => evaluate(`switch (event.type) { ${between('      case "connected":', '      case "agent_start":')} ${between('      case "extension_ui_closed":', '\n    }\n  }, [addNotice, opts.chatInputRef, applyContextUsage')} }`, { ...bindings, event });
   return { request, event, bindings, dialogs: () => dialogs, panels: () => panels };
 }
 

@@ -1101,9 +1101,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     }
   }, []);
 
+  const shownNoticeIdsRef = useRef(new Set<string>());
   const addNotice = useCallback((notice: { id?: string; message: string; type?: NoticeType }) => {
     const message = notice.message.trim();
     if (!message) return;
+    if (notice.id) {
+      const shown = shownNoticeIdsRef.current;
+      if (shown.has(notice.id)) return;
+      shown.add(notice.id);
+      if (shown.size > 200) shown.delete(shown.values().next().value!);
+    }
     dispatchNotice({
       type: "add",
       notice: {
@@ -1140,7 +1147,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "notify": {
         addNotice({
           id: request.id,
-          message: stripAnsi(request.message),
+          message: request.messageKey ? t(request.messageKey) : stripAnsi(request.message),
           type: request.notifyType ?? "info",
         });
         break;
@@ -1160,7 +1167,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         });
         break;
     }
-  }, [addNotice, onAttentionNeeded, opts.chatInputRef]);
+  }, [addNotice, onAttentionNeeded, opts.chatInputRef, t]);
 
   const flushStreamDeltas = useCallback(() => {
     if (streamDeltaFrameRef.current !== null) {
@@ -1617,8 +1624,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         break;
       case "extension_error":
         addNotice({
+          id: typeof event.id === "string" ? event.id : undefined,
           type: "error",
-          message: (event.error as string | undefined) ?? "Extension command failed",
+          message: typeof event.extensionPath === "string" && event.extensionPath
+            ? t("chat.extensionError", { path: event.extensionPath, error: String(event.error ?? "") })
+            : String(event.error ?? t("chat.extensionCommandFailed")),
         });
         break;
       case "message_start":
@@ -1822,7 +1832,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setExtensionCustomUis((queue) => queue.filter((panel) => panel.id !== event.id));
         break;
     }
-  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement]);
+  }, [addNotice, opts.chatInputRef, applyContextUsage, cancelEventStreamGrace, flushStreamDeltas, handleExtensionUiRequest, loadSession, notifyPromptStage, onAgentEnd, onToolEnd, queueStreamDelta, scheduleEventStreamClose, settleUiStage, waitForPromptSettlement, t]);
   handleAgentEventRef.current = handleAgentEvent;
 
   const handleSend = useCallback(async (message: string, images?: AttachedImage[]) => {

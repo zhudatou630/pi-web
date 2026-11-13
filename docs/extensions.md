@@ -1,5 +1,11 @@
 # Web 扩展兼容
 
+## 启动和重载诊断
+
+SDK service diagnostics、loader errors/warnings 和绑定时 `session_start` 错误写完整服务端日志，通过现有 notify / extension_error 通道显示。诊断复用通知缓冲，最多保留七条明细加一条省略提示；普通扩展通知保留最近十条、两分钟。缓冲不被第一个订阅者消费，后续页面和 split pane 都能收到相同 id；每个 hook 自己记住最近 200 个通知 id，重连不重复弹出，也不会让另一个窗格漏看。
+
+`/reload` 和 `ctx.reload()` 先替换旧诊断，再重新收集（包含此次 `session_start` 错误）。模型 fallback 等待 startup preferences 的恢复流程结束后判断，恢复成功不告警。扩展原始诊断作为服务端详情保留原文，应用的摘要和错误外围文案走 i18n。
+
 ## Fork 与扩展对话框
 
 消息 Fork 和 `/clone` 在复制锁之外询问已绑定的 `session_before_fork`，分别使用目标消息 `before` 和 leaf `at`。扩展取消不写文件，Clone 的扩展取消不显示“空会话”错误。Stop 期间被 SDK 吞掉的对话框异常也按取消处理；等待结束后重新检查忙碌状态、删除预留及目标。保留本项目禁止运行中消息 Fork/Clone 的规则，侧栏磁盘 Fork、fork_branch 和 side chat 不询问扩展。
