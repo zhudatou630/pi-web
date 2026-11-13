@@ -2417,7 +2417,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         ...(options?.customInstructions ? { customInstructions: options.customInstructions } : {}),
       });
       setCompactResult(readCompactResult(result, "manual"));
-      await loadSession(sid, true);
+      // A loading screen would unmount the composer and discard focus and selection.
+      await loadSession(sid);
       promoteNewSession();
     } catch (e) {
       setCompactError(e instanceof Error ? e.message : String(e));

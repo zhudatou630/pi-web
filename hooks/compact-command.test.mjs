@@ -25,7 +25,7 @@ function setup() {
     setIsCompacting: (value) => { compacting = value; },
     setCompactError: (value) => calls.push(["error", value]), setCompactResult: noop,
     sendAgentCommand: async (_sid, command) => { calls.push(command); return request.promise; },
-    loadSession: async () => calls.push("reload"), promoteNewSession: () => calls.push("promote"),
+    loadSession: async (...args) => { assert.deepEqual(args, ["scratch"], "background refresh must keep the composer mounted"); calls.push("reload"); }, promoteNewSession: () => calls.push("promote"),
     readCompactResult: (value) => value, composerDraftKey: "sending-draft",
     restoreSubmission: (...args) => restored.push(args), addNotice: (notice) => notices.push(notice),
     setTimeout: (fn) => timers.push(fn),

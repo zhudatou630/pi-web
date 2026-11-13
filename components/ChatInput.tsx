@@ -753,6 +753,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const atMenuRef = useRef<HTMLDivElement>(null);
   const atItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const builtinCommandPendingRef = useRef(false);
+  const builtinCommandFocusRef = useRef<{ textarea: HTMLTextAreaElement; value: string; start: number; end: number; direction: "forward" | "backward" | "none" } | null>(null);
   const historyItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const fileIndexMetaRef = useRef<{ cwd: string; fetchedAt: number } | null>(null);
   const fileIndexFetchingRef = useRef<string | null>(null);
@@ -1180,9 +1181,40 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     };
   }, []);
 
+  useLayoutEffect(() => {
+    if (builtinCommandPending) {
+      const cancelRestore = (event: Event) => {
+        if (event.target !== builtinCommandFocusRef.current?.textarea) builtinCommandFocusRef.current = null;
+      };
+      const cancelOnTab = (event: globalThis.KeyboardEvent) => {
+        if (event.key === "Tab") builtinCommandFocusRef.current = null;
+      };
+      document.addEventListener("pointerdown", cancelRestore, true);
+      document.addEventListener("focusin", cancelRestore, true);
+      document.addEventListener("keydown", cancelOnTab, true);
+      return () => {
+        document.removeEventListener("pointerdown", cancelRestore, true);
+        document.removeEventListener("focusin", cancelRestore, true);
+        document.removeEventListener("keydown", cancelOnTab, true);
+      };
+    }
+    const saved = builtinCommandFocusRef.current;
+    builtinCommandFocusRef.current = null;
+    // Restore only focus the command lock took away, after the enabling DOM commit.
+    if (saved?.textarea.isConnected && document.activeElement === document.body
+      && !document.querySelector('dialog[open], [aria-modal="true"]')) {
+      saved.textarea.focus({ preventScroll: true });
+      if (saved.textarea.value === saved.value) saved.textarea.setSelectionRange(saved.start, saved.end, saved.direction);
+    }
+  }, [builtinCommandPending]);
+
   const runBuiltinCommand = useCallback(async (msg: string): Promise<boolean> => {
     if (isEditing || attachedImages.length || quotes.length || !msg.startsWith("/") || !onBuiltinCommand) return false;
     if (builtinCommandPendingRef.current) return true;
+    const textarea = textareaRef.current;
+    builtinCommandFocusRef.current = textarea && document.activeElement === textarea
+      ? { textarea, value: textarea.value, start: textarea.selectionStart, end: textarea.selectionEnd, direction: textarea.selectionDirection }
+      : null;
     builtinCommandPendingRef.current = true;
     setBuiltinCommandPending(true);
     try {
