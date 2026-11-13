@@ -9,7 +9,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
 import { normalizeCustomPanelLines } from "@/lib/ansi";
-import { splitNoticeText } from "@/lib/notice-text";
+import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isHiddenCustomMessage, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
@@ -2712,11 +2712,10 @@ function NoticeIcon({ type }: { type: NoticeItem["type"] }) {
 /** Links in a notice (an MCP sign-in URL) open in a new tab, shown by host: sign-in URLs run to hundreds of characters. */
 function NoticeText({ text }: { text: string }) {
   const { t } = useI18n();
-  const withLinks = (value: string) => value.split(/(https?:\/\/\S+)/).map((part, index) => {
-    if (index % 2 === 0) return part;
-    let host = part;
-    try { host = new URL(part).host; } catch { /* keep the raw text */ }
-    return <a key={index} href={part} target="_blank" rel="noreferrer" title={part} className="notice-link">{t("chat.noticeOpenLink", { host })}</a>;
+  const withLinks = (value: string) => splitNoticeLinks(value).map((part, index) => {
+    if (part.kind === "text") return part.text;
+    const host = new URL(part.text).host;
+    return <a key={index} href={part.text} target="_blank" rel="noopener noreferrer" title={part.text} className="notice-link">{t("chat.noticeOpenLink", { host })}</a>;
   });
   return splitNoticeText(text).map((part, partIndex) => part.kind === "art" ? (
     // A terminal QR code or bar (#755): every space kept, rows touching, one monospace face for spaces and blocks.
@@ -2790,7 +2789,7 @@ function NoticeShelf({ notices, floating = false, onPauseChange, onOpenMcpSettin
             style={{ minWidth: 0, maxWidth: "100%", maxHeight: NOTICE_TEXT_MAX_HEIGHT_PX, overflowY: "auto", whiteSpace: "pre-line", wordBreak: "break-word" }}
           >
             <NoticeText text={notice.message} />
-            {onOpenMcpSettings && MCP_NOTICE_PATTERN.test(notice.message.replace(/https?:\/\/\S+/g, "")) && (
+            {onOpenMcpSettings && MCP_NOTICE_PATTERN.test(splitNoticeLinks(notice.message).filter((part) => part.kind === "text").map((part) => part.text).join("")) && (
               <>
                 {" "}
                 <button type="button" onClick={onOpenMcpSettings} className="notice-link">

@@ -20,6 +20,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { ExportImageIcon, useExportImage } from "./ExportImage";
 import { formatDuration } from "@/lib/i18n/format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
+import { getToolPreview } from "@/lib/tool-preview";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
 import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { parseApplyPatch } from "@/lib/apply-patch";
@@ -2248,29 +2249,6 @@ function previewText(text: string): string {
   return normalized.length > 140 ? `${normalized.slice(0, 140)}...` : normalized;
 }
 
-
-/**
- * One-line summary of a tool call's input, shown in the UI face on the collapsed row;
- * the expanded body carries the verbatim input in the code face. `path` renders through ToolPathPreview.
- */
-function getToolPreview(block: ToolCallContent): { text: string; path?: string } {
-  const input = block.input;
-  if (!input || typeof input !== "object") return { text: "" };
-  const keys = Object.keys(input);
-  if (keys.length === 0) return { text: "" };
-
-  // Common tool input patterns. A search's pattern says more than the directory it searched.
-  if ("command" in input) return { text: String(input.command).slice(0, 120) };
-  if ("pattern" in input) return { text: String(input.pattern).slice(0, 120) };
-  if ("query" in input) return { text: String(input.query).slice(0, 120) };
-  for (const key of ["path", "file_path"]) {
-    const value = input[key];
-    if (typeof value === "string" && value) return { text: value, path: value };
-  }
-
-  const first = input[keys[0]];
-  return { text: String(first).slice(0, 120) };
-}
 
 /** A path argument: cwd-relative, directory clipped from the left so the file name stays visible. */
 function ToolPathPreview({ path, cwd }: { path: string; cwd?: string }) {

@@ -32,3 +32,31 @@ export function splitNoticeText(message: string): NoticeTextPart[] {
   });
   return parts;
 }
+
+/** HTTP links in prose; punctuation is kept in the surrounding text, not the href. */
+export function splitNoticeLinks(text: string): { kind: "text" | "link"; text: string }[] {
+  const parts: { kind: "text" | "link"; text: string }[] = [];
+  let end = 0;
+  for (const match of text.matchAll(/https?:\/\/(?:\[[0-9a-f:.]+\])?[^\s<>"'`\]}。，、；：！？（）「」『』【】]*/gi)) {
+    let url = match[0];
+    let balance = 0;
+    for (const char of url) {
+      if (char === "(") balance++;
+      if (char === ")") balance--;
+    }
+    let length = url.length;
+    while (length > 0) {
+      const char = url[length - 1];
+      if (/[.,;:!?]/.test(char)) length--;
+      else if (char === ")" && balance < 0) { length--; balance++; }
+      else break;
+    }
+    url = url.slice(0, length);
+    try { if (!new URL(url).host) continue; } catch { continue; }
+    if (match.index > end) parts.push({ kind: "text", text: text.slice(end, match.index) });
+    parts.push({ kind: "link", text: url });
+    end = match.index + url.length;
+  }
+  if (end < text.length) parts.push({ kind: "text", text: text.slice(end) });
+  return parts;
+}

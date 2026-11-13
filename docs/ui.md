@@ -65,6 +65,14 @@ Design notes moved out of AGENTS.md. Typography rules are enforced by `component
 - On the SDK's explicit manual-compaction refusal, the session wrapper parks prompts (including images) in admission order; a parked plain prompt is listed as a follow-up (it runs after the compaction), an explicit steer stays a steer. Queue state is shared across tabs and survives a browser reload, not a server restart. Successful, failed and aborted compactions flush through the same admission chain; automatic compaction keeps using the SDK's streaming queues.
 - Stop compaction only stops summarization: parked prompts still run, as in pi's TUI. Ordinary Stop first returns parked prompts to the sending composer's draft, then aborts; with no parked prompts neither action starts a run. Recall reads SDK delivery queues before clearing them, so image recovery remains fail-closed.
 
+## Tool summaries and notice links
+
+Collapsed tool headers prefer command, pattern/query, then path (with the existing
+path metadata); otherwise they show primitive arguments or bounded nested text,
+never object coercion. Argv commands join with spaces. Notice HTTP(S) links stop
+at sentence/full-width punctuation and retain balanced parentheses and IPv6 hosts;
+only their host is displayed, while the full URL stays in href/title.
+
 ## Stopped replies
 
 Only a settled assistant `stopReason: "aborted"` gets the translated Stopped mark,
