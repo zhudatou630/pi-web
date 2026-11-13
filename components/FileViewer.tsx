@@ -304,6 +304,25 @@ function getFileApiUrl(
   return `/api/files/${encoded}?${searchParams.toString()}`;
 }
 
+// Page-wide versions keep reopened media URLs out of the browser's old cache.
+let previewVersion = 0;
+function usePreviewUrl(filePath: string, type: "read" | "preview", sourceSessionId: string | null | undefined, bust: number): string {
+  const [visibleVersion, setVisibleVersion] = useState(0);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setVisibleVersion((v) => v + 1);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+  return useMemo(() => {
+    // Both a watch change and returning to the page require a fresh URL.
+    void bust;
+    void visibleVersion;
+    return getFileApiUrl(filePath, type, sourceSessionId, { v: ++previewVersion });
+  }, [filePath, type, sourceSessionId, bust, visibleVersion]);
+}
+
 function MentionButton({ filePath, cwd, onAtMention }: Pick<Props, "filePath" | "cwd" | "onAtMention">) {
   const { t } = useI18n();
   if (!onAtMention) return null;
@@ -631,7 +650,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAt
     };
   }, [filePath, sourceSessionId, watchEnabled]);
 
-  const src = getFileApiUrl(filePath, "read", sourceSessionId, bust ? { v: bust } : undefined);
+  const src = usePreviewUrl(filePath, "read", sourceSessionId, bust);
 
   const formatSizeStr = size != null ? formatSize(size) : null;
 
@@ -798,7 +817,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAt
     };
   }, [filePath, sourceSessionId, watchEnabled]);
 
-  const src = getFileApiUrl(filePath, "read", sourceSessionId, bust ? { v: bust } : undefined);
+  const src = usePreviewUrl(filePath, "read", sourceSessionId, bust);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -937,7 +956,7 @@ function VideoViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, onAt
     };
   }, [filePath, sourceSessionId, watchEnabled]);
 
-  const src = getFileApiUrl(filePath, "read", sourceSessionId, bust ? { v: bust } : undefined);
+  const src = usePreviewUrl(filePath, "read", sourceSessionId, bust);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
@@ -996,12 +1015,9 @@ function DocumentViewer({ filePath, cwd, sourceSessionId, watchEnabled = true, p
 
   const ext = getFileExt(filePath);
   const isPdf = ext === "pdf";
-  const previewUrl = isPdf
-    ? getFileApiUrl(filePath, "read", sourceSessionId, bust ? { v: bust } : undefined)
-      // The browser's built-in PDF viewer honours #page=N, so a link like
-      // report.pdf#page=12 opens on the requested page instead of page 1.
-      + (pdfPage ? `#page=${pdfPage}` : "")
-    : getFileApiUrl(filePath, "preview", sourceSessionId, bust ? { v: bust } : undefined);
+  const previewUrl = usePreviewUrl(filePath, isPdf ? "read" : "preview", sourceSessionId, bust)
+    // Keep the native PDF viewer's page instruction after the query string.
+    + (isPdf && pdfPage ? `#page=${pdfPage}` : "");
 
   useEffect(() => {
     setBust(0);

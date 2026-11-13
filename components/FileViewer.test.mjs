@@ -6,6 +6,36 @@ import ts from "typescript";
 
 const source = await readFile(new URL("./FileViewer.tsx", import.meta.url), "utf8");
 
+test("preview URLs advance across reopen, watch changes and page visibility", () => {
+  const hook = source.slice(source.indexOf("let previewVersion ="), source.indexOf("function MentionButton"));
+  const evaluate = new Function("useState", "useEffect", "useMemo", "getFileApiUrl", "document", ts.transpileModule(`${hook}\nreturn usePreviewUrl;`, {}).outputText);
+  let state = 0;
+  let previous;
+  let result;
+  let visible;
+  let cleanup;
+  const document = { visibilityState: "hidden", addEventListener: (_, fn) => { visible = fn; }, removeEventListener: (_, fn) => { assert.equal(fn, visible); } };
+  const url = evaluate(() => [state, (fn) => { state = fn(state); }], (effect) => { cleanup = effect(); }, (fn, deps) => {
+    if (!previous || deps.some((v, i) => v !== previous[i])) result = fn();
+    previous = deps;
+    return result;
+  }, (_, __, ___, params) => params.v, document);
+  const first = url("image.png", "read", null, 0);
+  assert.equal(url("image.png", "read", null, 0), first, "unrelated renders reuse URL");
+  const changed = url("image.png", "read", null, 1);
+  assert.ok(changed > first);
+  previous = undefined; // a new viewer's memo starts empty
+  const reopened = url("image.png", "read", null, 0);
+  assert.ok(reopened > changed);
+  visible();
+  assert.equal(url("image.png", "read", null, 0), reopened, "hidden event does not reload");
+  document.visibilityState = "visible";
+  visible();
+  assert.ok(url("image.png", "read", null, 0) > reopened);
+  cleanup();
+  assert.equal((source.match(/usePreviewUrl\(filePath,/g) ?? []).length, 4);
+});
+
 test("large source previews bypass the per-line syntax highlighter", () => {
   assert.match(source, /const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;/);
   assert.match(source, /const SOURCE_HIGHLIGHT_MAX_BYTES = 128 \* 1024;/);
