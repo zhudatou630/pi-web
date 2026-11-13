@@ -1,5 +1,6 @@
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { ProviderCredentialType, ProviderListingInput } from "@/lib/provider-listing";
+import { buildOAuthProviderList, providerDisplayName, type ProviderCredentialType, type ProviderListingInput } from "@/lib/provider-listing";
+import { isRecord } from "@/lib/model-config-validation";
 
 /**
  * Adapter between `ModelRuntime` and the pure listing helpers in
@@ -22,6 +23,9 @@ export async function collectProviderListingInputs(
     // per-provider auth status only.
   }
 
+  const modelCounts = new Map<string, number>();
+  for (const model of models) modelCounts.set(model.provider, (modelCounts.get(model.provider) ?? 0) + 1);
+
   return modelRuntime.getProviders().map((provider) => ({
     id: provider.id,
     name: provider.name,
@@ -32,6 +36,17 @@ export async function collectProviderListingInputs(
     ...(credentialTypes.has(provider.id)
       ? { credentialType: credentialTypes.get(provider.id) }
       : {}),
-    modelCount: models.filter((model) => model.provider === provider.id).length,
+    modelCount: modelCounts.get(provider.id) ?? 0,
+  }));
+}
+
+/** Same name precedence as the Models editor, including a models.json display name. */
+export function providerDisplayNames(inputs: ProviderListingInput[], definitions: unknown): Record<string, string> {
+  const oauth = new Map(buildOAuthProviderList(inputs).map((provider) => [provider.id, provider.name]));
+  return Object.fromEntries(inputs.map((provider) => {
+    const definition = isRecord(definitions) ? definitions[provider.id] : undefined;
+    return [provider.id, providerDisplayName(provider.id,
+      isRecord(definition) && typeof definition.name === "string" ? definition.name : undefined,
+      oauth.get(provider.id), provider.name)];
   }));
 }

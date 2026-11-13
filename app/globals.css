@@ -5537,6 +5537,19 @@ span.token.table {
   font-size: 12px;
 }
 
+.model-selector-filter {
+  width: 100%;
+  min-width: 180px;
+  height: var(--ui-row-height);
+  padding: 0 6px;
+  border: 1px solid var(--ui-field-edge);
+  border-radius: var(--ui-radius-md);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
 .menu-surface-label {
   padding: 0 10px 2px;
   color: var(--text-dim);

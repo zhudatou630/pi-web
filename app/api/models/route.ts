@@ -10,6 +10,8 @@ import {
 } from "@/lib/models-cache";
 import { orderAllModels, orderSelectorModels, resolveVisibleModels, selectInitialModelScope } from "@/lib/model-scope";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
+import { collectProviderListingInputs, providerDisplayNames } from "@/lib/provider-listing-runtime";
+import { readModelsConfig } from "@/lib/models-config-store";
 import { projectTrustReloadOptions } from "@/lib/project-trust";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +36,7 @@ async function loadModels(cwd: string): Promise<ModelsData> {
     agentDir,
     ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
   });
+  const providerNames = providerDisplayNames(await collectProviderListingInputs(services.modelRuntime), readModelsConfig().providers);
   const modelError = services.modelRuntime.getError();
   const settings: SettingsManager = services.settingsManager;
   // `enabledModels` supports globs and fuzzy patterns, so resolve it the same
@@ -67,6 +70,7 @@ async function loadModels(cwd: string): Promise<ModelsData> {
   return withModelRuntimeError(
     {
       models: Object.fromEntries(nameMap),
+      providerNames,
       modelList,
       defaultModel,
       thinkingLevels,

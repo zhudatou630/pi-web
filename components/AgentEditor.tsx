@@ -565,6 +565,7 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
             <Field label={t("agents.model")}>
               <ModelSelector
                 options={modelSelectorOptions}
+                providerNames={models.data?.providerNames}
                 value={selectedModel}
                 onChange={(provider, modelId) => update("model", `${provider}/${modelId}`)}
                 onClear={() => update("model", undefined)}

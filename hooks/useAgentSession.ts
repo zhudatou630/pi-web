@@ -411,6 +411,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const directImageCancelledRef = useRef(false);
   const [modelNames, setModelNames] = useState<Record<string, string>>(() => initialModels?.models ?? {});
   const [modelList, setModelList] = useState<ModelEntry[]>(() => initialModels?.modelList ?? []);
+  const [providerNames, setProviderNames] = useState<Record<string, string>>(() => initialModels?.providerNames ?? {});
   const [allModelList, setAllModelList] = useState<ModelEntry[] | null>(() => initialModels?.allModelList ?? null);
   const [modelsMissingCwd, setModelsMissingCwd] = useState<string | null>(null);
   const [promptMissingCwd, setPromptMissingCwd] = useState<string | null>(null);
@@ -2345,6 +2346,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setModelDefaultThinkingLevel(d.defaultThinkingLevel);
     const nextModelList = d.modelList ?? [];
     setModelList(nextModelList);
+    setProviderNames(d.providerNames ?? {});
     setAllModelList(d.allModelList ?? null);
     if (isNew && !sessionIdRef.current) {
       const selectedModel = newSessionModelOverrideRef.current;
@@ -2861,7 +2863,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   return {
     // State
     data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, directImageRunning, modelNames, modelList, allModelList, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
+    agentRunning, directImageRunning, modelNames, modelList, allModelList, providerNames, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting,
     autoCompactionEnabled, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,

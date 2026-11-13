@@ -1,5 +1,6 @@
 export interface ModelsData {
   models: Record<string, string>;
+  providerNames?: Record<string, string>;
   modelList: { id: string; name: string; provider: string; input?: string[] }[];
   defaultModel: { provider: string; modelId: string } | null;
   thinkingLevels: Record<string, string[]>;

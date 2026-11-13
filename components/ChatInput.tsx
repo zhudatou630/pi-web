@@ -63,6 +63,7 @@ interface Props {
   modelList?: { id: string; name: string; provider: string; input?: string[] }[];
   /** Every available model while `enabledModels` narrows `modelList` (the selector's "All"). */
   allModelList?: { id: string; name: string; provider: string; input?: string[] }[] | null;
+  providerNames?: Record<string, string>;
   missingCwd?: string | null;
   modelError?: string | null;
   /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
@@ -657,7 +658,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, allModelList, modelError, missingCwd, modelScopeWarnings, onModelChange, modelSwitching,
+  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -2691,6 +2692,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <ModelSelector
                   options={modelOptions}
                   allOptions={allModelOptions}
+                  providerNames={providerNames}
                   value={model}
                   onChange={onModelChange}
                   onReselect={onModelChange}

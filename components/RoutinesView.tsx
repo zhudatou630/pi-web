@@ -662,6 +662,7 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
                     <>
                       <ModelSelector
                         options={modelOptions}
+                        providerNames={models.data?.providerNames}
                         value={effectiveModel}
                         onChange={chooseModel}
                         emptyLabel={models.loading ? t("agents.modelsLoading") : t("routines.chooseModel")}

@@ -7,6 +7,7 @@ export type ModelEntry = {
 
 export type ModelsResponse = {
   models: Record<string, string>;
+  providerNames?: Record<string, string>;
   modelList?: ModelEntry[];
   defaultModel?: { provider: string; modelId: string } | null;
   thinkingLevels?: Record<string, string[]>;

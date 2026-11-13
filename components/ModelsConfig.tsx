@@ -4,6 +4,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, type ReactNo
 import { useI18n } from "@/hooks/useI18n";
 import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
 import { InvalidProviderEntryError, validateProviderEntries } from "@/lib/model-config-validation";
+import { providerDisplayName } from "@/lib/provider-listing";
 import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   assignRuntimeOverride,
@@ -524,7 +525,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const models = catalog.filter((model) => model.provider === id);
     return {
       id,
-      label: json?.name ?? oauth?.name ?? apiKey?.displayName ?? id,
+      label: providerDisplayName(id, json?.name, oauth?.name, apiKey?.displayName),
       ...(oauth ? { oauth } : {}),
       ...(apiKey ? { apiKey } : {}),
       ...(json ? { json } : {}),

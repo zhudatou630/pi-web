@@ -65,9 +65,26 @@ function picker(props) {
       const id = button().props["aria-activedescendant"];
       return visit(tree, (node) => node.props.id === id && node.props.role === "option")[0];
     },
+    filter: (query) => { visit(tree, node => node.type === "input")[0].props.onChange({ target: { value: query } }); render(); },
     html: () => renderToStaticMarkup(tree),
   };
 }
+
+test("provider display names label groups and match search without changing provider ids", () => {
+  const chosen = [];
+  const state = picker({
+    options: [{ provider: "acme", modelId: "one", name: "One" }, { provider: "other", modelId: "two", name: "Two" }],
+    providerNames: { acme: "Acme Gateway" },
+    onChange: (...args) => chosen.push(args),
+  });
+  state.key("ArrowDown");
+  assert.match(state.html(), /title="acme">Acme Gateway/);
+  state.filter("gateway");
+  assert.equal(state.options().length, 1);
+  state.key("Home");
+  state.key("Enter");
+  assert.deepEqual(chosen, [["acme", "one"]]);
+});
 
 for (const clear of [false, true]) {
   test(`interleaved providers sort by provider then name; display and keyboard order agree with ArrowDown, Home and End (clear=${clear})`, () => {

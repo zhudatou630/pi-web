@@ -60,7 +60,7 @@ test("the provider name field edits the display name, never the provider id", ()
 });
 
 test("the provider header and sidebar row show the display name", () => {
-  assert.match(source, /label: json\?\.name \?\? oauth\?\.name \?\? apiKey\?\.displayName \?\? id/);
+  assert.match(source, /label: providerDisplayName\(id, json\?\.name, oauth\?\.name, apiKey\?\.displayName\)/);
   // Same header as every other item page: title, then a quiet meta line of tags.
   assert.match(source, /<h2 className="settings-detail-title models-provider-label"><ProviderIcon id=\{row\.id\} size=\{16\} \/>\{row\.label\}<\/h2>/);
   assert.match(source, /<ProviderIcon id=\{row\.id\} size=\{13\} \/>\{row\.label\}/);

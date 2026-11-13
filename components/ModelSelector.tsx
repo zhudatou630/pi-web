@@ -15,6 +15,7 @@ interface ModelSelectorProps {
   options: ModelSelectorOption[];
   /** Every available model while `options` is the `enabledModels` scope: adds pi's `/model` Scoped | All switch. */
   allOptions?: ModelSelectorOption[];
+  providerNames?: Record<string, string>;
   value?: { provider: string; modelId: string } | null;
   onChange: (provider: string, modelId: string) => void;
   onReselect?: (provider: string, modelId: string) => void;
@@ -37,9 +38,15 @@ function compareModelOptions(a: ModelSelectorOption, b: ModelSelectorOption): nu
     || MODEL_OPTION_COLLATOR.compare(a.modelId, b.modelId);
 }
 
+export function filterModelOptions(options: ModelSelectorOption[], query: string, providerNames: Record<string, string> = {}): ModelSelectorOption[] {
+  const search = query.trim().toLocaleLowerCase();
+  return search ? options.filter((option) => `${option.name} ${option.provider}/${option.modelId} ${providerNames[option.provider] ?? ""}`.toLocaleLowerCase().includes(search)) : options;
+}
+
 export function ModelSelector({
   options,
   allOptions,
+  providerNames = {},
   value,
   onChange,
   onReselect,
@@ -59,6 +66,7 @@ export function ModelSelector({
   const panelRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const [anchorRect, setAnchorRect] = useState<{ top: number; right: number; bottom: number; left: number; width: number } | null>(null);
   // null until switched: the menu opens on the scope, as pi's /model, unless the current model lies outside it.
@@ -67,12 +75,12 @@ export function ModelSelector({
   const isValue = (option: ModelSelectorOption) => option.modelId === value?.modelId && option.provider === value?.provider;
   const showAll = Boolean(allOptions) && (scopeChoice ?? Boolean(value && !options.some(isValue)));
   const listed = showAll && allOptions ? allOptions : options;
-  const sortedOptions = useMemo(() => [...listed].sort(compareModelOptions), [listed]);
+  const sortedOptions = useMemo(() => filterModelOptions([...listed].sort(compareModelOptions), query, providerNames), [listed, query, providerNames]);
   const modelsByProvider: { provider: string; options: ModelSelectorOption[] }[] = [];
 
   for (const option of sortedOptions) {
-    const group = modelsByProvider.find((item) => item.provider === option.provider);
-    if (group) group.options.push(option);
+    const group = modelsByProvider.at(-1);
+    if (group?.provider === option.provider) group.options.push(option);
     else modelsByProvider.push({ provider: option.provider, options: [option] });
   }
 
@@ -83,6 +91,7 @@ export function ModelSelector({
     () => (onClear ? [null, ...sortedOptions] : sortedOptions),
     [onClear, sortedOptions],
   );
+  const optionIndices = new Map(selectableOptions.map((option, index) => [option, index]));
   const selectedIndex = selectableOptions.findIndex((option) => option !== null
     ? option.modelId === value?.modelId && option.provider === value?.provider
     : !value);
@@ -139,6 +148,7 @@ export function ModelSelector({
     if (open) return;
     setActiveIndex(-1);
     setScopeChoice(null);
+    setQuery("");
   }, [open]);
 
   // Opening reveals the current model; afterwards only the keyboard's row is followed, so
@@ -282,6 +292,22 @@ export function ModelSelector({
               overflow: "hidden",
             }}
           >
+            <div className="model-selector-scope">
+              <input
+                className="model-selector-filter"
+                value={query}
+                placeholder={t("chat.filterModels")}
+                aria-label={t("chat.filterModels")}
+                onChange={(event) => { setQuery(event.target.value); setActiveIndex(-1); }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setActiveIndex(event.key === "ArrowDown" ? 0 : selectableOptions.length - 1);
+                    buttonRef.current?.focus();
+                  }
+                }}
+              />
+            </div>
             {allOptions && (
               <div className="model-selector-scope">
                 <SettingsSegmented
@@ -317,15 +343,15 @@ export function ModelSelector({
                 </div>
               ) : modelsByProvider.map((group) => (
                 <div key={group.provider} className="menu-surface-group">
-                  <div className="menu-surface-label">{group.provider}</div>
+                  <div className="menu-surface-label" title={group.provider}>{providerNames[group.provider] ?? group.provider}</div>
                   {group.options.map((option) => (
                     <ModelOptionButton
                       key={`${option.provider}:${option.modelId}`}
-                      id={`${listboxId}-option-${selectableOptions.indexOf(option)}`}
+                      id={`${listboxId}-option-${optionIndices.get(option)}`}
                       active={option.modelId === value?.modelId && option.provider === value?.provider}
-                      highlighted={activeOptionIndex === selectableOptions.indexOf(option)}
+                      highlighted={activeOptionIndex === optionIndices.get(option)}
                       label={option.name}
-                      onActive={() => setActiveIndex(selectableOptions.indexOf(option))}
+                      onActive={() => setActiveIndex(optionIndices.get(option)!)}
                       onClick={() => choose(option)}
                     />
                   ))}

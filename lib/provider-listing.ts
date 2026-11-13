@@ -23,6 +23,15 @@ const OAUTH_DISPLAY_NAMES: Record<string, string> = {
   "github-copilot": "GitHub Copilot",
 };
 
+export function providerDisplayName(
+  id: string,
+  definitionName?: string,
+  oauthName?: string,
+  apiKeyName?: string,
+): string {
+  return definitionName?.trim() || oauthName?.trim() || apiKeyName?.trim() || id;
+}
+
 export interface ProviderListingInput {
   id: string;
   /** Provider display name (`provider.name`). */

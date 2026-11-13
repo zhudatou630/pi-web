@@ -851,7 +851,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
   const {
     data, loading, error, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
-    agentRunning, directImageRunning, bashRunning, pendingBash, modelNames, modelList, allModelList, modelError, missingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
+    agentRunning, directImageRunning, bashRunning, pendingBash, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
     slashCommands, slashCommandsLoading, queuedMessages,
@@ -1884,6 +1884,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       modelNames={modelNames}
       modelList={modelList}
       allModelList={allModelList}
+      providerNames={providerNames}
       missingCwd={isSessionLoading ? null : missingCwd}
       modelError={isSessionLoading ? null : modelError}
       modelScopeWarnings={isSessionLoading ? [] : modelScopeWarnings}
