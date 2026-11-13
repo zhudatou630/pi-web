@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai/compat";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { createModelsConfigServices, resolveOptionalCwd } from "@/lib/model-config-services";
 import { inheritedModelFields, inheritedProviderFields } from "@/lib/model-discovery-auth";
@@ -88,8 +88,8 @@ export async function POST(req: Request) {
     const model = modelRuntime.getModel(providerName, modelId);
     if (!model) return NextResponse.json({ ok: false, error: `Model not found: ${providerName}/${modelId}` });
 
-    const resolved = await modelRuntime.getAuth(model);
-    if (!resolved?.auth.apiKey) {
+    // Request preparation resolves auth; the precheck must not execute a !command key too.
+    if (!modelRuntime.getProviderAuthStatus(providerName).configured) {
       return NextResponse.json({ ok: false, error: `No API key found for "${providerName}"` });
     }
 
@@ -99,21 +99,18 @@ export async function POST(req: Request) {
     const startedAt = Date.now();
 
     try {
-      const message = await completeSimple(model, {
+      const message = await modelRuntime.completeSimple(model, {
         messages: [{
           role: "user",
           content: "Reply with OK only.",
           timestamp: Date.now(),
         }],
       }, {
-        apiKey: resolved.auth.apiKey,
-        headers: resolved.auth.headers,
         maxTokens: 16,
         timeoutMs: TEST_TIMEOUT_MS,
         maxRetries: 0,
         cacheRetention: "none",
-        // OpenCode rejects requests without x-opencode-session, which pi-ai derives from
-        // options.sessionId. A probe has no conversation to route, so it gets a throwaway id.
+        // Use chat's runtime preparation, including gateway-specific session headers.
         sessionId: randomUUID(),
         signal: controller.signal,
         onResponse: (response) => { status = response.status; },

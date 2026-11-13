@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
@@ -18,7 +18,7 @@ const server = createServer((req, res) => {
   req.on("data", (chunk) => chunks.push(chunk));
   req.on("end", () => {
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-    requests.push({ session: req.headers["x-opencode-session"], stream: body.stream === true });
+    requests.push({ session: req.headers["x-opencode-session"], stream: body.stream === true, authorization: req.headers.authorization, custom: req.headers["x-custom"] });
     // Same rejection OpenCode's gateway returns for an unrouted probe.
     if (!req.headers["x-opencode-session"]) {
       res.writeHead(400, { "Content-Type": "application/json" });
@@ -61,12 +61,12 @@ after(async () => {
 const { POST } = await createJiti(import.meta.url, { tsconfigPaths: true }).import("./route.ts");
 const port = server.address().port;
 
-const probe = (providerName) => POST(new Request("http://localhost/api/models-config/test", {
+const probe = (providerName, provider = {}) => POST(new Request("http://localhost/api/models-config/test", {
   method: "POST",
   headers: { "Content-Type": "application/json", host: "localhost" },
   body: JSON.stringify({
     providerName,
-    provider: { baseUrl: `http://127.0.0.1:${port}/v1`, api: "openai-completions", apiKey: "test-key" },
+    provider: { baseUrl: `http://127.0.0.1:${port}/v1`, api: "openai-completions", apiKey: "test-key", ...provider },
     model: { id: "test-model", api: "openai-completions", input: ["text"], contextWindow: 8192, maxTokens: 1024 },
   }),
 }));
@@ -90,4 +90,33 @@ test("each probe uses its own throwaway routing id", async () => {
   assert.equal(requests.length, 2);
   assert.ok(requests[0].session);
   assert.notEqual(requests[0].session, requests[1].session);
+});
+
+test("a custom OpenCode URL uses runtime auth and session preparation", async (t) => {
+  const seen = [];
+  const fetch = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = new Request(input, init);
+    if (request.url.startsWith("https://opencode.ai/")) {
+      seen.push(request);
+      return fetch(`http://127.0.0.1:${port}/v1/chat/completions`, { method: request.method, headers: request.headers, body: await request.text() });
+    }
+    return fetch(input, init);
+  });
+  const response = await probe("custom-gateway", { baseUrl: "https://opencode.ai/zen/go/v1", headers: { "X-Custom": "draft-header" } });
+  const body = await response.json();
+  assert.equal(body.ok, true, body.error);
+  assert.equal(body.responseText, "OK");
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].headers.get("authorization"), "Bearer test-key");
+  assert.equal(seen[0].headers.get("x-custom"), "draft-header");
+  assert.match(seen[0].headers.get("x-opencode-session") ?? "", /^[0-9a-f-]{36}$/);
+});
+
+test("the probe executes a command key exactly once", { skip: process.platform === "win32" }, async () => {
+  const counter = join(agentDir, "command-runs");
+  const response = await probe("opencode-go", { apiKey: `!printf x >> '${counter}'; printf test-key` });
+  const body = await response.json();
+  assert.equal(body.ok, true, body.error);
+  assert.equal(await readFile(counter, "utf8"), "x");
 });
