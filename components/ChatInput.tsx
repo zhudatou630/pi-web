@@ -152,6 +152,13 @@ function getVisibleTopBoundary(element: HTMLElement): number {
   return visibleTop;
 }
 
+// Native edits scroll themselves; programmatic caret-at-end edits need an explicit reveal.
+export function scrollTextareaCaretIntoView(textarea: HTMLTextAreaElement): void {
+  if (textarea.selectionStart === textarea.value.length && textarea.selectionEnd === textarea.value.length) {
+    textarea.scrollTop = textarea.scrollHeight;
+  }
+}
+
 // Native replacement participates in undo. Engines that refuse execCommand
 // still insert the text; only that fallback lacks a native undo entry.
 export function replaceTextareaRange(
@@ -168,6 +175,7 @@ export function replaceTextareaRange(
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   }
   textarea.setSelectionRange(start + cursorOffset, start + cursorOffset);
+  scrollTextareaCaretIntoView(textarea);
 }
 
 export function replaceLinksWithMarkdown(
@@ -330,6 +338,7 @@ function focusTextareaAt(textareaRef: React.RefObject<HTMLTextAreaElement | null
     if (!textarea) return;
     textarea.focus();
     textarea.setSelectionRange(position, position);
+    scrollTextareaCaretIntoView(textarea);
   });
 }
 
@@ -758,6 +767,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       if (!ta) return;
       ta.focus({ preventScroll: true });
       ta.setSelectionRange(ta.value.length, ta.value.length);
+      scrollTextareaCaretIntoView(ta);
     },
     insertIfEmpty(text: string) {
       const ta = textareaRef.current;
@@ -769,6 +779,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
+        scrollTextareaCaretIntoView(ta);
       });
     },
     async replaceMessage(message: UserMessage) {
@@ -799,6 +810,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       requestAnimationFrame(() => {
         if (!ta) return;
         ta.focus();
+        scrollTextareaCaretIntoView(ta);
       });
       return true;
     },
@@ -816,6 +828,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         if (!ta) return;
         ta.focus();
         ta.setSelectionRange(combined.length, combined.length);
+        scrollTextareaCaretIntoView(ta);
       });
     },
     rekeyDraft(previousKey: string, nextKey: string) {
@@ -908,6 +921,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         if (!ta) return;
         ta.focus();
         ta.setSelectionRange(ta.value.length, ta.value.length);
+        scrollTextareaCaretIntoView(ta);
       });
     },
     addQuote(added: Quote) {
@@ -1644,6 +1658,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     requestAnimationFrame(() => {
       ta.focus();
       ta.setSelectionRange(start + markdown.length, start + markdown.length);
+      scrollTextareaCaretIntoView(ta);
     });
   }, [compact, processImageFiles, updateAtQuery]);
 

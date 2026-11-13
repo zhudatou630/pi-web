@@ -11,7 +11,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { ChatInput, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, readPromptImageFile, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
+const { ChatInput, scrollTextareaCaretIntoView, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, readPromptImageFile, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 
 test("the live model selector reapplies the current model without changing form selectors", () => {
@@ -131,6 +131,21 @@ test("only a dropped native text paste is recovered; images, HTML links and edit
   }
   assert.deepEqual(paste({ text: "large\n".repeat(5000), input: true }).inserted, []);
   assert.match(text, /onInput=\{\(\) => \{ pendingPasteRef\.current = null; \}\}/);
+});
+
+test("programmatic caret-at-end edits reveal overflowing text without moving mid-text selections", () => {
+  for (const [start, end, expected] of [[10, 10, 600], [3, 3, 40], [3, 10, 40]]) {
+    const ta = { value: "many\nlines", selectionStart: start, selectionEnd: end, scrollTop: 40, scrollHeight: 600 };
+    scrollTextareaCaretIntoView(ta);
+    assert.equal(ta.scrollTop, expected);
+  }
+  const source = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  assert.match(source, /if \(ta\.style\.height === "200px" && ta\.scrollHeight > 200\) return;/);
+  for (const selection of ["position, position", "combined.length, combined.length", "ta.value.length, ta.value.length", "start + markdown.length, start + markdown.length", "start + cursorOffset, start + cursorOffset"]) {
+    const location = source.lastIndexOf(`setSelectionRange(${selection});`);
+    assert.ok(location >= 0);
+    assert.match(source.slice(location, location + 160), /scrollTextareaCaretIntoView\(/);
+  }
 });
 
 test("prepends quoted image paths to outgoing messages", () => {

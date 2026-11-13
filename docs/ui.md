@@ -79,6 +79,10 @@ Events that are not turns share one look (`TranscriptMarker`, `components/Messag
 
 - Display math in messages reuses the code block's copy glyph, 11px action and 1.5s Copied feedback to copy LaTeX. The borderless action overlays the formula's top-right corner and appears only on hover/focus (a tap on touch), so formulas keep their spacing; Copied feedback stays visible. Inline math and file previews stay unchanged. The source attribute is added only after sanitizing, before KaTeX; user HTML cannot supply it. Image exports omit the action.
 
+## Composer caret visibility
+
+The existing capped-height resize fast path is retained: do not reset an already-overflowing 200px textarea to `auto` on each keystroke. Programmatic focus/restore/history/queue prepend, selection replacements (including extension `set_editor_text`'s `insertText` path) and HTML-link paste explicitly reveal a collapsed caret at the text's end. Mid-text selections retain their scroll; no mirrored textarea/caret measurement is introduced.
+
 ## Composer paste recovery
 
 Plain-text paste stays native (important for large text). The paste handler remembers event text, selection and current value; a zero-delay check uses `replaceTextareaRange` only if no input arrived, nobody prevented the event, the same textarea is still mounted, and its value is unchanged. This recovers Chrome abandoning insertion when dictation tools rewrite the clipboard mid-paste. Image paste and HTML-link-to-Markdown conversion retain their existing paths; recovered text synchronizes the same React draft/selection state as other programmatic inserts.

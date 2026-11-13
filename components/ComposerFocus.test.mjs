@@ -47,8 +47,11 @@ test("imperative composer focus puts the caret at the end of a restored draft", 
   const focus = find(source, node => ts.isMethodDeclaration(node) && node.name.getText(source) === "focus");
   assert.ok(focus);
   const calls = [];
-  const ta = { value: "restored draft 中文", focus: opts => calls.push(["focus", opts.preventScroll]), setSelectionRange: (a, b) => calls.push([a, b]) };
-  script(`({${focus.getText(source)}}).focus()`).runInNewContext({ textareaRef: { current: ta } });
+  const ta = { value: "restored draft 中文", scrollTop: 0, scrollHeight: 600, focus: opts => calls.push(["focus", opts.preventScroll]), setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; calls.push([a, b]); } };
+  const scroll = find(source, node => ts.isFunctionDeclaration(node) && node.name?.text === "scrollTextareaCaretIntoView");
+  const scrollTextareaCaretIntoView = script(`(${scroll.getText(source).replace(/^export /, "")})`).runInNewContext();
+  script(`({${focus.getText(source)}}).focus()`).runInNewContext({ textareaRef: { current: ta }, scrollTextareaCaretIntoView });
   assert.deepEqual(calls, [["focus", true], [ta.value.length, ta.value.length]]);
-  script(`({${focus.getText(source)}}).focus()`).runInNewContext({ textareaRef: { current: null } });
+  assert.equal(ta.scrollTop, 600);
+  script(`({${focus.getText(source)}}).focus()`).runInNewContext({ textareaRef: { current: null }, scrollTextareaCaretIntoView });
 });
