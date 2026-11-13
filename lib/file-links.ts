@@ -31,6 +31,12 @@ function normalizeFilePathSlashes(filePath: string): string {
   return filePath;
 }
 
+// Shell drive notation is meaningful only with a drive-letter cwd, not a POSIX/UNC cwd.
+function normalizeShellDrivePath(filePath: string, baseDir?: string): string {
+  if (!baseDir || !/^[a-zA-Z]:[\\/]/.test(baseDir)) return filePath;
+  return filePath.replace(/^\/(?:mnt\/|cygdrive\/)?([a-zA-Z])(?:\/(.*))?$/, (_, drive: string, rest: string | undefined) => `${drive.toUpperCase()}:/${rest ?? ""}`);
+}
+
 function stripLineSuffix(filePath: string): string {
   return filePath.replace(/:\d+(?::\d+)?$/, "");
 }
@@ -56,7 +62,7 @@ function normalizeLocalPath(filePath: string): string {
   }
 
   const joined = parts.join("/");
-  if (isWindowsDrive) return joined;
+  if (isWindowsDrive) return parts.length === 1 ? `${joined}/` : joined;
   if (isUnc) return `//${joined}`;
   return leadingSlash ? `/${joined}` : joined;
 }
@@ -99,7 +105,7 @@ export function resolveLocalFileHref(
   let candidate: string | null = null;
   const decodedHref = safeDecode(cleanHref);
   const isBackslashUncPath = decodedHref.startsWith("\\\\");
-  const normalizedHref = normalizeFilePathSlashes(decodedHref);
+  const normalizedHref = normalizeShellDrivePath(normalizeFilePathSlashes(decodedHref), baseDir);
   const lowerHref = normalizedHref.toLowerCase();
 
   if (lowerHref.startsWith("/api/") || lowerHref.startsWith("/_next/")) return null;
@@ -152,7 +158,7 @@ export function resolveLocalFilePath(filePath: string | undefined, baseDir?: str
     filePath.startsWith("\\\\") ||
     (baseDir !== undefined && (/^[a-zA-Z]:[\\/]/.test(baseDir) || baseDir.startsWith("\\\\")));
   const normalizeSlashes = (value: string) => windowsStyle ? value.replace(/\\/g, "/") : value;
-  const normalizedPath = normalizeSlashes(filePath);
+  const normalizedPath = normalizeShellDrivePath(normalizeSlashes(filePath), baseDir);
   const normalizedBase = baseDir ? normalizeSlashes(baseDir).replace(/\/+$/, "") : undefined;
 
   const isDriveAbsolute = /^[a-zA-Z]:\//.test(normalizedPath);

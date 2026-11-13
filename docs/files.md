@@ -14,6 +14,10 @@ Added, removed and context text reuse Source's Prism pipeline and both palettes.
 
 <!-- shortcut: line-by-line highlighting cannot track multiline comments/template strings; tokenize both full file versions if that becomes necessary. -->
 
+## Windows shell paths
+
+File links and tool paths normalize `/d`, `/mnt/d` and `/cygdrive/d` to `D:/` only when the caller's cwd has a Windows drive letter. No browser OS inference is used: POSIX paths and UNC inputs retain their meaning. Cross-drive paths, drive roots and PDF page fragments work through the same resolvers.
+
 ## Session export
 
 HTML exports create a private `mkdtemp` directory for each request, avoiding cross-user ownership conflicts and concurrent-export interference. The entire directory is removed in `finally`, including partial output after a failure. Markdown exports never create it.
