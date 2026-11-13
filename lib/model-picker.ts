@@ -147,7 +147,8 @@ export function removeExactRef(
 }
 
 export function allPatternsUnmatched(matches: EnabledModelsPanelState["matches"]): boolean {
-  return Object.values(matches).every((models) => models.length === 0);
+  const resolutions = Object.values(matches);
+  return resolutions.length > 0 && resolutions.every((models) => models.length === 0);
 }
 
 export function removePattern(patterns: readonly string[], pattern: string): string[] {

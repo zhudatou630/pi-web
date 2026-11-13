@@ -366,9 +366,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
    * slower response would undo the faster one. Each write re-derives from the
    * current server document instead of the snapshot its caller read.
    *
-   * An empty list deletes the key, which means "every model", so a write that
-   * would produce one is refused unless every old rule is unmatched (the
-   * all-model fallback already applies, so clearing the rules loses no model).
+   * An empty list means "every model", so a write that would produce one is
+   * refused unless at least one old rule exists and every old rule is unmatched
+   * (the all-model fallback already applies, so clearing the rules loses no model).
    */
   const scopeWriteRef = useRef<Promise<unknown>>(Promise.resolve());
   const saveScope = useCallback((update: (current: EnabledModelsPanelState) => string[]) => {
