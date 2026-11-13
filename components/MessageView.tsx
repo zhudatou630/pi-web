@@ -167,7 +167,7 @@ interface Props {
   searchBlock?: AssistantContentBlock;
   /** Session search landed on this message (a routine run then shows its instructions). */
   searchTarget?: boolean;
-  onFork?: (entryId: string) => void;
+  onFork?: (entryId: string, message: UserMessage) => void;
   forking?: boolean;
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage, targetId: string) => void;
@@ -397,7 +397,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
   entryId?: string;
-  onFork?: (entryId: string) => void;
+  onFork?: (entryId: string, message: UserMessage) => void;
   forking?: boolean;
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage, targetId: string) => void;
@@ -648,7 +648,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
                 <button
                   type="button"
                   className="message-action-button"
-                  onClick={() => { onFork!(entryId!); }}
+                  onClick={() => { onFork!(entryId!, editTarget); }}
                   disabled={forking}
                   title={forking ? t("i18n.creatingSession") : t("i18n.newSessionTitle")}
                   aria-label={forking ? t("i18n.creating") : t("i18n.newSession")}

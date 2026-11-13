@@ -18,7 +18,7 @@ import { missingCwdFromBody } from "@/lib/missing-cwd";
 import { stripAnsi } from "@/lib/ansi";
 import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
-import { getDraft, rekeyDraft, restoreDraftSubmission } from "@/lib/draft-store";
+import { getDraft, rekeyDraft, restoreDraftSubmission, setDraft, type ChatDraft } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
@@ -2299,7 +2299,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     await sendStop(command === "abort_bash" ? "abort_bash" : "abort");
   }, [addNotice, composerDraftKey, restoreRecalledQueue, restoreSubmission, session]);
 
-  const handleFork = useCallback(async (entryId: string, name?: string) => {
+  const handleFork = useCallback(async (entryId: string, name?: string, draft?: () => Promise<ChatDraft>) => {
     if (bashRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
@@ -2312,6 +2312,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       });
       const { cancelled, newSessionId } = result ?? {};
       if (!cancelled && newSessionId) {
+        if (draft) setDraft(newSessionId, await draft());
         onSessionForked?.(newSessionId);
       }
     } catch (e) {

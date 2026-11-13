@@ -132,6 +132,14 @@ Truncated results keep their full-output actions in the expanded card's existing
 
 Unlike upstream, agent and user-shell execution remain mutually exclusive in this implementation. `sendQueued()` routes unquoted, image-free `!` / `!!` input to the command path, never to steering or follow-up; busy rejection explains the refusal and restores the originating draft. The server also refuses busy shell commands and refuses compaction while shell work is active. Parallel execution is deferred because this app has a parked compaction queue, shared Stop forced-cleanup deadline and post-bash subagent-report delivery; enabling it safely also requires reconciling SDK-deferred bash history against forced session reads, not just relaxing admission. Keeping mutual exclusion preserves existing Stop, completion and sidebar/favicon semantics.
 
+## Fork drafts
+
+The user-message Fork button copies history *before* that message, then restores
+its editable text (including skill-command recovery) and images under the new
+session's draft key before switching. Deferred images are awaited only after a
+successful fork; a media failure still keeps the text. Fork naming is unchanged.
+The session menu's fork-through-current-leaf action does not seed a draft.
+
 ## Model changes during a run
 
 The model picker remains available while streaming (only a pending switch locks it).

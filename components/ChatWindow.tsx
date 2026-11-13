@@ -7,7 +7,7 @@ import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type
 import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage } from "@/lib/types";
+import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
@@ -33,7 +33,7 @@ import {
 } from "@/lib/chat-outline-jump";
 import { getModelDisplayName, hasAssistantAnswer, MessageNoticeContext, MessageView } from "./MessageView";
 import { MarkdownBody, MarkdownSessionContext } from "./MarkdownBody";
-import { ChatInput, type ChatInputHandle } from "./ChatInput";
+import { ChatInput, getUserMessageDraftImages, getUserMessageText, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { MenuCheck } from "./MenuCheck";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -1836,10 +1836,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     await handleSend(message, images);
   }, [handleSend, keepTabOpen]);
 
-  const handleChatFork = useCallback((entryId: string) => {
+  const handleChatFork = useCallback((entryId: string, message: UserMessage) => {
     keepTabOpen();
     const source = sessionRef.current;
-    return handleFork(entryId, source ? getForkSessionName(source, t("session.forkNamePrefix")) : undefined);
+    return handleFork(entryId, source ? getForkSessionName(source, t("session.forkNamePrefix")) : undefined, async () => ({
+      value: getUserMessageText(message),
+      // Deferred media may fail independently of the fork; never lose the question's text.
+      images: await getUserMessageDraftImages(message).catch(() => []),
+    }));
   }, [handleFork, keepTabOpen, sessionRef, t]);
 
   const handleSteerWithSubmit = useCallback((message: string, images?: AttachedImage[]) => {

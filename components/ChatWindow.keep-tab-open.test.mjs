@@ -132,6 +132,7 @@ for (const [name, delegate, args, delegatedArgs = args] of entrances) {
     const promise = Promise.resolve("accepted");
     const bindings = bindingsFor(events, {
       [delegate](...received) {
+        if (delegate === "handleFork") assert.equal(typeof received.pop(), "function", "message draft is recovered after fork succeeds");
         assert.deepEqual(received, delegatedArgs);
         received.forEach((value, i) => assert.equal(value, delegatedArgs[i]));
         events.push(["work", delegate]);
