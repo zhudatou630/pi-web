@@ -14,6 +14,11 @@ function toHtml(text) {
   return renderToStaticMarkup(React.createElement(AnsiText, { text }));
 }
 
+test("pi APC markers are removed before ANSI rendering without consuming later lines", () => {
+  assert.equal(toHtml("> \x1b_pi:c\x07\x1b_pi:fc\x07中\x1b_pi:/fc\x07"), "<span>&gt; 中</span>");
+  assert.match(toHtml("cut\x1b_pi:fc\nnext line\x07 end"), /next line/);
+});
+
 test("plain text without escapes passes through unchanged", () => {
   assert.equal(toHtml("hello world"), "<span>hello world</span>");
 });
