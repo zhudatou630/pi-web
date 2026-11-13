@@ -4,6 +4,8 @@ import { Script } from "node:vm";
 import { setImmediate } from "node:timers/promises";
 import test from "node:test";
 import ts from "typescript";
+import { createJiti } from "jiti";
+const { withoutReadMarks } = await createJiti(import.meta.url).import("../lib/unread-state.ts");
 
 const text = readFileSync(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 const ast = ts.createSourceFile("SessionSidebar.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -61,3 +63,50 @@ for (const missedRunning of [false, true]) {
     cleanup();
   });
 }
+
+test("polls send known read versions and retain omitted reads while adopting updates and explicit deletion", async () => {
+  const timers = [], requests = [];
+  const initialReads = { root: 200 };
+  let marks = new Map([["root", 100]]);
+  const responses = [
+    { readAtVersion: "v1" },
+    { readAtVersion: "v2", readAt: { root: 250 } },
+    { readAtVersion: "v2" },
+    { readAtVersion: "v3", readAt: {} },
+  ];
+  const scope = {
+    AbortController, Set, Map, Math, JSON, URLSearchParams,
+    performance: { now: () => 10 }, document: { visibilityState: "visible", hasFocus: () => true, addEventListener() {}, removeEventListener() {} },
+    hasRecentAttention: () => true, lastInputAtRef: { current: 1 }, visibleReadIdsRef: { current: [] }, manualReadIdsRef: { current: new Map() },
+    readSnapshotRef: { current: { serverNow: 200, receivedAt: 0, readAtVersion: "v1", readAt: initialReads, completedAt: {}, pendingIds: new Set() } },
+    runningPollAuthoritativeRef: { current: false }, currentSuppressedCompletionSessionIdsRef: { current: new Set() }, sessionListVersionRef: { current: 1 },
+    RUNNING_SESSIONS_POLL_MS: 2500, HIDDEN_RUNNING_SESSIONS_POLL_MS: 30000,
+    setTimeout: (fn) => { timers.push(fn); return 1; }, clearTimeout() {}, loadSessions() {},
+    withoutReadMarks, sameIdSet: (current) => current, sameTimes: (current) => current,
+    fetch: async (url, options) => {
+      requests.push({ url, body: options.body ? JSON.parse(options.body) : null });
+      return { ok: true, json: async () => ({ serverNow: 200 + requests.length * 50, sessionListVersion: 1, ...responses.shift() }) };
+    },
+  };
+  for (const name of ["SubagentsActiveSessionIds", "RunningSessionIds", "AwaitingInputSessionIds", "CacheKeepaliveSessions"]) scope[`set${name}`] = () => {};
+  scope.setUnreadMarks = (update) => { marks = update(marks); };
+  const cleanup = execute(effect.arguments[0].getText(ast), scope)();
+  await setImmediate();
+  assert.equal(new URL(requests[0].url, "http://localhost").searchParams.get("readAtVersion"), "v1");
+  assert.equal(scope.readSnapshotRef.current.readAt, initialReads);
+  assert.equal(marks.size, 0, "omission must still clear stale local markers using the known reads");
+  scope.visibleReadIdsRef.current = ["root"];
+  timers.shift()(); await setImmediate();
+  assert.equal(requests[1].body.readAtVersion, "v1");
+  assert.equal(scope.readSnapshotRef.current.readAt.root, 250);
+  scope.visibleReadIdsRef.current = [];
+  timers.shift()(); await setImmediate();
+  assert.equal(new URL(requests[2].url, "http://localhost").searchParams.get("readAtVersion"), "v2");
+  assert.equal(scope.readSnapshotRef.current.readAt.root, 250);
+  marks.set("root", 300);
+  timers.shift()(); await setImmediate();
+  assert.deepEqual(Object.keys(scope.readSnapshotRef.current.readAt), []);
+  assert.equal(marks.get("root"), 300);
+  assert.equal(scope.readSnapshotRef.current.readAtVersion, "v3");
+  cleanup();
+});

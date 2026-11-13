@@ -481,7 +481,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const manualReadIdsRef = useRef(new Map<string, number>());
   const visibleReadIdsRef = useRef<string[]>([]);
   visibleReadIdsRef.current = [...new Set((visibleSessionIds ?? [selectedSessionId]).filter((id): id is string => Boolean(id)))];
-  const readSnapshotRef = useRef<{ serverNow: number; receivedAt: number; readAt: Record<string, number>; completedAt: Record<string, number>; pendingIds: Set<string> }>({ serverNow: 0, receivedAt: 0, readAt: {}, completedAt: {}, pendingIds: new Set() });
+  const readSnapshotRef = useRef<{ serverNow: number; receivedAt: number; readAtVersion?: string; readAt: Record<string, number>; completedAt: Record<string, number>; pendingIds: Set<string> }>({ serverNow: 0, receivedAt: 0, readAt: {}, completedAt: {}, pendingIds: new Set() });
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   const currentSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
   const previousSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
@@ -837,14 +837,17 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           ? [...new Set([...visibleReadIdsRef.current, ...manualReadIdsRef.current.keys()])].filter((id) => !observed.pendingIds.has(id)).slice(0, 10) : [];
         // Retrying a manual read must never acknowledge replies newer than the click.
         const observedAt = Math.min(observed.serverNow, ...readSessionIds.map((id) => manualReadIdsRef.current.get(id) ?? observed.serverNow));
-        const res = await fetch("/api/agent/running", {
+        const pollUrl = !readSessionIds.length && observed.readAtVersion
+          ? `/api/agent/running?${new URLSearchParams({ readAtVersion: observed.readAtVersion })}` : "/api/agent/running";
+        const res = await fetch(pollUrl, {
           cache: "no-store",
           signal: current.signal,
-          ...(readSessionIds.length ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ readSessionIds, observedAt }) } : {}),
+          ...(readSessionIds.length ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ readSessionIds, observedAt, readAtVersion: observed.readAtVersion }) } : {}),
         });
         if (!res.ok) return;
         const data = await res.json() as {
           serverNow: number;
+          readAtVersion?: string;
           readAt?: Record<string, number>;
           completedAt?: Record<string, number>;
           sessionListVersion: number;
@@ -855,12 +858,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           completionNotificationSuppressedSessionIds?: string[];
         };
         if (stopped || controller !== current) return;
+        const readAt = data.readAt ?? observed.readAt;
         for (const id of readSessionIds) {
           const manualAt = manualReadIdsRef.current.get(id);
-          if (manualAt !== undefined && (data.readAt?.[id] ?? -1) >= manualAt) manualReadIdsRef.current.delete(id);
+          if (manualAt !== undefined && (readAt[id] ?? -1) >= manualAt) manualReadIdsRef.current.delete(id);
         }
-        readSnapshotRef.current = { serverNow: data.serverNow, receivedAt: performance.now(), readAt: data.readAt ?? {}, completedAt: data.completedAt ?? {}, pendingIds: new Set([...(data.runningSessionIds ?? []), ...(data.subagentsActiveSessionIds ?? [])]) };
-        setUnreadMarks((marks) => withoutReadMarks(marks, data.readAt ?? {}));
+        readSnapshotRef.current = { serverNow: data.serverNow, receivedAt: performance.now(), readAtVersion: data.readAtVersion, readAt, completedAt: data.completedAt ?? {}, pendingIds: new Set([...(data.runningSessionIds ?? []), ...(data.subagentsActiveSessionIds ?? [])]) };
+        setUnreadMarks((marks) => withoutReadMarks(marks, readAt));
         runningPollAuthoritativeRef.current = true;
         currentSuppressedCompletionSessionIdsRef.current = new Set(
           data.completionNotificationSuppressedSessionIds ?? [],

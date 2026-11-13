@@ -120,7 +120,7 @@ test("background completion waits across waves, respects Stop, and treats either
 test("idle reads require attention and carry only the last server-observed snapshot", () => {
   assert.match(source, /hasRecentAttention\(lastInputAtRef.current, performance.now\(\), document.visibilityState === "visible", document.hasFocus\(\)\)/);
   assert.match(source, /filter\(\(id\) => !observed.pendingIds.has\(id\)\)/);
-  assert.match(source, /JSON.stringify\(\{ readSessionIds, observedAt \}\)/);
+  assert.match(source, /JSON.stringify\(\{ readSessionIds, observedAt, readAtVersion: observed.readAtVersion \}\)/);
   assert.doesNotMatch(source, /markVisibleRead/);
 });
 
@@ -183,7 +183,7 @@ test("uses a native main action without row-level deletion shortcuts", () => {
 
 test("polls running sessions quickly while visible and slowly while hidden, for the favicon badge", () => {
   assert.doesNotMatch(source, /new EventSource\("\/api\/agent\/running\/events"\)/);
-  assert.match(source, /fetch\("\/api\/agent\/running"/);
+  assert.match(source, /fetch\(pollUrl/);
   assert.match(source, /document\.visibilityState === "visible" \? RUNNING_SESSIONS_POLL_MS : HIDDEN_RUNNING_SESSIONS_POLL_MS/);
   assert.match(source, /const HIDDEN_RUNNING_SESSIONS_POLL_MS = 30_000/);
   assert.match(source, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);

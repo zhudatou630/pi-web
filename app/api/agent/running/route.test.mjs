@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -49,4 +49,48 @@ test("running poll shares server-clock reads for both panes, never reads active 
   assert.equal(await readFile(path, "utf8"), bytes);
   for (const body of [null, {}, { readSessionIds: [] }, { readSessionIds: ["__proto__"], observedAt: now }, { readSessionIds: ["root"], observedAt: now + 1 }, { readSessionIds: ["root"], observedAt: "1" }]) assert.equal((await post(body)).status, 400);
   assert.equal((await POST(new Request("http://localhost/api/agent/running", { method: "POST", body: "x".repeat(4097) }))).status, 413);
+});
+
+test("read versions suppress unchanged payloads independently for each browser and detect external writes", async (t) => {
+  const agentDir = await mkdtemp(join(tmpdir(), "running-read-versions-"));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  const registry = globalThis.__piSessions;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  globalThis.__piSessions = new Map();
+  delete globalThis[Symbol.for("pi-web:completion-snapshot")];
+  t.after(async () => {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+    globalThis.__piSessions = registry;
+    delete globalThis[Symbol.for("pi-web:completion-snapshot")];
+    await rm(agentDir, { recursive: true, force: true });
+  });
+  const now = Date.now();
+  const reads = Object.fromEntries(Array.from({ length: 2300 }, (_, i) => [`session-${String(i).padStart(24, "0")}`, now]));
+  const path = join(agentDir, "pi-web", "sidebar-state.json");
+  await mkdir(join(agentDir, "pi-web"));
+  await writeFile(path, JSON.stringify({ version: 1, pinned: [], archived: {}, readAt: reads }));
+  const get = async (version) => (await GET(new Request(`http://localhost/api/agent/running${version ? `?readAtVersion=${version}` : ""}`))).json();
+  const post = async (body) => POST(new Request("http://localhost/api/agent/running", { method: "POST", body: JSON.stringify(body) }));
+  const first = await get();
+  assert.deepEqual(first.readAt, reads);
+  assert.ok(JSON.stringify(first).length > 100_000);
+  const unchanged = await get(first.readAtVersion);
+  assert.equal(unchanged.readAtVersion, first.readAtVersion);
+  assert.equal(Object.hasOwn(unchanged, "readAt"), false);
+  assert.ok(JSON.stringify(unchanged).length < 1000);
+  const samePost = await (await post({ readSessionIds: [Object.keys(reads)[0]], observedAt: now, readAtVersion: first.readAtVersion })).json();
+  assert.equal(Object.hasOwn(samePost, "readAt"), false);
+  const otherBrowser = await get();
+  assert.deepEqual(otherBrowser.readAt, reads, "another browser still gets its own initial full snapshot");
+  const changed = await (await post({ readSessionIds: ["new-read"], observedAt: now, readAtVersion: otherBrowser.readAtVersion })).json();
+  assert.equal(changed.readAt["new-read"], now);
+  assert.notEqual(changed.readAtVersion, first.readAtVersion);
+  assert.deepEqual((await get(first.readAtVersion)).readAt, changed.readAt, "the first browser catches up after another browser writes");
+  assert.equal(Object.hasOwn(await get(changed.readAtVersion), "readAt"), false);
+  await writeFile(`${path}.tmp`, JSON.stringify({ version: 1, pinned: [], archived: {}, readAt: {} }));
+  await rename(`${path}.tmp`, path);
+  const removed = await get(changed.readAtVersion);
+  assert.deepEqual(removed.readAt, {}, "external deletion must be sent explicitly, not mistaken for omission");
+  assert.notEqual(removed.readAtVersion, changed.readAtVersion);
+  assert.equal((await post({ readSessionIds: ["root"], observedAt: now, readAtVersion: {} })).status, 400);
 });

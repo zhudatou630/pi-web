@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import lockfile from "proper-lockfile";
@@ -60,13 +61,34 @@ function loadState(path: string): SidebarState {
   throw new Error(`Corrupt sidebar state: ${path}; refusing to overwrite`);
 }
 
+interface SidebarSnapshot { state: SidebarState; readAtVersion: string }
+let cachedSnapshot: { path: string; fingerprint: string; snapshot: SidebarSnapshot } | undefined;
+
+function stateFingerprint(path: string): string {
+  const stat = statSync(path, { throwIfNoEntry: false });
+  return stat ? `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}` : "missing";
+}
+
+/** Treat cached snapshots as read-only; writers always reload strictly under the file lock. */
+export function readSidebarSnapshot(path = getSidebarStatePath()): SidebarSnapshot {
+  let fingerprint = stateFingerprint(path);
+  if (fingerprint === "missing") fingerprint += `:${stateFingerprint(join(dirname(path), "pinned-sessions.json"))}`;
+  if (cachedSnapshot?.path === path && cachedSnapshot.fingerprint === fingerprint) return cachedSnapshot.snapshot;
+  let state: SidebarState;
+  try { state = loadState(path); }
+  catch (error) {
+    if (error instanceof Error && error.message.startsWith("Corrupt sidebar state:")) state = emptyState();
+    else throw error;
+  }
+  const readAtVersion = createHash("sha256").update(JSON.stringify(state.readAt ?? {})).digest("hex");
+  const snapshot = { state, readAtVersion };
+  cachedSnapshot = { path, fingerprint, snapshot };
+  return snapshot;
+}
+
 /** Corruption reads as empty, but the locked write below refuses to replace it. */
 export function readSidebarState(path = getSidebarStatePath()): SidebarState {
-  try { return loadState(path); }
-  catch (error) {
-    if (error instanceof Error && error.message.startsWith("Corrupt sidebar state:")) return emptyState();
-    throw error;
-  }
+  return readSidebarSnapshot(path).state;
 }
 
 /** Lock even a missing file; all sidebar read-modify-writes share this lock. */
@@ -84,7 +106,10 @@ async function mutateSidebarState(
     const state = loadState(path);
     const changed = mutate(state);
     if (compromised) throw compromised;
-    if (changed) writePrivateFileAtomicSync(path, JSON.stringify(state, null, 2) + "\n", 0o600, { followSymlinks: true });
+    if (changed) {
+      cachedSnapshot = undefined;
+      writePrivateFileAtomicSync(path, JSON.stringify(state, null, 2) + "\n", 0o600, { followSymlinks: true });
+    }
     return { state, changed };
   } finally {
     await release();
