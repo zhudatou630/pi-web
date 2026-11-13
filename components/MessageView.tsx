@@ -2278,7 +2278,7 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
   const { t } = useI18n();
   const [fullOutput, setFullOutput] = useState<string | null>(null);
   const [loadingFull, setLoadingFull] = useState(false);
-  const [fullError, setFullError] = useState<string | null>(null);
+  const [fullError, setFullError] = useState<"chat.bashFullTooLarge" | "chat.bashFullUnavailable" | null>(null);
 
   const isPending = live;
   const failed = !message.cancelled && message.exitCode !== undefined && message.exitCode !== 0;
@@ -2294,14 +2294,14 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
     setFullError(null);
     try {
       const res = await fetch(fullOutputUrl);
-      const d = await res.json() as { success?: boolean; data?: { output?: string }; error?: string };
-      if (d.success) {
-        setFullOutput(d.data?.output ?? "");
+      const d = await res.json().catch(() => null) as { success?: boolean; data?: { output?: string } } | null;
+      if (res.ok && d?.success && typeof d.data?.output === "string") {
+        setFullOutput(d.data.output);
       } else {
-        setFullError(d.error ?? "failed");
+        setFullError(res.status === 413 ? "chat.bashFullTooLarge" : "chat.bashFullUnavailable");
       }
-    } catch (e) {
-      setFullError(String(e));
+    } catch {
+      setFullError("chat.bashFullUnavailable");
     } finally {
       setLoadingFull(false);
     }
@@ -2333,10 +2333,10 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
     </>
   );
   const footer = message.truncated && fullOutputUrl ? (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px 6px", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, padding: "0 10px 6px", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>
+      <span role="status">{t(fullError ?? (fullOutput !== null ? "chat.bashFullShown" : "chat.bashTruncated"))}</span>
       {showFullButton && (
         <>
-          <span>{t("chat.bashTruncated")}</span>
           <span aria-hidden="true">·</span>
           <button type="button" className="meta-link" onClick={loadFullOutput} disabled={loadingFull}>
             {loadingFull ? t("chat.bashLoading") : t("chat.bashViewFull")}
@@ -2344,7 +2344,6 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
         </>
       )}
       <a className="meta-link" href={`${fullOutputUrl}&download=1`}>{t("chat.bashDownloadFull")}</a>
-      {fullError && <span>({fullError})</span>}
     </div>
   ) : undefined;
 
