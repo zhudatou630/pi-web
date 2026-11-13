@@ -121,7 +121,7 @@ test("archive entry, shared non-danger confirm, pane protection, and subtle sear
   assert.match(source, /archiveProjectConfirm/);
   assert.match(source, /olderCount === 0/);
   assert.match(source, /visibleSessionIds: new Set\(visibleSessionIds\)/);
-  assert.match(shellSource, /visibleSessionIds=\{\[primaryTab\?\.session\?\.id[\s\S]*?isSplitActive \? secondaryTab\?\.session\?\.id/);
+  assert.match(shellSource, /visibleSessionIds=\{mainView === "chat"[\s\S]*?\? \[primaryTab\?\.session\?\.id[\s\S]*?isSplitActive \? secondaryTab\?\.session\?\.id/);
   assert.match(searchSource, /archivedSessionIds\?\.has\(session\.id\)[\s\S]*?text-\[10px\] text-text-dim/);
   assert.doesNotMatch(searchSource, /fontWeight|italic/);
 });

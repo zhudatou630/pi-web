@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { createJiti } from "jiti";
+const { GET, POST } = await createJiti(import.meta.url, { tsconfigPaths: true }).import("./route.ts");
+
+test("running poll shares server-clock reads for both panes, never reads active runs and validates input", async (t) => {
+  const agentDir = await mkdtemp(join(tmpdir(), "running-reads-"));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  const registry = globalThis.__piSessions;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  delete globalThis[Symbol.for("pi-web:completion-snapshot")];
+  let running = true;
+  globalThis.__piSessions = new Map([["root", { sessionId: "root", isRunning: () => running, hasSuppressedCompletionNotifications: () => false }]]);
+  t.after(async () => {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+    globalThis.__piSessions = registry;
+    delete globalThis[Symbol.for("pi-web:completion-snapshot")];
+    await rm(agentDir, { recursive: true, force: true });
+  });
+  let now = Date.now();
+  t.mock.method(Date, "now", () => now);
+  const post = (body) => POST(new Request("http://localhost/api/agent/running", { method: "POST", body: JSON.stringify(body) }));
+  const first = await (await GET()).json();
+  assert.equal(first.serverNow, now);
+  assert.deepEqual(first.runningSessionIds, ["root"]);
+  assert.deepEqual(first.readAt, {});
+  await post({ readSessionIds: ["root", "other-pane"], observedAt: first.serverNow });
+  let snapshot = await (await GET()).json();
+  assert.deepEqual(snapshot.readAt, { "other-pane": now });
+  now += 100; running = false;
+  const done = await (await GET()).json();
+  assert.equal(done.completedAt.root, now);
+  // A delayed request carries the time the page actually saw, not its arrival time.
+  now += 100;
+  await post({ readSessionIds: ["root"], observedAt: first.serverNow });
+  snapshot = await (await GET()).json();
+  assert.ok(snapshot.readAt.root < snapshot.completedAt.root);
+  await post({ readSessionIds: ["root", "other-pane"], observedAt: snapshot.serverNow });
+  snapshot = await (await GET()).json();
+  assert.ok(snapshot.readAt.root >= snapshot.completedAt.root);
+  assert.equal(snapshot.sessionListVersion, first.sessionListVersion, "read writes do not trigger full catalog fetches");
+  const path = join(agentDir, "pi-web", "sidebar-state.json");
+  const bytes = await readFile(path, "utf8");
+  now += 100;
+  await post({ readSessionIds: ["root"], observedAt: snapshot.serverNow });
+  assert.equal(await readFile(path, "utf8"), bytes);
+  for (const body of [null, {}, { readSessionIds: [] }, { readSessionIds: ["__proto__"], observedAt: now }, { readSessionIds: ["root"], observedAt: now + 1 }, { readSessionIds: ["root"], observedAt: "1" }]) assert.equal((await post(body)).status, 400);
+  assert.equal((await POST(new Request("http://localhost/api/agent/running", { method: "POST", body: "x".repeat(4097) }))).status, 413);
+});

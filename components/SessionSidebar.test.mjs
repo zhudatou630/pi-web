@@ -6,6 +6,7 @@ import ts from "typescript";
 import vm from "node:vm";
 
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
+const { parseUnreadMarks, sameUnreadMarks, withoutReadMarks, hasRecentAttention } = await jiti.import("../lib/unread-state.ts");
 const { getSessionListIndices, SessionItem, SessionActivitySummary } = await jiti.import("./SessionSidebar.tsx");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
@@ -29,80 +30,58 @@ test("folded summaries use the existing awaiting badge and show separate counts"
   assert.equal((source.match(/<SessionActivitySummary activity=\{activity\}/g) ?? []).length, 2);
 });
 
-test("unread storage updates replace stale markers without echoing writes", () => {
-  const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+test("unread storage updates replace dated markers without echoing writes", () => {
+  const start = source.indexOf("  useEffect(() => {\n    if (sameUnreadMarks(storedUnreadMarksRef");
+  const end = source.indexOf("  useEffect(() => {\n    const noteInput", start);
   const localStorage = {};
   const listeners = new Map();
   const writes = [];
   const effects = [];
-  let ids = new Set(["stale", "keep"]);
-  const storedUnreadSessionIdsRef = { current: ids };
+  let marks = new Map([["stale", 1], ["keep", 2]]);
+  const storedUnreadMarksRef = { current: marks };
   const context = vm.createContext({
-    Set,
-    window: {
-      localStorage,
-      addEventListener: (name, fn) => listeners.set(name, fn),
-      removeEventListener: (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); },
-    },
-    UNREAD_SESSIONS_STORAGE_KEY: "unread",
-    storedUnreadSessionIdsRef,
-    setUnreadSessionIds: (update) => { ids = update(ids); },
-    saveUnreadSessionIds: (value) => writes.push([...value]),
-    useEffect: (effect) => effects.push(effect),
+    Map, parseUnreadMarks, sameUnreadMarks, storedUnreadMarksRef,
+    window: { localStorage, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: (name) => listeners.delete(name) },
+    UNREAD_SESSIONS_STORAGE_KEY: "unread", unreadMarks: marks,
+    setUnreadMarks: (update) => { marks = update(marks); },
+    saveUnreadMarks: (value) => writes.push([...value]), useEffect: (fn) => effects.push(fn),
   });
-  const code = [
-    between("function parseUnreadSessionIds(", "function loadUnreadSessionIds("),
-    between("function sameIdSet(", "export function SessionSidebar("),
-    between("  useEffect(() => {\n    if (sameIdSet(storedUnreadSessionIdsRef", "  useEffect(() => {\n    let stopped = false;"),
-  ].join("\n");
-  context.unreadSessionIds = ids;
-  vm.runInContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
+  vm.runInContext(ts.transpileModule(source.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
   const [persist, subscribe] = effects;
   const cleanup = subscribe();
   const receive = (key, newValue, storageArea = localStorage) => listeners.get("storage")({ key, newValue, storageArea });
-  const flush = () => { context.unreadSessionIds = ids; persist(); };
-
-  receive("other", '["ignored"]');
-  receive("unread", '["ignored"]', {}); // sessionStorage is not shared.
-  assert.deepEqual([...ids], ["stale", "keep"]);
-  receive("unread", '["keep","new","new",42,null]');
-  assert.deepEqual([...ids], ["keep", "new"]);
-  flush();
+  const flush = () => { context.unreadMarks = marks; persist(); };
+  receive("other", '["ignored"]'); receive("unread", '["ignored"]', {});
+  assert.equal(marks.size, 2);
+  receive("unread", '{"keep":2,"new":3}'); flush();
+  assert.deepEqual([...marks], [["keep", 2], ["new", 3]]);
   assert.equal(writes.length, 0);
-  const unchanged = ids;
-  receive("unread", '["new","keep"]');
-  assert.equal(ids, unchanged);
-  flush();
-  assert.equal(writes.length, 0);
-
-  ids = new Set([...ids, "local"]);
-  flush();
-  assert.deepEqual(writes, [["keep", "new", "local"]]); // Never resurrects "stale".
-  for (const [key, value] of [["unread", null], [null, null], ["unread", "{broken"], ["unread", '{}']]) {
-    receive("unread", '["new"]');
-    receive(key, value);
-    assert.equal(ids.size, 0);
-    flush();
-  }
+  const unchanged = marks;
+  receive("unread", '{"new":3,"keep":2}'); assert.equal(marks, unchanged);
+  marks = new Map([...marks, ["local", 4]]); flush();
   assert.equal(writes.length, 1);
-  cleanup();
-  assert.equal(listeners.size, 0);
+  for (const value of [null, "{broken", "{}", "[]"]) { receive("unread", value); flush(); assert.equal(marks.size, 0); }
+  assert.equal(writes.length, 1);
+  cleanup(); assert.equal(listeners.size, 0);
 });
 
 test("background completion waits across waves, respects Stop, and treats either pane as read", () => {
   const start = source.indexOf("  useEffect(() => {\n    const previous = previousRunningSessionIdsRef.current;");
-  const code = source.slice(start, source.indexOf("  useEffect(() => {\n    if (!visibleSessionKey)", start));
-  for (const visibleSessionKey of ["", "primary\nparent", "parent\nsecondary"]) {
-    let unread = new Set();
+  const code = source.slice(start, source.indexOf("  useEffect(() => {\n    if (explorerRefreshKey", start));
+  for (const [visibleSessionKey, attended] of ["", "primary\nparent", "parent\nsecondary"].flatMap((key) => [true, false].map((attended) => [key, attended]))) {
+    let unread = new Map();
     const notices = [];
     const context = vm.createContext({
-      Set, visibleSessionKey, runningSessionIds: new Set(), subagentsActiveSessionIds: new Set(),
+      Set, Map, hasRecentAttention, sameUnreadMarks, withoutReadMarks,
+      lastInputAtRef: { current: 1 }, performance: { now: () => 10 }, document: { visibilityState: "visible", hasFocus: () => attended },
+      readSnapshotRef: { current: { serverNow: 10, readAt: {}, completedAt: { parent: 10 } } },
+      visibleSessionKey, runningSessionIds: new Set(), subagentsActiveSessionIds: new Set(),
       previousRunningSessionIdsRef: { current: new Set() },
       currentSuppressedCompletionSessionIdsRef: { current: new Set() },
       previousSuppressedCompletionSessionIdsRef: { current: new Set() },
       allSessions: [{ id: "parent" }, { id: "child", relation: { kind: "subagent" } }],
       familyParentId: (session) => session.relation?.kind === "subagent" ? "parent" : undefined,
-      setUnreadSessionIds: (update) => { unread = update(unread); },
+      setUnreadMarks: (update) => { unread = update(unread); },
       loadSessions() {}, onBackgroundTaskDone: (ids) => notices.push([...ids]),
       useEffect: (effect) => effect(),
     });
@@ -119,50 +98,30 @@ test("background completion waits across waves, respects Stop, and treats either
     assert.deepEqual([...unread], []);
     assert.deepEqual(notices, []);
     poll([], []);
-    assert.deepEqual([...unread], visibleSessionKey ? [] : ["parent"]);
-    assert.deepEqual(notices, visibleSessionKey ? [] : [["parent"]]);
+    const seen = attended && Boolean(visibleSessionKey);
+    assert.deepEqual([...unread.keys()], seen ? [] : ["parent"]);
+    assert.deepEqual(notices, seen ? [] : [["parent"]]);
     poll([], []);
-    assert.equal(notices.length, visibleSessionKey ? 0 : 1);
+    assert.equal(notices.length, seen ? 0 : 1);
 
     // No subagent: the original running -> idle behavior remains.
     poll(["parent"], []); poll([], []);
-    assert.equal(notices.length, visibleSessionKey ? 0 : 2);
+    assert.equal(notices.length, seen ? 0 : 2);
     // Stop and later child completion stay silent, including an idle snapshot.
     poll(["parent", "child"], ["parent"]);
     poll(["child"], ["parent"], ["parent", "child"]);
     poll([], ["parent"], ["parent"]);
     poll([], [], ["parent"]);
     assert.deepEqual([...unread], []);
-    assert.equal(notices.length, visibleSessionKey ? 0 : 2);
+    assert.equal(notices.length, seen ? 0 : 2);
   }
 });
 
-test("returning to a tab clears unread markers another tab set on its visible session", () => {
-  const start = source.indexOf("  useEffect(() => {\n    if (!visibleSessionKey) return;");
-  const code = source.slice(start, source.indexOf("  useEffect(() => {\n    if (explorerRefreshKey", start));
-  const listeners = new Map();
-  let ids = new Set(["shown", "other"]);
-  let cleanup;
-  const document = {
-    visibilityState: "visible",
-    addEventListener: (name, fn) => listeners.set(name, fn),
-    removeEventListener: (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); },
-  };
-  vm.runInContext(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, vm.createContext({
-    Set, document, visibleSessionKey: "shown",
-    setUnreadSessionIds: (update) => { ids = update(ids); },
-    useEffect: (effect) => { cleanup = effect(); },
-  }));
-  assert.deepEqual([...ids], ["other"]);
-  ids = new Set([...ids, "shown"]); // adopted from another tab while this one was hidden
-  document.visibilityState = "hidden";
-  listeners.get("visibilitychange")();
-  assert.ok(ids.has("shown"), "a hidden tab must not swallow the notice");
-  document.visibilityState = "visible";
-  listeners.get("visibilitychange")();
-  assert.deepEqual([...ids], ["other"]);
-  cleanup();
-  assert.equal(listeners.size, 0);
+test("idle reads require attention and carry only the last server-observed snapshot", () => {
+  assert.match(source, /hasRecentAttention\(lastInputAtRef.current, performance.now\(\), document.visibilityState === "visible", document.hasFocus\(\)\)/);
+  assert.match(source, /filter\(\(id\) => !observed.pendingIds.has\(id\)\)/);
+  assert.match(source, /JSON.stringify\(\{ readSessionIds, observedAt: observed.serverNow \}\)/);
+  assert.doesNotMatch(source, /markVisibleRead/);
 });
 
 const sessionItemSource = source.slice(source.indexOf("function SessionItem("));
@@ -253,7 +212,7 @@ test("subagent completion stays silent and never becomes unread", () => {
     source,
     /completedWithNotifications = completedInBackground\.filter\([\s\S]*?!previousSuppressedCompletionSessionIdsRef\.current\.has\(id\)[\s\S]*?!knownSubagentIds\.has\(id\)/,
   );
-  assert.match(source, /completedWithNotifications\.forEach\(\(id\) => next\.add\(id\)\)/);
+  assert.match(source, /completedWithNotifications\.forEach\(\(id\) => next\.set\(id, snapshot.completedAt\[id\] \?\? snapshot.serverNow\)\)/);
   assert.match(source, /if \(completedWithNotifications\.length > 0\) \{\s*onBackgroundTaskDone\?\.\(completedWithNotifications\)/);
   assert.match(
     source,

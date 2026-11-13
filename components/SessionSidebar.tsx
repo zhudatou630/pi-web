@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from "react";
+import { hasRecentAttention, parseUnreadMarks, sameUnreadMarks, withoutReadMarks, UNREAD_SESSIONS_STORAGE_KEY, type UnreadMarks } from "@/lib/unread-state";
 import type { SessionInfo } from "@/lib/types";
 import { selectionFamilies, reconcileSessionSelection, toggleSessionSelection, sessionSelectionSummary } from "@/lib/session-selection";
 import { familyParentId, listSessionFamilies, isFamilyArchived, familyHasMemberIn, familiesToArchive, previewSessionFamilies, markSessionFamilyRead, type SessionFamily } from "@/lib/session-family";
@@ -263,7 +264,6 @@ type WorkspaceRow =
   | { kind: "showMore"; limitKey: string; remaining: number; nextLimit: number }
   | { kind: "showLess"; limitKey: string };
 
-const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
 const LAST_CUSTOM_CWD_STORAGE_KEY = "pi-web:last-custom-cwd";
 const WORKSPACE_EXPANSION_STORAGE_KEY = "pi-web:workspace-expansion";
 const RUNNING_SESSIONS_POLL_MS = 2500;
@@ -308,32 +308,18 @@ function saveLastCustomCwd(cwd: string): void {
   }
 }
 
-function parseUnreadSessionIds(raw: string | null): Set<string> {
+function loadUnreadMarks(): UnreadMarks {
+  if (typeof window === "undefined") return new Map();
   try {
-    const parsed: unknown = JSON.parse(raw ?? "null");
-    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
-  } catch {
-    return new Set();
-  }
+    return parseUnreadMarks(window.localStorage.getItem(UNREAD_SESSIONS_STORAGE_KEY));
+  } catch { return new Map(); }
 }
 
-function loadUnreadSessionIds(): Set<string> {
-  if (typeof window === "undefined") return new Set();
+function saveUnreadMarks(marks: UnreadMarks): void {
   try {
-    return parseUnreadSessionIds(window.localStorage.getItem(UNREAD_SESSIONS_STORAGE_KEY));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveUnreadSessionIds(ids: Set<string>): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (ids.size === 0) window.localStorage.removeItem(UNREAD_SESSIONS_STORAGE_KEY);
-    else window.localStorage.setItem(UNREAD_SESSIONS_STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {
-    // ignore storage quota / privacy-mode errors
-  }
+    if (marks.size === 0) window.localStorage.removeItem(UNREAD_SESSIONS_STORAGE_KEY);
+    else window.localStorage.setItem(UNREAD_SESSIONS_STORAGE_KEY, JSON.stringify(Object.fromEntries(marks)));
+  } catch { /* storage is best-effort */ }
 }
 
 /** Substitute the home dir prefix with ~ (no path truncation — see PathLabel) */
@@ -379,7 +365,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, onOpenBrowser, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, onOpenBrowser, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -488,8 +474,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
   /** Session id -> next scheduled cache refresh (`/api/agent/running`). */
   const [cacheKeepaliveSessions, setCacheKeepaliveSessions] = useState<Map<string, number>>(() => new Map());
   const cacheKeepaliveSessionIds = useMemo(() => new Set(cacheKeepaliveSessions.keys()), [cacheKeepaliveSessions]);
-  const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
-  const storedUnreadSessionIdsRef = useRef(unreadSessionIds);
+  const [unreadMarks, setUnreadMarks] = useState<UnreadMarks>(loadUnreadMarks);
+  const unreadSessionIds = useMemo(() => new Set(unreadMarks.keys()), [unreadMarks]);
+  const storedUnreadMarksRef = useRef(unreadMarks);
+  const lastInputAtRef = useRef<number | null>(null);
+  const manualReadIdsRef = useRef(new Set<string>());
+  const visibleReadIdsRef = useRef<string[]>([]);
+  visibleReadIdsRef.current = [...new Set((visibleSessionIds ?? [selectedSessionId]).filter((id): id is string => Boolean(id)))];
+  const readSnapshotRef = useRef<{ serverNow: number; receivedAt: number; readAt: Record<string, number>; completedAt: Record<string, number>; pendingIds: Set<string> }>({ serverNow: 0, receivedAt: 0, readAt: {}, completedAt: {}, pendingIds: new Set() });
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
   const currentSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
   const previousSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
@@ -638,9 +630,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           .filter((session) => !familyParentId(session))
           .map((session) => session.id),
       );
-      setUnreadSessionIds((prev) => {
+      setUnreadMarks((prev) => {
         if (prev.size === 0) return prev;
-        const next = new Set([...prev].filter((id) => unreadEligibleIds.has(id)));
+        const next = new Map([...prev].filter(([id]) => unreadEligibleIds.has(id)));
         return next.size === prev.size ? prev : next;
       });
       setError(null);
@@ -791,21 +783,28 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
   // Persist unread markers so they survive a browser refresh before the user
   // has actually opened the completed session.
   useEffect(() => {
-    if (sameIdSet(storedUnreadSessionIdsRef.current, [...unreadSessionIds]) === storedUnreadSessionIdsRef.current) return;
-    saveUnreadSessionIds(unreadSessionIds);
-    storedUnreadSessionIdsRef.current = unreadSessionIds;
-  }, [unreadSessionIds]);
+    if (sameUnreadMarks(storedUnreadMarksRef.current, unreadMarks)) return;
+    saveUnreadMarks(unreadMarks);
+    storedUnreadMarksRef.current = unreadMarks;
+  }, [unreadMarks]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.storageArea !== window.localStorage || (event.key !== null && event.key !== UNREAD_SESSIONS_STORAGE_KEY)) return;
-      const ids = parseUnreadSessionIds(event.newValue);
+      const marks = parseUnreadMarks(event.newValue);
       // Remember the external snapshot so adopting it never echoes a write back.
-      storedUnreadSessionIdsRef.current = ids;
-      setUnreadSessionIds((current) => sameIdSet(current, [...ids]));
+      storedUnreadMarksRef.current = marks;
+      setUnreadMarks((current) => sameUnreadMarks(current, marks) ? current : marks);
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  useEffect(() => {
+    const noteInput = () => { lastInputAtRef.current = performance.now(); };
+    const events = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+    for (const name of events) window.addEventListener(name, noteInput, { capture: true, passive: true });
+    return () => { for (const name of events) window.removeEventListener(name, noteInput, { capture: true }); };
   }, []);
 
   useEffect(() => {
@@ -832,12 +831,20 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
       controller?.abort();
       controller = current;
       try {
+        const attended = hasRecentAttention(lastInputAtRef.current, performance.now(), document.visibilityState === "visible", document.hasFocus());
+        const observed = readSnapshotRef.current;
+        const readSessionIds = attended && observed.serverNow
+          ? [...new Set([...visibleReadIdsRef.current, ...manualReadIdsRef.current])].filter((id) => !observed.pendingIds.has(id)).slice(0, 10) : [];
         const res = await fetch("/api/agent/running", {
           cache: "no-store",
           signal: current.signal,
+          ...(readSessionIds.length ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ readSessionIds, observedAt: observed.serverNow }) } : {}),
         });
         if (!res.ok) return;
         const data = await res.json() as {
+          serverNow: number;
+          readAt?: Record<string, number>;
+          completedAt?: Record<string, number>;
           sessionListVersion: number;
           runningSessionIds?: string[];
           subagentsActiveSessionIds?: string[];
@@ -846,6 +853,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           completionNotificationSuppressedSessionIds?: string[];
         };
         if (stopped || controller !== current) return;
+        for (const id of readSessionIds) if ((data.readAt?.[id] ?? -1) >= observed.serverNow) manualReadIdsRef.current.delete(id);
+        readSnapshotRef.current = { serverNow: data.serverNow, receivedAt: performance.now(), readAt: data.readAt ?? {}, completedAt: data.completedAt ?? {}, pendingIds: new Set([...(data.runningSessionIds ?? []), ...(data.subagentsActiveSessionIds ?? [])]) };
+        setUnreadMarks((marks) => withoutReadMarks(marks, data.readAt ?? {}));
         runningPollAuthoritativeRef.current = true;
         currentSuppressedCompletionSessionIdsRef.current = new Set(
           data.completionNotificationSuppressedSessionIds ?? [],
@@ -893,7 +903,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
   }, [onSessionMarkersChange, unreadSessionIds, awaitingInputSessionIds]);
 
   // Joined so the effects below see a stable dependency across renders.
-  const visibleSessionKey = [selectedSessionId, ...visibleSessionIds].filter(Boolean).join("\n");
+  const visibleSessionKey = visibleReadIdsRef.current.join("\n");
 
   useEffect(() => {
     if (sessionListVersion !== null) onSessionsChange?.(allSessions);
@@ -903,9 +913,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     const previous = previousRunningSessionIdsRef.current;
     // Only completion/read tracking uses this union; Stop and running indicators do not.
     const pendingCompletionIds = new Set([...runningSessionIds, ...subagentsActiveSessionIds]);
-    // A session shown in either split pane counts as read when it finishes.
+    // An attended session shown in either split pane needs no local completion dot.
     const visibleIds = new Set(visibleSessionKey.split("\n"));
-    const completedInBackground = [...previous].filter((id) => !pendingCompletionIds.has(id) && !visibleIds.has(id));
+    const attended = hasRecentAttention(lastInputAtRef.current, performance.now(), document.visibilityState === "visible", document.hasFocus());
+    const completedInBackground = [...previous].filter((id) => !pendingCompletionIds.has(id) && (!attended || !visibleIds.has(id)));
     const knownSubagentIds = new Set(
       allSessions
         .filter((session) => familyParentId(session))
@@ -918,11 +929,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
     const newlyRunning = [...pendingCompletionIds].filter((id) => !previous.has(id));
 
     if (completedWithNotifications.length > 0 || newlyRunning.length > 0) {
-      setUnreadSessionIds((prev) => {
-        const next = new Set(prev);
+      setUnreadMarks((prev) => {
+        const next = new Map(prev);
         pendingCompletionIds.forEach((id) => next.delete(id));
-        completedWithNotifications.forEach((id) => next.add(id));
-        return next;
+        const snapshot = readSnapshotRef.current;
+        completedWithNotifications.forEach((id) => next.set(id, snapshot.completedAt[id] ?? snapshot.serverNow));
+        const unread = withoutReadMarks(next, snapshot.readAt);
+        return sameUnreadMarks(prev, unread) ? prev : unread;
       });
     }
     const hasUnlistedRunningSession = newlyRunning.some(
@@ -943,24 +956,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
       ),
     );
   }, [runningSessionIds, subagentsActiveSessionIds, visibleSessionKey, allSessions, loadSessions, onBackgroundTaskDone]);
-
-  useEffect(() => {
-    if (!visibleSessionKey) return;
-    const visibleIds = visibleSessionKey.split("\n");
-    const markVisibleRead = () => setUnreadSessionIds((prev) => {
-      if (!visibleIds.some((id) => prev.has(id))) return prev;
-      const next = new Set(prev);
-      visibleIds.forEach((id) => next.delete(id));
-      return next;
-    });
-    markVisibleRead();
-    // Another tab may have marked a session shown here as unread while this tab was hidden.
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") markVisibleRead();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [visibleSessionKey]);
 
   useEffect(() => {
     if (explorerRefreshKey !== undefined) setExplorerKey((k) => k + 1);
@@ -1986,9 +1981,17 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds = [], onSe
           isPinned={pinned}
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
-          onToggleRead={() => setUnreadSessionIds((current) => markSessionFamilyRead(
-            family, current, familySessions.some((session) => current.has(session.id)),
-          ))}
+          onToggleRead={() => {
+            const read = familySessions.some((session) => unreadMarks.has(session.id));
+            if (read) manualReadIdsRef.current.add(family.root.id);
+            else manualReadIdsRef.current.delete(family.root.id);
+            setUnreadMarks((current) => {
+              const ids = markSessionFamilyRead(family, new Set(current.keys()), read);
+              const { serverNow, receivedAt, readAt } = readSnapshotRef.current;
+              const at = serverNow + Math.max(0, performance.now() - receivedAt);
+              return new Map([...ids].map((id) => [id, current.get(id) ?? Math.max(at, (readAt[id] ?? 0) + 1)]));
+            });
+          }}
           isArchived={archivedMemberIds.has(family.root.id)}
           onToggleArchive={() => void updateSessionSidebarState(family.root.id, { archived: !archivedMemberIds.has(family.root.id) })}
           pendingDelete={deleteConfirm?.kind === "session" && deleteConfirm.id === family.root.id}

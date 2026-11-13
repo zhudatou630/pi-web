@@ -269,8 +269,7 @@ export function AppShell() {
   const handleSessionMarkersChange = useCallback((markers: SessionMarkers) => {
     setSessionMarkers((previous) => previous.unread === markers.unread && previous.awaitingInput === markers.awaitingInput ? previous : markers);
   }, []);
-  // On-screen sessions that finished while the page was hidden: the sidebar never marks those unread,
-  // but the favicon badge counts them until the page is seen again.
+  // On-screen sessions that finished while the page was hidden also count toward the favicon badge.
   const [finishedWhileHidden, setFinishedWhileHidden] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     const clearIfSeen = () => {
@@ -2633,7 +2632,8 @@ export function AppShell() {
     <>
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
-        visibleSessionIds={[primaryTab?.session?.id ?? selectedSession?.id, isSplitActive ? secondaryTab?.session?.id : null].filter((id): id is string => Boolean(id))}
+        visibleSessionIds={mainView === "chat" && !panelCoversPage && !settingsSection && !(isMobile && (sidebarOpen || rightPanelOpen))
+          ? [primaryTab?.session?.id ?? selectedSession?.id, isSplitActive ? secondaryTab?.session?.id : null].filter((id): id is string => Boolean(id)) : []}
         onSelectSession={handleSelectSession}
         onOpenSessionInNewTab={handlePinSession}
         onForkSession={handleSidebarFork}

@@ -12,6 +12,7 @@ export interface SidebarState {
   projectOrder?: string[];
   /** Project display names keyed by project key; an absent key means no name. */
   projectNames?: Record<string, string>;
+  readAt?: Record<string, number>;
   [key: string]: unknown;
 }
 
@@ -50,6 +51,8 @@ function loadState(path: string): SidebarState {
       && value.projectOrder.every(isProjectKey) && new Set(value.projectOrder).size === value.projectOrder.length
       && projectOrderFits(value.projectOrder)))
     && (value.projectNames === undefined || isProjectNames(value.projectNames))
+    && (value.readAt === undefined || (isRecord(value.readAt) && Object.entries(value.readAt).every(([id, at]) =>
+      SESSION_ID_PATTERN.test(id) && typeof at === "number" && Number.isFinite(at) && at >= 0)))
     && isRecord(value.archived) && Object.entries(value.archived).every(([id, time]) =>
       SESSION_ID_PATTERN.test(id) && typeof time === "string" && Number.isFinite(Date.parse(time)))) {
     return value as SidebarState;
@@ -117,14 +120,44 @@ export async function updateProjectName(projectKey: string, name: string, path =
   return stored;
 }
 
+export const SIDEBAR_READ_THROTTLE_MS = 15_000;
+
+/** Reads use the server clock and the same lock as pins; a new completion bypasses the write throttle. */
+export async function updateSidebarReadAt(ids: readonly string[], observedAt: number, completedAt: Readonly<Record<string, number>>, path = getSidebarStatePath()): Promise<SidebarState> {
+  if (!Number.isFinite(observedAt) || observedAt < 0 || observedAt > Date.now()) throw new Error("Invalid read time");
+  if (!ids.length || ids.length > 10 || ids.some((id) => id.length > 256 || !SESSION_ID_PATTERN.test(id))) throw new Error("Invalid read session ids");
+  const now = Date.now();
+  const due = (state: SidebarState, id: string) => {
+    const read = state.readAt && Object.hasOwn(state.readAt, id) ? state.readAt[id] : undefined;
+    const completion = Object.hasOwn(completedAt, id) ? completedAt[id] : 0;
+    return read === undefined || (observedAt > read && (read < completion || now - read >= SIDEBAR_READ_THROTTLE_MS));
+  };
+  const current = readSidebarState(path);
+  if (!ids.some((id) => due(current, id))) return current;
+  return (await mutateSidebarState((state) => {
+    let changed = false;
+    const readAt = { ...state.readAt };
+    for (const id of ids) {
+      if (!due(state, id)) continue;
+      readAt[id] = observedAt;
+      changed = true;
+    }
+    if (changed) state.readAt = readAt;
+    return changed;
+  }, path)).state;
+}
+
 export async function removeSidebarSessions(ids: readonly string[], path = getSidebarStatePath()): Promise<void> {
   const removed = new Set(ids);
   await mutateSidebarState((state) => {
     const pinned = state.pinned.filter((id) => !removed.has(id));
     const archived = Object.fromEntries(Object.entries(state.archived).filter(([id]) => !removed.has(id)));
-    if (pinned.length === state.pinned.length && Object.keys(archived).length === Object.keys(state.archived).length) return false;
+    const readAt = Object.fromEntries(Object.entries(state.readAt ?? {}).filter(([id]) => !removed.has(id)));
+    if (pinned.length === state.pinned.length && Object.keys(archived).length === Object.keys(state.archived).length
+      && Object.keys(readAt).length === Object.keys(state.readAt ?? {}).length) return false;
     state.pinned = pinned;
     state.archived = archived;
+    if (state.readAt) state.readAt = readAt;
     return true;
   }, path);
 }

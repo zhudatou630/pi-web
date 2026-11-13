@@ -104,7 +104,7 @@ Active tool order is prompt input: `withExtensionTools()` keeps the carried orde
 - While running, `useAgentSession` polls `GET /api/agent/[id]` and reconciles on `visibilitychange`/`online` to recover missed terminal events. Prompt runs carry a monotonic run id; ignore late events from old runs.
 - Accept both `compaction_start/end` and legacy `auto_compaction_start/end`.
 - The sidebar polls `/api/agent/running` every 2.5 s while visible and every 30 s while hidden (the favicon badge needs it).
-- The favicon (and installed app badge) mirrors the sidebar markers (`lib/favicon-badge.ts`): on-screen sessions that finish while the page is hidden count too, since the sidebar never marks those unread.
+- The favicon (and installed app badge) mirrors the sidebar markers (`lib/favicon-badge.ts`); on-screen completions while hidden also remain counted until the page is seen again.
 
 ### Paths, worktrees, file access
 - Linked worktrees resolve to the main repo `projectRoot` (`lib/worktree.ts`) so the sidebar groups them; sessions in removed worktrees fold back into the main project. See `docs/worktrees.md`.
@@ -136,7 +136,7 @@ Full notes: `docs/subagents.md`, `docs/adr/0003-built-in-subagent-toggle.md`. Tr
 - The published `.next/prerender-manifest.json` carries a public `previewModeId`; a matching `x-prerender-revalidate` header skips `proxy.ts` entirely. `bin/pi-web.js` rotates those secrets before every `next start` spawn and refuses to start otherwise: never launch a production build with bare `next start`.
 
 ### Sidebar state
-Pins, archives, project order and project display names (`projectNames`, keyed by project key) live in `~/.pi/agent/pi-web/sidebar-state.json` (`lib/sidebar-state.ts`, locked + atomic; migrated from `pinned-sessions.json`). Session files are never touched. Archive is keyed by family root and is effective only while the root has no newer message activity and nothing in the family runs. Project order changes are relative moves, never whole-list writes.
+Pins, archives, shared `readAt`, project order and project display names (`projectNames`, keyed by project key) live in `~/.pi/agent/pi-web/sidebar-state.json` (`lib/sidebar-state.ts`, locked + atomic; migrated from `pinned-sessions.json`). Session files are never touched. Archive is keyed by family root and is effective only while the root has no newer message activity and nothing in the family runs. Project order changes are relative moves, never whole-list writes.
 
 ### UI rules (details: `docs/ui.md`)
 - Modals go through `components/ModalDialog.tsx`; confirms through `useConfirm()`. `window.confirm`/`alert` are banned (tested).
