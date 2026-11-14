@@ -74,7 +74,7 @@ test("connections route rejects providers that are not in models.json", async ()
   const response = await POST(request("/api/image-generation/settings/connections", {
     label: "Unlisted",
     provider: "not-in-models-json",
-    model: "gpt-image-2.5-flare",
+    model: "gpt-image-2.6-flare",
   }, "POST"));
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {

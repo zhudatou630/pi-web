@@ -28,8 +28,8 @@ Pi Web 内置生图：输入栏按钮、结果卡（改图 / 引用 / 下载）�
 
 | 连接 | provider | 模型 |
 |---|---|---|
-| ChatGPT Flare | `openai-codex` | `gpt-image-2.5-flare` |
-| ChatGPT Sunburst | `openai-codex` | `gpt-image-2.5-sunburst` |
+| ChatGPT Flare | `openai-codex` | `gpt-image-2.6-flare` |
+| ChatGPT Sunburst | `openai-codex` | `gpt-image-2.6-sunburst` |
 | Grok Imagine | `xai` | `grok-imagine-image-2.0` |
 | Banana 2 | `antigravity` | `gemini-3.1-flash-image` |
 
@@ -62,7 +62,7 @@ ChatGPT 按所选比例发送像素：`1:1`→`1024x1024`，`16:9`→`1536x864`�
     "gpt-flare": {
       "label": "Relay Flare",
       "provider": "sub2api",
-      "model": "gpt-image-2.5-flare",
+      "model": "gpt-image-2.6-flare",
       "capabilities": {
         "editing": true,
         "sizes": ["auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],

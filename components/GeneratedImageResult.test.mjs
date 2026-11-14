@@ -64,18 +64,18 @@ test("generated image captions include model and return time", () => {
     I18nProvider,
     null,
     React.createElement(GeneratedImageResult, {
-      value: { ...details, model: "gpt-image-2.5-flare" },
+      value: { ...details, model: "gpt-image-2.6-flare" },
       cwd: "/project",
       createdAt,
     }),
   ));
   assert.match(html, /1:1（1024\u00d71024） · 1K · Auto/);
   assert.match(html, /Flare · 15:42/);
-  assert.doesNotMatch(html, />gpt-image-2.5-flare</);
+  assert.doesNotMatch(html, />gpt-image-2.6-flare</);
 });
 
 test("generated image captions prefer the connection label", () => {
-  const html = render({ ...details, connection: "gpt-flare", model: "gpt-image-2.5-flare", label: "Relay Flare" });
+  const html = render({ ...details, connection: "gpt-flare", model: "gpt-image-2.6-flare", label: "Relay Flare" });
   assert.match(html, /Relay Flare/);
   assert.doesNotMatch(html, / · Flare/);
 });

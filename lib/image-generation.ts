@@ -10,8 +10,8 @@ type ImageAspect = "square" | "portrait" | "landscape";
 export type ImageConnectionTransport = "codex" | "antigravity" | "xai" | "gemini" | "openai-images";
 
 export const IMAGE_CUSTOM_MODEL_PRESETS = [
-  { model: "gpt-image-2.5-flare", label: "Flare" },
-  { model: "gpt-image-2.5-sunburst", label: "Sunburst" },
+  { model: "gpt-image-2.6-flare", label: "Flare" },
+  { model: "gpt-image-2.6-sunburst", label: "Sunburst" },
   { model: "grok-imagine-image-2.0", label: "Grok" },
   { model: "gemini-3.1-flash-image", label: "Banana 2" },
 ] as const;
