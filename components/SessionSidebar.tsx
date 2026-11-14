@@ -623,11 +623,12 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
       }
-      // Drop markers for deleted sessions and for family members (subagents, side chats),
-      // whose completion is intentionally silent even if an older client marked them unread.
+      // Drop markers for deleted sessions, for family members (subagents, side chats), whose
+      // completion is intentionally silent even if an older client marked them unread, and for
+      // routine runs, which the sidebar hides (a mark would count in the badge with no row).
       const unreadEligibleIds = new Set(
         data.sessions
-          .filter((session) => !familyParentId(session))
+          .filter((session) => !familyParentId(session) && !session.routineRunOnly)
           .map((session) => session.id),
       );
       setUnreadMarks((prev) => {
