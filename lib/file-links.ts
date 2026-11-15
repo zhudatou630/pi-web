@@ -38,7 +38,7 @@ function normalizeShellDrivePath(filePath: string, baseDir?: string): string {
 }
 
 function stripLineSuffix(filePath: string): string {
-  return filePath.replace(/:\d+(?::\d+)?$/, "");
+  return filePath.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, "");
 }
 
 function normalizeLocalPath(filePath: string): string {
@@ -47,11 +47,12 @@ function normalizeLocalPath(filePath: string): string {
   const isUnc = normalized.startsWith("//");
   const leadingSlash = normalized.startsWith("/") && !isWindowsDrive && !isUnc;
   const parts: string[] = [];
+  const rootParts = isWindowsDrive ? 1 : isUnc ? 2 : 0;
 
   for (const part of normalized.split("/")) {
     if (!part || part === ".") continue;
     if (part === "..") {
-      if (parts.length > 0 && parts[parts.length - 1] !== "..") {
+      if (parts.length > rootParts && parts[parts.length - 1] !== "..") {
         parts.pop();
       } else if (!leadingSlash && !isWindowsDrive && !isUnc) {
         parts.push(part);
@@ -105,7 +106,7 @@ export function resolveLocalFileHref(
   let candidate: string | null = null;
   const decodedHref = safeDecode(cleanHref);
   const isBackslashUncPath = decodedHref.startsWith("\\\\");
-  const normalizedHref = normalizeShellDrivePath(normalizeFilePathSlashes(decodedHref), baseDir);
+  const normalizedHref = stripLineSuffix(normalizeShellDrivePath(normalizeFilePathSlashes(decodedHref), baseDir));
   const lowerHref = normalizedHref.toLowerCase();
 
   if (lowerHref.startsWith("/api/") || lowerHref.startsWith("/_next/")) return null;
