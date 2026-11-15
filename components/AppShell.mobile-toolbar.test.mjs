@@ -69,7 +69,8 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
   assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSelectFamilySession\}/);
   assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);
   assert.match(source, /handleSelectSession\(session, false, undefined, undefined, false, true\)/);
-  assert.match(source, /session\?\.relation\?\.kind === "subagent"/);
+  // Side chats get the same way back as subagents.
+  assert.match(source, /session\?\.relation\?\.kind === "subagent" \|\| session\?\.relation\?\.kind === "side"\) && \(/);
   assert.match(source, /agentSwitcher\.backToMain/);
 });
 

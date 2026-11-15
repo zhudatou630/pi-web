@@ -762,8 +762,10 @@ export function AppShell() {
     setActiveTopPanel(null);
     if (!restoreFocus || !panel) return;
     requestAnimationFrame(() => {
-      const trigger = panel === "agents"
-        ? agentsAnchorRef.current
+      // A pick in the Agents panel can move focus to the other pane, leaving the anchor inert or unmounted.
+      const anchor = panel === "agents" ? agentsAnchorRef.current : null;
+      const trigger = anchor?.isConnected && !anchor.closest("[inert]")
+        ? anchor
         : [...document.querySelectorAll<HTMLElement>(`[data-top-panel-trigger="${panel}"]`)]
           .find((candidate) => !candidate.closest("[inert]"));
       (trigger ?? sidebarToggleRef.current)?.focus();
@@ -1612,13 +1614,15 @@ export function AppShell() {
 
   /** Agents panel: a side chat not yet open opens beside the current chat (another pane, or a tab on phones). */
   const handleSelectFamilySession = useCallback((session: SessionInfo) => {
+    // A pick is the panel's answer, like a menu's: close it.
+    closeTopPanel(true);
     const besideId = activeSessionIdRef.current;
     if (session.relation?.kind !== "side" || !besideId || chatTabsRef.current.some((tab) => tab.id === session.id)) {
       handleSwitchFamilySession(session);
       return;
     }
     handleSessionForked(session.id, besideId, session, besideId, true);
-  }, [handleSessionForked, handleSwitchFamilySession]);
+  }, [closeTopPanel, handleSessionForked, handleSwitchFamilySession]);
 
   const handleAskInSideChat = useCallback(async (
     prompt: string,
@@ -2762,7 +2766,7 @@ export function AppShell() {
     if (!mobile && !sessionTools && !hasSubagentSessionsForSession) return null;
     return (
       <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
-        {hasSubagentSessionsForSession && session?.relation?.kind === "subagent" && (
+        {hasSubagentSessionsForSession && (session?.relation?.kind === "subagent" || session?.relation?.kind === "side") && (
           <button
             type="button"
             onClick={() => sessionFamily && handleSwitchFamilySession(sessionFamily.root)}

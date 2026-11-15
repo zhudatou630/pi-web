@@ -87,6 +87,7 @@ function familySwitchScope(tabs, primary, result) {
     branchLeafChangeFnRef: { current: null }, suppressCwdBumpRef: { current: false },
     activeSessionIdRef: { current: primary.id },
     handleSessionForked(...args) { result.besideArgs = args; },
+    closeTopPanel(restoreFocus) { result.closedTopPanel = restoreFocus; },
     workspaceKeyOf: (item) => item.projectKey ?? item.cwd,
     setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
     router: { replace(url) { result.url = url; } },
@@ -109,6 +110,7 @@ test("AgentSessionPanel.onSelectSession opens a side chat beside the current cha
   const scope = familySwitchScope(tabState.openSessionInNewTab([], primary).tabs, primary, result);
   boundAction("AgentSessionPanel", "onSelectSession", scope)(side);
   assert.deepEqual(result.besideArgs, ["side", "primary", side, "primary", true]);
+  assert.equal(result.closedTopPanel, true, "a pick closes the panel and returns focus to its trigger");
   assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["primary"], "the main chat keeps its tab");
 
   const open = {};
@@ -128,6 +130,7 @@ test("AgentSessionPanel.onSelectSession replaces the current tab in place", () =
 
   assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["child"]);
   assert.equal(scope.chatTabsRef.current[0].title, "Child");
+  assert.equal(result.closedTopPanel, true);
   assert.equal(scope.chatTabsRef.current[0].preview, undefined);
   assert.equal(result.ActiveChatTabId, "child");
   assert.equal(result.SelectedSession, session);
