@@ -1,5 +1,5 @@
-const ANSI_ESCAPE_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/g;
-const ANSI_ESCAPE_AT_START_RE = /^\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1B\\))/;
+const ANSI_ESCAPE_RE = /\x1B(?:\][^\x07\x1B]*(?:\x07|\x1B\\)|\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])/g;
+const ANSI_ESCAPE_AT_START_RE = /^\x1B(?:\][^\x07\x1B]*(?:\x07|\x1B\\)|\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])/;
 // pi-tui APC markers are atomic and never span lines, even when a snapshot is cut short.
 export const TUI_CURSOR_MARKER_RE = /\x1B_pi:[^\x07\x1B\r\n]*(?:\x07|\x1B\\)/g;
 
