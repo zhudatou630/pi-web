@@ -223,7 +223,7 @@ test("subagent completion stays silent and never becomes unread", () => {
   assert.match(source, /if \(completedWithNotifications\.length > 0\) \{\s*onBackgroundTaskDone\?\.\(completedWithNotifications, previousRunningObservedAtRef\.current\)/);
   assert.match(
     source,
-    /filter\(\(session\) => !familyParentId\(session\)\)[\s\S]*?unreadEligibleIds\.has\(id\)/,
+    /filter\(\(session\) => !familyParentId\(session\) && !session\.routineRunOnly\)[\s\S]*?unreadEligibleIds\.has\(id\)/,
   );
 });
 
