@@ -1,6 +1,8 @@
 import {
   createBashToolDefinition,
   createLocalBashOperations,
+  createLocalPowerShellOperations,
+  createPowerShellToolDefinition,
   getAgentDir,
   type BashOperations,
   type InlineExtension,
@@ -152,21 +154,47 @@ export function createProjectCommandBashExtension(options: {
   };
 }
 
-export function preferUserBashExtension(base: LoadExtensionsResult): LoadExtensionsResult {
-  const hostExtensionIndex = base.extensions.findIndex((extension) => extension.path === HOST_EXTENSION_PATH);
+export function createProjectCommandPowerShellToolDefinition(cwd: string) {
+  return createPowerShellToolDefinition(cwd, {
+    operations: createProjectCommandBashOperations({ localOperations: createLocalPowerShellOperations() }),
+  });
+}
+
+export function createProjectCommandPowerShellExtension(cwd: string): InlineExtension {
+  return {
+    name: `${HOST_EXTENSION_NAME}-powershell`,
+    hidden: true,
+    factory: (pi) => {
+      pi.registerTool({ ...createProjectCommandPowerShellToolDefinition(cwd), defaultActive: false });
+    },
+  };
+}
+
+export function preferUserShellExtensions(base: LoadExtensionsResult): LoadExtensionsResult {
+  for (const [toolName, hostPath] of [
+    ["bash", HOST_EXTENSION_PATH],
+    ["powershell", `<inline:${HOST_EXTENSION_NAME}-powershell>`],
+  ]) {
+    base = preferUserShellExtension(base, toolName, hostPath);
+  }
+  return base;
+}
+
+function preferUserShellExtension(base: LoadExtensionsResult, toolName: string, hostPath: string): LoadExtensionsResult {
+  const hostExtensionIndex = base.extensions.findIndex((extension) => extension.path === hostPath);
   if (hostExtensionIndex < 0) return base;
 
-  const userBashOwner = base.extensions
+  const userShellOwner = base.extensions
     .slice(0, hostExtensionIndex)
-    .find((extension) => extension.tools.has("bash"));
-  if (!userBashOwner) return base;
+    .find((extension) => extension.tools.has(toolName));
+  if (!userShellOwner) return base;
 
   return {
     ...base,
     extensions: base.extensions.filter((_, index) => index !== hostExtensionIndex),
     errors: base.errors.filter((error) => !(
-      error.path === HOST_EXTENSION_PATH
-      && error.error === `Tool "bash" conflicts with ${userBashOwner.path}`
+      error.path === hostPath
+      && error.error === `Tool "${toolName}" conflicts with ${userShellOwner.path}`
     )),
   };
 }

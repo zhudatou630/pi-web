@@ -4,8 +4,6 @@ import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   createBashToolDefinition,
-  createLocalPowerShellOperations,
-  createPowerShellToolDefinition,
   defineTool,
   formatSkillsForPrompt,
   getAgentDir,
@@ -48,7 +46,7 @@ import { buildSubagentPromptPlan } from "./subagent-prompt";
 import { appendSubagentInputFiles, loadSubagentInputFiles, subagentInputByteLimit } from "./subagent-input";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { resolveShellTools } from "./powershell-settings";
-import { createProjectCommandBashOperations } from "./project-command-env";
+import { createProjectCommandBashOperations, createProjectCommandPowerShellToolDefinition } from "./project-command-env";
 import { isSubagentsEnabledForProject, readSubagentSettings } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension, type ContextFileContent } from "./chat-only";
@@ -958,9 +956,7 @@ export function createSubagentShellTools(
       commandPrefix: settings.getShellCommandPrefix(),
       operations: createProjectCommandBashOperations({ shellPath: settings.getShellPath() }),
     }),
-    createPowerShellToolDefinition(cwd, {
-      operations: createProjectCommandBashOperations({ localOperations: createLocalPowerShellOperations() }),
-    }),
+    createProjectCommandPowerShellToolDefinition(cwd),
   ].filter((tool) => !userTools.has(tool.name)).map((tool) => defineTool({ ...tool, defaultActive: false }));
 }
 
