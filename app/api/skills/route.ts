@@ -94,7 +94,6 @@ export async function DELETE(req: Request) {
       const { stdout, stderr } = await runNpx(args, {
         timeout: 60_000,
         cwd: skill.install.scope === "project" ? cwd : undefined,
-        env: { ...process.env, FORCE_COLOR: "0" },
       });
       output = `${stdout}${stderr}`;
       if (entryExists(entry)) {
