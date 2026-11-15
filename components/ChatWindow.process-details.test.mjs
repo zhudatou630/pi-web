@@ -22,8 +22,8 @@ test("marks only the separated final answer as the end of a turn", () => {
 });
 
 test("folds a leading process prefix that has no user anchor", () => {
-  assert.match(source, /const hasBoundary = isMessageGroupBoundary\(messages\[idx\]\)/);
-  assert.match(source, /const hasAnchor = isMessageGroupAnchor\(messages\[idx\]\)/);
+  assert.match(source, /const hasBoundary = boundary !== undefined/);
+  assert.match(source, /const hasAnchor = boundary\?\.anchor === true/);
   assert.match(source, /const boundaryIdx = hasBoundary \? idx : -1/);
   assert.match(source, /if \(hasAnchor\) \{\s*markOutlineTarget\(\[entryIds\[boundaryIdx\]\]\);\s*rendered\.push\(renderMessage\(boundaryIdx\)\);\s*\}/);
   assert.doesNotMatch(
@@ -41,9 +41,24 @@ test("skips custom messages without display in the chat and in process details (
 });
 
 test("starts a stable process group at each subagent notification boundary", () => {
-  assert.match(source, /const hasBoundary = isMessageGroupBoundary\(messages\[idx\]\)/);
+  assert.match(source, /const boundary = groupBoundaries\.get\(idx\)/);
   assert.match(source, /const notificationStartsProcess = boundaryIdx >= 0 && isSubagentNotificationMessage\(messages\[boundaryIdx\]\)/);
   assert.match(source, /finalAssistantIdx === -1 && !notificationStartsProcess/);
+});
+
+test("shares inferred boundaries across grouping, activity, live tails and scroll refs", () => {
+  assert.match(source, /getMessageGroupBoundaries\(messages, \{ openTail: openGroupTail \}\)/);
+  assert.match(source, /const openGroupTail = agentRunning \|\| streamState\.isStreaming/);
+  assert.doesNotMatch(source, /isMessageGroupBoundary\(/);
+  assert.match(source, /messages\.filter\(\(message, index\) => !isHiddenCustomMessage\(message\) && \(groupBoundaries\.has\(index\)/);
+  assert.match(source, /if \(isHiddenCustomMessage\(msg\) \|\| questionState\.cardAnswerIndexes\.has\(idx\)\) return/);
+  assert.match(source, /if \(groupBoundaries\.has\(index\)\)/);
+  assert.match(source, /while \(endIdx < messages\.length && !groupBoundaries\.has\(endIdx\)\)/);
+  assert.equal((source.match(/\? boundary\.startedAt/g) ?? []).length, 2);
+});
+
+test("renders shell cards between extension anchor and answer outside process details", () => {
+  assert.match(source, /if \(processMessage\.role === "bashExecution"\) \{[\s\S]*?markOutlineTarget\(\[entryIds\[processIdx\]\]\);\s*rendered\.push\(renderMessage\(processIdx\)\);\s*continue;/);
 });
 
 test("passes activeStepSummary and renders telemetry indicator when streaming", () => {

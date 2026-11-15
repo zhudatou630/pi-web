@@ -7,7 +7,7 @@ import { readdir } from "fs/promises";
 import { isAbsolute, join, normalize as normalizePath, relative, resolve as resolvePath, sep } from "path";
 import type { AgentMessage, ImageContent, SessionEntry, SessionHeader, SessionInfo, SessionContext, SessionOutlineItem } from "./types";
 import { normalizeToolCalls, projectMessageForBrowser } from "./normalize";
-import { getThinkingPreview } from "./message-display";
+import { getMessageGroupBoundaries, getThinkingPreview, isMessageGroupBoundary, type MessageGroupMessage } from "./message-display";
 import { projectIdentityKey } from "./project-identity";
 import { sessionPathKey } from "./session-path";
 import { skillExpansionToCommand } from "./slash-display";
@@ -724,10 +724,20 @@ export function buildSessionContext(
   };
 }
 
-/** Same roles ChatWindow uses to fold a turn: user prompt or compaction summary. */
-function isSessionGroupAnchor(entry: SessionEntry): boolean {
-  return entry.type === "compaction"
-    || (entry.type === "message" && entry.message.role === "user");
+/** Grouping fields only: pagination must not normalize or copy message bodies. */
+function sessionGroupMessage(entry: SessionEntry): MessageGroupMessage {
+  switch (entry.type) {
+    case "message":
+      return entry.message.role === "system" ? {} : entry.message;
+    case "compaction":
+      return { role: "custom", customType: "compaction", display: true };
+    case "branch_summary":
+      return entry.summary ? { role: "user" } : {};
+    case "custom_message":
+      return { role: "custom", customType: entry.customType, display: entry.display };
+    default:
+      return {};
+  }
 }
 
 const OUTLINE_PREVIEW_LIMIT = 120;
@@ -780,17 +790,6 @@ export function buildSessionOutline(
 /** Hard cap when extending a tail page back to the nearest turn anchor. */
 const SESSION_TAIL_ANCHOR_LIMIT = 1000;
 
-/**
- * Extract the ancestor chain from `leafId` back toward the root, capped at
- * `tail` entries (most-recent first after the final reverse). Iterative: a
- * linear session's chain length equals its entry count, so a recursive walk
- * would overflow the stack. The result is still a valid prefix of the active
- * branch — older history is loaded on demand via pagination.
- *
- * After the tail count, keep walking until the oldest entry is a group anchor
- * (user / compaction) or `SESSION_TAIL_ANCHOR_LIMIT`, so a page does not start
- * mid-turn and leave tool calls unfolded.
- */
 /** The routine marker still waiting for a user message when a page starts at `first`. */
 function routineRunBefore(
   entries: SessionEntry[],
@@ -807,6 +806,12 @@ function routineRunBefore(
   return undefined;
 }
 
+/**
+ * Walk the active branch iteratively (deep histories overflow recursion), inspecting
+ * grouping fields only. Extend the tail to a shared boundary, within the existing
+ * cap; inferred boundaries also retain the preceding assistant as client evidence.
+ * Message body conversion and transfer remain bounded by the page size.
+ */
 export function sliceActiveBranch(
   entries: SessionEntry[],
   leafId: string | null,
@@ -824,22 +829,21 @@ export function sliceActiveBranch(
   if (!leaf) return [];
   const chain: SessionEntry[] = [];
   let current: SessionEntry | undefined = leaf;
-  while (current && chain.length < tail) {
-    chain.push(current);
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-  // chain is newest-first; last item is the oldest in the counted tail.
-  const limit = Math.max(tail, SESSION_TAIL_ANCHOR_LIMIT);
-  while (
-    current
-    && chain.length < limit
-    && !isSessionGroupAnchor(chain[chain.length - 1]!)
-  ) {
+  while (current) {
     chain.push(current);
     current = current.parentId ? byId.get(current.parentId) : undefined;
   }
   chain.reverse();
-  return chain;
+  const shapes = chain.map(sessionGroupMessage);
+  const boundaries = getMessageGroupBoundaries(shapes);
+  const minStart = Math.max(0, chain.length - Math.max(tail, SESSION_TAIL_ANCHOR_LIMIT));
+  let start = Math.max(0, chain.length - tail);
+  while (start > minStart && !boundaries.has(start)) start--;
+  if (boundaries.has(start) && !isMessageGroupBoundary(shapes[start])) {
+    // A custom at the page start cannot infer its boundary without the preceding reply.
+    while (start > minStart && shapes[start].role !== "assistant") start--;
+  }
+  return chain.slice(start);
 }
 function parseEntryTimestamp(timestamp: string): number | undefined {
   const parsed = Date.parse(timestamp);

@@ -127,6 +127,24 @@ never object coercion. Argv commands join with spaces. Notice HTTP(S) links stop
 at sentence/full-width punctuation and retain balanced parentheses and IPv6 hosts;
 only their host is displayed, while the full URL stays in href/title.
 
+## Chat turn grouping
+
+`getMessageGroupBoundaries()` is shared by chat rendering, turn activity/file
+summaries, live-tail detection and history pagination. User messages, visible
+compaction summaries and the two subagent notices keep their fixed boundaries;
+subagent notices remain in process details, not visible anchors. Other custom /
+`!` stretches after an assistant ending in `stop` or `aborted` open a new turn
+only when followed by another assistant (or at a running agent's tail).
+`length` / `error` continuations stay in the same logical prompt.
+
+The last visible custom anchors an inferred turn; otherwise the last hidden
+custom is boundary-only, with no rendered row or scroll ref. Shell cards stay
+outside the process fold even between anchor and answer. Timing starts at the
+stretch's last custom, not its visible anchor, and uses the existing timestamps
+and `completedAt`. Pagination keeps the preceding assistant as inference evidence,
+subject to the existing 1000-entry extension cap. This is an ordering heuristic:
+pi does not persist `triggerTurn`. The user-prompt minimap is unchanged.
+
 ## Stopped replies
 
 Only a settled assistant `stopReason: "aborted"` gets the translated Stopped mark,
