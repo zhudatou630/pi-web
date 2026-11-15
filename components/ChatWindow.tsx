@@ -12,7 +12,7 @@ import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { isImeComposing } from "@/lib/ime";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isHiddenCustomMessage, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
+import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { findAskUserAnswers } from "@/lib/ask-user-answer";
 import { extractTurnCreatedRoutines, type CreatedRoutine } from "@/lib/turn-routines";
@@ -1626,9 +1626,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
+  const openGroupTail = agentRunning || streamState.isStreaming;
+  const groupBoundaries = useMemo(
+    () => getMessageGroupBoundaries(messages, { openTail: openGroupTail }),
+    [messages, openGroupTail],
+  );
   const visibleMessages = useMemo(
-    () => messages.filter((message) => isMessageGroupBoundary(message) || message.role === "assistant" || (message.role === "toolResult" && !message.isError && getImageGenerationResult(message.details))),
-    [messages],
+    () => messages.filter((message, index) => !isHiddenCustomMessage(message) && (groupBoundaries.has(index) || message.role === "assistant" || (message.role === "toolResult" && !message.isError && getImageGenerationResult(message.details)))),
+    [messages, groupBoundaries],
   );
   // Stable Map identity: `messages` doesn't change during streaming updates
   // (the streaming message lives in streamState), so memoized MessageViews
@@ -1655,9 +1660,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     const routinesByIndex = new Map<number, CreatedRoutine[]>();
     const activityByIndex = new Map<number, TurnActivity>();
     for (let idx = 0; idx < messages.length;) {
-      const boundaryIdx = isMessageGroupBoundary(messages[idx]) ? idx : -1;
+      const boundaryIdx = groupBoundaries.has(idx) ? idx : -1;
       let endIdx = boundaryIdx >= 0 ? idx + 1 : idx;
-      while (endIdx < messages.length && !isMessageGroupBoundary(messages[endIdx])) endIdx += 1;
+      while (endIdx < messages.length && !groupBoundaries.has(endIdx)) endIdx += 1;
       const finalAssistantIdx = findFinalAssistantIndex(messages, boundaryIdx, endIdx);
       if (finalAssistantIdx >= 0 && completedAssistantParts[finalAssistantIdx]?.answerMessage) {
         const turnMessages = messages.slice(boundaryIdx + 1, finalAssistantIdx + 1)
@@ -1672,7 +1677,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       idx = endIdx;
     }
     return { writtenFilesByAssistantIndex: filesByIndex, routinesByAssistantIndex: routinesByIndex, turnActivityByAssistantIndex: activityByIndex };
-  }, [completedAssistantParts, messageCwd, messages, toolResultsMap]);
+  }, [completedAssistantParts, groupBoundaries, messageCwd, messages, toolResultsMap]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
     const history: string[] = [];
@@ -1780,7 +1785,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const currentTurnHasVisibleOutput = useMemo(() => {
     let boundaryIndex = -1;
     for (let index = messages.length - 1; index >= 0; index--) {
-      if (isMessageGroupBoundary(messages[index])) {
+      if (groupBoundaries.has(index)) {
         boundaryIndex = index;
         break;
       }
@@ -1795,7 +1800,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       if (getDisplayableAssistantBlocks(message).length > 0 || getAssistantErrorMessage(message)) return true;
     }
     return false;
-  }, [messages]);
+  }, [messages, groupBoundaries]);
   const rawStreamingAssistant = streamState.streamingMessage?.role === "assistant"
     ? streamState.streamingMessage as AssistantMessage
     : null;
@@ -2066,7 +2071,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               // a user message, so it is a grouping boundary but not a chat anchor.
               let lastBoundaryIdx = -1;
               for (let i = messages.length - 1; i >= 0; i--) {
-                if (isMessageGroupBoundary(messages[i])) { lastBoundaryIdx = i; break; }
+                if (groupBoundaries.has(i)) { lastBoundaryIdx = i; break; }
               }
 
               const visibleRefIndexByMessage = new Map<number, number>();
@@ -2077,7 +2082,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   || (msg.role === "custom" && msg.customType === IMAGE_RESULT_TYPE)
                   ? getImageGenerationResult(msg.details)
                   : null;
-                if (isMessageGroupBoundary(msg) || msg.role === "assistant" || persistedImage) {
+                if (groupBoundaries.has(idx) || msg.role === "assistant" || persistedImage) {
                   visibleRefIndexByMessage.set(idx, refIdx++);
                 }
               });
@@ -2099,7 +2104,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   || (msg.role === "custom" && msg.customType === IMAGE_RESULT_TYPE)
                   ? getImageGenerationResult(msg.details)
                   : null;
-                const isVisible = isMessageGroupBoundary(msg) || msg.role === "assistant" || Boolean(imageResult);
+                const isVisible = groupBoundaries.has(idx) || msg.role === "assistant" || Boolean(imageResult);
                 const currentRefIdx = visibleRefIndexByMessage.get(idx);
                 const keyPrefix = options.keyPrefix ?? "message";
                 const messageKey = messageKeys[idx];
@@ -2197,12 +2202,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 );
               };
               for (let idx = 0; idx < messages.length;) {
-                const hasBoundary = isMessageGroupBoundary(messages[idx]);
-                const hasAnchor = isMessageGroupAnchor(messages[idx]);
+                const boundary = groupBoundaries.get(idx);
+                const hasBoundary = boundary !== undefined;
+                const hasAnchor = boundary?.anchor === true;
                 const boundaryIdx = hasBoundary ? idx : -1;
                 const notificationStartsProcess = boundaryIdx >= 0 && isSubagentNotificationMessage(messages[boundaryIdx]);
                 let endIdx = hasBoundary ? idx + 1 : idx;
-                while (endIdx < messages.length && !isMessageGroupBoundary(messages[endIdx])) endIdx += 1;
+                while (endIdx < messages.length && !groupBoundaries.has(endIdx)) endIdx += 1;
                 const firstIdx = hasBoundary ? boundaryIdx : idx;
                 const processStartIdx = notificationStartsProcess ? boundaryIdx : boundaryIdx + 1;
 
@@ -2218,8 +2224,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   if (isLiveTail && streamingParts.processMessage) {
                     markOutlineTarget([]);
                     const liveProcessActive = isLiveProcessActivity(true, streamState.isStreaming, streamingAssistant, agentPhase, Boolean(streamingParts.answerMessage), isCompacting);
-                    const turnStartTime = (boundaryIdx >= 0 && typeof messages[boundaryIdx]?.timestamp === "number" && Number.isFinite(messages[boundaryIdx].timestamp))
-                      ? messages[boundaryIdx].timestamp
+                    const turnStartTime = typeof boundary?.startedAt === "number" && Number.isFinite(boundary.startedAt)
+                      ? boundary.startedAt
                       : streamingParts.processMessage.timestamp;
                     const streamingDuration = elapsedProcessSeconds(
                       turnStartTime,
@@ -2301,6 +2307,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     processViews.push(renderMessage(processIdx, { attachRef: false, keyPrefix: "process", isProcess: true }));
                     continue;
                   }
+                  if (processMessage.role === "bashExecution") {
+                    // Shell cards between an extension anchor and its answer must not disappear into the fold.
+                    markOutlineTarget([entryIds[processIdx]]);
+                    rendered.push(renderMessage(processIdx));
+                    continue;
+                  }
                   if (processMessage.role !== "assistant") continue;
                   const parts = completedAssistantParts[processIdx];
                   if (processIdx !== finalAssistantIdx && parts?.answerMessage) {
@@ -2367,8 +2379,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   isCompacting ? t("chat.compacting") : null,
                 );
 
-                const turnStartTime = (boundaryIdx >= 0 && typeof messages[boundaryIdx]?.timestamp === "number" && Number.isFinite(messages[boundaryIdx].timestamp))
-                  ? messages[boundaryIdx].timestamp
+                const turnStartTime = typeof boundary?.startedAt === "number" && Number.isFinite(boundary.startedAt)
+                  ? boundary.startedAt
                   : processStartTime;
                 const processDurationSeconds = elapsedProcessSeconds(turnStartTime ?? processStartTime, processEndTime);
                 let activityLabel: string | null = null;

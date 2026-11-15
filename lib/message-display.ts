@@ -79,6 +79,61 @@ export function isMessageGroupBoundary(
   return isMessageGroupAnchor(message) || isSubagentNotificationMessage(message);
 }
 
+export interface MessageGroupMessage {
+  role?: AgentMessage["role"];
+  customType?: string;
+  display?: boolean;
+  stopReason?: string;
+  timestamp?: number;
+}
+
+/** Boundaries and visible anchors differ: subagent notices stay in process details. */
+export function getMessageGroupBoundaries(
+  messages: readonly MessageGroupMessage[],
+  options: { openTail?: boolean } = {},
+): Map<number, { anchor: boolean; startedAt?: number }> {
+  const boundaries = new Map<number, { anchor: boolean; startedAt?: number }>();
+  messages.forEach((message, index) => {
+    if (isMessageGroupBoundary(message)) {
+      boundaries.set(index, { anchor: isMessageGroupAnchor(message), startedAt: message.timestamp });
+    }
+  });
+  const isConversation = (message: MessageGroupMessage) => (
+    message.role === "user" || message.role === "assistant" || message.role === "toolResult"
+  );
+  for (let start = 0; start < messages.length;) {
+    if (isConversation(messages[start])) {
+      start++;
+      continue;
+    }
+    let end = start;
+    let hasBoundary = false;
+    let lastCustom = -1;
+    let lastVisibleCustom = -1;
+    while (end < messages.length && !isConversation(messages[end])) {
+      hasBoundary ||= boundaries.has(end);
+      if (messages[end].role === "custom") {
+        lastCustom = end;
+        if (!isHiddenCustomMessage(messages[end])) lastVisibleCustom = end;
+      }
+      end++;
+    }
+    const previous = messages[start - 1];
+    const answered = end < messages.length ? messages[end].role === "assistant" : options.openTail === true;
+    // shortcut: pi persists no triggerTurn flag; replace this inference if it gains one.
+    if (!hasBoundary && lastCustom >= 0 && answered && previous?.role === "assistant"
+      && (previous.stopReason === "stop" || previous.stopReason === "aborted")) {
+      const index = lastVisibleCustom >= 0 ? lastVisibleCustom : lastCustom;
+      boundaries.set(index, {
+        anchor: lastVisibleCustom >= 0,
+        startedAt: messages[lastCustom].timestamp,
+      });
+    }
+    start = end;
+  }
+  return boundaries;
+}
+
 export function isEmptyThinkingBlock(block: AssistantContentBlock, options: DisplayOptions = {}): block is ThinkingContent {
   return block.type === "thinking" && !block.deferred && !options.isStreaming && block.thinking.trim() === "";
 }

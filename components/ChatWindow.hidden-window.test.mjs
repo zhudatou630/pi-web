@@ -33,7 +33,8 @@ function render(messages, locate = null, overrides = {}) {
   const scope = {
     React, ...display, ...lazy, ...outline, ...modelTiming, messages, entryIds, messageKeys: entryIds, mountedRangeRef,
     // Leaf presentation is intentionally simple; grouping and slicing are real.
-    MessageView: ({ message }) => React.createElement("p", null, typeof message.content === "string" ? message.content : message.content.map((block) => block.text ?? (block.toolName === "ask_user" ? block.input?.question : "") ?? "").join("")),
+    groupBoundaries: display.getMessageGroupBoundaries(messages, { openTail: Boolean(overrides.agentRunning || overrides.streamState?.isStreaming) }),
+    MessageView: ({ message, turnDurationSeconds }) => React.createElement("p", { "data-duration": turnDurationSeconds }, message.role === "bashExecution" ? `SHELL:${message.command}` : typeof message.content === "string" ? message.content : (message.content ?? []).map((block) => block.text ?? (block.toolName === "ask_user" ? block.input?.question : "") ?? "").join("")),
     ProcessDetailsGroup: ({ children }) => React.createElement("section", null, children),
     getImageGenerationResult: () => null, IMAGE_RESULT_TYPE: "image-result",
     getModelDisplayName: () => "model", modelNames: new Map(),
@@ -100,6 +101,34 @@ test("ask_user and preceding text stay outside the collapsed process group", () 
   assert.match(html, /CLARIFICATIONWHICH OPTION\?/);
   assert.doesNotMatch(html.match(/<section>[\s\S]*?<\/section>/)?.[0] ?? "", /CLARIFICATION|WHICH OPTION/);
   assert.match(html, /<\/section>[\s\S]*CLARIFICATIONWHICH OPTION\?/);
+});
+
+test("extension completion and shell cards stay between the old answer and the new process fold", () => {
+  const oldAnswer = { ...answer, timestamp: 1000, completedAt: 2000 };
+  const completion = { role: "custom", customType: "completion", display: true, content: "COMPLETION", timestamp: 3000 };
+  const wakeup = { ...hidden(), timestamp: 3_603_000 };
+  const shell = { role: "bashExecution", command: "pwd", output: "/tmp", timestamp: 4000 };
+  const newAnswer = { ...answer, content: [{ type: "thinking", thinking: "work" }, { type: "text", text: "NEW ANSWER" }], timestamp: 3_604_000, completedAt: 3_605_000 };
+  for (const stretch of [[completion, shell, wakeup], [shell, completion, wakeup], [completion, wakeup, shell]]) {
+    const { html } = render([user, oldAnswer, ...stretch, newAnswer]);
+    assert.match(html, /ANSWER[\s\S]*COMPLETION[\s\S]*<section>/);
+    assert.match(html, /ANSWER[\s\S]*SHELL:pwd[\s\S]*<section>/);
+    assert.match(html, /<\/section>[\s\S]*data-duration="2"[^>]*>NEW ANSWER/);
+    assert.doesNotMatch(html.match(/<section>[\s\S]*?<\/section>/)?.[0] ?? "", /COMPLETION|SHELL|NEW ANSWER/);
+    assert.doesNotMatch(html, /HIDDEN/);
+  }
+});
+
+test("hidden-only wakeups have no visible row or ref and open their own streaming process", () => {
+  const messages = [user, answer, hidden()];
+  const liveMessage = { role: "assistant", content: [{ type: "thinking", thinking: "work" }], timestamp: 5000 };
+  const { html, range } = render(messages, null, {
+    agentRunning: true, sessionBusy: true, streamState: { isStreaming: true }, streamingAssistant: liveMessage,
+    streamingParts: display.partitionAssistantMessage(liveMessage, { isStreaming: true }),
+  });
+  assert.match(html, /ANSWER[\s\S]*<section>/);
+  assert.doesNotMatch(html, /HIDDEN|data-entry-id="entry-2"/);
+  assert.deepEqual(range, { startIndex: 0, endIndex: 3, totalCount: 3 });
 });
 
 test("ordinary no-answer turns skip hidden slots and preserve ids and locate-window bookkeeping", () => {
