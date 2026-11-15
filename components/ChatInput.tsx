@@ -92,6 +92,7 @@ interface Props {
   thinkingLevelMap?: Record<string, string | null> | null;
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
   queuedMessages?: QueuedMessages | null;
+  extensionUiOpen?: boolean;
   inputHistory?: string[];
   onRecallQueue?: () => void;
   slashCommands?: SlashCommandInfo[];
@@ -664,7 +665,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
-  retryInfo, queuedMessages, inputHistory = [], onRecallQueue,
+  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, extensionUiOpen = false,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
   onAudioUnlock,
@@ -715,6 +716,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [builtinCommandPending, setBuiltinCommandPending] = useState(false);
   const [imageWarningDismissed, setImageWarningDismissed] = useState(false);
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
+  const showHistoryMenu = !extensionUiOpen && historyMenuOpen;
+  const showSlashMenu = !extensionUiOpen && slashMenuOpen;
+  const showAtMenu = !extensionUiOpen && atMenuOpen;
   const [historyActiveIndex, setHistoryActiveIndex] = useState(0);
   const historyStashRef = useRef<{ text: string } | null>(null);
   const [draftPersistenceFailed, setDraftPersistenceFailed] = useState(false);
@@ -1439,9 +1443,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [inputHistory.length]);
 
   useEffect(() => {
-    if (!historyMenuOpen) return;
+    if (!showHistoryMenu) return;
     historyItemRefs.current[historyActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [historyActiveIndex, historyMenuOpen]);
+  }, [historyActiveIndex, showHistoryMenu]);
 
   const dismissHistoryMenu = useCallback(() => {
     const stash = historyStashRef.current;
@@ -1510,6 +1514,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (extensionUiOpen) return;
       const nativeEvent = e.nativeEvent;
       const sendWithShift = !isMobile && isShiftEnterToSend();
       const sendShortcut = e.key === "Enter" && e.shiftKey === sendWithShift && (!isMobile || e.ctrlKey || e.metaKey);
@@ -1652,7 +1657,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [isMobile, isStreaming, canQueueStreamingMessage, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, sendMenuOpen, thinkingDropdownOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
+    [extensionUiOpen, isMobile, isStreaming, canQueueStreamingMessage, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, sendMenuOpen, thinkingDropdownOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
   );
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1775,12 +1780,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   }, [displayedSlashCommands.length]);
 
   useEffect(() => {
-    if (!slashMenuOpen) return;
+    if (!showSlashMenu) return;
     slashItemRefs.current[slashActiveIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [slashActiveIndex, slashMenuOpen]);
+  }, [slashActiveIndex, showSlashMenu]);
 
   useLayoutEffect(() => {
-    if (!slashMenuOpen || slashQuery === null) {
+    if (!showSlashMenu || slashQuery === null) {
       setSlashMenuMaxHeight(null);
       return;
     }
@@ -1789,10 +1794,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return subscribeUpwardMenuMaxHeight(menu, (nextHeight) => {
       setSlashMenuMaxHeight((current) => current === nextHeight ? current : nextHeight);
     });
-  }, [slashMenuOpen, slashQuery]);
+  }, [showSlashMenu, slashQuery]);
 
   useLayoutEffect(() => {
-    if (!atMenuOpen || atQuery === null) {
+    if (!showAtMenu || atQuery === null) {
       setAtMenuMaxHeight(null);
       return;
     }
@@ -1801,7 +1806,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return subscribeUpwardMenuMaxHeight(menu, (nextHeight) => {
       setAtMenuMaxHeight((current) => current === nextHeight ? current : nextHeight);
     });
-  }, [atMenuOpen, atQuery]);
+  }, [showAtMenu, atQuery]);
 
   // Build model options: prefer modelList (has provider info), fallback to modelNames
   const modelOptions: ModelSelectorOption[] = (() => {
@@ -2080,11 +2085,11 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const historyListboxId = `${menuId}-history`;
   const slashListboxId = `${menuId}-slash`;
   const fileListboxId = `${menuId}-files`;
-  const activeListboxId = historyMenuOpen && inputHistory.length > 0
+  const activeListboxId = showHistoryMenu && inputHistory.length > 0
     ? historyListboxId
-    : slashMenuOpen && slashQuery !== null
+    : showSlashMenu && slashQuery !== null
       ? slashListboxId
-      : atMenuOpen && atQuery !== null
+      : showAtMenu && atQuery !== null
         ? fileListboxId
         : undefined;
   const activeOptionId = activeListboxId === historyListboxId && inputHistory[historyActiveIndex] !== undefined
@@ -2202,7 +2207,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         )}
         {/* Main input */}
         <div ref={composerBoxRef} className={compact ? undefined : "chat-input-column"} style={{ position: "relative", minWidth: 0 }}>
-          {slashUsage && !slashMenuOpen && (
+          {!extensionUiOpen && slashUsage && !slashMenuOpen && (
             <div
               style={{
                 position: "absolute",
@@ -2231,7 +2236,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <span>{slashUsage.signature}</span>
             </div>
           )}
-          {historyMenuOpen && inputHistory.length > 0 && (
+          {showHistoryMenu && inputHistory.length > 0 && (
             <div
               ref={historyMenuRef}
               className="popover-surface"
@@ -2319,7 +2324,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             </div>
           )}
-          {slashMenuOpen && slashQuery !== null && (
+          {showSlashMenu && slashQuery !== null && (
             <div
               ref={slashMenuRef}
               className="popover-surface"
@@ -2466,7 +2471,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               </div>
             </div>
           )}
-          {atMenuOpen && atQuery !== null && (() => {
+          {showAtMenu && atQuery !== null && (() => {
             const indexLoading = fileIndexLoading && (!fileIndex || fileIndex.cwd !== cwd);
              const matchCountLabel = atMatches.length === 1 ? t("chat.match") : t("chat.matches", { count: atMatches.length });
             // With a truncated index, local results are provisional — the

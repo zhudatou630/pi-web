@@ -1870,6 +1870,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const chatInputElement = (
     <ChatInput
       ref={setChatInputElement}
+      extensionUiOpen={Boolean(extensionDialog || extensionCustomUi)}
       isEditing={editEntryId !== null}
       onSend={handleChatSend}
       onOpenImageGeneration={imageConfig && !sessionEnded && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImages) => { setImageEdit(null); setImageSourceSeed(sourceImages); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
@@ -2612,6 +2613,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               </div>
               <ChatInput
                 ref={quoteChatInputRef}
+                extensionUiOpen={Boolean(extensionDialog || extensionCustomUi)}
                 compact
                 onSend={askSelectionInSideChat}
                 onAbort={closeQuotedSelection}

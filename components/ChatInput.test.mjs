@@ -14,6 +14,38 @@ const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { ChatInput, scrollTextareaCaretIntoView, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, readPromptImageFile, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 
+test("extension UI hides all composer menus and lets their keys pass through until it closes", () => {
+  const text = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
+  const file = ts.createSourceFile("ChatInput.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  function declaration(name) {
+    function find(node) {
+      if (ts.isVariableDeclaration(node) && node.name.getText(file) === name) return node.initializer;
+      return ts.forEachChild(node, find);
+    }
+    return find(file);
+  }
+  for (const name of ["showHistoryMenu", "showSlashMenu", "showAtMenu"]) {
+    const expression = new Script(declaration(name).getText(file));
+    const scope = { extensionUiOpen: true, historyMenuOpen: true, slashMenuOpen: true, atMenuOpen: true };
+    assert.equal(expression.runInNewContext(scope), false);
+    scope.extensionUiOpen = false;
+    assert.equal(expression.runInNewContext(scope), true, "the original menu state survives the overlay");
+  }
+  const keydown = new Script(`(${ts.transpileModule(declaration("handleKeyDown").arguments[0].getText(file), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText.trim().replace(/;$/, "")})(event)`);
+  for (const key of ["Enter", "Tab", "Escape", "ArrowUp", "ArrowDown"]) {
+    keydown.runInNewContext({ extensionUiOpen: true, event: { key, preventDefault: () => assert.fail("overlay keys must pass through") } });
+  }
+  assert.match(text, /\[showSlashMenu, slashQuery\]/);
+  assert.match(text, /\[showAtMenu, atQuery\]/);
+  assert.match(text, /\{showHistoryMenu && inputHistory.length/);
+  assert.match(text, /\{showSlashMenu && slashQuery/);
+  assert.match(text, /\{showAtMenu && atQuery/);
+  const window = readFileSync(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
+  assert.equal(window.match(/extensionUiOpen=\{Boolean\(extensionDialog \|\| extensionCustomUi\)\}/g).length, 2);
+});
+
 test("the live model selector reapplies the current model without changing form selectors", () => {
   const source = ts.createSourceFile("ModelSelector.tsx", readFileSync(new URL("./ModelSelector.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   function findChoose(node) {
@@ -223,7 +255,7 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
     const handler = script.runInNewContext({
       Date: { now: () => 1000 },
       COMPOSITION_END_ENTER_GRACE_MS: 100,
-      isMobile: false, isStreaming: true,
+      isMobile: false, isStreaming: true, extensionUiOpen: false,
       isShiftEnterToSend() { return false; },
       isComposingRef: { current: false }, lastCompositionEndAtRef: { current: 0 },
       historyMenuOpen: false, inputHistory: ["previous"], historyActiveIndex: 0,
