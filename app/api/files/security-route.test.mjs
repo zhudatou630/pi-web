@@ -103,6 +103,29 @@ test("upload preflight and writes authorize nested directories and reject traver
 const diffRequest = (cwd, filePath) => request(diff, "/api/git/diff", { cwd, path: filePath });
 const link = (target, destination) => fs.symlinkSync(target, destination, process.platform === "win32" ? "junction" : "dir");
 
+test("text reads decode UTF-16 BOMs before binary detection, while real NUL data is refused", async () => {
+  const root = fixture();
+  const content = "Text 你好 😀";
+  for (const endian of ["le", "be"]) {
+    const bytes = Buffer.from("\uFEFF" + content, "utf16le");
+    if (endian === "be") bytes.swap16();
+    const file = path.join(root, `${endian}.txt`);
+    fs.writeFileSync(file, bytes);
+    const response = await files(new NextRequest("http://localhost/api/files/target?type=read"), {
+      params: Promise.resolve({ path: [file.replace(/^\/+/, "")] }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.content, content);
+    assert.equal(body.nextOffset, bytes.length);
+  }
+  const binary = path.join(root, "binary.txt");
+  fs.writeFileSync(binary, Buffer.from([0, 1, 2]));
+  assert.equal((await files(new NextRequest("http://localhost/api/files/target?type=read"), {
+    params: Promise.resolve({ path: [binary.replace(/^\/+/, "")] }),
+  })).status, 415);
+});
+
 test("cross-site PDF navigation keeps file authorization and script-free response headers", async () => {
   const root = fixture();
   const outside = fs.mkdtempSync(path.join(base, "pdf-outside-"));

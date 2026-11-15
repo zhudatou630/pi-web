@@ -8,6 +8,10 @@ Uploads have a 100 MiB combined file limit (101 MiB wire-body limit for multipar
 
 Untracked line totals use four asynchronous workers, each reusing a 64 KiB buffer. Reads stop at the initial file size; empty, NUL-containing, non-regular and over-preview-limit files count zero. Status path mapping yields every 1,000 entries and resolves the cwd/repository only once per request, while retaining the explorer's symlink spelling and renames leaving the cwd as deletions. Replaced explorer requests abort the server scan; open handles are always closed. Counts are fresh per request, not cached.
 
+## Text encoding
+
+Source previews recognize UTF-16LE/BE BOMs before binary detection. Pagination offsets remain byte offsets; chunk boundaries preserve UTF-8 sequences and UTF-16 surrogate pairs. UTF-16 without a BOM is not inferred.
+
 ## Mutable previews
 
 Media/document URLs use page-wide monotonically increasing versions on reopen and file changes. Visibility alone never changes a mounted preview's URL/key, so unchanged playback and document reading positions survive tab switches (including hidden mounted previews). The existing heartbeat/reconnecting `FileWatchEventSource` recovers watches; a resumed/reconnected `connected` version is compared with the last seen version and only a changed file bumps the URL. No second reconnect mechanism is added. PDF page fragments remain separate from the cache-busting query.
