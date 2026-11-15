@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
 import { createJiti } from "jiti";
+import { ProjectTrustStore } from "@earendil-works/pi-coding-agent";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const testAgentDir = await mkdtemp(join(tmpdir(), "pi-web-subagent-route-global-"));
@@ -50,6 +51,7 @@ function jsonRequest(method, body) {
 
 test("profiles route creates, lists, and deletes a project profile", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "pi-web-subagent-route-"));
+  new ProjectTrustStore(testAgentDir).set(cwd, true);
   allowFileRoot(cwd);
   t.after(() => rm(cwd, { recursive: true, force: true }));
 
@@ -84,6 +86,7 @@ test("profiles route creates, lists, and deletes a project profile", async (t) =
 
 test("profiles route keeps same-name global and project profiles independently editable", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "pi-web-subagent-route-"));
+  new ProjectTrustStore(testAgentDir).set(cwd, true);
   allowFileRoot(cwd);
   t.after(() => rm(cwd, { recursive: true, force: true }));
 
@@ -180,6 +183,7 @@ test("profiles route rejects missing paths, malformed profiles, and unsafe names
 
 test("PATCH projectEnabled records project availability without touching the global file", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "pi-web-subagent-route-avail-"));
+  new ProjectTrustStore(testAgentDir).set(cwd, true);
   allowFileRoot(cwd);
   t.after(() => rm(cwd, { recursive: true, force: true }));
 

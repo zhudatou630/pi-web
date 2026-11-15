@@ -10,9 +10,9 @@ import { realPathOrSelf } from "./worktree";
 export const NESTED_PROJECT_SCAN_DEPTH = 4;
 export const NESTED_PROJECT_SCAN_MAX_FOLDERS = 2000;
 const NESTED_PROJECT_SCAN_SKIP = new Set(["node_modules", ".git", ".pi", ".agents"]);
-// Same resources as the SDK's trust-manager; lstat also counts dangling links.
+// SDK resources plus Pi Web agent profiles; lstat also counts dangling links.
 const TRUST_REQUIRING_PROJECT_ENTRIES = [
-  "settings.json", "mcp.json", "extensions", "skills", "prompts", "themes", "SYSTEM.md", "APPEND_SYSTEM.md",
+  "settings.json", "mcp.json", "extensions", "skills", "prompts", "themes", "SYSTEM.md", "APPEND_SYSTEM.md", "agents",
 ];
 
 function somethingAt(filePath: string): boolean {
@@ -34,7 +34,8 @@ function hasOwnTrustEntries(folder: string): boolean {
     // No .pi directory.
   }
   return TRUST_REQUIRING_PROJECT_ENTRIES.some((entry) => somethingAt(join(configDir, entry)))
-    || somethingAt(join(folder, ".agents", "skills"));
+    || somethingAt(join(folder, ".agents", "skills"))
+    || somethingAt(join(folder, ".agents", "agents"));
 }
 
 /** Scan breadth-first, without following directory links or walking resource/dependency folders. */
@@ -112,7 +113,9 @@ export async function assertAutoTrustable(cwd: string, makeError: (message: stri
 
 export function getProjectTrustStatus(cwd: string, agentDir: string): ProjectTrustStatus {
   if (!cwd) return { requiresTrust: false, trusted: true };
-  const requiresTrust = hasTrustRequiringProjectResources(cwd);
+  const requiresTrust = hasTrustRequiringProjectResources(cwd)
+    || somethingAt(join(cwd, ".pi", "agents"))
+    || somethingAt(join(cwd, ".agents", "agents"));
   // As pi >= 1.5: a saved decision wins, also a "Do not trust" for a project with nothing to gate.
   return { requiresTrust, trusted: new ProjectTrustStore(agentDir).get(cwd) ?? !requiresTrust };
 }

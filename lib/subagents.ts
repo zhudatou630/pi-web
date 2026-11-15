@@ -448,8 +448,10 @@ export function listSubagentProfileSources(cwd: string): SubagentProfile[] {
 }
 
 export function listSubagentProfiles(cwd: string): SubagentProfile[] {
+  const trusted = getProjectTrustStatus(cwd, getAgentDir()).trusted;
   const byName = new Map(BUILTIN_PROFILES.map((profile) => [profile.name.toLowerCase(), { ...profile, tools: [...profile.tools] }]));
   for (const [dir, scope] of profileDirectories(cwd)) {
+    if (scope !== "global" && !trusted) continue;
     for (const profile of readProfileDirectory(dir, scope, cwd)) byName.set(profile.name.toLowerCase(), profile);
   }
   return [...byName.values()].sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -767,7 +769,7 @@ export function importAgentProfiles(
  * A project or workspace file is toggled in place and only affects that project.
  */
 export function setSubagentProfileEnabled(cwd: string, name: string, enabled: boolean): void {
-  const profile = listSubagentProfiles(cwd).find((item) => item.name.toLowerCase() === name.trim().toLowerCase());
+  const profile = subagentProfileSources(listSubagentProfileSources(cwd), name)[0];
   if (!profile) throw new Error("Agent profile not found");
   if (profile.configurationError) throw new Error(`Invalid subagent profile "${profile.name}": ${profile.configurationError}`);
   if (profile.scope === "project" || profile.scope === "workspace") assertProjectScopeTrusted(cwd);
