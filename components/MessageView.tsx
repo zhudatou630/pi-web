@@ -2003,9 +2003,6 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
       onToggle={toggle}
       toggleLabel={t(expanded ? "chat.markerHide" : "chat.markerShow")}
     >
-      <p style={{ margin: "0 0 6px", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.45 }}>
-        {t("i18n.compactionDescription")}
-      </p>
       {parsedSummary.body ? (
         <MarkdownBody className="markdown-compaction-message">{parsedSummary.body}</MarkdownBody>
       ) : (

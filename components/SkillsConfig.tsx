@@ -15,7 +15,7 @@ import type {
 import { ProjectOverrideTag } from "./ProjectOverride";
 import { ReloadNotice } from "./ReloadNotice";
 import { MarkdownBody } from "./MarkdownBody";
-import { parseFrontmatter } from "@/lib/frontmatter";
+import { bodyWithoutRepeatedTitle } from "@/lib/frontmatter";
 import { SettingsScopeRow } from "./SettingsScope";
 import {
   ConfigButton,
@@ -142,14 +142,14 @@ function SkillDetail({
       .then(async (response) => {
         const data = await response.json().catch(() => ({})) as { content?: unknown; error?: string };
         if (!response.ok || typeof data.content !== "string") throw new Error(data.error ?? `HTTP ${response.status}`);
-        setInstructions({ text: parseFrontmatter(data.content).rest.trim() });
+        setInstructions({ text: bodyWithoutRepeatedTitle(data.content, skill.name) });
       })
       .catch((error) => {
         if (!controller.signal.aborted) setInstructions({ error: error instanceof Error ? error.message : String(error) });
       });
     return () => controller.abort();
     // An update rewrites SKILL.md at the same path.
-  }, [cwd, skill.filePath, skill.install?.versionHash]);
+  }, [cwd, skill.filePath, skill.name, skill.install?.versionHash]);
 
   const updateAvailable = updateStatus?.state === "update-available";
   const statusText = checkingUpdate

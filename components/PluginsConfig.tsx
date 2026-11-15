@@ -121,11 +121,11 @@ function ResourceList({ pkg, busyKey, onToggleResource }: {
     .filter((group) => group.resources.length > 0);
 
   if (groups.length === 0) {
+    // A disabled package resolves nothing; its switch and Status already say it is off.
+    if (pkg.disabled) return null;
     return (
       <SettingsGroup title={t("i18n.resolvedResources")}>
-        <p className="settings-row-message">
-          {pkg.disabled ? t("i18n.packageDisabled") : t("i18n.noResolvedResources")}
-        </p>
+        <p className="settings-row-message">{t("i18n.noResolvedResources")}</p>
       </SettingsGroup>
     );
   }
@@ -295,9 +295,7 @@ function PackageDetail({
       meta={(
         <>
           <ScopeTag scope={pkg.scope} />
-          {pkg.disabled ? (
-            <span className="config-scope-tag">{t("i18n.disabled")}</span>
-          ) : loaded < pkg.resources.length && (
+          {!pkg.disabled && loaded < pkg.resources.length && (
             <span className="config-scope-tag">{t("project.loadedCount", { loaded, total: pkg.resources.length })}</span>
           )}
           <span className="config-detail-path" title={pkg.source}>{pkg.source}</span>
@@ -348,7 +346,7 @@ function PackageDetail({
           <SettingsProperty label={t("i18n.status")}>
             <span className={`settings-status is-${pkg.status}`}>{t(STATUS_LABELS[pkg.status])}</span>
           </SettingsProperty>
-          <SettingsProperty label={t("i18n.resources")}>{resourceSummary(pkg, t)}</SettingsProperty>
+          {!pkg.disabled && <SettingsProperty label={t("i18n.resources")}>{resourceSummary(pkg, t)}</SettingsProperty>}
           <SettingsProperty label={t("i18n.installedPath")}>
             {pkg.installedPath ? shortenPath(pkg.installedPath) : <span className="is-error">{t("i18n.notFound")}</span>}
           </SettingsProperty>

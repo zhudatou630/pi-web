@@ -85,3 +85,13 @@ export function getFrontmatterTitle(value: unknown): string | null {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return null;
 }
+
+const sameTitle = (text: string) => text.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+
+/** Markdown under the frontmatter, minus a first heading that only repeats `title` (shown above it already). */
+export function bodyWithoutRepeatedTitle(markdown: string, title: string): string {
+  const body = parseFrontmatter(markdown).rest.trim();
+  const heading = /^#{1,6}[ \t]+(.*?)[ \t#]*(?:\r\n|\n|\r|$)/.exec(body);
+  if (!heading || sameTitle(heading[1]) !== sameTitle(title)) return body;
+  return body.slice(heading[0].length).trim();
+}
