@@ -34,6 +34,7 @@ Design notes moved out of AGENTS.md.
 
 ## Session search
 - Whitespace-separated terms are ANDed across user/assistant text and the displayed title; double quotes keep a phrase (embedded quotes are literal). Each file is streamed once, testing only missing terms after a match. The first matching body term supplies the snippet and jump target; title-only hits have no message target. Existing file/result/byte/time budgets still apply. This intentionally allows title + body combinations, unlike upstream's title-only fallback rule.
+- A side chat counts only what follows its last `pi-web:side` boundary (a nested one's copy holds its parent's boundary too) and its own name, never a placeholder name or the inherited first message: copied history matches only in the session it came from. Inherited lines are read but not parsed, and a side chat is read to the end since a later boundary may discard an earlier match. Its hit opens it as a chat tab like any other.
 - Results use the sidebar's custom project name Map keyed by `workspaceKeyOf()`, falling back to the project-root basename. Worktree hits retain their cwd; labels stay regular weight. Picking a result keeps search open for visiting other hits.
 
 ## Sidebar reveal

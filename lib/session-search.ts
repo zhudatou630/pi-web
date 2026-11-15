@@ -2,6 +2,8 @@ import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import type { SessionInfo } from "./types";
 import { getSessionDisplayTitle } from "./session-display-title";
+import { isUnnamedSideChat } from "./session-family";
+import { SIDE_CHAT_TYPE } from "./side-chat";
 
 const MAX_FILES = 500;
 const MAX_RESULTS = 30;
@@ -56,23 +58,37 @@ export async function searchSessionContents(
     }
     const stream = createReadStream(session.path, { encoding: "utf8", end: MAX_FILE_BYTES - 1, signal });
     const lines = createInterface({ input: stream, crlfDelay: Infinity });
-    const title = getSessionDisplayTitle(session);
+    // A side chat copies its parent's history up to a boundary message: only what follows the
+    // last boundary is its own (earlier text is searched in the parent). Its title is its own
+    // name; the first message is inherited.
+    const side = session.relation?.kind === "side";
+    const title = side ? (isUnnamedSideChat(session.name) ? "" : session.name!) : getSessionDisplayTitle(session);
     let pending = matchers.filter((matcher) => !matcher.test(title));
     let snippet: SessionSearchResult | undefined;
     let found = false;
+    let ownText = !side;
     try {
       for await (const line of lines) {
         if (signal.aborted || Date.now() >= deadline) {
           response.truncated = true;
           break;
         }
+        // Inherited lines are read but not parsed.
+        if (!ownText && !line.includes(SIDE_CHAT_TYPE)) continue;
         if (line.length > MAX_LINE_CHARS) {
           response.truncated = true;
           continue;
         }
         let entry;
         try { entry = JSON.parse(line); } catch { continue; }
-        if (entry?.type !== "message" || !["user", "assistant"].includes(entry.message?.role)) continue;
+        if (side && entry?.type === "custom_message" && entry.customType === SIDE_CHAT_TYPE) {
+          // A nested side chat's copy holds its parent side chat's boundary too: start over.
+          ownText = true;
+          pending = matchers.filter((matcher) => !matcher.test(title));
+          snippet = undefined;
+          continue;
+        }
+        if (!ownText || entry?.type !== "message" || !["user", "assistant"].includes(entry.message?.role)) continue;
         const content: unknown = entry.message.content;
         const blocks = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
         const textBlocks = blocks.flatMap((block, blockIndex) => block?.type === "text" && typeof block.text === "string" ? [{ text: block.text as string, blockIndex }] : []);
@@ -80,7 +96,8 @@ export async function searchSessionContents(
         pending = pending.filter((matcher) => !matcher.test(text));
         const match = snippet ? null : matchers.map((matcher) => matcher.exec(text)).find(Boolean);
         if (!match) {
-          if (snippet && !pending.length) break;
+          // A later boundary may still discard what a side chat matched so far.
+          if (snippet && !pending.length && !side) break;
           continue;
         }
         const start = match.index;
@@ -99,7 +116,7 @@ export async function searchSessionContents(
           match: match[0].replace(/\s+/g, " "),
           after: text.slice(end, end + 80).replace(/\s+/g, " ").trimEnd() + (end + 80 < text.length ? "..." : ""),
         };
-        if (!pending.length) break;
+        if (!pending.length && !side) break;
       }
     } catch {
       // Missing/unreadable files and interrupted reads must not hide other results.
@@ -114,8 +131,8 @@ export async function searchSessionContents(
     }
     if (!found && stream.bytesRead >= MAX_FILE_BYTES) response.truncated = true;
     // The catalog already resolves the latest session_info; share the sidebar's fallback too.
-    if (!found && !signal.aborted && Date.now() < deadline) {
-      const hit = matchers.every((matcher) => matcher.test(title)) ? matchers[0].exec(title) : null;
+    if (!found && ownText && !signal.aborted && Date.now() < deadline) {
+      const hit = title && matchers.every((matcher) => matcher.test(title)) ? matchers[0].exec(title) : null;
       if (hit) response.results.push({
         session,
         titleOnly: true,

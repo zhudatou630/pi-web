@@ -87,6 +87,12 @@ export function getSessionFamily(
   )) ?? null;
 }
 
+/** A side chat's name as created when its question was empty: app text, not the user's. */
+export function isUnnamedSideChat(name: string | undefined): boolean {
+  const trimmed = name?.trim();
+  return !trimmed || ["Side:", "旁问：", "Side chat"].includes(trimmed);
+}
+
 /** Creation-order numbers shared by tabs and Agents, independent of which tabs are open. */
 export function unnamedSideChatNumbers(sessions: readonly SessionInfo[]): Map<string, number> {
   const numbers = new Map<string, number>();
@@ -97,8 +103,7 @@ export function unnamedSideChatNumbers(sessions: readonly SessionInfo[]): Map<st
     const parent = familyParentId(session)!;
     const number = (counts.get(parent) ?? 0) + 1;
     counts.set(parent, number);
-    const name = session.name?.trim();
-    if (!name || ["Side:", "旁问：", "Side chat"].includes(name)) numbers.set(session.id, number);
+    if (isUnnamedSideChat(session.name)) numbers.set(session.id, number);
   }
   return numbers;
 }
