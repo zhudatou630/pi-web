@@ -1,4 +1,5 @@
 import type { ToolCallContent } from "./types";
+import { truncateText } from "./truncate-text";
 
 function readable(value: unknown, separator = ", "): string | null {
   if (typeof value === "string") return value.trim() ? value : null;
@@ -15,7 +16,7 @@ export function getToolPreview(block: ToolCallContent): { text: string; path?: s
   if (!input || typeof input !== "object") return { text: "" };
   for (const key of ["command", "pattern", "query"]) {
     const text = readable(input[key], key === "command" ? " " : ", ");
-    if (text) return { text: text.slice(0, 120) };
+    if (text) return { text: truncateText(text, 120) };
   }
   for (const key of ["path", "file_path"]) {
     const path = input[key];
@@ -24,15 +25,15 @@ export function getToolPreview(block: ToolCallContent): { text: string; path?: s
   const values = Object.values(input);
   for (const value of values) {
     const text = readable(value);
-    if (text) return { text: text.slice(0, 120) };
+    if (text) return { text: truncateText(text, 120) };
   }
   let budget = 100;
   const nested = (value: unknown, depth = 0): string => {
     if (--budget < 0 || depth > 8) return "";
     const text = readable(value);
-    if (text !== null) return text.slice(0, 120);
+    if (text !== null) return truncateText(text, 120);
     if (!value || typeof value !== "object") return "";
-    if (Array.isArray(value)) return value.slice(0, 100).map((item) => nested(item, depth + 1)).filter(Boolean).join(", ").slice(0, 120);
+    if (Array.isArray(value)) return truncateText(value.slice(0, 100).map((item) => nested(item, depth + 1)).filter(Boolean).join(", "), 120);
     for (const inner of Object.values(value)) {
       const text = nested(inner, depth + 1);
       if (text) return text;
