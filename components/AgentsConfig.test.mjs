@@ -48,6 +48,18 @@ test("reuses the ChatInput model selector with scoped models", () => {
   assert.doesNotMatch(editorSource, /placeholder="provider\/modelId"/);
 });
 
+test("PowerShell profiles expose the same removable tool toggle without changing new-profile defaults", () => {
+  const defaults = JSON.parse(editorSource.match(/const TOOL_OPTIONS = (\[[^;]+\]);/)[1]);
+  const expression = editorSource.match(/const toolOptions = ([\s\S]*?);\n/)[1];
+  const options = new Function("draft", "shown", "TOOL_OPTIONS", `return ${expression};`);
+  assert.deepEqual(options({ tools: ["read", "powershell"] }, null, defaults), [...defaults, "powershell"]);
+  assert.deepEqual(options({ tools: ["read"] }, { tools: ["read", "powershell"] }, defaults), [...defaults, "powershell"], "unchecking must leave the existing profile's toggle available");
+  assert.deepEqual(options({ tools: defaults }, null, defaults), defaults);
+  const emptyProfileTools = JSON.parse(editorSource.match(/const EMPTY_PROFILE:[\s\S]*?tools: (\[[^\n]+\])/)[1]);
+  assert.ok(!emptyProfileTools.includes("powershell"));
+  assert.match(editorSource, /toolOptions\.map\(\(tool\) => \(\s*<Toggle key=\{tool\} label=\{tool\}[\s\S]*?draft\.tools\.filter\(\(item\) => item !== tool\)/);
+});
+
 test("uses the same form controls for editable and readonly profiles", () => {
   assert.match(editorSource, /<input aria-label=\{t\("agents\.displayName"\)\}[\s\S]*?disabled=\{disabled\}/);
   assert.match(editorSource, /<input aria-label=\{t\("agents\.description"\)\}[\s\S]*?disabled=\{disabled\}/);
