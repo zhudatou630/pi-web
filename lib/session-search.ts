@@ -125,6 +125,11 @@ export async function searchSessionContents(
       lines.close();
       stream.destroy();
     }
+    // A later boundary in the unread rest could still discard a side chat's match.
+    if (side && snippet && (stream.bytesRead >= MAX_FILE_BYTES || signal.aborted || Date.now() >= deadline)) {
+      snippet = undefined;
+      response.truncated = true;
+    }
     if (snippet && !pending.length) {
       response.results.push(snippet);
       found = true;

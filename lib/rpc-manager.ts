@@ -193,6 +193,8 @@ const COMMANDS_BEFORE_READY = new Set([
   "abort", "abort_bash", "abort_compaction", "extension_ui_response", "extension_ui_input",
 ]);
 
+const RUN_COMMANDS = new Set(["prompt", "steer", "follow_up", "compact", IMAGE_DIRECT_COMMAND]);
+
 export interface RpcSessionStartOptions {
   /** Internal carry-over when a dialog interrupted startup before model/thinking recovery. */
   startupSelection?: StartupSelection;
@@ -398,6 +400,8 @@ export class AgentSessionWrapper {
   /** Includes the extension hook, before pi starts its own bash executor. */
   private userBashAbortController: AbortController | null = null;
   private bashStopGeneration = 0;
+  // Stop while a run-starting command still waits for startup (a session_start dialog) cancels it.
+  private runStopGeneration = 0;
   private forcedIdleTimerArmed = false;
   private resolveDisposed: () => void = () => {};
   private readonly disposed = new Promise<void>((resolve) => { this.resolveDisposed = resolve; });
@@ -688,9 +692,11 @@ export class AgentSessionWrapper {
   startupOptions(): RpcSessionStartOptions {
     if (!this.startupComplete && this.startupSelection) return { startupSelection: this.startupSelection };
     const model = this.inner.model;
+    // The rebuild keeps the session's current choice; it is not a new global default.
     return {
       ...(model ? { initialModel: { provider: model.provider, modelId: model.id } } : {}),
       allowInitialModelFallback: true,
+      persistStartupPreferences: false,
       ...(THINKING_LEVEL_NAMES.has(this.inner.thinkingLevel as ThinkingLevel)
         ? { thinkingLevel: this.inner.thinkingLevel as ThinkingLevel } : {}),
     };
@@ -1067,6 +1073,7 @@ export class AgentSessionWrapper {
     }
 
     const bashStopGeneration = this.bashStopGeneration;
+    const runStopGeneration = this.runStopGeneration;
     const tracksMutation = !allowedDuringReplacement;
     if (tracksMutation) this.activeMutatingCommands += 1;
 
@@ -1081,6 +1088,9 @@ export class AgentSessionWrapper {
       // Stop also invalidates shell requests that have not reached their executor/controller yet.
       if (type === "bash" && bashStopGeneration !== this.bashStopGeneration) {
         throw new DOMException("Shell command cancelled by Stop", "AbortError");
+      }
+      if (RUN_COMMANDS.has(type) && runStopGeneration !== this.runStopGeneration) {
+        throw new DOMException("Command cancelled by Stop", "AbortError");
       }
       if (!this._alive || this._closing) throw new Error("Session is closing");
       if ((type === "fork" || type === "fork_branch" || type === "clone") && isRpcSessionFileMutationReserved(this.sessionId)) {
@@ -1221,6 +1231,7 @@ export class AgentSessionWrapper {
 
       case "abort": {
         this.bashStopGeneration += 1;
+        this.runStopGeneration += 1;
         this.userBashAbortController?.abort();
         if (this.inner.isBashRunning) this.inner.abortBash();
         this.lastRunAborted = true; // Extension commands may stop before an SDK run starts.
@@ -2561,6 +2572,7 @@ export async function setRpcSessionTools(
     : {
         initialModel: existing.inner.model && { provider: existing.inner.model.provider, modelId: existing.inner.model.id },
         allowInitialModelFallback: true,
+        persistStartupPreferences: false,
         ...(THINKING_LEVEL_NAMES.has(existing.inner.thinkingLevel as ThinkingLevel)
           ? { thinkingLevel: existing.inner.thinkingLevel as ThinkingLevel } : {}),
       };

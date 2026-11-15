@@ -1514,7 +1514,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (extensionUiOpen) return;
       const nativeEvent = e.nativeEvent;
       const sendWithShift = !isMobile && isShiftEnterToSend();
       const sendShortcut = e.key === "Enter" && e.shiftKey === sendWithShift && (!isMobile || e.ctrlKey || e.metaKey);
@@ -1529,7 +1528,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         return;
       }
 
-      if (historyMenuOpen && !isComposing) {
+      // Hidden menus (an extension dialog is open) leave their keys to the composer.
+      if (showHistoryMenu && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setHistoryActiveIndex((i) => Math.min(Math.max(0, inputHistory.length - 1), i + 1));
@@ -1552,7 +1552,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
 
-      if (slashMenuOpen && slashQuery !== null && !isComposing) {
+      if (showSlashMenu && slashQuery !== null && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setSlashActiveIndex((index) => displayedSlashCommands.length === 0
@@ -1594,7 +1594,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
       // @ file menu — skip while composing so IME candidate navigation
       // (arrows/Enter/Tab) is never intercepted.
-      if (atMenuOpen && atQuery !== null && !isComposing) {
+      if (showAtMenu && atQuery !== null && !isComposing) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
           setAtActiveIndex((i) => atMatches.length === 0 ? 0 : (i + 1) % atMatches.length);
@@ -1657,7 +1657,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }
       }
     },
-    [extensionUiOpen, isMobile, isStreaming, canQueueStreamingMessage, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, sendMenuOpen, thinkingDropdownOpen, slashMenuOpen, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, atMenuOpen, atQuery, atMatches, atActiveIndex, applyAtCompletion, historyMenuOpen, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
+    [isMobile, isStreaming, canQueueStreamingMessage, onSteer, onFollowUp, onAbort, imageMenuOpen, controlsMenuOpen, sendMenuOpen, thinkingDropdownOpen, showSlashMenu, slashQuery, displayedSlashCommands, slashActiveIndex, applySlashCommand, sendQueued, handleSend, showAtMenu, atQuery, atMatches, atActiveIndex, applyAtCompletion, showHistoryMenu, inputHistory, historyActiveIndex, applyHistoryInput, dismissHistoryMenu, value]
   );
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {

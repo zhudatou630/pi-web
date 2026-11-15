@@ -6,6 +6,7 @@ import {
   saveSubagentProfile,
   setSubagentProfileEnabled,
   setSubagentProjectAvailability,
+  writeProjectAgents,
   type SubagentProfile,
   type SubagentWritableScope,
 } from "@/lib/subagents";
@@ -40,7 +41,9 @@ export async function PUT(req: Request) {
     if (!body.profile || typeof body.profile.name !== "string") {
       return NextResponse.json({ error: "profile required" }, { status: 400 });
     }
-    return NextResponse.json({ profile: saveSubagentProfile(cwd, scope, body.profile) });
+    const profile = body.profile;
+    const save = () => saveSubagentProfile(cwd, scope, profile);
+    return NextResponse.json({ profile: scope === "global" ? save() : await writeProjectAgents(cwd, save) });
   } catch (error) {
     return errorResponse(error);
   }
@@ -56,7 +59,8 @@ export async function PATCH(req: Request) {
       if (typeof body.enabled === "boolean") {
         return NextResponse.json({ error: "enabled and projectEnabled are mutually exclusive" }, { status: 400 });
       }
-      setSubagentProjectAvailability(cwd, body.name, body.projectEnabled);
+      const { name, projectEnabled } = body;
+      await writeProjectAgents(cwd, () => setSubagentProjectAvailability(cwd, name, projectEnabled));
       return NextResponse.json({ ok: true });
     }
     if (typeof body.enabled !== "boolean") return NextResponse.json({ error: "enabled required" }, { status: 400 });

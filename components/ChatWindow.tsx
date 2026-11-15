@@ -879,6 +879,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   });
   // Pi Web's own approval card renders inline instead of the generic extension dialog.
   const routineApproval = extensionDialog?.method === "confirm" && extensionDialog.card?.kind === "routine" ? extensionDialog : null;
+  const [extensionDialogCollapsed, setExtensionDialogCollapsed] = useState(false);
+  const [extensionCustomUiCollapsed, setExtensionCustomUiCollapsed] = useState(false);
+  // An expanded dialog or panel covers the composer's menus; collapsed, it leaves the composer alone.
+  const extensionUiOpen = Boolean((extensionDialog && !routineApproval && !extensionDialogCollapsed)
+    || (extensionCustomUi && !extensionCustomUiCollapsed));
   const sessionBusy = agentRunning || directImageRunning || bashRunning;
   // A side chat's divider sits above its first question, after the hidden marker.
   const sideChatStartIdx = useMemo(() => {
@@ -1879,7 +1884,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const chatInputElement = (
     <ChatInput
       ref={setChatInputElement}
-      extensionUiOpen={Boolean(extensionDialog || extensionCustomUi)}
+      extensionUiOpen={extensionUiOpen}
       isEditing={editEntryId !== null}
       onSend={handleChatSend}
       onOpenImageGeneration={imageConfig && !sessionEnded && !isSessionLoading && !sessionBusy && !isQueuedSubagent ? (sourceImages) => { setImageEdit(null); setImageSourceSeed(sourceImages); setImageConfigRefreshKey((value) => value + 1); setImageDialogOpen(true); } : undefined}
@@ -2044,10 +2049,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           />
         )}
         {extensionDialog && !routineApproval && (
-          <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} />
+          <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} onCollapsedChange={setExtensionDialogCollapsed} />
         )}
         {extensionCustomUi && (
-          <ExtensionCustomPanel key={extensionCustomUi.id} request={extensionCustomUi} onInput={sendExtensionCustomInput} />
+          <ExtensionCustomPanel key={extensionCustomUi.id} request={extensionCustomUi} onInput={sendExtensionCustomInput} onCollapsedChange={setExtensionCustomUiCollapsed} />
         )}
         {!isEmptyNew && <>
         <div
@@ -2629,7 +2634,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               </div>
               <ChatInput
                 ref={quoteChatInputRef}
-                extensionUiOpen={Boolean(extensionDialog || extensionCustomUi)}
+                extensionUiOpen={extensionUiOpen}
                 compact
                 onSend={askSelectionInSideChat}
                 onAbort={closeQuotedSelection}
@@ -2839,13 +2844,16 @@ function getExtensionDialogSummary(request: ExtensionDialogRequest): string | un
 function ExtensionDialog({
   request,
   onRespond,
+  onCollapsedChange,
 }: {
   request: ExtensionDialogRequest;
   onRespond: (request: ExtensionDialogRequest, response: { value: string } | { confirmed: boolean } | { cancelled: true }) => void;
+  onCollapsedChange: (collapsed: boolean) => void;
 }) {
   const { t } = useI18n();
   const [value, setValue] = useState(request.method === "editor" ? stripAnsi(request.prefill ?? "") : "");
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => onCollapsedChange(collapsed), [collapsed, onCollapsedChange]);
   const [now, setNow] = useState(() => Date.now());
   const focusFirstOption = useCallback((element: HTMLDivElement | null) => element?.focus(), []);
   const summary = getExtensionDialogSummary(request);
@@ -3029,14 +3037,17 @@ type ExtensionCustomRequest = Extract<ExtensionUiRequest, { method: "custom" }>;
 function ExtensionCustomPanel({
   request,
   onInput,
+  onCollapsedChange,
 }: {
   request: ExtensionCustomRequest;
   onInput: (request: ExtensionCustomRequest, data: string) => void;
+  onCollapsedChange: (collapsed: boolean) => void;
 }) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => onCollapsedChange(collapsed), [collapsed, onCollapsedChange]);
   const displayLines = normalizeCustomPanelLines(request.lines);
   const summary = displayLines.map(stripAnsi).find((line) => line.trim())?.trim();
 

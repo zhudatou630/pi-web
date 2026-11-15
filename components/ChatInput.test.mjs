@@ -14,7 +14,7 @@ const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { ChatInput, scrollTextareaCaretIntoView, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, readPromptImageFile, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 
-test("extension UI hides all composer menus and lets their keys pass through until it closes", () => {
+test("extension UI hides all composer menus and leaves their keys to the composer until it closes", () => {
   const text = readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8");
   const file = ts.createSourceFile("ChatInput.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   function declaration(name) {
@@ -31,19 +31,18 @@ test("extension UI hides all composer menus and lets their keys pass through unt
     scope.extensionUiOpen = false;
     assert.equal(expression.runInNewContext(scope), true, "the original menu state survives the overlay");
   }
-  const keydown = new Script(`(${ts.transpileModule(declaration("handleKeyDown").arguments[0].getText(file), {
-    compilerOptions: { target: ts.ScriptTarget.ES2020 },
-  }).outputText.trim().replace(/;$/, "")})(event)`);
-  for (const key of ["Enter", "Tab", "Escape", "ArrowUp", "ArrowDown"]) {
-    keydown.runInNewContext({ extensionUiOpen: true, event: { key, preventDefault: () => assert.fail("overlay keys must pass through") } });
-  }
+  // Only the menus' own keys depend on them: a collapsed extension panel leaves the composer usable.
+  const keydown = declaration("handleKeyDown").arguments[0].getText(file);
+  assert.doesNotMatch(keydown, /extensionUiOpen|\b(?:history|slash|at)MenuOpen &&/);
   assert.match(text, /\[showSlashMenu, slashQuery\]/);
   assert.match(text, /\[showAtMenu, atQuery\]/);
   assert.match(text, /\{showHistoryMenu && inputHistory.length/);
   assert.match(text, /\{showSlashMenu && slashQuery/);
   assert.match(text, /\{showAtMenu && atQuery/);
   const window = readFileSync(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
-  assert.equal(window.match(/extensionUiOpen=\{Boolean\(extensionDialog \|\| extensionCustomUi\)\}/g).length, 2);
+  assert.equal(window.match(/extensionUiOpen=\{extensionUiOpen\}/g).length, 2);
+  // A collapsed dialog or panel, or a routine approval shown as a card, leaves the menus alone.
+  assert.match(window, /const extensionUiOpen = Boolean\(\(extensionDialog && !routineApproval && !extensionDialogCollapsed\)\s*\|\| \(extensionCustomUi && !extensionCustomUiCollapsed\)\)/);
 });
 
 test("the live model selector reapplies the current model without changing form selectors", () => {
@@ -242,10 +241,10 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
     ["Alt+Enter falls back to steer", { altKey: true }, { onFollowUp: undefined }, "steer"],
     ["busy run without a queue explains the held Enter", {}, { onSteer: undefined, onFollowUp: undefined, value: "draft" }, "held+send"],
     ["busy run still runs streaming built-ins silently", {}, { onSteer: undefined, onFollowUp: undefined, value: "/copy" }, "send"],
-    ["slash completion takes priority", { altKey: true }, { slashMenuOpen: true, slashQuery: "help" }, "slash"],
-    ["available built-in commands take priority", { altKey: true }, { slashMenuOpen: true, slashQuery: "copy", value: "/copy", displayedSlashCommands: [{ name: "copy", source: "builtin", availableWhileStreaming: true }] }, "send"],
-    ["file completion takes priority", { altKey: true }, { atMenuOpen: true, atQuery: {} }, "file"],
-    ["history selection takes priority", { altKey: true }, { historyMenuOpen: true }, "history"],
+    ["slash completion takes priority", { altKey: true }, { showSlashMenu: true, slashQuery: "help" }, "slash"],
+    ["available built-in commands take priority", { altKey: true }, { showSlashMenu: true, slashQuery: "copy", value: "/copy", displayedSlashCommands: [{ name: "copy", source: "builtin", availableWhileStreaming: true }] }, "send"],
+    ["file completion takes priority", { altKey: true }, { showAtMenu: true, atQuery: {} }, "file"],
+    ["history selection takes priority", { altKey: true }, { showHistoryMenu: true }, "history"],
     ["empty input opens history", { key: "ArrowUp" }, { isStreaming: false }, "history menu"],
     ["typed input keeps native cursor movement", { key: "ArrowUp" }, { isStreaming: false, value: "draft" }, "native"],
     ["multiline input keeps native cursor movement", { key: "ArrowUp" }, { isStreaming: false, value: "first\nsecond" }, "native"],
@@ -255,13 +254,13 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
     const handler = script.runInNewContext({
       Date: { now: () => 1000 },
       COMPOSITION_END_ENTER_GRACE_MS: 100,
-      isMobile: false, isStreaming: true, extensionUiOpen: false,
+      isMobile: false, isStreaming: true,
       isShiftEnterToSend() { return false; },
       isComposingRef: { current: false }, lastCompositionEndAtRef: { current: 0 },
-      historyMenuOpen: false, inputHistory: ["previous"], historyActiveIndex: 0,
+      showHistoryMenu: false, inputHistory: ["previous"], historyActiveIndex: 0,
       historyStashRef: { current: null }, setHistoryActiveIndex() {}, setHistoryMenuOpen() { action = "history menu"; },
-      slashMenuOpen: false, slashQuery: null, displayedSlashCommands: [{}], slashActiveIndex: 0,
-      atMenuOpen: false, atQuery: null, atMatches: [{}], atActiveIndex: 0, setAtMenuOpen() {},
+      showSlashMenu: false, slashQuery: null, displayedSlashCommands: [{}], slashActiveIndex: 0,
+      showAtMenu: false, atQuery: null, atMatches: [{}], atActiveIndex: 0, setAtMenuOpen() {},
       onSteer() {}, onFollowUp() {},
       sendQueued(mode) { action = mode; }, handleSend() { action = action === "held" ? "held+send" : "send"; },
       canQueueStreamingMessage: true, canRunBuiltinSlashCommandWhileStreaming, setSendHeld() { action = "held"; },

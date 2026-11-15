@@ -7,7 +7,7 @@ import { parseFrontmatter } from "./frontmatter";
 import { parseNpmSource } from "./plugin-updates";
 import { subagentProfileSources } from "./subagent-profile-precedence";
 import { ProjectNotTrustedError } from "./project-resource-overrides";
-import { getProjectTrustStatus } from "./project-trust";
+import { getProjectTrustStatus, assertAutoTrustable, trustProjectAutomatically } from "./project-trust";
 import { THINKING_LEVELS as VALID_THINKING_LEVELS } from "./thinking-levels";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { isExistingPathWithinRoots } from "./path-security";
@@ -504,6 +504,21 @@ function assertProjectScopeTrusted(cwd: string): void {
   if (!status.trusted) {
     throw new ProjectNotTrustedError("Project resources must be trusted before changing project agents");
   }
+}
+
+/**
+ * Like writeProjectCodemode: a first project agent file is the user's own, so when it is what
+ * makes the folder need trust, record that trust; otherwise the file just written would not load.
+ */
+export async function writeProjectAgents<T>(cwd: string, write: () => T): Promise<T> {
+  const agentDir = getAgentDir();
+  const before = getProjectTrustStatus(cwd, agentDir);
+  if (before.trusted && !before.requiresTrust) {
+    await assertAutoTrustable(cwd, (message) => new ProjectNotTrustedError(message), agentDir);
+  }
+  const result = write();
+  if (!before.requiresTrust && getProjectTrustStatus(cwd, agentDir).requiresTrust) trustProjectAutomatically(cwd, agentDir);
+  return result;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertImportSource, errorResponse, listImportSources, validateCwd } from "@/lib/subagent-route";
-import { importAgentProfiles, listImportableAgentFiles, type ImportScope } from "@/lib/subagents";
+import { importAgentProfiles, listImportableAgentFiles, writeProjectAgents, type ImportScope } from "@/lib/subagents";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,8 @@ export async function POST(req: Request) {
     const scope = validateScope(body.scope);
     const files = Array.isArray(body.files) ? body.files : [];
     if (files.length === 0) return NextResponse.json({ error: "files required" }, { status: 400 });
-    return NextResponse.json({ result: importAgentProfiles(cwd, sourceDir, scope, files) });
+    const importFiles = () => importAgentProfiles(cwd, sourceDir, scope, files);
+    return NextResponse.json({ result: scope === "global" ? importFiles() : await writeProjectAgents(cwd, importFiles) });
   } catch (error) {
     return errorResponse(error);
   }
