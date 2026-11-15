@@ -113,8 +113,9 @@ test("stopped and unsettled-family runs refresh the UI but never play the done s
     () => notifications++, (key) => key, noop,
   );
   const end = new Function("useCallback", "completionNotificationsEnabled", "soundEnabledRef",
-    "playDoneSoundRef", "onAgentEnd", "sessionRef", `${wrapper}; return wrappedOnAgentEnd;`)(
+    "playDoneSoundRef", "onAgentEnd", "sessionRef", "claimDoneChime", "SAME_COMPLETION_MS", `${wrapper}; return wrappedOnAgentEnd;`)(
     useCallback, true, { current: true }, { current: () => sounds++ }, onAgentEnd, { current: { id: "s1" } },
+    (ids) => ids, 3_000,
   );
   end({ aborted: true });
   assert.equal(refreshes, 1);

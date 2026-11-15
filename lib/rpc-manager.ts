@@ -30,7 +30,7 @@ import { computeSessionStats } from "./session-stats";
 import { TimingRecorder } from "./model-timing";
 import { StreamingToolInput, type BashOutputEvent } from "./agent-event-wire";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
-import { persistExplicitStartupPreferences, readPendingStartupSelection, STARTUP_SELECTION_ENTRY, type StartupSelection } from "./startup-preferences";
+import { persistExplicitStartupPreferences, type StartupSelection } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
 import { hasActiveSessionLivenessProvider } from "./session-liveness";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
@@ -185,6 +185,12 @@ const COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT = new Set([
   "get_commands",
   "extension_ui_response",
   "extension_ui_input",
+]);
+
+// Reads, cancellations and dialog answers (which unblock startup); get_state/get_commands wait in waitForStateRead().
+const COMMANDS_BEFORE_READY = new Set([
+  "get_state", "get_commands", "get_tools", "get_session_stats", "get_last_assistant_text", "get_cache_keepalive",
+  "abort", "abort_bash", "abort_compaction", "extension_ui_response", "extension_ui_input",
 ]);
 
 export interface RpcSessionStartOptions {
@@ -373,7 +379,6 @@ export class AgentSessionWrapper {
   private startupComplete = false;
   private stateReadWaiters = new Set<() => void>();
   private startupSelection?: StartupSelection;
-  private startupSelectionRecorded = false;
   private readonly finishStartup?: () => Promise<void>;
   private readonly chatOnly: boolean;
   private readonly getExactSystemPrompt?: () => string;
@@ -411,7 +416,6 @@ export class AgentSessionWrapper {
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
     this.finishStartup = options.finishStartup;
     this.startupSelection = options.startupSelection;
-    this.startupSelectionRecorded = Boolean(readPendingStartupSelection(inner.sessionManager?.getEntries?.() ?? []));
     this.cacheKeepalive = options.cacheKeepalive;
     if (this.cacheKeepalive) this.cacheKeepalive.onRefreshed = () => this.emit({ type: "cache_keepalive_refreshed" });
   }
@@ -665,9 +669,6 @@ export class AgentSessionWrapper {
     await this.waitForExtensionsBound();
     if (this.finishStartup) await (this.startupPromise ??= this.finishStartup());
     if (!this.isAlive()) return;
-    if (this.startupSelectionRecorded && !this.startupComplete) {
-      this.inner.sessionManager.appendCustomEntry(STARTUP_SELECTION_ENTRY, null);
-    }
     this.startupComplete = true;
   }
 
@@ -679,10 +680,6 @@ export class AgentSessionWrapper {
     try {
       if (!this.extensionBindingSettled && this.hasBlockingUiRequest()) release();
       await Promise.race([this.waitUntilReady(), blocked]);
-      if (!this.startupComplete && this.startupSelection && !this.startupSelectionRecorded && this.isAlive()) {
-        this.inner.sessionManager.appendCustomEntry(STARTUP_SELECTION_ENTRY, this.startupSelection);
-        this.startupSelectionRecorded = true;
-      }
     } finally {
       this.stateReadWaiters.delete(release);
     }
@@ -779,26 +776,9 @@ export class AgentSessionWrapper {
     }
   }
 
+  /** startRpcSession() may return while a session_start dialog holds startup: anything but these waits for ready. */
   private shouldWaitUntilReady(type: string): boolean {
-    return type === "prompt"
-      || type === IMAGE_DIRECT_COMMAND
-      || type === "bug_report"
-      || type === "reload"
-      || type === "set_session_name"
-      || type === "set_auto_compaction"
-      || type === "set_auto_retry"
-      || type === "set_cache_keepalive"
-      || type === "clear_queue"
-      || type === "bash"
-      || type === "steer"
-      || type === "follow_up"
-      || type === "set_model"
-      || type === "set_thinking_level"
-      || type === "fork"
-      || type === "fork_branch"
-      || type === "clone"
-      || type === "navigate_tree"
-      || type === "compact";
+    return !COMMANDS_BEFORE_READY.has(type);
   }
 
   private async withFinalIdleReset<T>(operation: () => Promise<T>): Promise<T> {
@@ -2913,7 +2893,8 @@ export async function startRpcSession(
     if (!cwd) throw new Error("cwd is required for a new session");
     sessionManager = SessionManager.create(cwd, undefined);
   }
-  const pendingSelection = options.startupSelection ?? readPendingStartupSelection(sessionManager.getEntries());
+  // A tool rebuild while a session_start dialog held startup carries the original intent, not the stand-in.
+  const pendingSelection = options.startupSelection;
   const initialModel = options.initialModel ?? pendingSelection?.model;
   const allowInitialModelFallback = options.allowInitialModelFallback ?? pendingSelection?.allowInitialModelFallback;
   const thinkingLevel = options.thinkingLevel ?? pendingSelection?.thinkingLevel;
