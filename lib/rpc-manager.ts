@@ -30,7 +30,7 @@ import { computeSessionStats } from "./session-stats";
 import { TimingRecorder } from "./model-timing";
 import { StreamingToolInput, type BashOutputEvent } from "./agent-event-wire";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
-import { persistExplicitStartupPreferences } from "./startup-preferences";
+import { persistExplicitStartupPreferences, readPendingStartupSelection, STARTUP_SELECTION_ENTRY, type StartupSelection } from "./startup-preferences";
 import { notifySessionComplete } from "./web-push";
 import { hasActiveSessionLivenessProvider } from "./session-liveness";
 import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
@@ -142,6 +142,7 @@ type AgentSessionWrapperOptions = {
   onAgentRunComplete?: AgentRunCompleteListener;
   suppressCompletionNotifications?: boolean;
   finishStartup?: () => Promise<void>;
+  startupSelection?: StartupSelection;
   cacheKeepalive?: CacheKeepalive;
 };
 
@@ -187,6 +188,8 @@ const COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT = new Set([
 ]);
 
 export interface RpcSessionStartOptions {
+  /** Internal carry-over when a dialog interrupted startup before model/thinking recovery. */
+  startupSelection?: StartupSelection;
   toolNames?: string[];
   initialModel?: { provider: string; modelId: string };
   allowInitialModelFallback?: boolean;
@@ -269,11 +272,11 @@ const WEB_EXTENSION_THEME = new WebExtensionTheme();
 const SESSION_SHUTDOWN_DEADLINE_MS = 5_000;
 
 /** Closing an MCP connection has no upper bound (HTTP close, a token refresh), so shutdown handlers get one. */
-async function withShutdownDeadline(work: unknown): Promise<void> {
+async function withShutdownDeadline(work: unknown, phase = "session_shutdown"): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<void>((resolve) => {
     timer = setTimeout(() => {
-      console.error(`[pi-web] session_shutdown handlers still running after ${SESSION_SHUTDOWN_DEADLINE_MS} ms; disposing anyway`);
+      console.error(`[pi-web] ${phase} handlers still running after ${SESSION_SHUTDOWN_DEADLINE_MS} ms; disposing anyway`);
       resolve();
     }, SESSION_SHUTDOWN_DEADLINE_MS);
     timer.unref?.();
@@ -367,6 +370,10 @@ export class AgentSessionWrapper {
   private extensionBindingPromise: Promise<void> | null = null;
   private extensionBindingError: unknown = null;
   private startupPromise: Promise<void> | null = null;
+  private startupComplete = false;
+  private stateReadWaiters = new Set<() => void>();
+  private startupSelection?: StartupSelection;
+  private startupSelectionRecorded = false;
   private readonly finishStartup?: () => Promise<void>;
   private readonly chatOnly: boolean;
   private readonly getExactSystemPrompt?: () => string;
@@ -403,6 +410,8 @@ export class AgentSessionWrapper {
     this.onAgentRunComplete = options.onAgentRunComplete;
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
     this.finishStartup = options.finishStartup;
+    this.startupSelection = options.startupSelection;
+    this.startupSelectionRecorded = Boolean(readPendingStartupSelection(inner.sessionManager?.getEntries?.() ?? []));
     this.cacheKeepalive = options.cacheKeepalive;
     if (this.cacheKeepalive) this.cacheKeepalive.onRefreshed = () => this.emit({ type: "cache_keepalive_refreshed" });
   }
@@ -511,7 +520,10 @@ export class AgentSessionWrapper {
 
   /** A running session parked on an extension dialog only a person can answer (select/confirm/input/editor, or an open custom overlay). */
   isAwaitingInput(): boolean {
-    if (!this.isRunning()) return false;
+    return this.isRunning() && this.hasBlockingUiRequest();
+  }
+
+  private hasBlockingUiRequest(): boolean {
     return [...this.pendingUiRequests.values()].some((request) =>
       isBlockingExtensionUiRequest(request as unknown as ExtensionUiRequest));
   }
@@ -652,6 +664,39 @@ export class AgentSessionWrapper {
   async waitUntilReady(): Promise<void> {
     await this.waitForExtensionsBound();
     if (this.finishStartup) await (this.startupPromise ??= this.finishStartup());
+    if (!this.isAlive()) return;
+    if (this.startupSelectionRecorded && !this.startupComplete) {
+      this.inner.sessionManager.appendCustomEntry(STARTUP_SELECTION_ENTRY, null);
+    }
+    this.startupComplete = true;
+  }
+
+  /** A dialog may yield the id/state to its browser, never admission to a prompt or model write. */
+  async waitForStateRead(): Promise<void> {
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    this.stateReadWaiters.add(release);
+    try {
+      if (!this.extensionBindingSettled && this.hasBlockingUiRequest()) release();
+      await Promise.race([this.waitUntilReady(), blocked]);
+      if (!this.startupComplete && this.startupSelection && !this.startupSelectionRecorded && this.isAlive()) {
+        this.inner.sessionManager.appendCustomEntry(STARTUP_SELECTION_ENTRY, this.startupSelection);
+        this.startupSelectionRecorded = true;
+      }
+    } finally {
+      this.stateReadWaiters.delete(release);
+    }
+  }
+
+  startupOptions(): RpcSessionStartOptions {
+    if (!this.startupComplete && this.startupSelection) return { startupSelection: this.startupSelection };
+    const model = this.inner.model;
+    return {
+      ...(model ? { initialModel: { provider: model.provider, modelId: model.id } } : {}),
+      allowInitialModelFallback: true,
+      ...(THINKING_LEVEL_NAMES.has(this.inner.thinkingLevel as ThinkingLevel)
+        ? { thinkingLevel: this.inner.thinkingLevel as ThinkingLevel } : {}),
+    };
   }
 
   private ensureExtensionsBound(): Promise<void> {
@@ -736,11 +781,17 @@ export class AgentSessionWrapper {
 
   private shouldWaitUntilReady(type: string): boolean {
     return type === "prompt"
+      || type === IMAGE_DIRECT_COMMAND
+      || type === "bug_report"
+      || type === "reload"
+      || type === "set_session_name"
+      || type === "set_auto_compaction"
+      || type === "set_auto_retry"
+      || type === "set_cache_keepalive"
+      || type === "clear_queue"
       || type === "bash"
       || type === "steer"
       || type === "follow_up"
-      || type === "get_commands"
-      || type === "get_state"
       || type === "set_model"
       || type === "set_thinking_level"
       || type === "fork"
@@ -853,6 +904,10 @@ export class AgentSessionWrapper {
         this.reportDiagnosticEvent(event);
         return;
       }
+    }
+    if (event.type === "extension_ui_request" && !this.extensionBindingSettled
+      && isBlockingExtensionUiRequest(event as unknown as ExtensionUiRequest)) {
+      for (const release of this.stateReadWaiters) release();
     }
     // The run's prompt ended without a user message (a command, a rejected prompt): tag nothing later.
     if (event.type === "prompt_done" || event.type === "prompt_error") this.pendingRoutineRun = null;
@@ -1038,7 +1093,11 @@ export class AgentSessionWrapper {
     try {
       // Status reconciliation must not postpone forced cleanup after Stop.
       if (type !== "get_state") this.resetIdleTimer();
-      if (this.shouldWaitUntilReady(type)) await this.waitUntilReady();
+      if (type === "get_state" || type === "get_commands") {
+        await (command.waitUntilReady === true ? this.waitUntilReady() : this.waitForStateRead());
+      } else if (this.shouldWaitUntilReady(type)) {
+        await this.waitUntilReady();
+      }
       // Stop also invalidates shell requests that have not reached their executor/controller yet.
       if (type === "bash" && bashStopGeneration !== this.bashStopGeneration) {
         throw new DOMException("Shell command cancelled by Stop", "AbortError");
@@ -1208,6 +1267,7 @@ export class AgentSessionWrapper {
         const contextUsage = this.inner.getContextUsage();
         return {
           sessionId: this.inner.sessionId,
+          startupPending: !this.startupComplete,
           totalActiveMs: computeLiveSessionTotalActiveMs(this.inner.sessionManager),
           sessionFile: this.inner.sessionFile ?? "",
           isStreaming: this.inner.isStreaming,
@@ -1580,13 +1640,15 @@ export class AgentSessionWrapper {
       }
 
       case "extension_ui_response": {
+        const startupPending = !this.startupComplete;
         this.resolveExtensionUiResponse(command as ExtensionUiResponse);
-        return null;
+        return { startupPending };
       }
 
       case "extension_ui_input": {
+        const startupPending = !this.startupComplete;
         this.handleExtensionUiInput(command.id as string, command.data as string);
-        return null;
+        return { startupPending };
       }
 
       case "set_auto_retry": {
@@ -1696,8 +1758,8 @@ export class AgentSessionWrapper {
     this.userBashAbortController?.abort();
     if (this.inner.isBashRunning) this.inner.abortBash();
     this.unsubscribe?.();
-    for (const pending of this.pendingUiResponses.values()) pending.cancel();
-    for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
+    this.cancelExtensionUi();
+    this.extensionUiAbortController.abort(new DOMException("Session closed", "AbortError"));
     this.pendingUiResponses.clear();
     this.pendingUiRequests.clear();
     this.activeToolEvents.clear();
@@ -1757,10 +1819,11 @@ export class AgentSessionWrapper {
     // Close admission synchronously before the first await so a concurrent API
     // request cannot start work that dispose() would immediately abort.
     this._closing = true;
+    this.cancelExtensionUi();
     this.shutdownPromise = (async () => {
       try {
         try {
-          await this.waitForExtensionsBound();
+          await withShutdownDeadline(this.waitForExtensionsBound(), "session_start");
         } catch (error) {
           console.error(
             "[pi-web] extension binding failed before session shutdown:",
@@ -1776,6 +1839,11 @@ export class AgentSessionWrapper {
       }
     })();
     return this.shutdownPromise;
+  }
+
+  private cancelExtensionUi(): void {
+    for (const pending of Array.from(this.pendingUiResponses.values())) pending.cancel();
+    for (const id of Array.from(this.activeCustomUis.keys())) this.closeCustomUi(id, undefined);
   }
 
   private resolveExtensionUiResponse(response: ExtensionUiResponse): void {
@@ -1854,6 +1922,7 @@ export class AgentSessionWrapper {
     factory: unknown,
     options?: unknown,
   ): Promise<T> {
+    if (!this.isAlive()) return Promise.reject(new Error("Session is closing; no dialog can be shown"));
     if (typeof factory !== "function") return Promise.resolve(undefined as T);
 
     const stopSignal = this.extensionUiAbortController.signal;
@@ -1889,9 +1958,10 @@ export class AgentSessionWrapper {
       stopSignal.addEventListener("abort", onStop, { once: true });
 
       Promise.resolve()
-        .then(() => completed ? undefined : factory(tui, PLAIN_TEXT_THEME, CUSTOM_UI_KEYBINDINGS, done))
+        .then(() => completed || !this.isAlive() ? undefined : factory(tui, PLAIN_TEXT_THEME, CUSTOM_UI_KEYBINDINGS, done))
         .then((component) => {
-          if (completed) {
+          if (completed || !this.isAlive()) {
+            finish(undefined as T);
             try {
               (component as CustomUiComponent | undefined)?.dispose?.();
             } catch {
@@ -1932,6 +2002,7 @@ export class AgentSessionWrapper {
     timeout?: number,
     signal?: AbortSignal,
   ): Promise<T> {
+    if (!this.isAlive()) return Promise.reject(new Error("Session is closing; no dialog can be shown"));
     if (signal?.aborted) return Promise.resolve(defaultValue);
     const stopSignal = this.extensionUiAbortController.signal;
     if (stopSignal.aborted) return Promise.reject(stopSignal.reason);
@@ -2303,8 +2374,8 @@ function closingRpcSessionWait(sessionId: string): Promise<void> | null {
   let wait = closingSessionWaits.get(closing);
   if (!wait) {
     const entry = { done: false, promise: Promise.resolve() };
-    // ponytail: reopening after 6s can overlap stuck binding; bound SDK binding to guarantee exclusivity.
-    entry.promise = closing.waitUntilDisposed(SESSION_SHUTDOWN_DEADLINE_MS + 1_000)
+    // Binding and session_shutdown each have their own deadline.
+    entry.promise = closing.waitUntilDisposed(2 * SESSION_SHUTDOWN_DEADLINE_MS + 1_000)
       .then((disposed) => {
         if (!disposed) console.warn(`[pi-web] session ${sessionId} is still shutting down; starting it again anyway`);
       })
@@ -2505,22 +2576,24 @@ export async function setRpcSessionTools(
     ? existing.sessionFile
     : undefined;
   const sessionCwd = existing.cwd;
-  const model = existing.inner.model;
-  const currentThinkingLevel = existing.inner.agent.state?.thinkingLevel;
+  const startupOptions = typeof existing.startupOptions === "function"
+    ? existing.startupOptions()
+    : {
+        initialModel: existing.inner.model && { provider: existing.inner.model.provider, modelId: existing.inner.model.id },
+        allowInitialModelFallback: true,
+        ...(THINKING_LEVEL_NAMES.has(existing.inner.thinkingLevel as ThinkingLevel)
+          ? { thinkingLevel: existing.inner.thinkingLevel as ThinkingLevel } : {}),
+      };
   await existing.shutdown();
 
   if (persistedFile) {
-    const started = await startRpcSession(sessionId, persistedFile, undefined);
+    const started = await startRpcSession(sessionId, persistedFile, undefined, startupOptions);
     return { session: started.session, sessionId: started.realSessionId, recreated: true };
   }
 
   const started = await startRpcSession(`__recreate__${randomUUID()}`, "", sessionCwd, {
     ...(toolNames !== undefined ? { toolNames } : {}),
-    ...(model ? { initialModel: { provider: model.provider, modelId: model.id } } : {}),
-    allowInitialModelFallback: true,
-    ...(currentThinkingLevel && THINKING_LEVEL_NAMES.has(currentThinkingLevel as ThinkingLevel)
-      ? { thinkingLevel: currentThinkingLevel as ThinkingLevel }
-      : {}),
+    ...startupOptions,
   });
   return { session: started.session, sessionId: started.realSessionId, recreated: true };
 }
@@ -2805,7 +2878,7 @@ export async function startRpcSession(
   options: RpcSessionStartOptions = {},
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   assertAppNotUpdating();
-  const { initialModel, allowInitialModelFallback, thinkingLevel, cwdOverride, persistStartupPreferences = true } = options;
+  const { cwdOverride } = options;
   if (getSessionFileMutations().has(sessionId)) {
     throw new Error("Session file is being modified");
   }
@@ -2840,6 +2913,11 @@ export async function startRpcSession(
     if (!cwd) throw new Error("cwd is required for a new session");
     sessionManager = SessionManager.create(cwd, undefined);
   }
+  const pendingSelection = options.startupSelection ?? readPendingStartupSelection(sessionManager.getEntries());
+  const initialModel = options.initialModel ?? pendingSelection?.model;
+  const allowInitialModelFallback = options.allowInitialModelFallback ?? pendingSelection?.allowInitialModelFallback;
+  const thinkingLevel = options.thinkingLevel ?? pendingSelection?.thinkingLevel;
+  const persistStartupPreferences = options.persistStartupPreferences ?? pendingSelection?.persistStartupPreferences ?? true;
   const sessionCwd = sessionManager.getCwd();
   const subagentResources = sessionFile
     ? readSubagentSessionResources(
@@ -2973,7 +3051,7 @@ export async function startRpcSession(
           },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });
-    const enabledModels = services.settingsManager.getEnabledModels();
+    const enabledModels = pendingSelection?.enabledModels ?? services.settingsManager.getEnabledModels();
     const scope = await resolveVisibleModels(services.modelRuntime, enabledModels);
     // A model outside `enabledModels` is still a valid explicit choice (pi's --model with --models).
     const effectiveInitialModel = initialModel && (
@@ -2982,8 +3060,8 @@ export async function startRpcSession(
     )
       ? initialModel
       : undefined;
-    const defaultProvider = services.settingsManager.getDefaultProvider();
-    const defaultModelId = services.settingsManager.getDefaultModel();
+    const defaultProvider = pendingSelection ? pendingSelection.defaultModel?.provider : services.settingsManager.getDefaultProvider();
+    const defaultModelId = pendingSelection ? pendingSelection.defaultModel?.modelId : services.settingsManager.getDefaultModel();
     const branch = sessionManager.getBranch();
     const hasExistingMessages = branch.some((entry) => entry.type === "message");
     const savedModel = hasExistingMessages
@@ -3042,9 +3120,19 @@ export async function startRpcSession(
     // Before the wrapper exists: session_start handlers may compact. Subagents are registered later, so loaded.
     await loadRuntimeStreamMarker();
     const cacheKeepalive = applyAnthropicCacheTtlToSession(inner);
+    const builtOnModel = inner.model && { provider: inner.model.provider, id: inner.model.id };
+    const builtOnThinkingLevel = inner.thinkingLevel;
     const wrapper = new AgentSessionWrapper(inner, {
       cacheKeepalive,
       chatOnly,
+      startupSelection: {
+        ...(effectiveInitialModel ? { model: effectiveInitialModel } : {}),
+        ...(thinkingLevel ? { thinkingLevel } : {}),
+        defaultModel: defaultProvider && defaultModelId ? { provider: defaultProvider, modelId: defaultModelId } : null,
+        enabledModels: enabledModels ?? [],
+        persistStartupPreferences,
+        allowInitialModelFallback: allowInitialModelFallback ?? false,
+      },
       finishStartup: async () => {
         if (!wrapper.isAlive()) return;
         // session_start can add the default or the first in-scope model after construction.
@@ -3066,7 +3154,7 @@ export async function startRpcSession(
               // Registration refreshes availability asynchronously; wait for an offline snapshot.
               await runtime.refresh({ allowNetwork: false, signal });
               signal.throwIfAborted();
-              const boundScope = await resolveVisibleModels(runtime, services.settingsManager.getEnabledModels(), signal);
+              const boundScope = await resolveVisibleModels(runtime, enabledModels, signal);
               signal.throwIfAborted();
               if (!wrapper.isAlive()) return;
               const boundInitial = selectInitialModelScope(boundScope, {
@@ -3078,6 +3166,9 @@ export async function startRpcSession(
               inner.setScopedModels([...boundScope.scopedModels]);
               const model = boundInitial.model;
               if (!model) return;
+              const changedByHandler = inner.model?.provider !== builtOnModel?.provider || inner.model?.id !== builtOnModel?.id;
+              if (changedByHandler && (inner.model?.provider !== model.provider || inner.model?.id !== model.id)) return;
+              const handlerThinkingLevel = inner.thinkingLevel !== builtOnThinkingLevel ? inner.thinkingLevel : undefined;
               if (inner.model?.provider !== model.provider || inner.model.id !== model.id) {
                 // shortcut: SDK setModel takes no signal, so late auth may still switch models after timeout; upgrade when it accepts a signal.
                 await Promise.race([inner.setModel(model), deadline]);
@@ -3085,7 +3176,7 @@ export async function startRpcSession(
               }
               if (!wrapper.isAlive()) return;
               // setModel otherwise inherits the stand-in's clamped thinking level.
-              inner.setThinkingLevel(boundInitial.thinkingLevel
+              inner.setThinkingLevel(handlerThinkingLevel ?? boundInitial.thinkingLevel
                 ?? services.settingsManager.getModelThinkingLevel(model.provider, model.id)
                 ?? services.settingsManager.getDefaultThinkingLevel()
                 ?? "medium");
@@ -3140,7 +3231,7 @@ export async function startRpcSession(
     const realSessionId = inner.sessionId as string;
     registerRpcWrapper(wrapper);
     registered();
-    await wrapper.waitUntilReady();
+    await wrapper.waitForStateRead();
 
     return { session: wrapper, realSessionId };
   })().finally(() => {
