@@ -43,8 +43,10 @@ export function splitMarkdownBlocks(markdown: string): string[] {
       const marker = fenceMatch[1][0];
       const size = fenceMatch[1].length;
       if (!fence) fence = { marker, size };
-      else if (marker === fence.marker && size >= fence.size) fence = null;
+      else if (marker === fence.marker && size >= fence.size && /^[ \t\r]*$/.test(line.slice(fenceMatch[0].length))) fence = null;
     } else if (!fence) {
+      // Definitions are document-scoped, so references must share one parse.
+      if (/^ {0,3}\[(?:\\.|[^\]\\\r\n])+\]:/.test(line)) return [markdown];
       const prose = line.replace(INLINE_CODE, "");
       if (HTML_TAG.test(prose)) rawHtml = true;
       if ((prose.match(/\$\$/g)?.length ?? 0) % 2 === 1) inMath = !inMath;

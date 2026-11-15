@@ -72,10 +72,10 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
 export function getFileLanguage(filePath: string): string {
   const base = getBaseName(filePath).toLowerCase();
   if (base === "dockerfile" || base.startsWith("dockerfile.")) return "dockerfile";
-  if (base === ".env" || base.startsWith(".env.")) return "bash";
+  if (base === ".gitignore" || base === ".env" || base.startsWith(".env.")) return "bash";
   if (base === "makefile" || base === "gnumakefile") return "makefile";
-  const ext = base.split(".").pop() ?? "";
-  return EXT_TO_LANGUAGE[ext] ?? "text";
+  const ext = getFileExt(filePath);
+  return Object.hasOwn(EXT_TO_LANGUAGE, ext) ? EXT_TO_LANGUAGE[ext] : "text";
 }
 
 function getBaseName(filePath: string): string {
@@ -83,23 +83,29 @@ function getBaseName(filePath: string): string {
 }
 
 export function getFileExt(filePath: string): string {
-  return getBaseName(filePath).toLowerCase().split(".").pop() ?? "";
+  const base = getBaseName(filePath).toLowerCase();
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot + 1) : "";
 }
 
 export function getImageMime(filePath: string): string | null {
-  return IMAGE_EXT_TO_MIME[getFileExt(filePath)] ?? null;
+  const ext = getFileExt(filePath);
+  return Object.hasOwn(IMAGE_EXT_TO_MIME, ext) ? IMAGE_EXT_TO_MIME[ext] : null;
 }
 
 export function getAudioMime(filePath: string): string | null {
-  return AUDIO_EXT_TO_MIME[getFileExt(filePath)] ?? null;
+  const ext = getFileExt(filePath);
+  return Object.hasOwn(AUDIO_EXT_TO_MIME, ext) ? AUDIO_EXT_TO_MIME[ext] : null;
 }
 
 export function getVideoMime(filePath: string): string | null {
-  return VIDEO_EXT_TO_MIME[getFileExt(filePath)] ?? null;
+  const ext = getFileExt(filePath);
+  return Object.hasOwn(VIDEO_EXT_TO_MIME, ext) ? VIDEO_EXT_TO_MIME[ext] : null;
 }
 
 export function getDocumentMime(filePath: string): string | null {
-  return DOCUMENT_EXT_TO_MIME[getFileExt(filePath) as DocumentPreviewKind] ?? null;
+  const ext = getFileExt(filePath) as DocumentPreviewKind;
+  return Object.hasOwn(DOCUMENT_EXT_TO_MIME, ext) ? DOCUMENT_EXT_TO_MIME[ext] : null;
 }
 
 export function documentPreviewKind(filePath: string): DocumentPreviewKind | null {

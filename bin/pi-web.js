@@ -160,7 +160,8 @@ function startServer(shouldOpenBrowser) {
   });
 
   let browserOpened = false;
-  const urlHost = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
+  const browserHost = hostname === "0.0.0.0" ? "127.0.0.1" : hostname === "::" || hostname === "[::]" ? "::1" : hostname;
+  const urlHost = browserHost.includes(":") && !browserHost.startsWith("[") ? `[${browserHost}]` : browserHost;
   const url = `http://${urlHost}:${port}`;
 
   child.stdout.on("data", async (chunk) => {

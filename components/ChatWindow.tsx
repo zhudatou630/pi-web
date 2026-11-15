@@ -11,6 +11,7 @@ import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecuti
 import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
+import { isImeComposing } from "@/lib/ime";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, isHiddenCustomMessage, isMessageGroupAnchor, isMessageGroupBoundary, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { findAskUserAnswers } from "@/lib/ask-user-answer";
@@ -1114,7 +1115,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       closeQuotedSelection();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || isImeComposing(event)) return;
       event.preventDefault();
       event.stopPropagation();
       if (!quoteSubmitting) closeQuotedSelection();
@@ -2862,7 +2863,7 @@ function ExtensionDialog({
   return (
     <div
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+        if (event.key !== "Escape" || isImeComposing(event)) return;
         event.preventDefault();
         event.stopPropagation();
         onRespond(request, { cancelled: true });
@@ -2928,7 +2929,7 @@ function ExtensionDialog({
           {request.method === "select" && (
             <div
               onKeyDown={(event) => {
-                if (!["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+                if (isImeComposing(event) || !["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"].includes(event.key)) return;
                 const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-extension-option]"));
                 const index = buttons.indexOf(event.target as HTMLElement);
                 if (index < 0) return;
@@ -2952,7 +2953,7 @@ function ExtensionDialog({
                   className="extension-option"
                   onClick={() => onRespond(request, { value: option })}
                   onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
+                    if (isImeComposing(event) || (event.key !== "Enter" && event.key !== " ")) return;
                     event.preventDefault();
                     onRespond(request, { value: option });
                   }}
@@ -2972,7 +2973,7 @@ function ExtensionDialog({
               placeholder={request.placeholder === undefined ? undefined : stripAnsi(request.placeholder)}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.nativeEvent.isComposing) submitValue();
+                if (e.key === "Enter" && !isImeComposing(e)) submitValue();
               }}
             />
           )}
@@ -2983,7 +2984,7 @@ function ExtensionDialog({
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.nativeEvent.isComposing) submitValue();
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !isImeComposing(e)) submitValue();
               }}
             />
           )}
@@ -3077,7 +3078,7 @@ function ExtensionCustomPanel({
           autoCorrect="off"
           spellCheck={false}
           onKeyDown={(event) => {
-            if (composingRef.current || event.nativeEvent.isComposing) return;
+            if (composingRef.current || isImeComposing(event)) return;
             const data = toTerminalKeyData(event);
             if (!data) return;
             event.preventDefault();

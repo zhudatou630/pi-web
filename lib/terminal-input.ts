@@ -21,14 +21,9 @@ const SPECIAL_KEY_SEQUENCES: Record<string, string> = {
   Backspace: "\x7f",
 };
 
-const ALT_ARROW_SEQUENCES: Record<string, string> = {
-  ArrowLeft: "\x1bb",
-  ArrowRight: "\x1bf",
-  ArrowUp: "\x1bp",
-  ArrowDown: "\x1bn",
-};
-
 function legacyCtrlSequence(key: string): string | null {
+  if (key === " ") return "\x00";
+  if (key === "/" || key === "-") return "\x1f";
   if (key.length !== 1) return null;
   const code = key.toUpperCase().charCodeAt(0);
   if (code >= 64 && code <= 95) return String.fromCharCode(code & 0x1f);
@@ -45,17 +40,23 @@ export function toTerminalKeyData(event: TerminalKeyEventLike): string | null {
     if (control) return control;
   }
 
+  const special = Object.hasOwn(SPECIAL_KEY_SEQUENCES, event.key) ? SPECIAL_KEY_SEQUENCES[event.key] : null;
+  const modifier = 1 + Number(event.shiftKey) + 2 * Number(event.altKey) + 4 * Number(event.ctrlKey);
+  if (modifier > 1 && special?.startsWith("\x1b[")) {
+    return special.endsWith("~")
+      ? `${special.slice(0, -1)};${modifier}~`
+      : `\x1b[1;${modifier}${special.slice(-1)}`;
+  }
+
   if (event.altKey && !event.ctrlKey) {
     if (event.key === "Backspace") return "\x1b\x7f";
-    const arrow = ALT_ARROW_SEQUENCES[event.key];
-    if (arrow) return arrow;
     if (event.key.length === 1) return `\x1b${event.key}`;
   }
 
   if (event.key === "Enter") return event.shiftKey ? "\n" : "\r";
   if (event.key === "Tab") return event.shiftKey ? "\x1b[Z" : "\t";
 
-  return SPECIAL_KEY_SEQUENCES[event.key] ?? null;
+  return special;
 }
 
 export function asBracketedPaste(text: string): string {

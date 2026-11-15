@@ -158,8 +158,8 @@ export function HeaderListEditor({ headers, onChange }: {
     <div className="models-header-list">
       {rows.map((row) => (
         <div key={row.id} className="models-header-row">
-          <input className="models-input" value={row.name} onChange={(e) => setEntry(row.id, { name: e.target.value })} placeholder="Header-Name" />
-          <input className="models-input" value={row.value} onChange={(e) => setEntry(row.id, { value: e.target.value })} placeholder="value" />
+          <input className="models-input" value={row.name} onChange={(e) => setEntry(row.id, { name: e.target.value })} placeholder="Header-Name" aria-label={t("models.headerName")} />
+          <input className="models-input" value={row.value} onChange={(e) => setEntry(row.id, { value: e.target.value })} placeholder="value" aria-label={t("models.headerValue")} />
           <button type="button" className="models-icon-button is-danger" onClick={() => removeEntry(row.id)} aria-label={t("i18n.remove")} title={t("i18n.remove")}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>

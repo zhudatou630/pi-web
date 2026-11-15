@@ -26,6 +26,7 @@ const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() }, module
 const { GET: files, POST: upload } = await jiti.import("./[...path]/route.ts");
 const { GET: diff } = await jiti.import("../git/diff/route.ts");
 const { GET: index } = await jiti.import("../file-index/route.ts");
+const { GET: status } = await jiti.import("../git/status/route.ts");
 const { getGitStatus } = await jiti.import("../../../lib/git-changes.ts");
 const { allowFileRoot } = await jiti.import("../../../lib/file-access.ts");
 const { isFilePathReferencedBySession } = await jiti.import("../../../lib/session-file-references.ts");
@@ -171,6 +172,24 @@ test("files and file-index refuse traversal, including the session-reference exc
     assert.equal(response.status, 403);
   }
   assert.equal((await request(index, "/api/file-index", { cwd: `${root}/linked/..` })).status, 403);
+});
+
+test("path query parameters preserve trailing spaces", { skip: process.platform === "win32" }, async () => {
+  const parent = fixture();
+  const root = path.join(parent, "project ");
+  fs.mkdirSync(root);
+  git(root, "init", "--quiet");
+  const file = path.join(root, "notes.txt ");
+  fs.writeFileSync(file, "new\n");
+  const indexed = await request(index, "/api/file-index", { cwd: root });
+  assert.equal(indexed.status, 200);
+  assert.deepEqual((await indexed.json()).files, ["notes.txt "]);
+  const state = await request(status, "/api/git/status", { cwd: root });
+  assert.equal(state.status, 200);
+  assert.equal((await state.json()).files[0].filePath, file);
+  const result = await diffRequest(root, file);
+  assert.equal(result.status, 200);
+  assert.equal((await result.json()).supported, true);
 });
 
 test("git target authorization refuses outside/dangling links and preserves deleted diffs", async () => {

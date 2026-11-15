@@ -1,4 +1,5 @@
 import { skillExpansionToCommand } from "./slash-display";
+import { truncateText } from "./truncate-text";
 
 export const SESSION_FIRST_MESSAGE_PREVIEW_MAX_LENGTH = 500;
 
@@ -7,14 +8,6 @@ export interface SessionTitleSource {
   name?: string;
   firstMessage?: string;
   parentSessionId?: string;
-}
-
-function truncateText(text: string, maxLength: number): string {
-  const truncated = text.slice(0, maxLength);
-  const lastCodeUnit = truncated.charCodeAt(truncated.length - 1);
-  return lastCodeUnit >= 0xD800 && lastCodeUnit <= 0xDBFF
-    ? truncated.slice(0, -1)
-    : truncated;
 }
 
 export function getSessionFirstMessagePreview(firstMessage: string | undefined): string {

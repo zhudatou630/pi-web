@@ -12,7 +12,7 @@ const file = ts.createSourceFile("file-types.ts", source, ts.ScriptTarget.Latest
 // Run the shared mapping without loading unrelated filesystem/session handlers.
 const declarations = file.statements.filter((node) =>
   (ts.isVariableStatement(node) && node.declarationList.declarations.some((d) => d.name.getText(file) === "EXT_TO_LANGUAGE"))
-  || (ts.isFunctionDeclaration(node) && ["getFileLanguage", "getBaseName"].includes(node.name?.text)),
+  || (ts.isFunctionDeclaration(node) && ["getFileLanguage", "getBaseName", "getFileExt"].includes(node.name?.text)),
 ).map((node) => node.getText(file).replace(/^export /, "")).join("\n");
 const { outputText } = ts.transpileModule(`${declarations}\nreturn { getLanguage: getFileLanguage, EXT_TO_LANGUAGE };`, {});
 const { getLanguage, EXT_TO_LANGUAGE } = new Function(outputText)();

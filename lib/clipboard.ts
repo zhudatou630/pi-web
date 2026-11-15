@@ -15,6 +15,10 @@ export function copyText(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     return navigator.clipboard.writeText(text);
   }
+  const focused = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+  const start = focused?.selectionStart;
+  const end = focused?.selectionEnd;
+  const direction = focused?.selectionDirection;
   let ta: HTMLTextAreaElement | null = null;
   try {
     ta = document.createElement("textarea");
@@ -28,5 +32,9 @@ export function copyText(text: string): Promise<void> {
     return Promise.reject(error);
   } finally {
     ta?.remove();
+    focused?.focus({ preventScroll: true });
+    if (typeof start === "number" && typeof end === "number") {
+      focused?.setSelectionRange(start, end, direction ?? undefined);
+    }
   }
 }
