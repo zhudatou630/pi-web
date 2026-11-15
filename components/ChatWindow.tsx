@@ -55,6 +55,7 @@ import type { ToolEntry } from "@/lib/tool-presets";
 import { findChatScrollAnchor, type ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { placeSelectionToolbar, prefersToolbarBelow, selectionAnchor, visibleBounds, type SelectionAnchor, type ToolbarSide } from "@/lib/selection-toolbar";
 import { formatModelTiming, turnModelTiming } from "@/lib/model-timing";
+import { claimDoneChime, SAME_COMPLETION_MS } from "@/lib/done-chime";
 import {
   captureScrollDistance,
   getMountedRange,
@@ -815,7 +816,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const soundedExtensionDialogIdRef = useRef<string | null>(null);
   const wrappedOnAgentEnd = useCallback((end: AgentEndInfo) => {
     if (completionNotificationsEnabled && soundEnabledRef.current && !end.aborted && !end.subagentsActive) {
-      playDoneSoundRef.current();
+      // Another page showing this session (or whose sidebar saw it finish) may have chimed already.
+      const id = sessionRef.current?.id;
+      if (!id || claimDoneChime([id], Date.now() - SAME_COMPLETION_MS).length > 0) playDoneSoundRef.current();
     }
     onAgentEnd?.(sessionRef.current, end);
   }, [completionNotificationsEnabled, onAgentEnd]);

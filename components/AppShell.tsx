@@ -67,6 +67,7 @@ import { CHAT_WORKSPACE_STORAGE_KEY, restoreChatWorkspace, serializeChatWorkspac
 import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getSideChatName } from "@/lib/side-chat";
 import { countFaviconUnread, syncFaviconBadge } from "@/lib/favicon-badge";
+import { claimDoneChime } from "@/lib/done-chime";
 import { downloadBlob, prefersShareSheet, shareProducedFile } from "@/lib/save-file";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import {
@@ -207,17 +208,16 @@ export function AppShell() {
     }
   }, []);
   const notifiedAttentionRequestIdsRef = useRef(new Set<string>());
-  const handleBackgroundTaskDone = useCallback((completedSessionIds?: string[]) => {
+  const handleBackgroundTaskDone = useCallback((completedSessionIds: string[], since: number) => {
     if (!soundEnabledRef.current) return;
     const openTabSessionIds = new Set(
       chatTabsRef.current
         .filter((tab) => tab.kind === "session" && tab.session)
         .map((tab) => tab.session!.id),
     );
-    const hasUnmountedCompletion = completedSessionIds && completedSessionIds.length > 0
-      ? completedSessionIds.some((id) => !openTabSessionIds.has(id))
-      : true;
-    if (hasUnmountedCompletion) {
+    // An open tab's ChatWindow chimes for its own session.
+    const unmounted = completedSessionIds.filter((id) => !openTabSessionIds.has(id));
+    if (unmounted.length > 0 && claimDoneChime(unmounted, since).length > 0) {
       playDoneSound();
     }
   }, [playDoneSound, soundEnabledRef]);

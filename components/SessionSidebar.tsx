@@ -203,7 +203,8 @@ interface Props {
   onAtMentions?: (relativePaths: string[], sourceCwd?: string) => void;
   /** Fired when a session that is not visible in any pane finishes running.
    *  Lets the app play a cross-workspace completion tone. */
-  onBackgroundTaskDone?: (completedSessionIds: string[]) => void;
+  /** `since`: when this page last saw them running; a chime claimed after it was another page's. */
+  onBackgroundTaskDone?: (completedSessionIds: string[], since: number) => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   /** Unread and awaiting-input markers, mirrored onto the chat tabs. */
   onSessionMarkersChange?: (markers: { unread: Set<string>; awaitingInput: Set<string> }) => void;
@@ -483,6 +484,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   visibleReadIdsRef.current = [...new Set((visibleSessionIds ?? [selectedSessionId]).filter((id): id is string => Boolean(id)))];
   const readSnapshotRef = useRef<{ serverNow: number; receivedAt: number; readAtVersion?: string; readAt: Record<string, number>; completedAt: Record<string, number>; pendingIds: Set<string> }>({ serverNow: 0, receivedAt: 0, readAt: {}, completedAt: {}, pendingIds: new Set() });
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
+  // Client time each running set arrived, for cross-page chime claims (lib/done-chime.ts).
+  const runningObservedAtRef = useRef(0);
+  const previousRunningObservedAtRef = useRef(0);
   const currentSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
   const previousSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
   // Once polling has delivered a snapshot it is the source of truth for
@@ -620,6 +624,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           data.completionNotificationSuppressedSessionIds ?? [],
         );
         setSubagentsActiveSessionIds((current) => sameIdSet(current, data.subagentsActiveSessionIds));
+        runningObservedAtRef.current = Date.now();
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
       }
@@ -871,6 +876,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           data.completionNotificationSuppressedSessionIds ?? [],
         );
         setSubagentsActiveSessionIds((current) => sameIdSet(current, data.subagentsActiveSessionIds));
+        runningObservedAtRef.current = Date.now();
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
         setCacheKeepaliveSessions((current) => sameTimes(current, data.cacheKeepaliveSessions));
@@ -956,10 +962,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       void loadSessions();
     }
     if (completedWithNotifications.length > 0) {
-      onBackgroundTaskDone?.(completedWithNotifications);
+      onBackgroundTaskDone?.(completedWithNotifications, previousRunningObservedAtRef.current);
     }
 
     previousRunningSessionIdsRef.current = pendingCompletionIds;
+    previousRunningObservedAtRef.current = runningObservedAtRef.current;
     previousSuppressedCompletionSessionIdsRef.current = new Set(
       [...pendingCompletionIds].filter(
         (id) => currentSuppressedCompletionSessionIdsRef.current.has(id) || knownSubagentIds.has(id),

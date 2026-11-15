@@ -83,6 +83,7 @@ test("background completion waits across waves, respects Stop, and treats either
       readSnapshotRef: { current: { serverNow: 10, readAt: {}, completedAt: { parent: 10 } } },
       visibleSessionKey, runningSessionIds: new Set(), subagentsActiveSessionIds: new Set(),
       previousRunningSessionIdsRef: { current: new Set() },
+      runningObservedAtRef: { current: 0 }, previousRunningObservedAtRef: { current: 0 },
       currentSuppressedCompletionSessionIdsRef: { current: new Set() },
       previousSuppressedCompletionSessionIdsRef: { current: new Set() },
       allSessions: [{ id: "parent" }, { id: "child", relation: { kind: "subagent" } }],
@@ -219,7 +220,7 @@ test("subagent completion stays silent and never becomes unread", () => {
     /completedWithNotifications = completedInBackground\.filter\([\s\S]*?!previousSuppressedCompletionSessionIdsRef\.current\.has\(id\)[\s\S]*?!knownSubagentIds\.has\(id\)/,
   );
   assert.match(source, /completedWithNotifications\.forEach\(\(id\) => next\.set\(id, snapshot.completedAt\[id\] \?\? snapshot.serverNow\)\)/);
-  assert.match(source, /if \(completedWithNotifications\.length > 0\) \{\s*onBackgroundTaskDone\?\.\(completedWithNotifications\)/);
+  assert.match(source, /if \(completedWithNotifications\.length > 0\) \{\s*onBackgroundTaskDone\?\.\(completedWithNotifications, previousRunningObservedAtRef\.current\)/);
   assert.match(
     source,
     /filter\(\(session\) => !familyParentId\(session\)\)[\s\S]*?unreadEligibleIds\.has\(id\)/,
