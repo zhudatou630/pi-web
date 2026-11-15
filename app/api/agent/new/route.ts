@@ -19,7 +19,7 @@ function parseThinkingLevel(value: unknown): ThinkingLevel | undefined {
 // POST /api/agent/new  body: { cwd: string; type: string; message?: string; ... }
 // Spawns a brand-new pi session. Most calls immediately send the first command;
 // type:"ensure_session" only creates the runtime so clients can query commands.
-// Returns pi's real session id plus the model/thinking state selected at startup.
+// Returns pi's real session id plus current model/thinking state; startup UI may still be pending.
 export async function POST(req: Request) {
   let commandType: string | undefined;
   let promptAccepted = false;
