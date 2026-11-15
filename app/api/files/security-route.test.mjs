@@ -44,6 +44,25 @@ function request(handler, pathname, query) {
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   return handler(new NextRequest(url));
 }
+test("uploads accept files above 25 MiB and reject aggregate oversize before any write", async (t) => {
+  const root = fixture();
+  let selected = [new File([Buffer.alloc(26 * 1024 * 1024, 0x61)], "large.txt")];
+  t.mock.method(Response.prototype, "formData", async () => ({ getAll: () => selected }));
+  const post = (headers = {}) => upload(new NextRequest("http://localhost/api/files/target?type=upload", {
+    method: "POST", body: "multipart fixture", headers: { host: "localhost", ...headers },
+  }), { params: Promise.resolve({ path: [root.replace(/^\/+/, "")] }) });
+  const large = await post();
+  assert.equal(large.status, 200);
+  assert.deepEqual((await large.json()).uploaded, ["large.txt"]);
+  assert.equal(fs.statSync(path.join(root, "large.txt")).size, 26 * 1024 * 1024);
+  selected = [new File(["a"], "first.txt"), new File(["b"], "second.txt")];
+  Object.defineProperty(selected[1], "size", { value: 100 * 1024 * 1024 });
+  assert.equal((await post()).status, 413);
+  assert.equal(fs.existsSync(path.join(root, "first.txt")), false);
+  assert.equal(fs.existsSync(path.join(root, "second.txt")), false);
+  assert.equal((await post({ "content-length": String(101 * 1024 * 1024 + 1) })).status, 413);
+});
+
 test("upload preflight and writes authorize nested directories and reject traversal and symlink escapes", async () => {
   const root = fixture();
   const nested = path.join(root, "src", "deep");
