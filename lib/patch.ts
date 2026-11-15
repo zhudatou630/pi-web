@@ -36,6 +36,7 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
   let previousEnd: { old: number; new: number } | null = null;
   let removed: PendingChangeLine[] = [];
   let added: PendingChangeLine[] = [];
+  let changeNotes: string[] = [];
 
   const emptyCell = (): SplitDiffCell => ({ lineNo: null, text: "", type: "empty" });
   const flushChanges = () => {
@@ -54,8 +55,10 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
         : emptyCell();
       current.rows.push({ type: "line", left, right });
     }
+    for (const text of changeNotes) current.rows.push({ type: "hunk", text });
     removed = [];
     added = [];
+    changeNotes = [];
   };
 
   for (const line of text.split(/\r?\n/)) {
@@ -102,8 +105,7 @@ export function parseUnifiedPatch(text: string): SplitDiffFile[] | null {
     if (!current) continue;
 
     if (line.startsWith("\\ ")) {
-      flushChanges();
-      current.rows.push({ type: "hunk", text: line });
+      changeNotes.push(line);
       continue;
     }
 

@@ -19,7 +19,7 @@ const GIT_TIMEOUT_MS = 10_000;
 const GIT_STATUS_MAX_BUFFER = 8 * 1024 * 1024;
 
 async function git(cwd: string, args: string[], maxBuffer = GIT_STATUS_MAX_BUFFER): Promise<string> {
-  const { stdout } = await execFileAsync("git", ["-c", "core.fsmonitor=false", "-C", cwd, ...args], {
+  const { stdout } = await execFileAsync("git", ["--literal-pathspecs", "-c", "core.fsmonitor=false", "-C", cwd, ...args], {
     timeout: GIT_TIMEOUT_MS,
     maxBuffer,
     env: { ...process.env, LC_ALL: "C" },
@@ -29,7 +29,7 @@ async function git(cwd: string, args: string[], maxBuffer = GIT_STATUS_MAX_BUFFE
 
 async function findRepositoryRoot(cwd: string): Promise<string | null> {
   try {
-    return (await git(cwd, ["rev-parse", "--show-toplevel"])).trim() || null;
+    return (await git(cwd, ["rev-parse", "--show-toplevel"])).replace(/\r?\n$/, "") || null;
   } catch {
     return null;
   }
@@ -244,6 +244,11 @@ function hasNullByte(content: Buffer): boolean {
 }
 
 function createAddedFilePatch(gitPath: string, content: string): string {
+  const header = [
+    `diff --git a/${gitPath} b/${gitPath}`,
+    "new file mode 100644",
+  ];
+  if (content === "") return header.join("\n");
   const hasTrailingNewline = content.endsWith("\n");
   const lines = content.split("\n");
   if (hasTrailingNewline) lines.pop();
@@ -252,8 +257,7 @@ function createAddedFilePatch(gitPath: string, content: string): string {
     ? "\n\\ No newline at end of file"
     : "";
   return [
-    `diff --git a/${gitPath} b/${gitPath}`,
-    "new file mode 100644",
+    ...header,
     "--- /dev/null",
     `+++ b/${gitPath}`,
     `@@ -0,0 +1,${lines.length} @@`,
