@@ -1143,6 +1143,53 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     void eventConnectionRef.current?.ensureConnected(sid).catch(handleEventStreamError);
   }, [cancelEventStreamGrace, closeEvents, handleEventStreamError, isVisiblePane, session?.id]);
 
+  const startupRefreshRef = useRef<{ sid: string; mountId: number } | null>(null);
+  const refreshStartupState = useCallback(async (sid: string) => {
+    const mountId = sessionHookMountIdRef.current;
+    if (startupRefreshRef.current?.sid === sid && startupRefreshRef.current.mountId === mountId) return;
+    const refresh = { sid, mountId };
+    startupRefreshRef.current = refresh;
+    const selectionVersion = modelSelectionVersionRef.current;
+    const selectedModel = newSessionModelOverrideRef.current;
+    const selectedThinking = thinkingLevelOverrideRef.current;
+    const runId = promptRunIdRef.current;
+    const stillHere = () => sessionHookMountedRef.current && sessionHookMountIdRef.current === mountId
+      && sessionIdRef.current === sid && endedSessionRef.current !== sid;
+    try {
+      // A handler can ask several dialogs, then change model/prompt: only full ready is final.
+      const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state", waitUntilReady: true });
+      if (!stillHere()) return;
+      const requestId = ++contextUsageRequestIdRef.current;
+      const [commands] = await Promise.all([
+        sendAgentCommand<SlashCommandsResponse>(sid, { type: "get_commands" }),
+        loadTools(sid),
+      ]);
+      if (!stillHere()) return;
+      setSlashCommands(commands?.commands ?? []);
+      setSystemPrompt(state.systemPrompt ?? "");
+      if (typeof state.autoCompactionEnabled === "boolean") setAutoCompactionEnabled(state.autoCompactionEnabled);
+      applyContextUsage(state.contextUsage, sid, runId, requestId, state.totalActiveMs);
+      if (modelSelectionVersionRef.current === selectionVersion && !modelSwitchPendingRef.current
+        && newSessionModelOverrideRef.current === selectedModel && thinkingLevelOverrideRef.current === selectedThinking
+        && requestId > modelSelectionAppliedIdRef.current) {
+        modelSelectionAppliedIdRef.current = requestId;
+        if (state.model) {
+          const model = { provider: state.model.provider, modelId: state.model.id };
+          setCurrentModelOverride(model);
+          setPendingModel(model);
+          setNewSessionDefaultModel(model);
+          if (selectedModel) setNewSessionModel(model);
+        }
+        if (state.thinkingLevel) setThinkingLevel(state.thinkingLevel as ThinkingLevelOption);
+      }
+      invalidateModelsClientCache();
+    } catch (error) {
+      console.error("Failed to refresh startup state:", error);
+    } finally {
+      if (startupRefreshRef.current === refresh) startupRefreshRef.current = null;
+    }
+  }, [applyContextUsage, loadTools, sendAgentCommand]);
+
   const respondToExtensionUi = useCallback(async (
     request: ExtensionUiDialogRequest,
     response: { value: string } | { confirmed: boolean } | { cancelled: true },
@@ -1151,29 +1198,31 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setExtensionDialogs((queue) => queue.filter((dialog) => dialog.id !== request.id));
     if (!sid) return;
     try {
-      await sendAgentCommand(sid, {
+      const result = await sendAgentCommand<{ startupPending?: boolean }>(sid, {
         type: "extension_ui_response",
         id: request.id,
         ...response,
       });
+      if (result?.startupPending) void refreshStartupState(sid);
     } catch (e) {
       console.error("Failed to send extension UI response:", e);
     }
-  }, [sendAgentCommand]);
+  }, [refreshStartupState, sendAgentCommand]);
 
   const sendExtensionCustomInput = useCallback(async (request: ExtensionUiCustomRequest, data: string) => {
     const sid = sessionIdRef.current;
     if (!sid) return;
     try {
-      await sendAgentCommand(sid, {
+      const result = await sendAgentCommand<{ startupPending?: boolean }>(sid, {
         type: "extension_ui_input",
         id: request.id,
         data,
       });
+      if (result?.startupPending) void refreshStartupState(sid);
     } catch (e) {
       console.error("Failed to send extension custom UI input:", e);
     }
-  }, [sendAgentCommand]);
+  }, [refreshStartupState, sendAgentCommand]);
 
   const shownNoticeIdsRef = useRef(new Set<string>());
   const addNotice = useCallback((notice: { id?: string; message: string; type?: NoticeType }) => {
