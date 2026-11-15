@@ -38,6 +38,8 @@ export function loadSubagentInputFiles(
   const seen = new Set<string>();
   const files: SubagentInputFile[] = [];
   let totalBytes = 0;
+  const limitMessage = `Agent input_files exceeds the ${maxBytes}-byte total limit for the subagent's model. `
+    + "Pass fewer or smaller files, or name the paths in the prompt so the subagent reads what it needs.";
 
   for (const requestedPath of requestedPaths) {
     if (!requestedPath.trim()) throw new Error("Agent input_files paths must not be empty");
@@ -51,19 +53,18 @@ export function loadSubagentInputFiles(
     if (!isPathWithinRoots(filePath, allowedRoots)) {
       throw new Error(`Agent input file is outside the session cwd: ${requestedPath}`);
     }
-    if (!statSync(filePath).isFile()) {
+    const stat = statSync(filePath);
+    if (!stat.isFile()) {
       throw new Error(`Agent input path is not a file: ${requestedPath}`);
     }
     if (seen.has(filePath)) continue;
     seen.add(filePath);
 
+    if (totalBytes + stat.size > maxBytes) throw new Error(limitMessage);
     const buffer = readFileSync(filePath);
     totalBytes += buffer.byteLength;
     if (totalBytes > maxBytes) {
-      throw new Error(
-        `Agent input_files exceeds the ${maxBytes}-byte total limit for the subagent's model. `
-        + "Pass fewer or smaller files, or name the paths in the prompt so the subagent reads what it needs.",
-      );
+      throw new Error(limitMessage);
     }
 
     let content: string;
