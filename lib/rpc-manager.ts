@@ -20,7 +20,8 @@ import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import {
   createProjectCommandBashExtension,
   createProjectCommandBashOperations,
-  preferUserBashExtension,
+  createProjectCommandPowerShellExtension,
+  preferUserShellExtensions,
 } from "./project-command-env";
 import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, invalidateSessionPathCache, resolveSessionPath } from "./session-reader";
 import { forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fork";
@@ -2959,6 +2960,7 @@ export async function startRpcSession(
                 cwd: sessionCwd,
                 settings: settingsManager,
               }),
+              createProjectCommandPowerShellExtension(sessionCwd),
               createImageGenerationExtension(agentDir, { projectRoot }),
               createRoutineToolExtension(undefined, projectRoot),
               createSubagentExtension(
@@ -2967,7 +2969,7 @@ export async function startRpcSession(
                 () => isSubagentsEnabledForProject(projectRoot),
               ),
             ],
-            extensionsOverride: (base) => preferUserBashExtension(reservePiWebImageTool(preferPiWebSubagentExtension(base))),
+            extensionsOverride: (base) => preferUserShellExtensions(reservePiWebImageTool(preferPiWebSubagentExtension(base))),
           },
       ...(trustReloadOptions ? { resourceLoaderReloadOptions: trustReloadOptions } : {}),
     });

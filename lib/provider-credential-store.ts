@@ -52,7 +52,8 @@ async function updateStoredCredentials<T>(
 
   try {
     throwIfCompromised();
-    const parsed: unknown = JSON.parse(readFileSync(authPath, "utf-8"));
+    const text = readFileSync(authPath, "utf-8").replace(/^\uFEFF/, "");
+    const parsed: unknown = JSON.parse(text.trim() || "{}");
     if (!isRecord(parsed)) throw new Error("Invalid auth.json: expected an object");
 
     const { result, changed } = update(parsed);

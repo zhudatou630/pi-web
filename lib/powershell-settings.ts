@@ -47,11 +47,11 @@ export function getPowerShellSettingsPath(agentDir = getAgentDir()): string {
 
 export function parseSettings(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
-  const text = readFileSync(path, "utf8");
+  const text = readFileSync(path, "utf8").replace(/^\uFEFF/, "");
   let parsed: unknown;
   try {
     // pi strips a UTF-8 BOM before parsing.
-    parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
+    parsed = JSON.parse(text.trim() || "{}");
   } catch (error) {
     if (error instanceof SyntaxError) throw new SyntaxError(`${path}: ${error.message}`);
     throw error;

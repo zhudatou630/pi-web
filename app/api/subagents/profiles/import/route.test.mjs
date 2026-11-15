@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
 import { createJiti } from "jiti";
+import { ProjectTrustStore } from "@earendil-works/pi-coding-agent";
 
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const testAgentDir = await mkdtemp(join(tmpdir(), "pi-web-subagent-import-"));
@@ -48,6 +49,7 @@ async function knownProject(prefix, agents = {}) {
 
 test("sources list other known projects that have agent files; anything else is refused", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "pi-web-subagent-import-cwd-"));
+  new ProjectTrustStore(testAgentDir).set(cwd, true);
   allowFileRoot(cwd);
   const withAgents = await knownProject("pi-web-import-with-", {
     "good.md": "---\ndescription: Imported\nowner: team\n---\nImported prompt.\n",

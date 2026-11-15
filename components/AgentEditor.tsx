@@ -450,6 +450,9 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
   const projectScoped = Boolean(projectDefinition || fixedScope || projectStubbed);
   const restoresDefault = shadowed[0]?.scope === "builtin";
   const enabledChecked = pendingFile ? draft.enabled : Boolean(effective?.enabled);
+  const toolOptions = draft.tools.includes("powershell") || shown?.tools.includes("powershell")
+    ? [...TOOL_OPTIONS, "powershell"]
+    : TOOL_OPTIONS;
 
   return (
     <SettingsDetailPage
@@ -533,7 +536,7 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
         <div className="settings-form">
           <Field label={t("agents.tools")}>
             <div className="settings-checkbox-grid">
-              {TOOL_OPTIONS.map((tool) => (
+              {toolOptions.map((tool) => (
                 <Toggle key={tool} label={tool} disabled={disabled} checked={draft.tools.includes(tool)} onChange={(checked) => update("tools", checked ? [...draft.tools, tool] : draft.tools.filter((item) => item !== tool))} />
               ))}
             </div>

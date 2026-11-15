@@ -59,20 +59,38 @@ export function inspectUploadTargets(directory: string, fileNames: string[]): Up
   return { conflicts, nonReplaceable };
 }
 
-export function writeUploadFile(destination: string, bytes: Buffer, overwrite: boolean): void {
+function replaceableUploadStat(destination: string): fs.Stats {
+  const stat = fs.lstatSync(destination);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error("Cannot replace a directory or symbolic link");
+  }
+  return stat;
+}
+
+export async function writeUploadFile(destination: string, bytes: Buffer, overwrite: boolean): Promise<void> {
   if (!overwrite) {
-    fs.writeFileSync(destination, bytes, { flag: "wx" });
+    await fs.promises.writeFile(destination, bytes, { flag: "wx" });
     return;
   }
 
+  const mode = replaceableUploadStat(destination).mode & 0o7777;
   const temporaryPath = path.join(
     path.dirname(destination),
     `.${path.basename(destination)}.pi-upload-${randomUUID()}`,
   );
+  let temporaryFile;
   try {
-    fs.writeFileSync(temporaryPath, bytes, { flag: "wx" });
+    temporaryFile = await fs.promises.open(temporaryPath, "wx", mode);
+    try {
+      await temporaryFile.writeFile(bytes);
+    } finally {
+      await temporaryFile.close();
+    }
+    // No await between revalidation and rename: an async write may have yielded to another mutation.
+    const currentMode = replaceableUploadStat(destination).mode & 0o7777;
+    fs.chmodSync(temporaryPath, currentMode);
     fs.renameSync(temporaryPath, destination);
   } finally {
-    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    if (temporaryFile && fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
   }
 }

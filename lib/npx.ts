@@ -3,6 +3,7 @@ import { promisify } from "util";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { execPath } from "process";
+import { sanitizeProjectCommandEnvironment } from "./project-command-env";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,7 +38,6 @@ function findNpxCli(): string | null {
 export interface RunNpxOptions {
   timeout?: number;
   cwd?: string;
-  env?: NodeJS.ProcessEnv;
 }
 
 export interface RunNpxResult {
@@ -57,6 +57,6 @@ export async function runNpx(args: string[], opts: RunNpxOptions = {}): Promise<
   return execFileAsync(command, commandArgs, {
     timeout: opts.timeout,
     cwd: opts.cwd,
-    env: opts.env,
+    env: { ...sanitizeProjectCommandEnvironment(process.env), FORCE_COLOR: "0" },
   });
 }

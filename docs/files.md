@@ -1,8 +1,16 @@
 # File access and previews
 
+## Uploads
+
+Uploads have a 100 MiB combined file limit (101 MiB wire-body limit for multipart overhead), checked before any file is written; there is no separate per-file cap. Writes are asynchronous. Replacements retain the target's mode with an explicit chmod, use a same-directory exclusive temporary file, and synchronously recheck that the target is a regular file immediately before rename.
+
 ## Git status
 
 Untracked line totals use four asynchronous workers, each reusing a 64 KiB buffer. Reads stop at the initial file size; empty, NUL-containing, non-regular and over-preview-limit files count zero. Status path mapping yields every 1,000 entries and resolves the cwd/repository only once per request, while retaining the explorer's symlink spelling and renames leaving the cwd as deletions. Replaced explorer requests abort the server scan; open handles are always closed. Counts are fresh per request, not cached.
+
+## Text encoding
+
+Source previews recognize UTF-16LE/BE BOMs before binary detection. Pagination offsets remain byte offsets; chunk boundaries preserve UTF-8 sequences and UTF-16 surrogate pairs. UTF-16 without a BOM is not inferred.
 
 ## Mutable previews
 
