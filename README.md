@@ -113,6 +113,7 @@ Git 安装用 `npm start --`，npm 全局安装把前面换成 `pi-web` 即可�
 - **局域网访问**：`npm start -- -H 0.0.0.0`
 - **访问密码**（局域网建议设置，用户名固定为 `pi`）：`PI_WEB_PASSWORD='your-password' npm start`
 - **后台常驻 / 不自动弹浏览器**：`npm start -- --no-open`
+- **同时开很多页面时走 HTTP/2**：纯 HTTP 下浏览器对同一地址最多 6 条连接、所有标签页共用，而每个打开的聊天、终端和监视中的文件各占一条事件流，开多了其他请求会排队。用终止 TLS 的反向代理即可换成 HTTP/2，Pi Web 无需改动：本机如 `caddy reverse-proxy --from localhost:8443 --to 127.0.0.1:30141`，远程如 `tailscale serve`（外部主机名加入 `PI_WEB_ALLOWED_HOSTS`）。开发者工具 Network 面板的 Protocol 列显示 `h2` 即生效。
 - **远程打开本机服务（浏览器标签页）**：设置 `PI_WEB_PREVIEW_PORT` 和 `PI_WEB_PREVIEW_URL`，见 [docs/preview.md](./docs/preview.md)
 
 ## 对话生图
