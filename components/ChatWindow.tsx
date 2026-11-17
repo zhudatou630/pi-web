@@ -576,13 +576,18 @@ function formatTurnActivity(
 ): string {
   const count = (value: number | undefined, one: string, many: string) =>
     value ? t(value === 1 ? one : many, { count: value }) : null;
+  const ran = [
+    count(activity?.commands, "chat.activity.command", "chat.activity.commands"),
+    count(activity?.scripts, "chat.activity.script", "chat.activity.scripts"),
+  ].filter(Boolean).join(t("chat.activity.listSeparator"));
   const label = [
     count(fileCount, "chat.activity.changedFile", "chat.activity.changedFiles"),
     activity?.explored ? t("chat.activity.explored") : null,
-    count(activity?.commands, "chat.activity.ranCommand", "chat.activity.ranCommands"),
+    ran ? t("chat.activity.ran", { items: ran }) : null,
     activity?.researched ? t("chat.activity.researched") : null,
     count(activity?.subagents, "chat.activity.usedSubagent", "chat.activity.usedSubagents"),
     count(activity?.images, "chat.activity.generatedImage", "chat.activity.generatedImages"),
+    count(activity?.tools, "chat.activity.usedTool", "chat.activity.usedTools"),
   ].filter(Boolean).join(" · ");
   if (label) return turnSeconds ? `${label} · ${formatDuration(turnSeconds, t)}` : label;
   if (!activity?.thought) return "";
