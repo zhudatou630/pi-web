@@ -195,6 +195,8 @@ interface Props {
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
   turnTiming?: string;
   isProcess?: boolean;
+  /** The turn ended because a steering message interrupted it; shows the footer without an answer. */
+  steered?: boolean;
   /** Original assistant failed/aborted, even when partitioning moved its terminal notice. */
   toolsNotRun?: boolean;
   /** Per-call monotonic clocks, including ended calls waiting for batch results. */
@@ -281,7 +283,7 @@ function haveSameRelevantToolEntries<T>(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, toolsNotRun, toolClocks, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, steered, toolsNotRun, toolClocks, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user" && message.routineRun) {
     return <RoutineRunView message={message} routineRun={message.routineRun} searchTarget={searchTarget} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -289,7 +291,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} toolsNotRun={toolsNotRun} toolClocks={toolClocks} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} steered={steered} toolsNotRun={toolsNotRun} toolClocks={toolClocks} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -345,6 +347,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.turnTiming === next.turnTiming
     && prev.sessionId === next.sessionId
     && prev.isProcess === next.isProcess
+    && prev.steered === next.steered
     && prev.continuePrompt === next.continuePrompt
     && prev.onContinue === next.onContinue
     && prev.onCompact === next.onCompact
@@ -770,6 +773,7 @@ function AssistantMessageView({
   turnDurationSeconds,
   turnTiming,
   isProcess,
+  steered,
   toolsNotRun,
   toolClocks,
   continuePrompt,
@@ -798,6 +802,7 @@ function AssistantMessageView({
   /** Formatted "TTFT · TPS" for the reply group (lib/model-timing.ts). */
   turnTiming?: string;
   isProcess?: boolean;
+  steered?: boolean;
   toolsNotRun?: boolean;
   toolClocks?: ToolClocks;
   continuePrompt?: string;
@@ -845,7 +850,7 @@ function AssistantMessageView({
   const modelLabel = isTurnEnd && !isStreaming ? (modelName || message.model || null) : null;
   const duration = isTurnEnd && !isStreaming && turnDurationSeconds ? formatDuration(turnDurationSeconds, t) : null;
   const timing = isTurnEnd && !isStreaming ? turnTiming ?? null : null;
-  const showFooter = aborted || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent));
+  const showFooter = aborted || steered || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent));
   const copyContent = () => {
     copyText(textContent).then(() => {
       setCopied(true);
@@ -856,7 +861,7 @@ function AssistantMessageView({
 
   // A truncated turn whose only block was empty thinking must still render, so its
   // notice is not silently swallowed by the empty-content guard.
-  if (blocks.length === 0 && !isStreaming && !providerError && !truncated && !aborted) return null;
+  if (blocks.length === 0 && !isStreaming && !providerError && !truncated && !aborted && !steered) return null;
 
   return (
     <div
@@ -975,7 +980,7 @@ function AssistantMessageView({
       {showFooter && (
         // Who answered, how long the turn took, when it ended; copy sits right after them.
         <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>
-          {aborted && <span data-answer-stopped>{t("chat.operationAborted")}</span>}
+          {(aborted || steered) && <span data-answer-stopped>{t(aborted ? "chat.operationAborted" : "chat.steered")}</span>}
           {modelLabel && (
             <span data-answer-model style={{ fontVariantNumeric: "normal", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
           )}

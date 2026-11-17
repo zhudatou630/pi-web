@@ -2097,7 +2097,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 messageRefs.current[refIndex] = el;
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; createdRoutines?: CreatedRoutine[]; turnDurationSeconds?: number; turnTiming?: string; isProcess?: boolean } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; isTurnEnd?: boolean; writtenFiles?: WrittenFile[]; createdRoutines?: CreatedRoutine[]; turnDurationSeconds?: number; turnTiming?: string; isProcess?: boolean; steered?: boolean } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 if (isHiddenCustomMessage(msg)) return null;
                 // An answer clicked on an ask_user card: the card shows it (Grok-style), no bubble.
@@ -2156,6 +2156,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     turnDurationSeconds={options.turnDurationSeconds}
                     turnTiming={options.turnTiming}
                     isProcess={options.isProcess}
+                    steered={options.steered}
                     // A provider error is kept on one side of a split message, but a truncation shows on both:
                     // offer Continue once, under the answer.
                     continuePrompt={idx === messages.length - 1 && !(options.isProcess && msg.role === "assistant" && msg.stopReason === "length" && completedAssistantParts[idx]?.answerMessage) ? continuePrompt ?? undefined : undefined}
@@ -2377,6 +2378,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 );
                 // Once the answer streams every step has finished, so the header already says what the turn did.
                 const answeringLive = !finalAnswerMessage && isLiveTail && Boolean(streamingParts.answerMessage) && !liveProcessActive;
+                // A run cut by a steering message ends mid tool use with the steer as the next group;
+                // it gets the same footer as a stopped turn instead of a bare header.
+                const steered = !finalAnswerMessage && finalAssistantIdx >= 0 && !isLiveTail
+                  && (messages[finalAssistantIdx] as AssistantMessage).stopReason === "toolUse"
+                  && messages[endIdx]?.role === "user";
                 const activeStepSummary = latchedLiveProcessSummary(
                   liveProcessSummary(streamingAssistant, agentPhase, t, isCompacting),
                   liveProcessActive,
@@ -2405,7 +2411,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     extractTurnWrittenFiles(turnMessages.flatMap((message) => message.content), toolResultsMap, messageCwd).length,
                     summarizeTurnActivity(turnMessages, toolResultsMap),
                     t,
-                    answeringLive ? undefined : processDurationSeconds,
+                    answeringLive || steered ? undefined : processDurationSeconds,
                   ) || null;
                 }
 
@@ -2420,7 +2426,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       <ProcessDetailsGroup
                         messageCount={processViews.length}
                         toolCallCount={processToolCount}
-                        durationSeconds={finalAnswerMessage || answeringLive ? undefined : processDurationSeconds}
+                        durationSeconds={finalAnswerMessage || answeringLive || steered ? undefined : processDurationSeconds}
                         activityLabel={activityLabel}
                         startTime={turnStartTime ?? processStartTime}
                         defaultExpanded={!finalAnswerMessage && endIdx === messages.length}
@@ -2465,6 +2471,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       (messages[finalAssistantIdx] as AssistantMessage).completedAt ?? messages[finalAssistantIdx].timestamp,
                     ),
                     turnTiming: timing?.text,
+                  }));
+                }
+                if (steered) {
+                  const steeredMessage = messages[finalAssistantIdx] as AssistantMessage;
+                  rendered.push(renderMessage(finalAssistantIdx, {
+                    keyPrefix: "steered",
+                    attachRef: false,
+                    isTurnEnd: true,
+                    steered: true,
+                    messageOverride: { ...steeredMessage, content: [] },
+                    turnDurationSeconds: processDurationSeconds,
+                    turnTiming: formatModelTiming(turnModelTiming(
+                      messages.slice(processStartIdx, processEndIdx + 1).filter((m): m is AssistantMessage => m.role === "assistant"),
+                    ))?.text,
                   }));
                 }
                 if (finalAssistantIdx >= 0) {

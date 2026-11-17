@@ -736,6 +736,7 @@ export const enLocale: LocalePlugin = {
     "chat.loadingSession": "Loading session...",
     "chat.scrollToBottom": "Scroll to latest",
     "chat.operationAborted": "Stopped",
+    "chat.steered": "Steered",
     "chat.generatingToolInput": "Generating parameters...",
     "chat.agentWorking": "Agent is working",
     "chat.decodeSeconds": "{seconds}s",

@@ -736,6 +736,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.loadingSession": "正在加载会话...",
     "chat.scrollToBottom": "回到最新位置",
     "chat.operationAborted": "已停止",
+    "chat.steered": "已引导",
     "chat.generatingToolInput": "正在生成参数...",
     "chat.agentWorking": "Agent 正在处理",
     "chat.decodeSeconds": "{seconds}秒",

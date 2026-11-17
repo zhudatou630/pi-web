@@ -16,7 +16,8 @@ test("expands process details when a completed turn has no final answer", () => 
 
 test("marks only the separated final answer as the end of a turn", () => {
   assert.match(source, /renderMessage\(finalAssistantIdx, \{\s*isTurnEnd: true,\s*messageOverride: finalAnswerMessage/);
-  assert.equal((source.match(/isTurnEnd: true/g) ?? []).length, 1);
+  // The second is a steered turn's answerless footer.
+  assert.equal((source.match(/isTurnEnd: true/g) ?? []).length, 2);
   assert.match(source, /isTurnEnd=\{options\.isTurnEnd\}/);
   assert.doesNotMatch(source, /let isTurnEnd/);
 });
@@ -96,7 +97,7 @@ test("streams process blocks inside steps and answer blocks outside", () => {
 test("keeps completed turn projections stable while only the streaming tail changes", () => {
   assert.match(source, /const completedAssistantParts = useMemo\(\(\) => messages\.map/);
   assert.match(source, /const \{ writtenFilesByAssistantIndex, routinesByAssistantIndex, turnActivityByAssistantIndex \} = useMemo/);
-  assert.match(source, /durationSeconds=\{finalAnswerMessage \|\| answeringLive \? undefined : processDurationSeconds\}/);
+  assert.match(source, /durationSeconds=\{finalAnswerMessage \|\| answeringLive \|\| steered \? undefined : processDurationSeconds\}/);
   assert.match(source, /const finalParts = completedAssistantParts\[finalAssistantIdx\]/);
   assert.match(source, /writtenFiles: writtenFilesByAssistantIndex\.get\(finalAssistantIdx\)/);
 });
@@ -227,7 +228,12 @@ test("disables scroll anchoring on chat container and steps list to prevent jitt
 
 test("keeps an unanswered turn's duration beside what it did", () => {
   assert.match(source, /if \(label\) return turnSeconds \? `\$\{label\} · \$\{formatDuration\(turnSeconds, t\)\}` : label;/);
-  assert.match(source, /answeringLive \? undefined : processDurationSeconds,/);
+  assert.match(source, /answeringLive \|\| steered \? undefined : processDurationSeconds,/);
+});
+
+test("gives a steered turn the stopped turn's footer instead of a header duration", () => {
+  assert.match(source, /stopReason === "toolUse"\s*&& messages\[endIdx\]\?\.role === "user"/);
+  assert.match(source, /steered: true,\s*messageOverride: \{ \.\.\.steeredMessage, content: \[\] \}/);
 });
 
 test("labels a turn that only reasoned as one timed thought", () => {
