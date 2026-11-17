@@ -237,3 +237,86 @@ test("agent_end ignores late state reads across run/session/unmount/remount boun
     assert.deepEqual(writes, [], stale);
   }
 });
+
+function eventStreamGraceHarness(t, loadSession = noop) {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const bindings = {
+    useCallback, sessionHookMountedRef: ref(true), visiblePaneRef: ref(false), sessionIdRef: ref("session"),
+    eventStreamGraceTimerRef: ref(null), eventStreamGraceGenerationRef: ref(0), eventStreamGraceActiveRef: ref(false),
+    sdkAgentActiveRef: ref(false), rpcPromptPendingRef: ref(false), agentRunningRef: ref(false),
+    setAgentRunning: noop, setAgentPhase: noop, setIsCompacting: noop,
+    streamDeltaFrameRef: ref(null), pendingStreamDeltasRef: ref([]), bashRecoveryIdRef: ref(0),
+    promptRunIdRef: ref(1), optimisticUserMessageKeyRef: ref(null),
+    recoverUnconfirmedPrompt: noop, loadSession, settleUiStage: noop, notifyPromptStage: noop, onAgentEnd: noop,
+    EVENT_STREAM_IDLE_GRACE_MS: 30_000, PROMPT_SETTLE_POLL_MS: 600,
+    setTimeout: t.mock.fn(setTimeout), clearTimeout,
+    fetch: t.mock.fn(async () => { throw new Error("offline"); }), closeEvents: t.mock.fn(),
+  };
+  bindings.cancelEventStreamGrace = evaluate(between("  const cancelEventStreamGrace", "  const closeEvents"), bindings, "return cancelEventStreamGrace;");
+  bindings.scheduleEventStreamClose = evaluate(between("  const scheduleEventStreamClose", "  const recoverUnconfirmedPrompt"), bindings, "return scheduleEventStreamClose;");
+  const finish = evaluate(between("  const finishPromptWithoutStream", "  const waitForPromptSettlement"), bindings, "return finishPromptWithoutStream;");
+  const unmount = evaluate(between("    return () => {\n      sessionHookMountedRef.current = false;", "    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);"), bindings);
+  const advance = async (ms) => {
+    t.mock.timers.tick(ms);
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  return { bindings, finish, unmount, advance };
+}
+
+for (const fails of [false, true]) {
+  test(`late prompt history ${fails ? "failure" : "success"} after unmount cannot restart grace timers or polling`, async (t) => {
+    const history = Promise.withResolvers();
+    const enteredHistory = Promise.withResolvers();
+    const f = eventStreamGraceHarness(t, () => { enteredHistory.resolve(); return history.promise; });
+    const pending = f.finish("session", 1);
+    const settled = fails ? assert.rejects(pending, /history failed/) : pending;
+    await enteredHistory.promise;
+    f.unmount();
+    if (fails) history.reject(new Error("history failed"));
+    else history.resolve();
+    await settled;
+    assert.equal(f.bindings.setTimeout.mock.callCount(), 0);
+    assert.equal(f.bindings.eventStreamGraceTimerRef.current, null);
+    assert.equal(f.bindings.eventStreamGraceActiveRef.current, false);
+    await f.advance(30_000);
+    await f.advance(600);
+    assert.equal(f.bindings.fetch.mock.callCount(), 0);
+  });
+}
+
+test("mounted grace retries server failures every 600ms, but unmount cancels the retry", async (t) => {
+  const f = eventStreamGraceHarness(t);
+  f.bindings.scheduleEventStreamClose("session");
+  await f.advance(30_000);
+  await f.advance(600);
+  assert.equal(f.bindings.fetch.mock.callCount(), 2);
+  assert.deepEqual(f.bindings.setTimeout.mock.calls.map(({ arguments: args }) => args[1]), [30_000, 600, 600]);
+  f.unmount();
+  await f.advance(30_000);
+  assert.equal(f.bindings.fetch.mock.callCount(), 2);
+  assert.equal(f.bindings.setTimeout.mock.callCount(), 3);
+  assert.equal(f.bindings.eventStreamGraceTimerRef.current, null);
+});
+
+for (const outcome of ["network", "http", "compacting", "children", "idle", "streaming"]) {
+  test(`in-flight grace ${outcome} response after unmount cannot retry or revive the stream`, async (t) => {
+    const f = eventStreamGraceHarness(t);
+    const response = Promise.withResolvers();
+    f.bindings.fetch.mock.mockImplementation(() => response.promise);
+    f.bindings.scheduleEventStreamClose("session");
+    await f.advance(30_000);
+    f.unmount();
+    if (outcome === "network") response.reject(new Error("offline"));
+    else response.resolve({ ok: outcome !== "http", status: 503, json: async () => ({
+      running: outcome !== "idle", state: { isCompacting: outcome === "compacting", subagentsActive: outcome === "children", isStreaming: outcome === "streaming" },
+    }) });
+    await f.advance(600);
+    await f.advance(30_000);
+    assert.equal(f.bindings.fetch.mock.callCount(), 1);
+    assert.equal(f.bindings.setTimeout.mock.callCount(), 1);
+    assert.equal(f.bindings.eventStreamGraceTimerRef.current, null);
+    assert.equal(f.bindings.eventStreamGraceActiveRef.current, false);
+    assert.equal(f.bindings.agentRunningRef.current, false);
+    assert.equal(f.bindings.closeEvents.mock.callCount(), 1, "only cleanup closes the stream");
+  });
+}

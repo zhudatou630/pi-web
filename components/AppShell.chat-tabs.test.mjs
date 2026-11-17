@@ -1,11 +1,54 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
+import { createJiti } from "jiti";
 
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const sidebarSource = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
 const chatWindowSource = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
 const leaseHookSource = await readFile(new URL("../hooks/useOpenSessionLeases.ts", import.meta.url), "utf8");
+const shellFile = ts.createSourceFile("AppShell.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const {
+  openSessionInNewTab, openSessionPreview, openDraftInTabs, closeChatTab, closeChatTabs,
+  switchSessionInPlace, promoteDraftToSession, mergeChatTabPanes,
+} = await createJiti(import.meta.url).import("../lib/chat-tab-state.ts");
+
+function shellCallback(name, scope) {
+  const find = (node) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(shellFile) === name) return node.initializer.arguments[0];
+    if (name === "pruneBranches" && ts.isCallExpression(node)
+      && node.expression.getText(shellFile) === "useEffect"
+      && node.arguments[1]?.getText(shellFile) === "[openSessionLeaseIds]") return node.arguments[0];
+    return ts.forEachChild(node, find);
+  };
+  const callback = find(shellFile);
+  assert.ok(callback, `missing AppShell callback: ${name}`);
+  const js = ts.transpileModule(`return (${callback.getText(shellFile)});`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  return new Function("scope", `with(scope) { ${js} }`)(scope);
+}
+
+function branchCache() {
+  const cache = new Map();
+  const scope = {
+    branchDataCacheRef: { current: cache }, previousBranchSessionIdsRef: { current: new Set() },
+    activeSessionIdRef: { current: null }, refreshBranchControls() {},
+  };
+  const report = shellCallback("handleBranchDataChange", scope);
+  return {
+    cache,
+    report: (id) => report(id, [{ id: `${id}-branch` }], `${id}-leaf`, () => {}),
+    commit(chatTabs, selectedSession = null) {
+      Object.assign(scope, { chatTabs, selectedSession });
+      scope.openSessionLeaseIds = shellCallback("openSessionLeaseIds", scope)();
+      shellCallback("pruneBranches", scope)();
+    },
+  };
+}
+
+const session = (id) => ({ id, name: id, cwd: "/repo" });
 
 test("declares chat tabs and split view state in AppShell", () => {
   assert.match(source, /const \[chatTabs, setChatTabs\] = useState<ChatTabItem\[\]>\(\[\]\);/);
@@ -50,6 +93,63 @@ test("branch data callback stays stable across AppShell renders", () => {
   // so the per-session cache must restore its leaf switcher.
   assert.match(source, /branchDataCacheRef\.current\.set\(sessionId, \{ tree, activeLeafId, onLeafChange \}\)/);
   assert.match(source, /branchLeafChangeFnRef\.current = cachedBranches\?\.onLeafChange \?\? null;/);
+});
+
+test("branch cache evicts closed sessions across tab removal paths, retaining hidden and split tabs", () => {
+  let tabs = openSessionInNewTab([], session("A")).tabs;
+  tabs = openSessionPreview(tabs, session("B")).tabs;
+  tabs = openSessionInNewTab(tabs, session("C"), "secondary").tabs;
+  tabs = openSessionInNewTab(tabs, session("D"), "secondary").tabs;
+  const cases = [
+    ["single close", closeChatTab(tabs, "B", "A", "C").tabs],
+    ["batch close", closeChatTabs(tabs, ["B", "D"], "A", "C").tabs],
+    ["preview replacement", openSessionPreview(tabs, session("E")).tabs],
+    ["delete selected session", closeChatTab(tabs, "A", "A", "C").tabs],
+    ["in-place replacement", switchSessionInPlace(tabs, "C", session("E"), "secondary").tabs],
+    ["split merge", mergeChatTabPanes(tabs, "C")],
+  ];
+  for (const [label, nextTabs] of cases) {
+    const h = branchCache();
+    h.commit(tabs);
+    for (const tab of tabs) h.report(tab.session.id);
+    const before = new Map(h.cache);
+    // Selection alone must not keep a removed tab alive when other tabs remain.
+    h.commit(nextTabs, session("A"));
+    const retained = tabs.filter((tab) => nextTabs.some((next) => next.session?.id === tab.session.id));
+    assert.deepEqual([...h.cache.keys()], retained.map((tab) => tab.session.id), label);
+    for (const tab of retained) assert.equal(h.cache.get(tab.session.id), before.get(tab.session.id), label);
+  }
+});
+
+test("early branch reports survive old-tab effects and draft promotion, then evict on last close", () => {
+  const h = branchCache();
+  const drafts = openDraftInTabs([], "/repo", "draft", "New session").tabs;
+  h.commit(drafts);
+  h.report("new"); // Child effect runs before the parent has promoted the draft in chatTabs.
+  const early = h.cache.get("new");
+  h.commit([...drafts], session("new"));
+  h.commit([...drafts], session("new")); // Repeated stale snapshots must not sweep the new entry.
+  assert.equal(h.cache.get("new"), early);
+  const promoted = promoteDraftToSession(drafts, drafts[0].id, session("new")).tabs;
+  h.commit(promoted, session("new"));
+  assert.equal(h.cache.get("new"), early);
+  h.commit(openDraftInTabs([], "/repo", "fallback").tabs);
+  assert.equal(h.cache.size, 0, "closing the last session releases its branch closure");
+  h.commit(promoted, session("new"));
+  h.report("new");
+  assert.notEqual(h.cache.get("new").onLeafChange, early.onLeafChange, "reopen uses the new ChatWindow callback");
+});
+
+test("tab-less selected session is retained only while actually rendered", () => {
+  const h = branchCache();
+  h.report("fallback");
+  h.commit([], session("fallback"));
+  const cached = h.cache.get("fallback");
+  assert.ok(cached);
+  h.commit(openSessionInNewTab([], session("fallback")).tabs, session("fallback"));
+  assert.equal(h.cache.get("fallback"), cached);
+  h.commit([]);
+  assert.equal(h.cache.size, 0);
 });
 
 test("split pane plus buttons create a tab in that pane", () => {

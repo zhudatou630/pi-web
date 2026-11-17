@@ -585,6 +585,15 @@ export function AppShell() {
   const [cacheKeepalive, setCacheKeepalive] = useState<CacheKeepaliveStatus | null>(null);
   const [cacheKeepalivePending, setCacheKeepalivePending] = useState(false);
   const branchDataCacheRef = useRef<Map<string, { tree: SessionTreeNode[]; activeLeafId: string | null; onLeafChange: ((leafId: string | null, anchorEntryId?: string) => void) | undefined }>>(new Map());
+  const previousBranchSessionIdsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const openSessionIds = new Set(openSessionLeaseIds);
+    // Only evict removed sessions: a child can report new branches before chatTabs catches up.
+    for (const sessionId of previousBranchSessionIdsRef.current) {
+      if (!openSessionIds.has(sessionId)) branchDataCacheRef.current.delete(sessionId);
+    }
+    previousBranchSessionIdsRef.current = openSessionIds;
+  }, [openSessionLeaseIds]);
   const [, refreshBranchControls] = useState(0);
   const sendAgentCommand = useCallback(async <T = unknown>(sid: string, command: Record<string, unknown>): Promise<T> => {
     const view = branchDataCacheRef.current.get(sid);

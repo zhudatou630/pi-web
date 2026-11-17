@@ -1333,6 +1333,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [onAgentEnd]);
 
   const scheduleEventStreamClose = useCallback((sid: string) => {
+    if (!sessionHookMountedRef.current) return;
     if (visiblePaneRef.current && sessionIdRef.current === sid) {
       cancelEventStreamGrace();
       return;

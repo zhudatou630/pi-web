@@ -165,8 +165,8 @@ async function openRunChat(store: RoutineStore, routine: Routine, run: RoutineRu
   }
   const { session, realSessionId } = started;
   allowFileRoot(cwd);
-  // A continuing chat is named once after the routine; per-run chats carry the run's time.
-  await session.send({ type: "set_session_name", name: target.kind === "same_session" ? routine.name : runSessionName(routine, run) });
+  // Name directly so session_start dialogs wait under the prompt deadline, not before it.
+  session.inner.setSessionName((target.kind === "same_session" ? routine.name : runSessionName(routine, run)).trim());
   if (target.kind === "same_session") await store.bindSession(routine.id, realSessionId);
   invalidateSessionListCache();
   return { session, sessionId: realSessionId, ...(isolated ? { isolated } : {}) };
