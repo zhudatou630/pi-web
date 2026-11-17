@@ -2099,6 +2099,7 @@ button.question-card-option:not(:disabled):hover {
   display: flex;
   align-items: center;
   gap: 2px;
+  max-width: 100%;
 }
 .chat-marker-line > :is(button, span) {
   display: inline-flex;
@@ -2112,6 +2113,17 @@ button.question-card-option:not(:disabled):hover {
   font-size: 12px;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
+  min-width: 0;
+  white-space: nowrap;
+}
+.chat-marker-line > :is(button, span) > :not(.chat-marker-text) {
+  flex-shrink: 0;
+}
+/* A long name ellipsizes; the time after it stays whole (title/panel carry the full name). */
+.chat-marker-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chat-marker-line > button {
   cursor: pointer;

@@ -687,7 +687,8 @@ function RoutineRunView({ message, routineRun, searchTarget, cwd, onOpenFile }: 
     <TranscriptMarker
       data-routine-run=""
       icon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>}
-      text={time ? `${name} · ${time}` : name}
+      text={name}
+      meta={time ?? undefined}
       title={t("chat.openRoutine", { name })}
       onClick={() => requestOpenRoutine(routineRun.routineId)}
       expanded={expanded}
@@ -703,9 +704,11 @@ function RoutineRunView({ message, routineRun, searchTarget, cwd, onOpenFile }: 
  * A transcript event that is not a turn (routine run, compaction, cache refreshes): one centered
  * dim line, icon + text, with an optional chevron that opens a panel below (docs/ui.md).
  */
-function TranscriptMarker({ icon, text, title, onClick, expanded = false, onToggle, toggleLabel, children, ...data }: {
+function TranscriptMarker({ icon, text, meta, title, onClick, expanded = false, onToggle, toggleLabel, children, ...data }: {
   icon: ReactNode;
   text: string;
+  /** Shown after " · " and never truncated; the text ellipsizes first. */
+  meta?: string;
   title?: string;
   onClick?: () => void;
   expanded?: boolean;
@@ -714,12 +717,13 @@ function TranscriptMarker({ icon, text, title, onClick, expanded = false, onTogg
   children?: ReactNode;
   [dataAttribute: `data-${string}`]: string;
 }) {
+  const label = <>{icon}<span className="chat-marker-text">{text}</span>{meta && <span className="chat-marker-meta">· {meta}</span>}</>;
   return (
     <div className="chat-marker" {...data}>
       <div className="chat-marker-line">
         {onClick
-          ? <button type="button" onClick={onClick} title={title}>{icon}{text}</button>
-          : <span title={title}>{icon}{text}</span>}
+          ? <button type="button" onClick={onClick} title={title}>{label}</button>
+          : <span title={title}>{label}</span>}
         {onToggle && (
           <button type="button" className="chat-marker-toggle" aria-expanded={expanded} onClick={onToggle} title={toggleLabel} aria-label={toggleLabel}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -742,12 +746,13 @@ function CacheWarmView({ message }: { message: CustomMessage }) {
     t("chat.cacheWarmCount", { count: details.count }),
     details.missed ? t("chat.cacheWarmMissed") : time,
     details.cost > 0 ? `$${details.cost.toFixed(details.cost < 0.01 ? 4 : 2)}` : "",
-  ].filter(Boolean);
+  ].filter((part): part is string => Boolean(part));
   return (
     <TranscriptMarker
       data-cache-warm=""
       icon={<CacheKeepaliveIcon />}
-      text={parts.join(" · ")}
+      text={parts[0]}
+      meta={parts.slice(1).join(" · ")}
       title={t("chat.cacheWarmTitle")}
     />
   );
@@ -2002,7 +2007,8 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
     <TranscriptMarker
       data-compaction=""
       icon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m7 20 5-4 5 4" /><path d="m7 4 5 4 5-4" /></svg>}
-      text={[t("i18n.conversationCompacted"), tokens, time].filter(Boolean).join(" · ")}
+      text={t("i18n.conversationCompacted")}
+      meta={[tokens, time].filter(Boolean).join(" · ")}
       onClick={toggle}
       expanded={expanded}
       onToggle={toggle}

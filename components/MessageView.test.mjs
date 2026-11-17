@@ -698,7 +698,7 @@ test("collapses the compaction summary to its title and token count, as pi's TUI
   assert.match(html, /<button[^>]*aria-expanded="false"/);
   // The same centered marker as routine runs and cache refreshes (docs/ui.md), with a compact count.
   assert.match(html, /class="chat-marker" data-compaction=""/);
-  assert.ok(html.includes("Compacted · 123.5K tokens"));
+  assert.ok(html.includes('<span class="chat-marker-text">Compacted</span><span class="chat-marker-meta">· 123.5K tokens</span>'));
   assert.doesNotMatch(html, /Ship the parser fix|summarized|File context|lib\/read\.ts|lib\/changed\.ts/);
   assert.doesNotMatch(renderMessage({ ...message, details: undefined }), /tokens|·/);
   // The summary mounts only in the expanded panel.
