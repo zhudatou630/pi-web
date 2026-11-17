@@ -278,6 +278,12 @@ export function RoutinesView({ active, cwd, projectPaths, projectNameByRoot, wor
     }
   };
 
+  // Errors reach the memory editor, which keeps the text being edited.
+  const saveMemory = async (routine: Routine, memory: string) => {
+    await requestJson(`/api/routines/${routine.id}/memory`, { method: "PUT", body: JSON.stringify({ memory }) });
+    await refresh();
+  };
+
   const discardEdits = async () => {
     if (dirtyRef.current && !await confirm(t("routines.discardConfirm"), { danger: true, confirmLabel: t("common.discard"), cancelLabel: t("common.keepEditing") })) return false;
     setDirty(false);
@@ -335,6 +341,7 @@ export function RoutinesView({ active, cwd, projectPaths, projectNameByRoot, wor
             onDeleted={() => { setDirty(false); setPage({ kind: "list" }); void refresh(); }}
             onRunNow={(routine) => void runNow(routine)}
             onSetEnabled={(routine, enabled) => void setEnabled(routine, enabled)}
+            onSaveMemory={saveMemory}
             onCancel={() => void backToList()}
             onOpenSession={(sessionId) => void discardEdits().then((ok) => { if (ok) onOpenSession(sessionId); })}
           />
@@ -411,7 +418,7 @@ export function RoutinesView({ active, cwd, projectPaths, projectNameByRoot, wor
   );
 }
 
-function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNameByRoot, worktreeInfo, sessions, busy, runError, onDirtyChange, onSaved, onDeleted, onRunNow, onSetEnabled, onCancel, onOpenSession }: {
+function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNameByRoot, worktreeInfo, sessions, busy, runError, onDirtyChange, onSaved, onDeleted, onRunNow, onSetEnabled, onSaveMemory, onCancel, onOpenSession }: {
   routine: RoutineView | null;
   timeZone: string;
   defaultCwd: string;
@@ -426,6 +433,7 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
   onDeleted: () => void;
   onRunNow: (routine: Routine) => void;
   onSetEnabled: (routine: Routine, enabled: boolean) => void;
+  onSaveMemory: (routine: Routine, memory: string) => Promise<void>;
   onCancel: () => void;
   onOpenSession: (sessionId: string) => void;
 }) {
@@ -501,7 +509,9 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
 
   // `enabled` is switched from the list and the server; it never makes the form dirty.
   const dirty = JSON.stringify({ ...draft, enabled: null }) !== JSON.stringify({ ...initial, enabled: null });
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  // The overview's memory editor has its own unsaved edits; leaving asks about either.
+  const [memoryDirty, setMemoryDirty] = useState(false);
+  useEffect(() => onDirtyChange(dirty || memoryDirty), [dirty, memoryDirty, onDirtyChange]);
   // Follow saves from here or elsewhere while the form is clean; unsaved edits are never replaced.
   const [syncedAt, setSyncedAt] = useState(routine?.updatedAt);
   if (routine && routine.updatedAt !== syncedAt && !dirty) {
@@ -611,10 +621,15 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
         sessions={sessions}
         busy={busy}
         error={shownError}
-        onEdit={() => setEditing(true)}
+        onEdit={() => void (async () => {
+          if (memoryDirty && !await confirm(t("routines.discardConfirm"), { danger: true, confirmLabel: t("common.discard"), cancelLabel: t("common.keepEditing") })) return;
+          setEditing(true);
+        })()}
         onDelete={() => void remove()}
         onRunNow={() => onRunNow(routine)}
         onSetEnabled={(enabled) => onSetEnabled(routine, enabled)}
+        onSaveMemory={(memory) => onSaveMemory(routine, memory)}
+        onMemoryDirtyChange={setMemoryDirty}
         onOpenSession={onOpenSession}
       />
     );

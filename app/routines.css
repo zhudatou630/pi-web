@@ -887,6 +887,34 @@
   min-width: 0;
 }
 
+/* A section label with its action (the memory's edit pencil) at the end of the line. */
+.routine-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.routine-section-head .routine-section-label {
+  margin: 0;
+}
+
+/* The pencil is a small inline action; it must not make this label taller than the others. */
+.routine-section-head .ghost-icon-button {
+  width: 20px;
+  height: 17px;
+}
+
+.routine-memory-form {
+  gap: 8px;
+  margin-top: 0;
+}
+
+.routine-memory-form .settings-row-message {
+  margin: 0;
+}
+
 .routine-empty-line {
   margin: 0;
   color: var(--text-dim);
@@ -963,8 +991,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* What the run says it reached, beside its time; the status note keeps the row's end. */
+.routine-run-progress {
+  flex: 3 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .routine-run-note {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--text-dim);
@@ -1063,7 +1102,8 @@
   }
 
   /* Only a row whose note wrapped is taller than the shared row height. */
-  .routine-run:has(.routine-run-note:not(:empty)) {
+  .routine-run:has(.routine-run-note:not(:empty)),
+  .routine-run:has(.routine-run-progress) {
     padding-block: 4px;
   }
 
@@ -1071,6 +1111,7 @@
     margin-left: auto;
   }
 
+  .routine-run-progress,
   .routine-run-note {
     order: 3;
     flex-basis: 100%;

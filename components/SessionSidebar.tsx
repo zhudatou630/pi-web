@@ -475,6 +475,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   /** Session id -> next scheduled cache refresh (`/api/agent/running`). */
   const [cacheKeepaliveSessions, setCacheKeepaliveSessions] = useState<Map<string, number>>(() => new Map());
   const cacheKeepaliveSessionIds = useMemo(() => new Set(cacheKeepaliveSessions.keys()), [cacheKeepaliveSessions]);
+  const [routineProjects, setRoutineProjects] = useState<Record<string, string[]>>({});
   const [unreadMarks, setUnreadMarks] = useState<UnreadMarks>(loadUnreadMarks);
   const unreadSessionIds = useMemo(() => new Set(unreadMarks.keys()), [unreadMarks]);
   const storedUnreadMarksRef = useRef(unreadMarks);
@@ -861,6 +862,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           subagentsActiveSessionIds?: string[];
           awaitingInputSessionIds?: string[];
           cacheKeepaliveSessions?: Record<string, number>;
+          routineProjects?: Record<string, string[]>;
           completionNotificationSuppressedSessionIds?: string[];
         };
         if (stopped || controller !== current) return;
@@ -880,6 +882,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
         setCacheKeepaliveSessions((current) => sameTimes(current, data.cacheKeepaliveSessions));
+        setRoutineProjects((current) => JSON.stringify(current) === JSON.stringify(data.routineProjects ?? {}) ? current : data.routineProjects ?? {});
         if (data.sessionListVersion !== sessionListVersionRef.current) {
           // Reuse the invalidated cache; forcing a scan would change the version again.
           await loadSessions();
@@ -1408,10 +1411,15 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   });
 
   // Per-project activity counts count families, excluding the archive.
-  const projectActivity = useMemo(
-    () => getProjectActivity(listedSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds),
-    [listedSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds],
-  );
+  // Scheduled routines join on the project rows only: they are standing setup, not activity to
+  // surface from other projects or the pinned group.
+  const projectActivity = useMemo(() => {
+    const activity = getProjectActivity(listedSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds);
+    for (const [key, routines] of Object.entries(routineProjects)) {
+      activity.set(key, { ...(activity.get(key) ?? { running: 0, awaiting: 0, unread: 0, keepalive: 0 }), routines });
+    }
+    return activity;
+  }, [listedSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, routineProjects]);
 
   const otherProjectActivity = useMemo(() => {
     let running = 0;
@@ -2803,7 +2811,20 @@ export function SessionActivitySummary({ activity }: { activity?: ProjectActivit
           <CacheKeepaliveIcon size={11} />
         </span>
       )}
+      {activity.routines?.length ? (
+        <span role="img" title={`${t("sidebar.projectRoutines")}: ${activity.routines.join(", ")}`} aria-label={`${t("sidebar.projectRoutines")}: ${activity.routines.join(", ")}`} style={{ display: "inline-flex", alignItems: "center", color: "var(--text-dim)" }}>
+          <RoutineClockIcon size={11} />
+        </span>
+      ) : null}
     </span>
+  );
+}
+
+function RoutineClockIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+    </svg>
   );
 }
 
@@ -3147,10 +3168,7 @@ export function SessionItem({
               })()}
               {/* Prompted by a routine (docs/routines.md). */}
               {session.routineId && (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={t("sidebar.routineSession")} style={{ flexShrink: 0, color: "var(--text-dim)" }}>
-                  <title>{t("sidebar.routineSession")}</title>
-                  <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
-                </svg>
+                <span role="img" title={t("sidebar.routineSession")} aria-label={t("sidebar.routineSession")} style={{ display: "inline-flex", flexShrink: 0, color: "var(--text-dim)" }}><RoutineClockIcon /></span>
               )}
             </div>
           </button>

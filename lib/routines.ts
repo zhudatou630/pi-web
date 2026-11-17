@@ -50,6 +50,8 @@ export interface RoutineRun {
   /** An isolated run that changed files: the branch its changes were committed to. */
   branch?: string;
   error?: string;
+  /** The run's own one-line state for the next run (lib/routine-memory.ts). */
+  progress?: string;
 }
 
 export interface Routine {
@@ -66,6 +68,11 @@ export interface Routine {
   lastScheduledFor: string;
   /** Newest first, capped at MAX_RUNS. */
   runs: RoutineRun[];
+  /**
+   * Lasting rules and facts every run gets (docs/routines.md, Memory). Edited apart from the
+   * definition (setMemory), so a form save never replaces what a run just wrote.
+   */
+  memory?: string;
 }
 
 interface RoutinesFile {
@@ -84,6 +91,8 @@ export interface ClaimedRun { routine: Routine; run: RoutineRun }
 export type RoutineInput = Pick<Routine, "name" | "prompt" | "enabled" | "schedule" | "target" | "timeoutMinutes">;
 
 export const MAX_RUNS = 50;
+export const MEMORY_MAX_LINES = 30;
+export const MEMORY_MAX_LINE_LENGTH = 200;
 export const MAX_CONCURRENT_SCHEDULED_RUNS = 2;
 export const CATCH_UP_WINDOW_MS = 7 * 24 * 60 * 60_000;
 /** An occurrence found later than this after its time counts as a catch-up run. */
@@ -202,6 +211,17 @@ export function parseRoutineInput(value: unknown): RoutineInput {
 
   if (parsedSchedule.kind !== "manual") validateSchedule(parsedSchedule, minIntervalMs(parsedTarget.kind), enabled as boolean);
   return { name, prompt, enabled, schedule: parsedSchedule, target: parsedTarget, timeoutMinutes: timeoutMinutes as number };
+}
+
+/** A routine's memory: up to MEMORY_MAX_LINES non-blank lines of MEMORY_MAX_LINE_LENGTH; "" clears it. */
+export function parseRoutineMemory(value: unknown): string {
+  if (typeof value !== "string") fail("memory must be a string");
+  const memory = value.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trimEnd()).join("\n").trim();
+  const lines = memory.split("\n").filter((line) => line.trim());
+  if (lines.length > MEMORY_MAX_LINES) fail(`memory has ${lines.length} lines; keep it to ${MEMORY_MAX_LINES}: merge entries and drop stale ones`);
+  const long = lines.findIndex((line) => line.length > MEMORY_MAX_LINE_LENGTH);
+  if (long >= 0) fail(`memory line ${long + 1} is over ${MEMORY_MAX_LINE_LENGTH} characters`);
+  return memory;
 }
 
 // ---------- scheduling (pure) ----------
@@ -412,6 +432,17 @@ export class RoutineStore {
       // Resuming or rescheduling starts from the next occurrence, never a catch-up.
       if (resumed || rescheduled) routine.lastScheduledFor = now.toISOString();
       return routine;
+    });
+  }
+
+  /** Replaces the memory (validated by parseRoutineMemory); false when it already had this text. */
+  async setMemory(id: string, memory: string): Promise<boolean> {
+    return this.mutate((state) => {
+      const routine = findRoutine(state, id);
+      if ((routine.memory ?? "") === memory) return false;
+      if (memory) routine.memory = memory;
+      else delete routine.memory;
+      return true;
     });
   }
 

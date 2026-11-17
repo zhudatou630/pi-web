@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import type { Routine, RoutineRun } from "@/lib/routines";
@@ -39,6 +39,67 @@ function RunIcon({ status }: { status: RoutineRun["status"] }) {
 }
 
 /**
+ * The routine's memory (docs/routines.md, Memory): read like the instructions, edited in place
+ * and saved on its own, never with the definition form.
+ */
+function MemorySection({ memory, onSave, onDirtyChange }: {
+  memory: string;
+  onSave: (memory: string) => Promise<void>;
+  /** Unsaved edits, so leaving the page asks first (like the definition form). */
+  onDirtyChange: (dirty: boolean) => void;
+}) {
+  const { t } = useI18n();
+  /** null = showing, not editing. */
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = draft !== null && draft !== memory;
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(draft ?? "");
+      setDraft(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section aria-label={t("routines.memory")}>
+      <div className="routine-section-head">
+        <h2 className="routine-section-label">{t("routines.memory")}</h2>
+        {draft === null && (
+          <button type="button" className="ghost-icon-button" title={t("routines.memoryEdit")} aria-label={t("routines.memoryEdit")} onClick={() => setDraft(memory)}>
+            {glyph(12, <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>)}
+          </button>
+        )}
+      </div>
+      {draft !== null ? (
+        <div className="settings-form routine-memory-form">
+          <label className="config-field">
+            <textarea value={draft} aria-label={t("routines.memory")} autoFocus onChange={(event) => setDraft(event.target.value)} />
+          </label>
+          <p className="settings-row-message">{t("routines.memoryHint")}</p>
+          {error && <p role="alert" className="settings-row-message is-error">{error}</p>}
+          <div className="settings-inline-form-actions">
+            <ConfigButton size="small" disabled={saving} onClick={() => { setDraft(null); setError(null); }}>{t("routines.cancel")}</ConfigButton>
+            <ConfigButton size="small" variant="primary" disabled={saving || draft === memory} onClick={() => void save()}>{t("routines.save")}</ConfigButton>
+          </div>
+        </div>
+      ) : memory ? (
+        <CollapsibleQuote text={memory} plain />
+      ) : (
+        <p className="routine-empty-line">{t("routines.memoryEmpty")}</p>
+      )}
+    </section>
+  );
+}
+
+/**
  * An existing routine at a glance, after Claude's view: its name and actions head the page
  * (inside the page's width, like the list's title and New button, not out in the workspace
  * header); its settings as label-over-value facts on the left; the instructions and the run
@@ -47,7 +108,7 @@ function RunIcon({ status }: { status: RoutineRun["status"] }) {
  */
 export function RoutineOverview({
   routine, timeZone, projectLabel, modelName, sessions, busy, error,
-  onEdit, onDelete, onRunNow, onSetEnabled, onOpenSession,
+  onEdit, onDelete, onRunNow, onSetEnabled, onSaveMemory, onMemoryDirtyChange, onOpenSession,
 }: {
   routine: RoutineView;
   timeZone: string;
@@ -61,6 +122,9 @@ export function RoutineOverview({
   onDelete: () => void;
   onRunNow: () => void;
   onSetEnabled: (enabled: boolean) => void;
+  /** Rejects with the server's message. */
+  onSaveMemory: (memory: string) => Promise<void>;
+  onMemoryDirtyChange: (dirty: boolean) => void;
   onOpenSession: (sessionId: string) => void;
 }) {
   const { t, locale } = useI18n();
@@ -167,6 +231,7 @@ export function RoutineOverview({
             <h2 className="routine-section-label">{t("routines.prompt")}</h2>
             <CollapsibleQuote text={routine.prompt} plain />
           </section>
+          <MemorySection memory={routine.memory ?? ""} onSave={onSaveMemory} onDirtyChange={onMemoryDirtyChange} />
           <section aria-label={t("routines.tab.history")}>
             <h2 className="routine-section-label">{t("routines.tab.history")}</h2>
             {routine.runs.length === 0 ? (
@@ -185,6 +250,7 @@ export function RoutineOverview({
                     <>
                       <RunIcon status={run.status} />
                       <span className="routine-run-time">{stamp(run.scheduledFor ?? run.startedAt, locale, timeZone)}</span>
+                      {run.progress && <span className="routine-run-progress" title={run.progress}>{run.progress}</span>}
                       <span className="routine-run-note" title={run.error ?? (note || undefined)}>{note}</span>
                       {run.sessionId && glyph(12, <path d="m9 18 6-6-6-6" />, "routine-run-open")}
                     </>

@@ -6,7 +6,7 @@ import { minIntervalMs, nextRuns, type RoutineSchedule } from "./routine-schedul
 import { describeSchedule, type Translate } from "./routine-summary";
 import { interpolateMessage } from "./i18n/format";
 import { enLocale } from "./i18n/messages/en";
-import { parseRoutineInput, RoutineStore, validateSchedule, type Routine, type RoutineInput, type RoutineRun } from "./routines";
+import { MEMORY_MAX_LINES, parseRoutineInput, parseRoutineMemory, RoutineStore, validateSchedule, type Routine, type RoutineInput, type RoutineRun } from "./routines";
 import { isRoutineSchedulerEnabled } from "./routine-scheduler-flag";
 import { readSessionToolSelection } from "./session-tool-selection";
 import type { RoutineApprovalCard, SessionEntry } from "./types";
@@ -105,9 +105,12 @@ export interface UpdateRoutineParams {
   cron?: string;
   at?: string;
   enabled?: boolean;
+  /** Replaces the routine's memory, which is stored apart from its definition. */
+  memory?: string;
 }
 
-const UPDATE_FIELDS = ["name", "instructions", "cron", "at", "enabled"] as const;
+const DEFINITION_FIELDS = ["name", "instructions", "cron", "at", "enabled"] as const;
+const UPDATE_FIELDS = [...DEFINITION_FIELDS, "memory"] as const;
 
 /**
  * The stored routine with the chat's partial change applied, validated like a form save.
@@ -153,7 +156,7 @@ function runsIn(routine: Routine, chatId: string): string {
 export function describeRun(run: RoutineRun): string {
   const due = run.trigger === "manual" ? "manual run" : `due ${localTime(run.scheduledFor)}${run.trigger === "catch_up" ? " (catch-up)" : ""}`;
   const error = run.error ? `: ${run.error.length > 300 ? `${run.error.slice(0, 300)}…` : run.error}` : "";
-  return `${due}, started ${localTime(run.startedAt)}, ${run.status}${run.skipReason ? ` (${run.skipReason})` : ""}${error}${run.sessionId ? ` [chat ${run.sessionId}]` : ""}`;
+  return `${due}, started ${localTime(run.startedAt)}, ${run.status}${run.skipReason ? ` (${run.skipReason})` : ""}${error}${run.progress ? ` · progress: ${run.progress}` : ""}${run.sessionId ? ` [chat ${run.sessionId}]` : ""}`;
 }
 
 /** The list (one line each) or, for one routine, its instructions and recent runs. */
@@ -168,6 +171,8 @@ export function describeRoutines(routines: Routine[], chatId: string, now: Date,
       `Timeout: ${routine.timeoutMinutes} min.`,
       "Instructions:",
       routine.prompt,
+      "Memory:",
+      routine.memory || "(empty)",
       "Recent runs, newest first:",
       ...(routine.runs.length ? routine.runs.slice(0, 10).map((run) => `- ${describeRun(run)}`) : ["- none yet"]),
     ].join("\n");
@@ -286,7 +291,7 @@ export function createRoutineToolExtension(
         name: ROUTINES_TOOL_NAME,
         label: "Routines",
         exposure: "model-only",
-        description: "List this project's routines: id, schedule, next and last run. With id: also its instructions and recent runs (due vs start time, status, error), to explain a late or failed run. With id and any of name, instructions, cron, at, enabled: change that routine when the user asks or a run shows it is wrong (instructions replaces the whole text; cron or at replaces the whole schedule). Changes apply without approval, so tell the user what changed. Project, chat, model and tools change on the Routines page only.",
+        description: `List this project's routines: id, schedule, next and last run. With id: also its instructions, memory and recent runs (due vs start time, status, error, progress), to explain a late or failed run. With id and any of name, instructions, cron, at, enabled, memory: change that routine when the user asks or a run shows it is wrong (instructions replaces the whole text; cron or at replaces the whole schedule). memory replaces the lasting rules and facts every run is given (at most ${MEMORY_MAX_LINES} lines): change it only when one of them changes, never to log a run. Changes apply without approval, so tell the user what changed. Project, chat, model and tools change on the Routines page only.`,
         parameters: Type.Object({
           id: Type.Optional(Type.String()),
           name: Type.Optional(Type.String()),
@@ -294,6 +299,7 @@ export function createRoutineToolExtension(
           cron: Type.Optional(Type.String({ description: "New repeating schedule (5-field cron)." })),
           at: Type.Optional(Type.String({ description: "Or once: YYYY-MM-DDTHH:mm." })),
           enabled: Type.Optional(Type.Boolean({ description: "false pauses, true resumes." })),
+          memory: Type.Optional(Type.String({ description: "The whole new memory, one entry per line." })),
         }),
         async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
           // Some models fill every optional field with "": a blank field means "unchanged", like create_routine's cron/at.
@@ -319,13 +325,18 @@ export function createRoutineToolExtension(
           const change = given as UpdateRoutineParams;
           const before = store().list().find((routine) => routine.id === change.id);
           if (!before || !(await inProject(before, ctx.cwd))) return fail(`no routine ${change.id} in this project; call ${ROUTINES_TOOL_NAME} without fields to list them.`);
-          let after: Routine;
+          let after: Routine = before;
+          let memoryChanged = false;
           try {
-            after = structuredClone(await store().update(change.id, (current) => applyRoutineUpdate(current, change)));
+            const memory = change.memory === undefined ? undefined : parseRoutineMemory(change.memory);
+            if (DEFINITION_FIELDS.some((key) => change[key] !== undefined)) {
+              after = structuredClone(await store().update(change.id, (current) => applyRoutineUpdate(current, change)));
+            }
+            if (memory !== undefined) memoryChanged = await store().setMemory(change.id, memory);
           } catch (error) {
             return fail(error instanceof Error ? error.message : String(error));
           }
-          const changes = describeRoutineChanges(before, after);
+          const changes = [...describeRoutineChanges(before, after), ...(memoryChanged ? ["memory replaced"] : [])];
           if (changes.length === 0) {
             return { content: [{ type: "text" as const, text: `No change: "${after.name}" already has these values.` }], details: { updated: false } };
           }

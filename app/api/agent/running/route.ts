@@ -4,6 +4,9 @@ import { readSidebarSnapshot, updateSidebarReadAt, SESSION_ID_PATTERN } from "@/
 import { noteSessionCompletions } from "@/lib/session-completion-snapshot";
 import { getSessionIdsWithUnsettledSubagents } from "@/lib/subagent-runtime";
 import { getSessionListVersion } from "@/lib/session-reader";
+import { nextRunAt, RoutineStore } from "@/lib/routines";
+import { resolveProject } from "@/lib/worktree";
+import { projectIdentityKey } from "@/lib/project-identity";
 import {
   getAwaitingInputRpcSessionIds,
   getCacheKeepaliveRpcSessions,
@@ -12,6 +15,20 @@ import {
 } from "@/lib/rpc-manager";
 
 export const dynamic = "force-dynamic";
+
+/** Names of the routines that will run on their own, by project key (the sidebar's project glyph). */
+async function scheduledRoutinesByProject(now: Date): Promise<Record<string, string[]>> {
+  const byProject: Record<string, string[]> = {};
+  let routines;
+  try { routines = new RoutineStore().list(); } catch { return byProject; } // A corrupt file must not stop the poll.
+  for (const routine of routines) {
+    if (!nextRunAt(routine, now)) continue; // paused, manual or over
+    // resolveProject is cached, so a poll does not run git for every routine.
+    const key = projectIdentityKey((await resolveProject(routine.target.cwd)).projectRoot);
+    (byProject[key] ??= []).push(routine.name);
+  }
+  return byProject;
+}
 
 // GET /api/agent/running - Lightweight snapshot for visible-tab polling.
 async function snapshot(readIds: string[] = [], observedAt = 0, knownReadAtVersion?: string | null) {
@@ -35,6 +52,7 @@ async function snapshot(readIds: string[] = [], observedAt = 0, knownReadAtVersi
       runningSessionIds,
       awaitingInputSessionIds: getAwaitingInputRpcSessionIds(),
       cacheKeepaliveSessions: getCacheKeepaliveRpcSessions(),
+      routineProjects: await scheduledRoutinesByProject(new Date(serverNow)),
       completionNotificationSuppressedSessionIds: getCompletionNotificationSuppressedRpcSessionIds(),
     },
     { headers: { "Cache-Control": "no-store" } },

@@ -9,6 +9,9 @@ import { nextRuns } from "./routine-schedule";
 import { cleanupIsolatedWorktree, createIsolatedWorktree, type IsolatedWorktree, type IsolatedWorktreeCleanup } from "./subagent-worktree";
 import { notifyRoutine } from "./routine-notify";
 import { ROUTINE_RUN_ENTRY_TYPE } from "./routine-run-entry";
+import { assistantText, COMPACT_ABOVE_TOKENS, progressFromReply, ROUTINE_COMPACTION_INSTRUCTIONS, ROUTINE_MEMORY_MESSAGE_TYPE, routineMemoryContext } from "./routine-memory";
+import { ROUTINES_TOOL_NAME } from "./routine-tool-extension";
+import { hasWriteCapableTool } from "./read-only-tool-guard";
 import { RoutineStore, type Routine, type RoutineRun, type RoutineRunStatus } from "./routines";
 
 // Design: docs/routines.md
@@ -23,7 +26,6 @@ export interface RoutineSession {
   send(command: { type: string; [key: string]: unknown }): Promise<unknown>;
   onEvent(listener: (event: AgentEvent) => void): () => void;
   isRunning(): boolean;
-  readonly inner: { messages: ReadonlyArray<{ role: string; stopReason?: string; errorMessage?: string }> };
 }
 
 export interface RunOutcome {
@@ -31,7 +33,10 @@ export interface RunOutcome {
   skipReason?: RoutineRun["skipReason"];
   error?: string;
   branch?: string;
+  progress?: string;
 }
+
+type AssistantMessage = { role?: unknown; content?: unknown; stopReason?: string; errorMessage?: string };
 
 /** Polls until `busy()` is false (true) or `deadline` passes (false). */
 export async function waitUntilIdle(busy: () => boolean, deadline: number, pollMs = BUSY_POLL_MS): Promise<boolean> {
@@ -60,17 +65,35 @@ function busyDeadline(routine: Routine, run: RoutineRun): number {
 }
 
 /**
- * Sends the prompt and resolves once the session is idle again. The deadline also
- * covers admission: an extension command parked on a dialog never returns from send().
+ * Runs `before` (compaction, memory, run marker), sends the prompt and resolves once the session
+ * is idle again. The deadline covers all of it, admission too: an extension command parked on a
+ * dialog never returns from send(). Only this prompt's replies count: an earlier run's are ignored.
  */
 export async function runPromptToCompletion(
-  session: RoutineSession, prompt: string, timeoutMs: number, abortGraceMs = ABORT_GRACE_MS,
+  session: RoutineSession, prompt: string, timeoutMs: number,
+  { abortGraceMs = ABORT_GRACE_MS, before }: { abortGraceMs?: number; before?: (stopped: () => boolean) => Promise<void> } = {},
 ): Promise<RunOutcome> {
+  let prompting = false;
+  /** Timed out, or Stop during `before`: nothing more may go into the chat. */
+  let stopped = false;
+  let reply: AssistantMessage | undefined;
+  let progress: string | undefined;
   let promptError: string | undefined;
   let aborted = false;
   let finish!: () => void;
   const idle = new Promise<void>((resolve) => { finish = resolve; });
   const off = session.onEvent((event) => {
+    // A compaction in `before` settles too; that is not this prompt finishing. Stop during it
+    // (an aborted compaction) stops the run, not only the compaction.
+    if (!prompting) {
+      if (event.type === "compaction_end" && event.aborted === true) stopped = true;
+      return;
+    }
+    const message = event.message as AssistantMessage | undefined;
+    if (event.type === "message_end" && message?.role === "assistant") {
+      reply = message;
+      progress = progressFromReply(assistantText(message)) ?? progress;
+    }
     if (event.type === "prompt_error") promptError = String(event.errorMessage ?? "Prompt failed");
     if (event.type === "prompt_done" || event.type === "agent_settled") {
       if (event.aborted === true) aborted = true;
@@ -82,11 +105,20 @@ export async function runPromptToCompletion(
   const sleep = (ms: number) => new Promise<"timeout">((resolve) => { timers.push(setTimeout(() => resolve("timeout"), ms)); });
   try {
     const deadline = sleep(timeoutMs);
-    const sent = session.send({ type: "prompt", message: prompt }).then(() => "sent" as const);
+    const sent = (async () => {
+      await before?.(() => stopped);
+      if (stopped) return "stopped" as const;
+      prompting = true;
+      await session.send({ type: "prompt", message: prompt });
+      return "sent" as const;
+    })();
     sent.catch(() => {}); // A late rejection after the deadline is already handled as a timeout.
-    let state: "sent" | "idle" | "timeout" = await Promise.race([sent, deadline]);
+    let state: "sent" | "stopped" | "idle" | "timeout" = await Promise.race([sent, deadline]);
+    if (state === "stopped") return { status: "aborted" };
     if (state === "sent") state = await Promise.race([idle.then(() => "idle" as const), deadline]);
     if (state === "timeout") {
+      // Before the abort: a `before` still going must not prompt once its compaction is cancelled.
+      stopped = true;
       // Neither the abort nor the session's wind-down may hold the run past the grace period.
       const abort = session.send({ type: "abort" }).catch(() => {});
       await Promise.race([Promise.all([abort, idle]), sleep(abortGraceMs)]);
@@ -96,11 +128,40 @@ export async function runPromptToCompletion(
     timers.forEach(clearTimeout);
     off();
   }
-  if (aborted) return { status: "aborted" };
-  if (promptError) return { status: "failed", error: promptError };
-  const last = session.inner.messages.findLast((message) => message.role === "assistant");
-  if (last?.stopReason === "error") return { status: "failed", error: last.errorMessage || "Model request failed" };
-  return { status: "succeeded" };
+  const outcome: RunOutcome = aborted ? { status: "aborted" }
+    : promptError ? { status: "failed", error: promptError }
+      : reply?.stopReason === "error" ? { status: "failed", error: reply.errorMessage || "Model request failed" }
+        : { status: "succeeded" };
+  return progress ? { ...outcome, progress } : outcome;
+}
+
+/**
+ * What a run does right before its prompt, in this order: a continued chat over the threshold is
+ * compacted, the memory goes in as a hidden message, then the run marker. Nothing but the prompt
+ * may follow the marker, or the chat no longer shows the prompt as the run's (session-reader).
+ */
+function beforePrompt(store: RoutineStore, routine: Routine, run: RoutineRun, session: StartedChat): (stopped: () => boolean) => Promise<void> {
+  return async (stopped) => {
+    if (routine.target.kind === "same_session" && (session.inner.getContextUsage()?.tokens ?? 0) > COMPACT_ABOVE_TOKENS) {
+      // An uncompacted run beats a failed one.
+      await session.send({ type: "compact", customInstructions: ROUTINE_COMPACTION_INSTRUCTIONS }).catch((error: unknown) => {
+        console.error("[pi-web] routine compaction failed:", error instanceof Error ? error.message : error);
+      });
+      if (stopped()) return;
+    }
+    // Read now: a continued chat may have been waited for, and a run or the user may have changed the memory.
+    const current = store.list().find((item) => item.id === routine.id) ?? routine;
+    const tools = session.inner.getActiveToolNames();
+    const canEdit = tools.includes(ROUTINES_TOOL_NAME) && hasWriteCapableTool(tools);
+    await session.inner.sendCustomMessage(
+      { customType: ROUTINE_MEMORY_MESSAGE_TYPE, content: routineMemoryContext(current, run.runId, canEdit), display: false },
+      { triggerTurn: false },
+    );
+    // A marker no prompt follows would claim the next message someone types.
+    if (stopped()) return;
+    // `mode` lets the session list tell a run's own chat (hidden there) from a continued one.
+    session.markRoutineRun({ routineId: routine.id, runId: run.runId, mode: routine.target.kind, name: routine.name });
+  };
 }
 
 function runSessionName(routine: Routine, run: RoutineRun): string {
@@ -184,11 +245,10 @@ export async function executeRoutineRun(store: RoutineStore, routine: Routine, r
       outcome = { status: "skipped", skipReason: "target_busy" };
     } else {
       sessionId = chat.sessionId;
-      // `mode` lets the session list tell a run's own chat (hidden there) from a continued one.
       await store.updateRun(routine.id, run.runId, { sessionId });
-      // Right before the prompt: nothing else may be sent into the chat in between.
-      chat.session.markRoutineRun({ routineId: routine.id, runId: run.runId, mode: routine.target.kind, name: routine.name });
-      outcome = await runPromptToCompletion(chat.session as unknown as RoutineSession, routine.prompt, routine.timeoutMinutes * 60_000);
+      outcome = await runPromptToCompletion(chat.session as unknown as RoutineSession, routine.prompt, routine.timeoutMinutes * 60_000, {
+        before: beforePrompt(store, routine, run, chat.session),
+      });
     }
   } catch (error) {
     paused = error instanceof RoutinePausedError;

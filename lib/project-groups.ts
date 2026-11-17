@@ -122,6 +122,8 @@ export interface ProjectActivity {
   unread: number;
   /** Families keeping their prompt cache warm (each scheduled refresh costs money). */
   keepalive: number;
+  /** Names of this project's routines that will run on their own (project rows only). */
+  routines?: string[];
 }
 
 export function getProjectActivity(
