@@ -8,7 +8,6 @@ export interface FaviconBadge {
   count: number;
 }
 
-const BASE_ICON_URL = "/icons/icon-192.png";
 const COLORS = { awaiting: "#b45309", unread: "#059669" } as const;
 
 export function getFaviconBadge(awaiting: number, unread: number): FaviconBadge | null {
@@ -37,7 +36,8 @@ function loadBaseIcon(): Promise<HTMLImageElement | null> {
     const image = new Image();
     image.onload = () => resolve(image);
     image.onerror = () => resolve(null);
-    image.src = BASE_ICON_URL;
+    // The apple-touch-icon link is never rewritten here and follows a customized app icon.
+    image.src = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.href || "/icons/icon-192.png";
   });
   return baseIcon;
 }

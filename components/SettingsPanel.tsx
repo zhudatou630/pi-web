@@ -52,6 +52,7 @@ import { UsageStats } from "./UsageStats";
 import { subscribeNotificationPermission } from "@/lib/browser-notifications";
 import { setupPushSubscription } from "@/lib/push-client";
 import { AppUpdateNotice } from "./AppUpdateNotice";
+import { AppIdentityRows } from "./AppIdentityRows";
 import { ConfigButton, ConfigSwitch, SettingsGroup, SettingsRow } from "./SettingsUi";
 import { SubagentIcon } from "./SubagentIcon";
 
@@ -381,6 +382,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
           setExportImageFooterEnabled(enabled);
           setExportImageFooter(enabled);
         })}
+        <AppIdentityRows />
       </SettingsGroup>
 
       <SettingsGroup title={t("settings.chat")}>

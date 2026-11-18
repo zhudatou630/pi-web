@@ -1,11 +1,20 @@
 import type { MetadataRoute } from "next";
+import { APP_ICON_SIZES, appIconUrl, appIconVersion, effectiveAppName, readAppIdentity } from "@/lib/app-identity";
 
-// Read per request so PI_WEB_APP_NAME takes effect without a rebuild.
+// Read per request so Settings and PI_WEB_APP_NAME take effect without a rebuild.
 export const dynamic = "force-dynamic";
 
 export default function manifest(): MetadataRoute.Manifest {
-  const iconVersion = process.env.NEXT_PUBLIC_ICON_VERSION ? `?v=${process.env.NEXT_PUBLIC_ICON_VERSION}` : "";
-  const appName = process.env.PI_WEB_APP_NAME?.trim() || "Pi Web";
+  const stockVersion = process.env.NEXT_PUBLIC_ICON_VERSION ? `?v=${process.env.NEXT_PUBLIC_ICON_VERSION}` : "";
+  const identity = readAppIdentity();
+  const appName = effectiveAppName(identity);
+  const customVersion = appIconVersion(identity);
+  const icons = APP_ICON_SIZES.filter((size) => size !== 180).map((size) => ({
+    src: customVersion ? appIconUrl(size, customVersion) : `/icons/icon-${size}.png${stockVersion}`,
+    sizes: `${size}x${size}`,
+    type: "image/png",
+    purpose: "any" as const,
+  }));
 
   return {
     id: "/",
@@ -19,19 +28,6 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#f5f5f5",
     categories: ["developer", "productivity"],
     lang: "en",
-    icons: [
-      {
-        src: `/icons/icon-192.png${iconVersion}`,
-        sizes: "192x192",
-        type: "image/png",
-        purpose: "any",
-      },
-      {
-        src: `/icons/icon-512.png${iconVersion}`,
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "any",
-      },
-    ],
+    icons,
   };
 }

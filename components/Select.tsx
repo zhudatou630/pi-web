@@ -8,6 +8,8 @@ export interface SelectOption {
   label: string;
   disabled?: boolean;
   title?: string;
+  /** Leading glyph in the menu row (e.g. a color dot). */
+  icon?: ReactNode;
 }
 
 interface SelectProps {
@@ -181,6 +183,7 @@ export function Select({ value, options, onChange, ariaLabel, disabled = false, 
                 onClick={() => choose(index)}
                 onMouseEnter={() => !option.disabled && setActive(index)}
               >
+                {option.icon}
                 <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{option.label}</span>
                 <MenuCheck checked={checked(index)} />
               </button>

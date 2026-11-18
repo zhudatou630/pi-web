@@ -44,7 +44,7 @@ Environment:
   PORT                       Default port when --port is omitted
   PI_WEB_HOSTNAME            Default hostname when --hostname is omitted
   PI_WEB_NO_OPEN             Set to 1/true/yes/on to disable browser open
-  PI_WEB_APP_NAME            PWA manifest name (trimmed; default Pi Web)
+  PI_WEB_APP_NAME            Default app name (default Pi Web; Settings > General overrides)
   PI_WEB_PASSWORD            Enable browser password login and API Basic Auth
   PI_WEB_ALLOWED_HOSTS       Extra exact proxy/custom hostnames, comma-separated
   PI_WEB_PREVIEW_PORT        Loopback port of the local-service preview proxy

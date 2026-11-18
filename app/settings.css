@@ -3705,3 +3705,74 @@ button.usage-cell:not(:disabled) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Settings › General › Appearance: the app's name, edited in place (no field chrome until
+   hovered or focused), then a small icon at the row's end that opens the color menu. */
+.settings-app-tile {
+  display: flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.settings-app-tile svg {
+  display: block;
+  border-radius: var(--ui-radius-sm);
+}
+
+.settings-app-tile .select-trigger-chevron {
+  display: none;
+}
+
+.settings-app-tile:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  outline: none;
+  box-shadow: var(--ui-field-ring);
+}
+
+/* A long name shrinks (the icon stays at the row's end) instead of pushing the row wider. */
+.settings-row-control:has(> .settings-app-name) {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.settings-app-name {
+  /* Hugs the name (the size attribute is the fallback), so it ends at the row's edge. */
+  field-sizing: content;
+  flex: 0 1 auto;
+  min-width: 4em;
+  text-overflow: ellipsis;
+  height: var(--ui-row-height);
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--ui-radius-md);
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* The default name is the app's real name, not a hint, until the field is focused. */
+.settings-app-name:not(:focus)::placeholder {
+  color: var(--text);
+  opacity: 1;
+}
+
+.settings-app-name:hover {
+  background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-edge);
+}
+
+.settings-app-name:focus-visible {
+  outline: none;
+  background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-ring);
+}
+
+.settings-app-icon-dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+}

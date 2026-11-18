@@ -2609,9 +2609,11 @@ export function AppShell() {
     });
   }, [activeFileTab?.cwd, activeFileTab?.sourceSessionId, handleOpenFile]);
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
-  const windowTitle = activeCwdName ? `${activeCwdName} - Pi Web` : "Pi Web";
 
   useEffect(() => {
+    // The server's app name (app/layout.tsx, Settings › General › Appearance).
+    const appName = document.querySelector<HTMLMetaElement>('meta[name="application-name"]')?.content || "Pi Web";
+    const windowTitle = activeCwdName ? `${activeCwdName} - ${appName}` : appName;
     const syncWindowTitle = () => {
       if (document.title !== windowTitle) document.title = windowTitle;
     };
@@ -2620,7 +2622,7 @@ export function AppShell() {
     const observer = new MutationObserver(syncWindowTitle);
     observer.observe(document.head, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
-  }, [windowTitle]);
+  }, [activeCwdName]);
 
   const sidebarContent = (
     <>

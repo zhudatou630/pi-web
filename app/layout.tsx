@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import { Noto_Sans_Mono } from "next/font/google";
 import { PwaRegistration } from "@/components/PwaRegistration";
+import { appIconUrl, appIconVersion, effectiveAppName, readAppIdentity } from "@/lib/app-identity";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./settings.css";
@@ -15,44 +17,59 @@ const notoSansMono = Noto_Sans_Mono({
 
 const iconVersion = process.env.NEXT_PUBLIC_ICON_VERSION ? `?v=${process.env.NEXT_PUBLIC_ICON_VERSION}` : "";
 
-export const metadata: Metadata = {
-  title: "Pi Web",
-  description: "Pi Web interface for the pi coding agent",
-  applicationName: "Pi Web",
-  manifest: "/manifest.webmanifest",
-  icons: {
-    icon: [
-      {
-        url: `/favicon.svg${iconVersion}`,
-        type: "image/svg+xml",
-      },
-      {
-        url: `/icons/icon-192.png${iconVersion}`,
-        sizes: "192x192",
-        type: "image/png",
-      },
-      {
-        url: `/favicon.ico${iconVersion}`,
-        sizes: "any",
-      },
-    ],
-    apple: [
-      {
-        url: `/icons/apple-touch-icon.png${iconVersion}`,
-        sizes: "180x180",
-        type: "image/png",
-      },
-    ],
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Pi Web",
-  },
-  formatDetection: {
-    telephone: false,
-  },
+const stockIcons: Metadata["icons"] = {
+  icon: [
+    {
+      url: `/favicon.svg${iconVersion}`,
+      type: "image/svg+xml",
+    },
+    {
+      url: `/icons/icon-192.png${iconVersion}`,
+      sizes: "192x192",
+      type: "image/png",
+    },
+    {
+      url: `/favicon.ico${iconVersion}`,
+      sizes: "any",
+    },
+  ],
+  apple: [
+    {
+      url: `/icons/apple-touch-icon.png${iconVersion}`,
+      sizes: "180x180",
+      type: "image/png",
+    },
+  ],
 };
+
+// Per request: Settings › General › Appearance renames and recolors this server's app.
+// AppShell reads the name back from <meta name="application-name"> for the window title.
+export async function generateMetadata(): Promise<Metadata> {
+  await connection();
+  const identity = readAppIdentity();
+  const name = effectiveAppName(identity);
+  const iconVersion = appIconVersion(identity);
+  return {
+    title: name,
+    description: "Pi Web interface for the pi coding agent",
+    applicationName: name,
+    manifest: "/manifest.webmanifest",
+    icons: iconVersion
+      ? {
+        icon: [{ url: appIconUrl(192, iconVersion), sizes: "192x192", type: "image/png" }],
+        apple: [{ url: appIconUrl(180, iconVersion), sizes: "180x180", type: "image/png" }],
+      }
+      : stockIcons,
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "black-translucent",
+      title: name,
+    },
+    formatDetection: {
+      telephone: false,
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",

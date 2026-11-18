@@ -45,6 +45,9 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: maxBodySize(),
   },
+  // The root layout's metadata is per request (app/layout.tsx); streamed, Next would put the
+  // manifest, icon and title tags in <body>, where Safari's Add to Home Screen never reads them.
+  htmlLimitedBots: /.*/,
   serverExternalPackages: [
     "node-pty",
     "subset-font",
