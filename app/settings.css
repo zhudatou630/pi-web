@@ -1056,6 +1056,7 @@
 
 .settings-detail-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -2435,10 +2436,19 @@ a.models-hint:hover {
 .models-discovery-header,
 .models-discovery-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   font-size: 12px;
+}
+
+.models-discovery-fill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--text-muted);
 }
 
 .models-discovery-list {
@@ -2536,6 +2546,8 @@ a.models-hint:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Lines up with the nested Thinking levels row above it. */
+  padding: 4px 0 12px 16px;
 }
 
 .models-thinking-row {
@@ -2552,7 +2564,7 @@ a.models-hint:hover {
   font-size: 11px;
 }
 
-.models-thinking-row.is-null .models-thinking-level {
+.models-thinking-row.is-unsupported .models-thinking-level {
   color: var(--text-dim);
   text-decoration: line-through;
 }
@@ -2562,7 +2574,7 @@ a.models-hint:hover {
   height: var(--ui-row-height);
 }
 
-.models-thinking-row:not(.is-string) .models-thinking-input {
+.models-thinking-row:not(.is-custom) .models-thinking-input {
   color: var(--text-dim);
 }
 
@@ -2598,6 +2610,11 @@ a.models-hint:hover {
 
 .models-segmented button.is-danger[aria-checked="true"] {
   color: var(--danger);
+}
+
+/* Fill and Test sit at the end of the title's meta line. */
+.models-detail-actions {
+  margin-left: auto;
 }
 
 /* Footer */

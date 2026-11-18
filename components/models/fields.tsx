@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEventHandler, type ReactNode } from "react";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { useI18n } from "@/hooks/useI18n";
 import { THINKING_LEVELS, THINKING_LEVEL_LABELS } from "@/lib/thinking-levels";
-import { serializeHeaderRows, updateHeaderRow, type HeaderRow } from "../models-config-helpers";
+import {
+  serializeHeaderRows,
+  setThinkingLevelState,
+  thinkingLevelState,
+  updateHeaderRow,
+  type CompatChoice,
+  type HeaderRow,
+  type ThinkingLevelMap,
+  type ThinkingLevelState,
+} from "../models-config-helpers";
 import { ModalDialog } from "../ModalDialog";
 import { Select as SelectField } from "../Select";
-import { ConfigButton, ConfigSwitch, SettingsRow } from "../SettingsUi";
+import { ConfigButton, ConfigSwitch, SettingsRow, SettingsSegmented } from "../SettingsUi";
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
 
@@ -92,14 +100,39 @@ export function Select({ value, onChange, options, required }: { value: string; 
 }
 
 /** A labelled on/off row, matching the switch rows on the General settings page. */
-export function SwitchRow({ label, checked, onChange }: {
+export function SwitchRow({ label, checked, onChange, nested }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  nested?: boolean;
 }) {
   return (
-    <SettingsRow label={label}>
+    <SettingsRow label={label} nested={nested}>
       <ConfigSwitch checked={checked} label={label} onChange={onChange} />
+    </SettingsRow>
+  );
+}
+
+/** Default / On / Off for a setting pi auto-detects when the model leaves it unset. */
+export function CompatChoiceRow({ label, value, onChange, nested }: {
+  label: string;
+  value: CompatChoice;
+  onChange: (v: CompatChoice) => void;
+  nested?: boolean;
+}) {
+  const { t } = useI18n();
+  return (
+    <SettingsRow label={label} nested={nested} stacked>
+      <SettingsSegmented
+        label={label}
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: "default", label: t("i18n.default") },
+          { value: "on", label: t("models.choiceOn") },
+          { value: "off", label: t("models.choiceOff") },
+        ]}
+      />
     </SettingsRow>
   );
 }
@@ -177,53 +210,62 @@ export function HeaderListEditor({ headers, onChange }: {
 
 // ── Thinking level map ────────────────────────────────────────────────────────
 
+/** Per level: what pi offers (unsupported / supported) or the provider value it sends instead. */
 export function ThinkingLevelMapEditor({
   value,
   onChange,
+  explicit = false,
 }: {
-  value: Record<string, string | null> | undefined;
-  onChange: (v: Record<string, string | null> | undefined) => void;
+  value: ThinkingLevelMap | undefined;
+  onChange: (v: ThinkingLevelMap | undefined) => void;
+  /** Built-in model override: write every choice, see `setThinkingLevelState`. */
+  explicit?: boolean;
 }) {
   const { t } = useI18n();
-  const map = value ?? {};
+  // A custom value equal to the level name is just "supported"; keep it shown as Custom while edited.
+  const [customLevels, setCustomLevels] = useState<ReadonlySet<string>>(() => new Set());
 
-  const setLevel = (level: ThinkingLevel, entry: string | null | "omit") => {
-    const next = { ...map };
-    if (entry === "omit") delete next[level];
-    else next[level] = entry;
-    onChange(Object.keys(next).length ? next : undefined);
+  const setState = (level: string, state: ThinkingLevelState) => {
+    setCustomLevels((current) => {
+      const next = new Set(current);
+      if (state === "custom") next.add(level);
+      else next.delete(level);
+      return next;
+    });
+    onChange(setThinkingLevelState(value, level, state, explicit));
   };
 
   return (
     <div className="models-thinking-map">
       {THINKING_LEVELS.map((level) => {
-        const raw = map[level];
-        const state: "omit" | "null" | "string" =
-          !(level in map) ? "omit" : raw === null ? "null" : "string";
-        const strVal = typeof raw === "string" ? raw : "";
-
+        const raw = value?.[level];
+        const state = customLevels.has(level) && typeof raw === "string" ? "custom" : thinkingLevelState(value, level);
+        const label = THINKING_LEVEL_LABELS[level];
         return (
           <div key={level} className={`models-thinking-row is-${state}`}>
-            <span className="models-thinking-level">{THINKING_LEVEL_LABELS[level]}</span>
-            <div className="models-segmented" role="radiogroup" aria-label={level}>
-              <button type="button" role="radio" aria-checked={state === "omit"} onClick={() => setLevel(level, "omit")}>
-                {t("models.levelDefault")}
+            <span className="models-thinking-level">{label}</span>
+            <div className="models-segmented" role="radiogroup" aria-label={label}>
+              <button type="button" role="radio" aria-checked={state === "unsupported"} className="is-danger" onClick={() => setState(level, "unsupported")}>
+                {t("models.levelUnsupported")}
               </button>
-              <button type="button" role="radio" aria-checked={state === "null"} className="is-danger" onClick={() => setLevel(level, null)}>
-                {t("models.levelDisabled")}
+              <button type="button" role="radio" aria-checked={state === "supported"} onClick={() => setState(level, "supported")}>
+                {t("models.levelSupported")}
               </button>
-              <button type="button" role="radio" aria-checked={state === "string"} onClick={() => setLevel(level, strVal || level)}>
+              <button type="button" role="radio" aria-checked={state === "custom"} onClick={() => setState(level, "custom")}>
                 {t("models.levelCustom")}
               </button>
             </div>
             <input
               className="models-input models-thinking-input"
-              value={strVal}
-              onChange={(e) => setLevel(level, e.target.value)}
-              onFocus={() => { if (state !== "string") setLevel(level, strVal || level); }}
+              value={state === "custom" && typeof raw === "string" ? raw : ""}
+              onChange={(e) => {
+                setCustomLevels((current) => new Set(current).add(level));
+                onChange({ ...value, [level]: e.target.value });
+              }}
+              onFocus={() => { if (state !== "custom") setState(level, "custom"); }}
               placeholder={level}
               maxLength={10}
-              aria-label={`${level} ${t("models.levelCustom")}`}
+              aria-label={`${label} ${t("models.levelCustom")}`}
             />
           </div>
         );

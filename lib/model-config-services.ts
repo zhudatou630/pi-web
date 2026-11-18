@@ -127,6 +127,11 @@ export async function getModelsConfigReadServices(cwd: string): Promise<ConfigSe
  * shipped model whole, so the panel uses this to say so.
  */
 export async function builtInModelRefs(): Promise<string[]> {
+  return (await shippedModels()).map((model) => `${model.provider}/${model.id}`);
+}
+
+/** pi's shipped models, without models.json or credentials. */
+export async function shippedModels() {
   const agentDir = getAgentDir();
   const runtime = await ModelRuntime.create({
     credentials: new InMemoryCredentialStore(),
@@ -135,5 +140,5 @@ export async function builtInModelRefs(): Promise<string[]> {
     modelsStorePath: join(agentDir, "models-store.json"),
     allowModelNetwork: false,
   });
-  return runtime.getModels().map((model) => `${model.provider}/${model.id}`);
+  return runtime.getModels();
 }

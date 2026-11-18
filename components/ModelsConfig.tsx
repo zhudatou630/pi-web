@@ -16,8 +16,10 @@ import {
   findInvalidSamplingParams,
   mergeRuntimeModel,
   withoutSavedSamplingParams,
+  applyCatalogPresetsById,
   type ModelOverrideFields,
 } from "./models-config-helpers";
+import { MAX_FILL_BATCH, type ModelCatalogRecommendation } from "@/lib/model-catalog";
 import {
   allPatternsUnmatched,
   appendExactRef,
@@ -132,6 +134,13 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [scopeNotice, setScopeNotice] = useState<string | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [expandedOverrides, setExpandedOverrides] = useState<Record<string, boolean>>({});
+  /** Fill for many models (Fill all, or import); shown on that provider's page. */
+  const [bulkFill, setBulkFill] = useState<({ provider: string } & (
+    | { phase: "loading" }
+    /** Undo applies only while the list is still `result`: later edits are never rolled back. */
+    | { phase: "done"; updated: number; total: number; unmatched: number; undo: ModelEntry[] | null; result: ModelEntry[] }
+    | { phase: "error"; message: string }
+  )) | null>(null);
 
   // Each source has an apply step so the mount can paint the cached reply first.
   const configDirtyRef = useRef(false);
@@ -285,6 +294,73 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models } } };
     });
   }, []);
+
+  // Bulk Fill applies to the draft as it is when models.dev answers, not when it was asked.
+  const configRef = useRef(config);
+  useEffect(() => { configRef.current = config; });
+
+  // Fills run one after another, each applied to the draft as it is when it lands.
+  const fillQueueRef = useRef<Promise<void>>(Promise.resolve());
+  /** Bumped by Discard: fills asked for before it never land. */
+  const fillGenerationRef = useRef(0);
+  const fillModels = useCallback((providerName: string, targets: { id: string; api?: string; baseUrl?: string }[]) => {
+    if (targets.length === 0) return;
+    setBulkFill({ provider: providerName, phase: "loading" });
+    const generation = fillGenerationRef.current;
+    const run = async () => {
+      try {
+        const chunks = Array.from({ length: Math.ceil(targets.length / MAX_FILL_BATCH) }, (_, index) =>
+          targets.slice(index * MAX_FILL_BATCH, (index + 1) * MAX_FILL_BATCH));
+        const replies = await Promise.all(chunks.map(async (chunk) => {
+          const res = await fetch("/api/models-config/catalog", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: providerName, models: chunk }),
+          });
+          const data = await res.json() as { recommendations?: (ModelCatalogRecommendation | null)[]; error?: string };
+          if (!res.ok || data.recommendations?.length !== chunk.length) throw new Error(data.error ?? `HTTP ${res.status}`);
+          return data.recommendations;
+        }));
+        if (generation !== fillGenerationRef.current) return;
+        const answers = replies.flat();
+        const recommendations = new Map(targets.map((target, index) => [target.id, answers[index]]));
+        const provider = configRef.current.providers?.[providerName];
+        const before = provider?.models ?? [];
+        const filled = applyCatalogPresetsById(before, recommendations);
+        for (const [previous, next] of filled.replaced) {
+          const key = modelKeys.current.get(previous);
+          if (key !== undefined) modelKeys.current.set(next, key);
+        }
+        if (provider && filled.updated) {
+          updateProvider(providerName, { ...provider, models: filled.models });
+          // The next queued fill must see this result before the effect syncs the ref.
+          configRef.current = { ...configRef.current, providers: { ...configRef.current.providers, [providerName]: { ...provider, models: filled.models } } };
+        }
+        setBulkFill({
+          provider: providerName,
+          phase: "done",
+          updated: filled.updated,
+          total: recommendations.size,
+          unmatched: filled.unmatched,
+          undo: filled.updated ? before : null,
+          result: filled.models,
+        });
+      } catch (error) {
+        if (generation !== fillGenerationRef.current) return;
+        setBulkFill({ provider: providerName, phase: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    };
+    fillQueueRef.current = fillQueueRef.current.then(run);
+  }, [updateProvider]);
+
+  const bulkFillUndoable = bulkFill?.phase === "done" && bulkFill.undo !== null
+    && config.providers?.[bulkFill.provider]?.models === bulkFill.result;
+  const undoBulkFill = () => {
+    if (!bulkFillUndoable || bulkFill?.phase !== "done" || !bulkFill.undo) return;
+    const provider = config.providers?.[bulkFill.provider];
+    if (provider) updateProvider(bulkFill.provider, { ...provider, models: bulkFill.undo });
+    setBulkFill(null);
+  };
 
   const updateModel = useCallback((providerName: string, index: number, m: ModelEntry) => {
     setConfig((prev) => {
@@ -497,6 +573,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   const discardChanges = () => {
     setConfig(savedConfig);
+    fillGenerationRef.current += 1;
+    setBulkFill(null);
     setSaveError(null);
     if (view.provider && !savedConfig.providers?.[view.provider]
       && !catalog.some((model) => model.provider === view.provider)) {
@@ -644,6 +722,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const builtIn = Boolean(row.oauth || row.apiKey);
     const showApiKey = row.apiKey && (!row.oauth || row.apiKey.configured || !row.oauth.loggedIn);
     const definitions = json?.models ?? [];
+    // Each model is matched on its effective API and URL, like the single-model Fill.
+    const fillTargets = (models: readonly ModelEntry[]) => models.filter((model) => model.id.trim()).map((model) => ({
+      id: model.id,
+      api: model.api || json?.api,
+      baseUrl: model.baseUrl ?? json?.baseUrl,
+    }));
     const hasEndpointOverrides = Boolean(
       json && (
         (json.name && json.name.trim() !== "") ||
@@ -737,6 +821,16 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                 <ConfigButton size="small" disabled={!json?.baseUrl?.trim()} title={json?.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
                   {t("models.discoveryFetch")}
                 </ConfigButton>
+                {definitions.some((model) => model.id.trim()) && (
+                  <ConfigButton
+                    size="small"
+                    title={t("models.catalogFillAction")}
+                    disabled={bulkFill?.phase === "loading"}
+                    onClick={() => fillModels(row.id, fillTargets(definitions))}
+                  >
+                    {bulkFill?.phase === "loading" && bulkFill.provider === row.id ? t("models.catalogFilling") : t("models.bulkFill")}
+                  </ConfigButton>
+                )}
                 {definitions.length > 1 && (
                   <ConfigButton size="small" title={t("models.sortByName")} disabled={saving || Boolean(loadError)} onClick={() => applyModelOrder(row.id, sortModelEntries(definitions))}>
                     {t("models.sortAZ")}
@@ -750,9 +844,27 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             <ModelDiscovery
               providerId={row.id}
               provider={json}
-              onAddModels={(models) => addDiscoveredModels(row.id, models)}
+              onAddModels={(models, fill) => {
+                addDiscoveredModels(row.id, models);
+                if (fill) fillModels(row.id, fillTargets(models));
+              }}
               onClose={() => setDiscoveryFor(null)}
             />
+          )}
+          {bulkFill?.provider === row.id && bulkFill.phase !== "loading" && (
+            <Notice
+              tone={bulkFill.phase === "error" ? "danger" : "info"}
+              action={bulkFillUndoable && (
+                <ConfigButton size="small" variant="ghost" onClick={undoBulkFill}>{t("models.catalogUndo")}</ConfigButton>
+              )}
+            >
+              {bulkFill.phase === "error"
+                ? bulkFill.message
+                : [
+                    t("models.bulkFillDone", { updated: bulkFill.updated, total: bulkFill.total }),
+                    bulkFill.unmatched ? t("models.bulkFillUnmatched", { count: bulkFill.unmatched }) : null,
+                  ].filter(Boolean).join(" · ")}
+            </Notice>
           )}
           {modelRows.length === 0 ? (
             <p className="models-empty">{row.id === LLAMA_CPP_PROVIDER_ID && row.apiKey?.configured ? t("models.llamaEmptyCatalog") : json ? t("models.noDefinitions") : t("models.connectToSeeModels")}</p>

@@ -1,12 +1,13 @@
 const EFFORT_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 type EffortLevel = typeof EFFORT_LEVELS[number];
+export type ThinkingLevelMap = Partial<Record<EffortLevel | "off", string | null>>;
 
 export interface DiscoveredModel {
   id: string;
   name?: string;
   // Capabilities the upstream list publishes, as models.json fields.
   reasoning?: true;
-  thinkingLevelMap?: Partial<Record<EffortLevel | "off", string | null>>;
+  thinkingLevelMap?: ThinkingLevelMap;
   input?: ("text" | "image")[];
   contextWindow?: number;
   maxTokens?: number;
@@ -77,16 +78,21 @@ function offMapping(value: Record<string, unknown>, efforts: Set<string> | undef
 /**
  * Advertised pi levels keep no entry, so pi sends the level name; every level
  * left out is unsupported (null), and `xhigh` / `max` need an entry to be
- * offered at all. A list naming none of pi's levels maps no level.
+ * offered at all. A list naming none of pi's levels maps no level. `off` is
+ * left to the caller: sources say differently whether thinking can be disabled.
  */
-function thinkingLevelMapFrom(value: Record<string, unknown>, efforts: Set<string> | undefined): DiscoveredModel["thinkingLevelMap"] {
-  const map: NonNullable<DiscoveredModel["thinkingLevelMap"]> = {};
-  if (efforts && EFFORT_LEVELS.some((level) => efforts.has(level))) {
-    for (const level of EFFORT_LEVELS) {
-      if (!efforts.has(level)) map[level] = null;
-      else if (level === "xhigh" || level === "max") map[level] = level;
-    }
+export function effortLevelMap(efforts: ReadonlySet<string>): ThinkingLevelMap | undefined {
+  if (!EFFORT_LEVELS.some((level) => efforts.has(level))) return undefined;
+  const map: ThinkingLevelMap = {};
+  for (const level of EFFORT_LEVELS) {
+    if (!efforts.has(level)) map[level] = null;
+    else if (level === "xhigh" || level === "max") map[level] = level;
   }
+  return map;
+}
+
+function thinkingLevelMapFrom(value: Record<string, unknown>, efforts: Set<string> | undefined): ThinkingLevelMap | undefined {
+  const map: ThinkingLevelMap = { ...(efforts && effortLevelMap(efforts)) };
   const off = offMapping(value, efforts);
   if (off !== undefined) map.off = off;
   return Object.keys(map).length ? map : undefined;

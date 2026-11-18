@@ -20,6 +20,15 @@ const {
   setCompatBool,
   updateHeaderRow,
   withoutSavedSamplingParams,
+  effectiveCompat,
+  compatBoolChoice,
+  setCompatBoolChoice,
+  deepseekThinkingChoice,
+  setDeepseekThinkingChoice,
+  thinkingLevelState,
+  setThinkingLevelState,
+  applyCatalogPreset,
+  applyCatalogPresetsById,
 } = await jiti.import("./models-config-helpers.ts");
 
 // The panel is split across ModelsConfig.tsx and components/models/; the
@@ -349,24 +358,24 @@ test("custom model config exposes provider-level request headers", () => {
   assert.match(endpointForm, /set\("headers", headers\)/);
 });
 
-test("custom model config exposes model headers and supportsDeveloperRole compat flag", () => {
+test("custom model config exposes model headers and a developer-role choice", () => {
   // Model-level headers editor, wired to the model entry.
   assert.match(source, /headers=\{model\.headers\}/);
   assert.match(source, /set\("headers", headers\)/);
-
-  // Model-level compat toggle reads the effective (provider+model) value so
-  // hand-edited models.json settings are reflected, while writes stay on the
-  // model entry as an explicit per-model override.
-  assert.match(source, /effectiveCompat\(provider, model\)\["supportsDeveloperRole"\] !== false/);
-  assert.match(source, /setCompatBool\(model, "supportsDeveloperRole", v\)/);
+  // pi auto-detects the developer role per host, so "Default" leaves the key unset.
+  assert.match(source, /compatBoolChoice\(model, "supportsDeveloperRole"\)/);
+  const model = { id: "m", compat: { supportsStore: true } };
+  assert.equal(compatBoolChoice(model, "supportsDeveloperRole"), "default");
+  const off = setCompatBoolChoice(model, "supportsDeveloperRole", "off");
+  assert.deepEqual(off.compat, { supportsStore: true, supportsDeveloperRole: false });
+  assert.equal(compatBoolChoice(off, "supportsDeveloperRole"), "off");
+  assert.deepEqual(setCompatBoolChoice(off, "supportsDeveloperRole", "default"), model);
+  assert.equal(setCompatBoolChoice({ id: "m", compat: { supportsDeveloperRole: true } }, "supportsDeveloperRole", "default").compat, undefined);
 });
 
 test("adaptive thinking reads inherited compat and writes explicit per-model booleans", async () => {
   const detail = await readFile(new URL("./models/ModelDetail.tsx", import.meta.url), "utf8");
-  const body = detail.match(/function effectiveCompat\([^]*?\{\n([^]*?)\n\}/)?.[1];
-  assert.ok(body);
-  const effectiveCompat = new Function("provider", "model", body);
-  assert.match(detail, /effectiveApi === "anthropic-messages" && \(/);
+  assert.match(detail, /model\.reasoning && effectiveApi === "anthropic-messages" && \(/);
   assert.match(detail, /checked=\{effectiveCompat\(provider, model\)\["forceAdaptiveThinking"\] === true\}/);
   assert.match(detail, /setCompatBool\(model, "forceAdaptiveThinking", v\)/);
   const provider = { compat: { forceAdaptiveThinking: true, other: "kept" } };
@@ -379,6 +388,23 @@ test("adaptive thinking reads inherited compat and writes explicit per-model boo
   assert.equal(effectiveCompat({}, setCompatBool(off, "forceAdaptiveThinking", true)).forceAdaptiveThinking, true);
   assert.deepEqual(model.compat, { another: true });
   assert.equal(provider.compat.forceAdaptiveThinking, true);
+});
+
+test("DeepSeek thinking format is a default/on/off choice shown only for openai-completions", async () => {
+  const detail = await readFile(new URL("./models/ModelDetail.tsx", import.meta.url), "utf8");
+  assert.match(detail, /model\.reasoning && effectiveApi === "openai-completions" && \(/);
+  const model = { id: "ds", compat: { supportsStore: false } };
+  assert.equal(deepseekThinkingChoice(model), "default");
+  const on = setDeepseekThinkingChoice(model, "on");
+  assert.deepEqual(on.compat, { supportsStore: false, thinkingFormat: "deepseek", requiresReasoningContentOnAssistantMessages: true });
+  assert.equal(deepseekThinkingChoice(on), "on");
+  const off = setDeepseekThinkingChoice(on, "off");
+  assert.deepEqual(off.compat, { supportsStore: false, thinkingFormat: "openai", requiresReasoningContentOnAssistantMessages: false });
+  assert.equal(deepseekThinkingChoice(off), "off");
+  const zai = { compat: { thinkingFormat: "zai" } };
+  assert.equal(deepseekThinkingChoice(zai), "off");
+  assert.equal(setDeepseekThinkingChoice(zai, "off"), zai, "re-picking Off keeps a hand-written format");
+  assert.deepEqual(setDeepseekThinkingChoice(off, "default"), model);
 });
 
 test("runtime override diff only keeps changed fields", () => {
@@ -405,13 +431,6 @@ test("runtime override diff only keeps changed fields", () => {
       { cost: { input: 9 } },
     ).cost,
     { input: 9, output: 2, cacheRead: 3, cacheWrite: 4 },
-  );
-});
-
-test("disabling the developer role writes an explicit false override", () => {
-  assert.deepEqual(
-    setCompatBool({ compat: { supportsStore: true } }, "supportsDeveloperRole", false),
-    { compat: { supportsStore: true, supportsDeveloperRole: false } },
   );
 });
 
@@ -515,19 +534,94 @@ test("model detail sections share the General page heading style", async () => {
   assert.doesNotMatch(modelDetail, /style=\{\{/);
 });
 
-test("thinking level overrides keep explicit default, disabled, and custom controls", () => {
+test("thinking levels show what pi offers, not how the map spells it", () => {
+  // No entry: pi offers off..high and hides xhigh/max (getSupportedThinkingLevels).
+  assert.deepEqual(
+    ["off", "minimal", "high", "xhigh", "max"].map((level) => thinkingLevelState(undefined, level)),
+    ["supported", "supported", "supported", "unsupported", "unsupported"],
+  );
+  const map = { off: "none", minimal: null, xhigh: "xhigh", max: "ultra" };
+  assert.deepEqual(
+    ["off", "minimal", "low", "xhigh", "max"].map((level) => thinkingLevelState(map, level)),
+    ["custom", "unsupported", "supported", "supported", "custom"],
+  );
+  // Supported writes the shortest map that means it; unsupported is always an explicit null.
+  assert.equal(setThinkingLevelState({ high: null }, "high", "supported"), undefined);
+  assert.deepEqual(setThinkingLevelState(undefined, "xhigh", "supported"), { xhigh: "xhigh" });
+  assert.deepEqual(setThinkingLevelState(undefined, "low", "unsupported"), { low: null });
+  assert.deepEqual(setThinkingLevelState({ off: "none" }, "off", "custom"), { off: "none" });
+  assert.deepEqual(setThinkingLevelState({ off: null }, "off", "custom"), { off: "off" });
+  // A built-in override must write it: pi merges the override map over the shipped one.
+  assert.deepEqual(setThinkingLevelState({ low: null }, "low", "supported", true), { low: "low" });
+  // ...except "off", which pi would send as an effort value.
+  assert.equal(setThinkingLevelState({ off: "none" }, "off", "supported", true), undefined);
+
   const editor = source.slice(
     source.indexOf("export function ThinkingLevelMapEditor"),
     source.indexOf("// ── Dialog shell"),
   );
-
   assert.match(editor, /THINKING_LEVELS\.map/);
-  assert.match(editor, /t\("models\.levelDefault"\)/);
-  assert.match(editor, /t\("models\.levelDisabled"\)/);
-  assert.match(editor, /t\("models\.levelCustom"\)/);
-  assert.match(editor, /state === "omit"/);
-  assert.match(editor, /state === "null"/);
-  assert.match(editor, /state === "string"/);
+  for (const key of ["levelUnsupported", "levelSupported", "levelCustom"]) assert.match(editor, new RegExp(`t\\("models\\.${key}"\\)`));
+});
+
+test("Fill all applies each model's answer by id and counts what neither source knows", () => {
+  const known = { id: "a", reasoning: true };
+  const same = { id: "b", contextWindow: 10 };
+  const unknown = { id: "c" };
+  const skipped = { id: "d" };
+  const result = applyCatalogPresetsById([known, same, unknown, skipped], new Map([
+    ["a", { exactMatches: 1, preset: { contextWindow: 200 } }],
+    ["b", { exactMatches: 1, preset: { contextWindow: 10 } }],
+    ["c", { exactMatches: 0, preset: {} }],
+  ]));
+  assert.deepEqual(result.models, [{ id: "a", reasoning: true, contextWindow: 200 }, same, unknown, skipped]);
+  assert.equal(result.models[1], same, "an unchanged model keeps its object (row key)");
+  assert.deepEqual([result.updated, result.unmatched], [1, 1]);
+  assert.deepEqual(result.replaced, [[known, result.models[0]]]);
+  // Only pi's shipped model matched: still known (it answers with a compat set).
+  assert.equal(applyCatalogPresetsById([{ id: "x" }], new Map([["x", { exactMatches: 0, preset: { reasoning: true, compat: {} } }]])).unmatched, 0);
+});
+
+test("catalog fill matches the source, keeping the display name and what the source does not know", () => {
+  const user = {
+    id: "claude",
+    name: "My Opus",
+    reasoning: true,
+    contextWindow: 100,
+    headers: { "X-Kept": "1" },
+    thinkingLevelMap: { high: null },
+    compat: { supportsStore: true, forceAdaptiveThinking: false, thinkingFormat: "deepseek" },
+  };
+  const filled = applyCatalogPreset(user, {
+    name: "Claude Opus",
+    reasoning: true,
+    contextWindow: 200,
+    thinkingLevelMap: { off: null, xhigh: "xhigh" },
+    compat: { forceAdaptiveThinking: true },
+    cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+  });
+  assert.deepEqual(filled.model, {
+    ...user,
+    contextWindow: 200,
+    thinkingLevelMap: { off: null, xhigh: "xhigh" },
+    // The whole thinking compat follows pi's model; other compat keys stay.
+    compat: { supportsStore: true, forceAdaptiveThinking: true },
+    cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+  });
+  assert.equal(filled.changedCount, 4);
+  // pi's defaults (null map, empty compat) clear stale thinking settings.
+  assert.deepEqual(applyCatalogPreset(user, { thinkingLevelMap: null, compat: {} }).model.compat, { supportsStore: true });
+  assert.equal(applyCatalogPreset(user, { thinkingLevelMap: null }).model.thinkingLevelMap, undefined);
+  // A source that says "no reasoning" turns it off and leaves thinking alone.
+  const plain = applyCatalogPreset(user, { reasoning: false, thinkingLevelMap: null });
+  assert.equal(plain.model.reasoning, undefined);
+  assert.deepEqual(plain.model.thinkingLevelMap, { high: null });
+  // Same values in another key order are not a change.
+  assert.equal(applyCatalogPreset(
+    { id: "m", reasoning: true, compat: { forceAdaptiveThinking: true, supportsStore: true } },
+    { compat: { forceAdaptiveThinking: true } },
+  ).changedCount, 0);
+  assert.equal(applyCatalogPreset({ id: "m", name: "" }, { name: "Model" }).model.name, "Model");
 });
 
 test("runtime override diffs never write SDK-ignored keys", () => {

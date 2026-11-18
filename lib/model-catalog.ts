@@ -1,3 +1,5 @@
+import { effortLevelMap, type ThinkingLevelMap } from "./model-discovery";
+
 export interface ModelCatalogCost {
   input?: number;
   output?: number;
@@ -18,6 +20,7 @@ export interface ModelCatalogEntry {
   input?: string[];
   contextWindow?: number;
   maxTokens?: number;
+  thinkingLevelMap?: ThinkingLevelMap;
   cost: ModelCatalogCost;
 }
 
@@ -27,8 +30,13 @@ export interface ModelCatalogPreset {
   input?: string[];
   contextWindow?: number;
   maxTokens?: number;
+  /** null: pi's own model uses pi's defaults (Fill clears a stale map). */
+  thinkingLevelMap?: ThinkingLevelMap | null;
+  /** The complete thinking compat of pi's own model (adaptive, DeepSeek format); `{}` clears it. */
+  compat?: Record<string, unknown>;
   cost?: CompleteModelCatalogCost;
 }
+
 
 export type ModelCatalogMatchMethod = "provider" | "base-url" | "consensus" | "none";
 
@@ -101,6 +109,21 @@ function readInputModalities(value: unknown): string[] | undefined {
     .map((entry) => entry.trim().toLocaleLowerCase())
     .filter((entry) => SUPPORTED_INPUT_MODALITIES.has(entry))));
   return input.length ? input : undefined;
+}
+
+/**
+ * models.dev `reasoning_options` effort list. `off` is mapped only to a listed
+ * none/off value: toggles and zero budgets also disable thinking, so a missing
+ * value does not prove it cannot be turned off.
+ */
+function readThinkingLevelMap(value: unknown): ThinkingLevelMap | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const effort = value.find((option) => isRecord(option) && option.type === "effort" && Array.isArray(option.values));
+  if (!effort) return undefined;
+  const efforts = new Set((effort.values as unknown[]).filter((entry): entry is string => typeof entry === "string"));
+  const map = effortLevelMap(efforts);
+  const off = efforts.has("none") ? "none" : efforts.has("off") ? "off" : undefined;
+  return map && off ? { ...map, off } : map;
 }
 
 function normalizeProvider(value: string): string {
@@ -190,6 +213,7 @@ function metadataFromEntry(entry: ModelCatalogEntry): ModelCatalogPreset {
     input: entry.input,
     contextWindow: entry.contextWindow,
     maxTokens: entry.maxTokens,
+    thinkingLevelMap: entry.thinkingLevelMap,
   };
 }
 
@@ -216,6 +240,12 @@ function consensusMetadata(entries: readonly ModelCatalogEntry[]): ModelCatalogP
       entries.flatMap((entry) => entry.maxTokens === undefined ? [] : [entry.maxTokens]),
       total,
       String,
+    ),
+    thinkingLevelMap: modeValue(
+      entries.flatMap((entry) => entry.thinkingLevelMap ? [entry.thinkingLevelMap] : []),
+      total,
+      // Maps are built in one level order, so equal maps serialize equally.
+      (value) => JSON.stringify(value),
     ),
   };
 }
@@ -320,6 +350,8 @@ export function flattenModelsDevCatalog(value: unknown): ModelCatalogEntry[] {
         if (contextWindow !== undefined) entry.contextWindow = contextWindow;
         if (maxTokens !== undefined) entry.maxTokens = maxTokens;
       }
+      const thinkingLevelMap = readThinkingLevelMap(rawModel.reasoning_options);
+      if (thinkingLevelMap) entry.thinkingLevelMap = thinkingLevelMap;
       entries.push(entry);
     }
   }
@@ -370,6 +402,69 @@ export function recommendModelCatalogPreset(
     preset,
     price,
   };
+}
+
+export interface BuiltInThinkingModel {
+  provider: string;
+  id: string;
+  api: string;
+  reasoning: boolean;
+  thinkingLevelMap?: ThinkingLevelMap;
+  compat?: unknown;
+}
+
+// shortcut: only vendors' own providers are trusted, since gateways reshape thinking
+// (opencode drops off/minimal for Claude); add a vendor when pi ships its provider.
+const FIRST_PARTY_PROVIDERS = [
+  "anthropic", "openai", "google", "xai", "deepseek", "mistral", "moonshotai", "zai", "minimax", "meta", "xiaomi",
+];
+
+/**
+ * Thinking settings from pi's shipped model with this id, from the vendor's own
+ * provider and on the same API (map values and compat are per API). pi tracks
+ * which models think adaptively; models.dev does not say.
+ */
+export function builtInThinkingPreset(
+  models: readonly BuiltInThinkingModel[],
+  query: string,
+  api: string,
+  providerHint = "",
+): { providerId: string; thinkingLevelMap?: ThinkingLevelMap; compat?: Record<string, unknown> } | null {
+  const id = normalizeModelId(query);
+  const candidates = models.filter((model) => model.reasoning && model.api === api && normalizeModelId(model.id) === id);
+  // The model's own provider when it ships one (a definition added to a built-in provider), else the vendor's.
+  const match = [providerHint, ...FIRST_PARTY_PROVIDERS].map((provider) => candidates.find((model) => model.provider === provider)).find(Boolean);
+  if (!match) return null;
+  const compat = isRecord(match.compat) ? match.compat : {};
+  const thinkingCompat = Object.fromEntries(Object.entries(compat).filter(([key, value]) =>
+    (key === "forceAdaptiveThinking" && value === true)
+    || (compat.thinkingFormat === "deepseek" && (key === "thinkingFormat" || key === "requiresReasoningContentOnAssistantMessages"))));
+  return {
+    providerId: match.provider,
+    thinkingLevelMap: match.thinkingLevelMap,
+    compat: Object.keys(thinkingCompat).length ? thinkingCompat : undefined,
+  };
+}
+
+/** Models per bulk Fill request; the client splits larger lists. */
+export const MAX_FILL_BATCH = 500;
+
+/** Fill's answer for one model: models.dev metadata and price, thinking from pi's own model when it ships one. */
+export function recommendModelFill(
+  entries: readonly ModelCatalogEntry[],
+  shipped: readonly BuiltInThinkingModel[],
+  request: { query: string; provider?: string; baseUrl?: string; api?: string },
+): ModelCatalogRecommendation {
+  const { query, provider = "", baseUrl = "", api = "" } = request;
+  const recommendation = recommendModelCatalogPreset(entries, query, provider, baseUrl);
+  const thinking = builtInThinkingPreset(shipped, query, api, provider);
+  if (thinking) {
+    // pi's own model wins over models.dev, including "no map" and "no compat" (pi's defaults).
+    recommendation.preset.reasoning = true;
+    recommendation.preset.thinkingLevelMap = thinking.thinkingLevelMap ?? null;
+    recommendation.preset.compat = thinking.compat ?? {};
+  }
+  return recommendation;
 }
 
 function matchRank(entry: ModelCatalogEntry, query: string, providerHint: string): number {

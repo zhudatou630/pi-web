@@ -75,11 +75,12 @@ test("catalog Fill queries the effective model URL, falling back to the provider
     const effectiveBaseUrl = evaluate(expression.initializer, { model, provider });
     let queried;
     await callback("handleCatalogFill", {
-      model, providerName: "fixture", effectiveBaseUrl, cwd: null,
+      model, providerName: "fixture", effectiveBaseUrl, effectiveApi: "openai-responses", cwd: null,
       catalogState: { phase: "idle" }, catalogRequestIdRef: { current: 0 },
       setCatalogState: () => {},
       fetch: async (url) => { queried = new URL(url, "http://localhost"); return { ok: false, status: 400, json: async () => ({ error: "fixture" }) }; },
     })();
     assert.equal(queried.searchParams.get("baseUrl"), baseUrl ?? provider.baseUrl);
+    assert.equal(queried.searchParams.get("api"), "openai-responses");
   }
 });

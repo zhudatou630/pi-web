@@ -73,13 +73,14 @@ export function EndpointForm({ providerId, provider, builtIn, namePlaceholder, o
 export function ModelDiscovery({ providerId, provider, onAddModels, onClose }: {
   providerId: string;
   provider: ProviderEntry;
-  onAddModels: (models: DiscoveredModel[]) => void;
+  onAddModels: (models: DiscoveredModel[], fill: boolean) => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
   const [discoveryState, setDiscoveryState] = useState<ModelDiscoveryState>({ phase: "idle" });
   const [discoveryQuery, setDiscoveryQuery] = useState("");
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+  const [fillOnAdd, setFillOnAdd] = useState(true);
   const discoveryRequestIdRef = useRef(0);
   const selectShownRef = useRef<HTMLInputElement>(null);
 
@@ -151,7 +152,7 @@ export function ModelDiscovery({ providerId, provider, onAddModels, onClose }: {
     const selected = new Set(selectedModelIds);
     const additions = discoveryState.models.filter((model) => selected.has(model.id) && !existingModelIds.has(model.id));
     if (additions.length === 0) return;
-    onAddModels(additions);
+    onAddModels(additions, fillOnAdd);
     setSelectedModelIds([]);
   };
 
@@ -218,6 +219,10 @@ export function ModelDiscovery({ providerId, provider, onAddModels, onClose }: {
                 ? t("models.discoveryShowing", { shown: shownDiscoveredModels.length, total: filteredDiscoveredModels.length })
                 : t("models.discoveryFetched", { count: discoveryState.models.length })}
             </span>
+            <label className="models-discovery-fill">
+              <input type="checkbox" checked={fillOnAdd} onChange={(event) => setFillOnAdd(event.target.checked)} />
+              {t("models.discoveryFill")}
+            </label>
             <ConfigButton size="small" variant="primary" onClick={addSelectedModels} disabled={selectedCount === 0}>
               {selectedCount
                 ? t("models.discoveryAddSelectedCount", { count: selectedCount })

@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import type { ModelCatalogPreset, ModelCatalogRecommendation } from "@/lib/model-catalog";
+import type { ModelCatalogRecommendation } from "@/lib/model-catalog";
+import { THINKING_LEVEL_LABELS, THINKING_LEVELS } from "@/lib/thinking-levels";
 import {
+  compatBoolChoice,
+  deepseekThinkingChoice,
+  effectiveCompat,
+  applyCatalogPreset,
   formatSamplingParams,
   hasModelCostDraftValue,
   modelCostToDraft,
@@ -11,6 +16,10 @@ import {
   parseSamplingParamsDraft,
   SAMPLING_PARAMS_APIS,
   setCompatBool,
+  setCompatBoolChoice,
+  setDeepseekThinkingChoice,
+  THINKING_COMPAT_KEYS,
+  thinkingLevelState,
   type ModelCostDraft,
   type ModelCostKey,
 } from "../models-config-helpers";
@@ -20,7 +29,7 @@ import {
   SettingsGroup,
   SettingsRow,
 } from "../SettingsUi";
-import { HeaderListEditor, Notice, NumInput, SectionHeading, Select, SwitchRow, TextInput, ThinkingLevelMapEditor } from "./fields";
+import { CompatChoiceRow, HeaderListEditor, Notice, NumInput, SectionHeading, Select, SwitchRow, TextInput, ThinkingLevelMapEditor } from "./fields";
 import { API_OPTIONS, type ModelEntry, type ProviderEntry } from "./types";
 
 type ModelTestState =
@@ -35,78 +44,8 @@ type ModelCatalogState =
   | { phase: "success"; recommendation: ModelCatalogRecommendation; appliedCount: number }
   | { phase: "error"; message: string };
 
-const DEEPSEEK_COMPAT = {
-  thinkingFormat: "deepseek",
-  requiresReasoningContentOnAssistantMessages: true,
-} as const;
-
-function hasDeepseekCompat(model: ModelEntry): boolean {
-  return model.compat?.thinkingFormat === "deepseek";
-}
-
-function setDeepseekCompat(model: ModelEntry, enabled: boolean): ModelEntry {
-  if (enabled) {
-    return { ...model, compat: { ...(model.compat ?? {}), ...DEEPSEEK_COMPAT } };
-  }
-  if (!model.compat) return model;
-  const rest = { ...model.compat };
-  delete rest.thinkingFormat;
-  delete rest.requiresReasoningContentOnAssistantMessages;
-  return { ...model, compat: Object.keys(rest).length ? rest : undefined };
-}
-
-// Compat can be configured at the provider or model level; provider-composer
-// merges them (model wins) at runtime. The UI reads the effective value so
-// hand-edited models.json settings are reflected correctly, while toggles
-// write to the model entry so a per-model override is explicit.
-function effectiveCompat(provider: ProviderEntry, model: ModelEntry): Record<string, unknown> {
-  return { ...(provider.compat ?? {}), ...(model.compat ?? {}) };
-}
-
-function fillEmptyModelFields(
-  model: ModelEntry,
-  preset: ModelCatalogPreset,
-): { model: ModelEntry; appliedCount: number } {
-  const next = { ...model };
-  let appliedCount = 0;
-  if (!model.name?.trim() && preset.name) {
-    next.name = preset.name;
-    appliedCount += 1;
-  }
-  if (model.reasoning === undefined && preset.reasoning === true) {
-    next.reasoning = true;
-    appliedCount += 1;
-  }
-  if (!model.input?.length && preset.input?.length) {
-    next.input = [...preset.input];
-    appliedCount += 1;
-  }
-  if (model.contextWindow === undefined && preset.contextWindow !== undefined) {
-    next.contextWindow = preset.contextWindow;
-    appliedCount += 1;
-  }
-  if (model.maxTokens === undefined && preset.maxTokens !== undefined) {
-    next.maxTokens = preset.maxTokens;
-    appliedCount += 1;
-  }
-
-  if (preset.cost) {
-    const cost = { ...(model.cost ?? {}) };
-    let filledCostCount = 0;
-    for (const key of ["input", "output", "cacheRead", "cacheWrite"] as const) {
-      if (cost[key] === undefined && preset.cost[key] !== undefined) {
-        cost[key] = preset.cost[key];
-        filledCostCount += 1;
-      }
-    }
-    const completeCost = parseCompleteModelCost(modelCostToDraft(cost));
-    if (filledCostCount > 0 && completeCost) {
-      next.cost = { ...cost, ...completeCost };
-      appliedCount += filledCostCount;
-    }
-  }
-  return { model: next, appliedCount };
-}
+/** APIs whose request builders choose between the developer and system role. */
+const DEVELOPER_ROLE_APIS = new Set(["openai-completions", "openai-responses", "azure-openai-responses"]);
 
 export function ModelDetail({
   providerName,
@@ -132,6 +71,7 @@ export function ModelDetail({
   const { t } = useI18n();
   const [catalogState, setCatalogState] = useState<ModelCatalogState>({ phase: "idle" });
   const [costEditing, setCostEditing] = useState(false);
+  const [thinkingEditing, setThinkingEditing] = useState(false);
   const [costDraft, setCostDraft] = useState<ModelCostDraft>(() => modelCostToDraft(model.cost));
   const costDraftRef = useRef(costDraft);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -148,6 +88,9 @@ export function ModelDetail({
   const effectiveBaseUrl = model.baseUrl ?? provider.baseUrl;
   const catalogRequestIdRef = useRef(0);
   const catalogUndoRef = useRef<ModelEntry | null>(null);
+  // Fill applies to the draft as it is when the lookup returns, not when it started.
+  const modelRef = useRef(model);
+  useEffect(() => { modelRef.current = model; });
   const costTemplateRef = useRef(model.cost);
   const set = <K extends keyof ModelEntry>(k: K, v: ModelEntry[K]) => onChange({ ...model, [k]: v });
   // `api` is part of a model definition. On a catalog model the editor writes
@@ -203,7 +146,7 @@ export function ModelDetail({
     catalogRequestIdRef.current += 1;
     setCatalogState({ phase: "idle" });
     catalogUndoRef.current = null;
-  }, [providerName, effectiveBaseUrl, model.id]);
+  }, [providerName, effectiveBaseUrl, effectiveApi, model.id]);
 
   const handleTest = useCallback(async () => {
     if (!model.id.trim() || testState.phase === "testing") return;
@@ -257,6 +200,7 @@ export function ModelDetail({
       const params = new URLSearchParams({ q: query, provider: providerName, limit: "50" });
       if (cwd) params.set("cwd", cwd);
       if (effectiveBaseUrl?.trim()) params.set("baseUrl", effectiveBaseUrl.trim());
+      if (effectiveApi) params.set("api", effectiveApi);
       const res = await fetch(`/api/models-config/catalog?${params}`);
       const data = await res.json() as { recommendation?: ModelCatalogRecommendation; error?: string };
       if (requestId !== catalogRequestIdRef.current) return;
@@ -264,22 +208,24 @@ export function ModelDetail({
         setCatalogState({ phase: "error", message: data.error ?? `HTTP ${res.status}` });
         return;
       }
-      const filled = fillEmptyModelFields(model, data.recommendation.preset);
-      if (filled.appliedCount > 0) {
-        catalogUndoRef.current = model;
+      const current = modelRef.current;
+      const filled = applyCatalogPreset(current, data.recommendation.preset);
+      if (filled.changedCount > 0) {
+        catalogUndoRef.current = current;
         onChange(filled.model);
       }
       setCostEditing(false);
+      setThinkingEditing(false);
       setCatalogState({
         phase: "success",
         recommendation: data.recommendation,
-        appliedCount: filled.appliedCount,
+        appliedCount: filled.changedCount,
       });
     } catch (error) {
       if (requestId !== catalogRequestIdRef.current) return;
       setCatalogState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
     }
-  }, [catalogState.phase, model, onChange, effectiveBaseUrl, providerName, cwd]);
+  }, [catalogState.phase, model.id, onChange, effectiveBaseUrl, effectiveApi, providerName, cwd]);
 
   const undoCatalogFill = () => {
     const previous = catalogUndoRef.current;
@@ -294,7 +240,7 @@ export function ModelDetail({
     const { recommendation, appliedCount } = catalogState;
     const applied = appliedCount > 0
       ? t("models.catalogFilled", { count: appliedCount })
-      : t("models.catalogNoEmptyFields");
+      : t("models.catalogNoChanges");
     if (recommendation.price.status === "unreliable") {
       const price = recommendation.price.reason === "no-exact-match"
         ? t("models.catalogNoExactMatch")
@@ -329,18 +275,13 @@ export function ModelDetail({
     const value = model.cost?.[key];
     return value === undefined ? t("models.notProvided") : `$${String(value)}`;
   };
-  const remainingCompatKeys = new Set(Object.keys(model.compat ?? {}));
-  let compatibilityOverrideCount = 0;
-  if (hasDeepseekCompat(model)) {
-    compatibilityOverrideCount += 1;
-    remainingCompatKeys.delete("thinkingFormat");
-    remainingCompatKeys.delete("requiresReasoningContentOnAssistantMessages");
-  }
-  if (Object.prototype.hasOwnProperty.call(model.compat ?? {}, "supportsDeveloperRole")) {
-    compatibilityOverrideCount += 1;
-    remainingCompatKeys.delete("supportsDeveloperRole");
-  }
-  compatibilityOverrideCount += remainingCompatKeys.size;
+  const thinkingLevelSummary = THINKING_LEVELS.flatMap((level) => {
+    const state = thinkingLevelState(model.thinkingLevelMap, level);
+    if (state === "unsupported") return [];
+    return [state === "custom" ? `${THINKING_LEVEL_LABELS[level]} → ${model.thinkingLevelMap?.[level] ?? ""}` : THINKING_LEVEL_LABELS[level]];
+  }).join(" · ") || t("models.thinkingNone");
+  // Thinking compat is edited under Capabilities; the rest (hand-written keys included) counts here.
+  const compatibilityOverrideCount = Object.keys(model.compat ?? {}).filter((key) => !THINKING_COMPAT_KEYS.includes(key)).length;
   const advancedSummaryParts = [
     model.baseUrl ? t("models.baseUrlOverride") : null,
     model.api ? `API: ${model.api}` : null,
@@ -349,9 +290,6 @@ export function ModelDetail({
       : null,
     compatibilityOverrideCount
       ? t("models.compatSummary", { count: compatibilityOverrideCount })
-      : null,
-    Object.keys(model.thinkingLevelMap ?? {}).length
-      ? t("models.thinkingSummary", { count: Object.keys(model.thinkingLevelMap ?? {}).length })
       : null,
     samplingInvalid
       ? t("models.samplingParamsInvalid")
@@ -373,6 +311,22 @@ export function ModelDetail({
           {shadowsBuiltIn && onDelete && (
             <ConfigButton size="small" onClick={onDelete}>{t("models.restoreBuiltIn")}</ConfigButton>
           )}
+          <span className="models-form-actions models-detail-actions">
+            <ConfigButton
+              size="small"
+              onClick={() => void handleCatalogFill()}
+              disabled={!model.id.trim() || catalogState.phase === "loading"}
+            >
+              {catalogState.phase === "loading" ? t("models.catalogFilling") : t("models.catalogFillAction")}
+            </ConfigButton>
+            <ConfigButton
+              size="small"
+              onClick={handleTest}
+              disabled={!model.id.trim() || testState.phase === "testing"}
+            >
+              {testState.phase === "testing" ? t("i18n.checking") : t("models.testAction")}
+            </ConfigButton>
+          </span>
         </div>
       </header>
 
@@ -381,32 +335,6 @@ export function ModelDetail({
           <span className="models-ellipsis" title={testSummary}>{testSummary}</span>
         </Notice>
       )}
-
-      <div className="models-form-grid">
-        <ConfigField label={t("models.modelId")}><TextInput value={model.id} onChange={(v) => set("id", v)} placeholder="model-id" disabled={lockId} /></ConfigField>
-        <ConfigField label={t("models.displayName")}><TextInput value={model.name ?? ""} onChange={(v) => set("name", v || undefined)} placeholder={model.id || t("models.displayName")} /></ConfigField>
-      </div>
-
-      <div className="models-switch-list">
-        <SettingsRow label={t("models.catalogFill")}>
-          <ConfigButton
-            size="small"
-            onClick={() => void handleCatalogFill()}
-            disabled={!model.id.trim() || catalogState.phase === "loading"}
-          >
-            {catalogState.phase === "loading" ? t("models.catalogFilling") : t("models.catalogFillAction")}
-          </ConfigButton>
-        </SettingsRow>
-        <SettingsRow label={t("i18n.testConnection")}>
-          <ConfigButton
-            size="small"
-            onClick={handleTest}
-            disabled={!model.id.trim() || testState.phase === "testing"}
-          >
-            {testState.phase === "testing" ? t("i18n.checking") : t("models.testAction")}
-          </ConfigButton>
-        </SettingsRow>
-      </div>
       {catalogStatusText && (
         <Notice
           tone={catalogTone}
@@ -418,12 +346,50 @@ export function ModelDetail({
         </Notice>
       )}
 
+      <div className="models-form-grid">
+        <ConfigField label={t("models.modelId")}><TextInput value={model.id} onChange={(v) => set("id", v)} placeholder="model-id" disabled={lockId} /></ConfigField>
+        <ConfigField label={t("models.displayName")}><TextInput value={model.name ?? ""} onChange={(v) => set("name", v || undefined)} placeholder={model.id || t("models.displayName")} /></ConfigField>
+      </div>
+
       <section className="models-section">
         <SectionHeading title={t("models.capabilities")} />
         <div className="models-switch-list">
-          <SwitchRow label={t("models.reasoning")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
           <SwitchRow label={t("models.imageInput")} checked={model.input?.includes("image") ?? false}
             onChange={(v) => set("input", v ? ["text", "image"] : undefined)} />
+          <SwitchRow label={t("models.reasoning")} checked={model.reasoning ?? false} onChange={(v) => set("reasoning", v || undefined)} />
+          {model.reasoning && effectiveApi === "anthropic-messages" && (
+            <SwitchRow
+              nested
+              label={t("models.claudeAdaptiveThinking")}
+              checked={effectiveCompat(provider, model)["forceAdaptiveThinking"] === true}
+              onChange={(v) => onChange(setCompatBool(model, "forceAdaptiveThinking", v))}
+            />
+          )}
+          {model.reasoning && effectiveApi === "openai-completions" && (
+            <CompatChoiceRow
+              nested
+              label={t("models.deepSeekThinkingCompat")}
+              value={deepseekThinkingChoice(model)}
+              onChange={(v) => onChange(setDeepseekThinkingChoice(model, v))}
+            />
+          )}
+          {model.reasoning && (
+            <SettingsRow nested label={t("models.thinkingLevelMap")} description={thinkingLevelSummary}>
+              <span className="models-form-actions">
+                {thinkingEditing && model.thinkingLevelMap && (
+                  <ConfigButton size="small" variant="ghost" onClick={() => set("thinkingLevelMap", undefined)}>
+                    {t("models.thinkingReset")}
+                  </ConfigButton>
+                )}
+                <ConfigButton size="small" variant="ghost" onClick={() => setThinkingEditing((open) => !open)} aria-expanded={thinkingEditing}>
+                  {thinkingEditing ? t("models.finishEditing") : t("i18n.edit")}
+                </ConfigButton>
+              </span>
+            </SettingsRow>
+          )}
+          {model.reasoning && thinkingEditing && (
+            <ThinkingLevelMapEditor value={model.thinkingLevelMap} onChange={(v) => set("thinkingLevelMap", v)} explicit={lockId} />
+          )}
         </div>
       </section>
 
@@ -443,7 +409,7 @@ export function ModelDetail({
         <div className="models-section-header">
           <span className="config-field-label">{t("models.costPerMillion")}</span>
           <ConfigButton size="small" variant="ghost" onClick={toggleCostEditing} aria-expanded={costEditing}>
-            {costEditing ? t("models.finishEditingCosts") : t("models.editCosts")}
+            {costEditing ? t("models.finishEditing") : t("models.editCosts")}
           </ConfigButton>
         </div>
         {costEditing ? (
@@ -531,41 +497,15 @@ export function ModelDetail({
               )}
             </ConfigField>
 
-            {model.reasoning && (
-              <>
-                <SectionHeading title={t("models.compatibility")} />
-                <div className="models-switch-list">
-                  {effectiveApi === "anthropic-messages" && (
-                    <SwitchRow
-                      label={t("models.claudeAdaptiveThinking")}
-                      checked={effectiveCompat(provider, model)["forceAdaptiveThinking"] === true}
-                      onChange={(v) => onChange(setCompatBool(model, "forceAdaptiveThinking", v))}
-                    />
-                  )}
-                  <SwitchRow
-                    label={t("models.deepSeekThinkingCompat")}
-                    checked={hasDeepseekCompat(model)}
-                    onChange={(v) => onChange(setDeepseekCompat(model, v))}
-                  />
-                  <SwitchRow
-                    label={t("models.developerRole")}
-                    checked={effectiveCompat(provider, model)["supportsDeveloperRole"] !== false}
-                    onChange={(v) => onChange(setCompatBool(model, "supportsDeveloperRole", v))}
-                  />
-                </div>
-                <SectionHeading
-                  title={t("models.thinkingLevelMap")}
-                  actions={model.thinkingLevelMap && (
-                    <ConfigButton size="small" variant="ghost" onClick={() => set("thinkingLevelMap", undefined)}>
-                      {t("models.clearAll")}
-                    </ConfigButton>
-                  )}
+            {/* pi sends the developer role only to reasoning models. */}
+            {model.reasoning && effectiveApi && DEVELOPER_ROLE_APIS.has(effectiveApi) && (
+              <div className="models-switch-list">
+                <CompatChoiceRow
+                  label={t("models.developerRole")}
+                  value={compatBoolChoice(model, "supportsDeveloperRole")}
+                  onChange={(v) => onChange(setCompatBoolChoice(model, "supportsDeveloperRole", v))}
                 />
-                <ThinkingLevelMapEditor
-                  value={model.thinkingLevelMap}
-                  onChange={(v) => set("thinkingLevelMap", v)}
-                />
-              </>
+              </div>
             )}
           </div>
         )}
