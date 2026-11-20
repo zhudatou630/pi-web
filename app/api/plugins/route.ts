@@ -11,6 +11,7 @@ import { dropRemovedPackageDeltas, resolveScopedResources, setGlobalResourceEnab
 import { getOverrideSyncTargets } from "@/lib/project-override-sync";
 import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-access";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
+import { createHostPackageManager } from "@/lib/host-package-manager";
 import { getProjectTrustStatus } from "@/lib/project-trust";
 import { invalidateModelsCache } from "@/lib/models-cache";
 import { isPluginSourceCheckable } from "@/lib/plugin-updates";
@@ -365,7 +366,7 @@ export async function POST(req: Request) {
         { status: 403 },
       );
     }
-    const packageManager = new DefaultPackageManager({
+    const packageManager = createHostPackageManager({
       cwd: body.cwd,
       agentDir,
       settingsManager,

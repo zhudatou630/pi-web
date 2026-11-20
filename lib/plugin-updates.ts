@@ -10,6 +10,7 @@ import {
 import { gt, maxSatisfying, rcompare, valid, validRange } from "semver";
 import type { PluginScope, PluginUpdateResult } from "@/lib/api-types";
 import { sanitizeProjectCommandEnvironment } from "./host-environment";
+import { npmLookupFolder } from "./host-package-manager";
 import { getProjectTrustStatus } from "./project-trust";
 
 const execFileAsync = promisify(execFile);
@@ -131,7 +132,6 @@ function readLatestVersion(stdout: string, range?: string): string {
 
 async function checkNpmPackage(
   pkg: ConfiguredPackage,
-  cwd: string,
   npmCommand: string[] | undefined,
   runner: CommandRunner,
 ): Promise<PluginUpdateResult> {
@@ -146,7 +146,7 @@ async function checkNpmPackage(
   const stdout = await runner(
     command,
     [...commandArgs, "view", npm.spec, "version", "--json"],
-    { cwd },
+    { cwd: npmLookupFolder(getAgentDir()) },
   );
   const range = npm.version ? validRange(npm.version) ?? undefined : undefined;
   const latest = readLatestVersion(stdout, range);
@@ -213,7 +213,7 @@ export async function checkPluginUpdates(
     }
     try {
       return parseNpmSource(pkg.source)
-        ? await checkNpmPackage(pkg, cwd, npmCommand, runner)
+        ? await checkNpmPackage(pkg, npmCommand, runner)
         : await checkGitPackage(pkg, runner);
     } catch (error) {
       return result(pkg, "error", error instanceof Error ? error.message : String(error));

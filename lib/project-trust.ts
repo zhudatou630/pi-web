@@ -10,9 +10,13 @@ import { realPathOrSelf } from "./worktree";
 export const NESTED_PROJECT_SCAN_DEPTH = 4;
 export const NESTED_PROJECT_SCAN_MAX_FOLDERS = 2000;
 const NESTED_PROJECT_SCAN_SKIP = new Set(["node_modules", ".git", ".pi", ".agents"]);
-// SDK resources plus Pi Web agent profiles; lstat also counts dangling links.
+// Pi Web's additions to the SDK's list: agent profiles, and pi's project package storage, whose
+// .npmrc and git config a project package install would use. lstat also counts dangling links.
+const PI_WEB_TRUST_REQUIRING_ENTRIES = ["agents", "npm", "git"];
+// SDK resources plus Pi Web's additions.
 const TRUST_REQUIRING_PROJECT_ENTRIES = [
-  "settings.json", "mcp.json", "extensions", "skills", "prompts", "themes", "SYSTEM.md", "APPEND_SYSTEM.md", "agents",
+  "settings.json", "mcp.json", "extensions", "skills", "prompts", "themes", "SYSTEM.md", "APPEND_SYSTEM.md",
+  ...PI_WEB_TRUST_REQUIRING_ENTRIES,
 ];
 
 function somethingAt(filePath: string): boolean {
@@ -59,7 +63,8 @@ export function findInheritingTrustProject(cwd: string, agentDir: string): strin
         // Match upstream: an unreadable folder cannot be loaded by a session either.
         continue;
       }
-      if (depth > 0 && entries.some((entry) => entry.name === ".pi" || entry.name === ".agents") && hasOwnTrustEntries(dir)) {
+      // Case-folded: on a case-insensitive filesystem pi reads a `.PI` folder as `.pi`.
+      if (depth > 0 && entries.some((entry) => [".pi", ".agents"].includes(entry.name.toLowerCase())) && hasOwnTrustEntries(dir)) {
         let hasDecision = false;
         try {
           const entry = store.getEntry(dir);
@@ -114,7 +119,7 @@ export async function assertAutoTrustable(cwd: string, makeError: (message: stri
 export function getProjectTrustStatus(cwd: string, agentDir: string): ProjectTrustStatus {
   if (!cwd) return { requiresTrust: false, trusted: true };
   const requiresTrust = hasTrustRequiringProjectResources(cwd)
-    || somethingAt(join(cwd, ".pi", "agents"))
+    || PI_WEB_TRUST_REQUIRING_ENTRIES.some((entry) => somethingAt(join(cwd, ".pi", entry)))
     || somethingAt(join(cwd, ".agents", "agents"));
   // As pi >= 1.5: a saved decision wins, also a "Do not trust" for a project with nothing to gate.
   return { requiresTrust, trusted: new ProjectTrustStore(agentDir).get(cwd) ?? !requiresTrust };
