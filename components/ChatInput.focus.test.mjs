@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import ts from "typescript";
+import { createJiti } from "jiti";
+const { getDraft, setDraft, holdIssuedCommand, clearDraft } = await createJiti(import.meta.url).import("../lib/draft-store.ts");
 const file = ts.createSourceFile("input.tsx", readFileSync(new URL("./ChatInput.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 let command, effect;
 function visit(node) {
@@ -23,6 +25,7 @@ function setup(focused = true) {
   const pending = Promise.withResolvers();
   const scope = { document, textareaRef: { current: textarea }, builtinCommandPending: false, builtinCommandPendingRef: { current: false }, builtinCommandFocusRef: { current: null },
     isEditing: false, attachedImages: [], quotes: [], attachedImagesRef: { current: [] }, valueRef: { current: "/compact" },
+    draftKeyRef: { current: undefined }, getBuiltinSlashCommand: () => true, holdIssuedCommand,
     canClearBuiltinCommandInput: () => false, clearInput() {}, onBuiltinCommand: () => pending.promise,
     setBuiltinCommandPending: (value) => { scope.builtinCommandPending = value; },
   };
@@ -30,6 +33,28 @@ function setup(focused = true) {
   const commit = () => { cleanup?.(); disabled = scope.builtinCommandPending; if (disabled && document.activeElement === textarea) document.activeElement = body; cleanup = compile(effect, scope)(); };
   return { document, textarea, other, scope, commit, run: compile(command, scope), pending, listeners, focuses: () => focuses };
 }
+test("an issued built-in is absent from storage until the command finishes", async () => {
+  const c = setup();
+  const stored = new Map();
+  const previous = globalThis.window;
+  globalThis.window = { sessionStorage: { getItem: (key) => stored.get(key), setItem: (key, value) => stored.set(key, value), removeItem: (key) => stored.delete(key) } };
+  const key = "builtin-session";
+  try {
+    c.scope.draftKeyRef.current = key;
+    setDraft(key, { value: "/compact", images: [] });
+    const request = c.run("/compact");
+    assert.equal(stored.size, 0);
+    assert.equal(getDraft(key).value, "/compact");
+    c.pending.resolve({ handled: true, error: "rejected" });
+    await request;
+    assert.equal(JSON.parse(stored.get(`pi-chat-draft:${key}`)).value, "/compact");
+  } finally {
+    clearDraft(key);
+    if (previous === undefined) delete globalThis.window;
+    else globalThis.window = previous;
+  }
+});
+
 test("unlock restores focus and selection only after the enabling commit, including a failed command", async () => {
   const c = setup(); const request = c.run("/compact"); c.commit();
   c.textarea.selectionStart = c.textarea.selectionEnd = 0;

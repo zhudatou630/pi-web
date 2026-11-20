@@ -87,7 +87,7 @@ function pathForChatMention(path: string, sourceCwd?: string, targetCwd?: string
   return joinFilePath(sourceCwd, path);
 }
 import { getInitialNavigation } from "@/lib/initial-navigation";
-import { clearDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
+import { clearDraft, discardSessionDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { loadPinnedCwds, savePinnedCwds, togglePinnedCwd } from "@/lib/pinned-cwds";
 import {
@@ -1657,6 +1657,7 @@ export function AppShell() {
   }, [handleSessionForked, translate, sendAgentCommand]);
 
   const handleSessionDeleted = useCallback((sessionId: string) => {
+    discardSessionDraft(sessionId);
     setRefreshKey((k) => k + 1);
 
     // Any open tab pointing to the deleted session is closed immediately
@@ -1728,11 +1729,13 @@ export function AppShell() {
       const response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
       const data = await response.json().catch(() => ({})) as { deletedSessionIds?: string[]; error?: string; code?: string };
       if (!response.ok) throw new Error(deleteRefusalText(translate, data));
+      const deletedIds = data.deletedSessionIds ?? [session.id];
       if (activeSessionIdRef.current === session.id && !chatTabsRef.current.some((tab) => tab.id === root.id)) {
+        for (const id of deletedIds) discardSessionDraft(id);
         handleSwitchFamilySession(root);
         setRefreshKey((key) => key + 1);
       } else {
-        for (const id of data.deletedSessionIds ?? [session.id]) handleSessionDeleted(id);
+        for (const id of deletedIds) handleSessionDeleted(id);
       }
     } catch (error) {
       void confirm(`${translate("sidebar.deleteFailed")}\n${error instanceof Error ? error.message : String(error)}`, { alert: true });

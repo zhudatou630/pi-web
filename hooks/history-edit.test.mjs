@@ -34,9 +34,11 @@ function editHarness(key = "session") {
   let restored = true;
   const bindings = {
     composerDraftKey: key, composerDraftKeyRef: ref(key), session: { id: key },
-    pendingHistoryEdits: targets, setEditEntryId: (id) => { editId = id; },
+    getDraftEditTarget: (key) => targets.get(key),
+    setDraftEditTarget: (key, id) => id ? targets.set(key, id) : targets.delete(key),
+    setEditEntryId: (id) => { editId = id; },
     sessionHookMountedRef: ref(true), addNotice: noop,
-    opts: { chatInputRef: ref({ replaceMessage: async () => restored }) },
+    opts: { chatInputRef: ref({ replaceMessage: async (_message, accept) => restored && accept() }) },
   };
   bindings.setEdit = callback("hook", "setEdit", bindings);
   return {
@@ -59,7 +61,7 @@ test("edit selection waits for successful restoration; cancel clears only the dr
   assert.deepEqual([...state.targets], [["other-draft", "other-target"]]);
 
   const late = Promise.withResolvers();
-  state.bindings.opts.chatInputRef.current.replaceMessage = () => late.promise;
+  state.bindings.opts.chatInputRef.current.replaceMessage = async (_message, accept) => await late.promise && accept();
   const editing = state.edit(message, "late-target");
   state.bindings.composerDraftKeyRef.current = "different-draft";
   late.resolve(true);
@@ -69,7 +71,7 @@ test("edit selection waits for successful restoration; cancel clears only the dr
 
 test("pending edit follows its saved draft on remount, but a cleared draft drops the target", () => {
   const effect = find(files.hook, (node) => ts.isCallExpression(node) && node.expression.getText(files.hook) === "useLayoutEffect"
-    && node.arguments[0].getText(files.hook).includes("pendingHistoryEdits.delete"));
+    && node.arguments[0].getText(files.hook).includes("setDraftEditTarget(composerDraftKey, null)"));
   const state = editHarness();
   state.targets.set("session", "target-a");
   state.targets.set("other", "target-b");
@@ -196,7 +198,7 @@ test("replaceMessage returns false for occupied or stale composers and true only
       setDraft: (key, draft) => writes.push([key, draft]), requestAnimationFrame: noop,
     };
     const replace = evaluate(`({ ${method.getText(files.input)} }).replaceMessage`, bindings);
-    const result = replace({ content: "history" });
+    const result = replace({ content: "history" }, () => { writes.push("target"); return true; });
     if (refusal === "typed-late") bindings.valueRef.current = "new text";
     if (refusal === "key-changed") bindings.draftKeyRef.current = "other";
     if (refusal === "unmounted") bindings.imageProcessEpochRef.current++;
@@ -205,6 +207,7 @@ test("replaceMessage returns false for occupied or stale composers and true only
     assert.equal(await result, refusal === null, refusal);
     if (refusal) assert.deepEqual(writes, []);
     else {
+      assert.equal(writes[0], "target", "arm the edit before the draft is written");
       assert.equal(bindings.valueRef.current, "history");
       assert.equal(bindings.attachedImagesRef.current, images);
       assert.deepEqual(writes.at(-1), ["session", { value: "history", images }]);

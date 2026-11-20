@@ -16,6 +16,7 @@ import {
   useChatAppearance,
 } from "@/hooks/useChatAppearance";
 import { sendAgentCommand } from "@/lib/agent-client";
+import { clearAllDrafts } from "@/lib/draft-store";
 import { SETTINGS_BUILTIN_TOOLS } from "@/lib/tool-presets";
 import type { ShellToolSettingsResponse } from "@/lib/api-types";
 import { getJson, peekJson, prefetchSettings, revalidateSettings, settingsUrls } from "@/lib/settings-cache";
@@ -264,6 +265,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     try {
       const response = await fetch("/api/web-auth", { method: "DELETE" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      clearAllDrafts();
       window.location.replace("/login");
     } catch {
       setLogoutError(t("auth.logoutFailed"));

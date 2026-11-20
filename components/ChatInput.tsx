@@ -9,6 +9,7 @@ import {
   clearDraft,
   exceedsAttachedImageSendLimit,
   getDraft,
+  holdIssuedCommand,
   mergeRestoredSubmissionDraft,
   mergeRestoredSubmissionText,
   rekeyDraft as rekeyStoredDraft,
@@ -116,7 +117,7 @@ export interface ChatInputHandle {
   pasteText: (text: string) => void;
   insertIfEmpty: (text: string) => void;
   addQuote: (quote: Quote) => void;
-  replaceMessage: (message: UserMessage) => Promise<boolean>;
+  replaceMessage: (message: UserMessage, accept: () => boolean) => Promise<boolean>;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
@@ -790,7 +791,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         scrollTextareaCaretIntoView(ta);
       });
     },
-    async replaceMessage(message: UserMessage) {
+    async replaceMessage(message: UserMessage, accept: () => boolean) {
       const ta = textareaRef.current;
       const restoreKey = draftKeyRef.current;
       const restoreEpoch = imageProcessEpochRef.current;
@@ -800,7 +801,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       const restoredText = getUserMessageText(message);
       const draftImages = await getUserMessageDraftImages(message);
       // Refuse late media after typing, switching drafts, or unmounting.
-      if (draftKeyRef.current !== restoreKey || imageProcessEpochRef.current !== restoreEpoch || !canRestore()) return false;
+      if (draftKeyRef.current !== restoreKey || imageProcessEpochRef.current !== restoreEpoch || !canRestore() || !accept()) return false;
       const restoredImages = draftImagesToAttachedImages(draftImages);
       const restored = splitQuotedPrompt(restoredText);
       valueRef.current = restored.message;
@@ -1221,12 +1222,15 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       : null;
     builtinCommandPendingRef.current = true;
     setBuiltinCommandPending(true);
+    const key = draftKeyRef.current;
+    const release = key && getBuiltinSlashCommand(msg) ? holdIssuedCommand(key, msg) : undefined;
     try {
       const result = await onBuiltinCommand(msg);
       if (!result.handled) return false;
       if (!result.error && canClearBuiltinCommandInput(valueRef.current, attachedImagesRef.current.length, msg)) clearInput();
       return true;
     } finally {
+      release?.();
       builtinCommandPendingRef.current = false;
       setBuiltinCommandPending(false);
     }

@@ -1490,10 +1490,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         const response = await fetch("/api/sessions", {
           method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: ids.slice(start, start + 500) }),
         });
-        const data = await response.json() as { error?: string; results?: { id: string; ok: boolean; error?: string; code?: string; warning?: string }[] };
+        const data = await response.json() as { error?: string; results?: { id: string; ok: boolean; deletedSessionIds?: string[]; error?: string; code?: string; warning?: string }[] };
         if (!response.ok || !data.results) throw new Error(data.error ?? `HTTP ${response.status}`);
         for (const result of data.results) {
-          if (result.ok) onSessionDeleted?.(result.id);
+          if (result.ok) for (const id of result.deletedSessionIds ?? [result.id]) onSessionDeleted?.(id);
           if (!result.ok) failures.push({ id: result.id, reason: deleteRefusalText(t, result) });
           else if (result.warning) warnings.push(result.warning);
         }

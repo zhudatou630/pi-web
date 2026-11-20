@@ -17,7 +17,7 @@ import { normalizeToolCalls } from "@/lib/normalize";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
 import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand as postAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
-import { getDraft, rekeyDraft, restoreDraftSubmission, setDraft, type ChatDraft } from "@/lib/draft-store";
+import { getDraft, getDraftEditTarget, rekeyDraft, restoreDraftSubmission, setDraft, setDraftEditTarget, type ChatDraft } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
 import type { ContextUsage, SessionStatsInfo } from "@/lib/pi-types";
@@ -333,15 +333,12 @@ export interface ChatInputHandle {
   setText: (text: string) => void;
   pasteText: (text: string) => void;
   insertIfEmpty: (content: string) => void;
-  replaceMessage: (message: UserMessage) => Promise<boolean>;
+  replaceMessage: (message: UserMessage, accept: () => boolean) => Promise<boolean>;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
   restoreSubmission: (text: string, images?: Array<{ data: string; mimeType: string }>, targetDraftKey?: string) => void;
 }
-
-// Draft key -> previous assistant entry; edits never persist a leaf move before send.
-const pendingHistoryEdits = new Map<string, string>();
 
 type SelectedModel = { provider: string; modelId: string };
 
@@ -592,13 +589,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   composerDraftKeyRef.current = composerDraftKey;
   const [editEntryId, setEditEntryId] = useState<string | null>(null);
   useLayoutEffect(() => {
-    if (composerDraftKey && !getDraft(composerDraftKey)) pendingHistoryEdits.delete(composerDraftKey);
-    setEditEntryId((composerDraftKey && pendingHistoryEdits.get(composerDraftKey)) || null);
+    if (composerDraftKey && !getDraft(composerDraftKey)) setDraftEditTarget(composerDraftKey, null);
+    setEditEntryId((composerDraftKey && getDraftEditTarget(composerDraftKey)) || null);
   }, [composerDraftKey]);
   const setEdit = useCallback((entryId: string | null, key = composerDraftKey) => {
     if (!key) return;
-    if (entryId) pendingHistoryEdits.set(key, entryId);
-    else pendingHistoryEdits.delete(key);
+    setDraftEditTarget(key, entryId);
     if (composerDraftKeyRef.current === key) setEditEntryId(entryId);
   }, [composerDraftKey]);
 
@@ -1247,10 +1243,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const handleEditContent = useCallback(async (message: UserMessage, targetId: string) => {
     if (!session?.id || !composerDraftKey) return;
     try {
-      if (await opts.chatInputRef?.current?.replaceMessage(message)
-        && sessionHookMountedRef.current && composerDraftKeyRef.current === composerDraftKey) {
+      await opts.chatInputRef?.current?.replaceMessage(message, () => {
+        if (!sessionHookMountedRef.current || composerDraftKeyRef.current !== composerDraftKey) return false;
         setEdit(targetId);
-      }
+        return true;
+      });
     } catch (e) {
       addNotice({ type: "error", message: e instanceof Error ? e.message : String(e) });
     }
@@ -2043,7 +2040,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       restoreSubmission(message, images, composerDraftKey);
       return;
     }
-    const editTarget = composerDraftKey && pendingHistoryEdits.get(composerDraftKey);
+    const editTarget = composerDraftKey && getDraftEditTarget(composerDraftKey);
     if (editTarget) {
       // Navigation and prompt are separate requests: rejection after navigation
       // keeps the moved leaf, but the normal prompt recovery preserves the draft.
@@ -2778,7 +2775,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   ) => {
     const sid = sessionIdRef.current;
     const restore = () => restoreSubmission(message, images, composerDraftKey);
-    if (composerDraftKey && pendingHistoryEdits.has(composerDraftKey)) {
+    if (composerDraftKey && getDraftEditTarget(composerDraftKey)) {
       restore();
       return;
     }

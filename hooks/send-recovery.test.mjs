@@ -25,7 +25,7 @@ function harness() {
   let messages = [];
   const restored = [], notices = [];
   const bindings = {
-    console: { error: noop }, composerDraftKey: "sending-tab", pendingHistoryEdits: new Map(),
+    console: { error: noop }, composerDraftKey: "sending-tab", getDraftEditTarget: noop,
     agentRunningRef: ref(false), endedSessionRef: ref(null), bashRunningRef: ref(false), sessionIdRef: ref("session"),
     promptRunIdRef: ref(0), rpcPromptPendingRef: ref(false), sdkAgentActiveRef: ref(false),
     promptRunGateRef: ref(new PromptRunGate()), pendingPromptRef: ref(null),

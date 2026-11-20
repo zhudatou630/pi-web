@@ -12,6 +12,8 @@ export interface ChatDraft {
 }
 
 const drafts = new Map<string, ChatDraft>();
+const editTargets = new Map<string, string>();
+const issuedCommands = new Map<string, { key: string; text: string }>();
 const STORAGE_PREFIX = "pi-chat-draft:";
 
 function storageKey(key: string): string {
@@ -63,6 +65,10 @@ export function setDraft(key: string, draft: ChatDraft): boolean {
   }
   const stored = cloneDraft(draft);
   drafts.set(key, stored);
+  if (editTargets.has(key) || issuedCommands.get(key)?.text === stored.value.trim()) {
+    removeStoredDraft(key);
+    return true;
+  }
   const storage = getStorage();
   if (!storage) return false;
   try {
@@ -74,10 +80,64 @@ export function setDraft(key: string, draft: ChatDraft): boolean {
   }
 }
 
-export function clearDraft(key: string): void {
-  drafts.delete(key);
+function removeStoredDraft(key: string): void {
   try {
     getStorage()?.removeItem(storageKey(key));
+  } catch {
+    // Browser storage is optional.
+  }
+}
+
+export function clearDraft(key: string): void {
+  drafts.delete(key);
+  removeStoredDraft(key);
+}
+
+export function getDraftEditTarget(key: string): string | undefined {
+  return editTargets.get(key);
+}
+
+export function setDraftEditTarget(key: string, entryId: string | null): void {
+  if (entryId) {
+    getDraft(key);
+    editTargets.set(key, entryId);
+    removeStoredDraft(key);
+  } else if (editTargets.delete(key)) {
+    const draft = drafts.get(key);
+    if (draft) setDraft(key, draft);
+  }
+}
+
+export function holdIssuedCommand(key: string, text: string): () => void {
+  const draft = getDraft(key);
+  const command = { key, text };
+  issuedCommands.set(key, command);
+  if (draft?.value.trim() === text) removeStoredDraft(key);
+  return () => {
+    if (issuedCommands.get(command.key) !== command) return;
+    issuedCommands.delete(command.key);
+    const current = drafts.get(command.key);
+    if (current?.value.trim() === text) setDraft(command.key, current);
+  };
+}
+
+export function discardSessionDraft(key: string): void {
+  clearDraft(key);
+  editTargets.delete(key);
+  issuedCommands.delete(key);
+}
+
+export function clearAllDrafts(): void {
+  drafts.clear();
+  editTargets.clear();
+  issuedCommands.clear();
+  try {
+    const storage = getStorage();
+    if (!storage) return;
+    for (let i = storage.length - 1; i >= 0; i--) {
+      const key = storage.key(i);
+      if (key?.startsWith(STORAGE_PREFIX)) storage.removeItem(key);
+    }
   } catch {
     // Browser storage is optional.
   }
@@ -142,6 +202,12 @@ export function rekeyDraft(
     : (storedPrevious ?? (currentDraft ? cloneDraft(currentDraft) : null));
   const next = getDraft(nextKey);
   clearDraft(previousKey);
+  const command = issuedCommands.get(previousKey);
+  if (command) {
+    issuedCommands.delete(previousKey);
+    command.key = nextKey;
+    issuedCommands.set(nextKey, command);
+  }
   if (!previous) return next;
 
   const merged = next
