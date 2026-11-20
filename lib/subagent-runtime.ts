@@ -293,10 +293,10 @@ export function parseSubagentModel<T extends { provider: string; id: string }>(
   const attempts: Array<[string, ThinkingLevel | undefined]> = [[full, undefined]];
   if (suffix) attempts.push([full.slice(0, suffix.index), suffix[1] as ThinkingLevel]);
   for (const [requested, thinking] of attempts) {
-    const slash = requested.indexOf("/");
-    const matches = models.filter((model) => (
-      slash > 0 ? `${model.provider}/${model.id}` === requested : model.id === requested
-    ));
+    const exact = requested.includes("/")
+      ? models.filter((model) => `${model.provider}/${model.id}` === requested)
+      : [];
+    const matches = exact.length ? exact : models.filter((model) => model.id === requested);
     if (matches.length === 1) return { model: matches[0], ...(thinking ? { thinking } : {}) };
     if (matches.length > 1) throw new Error(`Subagent model is ambiguous: ${requested}. Use one of: ${modelRefs(matches)}`);
   }
