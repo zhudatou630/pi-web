@@ -54,6 +54,7 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import { AppUpdateNotice } from "./AppUpdateNotice";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { findChatScrollAnchor, type ChatScrollPosition } from "@/lib/chat-scroll-position";
+import { captureReadingAnchor, restoreReadingAnchor, type ChatReadingAnchor } from "@/lib/chat-reading-anchor";
 import { placeSelectionToolbar, prefersToolbarBelow, selectionAnchor, visibleBounds, type SelectionAnchor, type ToolbarSide } from "@/lib/selection-toolbar";
 import { formatModelTiming, turnModelTiming } from "@/lib/model-timing";
 import { claimDoneChime, SAME_COMPLETION_MS } from "@/lib/done-chime";
@@ -1196,6 +1197,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const pendingWindowAnchorRef = useRef<{ anchorEntryId: string; anchorOffset: number } | null>(null);
   const messageContentRef = useRef<HTMLDivElement | null>(null);
   const prevScrollDistanceRef = useRef<number | null>(null);
+  const readingAnchorRef = useRef<ChatReadingAnchor | null>(null);
   const loadingOlderRef = useRef(false);
   const outlineJumpControllerRef = useRef<AbortController | null>(null);
   const [pendingOutlineJump, setPendingOutlineJump] = useState<{
@@ -1426,27 +1428,46 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
       setShowScrollBottom(unmountedNewerCount > 0 || distance > 160);
     };
+    const content = messageContentRef.current;
+    let contentWidth = content?.clientWidth ?? 0;
+    const captureAnchor = () => {
+      if (content) readingAnchorRef.current = captureReadingAnchor(container, content);
+    };
     const onScroll = () => {
       updateScrollBottom();
+      // Mid-animation the column may already be rewrapped but not yet corrected: leave that to the observer.
+      if (content?.clientWidth === contentWidth) captureAnchor();
       if (outlineJumpControllerRef.current || unmountedNewerCount > 0) return;
       if (isScrollAtTail(container.scrollTop, container.clientHeight, container.scrollHeight)) {
         setUnmountedNewerCount(0);
         setMountLimit(MOUNTED_GROUP_LIMIT);
       }
     };
+    // Nested scrollers (process details, tool output) move the anchored text without scrolling the chat.
+    const onNestedScroll = (event: Event) => {
+      if (event.target !== container && content?.clientWidth === contentWidth) captureAnchor();
+    };
     updateScrollBottom();
     // Content can still grow after the first paint (web font swap, async
     // markdown/thinking content); stay pinned to the tail while following it.
+    // A narrower/wider column (side panel, window resize) rewraps text: keep the line being read in place.
     const observer = new ResizeObserver(() => {
+      const width = content?.clientWidth ?? 0;
+      const reflowed = width !== contentWidth;
+      contentWidth = width;
       if (isNearBottomRef.current) scrollToBottom("instant");
+      else if (reflowed && readingAnchorRef.current) restoreReadingAnchor(container, readingAnchorRef.current);
+      else captureAnchor();
       updateScrollBottom();
     });
     observer.observe(container);
-    if (messageContentRef.current) observer.observe(messageContentRef.current);
+    if (content) observer.observe(content);
     container.addEventListener("scroll", onScroll, { passive: true });
+    container.addEventListener("scroll", onNestedScroll, { capture: true, passive: true });
     return () => {
       observer.disconnect();
       container.removeEventListener("scroll", onScroll);
+      container.removeEventListener("scroll", onNestedScroll, { capture: true });
     };
   }, [isEmptyNew, isNearBottomRef, loading, scrollContainerRef, scrollToBottom, session?.id, unmountedNewerCount]);
 
