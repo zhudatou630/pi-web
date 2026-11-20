@@ -26,8 +26,11 @@ test("scroll fades use zero-initialized lengths and guarded, 16px scroll timelin
   assert.equal(block(".chat-scroll-fade {"), "\n  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent);\n");
 });
 
-test("wrapped code no longer opts into a horizontal scroll mask", () => {
-  assert.doesNotMatch(fades, /markdown-code-block/);
+test("code blocks scroll sideways like tables, with the same horizontal mask", () => {
+  assert.match(fades, /\.markdown-code-block pre,\n  \.markdown-table-wrap \{\n    --scroll-fade-gutter: 0px;/);
+  assert.match(fades, /\.markdown-code-block pre,\n      \.markdown-table-wrap \{ --scroll-fade-gutter: 5px; \}/);
+  assert.match(block(".markdown-code-line-text {"), /white-space: pre;/);
+  assert.doesNotMatch(block(".markdown-code-line-text {"), /wrap/);
 });
 
 test("both axes keep an opaque scrollbar strip", () => {
@@ -97,12 +100,12 @@ test("menus and the worktree popover portal to body, while the selection bar sta
   }
 });
 
-test("image export clears masks and animations in the clone and unfolds the table frame", async () => {
+test("image export clears masks and animations in the clone and unfolds table and code frames", async () => {
   const source = await readFile(new URL("../lib/message-image.ts", import.meta.url), "utf8");
   const exportCss = source.slice(source.indexOf("const EXPORT_CSS"), source.indexOf("const SCROLLERS"));
   assert.match(exportCss, /mask-image:none!important;-webkit-mask-image:none!important;animation:none!important/);
-  assert.match(exportCss, /\.markdown-table-frame,\.markdown-table-wrap\{width:max-content!important/);
-  assert.doesNotMatch(exportCss, /\.markdown-code-block\{width:max-content/);
+  assert.match(exportCss, /\.markdown-table-frame,\.markdown-table-wrap,\.markdown-code-block\{width:max-content!important/);
+  assert.match(exportCss, /\.markdown-code-block>\*\{width:auto!important\}/);
   assert.match(source, /fontEmbedCSS: EXPORT_CSS \+ await buildFontEmbedCSS\(el\)/);
   assert.match(source, /const SCROLLERS = "\.markdown-table-wrap, \.markdown-code-block pre"/);
 });

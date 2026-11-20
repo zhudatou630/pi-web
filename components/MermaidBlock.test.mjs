@@ -107,7 +107,7 @@ test("CodeBlock renders plain text without tokenization while streaming", () => 
   assert.match(html, /const x = 1;/);
 });
 
-test("CodeBlock wraps numbered text separately, preserving blank lines and multiline token colors", async () => {
+test("CodeBlock keeps numbered text separate and scrolls long lines, preserving blank lines and multiline token colors", async () => {
   const { fromHtml } = await import("hast-util-from-html");
   await loadPrismLanguages();
   const code = "/* comment\n" + "long-token-".repeat(30) + "\n\nend */\nconst 中文 = 1;\n";
@@ -132,8 +132,9 @@ test("CodeBlock wraps numbered text separately, preserving blank lines and multi
   assert.equal(continuation.properties.style, find(rows[0], "token")[0].properties.style);
   assert.match(renderCode({ code: "x", lang: "text" }), /font-family:var\(--font-mono\)/);
   const streaming = renderCode({ code, lang: "javascript", isStreaming: true });
-  assert.match(streaming, /white-space:pre-wrap;overflow-wrap:anywhere/);
-  assert.doesNotMatch(streaming, /overflow-x:auto/);
+  assert.match(streaming, /white-space:pre;overflow-x:auto/);
+  assert.doesNotMatch(streaming, /pre-wrap|overflow-wrap/);
+  assert.doesNotMatch(renderCode({ code, lang: "javascript" }), /pre-wrap|overflow-wrap/);
 });
 
 test("MermaidBlock handles Chinese characters in diagram", () => {

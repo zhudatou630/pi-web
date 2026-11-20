@@ -80,7 +80,7 @@ While streaming, only an unambiguous top-level plain fence skips react-markdown
 (`parseStreamingFence`). Math, Mermaid, SVG, indented fences, CR line endings,
 info escapes/entities and trailing prose keep the original parser. Finished
 messages always return to the normal whole-message parse and deferred highlighting.
-The same CodeBlock owns both boxes, typography and wrapping. Its streaming code
+The same CodeBlock owns both boxes, typography and horizontal scrolling. Its streaming code
 is cut into 64-line pieces: completed pieces are memoized and use
 `content-visibility:auto`; only the tail changes. Piece scanning resumes at the
 new suffix (and resets after a rewrite), rather than splitting every old line on
@@ -216,11 +216,11 @@ Events that are not turns share one look (`TranscriptMarker`, `components/Messag
 
 ## Scroll edges
 
-- The session list and file tree (`.scroll-fade-block`) and `.markdown-table-wrap` fade only edges with more content beyond them. All use the chat's subtle 16px transparent/black linear-gradient style. Markdown code blocks wrap long lines (including unbroken URLs/paths); numbered continuation lines stay after the gutter, so code `<pre>` needs no horizontal fade. Wide ASCII diagrams also wrap on narrow screens. This is a scroller edge mask, not another text-opacity tier; the existing `.chat-scroll-fade` behavior is unchanged.
+- The session list and file tree (`.scroll-fade-block`), Markdown code `<pre>` and `.markdown-table-wrap` fade only edges with more content beyond them. All use the chat's subtle 16px transparent/black linear-gradient style. Markdown code blocks never wrap: like tables and Mermaid, long lines (URLs, paths, ASCII diagrams) scroll the block sideways instead of reflowing to the pane width. Frozen streaming pieces size to their longest line (`width: max-content`), since `content-visibility` would otherwise clip them. This is a scroller edge mask, not another text-opacity tier; the existing `.chat-scroll-fade` behavior is unchanged.
 - Pure CSS scroll-driven animations (`scroll(self block|inline)`) animate registered lengths from/to zero. Without overflow the timeline is inactive and both lengths stay zero; the `@supports` guard leaves unsupported browsers unmasked. No scroll listeners.
 - An opaque second mask layer preserves classic scrollbar strips: vertical lists reuse the measured `--sidebar-scrollbar-gutter`; horizontal scrollers reserve the existing 5px WebKit scrollbar height on fine pointers (touch bars are hidden).
 - Masks also clip positioned descendants even when the gradient is fully opaque. Session-row menus, the worktree picker (including its create/remove forms), and file menus/delete confirms portal to `document.body`. The worktree picker anchors to the project row in viewport coordinates, closes on list scroll/resize, and includes its portal in outside-click checks. Drag ghosts already portal; the multi-select action bar stays outside both masked lists. Inline rename fields and row actions intentionally remain in their rows; native `title` tooltips are browser chrome. Code actions and table chips sit outside the content `<pre>`/masked table scroller.
-- Table borders and margins live on `.markdown-table-frame`, outside the masked `.markdown-table-wrap`. Keep the inner class and `.markdown-code-block pre` selectors stable for width fitting and image export. Export CSS disables masks/animations only in the html-to-image clone and expands the frame with the table; code keeps its on-screen wrapping width, leaving the live view unchanged.
+- Table borders and margins live on `.markdown-table-frame`, outside the masked `.markdown-table-wrap`. Keep the inner class and `.markdown-code-block pre` selectors stable for width fitting and image export. Export CSS disables masks/animations only in the html-to-image clone and expands the table and code frames to their content, leaving the live view unchanged.
 
 - Display math in messages reuses the code block's copy glyph, 11px action and 1.5s Copied feedback to copy LaTeX. The borderless action overlays the formula's top-right corner and appears only on hover/focus (a tap on touch), so formulas keep their spacing; Copied feedback stays visible. Inline math and file previews stay unchanged. The source attribute is added only after sanitizing, before KaTeX; user HTML cannot supply it. Image exports omit the action.
 
@@ -246,7 +246,7 @@ Page and Web Push completion notifications share `pi-session-complete:<id>` and 
 
 - Code fence and file Source gutters use `data-line-number` + `::before`, with empty,
   aria-hidden DOM spans. Unlike `user-select:none` text nodes, these stay out of
-  WebKit cross-line selection/copy; highlighter gutter widths and wrapping stay unchanged.
+  WebKit cross-line selection/copy; highlighter gutter widths stay unchanged.
 
 ## Images
 

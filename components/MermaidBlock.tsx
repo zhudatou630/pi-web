@@ -349,7 +349,7 @@ interface CodeBlockProps {
 
 type CodeLinesProps = Parameters<NonNullable<SyntaxHighlighterProps["renderer"]>>[0];
 
-// Like the file viewer: continuation lines belong to the text, not the number gutter.
+// Like the file viewer: the number gutter and the text are separate flex items.
 function renderCodeLines({ rows, stylesheet, useInlineStyles }: CodeLinesProps) {
   return rows.map((row, index) => {
     const children = row.children ?? [];
@@ -429,8 +429,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             padding: "6px 10px",
             fontSize: "calc(13px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.54,
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
+            whiteSpace: "pre",
+            overflowX: "auto",
             border: "none",
             borderRadius: 0,
             background: "transparent",
@@ -457,8 +457,8 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
             background: "transparent",
             backgroundColor: "transparent",
             fontFamily: "var(--font-mono)",
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
+            whiteSpace: "pre",
+            overflowX: "auto",
           }}
           codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
         >
