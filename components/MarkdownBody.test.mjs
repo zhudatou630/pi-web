@@ -42,6 +42,15 @@ test("a plain streaming fence uses the normal code box and settles through the p
   }
 });
 
+test("an empty fence renders as an empty block, not \"undefined\", and offers no PlantUML render", () => {
+  for (const language of ["js", "puml"]) {
+    const html = renderMarkdown(`\`\`\`${language}\n\`\`\``);
+    assert.match(html, /markdown-code-block/);
+    assert.doesNotMatch(html, /undefined/);
+    assert.doesNotMatch(html, /plantuml\.com/);
+  }
+});
+
 test("table borders surround the scroller without entering its mask", () => {
   const html = renderMarkdown("| a | b |\n| - | - |\n| 1 | 2 |");
   assert.match(html, /<div class="markdown-table-block"><div class="markdown-table-frame"><div class="markdown-table-wrap"><table>/);

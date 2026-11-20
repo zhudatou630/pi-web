@@ -1616,6 +1616,8 @@ export function AppShell() {
     activeNewSessionDraftKeyRef.current = null;
     setSessionKey((k) => k + 1);
     setNewSessionCwd(null);
+    // A copy into another folder moves the sidebar and explorer to that folder.
+    if (forkedSession.cwd && sourceSession && forkedSession.cwd !== sourceSession.cwd) setActiveCwd(forkedSession.cwd);
     setSelectedSession(forkedSession);
     if (pane === "secondary") setSplitChatTabId(newSessionId);
     else setActiveChatTabId(newSessionId);

@@ -1224,7 +1224,7 @@ export function FileViewer({
 // Stable pre/code renderer types keep fence state when the preview re-parses.
 const filePreviewCode: NonNullable<Components["code"]> = ({ className, children, ...props }) => {
   const lang = className?.replace("language-", "").toLowerCase() ?? "";
-  const raw = String(children);
+  const raw = String(children ?? "");
   if (className?.includes("language-") || raw.includes("\n")) {
     return <MarkdownFence code={raw.replace(/\n$/, "")} lang={lang} />;
   }

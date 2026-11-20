@@ -2308,6 +2308,13 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   isCompacting ? t("chat.compacting") : null,
                 );
 
+                // A turn a steer or a subagent report cut after its tool calls ends with their results.
+                for (let resultIdx = processEndIdx + 1; resultIdx < endIdx; resultIdx++) {
+                  const result = messages[resultIdx];
+                  if (result.role === "toolResult" && typeof result.timestamp === "number" && Number.isFinite(result.timestamp)) {
+                    processEndTime = processEndTime === undefined ? result.timestamp : Math.max(processEndTime, result.timestamp);
+                  }
+                }
                 const turnStartTime = typeof boundary?.startedAt === "number" && Number.isFinite(boundary.startedAt)
                   ? boundary.startedAt
                   : processStartTime;
