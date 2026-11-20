@@ -44,6 +44,7 @@ import { RoutineApprovalCard } from "./RoutineApprovalCard";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { useI18n } from "@/hooks/useI18n";
 import { getForkSessionName } from "@/lib/session-display-title";
+import { clearDraft, getDraft, getDraftEditTarget, setDraft, setDraftEditTarget } from "@/lib/draft-store";
 import { formatDuration } from "@/lib/i18n/format";
 import { useAgentSession, type AgentEndInfo, type AgentPhase, type BuiltinSlashCommandResult, type NoticeItem } from "@/hooks/useAgentSession";
 import { useDragDrop } from "@/hooks/useDragDrop";
@@ -94,7 +95,7 @@ interface Props {
   onFilesChanged?: () => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest, session: SessionInfo | null) => void;
   onSessionCreated?: (session: SessionInfo, sourceDraftKey: string) => void;
-  onSessionForked?: (newSessionId: string, sourceSessionId: string | null) => void;
+  onSessionForked?: (newSessionId: string, sourceSessionId: string | null, session?: SessionInfo) => void;
   modelsRefreshKey?: number;
   chatInputRef?: React.RefObject<ChatInputHandle | null>;
   isFocusedPane?: boolean;
@@ -1737,6 +1738,52 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     return handlePromptWithStreamingBehavior(message, behavior, images);
   }, [handlePromptWithStreamingBehavior, keepTabOpen]);
 
+  const [forkFolderOpen, setForkFolderOpen] = useState(false);
+  const [forkFolderBusy, setForkFolderBusy] = useState(false);
+  const [forkFolderError, setForkFolderError] = useState<string | null>(null);
+  const canForkMissingCwd = Boolean(missingCwd && session && !sessionBusy && !isCompacting && onSessionForked
+    && session.relation?.kind !== "side" && session.relation?.kind !== "subagent");
+  const forkIntoFolder = async (cwd: string) => {
+    if (!session || !onSessionForked || forkFolderBusy) return;
+    const sourceId = session.id;
+    keepTabOpen();
+    setForkFolderBusy(true);
+    setForkFolderError(null);
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sourceId)}/fork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd, prefix: t("session.forkNamePrefix") }),
+      });
+      const result = await response.json() as { sessionId?: string; session?: SessionInfo; code?: string };
+      if (!response.ok || !result.sessionId || !result.session) {
+        setForkFolderError(t(result.code === "cwd-invalid" ? "chat.forkFolderInvalid"
+          : result.code === "cwd-exists" ? "chat.forkFolderRestored" : "session.forkFailed"));
+        return;
+      }
+      const draft = getDraft(sourceId);
+      if (draft) {
+        // A whole-session copy preserves the pending Edit's entry id.
+        const editTarget = getDraftEditTarget(sourceId);
+        if (editTarget) setDraftEditTarget(result.sessionId, editTarget);
+        setDraft(result.sessionId, draft);
+        clearDraft(sourceId);
+        if (sessionRef.current?.id === sourceId) {
+          ownChatInputRef.current?.clearDraftInput();
+          cancelEdit();
+        } else {
+          setDraftEditTarget(sourceId, null);
+        }
+      }
+      setForkFolderOpen(false);
+      onSessionForked(result.sessionId, sourceId, result.session);
+    } catch {
+      setForkFolderError(t("session.forkFailed"));
+    } finally {
+      setForkFolderBusy(false);
+    }
+  };
+
   const isSessionLoading = !isNew && loading;
   const isQueuedSubagent = session?.relation?.kind === "subagent"
     && session.relation.status === "queued";
@@ -1769,6 +1816,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       allModelList={allModelList}
       providerNames={providerNames}
       missingCwd={isSessionLoading ? null : missingCwd}
+      onForkMissingCwd={canForkMissingCwd ? () => { setForkFolderError(null); setForkFolderOpen(true); } : undefined}
       modelError={isSessionLoading ? null : modelError}
       modelScopeWarnings={isSessionLoading ? [] : modelScopeWarnings}
       onModelChange={isSessionLoading || isQueuedSubagent ? undefined : handleModelChange}
@@ -2488,6 +2536,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         </>}
       </div>
 
+      {forkFolderOpen && (
+        <DirectoryPicker
+          busy={forkFolderBusy}
+          error={forkFolderError}
+          onCancel={() => setForkFolderOpen(false)}
+          onSelect={(cwd) => void forkIntoFolder(cwd)}
+        />
+      )}
       {quoteSelectionEnabled && isVisiblePane && (
         <QuoteSelectionPopover
           messageContentRef={messageContentRef}

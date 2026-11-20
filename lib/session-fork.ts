@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute } from "node:path";
+import { hasParentDirectorySegment } from "./path-security";
 import { writePrivateFileAtomicSync } from "./atomic-file";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSessionWrapper } from "./rpc-manager";
@@ -9,7 +11,7 @@ import { readSubagentRun } from "./subagents";
 import type { SessionEntry } from "./types";
 
 export class SessionForkError extends Error {
-  constructor(readonly code: "not_found" | "unsaved" | "empty" | "subagent", message: string) {
+  constructor(readonly code: "not_found" | "unsaved" | "empty" | "subagent" | "side" | "cwd-invalid" | "cwd-exists", message: string) {
     super(message);
     this.name = "SessionForkError";
   }
@@ -51,13 +53,7 @@ export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null
   if (!manager.getBranch(leafId).some((entry) => entry.type === "message")) {
     throw new SessionForkError("empty", "Nothing to fork: the session has no messages");
   }
-  const firstUser = entries.find((entry) => entry.type === "message" && entry.message.role === "user");
-  const forkName = name?.trim() || getForkSessionName({
-    id: manager.getSessionId(),
-    name: manager.getSessionName(),
-    parentSessionId: manager.getHeader()?.parentSession,
-    firstMessage: firstUser?.type === "message" && firstUser.message.role === "user" ? userMessagePreview(firstUser.message.content, 500) : undefined,
-  }, "Fork: ");
+  const forkName = name?.trim() || nameFromSession(manager, "Fork: ");
   // Read before branching, which repoints the manager at the copy.
   const sourceSideParentId = sideChatParentId(manager.getHeader());
   const sideParentId = side ? sourceSideParentId ?? manager.getSessionId() : sourceSideParentId;
@@ -67,6 +63,48 @@ export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null
   if (path) writeSessionCopy(manager, path, sideParentId);
   if (!path || !existsSync(path)) throw new Error("Failed to fork the session");
   return { sessionId: manager.getSessionId(), path, name: forkName };
+}
+
+export function forkSessionIntoCwd(sourcePath: string, target: unknown, prefix: string) {
+  if (!existsSync(sourcePath)) throw new SessionForkError("not_found", "Session not found");
+  let cwd: string;
+  try {
+    if (typeof target !== "string" || !isAbsolute(target) || hasParentDirectorySegment(target)) throw new Error();
+    cwd = realpathSync(target);
+    if (!statSync(cwd).isDirectory()) throw new Error();
+  } catch {
+    throw new SessionForkError("cwd-invalid", "Choose an existing absolute directory");
+  }
+
+  const source = SessionManager.open(sourcePath);
+  try {
+    statSync(source.getCwd());
+    throw new SessionForkError("cwd-exists", "The source folder still exists");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+  }
+  const entries = source.getEntries();
+  if (readSubagentRun(entries as unknown as SessionEntry[], source.getSessionId(), sourcePath)) {
+    throw new SessionForkError("subagent", "A subagent session cannot be forked");
+  }
+  if (sideChatParentId(source.getHeader())) throw new SessionForkError("side", "A side chat cannot be moved to another folder");
+  if (!entries.some((entry) => entry.type === "message")) throw new SessionForkError("empty", "Nothing to fork: the session has no messages");
+
+  const name = nameFromSession(source, prefix);
+  const copy = SessionManager.forkFrom(sourcePath, cwd);
+  const path = copy.getSessionFile();
+  if (!path) throw new Error("Failed to fork the session");
+  copy.appendSessionInfo(name);
+  return { sessionId: copy.getSessionId(), path, cwd };
+}
+
+function nameFromSession(manager: SessionManager, prefix: string): string {
+  const firstUser = manager.getEntries().find((entry) => entry.type === "message" && entry.message.role === "user");
+  return getForkSessionName({
+    id: manager.getSessionId(), name: manager.getSessionName(), parentSessionId: manager.getHeader()?.parentSession,
+    firstMessage: firstUser?.type === "message" && firstUser.message.role === "user" ? userMessagePreview(firstUser.message.content, 500) : undefined,
+  }, prefix);
 }
 
 export function forkSessionBefore(sourcePath: string, entryId: string, name?: string) {

@@ -6,7 +6,7 @@ import ts from "typescript";
 const source = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
 const control = source.slice(
   source.indexOf("function NewSessionCwdControl"),
-  source.indexOf("function NewSessionUpdateLink"),
+  source.indexOf("function hasSameTranscriptIdentity"),
 );
 
 test("path menu and worktree menu are separate", () => {

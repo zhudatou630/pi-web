@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getRpcSession, isRpcSessionFileMutationReserved } from "@/lib/rpc-manager";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
-import { forkSessionBranch, getForkLeafId, SessionForkError } from "@/lib/session-fork";
+import { forkSessionBranch, forkSessionIntoCwd, getForkLeafId, SessionForkError } from "@/lib/session-fork";
+import { allowFileRoot } from "@/lib/file-access";
 import { getForkSessionName } from "@/lib/session-display-title";
 import { scanSessionFileInfo } from "@/lib/session-list-scanner";
 import {
@@ -28,6 +29,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return refusal(400, "invalid_request", "Expected a JSON object");
     }
+    const targetCwd = "cwd" in body ? body.cwd : undefined;
     const prefix = (body as { prefix?: unknown }).prefix ?? "Fork: ";
     if (prefix !== "Fork: " && prefix !== "分叉：") {
       return refusal(400, "invalid_request", "Invalid fork name prefix");
@@ -39,17 +41,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (opened?.isAlive()) throw new SessionForkError("unsaved", "This session has not been saved yet. Send a message before forking it.");
       throw new SessionForkError("not_found", "Session not found");
     }
-    const source = await scanSessionFileInfo(sourcePath);
+    const source = targetCwd === undefined ? await scanSessionFileInfo(sourcePath) : null;
 
     // No await between selecting the live/disk leaf and finishing the copy:
     // in-process appends are synchronous, and cannot interleave this snapshot.
     if (isRpcSessionFileMutationReserved(id)) return refusal(409, "busy", "Session file is reserved for deletion");
     const wrapper = getRpcSession(id);
     const currentPath = (wrapper?.isAlive() ? wrapper.sessionFile : "") || sourcePath;
-    const leafId = getForkLeafId(currentPath, wrapper);
-    const fork = forkSessionBranch(currentPath, leafId, source ? getForkSessionName({ ...source, parentSessionId: source.parentSessionPath }, prefix) : undefined);
+    const fork = targetCwd === undefined
+      ? forkSessionBranch(currentPath, getForkLeafId(currentPath, wrapper), source ? getForkSessionName({ ...source, parentSessionId: source.parentSessionPath }, prefix) : undefined)
+      : forkSessionIntoCwd(currentPath, targetCwd, prefix);
     cacheSessionPath(fork.sessionId, fork.path);
     invalidateSessionListCache();
+    if ("cwd" in fork) allowFileRoot(fork.cwd);
 
     const info = await scanSessionFileInfo(fork.path);
     if (!info) throw new Error("The forked session could not be read");
@@ -67,7 +71,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         invalidateSessionPathCache(id);
         invalidateSessionListCache();
       }
-      return refusal(error.code === "not_found" ? 404 : 409, error.code, error.message);
+      return refusal(error.code === "not_found" ? 404 : error.code === "cwd-invalid" ? 400 : 409, error.code, error.message);
     }
     return refusal(500, "failed", error instanceof Error ? error.message : String(error));
   }

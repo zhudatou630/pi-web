@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,12 +12,18 @@ const { POST } = await jiti.import("./route.ts");
 const { AgentSessionWrapper, isRpcSessionFileMutationReserved } = await jiti.import("@/lib/rpc-manager.ts");
 const { cacheSessionPath, invalidateSessionListCache, invalidateSessionPathCache, listAllSessions } = await jiti.import("@/lib/session-reader.ts");
 const { deleteSessionById } = await jiti.import("@/lib/session-delete-operation.ts");
+const { getAllowedFileRoots, isExistingFilePathAllowed } = await jiti.import("@/lib/file-access.ts");
+const { SUBAGENT_META_TYPE } = await jiti.import("@/lib/subagents.ts");
 const { forkSessionBranch, getForkLeafId } = await jiti.import("@/lib/session-fork.ts");
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "pi-web-sidebar-fork-"));
   const previousDir = process.env.PI_CODING_AGENT_DIR;
   const previousRegistry = globalThis.__piSessions;
+  const priorAllowedRoots = globalThis.__piAllowedRootsCache;
+  const priorAdditionalRoots = globalThis.__piAdditionalAllowedRoots;
+  globalThis.__piAllowedRootsCache = undefined;
+  globalThis.__piAdditionalAllowedRoots = undefined;
   process.env.PI_CODING_AGENT_DIR = root;
   globalThis.__piSessions = new Map();
   invalidateSessionListCache();
@@ -25,6 +31,8 @@ async function fixture(t) {
   t.after(async () => {
     for (const id of cachedIds) invalidateSessionPathCache(id);
     globalThis.__piSessions = previousRegistry;
+    globalThis.__piAllowedRootsCache = priorAllowedRoots;
+    globalThis.__piAdditionalAllowedRoots = priorAdditionalRoots;
     if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previousDir;
     invalidateSessionListCache();
@@ -338,9 +346,74 @@ test("a fork already resolving its source rechecks reservations before copying",
 
 test("leaf selection and disk copying stay in one synchronous turn", () => {
   const route = readFileSync(new URL("./route.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(route.slice(route.indexOf("const leafId = getForkLeafId"), route.indexOf("cacheSessionPath(fork.sessionId")), /\bawait\b/);
+  assert.doesNotMatch(route.slice(route.indexOf("const fork = targetCwd"), route.indexOf("cacheSessionPath(fork.sessionId")), /\bawait\b/);
   const rpc = readFileSync(new URL("../../../../../lib/rpc-manager.ts", import.meta.url), "utf8");
   assert.doesNotMatch(rpc.slice(rpc.indexOf('case "fork_branch"'), rpc.indexOf('case "clone"')), /\bawait\b/);
+});
+
+test("a missing folder can fork into a new canonical cwd with every branch and an immediate file root", async (t) => {
+  const { root, request, cache } = await fixture(t);
+  const gone = join(root, "gone");
+  const target = join(root, "target");
+  mkdirSync(target);
+  const manager = SessionManager.create(gone);
+  const rootEntry = user(manager, "root prompt");
+  const first = user(manager, "first branch");
+  manager.branch(rootEntry);
+  const second = user(manager, "second branch");
+  manager.appendSessionInfo("Original title");
+  const file = manager.getSessionFile();
+  const id = manager.getSessionId();
+  cache(id, file);
+  const before = readFileSync(file, "utf8");
+  const roots = await getAllowedFileRoots();
+  assert.equal(isExistingFilePathAllowed(target, roots), false);
+
+  const { response, data } = await request(id, { cwd: target, prefix: "分叉：" });
+  assert.equal(response.status, 200, JSON.stringify(data));
+  const copy = copyManager(data);
+  assert.notEqual(data.sessionId, id);
+  assert.equal(data.session.cwd, target);
+  assert.equal(data.session.relation.originSessionId, id);
+  assert.equal(copy.getHeader().parentSession, file);
+  assert.deepEqual(copy.getEntries().filter((e) => e.type === "message").map((e) => e.id), [rootEntry, first, second]);
+  assert.equal(copy.getEntry(first).parentId, rootEntry);
+  assert.equal(copy.getEntry(second).parentId, rootEntry);
+  assert.match(copy.getSessionName(), /^分叉：Original title · [a-f0-9]{4}$/);
+  assert.equal(readFileSync(file, "utf8"), before);
+  assert.equal(globalThis.__piSessions.size, 0);
+  assert.equal(isExistingFilePathAllowed(target, roots), true, "existing allowed-root cache is updated");
+});
+
+test("folder forks reject bad targets, restored folders, side chats and subagents", async (t) => {
+  const { root, request, cache } = await fixture(t);
+  const gone = join(root, "gone");
+  const target = join(root, "target");
+  mkdirSync(target);
+  const manager = SessionManager.create(gone);
+  user(manager);
+  const id = manager.getSessionId();
+  cache(id, manager.getSessionFile());
+  const file = join(target, "file");
+  writeFileSync(file, "not a directory");
+  for (const cwd of [null, 42, "", "relative", file, join(root, "missing"), `${target}/../target`]) {
+    const { response, data } = await request(id, { cwd });
+    assert.equal(response.status, 400, JSON.stringify(cwd));
+    assert.equal(data.code, "cwd-invalid");
+  }
+  assert.equal(globalThis.__piAdditionalAllowedRoots?.size ?? 0, 0);
+
+  const side = forkSessionBranch(manager.getSessionFile(), undefined, "side", true);
+  cache(side.sessionId, side.path);
+  assert.equal((await request(side.sessionId, { cwd: target })).data.code, "side");
+  const sub = SessionManager.create(gone);
+  sub.appendCustomEntry(SUBAGENT_META_TYPE, { version: 1, parentSessionId: id, parentSessionPath: manager.getSessionFile() });
+  user(sub);
+  cache(sub.getSessionId(), sub.getSessionFile());
+  assert.equal((await request(sub.getSessionId(), { cwd: target })).data.code, "subagent");
+
+  mkdirSync(gone);
+  assert.equal((await request(id, { cwd: target })).data.code, "cwd-exists");
 });
 
 test("fork endpoint validates trust, content type and body", async (t) => {

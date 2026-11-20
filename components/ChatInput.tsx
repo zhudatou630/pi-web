@@ -30,6 +30,7 @@ import {
 import { getMarkdownListContinuation } from "@/lib/markdown-list-continuation";
 import { buildQuotedPrompt, joinQuotedDraft, splitQuotedPrompt, trimQuoteText, type Quote } from "@/lib/quoted-selection";
 import { MenuCheck } from "./MenuCheck";
+import { ConfigButton } from "./SettingsUi";
 import { QuoteCard } from "./QuoteCard";
 import { ImageMentionChip } from "./GeneratedImageResult";
 import { ImageAttachmentStrip } from "./ImageAttachmentStrip";
@@ -66,6 +67,7 @@ interface Props {
   allModelList?: { id: string; name: string; provider: string; input?: string[]; modelOrder?: number }[] | null;
   providerNames?: Record<string, string>;
   missingCwd?: string | null;
+  onForkMissingCwd?: () => void;
   modelError?: string | null;
   /** Diagnostics from resolving `enabledModels`, e.g. a pattern that matched nothing. */
   modelScopeWarnings?: string[];
@@ -120,6 +122,7 @@ export interface ChatInputHandle {
   replaceMessage: (message: UserMessage, accept: () => boolean) => Promise<boolean>;
   prependText: (text: string) => void;
   addImages: (files: File[]) => void;
+  clearDraftInput: () => void;
   rekeyDraft: (previousKey: string, nextKey: string) => void;
   restoreSubmission: (text: string, images?: ChatDraftImage[], targetDraftKey?: string) => void;
   mentionImage: (path: string) => void;
@@ -565,7 +568,7 @@ function QueuedMessageRow({ kind, text, action }: { kind: "steer" | "follow-up";
   );
 }
 
-function ModelNoticeBanner({ tone, title, body, onClose }: { tone: "error" | "warning"; title: string; body: string; onClose?: () => void }) {
+function ModelNoticeBanner({ tone, title, body, onClose, action }: { tone: "error" | "warning"; title: string; body: string; onClose?: () => void; action?: React.ReactNode }) {
   const { t } = useI18n();
   const color = tone === "error" ? "var(--danger)" : "var(--warning)";
   return (
@@ -606,6 +609,7 @@ function ModelNoticeBanner({ tone, title, body, onClose }: { tone: "error" | "wa
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontWeight: 600 }}>{title}</div>
         <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{body}</div>
+        {action}
       </div>
       {onClose && (
         <button
@@ -662,7 +666,7 @@ export function ModelScopeWarningBanner({ warnings }: { warnings?: string[] }) {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
-  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, modelScopeWarnings, onModelChange, modelSwitching,
+  isEditing = false, onSend, onOpenImageGeneration, onAbort, onSteer, onFollowUp, isStreaming, disabled = false, model, isAutoModelSelection, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, onForkMissingCwd, modelScopeWarnings, onModelChange, modelSwitching,
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
@@ -840,6 +844,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         scrollTextareaCaretIntoView(ta);
       });
     },
+    clearDraftInput() { clearInput(); },
     rekeyDraft(previousKey: string, nextKey: string) {
       if (previousKey === nextKey) return;
       if (draftKeyRef.current !== previousKey) {
@@ -2137,7 +2142,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       />}
       <div className={compact ? undefined : "chat-input-column"} style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
         {missingCwd
-          ? <ModelNoticeBanner tone="error" title={t("chat.folderMissing")} body={t("chat.folderMissingDetail", { cwd: missingCwd })} />
+          ? <ModelNoticeBanner tone="error" title={t("chat.folderMissing")} body={t("chat.folderMissingDetail", { cwd: missingCwd })}
+              action={onForkMissingCwd && <ConfigButton variant="ghost" size="small" style={{ marginTop: 4 }} onClick={onForkMissingCwd}>{t("chat.forkMissingFolder")}</ConfigButton>} />
           : <ModelErrorBanner error={modelError} />}
         <ModelScopeWarningBanner warnings={modelScopeWarnings} />
         {imageSendBlocked && (
