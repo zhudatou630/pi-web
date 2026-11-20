@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { ImagePreview } from "./ImagePreview";
-import { CodeBlock, downloadSvgFile, PreviewToggleButton } from "./MermaidBlock";
+import { CodeBlock, CodeBlockFrame, downloadSvgFile, PreviewToggleButton } from "./MermaidBlock";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -44,22 +44,18 @@ export function SvgBlock({ code, isStreaming }: { code: string; isStreaming?: bo
   }
   const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
   return (
-    <div className="markdown-code-block">
-      <div className="markdown-code-header">
-        <span className="markdown-code-lang">svg</span>
-        <div className="markdown-code-actions">
-          <button
-            type="button"
-            className="markdown-code-action"
-            title={`${t("i18n.downloadFile")} (SVG)`}
-            aria-label={`${t("i18n.downloadFile")} (SVG)`}
-            onClick={() => downloadSvgFile(source, "image.svg")}
-          >
-            SVG
-          </button>
-          {toggle}
-        </div>
-      </div>
+    <CodeBlockFrame lang="svg" actions={<>
+      <button
+        type="button"
+        className="markdown-code-action"
+        title={`${t("i18n.downloadFile")} (SVG)`}
+        aria-label={`${t("i18n.downloadFile")} (SVG)`}
+        onClick={() => downloadSvgFile(source, "image.svg")}
+      >
+        SVG
+      </button>
+      {toggle}
+    </>}>
       <div className="mermaid-block">
         <ImagePreview src={src} alt={t("chat.svgImage")} style={{ width: "100%" }}>
           {/* SVG scripts and external resources are inert in an image, never insert this XML as DOM. */}
@@ -67,6 +63,6 @@ export function SvgBlock({ code, isStreaming }: { code: string; isStreaming?: bo
           <img src={src} alt={t("chat.svgImage")} onError={() => setFailedSource(source)} />
         </ImagePreview>
       </div>
-    </div>
+    </CodeBlockFrame>
   );
 }

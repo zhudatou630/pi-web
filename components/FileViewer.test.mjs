@@ -5,6 +5,7 @@ import React from "react";
 import ts from "typescript";
 
 const source = await readFile(new URL("./FileViewer.tsx", import.meta.url), "utf8");
+const fenceSource = await readFile(new URL("./MarkdownFence.tsx", import.meta.url), "utf8");
 
 function previewHarness(name, filePath) {
   const file = ts.createSourceFile("FileViewer.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -268,7 +269,17 @@ test("file preview delegates zoom only for plain images, not SVG ImagePreview bu
   const preview = source.slice(source.indexOf("const MarkdownFilePreview"), source.indexOf("function TextFileViewer"));
   assert.equal((preview.match(/closest\("a, button"\)/g) ?? []).length, 4, "gallery, focus, click and keyboard must all leave image components alone");
   assert.doesNotMatch(preview, /closest\("a"\)/);
-  assert.match(preview, /lang === "svg"\) return <SvgBlock/);
+  assert.match(source, /const filePreviewCode:[\s\S]*?return <MarkdownFence/);
+  assert.match(fenceSource, /lang === "svg"\) return <SvgBlock/);
+});
+
+test("file preview retains stable pre and code renderer types across re-parses", () => {
+  const previewStart = source.indexOf("const MarkdownFilePreview");
+  const renderers = source.slice(0, previewStart);
+  for (const [tag, renderer] of [["code", "filePreviewCode"], ["pre", "filePreviewPre"]]) {
+    assert.match(renderers, new RegExp(`^const ${renderer}:`, "m"));
+    assert.match(source.slice(previewStart), new RegExp(`${tag}: ${renderer},`));
+  }
 });
 
 test("the markdown preview gets a stable open-file callback, so shell changes do not re-parse it", () => {

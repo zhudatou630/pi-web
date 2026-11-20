@@ -8,7 +8,7 @@ import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
 // Direct theme imports: the styles/prism barrel pulls in all ~44 themes.
 import vs from "react-syntax-highlighter/dist/esm/styles/prism/vs";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import { createPortal } from "react-dom";
 import { findQuoteInSegments, selectedTextWithTex } from "@/lib/quoted-selection";
 import { useTheme } from "@/hooks/useTheme";
@@ -31,8 +31,7 @@ import { parseFrontmatter } from "@/lib/frontmatter";
 import { injectSandboxedHtmlPolyfill } from "@/lib/html-sandbox-polyfill";
 import { extractMarkdownOutline, findHeadingBySlug } from "@/lib/markdown-outline";
 import { markdownAppUrlTransform, markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
-import { CodeBlock, MermaidBlock } from "./MermaidBlock";
-import { SvgBlock } from "./SvgBlock";
+import { MarkdownFence } from "./MarkdownFence";
 import { MarkdownTableBlock, tableSource } from "./MarkdownBody";
 import { DelimitedTable } from "./DelimitedTable";
 import { isDelimitedTablePath } from "@/lib/delimited-table";
@@ -1222,6 +1221,18 @@ export function FileViewer({
   );
 }
 
+// Stable pre/code renderer types keep fence state when the preview re-parses.
+const filePreviewCode: NonNullable<Components["code"]> = ({ className, children, ...props }) => {
+  const lang = className?.replace("language-", "").toLowerCase() ?? "";
+  const raw = String(children);
+  if (className?.includes("language-") || raw.includes("\n")) {
+    return <MarkdownFence code={raw.replace(/\n$/, "")} lang={lang} />;
+  }
+  return <code className={["markdown-inline-code", className].filter(Boolean).join(" ")} {...props}>{children}</code>;
+};
+
+const filePreviewPre: NonNullable<Components["pre"]> = ({ children }) => <>{children}</>;
+
 const MarkdownFilePreview = memo(function MarkdownFilePreview({
   markdownPreview,
   frontmatterData,
@@ -1284,23 +1295,8 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
           rehypePlugins={markdownPreviewRehypePlugins}
           urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
           components={{
-            code({ className, children, ...props }) {
-              const lang = className?.replace("language-", "").toLowerCase() ?? "";
-              const raw = String(children);
-              const isBlock = className?.includes("language-") || raw.includes("\n");
-              if (isBlock) {
-                if (lang === "mermaid") {
-                  return <MermaidBlock code={raw.replace(/\n$/, "")} defaultPreview />;
-                }
-                if (lang === "svg") return <SvgBlock code={raw.replace(/\n$/, "")} />;
-                return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} />;
-              }
-              return (
-                <code className={["markdown-inline-code", className].filter(Boolean).join(" ")} {...props}>
-                  {children}
-                </code>
-              );
-            },
+            code: filePreviewCode,
+            pre: filePreviewPre,
             table({ children, node }) {
               const start = node?.position?.start.offset;
               const end = node?.position?.end.offset;
@@ -1309,11 +1305,6 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
                   {children}
                 </MarkdownTableBlock>
               );
-            },
-            pre({ children }) {
-              // Render the code block directly — CodeBlock provides its own wrapping.
-              // For non-mermaid blocks, pass through to default pre rendering.
-              return <>{children}</>;
             },
             a({ href, children, ...props }) {
               delete props.node;

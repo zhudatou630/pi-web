@@ -6,6 +6,7 @@ import { useI18n } from "@/hooks/useI18n";
 export interface ViewerImage {
   src: string;
   alt?: string;
+  referrerPolicy?: React.HTMLAttributeReferrerPolicy;
 }
 
 interface ImageViewerProps {
@@ -359,6 +360,7 @@ export function ImageViewer({ items, index, onIndexChange, onClose, edit }: Imag
                 ref={current ? imgRef : undefined}
                 onLoad={current ? (event) => setFit(fitOf(event.currentTarget)) : undefined}
                 className="image-preview-image"
+                referrerPolicy={slide.referrerPolicy}
                 src={slide.src}
                 alt={current ? slide.alt ?? "" : ""}
                 draggable={false}
@@ -402,7 +404,7 @@ export function ImageViewer({ items, index, onIndexChange, onClose, edit }: Imag
           {Math.round(view.s * fit * 100)}%
         </button>
         {toolButton(t("chat.zoomIn"), () => zoomAt(1.25), <Icon><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5M8 11h6M11 8v6" /></Icon>, view.s >= maxScale, "image-viewer-zoom")}
-        <a className="image-viewer-button" href={item.src} download title={t("i18n.downloadFile")} aria-label={t("i18n.downloadFile")}>
+        <a className="image-viewer-button" href={item.src} referrerPolicy={item.referrerPolicy} download title={t("i18n.downloadFile")} aria-label={t("i18n.downloadFile")}>
           <Icon><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5M12 15V3" /></Icon>
         </a>
         {toolButton(t("chat.close"), () => requestClose(), <Icon><path d="M6 6l12 12M18 6 6 18" /></Icon>)}

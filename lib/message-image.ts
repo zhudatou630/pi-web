@@ -131,6 +131,8 @@ async function renderPng(el: HTMLElement): Promise<Blob> {
     width,
     height,
     pixelRatio,
+    // Remote diagram images suppress the referrer when the exporter re-fetches them too.
+    fetchRequestInit: { referrerPolicy: "no-referrer" },
     // A diagram keeps its own panel color (its edge labels are painted to match); a message has none, so the page's.
     backgroundColor: own.backgroundColor !== "rgba(0, 0, 0, 0)" ? own.backgroundColor : getComputedStyle(document.body).backgroundColor,
     // fontEmbedCSS is injected as a <style> inside the clone, so it carries the export CSS too.

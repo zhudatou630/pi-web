@@ -172,40 +172,39 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
       </>
     );
 
+  const actions = (
+    <>
+      {renderState?.key === currentKey && renderState.status === "ready" && (
+        <button
+          type="button"
+          className="markdown-code-action"
+          title={`${t("i18n.downloadFile")} (SVG)`}
+          aria-label={`${t("i18n.downloadFile")} (SVG)`}
+          onClick={() => downloadMermaidSvg(renderState.svg)}
+        >
+          SVG
+        </button>
+      )}
+      {renderState?.key === currentKey && renderState.status === "ready" && !zoomOpen && (
+        <button
+          type="button"
+          className="markdown-code-action"
+          disabled={image.busy}
+          title={image.title}
+          aria-label={image.title}
+          onClick={(event) => image.run(event.currentTarget.closest(".markdown-code-block")?.querySelector<HTMLElement>(".mermaid-block") ?? null, "pi-mermaid.png")}
+        >
+          <ExportImageIcon done={image.done} />
+          PNG
+        </button>
+      )}
+      {previewButton}
+    </>
+  );
   return (
-    <div className="markdown-code-block">
-      <div className="markdown-code-header">
-        <span className="markdown-code-lang">mermaid</span>
-        <div className="markdown-code-actions">
-          {renderState?.key === currentKey && renderState.status === "ready" && (
-            <button
-              type="button"
-              className="markdown-code-action"
-              title={`${t("i18n.downloadFile")} (SVG)`}
-              aria-label={`${t("i18n.downloadFile")} (SVG)`}
-              onClick={() => downloadMermaidSvg(renderState.svg)}
-            >
-              SVG
-            </button>
-          )}
-          {renderState?.key === currentKey && renderState.status === "ready" && !zoomOpen && (
-            <button
-              type="button"
-              className="markdown-code-action"
-              disabled={image.busy}
-              title={image.title}
-              aria-label={image.title}
-              onClick={(event) => image.run(event.currentTarget.closest(".markdown-code-block")?.querySelector<HTMLElement>(".mermaid-block") ?? null, "pi-mermaid.png")}
-            >
-              <ExportImageIcon done={image.done} />
-              PNG
-            </button>
-          )}
-          {previewButton}
-        </div>
-      </div>
+    <CodeBlockFrame lang="mermaid" actions={actions}>
       {body}
-    </div>
+    </CodeBlockFrame>
   );
 }
 
@@ -320,11 +319,12 @@ function MermaidZoomDialog({ svg, onClose }: { svg: string; onClose: () => void 
   );
 }
 
-export function PreviewToggleButton({ isStreaming, previewVisible, onToggle, title }: {
+export function PreviewToggleButton({ isStreaming, previewVisible, onToggle, title, previewLabel }: {
   isStreaming?: boolean;
   previewVisible: boolean;
   onToggle: () => void;
   title: string;
+  previewLabel?: string;
 }) {
   const { t } = useI18n();
   return (
@@ -335,8 +335,20 @@ export function PreviewToggleButton({ isStreaming, previewVisible, onToggle, tit
       title={isStreaming ? t("i18n.previewAfterStreaming") : title}
       className={["markdown-code-action", previewVisible ? "is-active" : ""].filter(Boolean).join(" ")}
     >
-      {previewVisible ? t("i18n.source") : t("i18n.preview")}
+      {previewVisible ? t("i18n.source") : previewLabel ?? t("i18n.preview")}
     </button>
+  );
+}
+
+export function CodeBlockFrame({ lang, actions, children }: { lang: string; actions: ReactNode; children: ReactNode }) {
+  return (
+    <div className="markdown-code-block">
+      <div className="markdown-code-header">
+        <span className="markdown-code-lang">{lang || "text"}</span>
+        <div className="markdown-code-actions">{actions}</div>
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -414,14 +426,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
   }, [isStreaming, highlighted, languagesReady]);
 
   return (
-    <div className="markdown-code-block">
-      <div className="markdown-code-header">
-        <span className="markdown-code-lang">{lang || "text"}</span>
-        <div className="markdown-code-actions">
-          {headerAction}
-          <MarkdownCopyButton text={code} />
-        </div>
-      </div>
+    <CodeBlockFrame lang={lang} actions={<>{headerAction}<MarkdownCopyButton text={code} /></>}>
       {isStreaming ? (
         <pre
           style={{
@@ -465,6 +470,6 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
           {code}
         </SyntaxHighlighter>
       )}
-    </div>
+    </CodeBlockFrame>
   );
 });

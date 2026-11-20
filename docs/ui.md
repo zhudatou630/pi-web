@@ -89,6 +89,17 @@ original code. Existing markdown normalization/block detection still scan the
 message; this change removes repeated Markdown parsing and full-pre layout, not
 all per-chunk string work.
 
+## PlantUML fences
+
+In chat and Markdown file previews, `plantuml` and `puml` fences show normal
+code with **Render on plantuml.com** once there is source to render. The action
+is disabled while streaming. Clicking sends that exact source in an SVG image
+URL to `https://www.plantuml.com`, with no referrer; edits require a new click.
+The browser uses raw deflate and PlantUML's alphabet, or UTF-8 hex if raw deflate
+is unavailable. URLs over 6,000 characters are refused locally. The diagram uses
+the shared image viewer; **Source** returns to the code and lets you retry.
+The app page has no `img-src` restriction; sandboxed file responses are unchanged.
+
 ## Extension terminal text
 
 Plain-text cleaning and ANSI rendering both remove pi-tui APC cursor/fake-cursor

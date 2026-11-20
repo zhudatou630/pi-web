@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { iconStroke } from "./iconStroke";
@@ -17,8 +17,7 @@ import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
 import { MarkdownMedia } from "./MarkdownMedia";
 import { MarkdownCopyButton } from "./MarkdownCopyButton";
-import { MermaidBlock, CodeBlock } from "./MermaidBlock";
-import { SvgBlock } from "./SvgBlock";
+import { MarkdownFence } from "./MarkdownFence";
 
 /** Session whose messages are rendered; lets the file API serve images the session references outside allowed roots. */
 export const MarkdownSessionContext = createContext<string | null>(null);
@@ -86,17 +85,7 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
       const raw = String(children);
       const isBlock = className?.includes("language-") || raw.includes("\n");
       if (isBlock) {
-        if (lang === "mermaid") {
-          return (
-            <MermaidBlock
-              code={raw.replace(/\n$/, "")}
-              isStreaming={isStreaming}
-              defaultPreview
-            />
-          );
-        }
-        if (lang === "svg") return <SvgBlock code={raw.replace(/\n$/, "")} isStreaming={isStreaming} />;
-        return <CodeBlock code={raw.replace(/\n$/, "")} lang={lang} isStreaming={isStreaming} />;
+        return <MarkdownFence code={raw.replace(/\n$/, "")} lang={lang} isStreaming={isStreaming} />;
       }
       // Agents often quote the dev-server address as code: `http://localhost:5173`.
       const localUrl = /^https?:\/\/\S+$/i.test(raw) ? parsePreviewTarget(raw) : null;
@@ -197,7 +186,7 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
     <div className={["markdown-body", className].filter(Boolean).join(" ")}>
       {blocks.map((block, index) => {
         const fence = isStreaming ? parseStreamingFence(block) : null;
-        if (fence) return <Fragment key={index}><CodeBlock code={fence.code} lang={fence.lang} isStreaming /></Fragment>;
+        if (fence) return <MarkdownFence key={index} code={fence.code} lang={fence.lang} isStreaming />;
         return (
         <MarkdownBlock
           key={index}

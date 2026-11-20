@@ -7,13 +7,14 @@ import { ImageViewer } from "./ImageViewer";
 interface ImagePreviewProps {
   src: string;
   alt?: string;
+  referrerPolicy?: React.HTMLAttributeReferrerPolicy;
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
 }
 
 /** Wraps a single image as a button that opens it in the viewer. */
-export function ImagePreview({ src, alt = "", children, className, style }: ImagePreviewProps) {
+export function ImagePreview({ src, alt = "", referrerPolicy, children, className, style }: ImagePreviewProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
@@ -38,7 +39,7 @@ export function ImagePreview({ src, alt = "", children, className, style }: Imag
       >
         {children}
       </button>
-      {open && <ImageViewer items={[{ src, alt }]} index={0} onIndexChange={() => {}} onClose={() => setOpen(false)} />}
+      {open && <ImageViewer items={[{ src, alt, referrerPolicy }]} index={0} onIndexChange={() => {}} onClose={() => setOpen(false)} />}
     </>
   );
 }
