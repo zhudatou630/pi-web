@@ -57,7 +57,7 @@ import {
   subagentToolOptions,
   SUBAGENT_CONTROL_TOOL_NAMES,
 } from "./subagents";
-import { createSubagentController, createSubagentShellTools, getActiveSubagentRuns, hasUnsettledSubagents, isSubagentQueued } from "./subagent-runtime";
+import { createSubagentController, createSubagentShellTools, getActiveSubagentRuns, hasUnsettledSubagents, isSubagentQueued, SUBAGENT_NOTIFICATION_TYPE, type SubagentController } from "./subagent-runtime";
 import { isSubagentsEnabledForProject } from "./subagent-settings";
 import { resolveProject } from "./worktree";
 import { resolveShellTools } from "./powershell-settings";
@@ -139,6 +139,7 @@ type AgentSessionWrapperOptions = {
   chatOnly?: boolean;
   getExactSystemPrompt?: () => string;
   beforeAgentRunComplete?: AgentRunCompletionGate;
+  onSubagentParentEvent?: SubagentController["onParentEvent"];
   onAgentRunComplete?: AgentRunCompleteListener;
   suppressCompletionNotifications?: boolean;
   finishStartup?: () => Promise<void>;
@@ -385,6 +386,7 @@ export class AgentSessionWrapper {
   private readonly chatOnly: boolean;
   private readonly getExactSystemPrompt?: () => string;
   private readonly beforeAgentRunComplete?: AgentRunCompletionGate;
+  private readonly onSubagentParentEvent?: SubagentController["onParentEvent"];
   private readonly onAgentRunComplete?: AgentRunCompleteListener;
   private readonly suppressCompletionNotifications: boolean;
   private readonly cacheKeepalive?: CacheKeepalive;
@@ -416,6 +418,7 @@ export class AgentSessionWrapper {
     this.chatOnly = options.chatOnly ?? false;
     this.getExactSystemPrompt = options.getExactSystemPrompt;
     this.beforeAgentRunComplete = options.beforeAgentRunComplete;
+    this.onSubagentParentEvent = options.onSubagentParentEvent;
     this.onAgentRunComplete = options.onAgentRunComplete;
     this.suppressCompletionNotifications = options.suppressCompletionNotifications ?? false;
     this.finishStartup = options.finishStartup;
@@ -577,7 +580,12 @@ export class AgentSessionWrapper {
   }
 
   start(): void {
-    this.unsubscribe = this.inner.subscribe((event: AgentEvent) => {
+    this.unsubscribe = this.inner.subscribe((sdkEvent) => {
+      if (this.onSubagentParentEvent && (sdkEvent.type === "turn_end" || sdkEvent.type === "agent_settled"
+        || (sdkEvent.type === "message_end" && sdkEvent.message.role === "custom"))) {
+        this.onSubagentParentEvent(this, sdkEvent);
+      }
+      let event: AgentEvent = sdkEvent;
       if (event.type === "agent_start") {
         this.agentRunNeedsCompletion = true;
         this.lastRunAborted = false;
@@ -848,7 +856,11 @@ export class AgentSessionWrapper {
     const snapshot = snapshotAgentQueuedMessages(this.inner.agent);
     const custom: Parameters<AgentSessionLike["sendCustomMessage"]>[0][] = [];
     const userMessages = (messages: unknown[]) => messages.filter((message) => {
-      if (!stopping || !message || typeof message !== "object" || (message as { role?: unknown }).role !== "custom") return true;
+      const candidate = message as { role?: string; customType?: string } | null;
+      if (candidate?.role !== "custom") return true;
+      // An unread report dropped here stays in its wave, not in the draft or custom history.
+      if (candidate.customType === SUBAGENT_NOTIFICATION_TYPE) return false;
+      if (!stopping) return true;
       custom.push(message as Parameters<AgentSessionLike["sendCustomMessage"]>[0]);
       return false;
     });
@@ -3219,6 +3231,7 @@ export async function startRpcSession(
         );
         if (persistedPreferences.modelDefaultChanged) invalidateModelsCache();
       },
+      onSubagentParentEvent: SUBAGENT_CONTROLLER.onParentEvent,
       beforeAgentRunComplete: (completedSessionId) => (
         SUBAGENT_CONTROLLER.flushParentNotifications(completedSessionId)
       ),

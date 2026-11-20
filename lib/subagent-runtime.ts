@@ -10,6 +10,7 @@ import {
   initTheme,
   SessionManager,
   SettingsManager,
+  type AgentSessionEvent,
   type ModelRuntime,
   type Skill,
 } from "@earendil-works/pi-coding-agent";
@@ -51,6 +52,7 @@ import { isSubagentsEnabledForProject, readSubagentSettings } from "./subagent-s
 import { resolveProject } from "./worktree";
 import { contextFilesSystemPrompt, createExactSystemPromptExtension, type ContextFileContent } from "./chat-only";
 import { SubagentQueue } from "./subagent-queue";
+import { snapshotAgentQueuedMessages } from "./queued-messages";
 import {
   cleanupIsolatedWorktree,
   createIsolatedWorktree,
@@ -96,6 +98,7 @@ export interface SubagentController {
     run: SubagentRunInfo;
   }>;
   flushParentNotifications(parentSessionId: string): boolean;
+  onParentEvent(parent: HostSession, event: AgentSessionEvent): void;
 }
 
 type StoredSubagentExecution = {
@@ -103,6 +106,7 @@ type StoredSubagentExecution = {
   completion: Promise<SubagentRunInfo>;
   abortRequested: boolean;
   turnLimitReached?: boolean;
+  turnBudgetUsed?: boolean;
   cancelQueued?: () => boolean;
   waveKey?: string;
 };
@@ -374,6 +378,7 @@ export function projectInstructionsForSubagent(
   return contextFilesSystemPrompt(files).trim() || undefined;
 }
 
+export const SUBAGENT_NOTIFICATION_TYPE = "pi-web:subagent-notification";
 const WAVE_JOIN_HOLD_MS = 100;
 const SUBAGENT_NOTIFICATION_MAX_CHARS = 6_000;
 const SUBAGENT_NOTIFICATION_RESULT_MAX_CHARS = 1_200;
@@ -565,14 +570,33 @@ function buildSubagentNotification(runs: SubagentRunInfo[]): {
   };
 }
 
+function makeParentNotification(runs: SubagentRunInfo[]) {
+  const notification = buildSubagentNotification(runs);
+  const notificationId = randomUUID();
+  return {
+    included: notification.included,
+    message: {
+      customType: SUBAGENT_NOTIFICATION_TYPE,
+      content: notification.text,
+      display: true,
+      details: {
+        kind: "pi-web-subagent-wave",
+        notificationId,
+        sessionIds: notification.included.map((run) => run.sessionId),
+        results: notification.included.map((run) => ({ sessionId: run.sessionId, parentToolCallId: run.parentToolCallId })),
+      },
+    },
+  };
+}
+
+function hasNotificationId(details: unknown, notificationId: string): boolean {
+  return typeof details === "object" && details !== null
+    && (details as { notificationId?: unknown }).notificationId === notificationId;
+}
+
 function parentHasSubagentNotification(parent: HostSession, notificationId: string): boolean {
-  return parent.inner.sessionManager.getEntries().some((entry) => {
-    if (entry.type !== "custom_message" || entry.customType !== "pi-web:subagent-notification") return false;
-    const details = entry.details;
-    return typeof details === "object"
-      && details !== null
-      && (details as { notificationId?: unknown }).notificationId === notificationId;
-  });
+  return parent.inner.sessionManager.getEntries().some((entry) => entry.type === "custom_message"
+    && entry.customType === SUBAGENT_NOTIFICATION_TYPE && hasNotificationId(entry.details, notificationId));
 }
 
 function flushParentNotifications(
@@ -592,7 +616,7 @@ function flushParentNotifications(
   if (parent.isRunning() || parent.canStartBackgroundFollowUp?.() === false) return false;
   const runs = pendingParentNotificationRuns(parentSessionId);
   if (runs.length === 0) return false;
-  const notification = buildSubagentNotification(runs);
+  const notification = makeParentNotification(runs);
   if (notification.included.length === 0) return false;
 
   inFlightParents.add(parentSessionId);
@@ -611,30 +635,17 @@ function flushParentNotifications(
     removeEmptySubagentWave(waveKey, wave);
   }
 
-  const notificationId = randomUUID();
+  const { notificationId } = notification.message.details;
   let started = false;
-  // sendCustomMessage may resolve after the reply, or before a deferred turn starts.
-  // Hand completion back to the parent's run only at its actual agent_start.
+  // sendCustomMessage may resolve before a deferred turn starts; only agent_start hands off completion.
   const unsubscribe = parent.inner.subscribe((event) => {
-    if (event.type !== "agent_start") return;
+    if (event.type !== "agent_start" || started) return;
     started = true;
     inFlightParents.delete(parentSessionId);
-    unsubscribe();
+    // Pi splices the listener array on unsubscribe, skipping the next listener during emit.
+    queueMicrotask(unsubscribe);
   });
-  const delivery = parent.inner.sendCustomMessage({
-    customType: "pi-web:subagent-notification",
-    content: notification.text,
-    display: true,
-    details: {
-      kind: "pi-web-subagent-wave",
-      notificationId,
-      sessionIds: notification.included.map((run) => run.sessionId),
-      results: notification.included.map((run) => ({
-        sessionId: run.sessionId,
-        parentToolCallId: run.parentToolCallId,
-      })),
-    },
-  }, { deliverAs: "followUp", triggerTurn: true });
+  const delivery = parent.inner.sendCustomMessage(notification.message, { deliverAs: "followUp", triggerTurn: true });
   let continueFlush = true;
   void delivery.catch((error) => {
     continueFlush = parentHasSubagentNotification(parent, notificationId);
@@ -922,6 +933,7 @@ async function promptSubagent(
       ))) return previous;
       const update = advanceSubagentTurnLimit(turnLimitState, turn.message, options.turnLimit!, needsAnotherTurn);
       turnLimitState = update.state;
+      stored.turnBudgetUsed = turnLimitState.turnCount >= options.turnLimit!;
       if (turnLimitState.turnLimitReached) {
         stored.turnLimitReached = true;
         // AgentSession can restart for queued work even after an end verdict.
@@ -982,6 +994,47 @@ export function createSubagentShellTools(
 export function createSubagentController(
   dependencies: SubagentRuntimeDependencies,
 ): SubagentController {
+  const steeredNotifications = new WeakMap<HostSession, ReturnType<typeof makeParentNotification>>();
+
+  function onParentEvent(parent: HostSession, event: AgentSessionEvent): void {
+    const batch = steeredNotifications.get(parent);
+    const parentId = parent.inner.sessionId;
+    if (event.type === "agent_settled") {
+      // A dropped steer is still in the wave when the wrapper checks idle completion.
+      steeredNotifications.delete(parent);
+      return;
+    }
+    if (event.type === "message_end" && batch && event.message.role === "custom"
+      && event.message.customType === SUBAGENT_NOTIFICATION_TYPE
+      && hasNotificationId(event.message.details, batch.message.details.notificationId)) {
+      for (const run of batch.included) consumePendingSubagentResult(parentId, run);
+      steeredNotifications.delete(parent);
+      return;
+    }
+    if (event.type !== "turn_end" || event.message.role !== "assistant" || batch) return;
+    const { inner } = parent;
+    if (!inner.isStreaming || inner.isCompacting || inner.isBashRunning || !parent.isAlive() || parent.isClosing()
+      || parent.canStartBackgroundFollowUp?.() === false || inner.agent.signal?.aborted
+      || event.message.stopReason === "error" || event.message.stopReason === "aborted"
+      || getSubagentRuns().get(parentId)?.turnBudgetUsed || getSubagentNotificationParents().has(parentId)) return;
+
+    // Tool results have settled here, so the wave no longer contains results collected in this batch.
+    const runs = pendingParentNotificationRuns(parentId);
+    if (runs.length === 0) return;
+    try {
+      if (snapshotAgentQueuedMessages(inner.agent).steering.length > 0) return;
+    } catch {
+      return; // Unknown queue layout: leave the reports for idle delivery.
+    }
+    const notification = makeParentNotification(runs);
+    if (!notification.included.length) return;
+    steeredNotifications.set(parent, notification);
+    void inner.sendCustomMessage(notification.message, { deliverAs: "steer" }).catch((error) => {
+      if (steeredNotifications.get(parent) === notification) steeredNotifications.delete(parent);
+      console.error("[pi-web] failed to steer subagent results:", errorMessage(error));
+    });
+  }
+
   async function assertSubagentsEnabled(cwd: string): Promise<void> {
     const enabled = dependencies.isSubagentsEnabled
       ?? (async (dir: string) => isSubagentsEnabledForProject((await resolveProject(dir)).projectRoot));
@@ -1550,5 +1603,6 @@ export function createSubagentController(
     abort,
     sendUiMessage,
     flushParentNotifications: (parentSessionId) => flushParentNotifications(dependencies, parentSessionId),
+    onParentEvent,
   };
 }

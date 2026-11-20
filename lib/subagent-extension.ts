@@ -136,7 +136,7 @@ export function subagentDelegationSection(profiles: readonly SubagentProfile[]):
   rules.push(
     "Use several background Agent calls in one response for independent work. Parallel implementation only on non-overlapping files, or with isolation: \"worktree\".",
     "Use a foreground call when the next step cannot proceed without the result. Foreground waits use timeout_ms (default and maximum 30 minutes); on timeout the child continues and its unread result is delivered automatically.",
-    "Unread background results are delivered automatically after your current run settles. Do your own work first; when you need several results before continuing, call get_subagent_result with wait=true once per needed ID, all in one response: the waits run concurrently and return together. Never wait one response at a time or poll a running subagent; batch only results you need together, since the slowest holds the batch.",
+    "Unread background results are delivered automatically between turns, or in a follow-up if you have already finished. Do your own work first; when you need several results before continuing, call get_subagent_result with wait=true once per needed ID, all in one response: the waits run concurrently and return together. Never wait one response at a time or poll a running subagent; batch only results you need together, since the slowest holds the batch.",
     "Continue a subagent with resume instead of starting a new one, and do not duplicate work already delegated.",
     "Use abort_subagent to stop a subagent whose task became obsolete or is going wrong.",
   );
@@ -270,7 +270,7 @@ export function createSubagentExtension(
         name: "Agent",
         exposure: "model-only",
         label: "Agent",
-        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results notify the parent after its current run settles. Use foreground mode when no useful work can continue without the result; timeout_ms bounds that wait (default and maximum 30 minutes), then the child continues and reports automatically.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
+        description: `Delegate a focused task to a configured subagent. Each subagent runs as a full, inspectable Pi session. Background is the default: the call returns immediately, and unread results reach the parent automatically between turns or in an idle follow-up. Use foreground mode when no useful work can continue without the result; timeout_ms bounds that wait (default and maximum 30 minutes), then the child continues and reports automatically.\n\nAvailable agent types:\n${agentTypeDescription(profiles)}`,
         promptSnippet: "Delegate a focused task to an inspectable subagent session; see <delegation> for when",
         executionMode: "parallel",
         parameters: Type.Object({
@@ -283,7 +283,7 @@ export function createSubagentExtension(
           })),
           description: Type.String({ description: "Short activity label shown in the UI." }),
           timeout_ms: waitTimeoutParameter(DEFAULT_FOREGROUND_WAIT_TIMEOUT_MS),
-          run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results notify the parent after its current run settles." })),
+          run_in_background: Type.Optional(Type.Boolean({ description: "Return immediately. Default true. Unread results are reported automatically." })),
           model: Type.Optional(Type.String({ description: "Exact provider/modelId from <subagent_models>. Omit to use the profile's default model; pass only when the user asks for a model. New sessions only; omit with resume." })),
           thinking: Type.Optional(Type.String({ description: "Thinking level: off, minimal, low, medium, high, xhigh, or max. Omit to use the profile's default thinking; pass only when the user asks for a level. New sessions only; omit with resume." })),
           isolation: Type.Optional(Type.String({ description: "Run a new subagent in an isolated git worktree copy. With resume, omit or pass an empty string to keep existing isolation." })),
@@ -343,7 +343,7 @@ export function createSubagentExtension(
               );
             });
             return {
-              content: [{ type: "text", text: `Subagent started in background. Session ID: ${execution.run.sessionId}. Its result will be delivered automatically after your current run settles.` }],
+              content: [{ type: "text", text: `Subagent started in background. Session ID: ${execution.run.sessionId}. Its unread result will be delivered automatically.` }],
               details: subagentToolDetails(execution.run),
             };
           }
@@ -352,7 +352,7 @@ export function createSubagentExtension(
           if (run === WAIT_TIMEOUT) {
             execution.deferResult();
             return {
-              content: [{ type: "text", text: `Wait timed out. Subagent ${execution.run.sessionId} continues in background; its unread result will be delivered automatically after your current run settles. Do not poll.` }],
+              content: [{ type: "text", text: `Wait timed out. Subagent ${execution.run.sessionId} continues in background; its unread result will be delivered automatically. Do not poll.` }],
               details: subagentToolDetails(execution.run),
             };
           }
@@ -370,7 +370,7 @@ export function createSubagentExtension(
         name: "get_subagent_result",
         exposure: "model-only",
         label: "Get agent result",
-        description: "Retrieve a subagent's result, e.g. to re-read an earlier one. Unread background results are delivered automatically after your current run settles. wait=true joins within this run; to wait for several, call this once per ID in one response so the waits run concurrently. timeout_ms bounds the entire lookup and wait; it does not stop the child. Do not poll.",
+        description: "Retrieve a subagent's result, e.g. to re-read an earlier one. Unread background results are delivered automatically. wait=true joins within this run; to wait for several, call this once per ID in one response so the waits run concurrently. timeout_ms bounds the entire lookup and wait; it does not stop the child. Do not poll.",
         parameters: Type.Object({
           agent_id: Type.String({ description: "Subagent session ID." }),
           wait: Type.Optional(Type.Boolean({ description: "Wait until the subagent finishes." })),

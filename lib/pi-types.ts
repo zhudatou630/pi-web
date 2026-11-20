@@ -172,6 +172,7 @@ export interface AgentSessionLike {
       /** Tool call ids currently executing. */
       readonly pendingToolCalls?: ReadonlySet<string>;
     };
+    readonly signal?: AbortSignal;
     steer?: (message: PiAgentMessage) => void;
     /**
      * Pi 0.87's completed-turn hook. `{ action: "end" }` ends the run like the

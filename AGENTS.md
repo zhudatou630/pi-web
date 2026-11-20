@@ -64,6 +64,7 @@ Browser                Next.js Server              AgentSession (in-process)
 - Idle timeout 10 min (`PI_WEB_IDLE_TIMEOUT_MS`). Every open chat tab renews that wrapper's idle countdown every 30 s (never starts a runtime or moves Stop's forced deadline); there is no separate browser-lease TTL. Visible-pane SSE subscribes with `onEvent(listener, keepAlive=true)` and keeps the runtime alive (also needed for extension UI dialogs); unviewed idle runtimes are disposed and recreated from `session_start` replay.
 - An extension may ask a dialog in `session_start` (the browser needs the id to show it): `startRpcSession()`, `get_state` and `get_commands` return at a blocking dialog without marking startup ready; every other command except reads, aborts and dialog answers (`COMMANDS_BEFORE_READY`) still waits for binding + model recovery. A tool rebuild meanwhile carries the startup intent, not the stand-in model; answering refreshes full-ready state (`lib/rpc-manager-deferred-model.integration.test.mjs`).
 - Stop always aborts work; observer lifetime must not block abort.
+- SDK session events walk a mutable listener array: defer an in-handler unsubscribe to a microtask or the next listener misses the event (`lib/subagent-completion.integration.test.mjs`).
 - `lib/retry-stream-drops.ts` wraps pi's private `AgentSession._isRetryableError` to also retry relay HTTP/2 stream drops; `lib/retry-stream-drops.test.mjs` fails if the SDK renames it.
 
 ### Fork must destroy the wrapper immediately
