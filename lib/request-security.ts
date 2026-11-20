@@ -94,6 +94,22 @@ function isUserInitiatedDocumentNavigation(request: Request): boolean {
   }
 }
 
+const HTML_PREVIEW_ASSET_PATH = /^\/api\/html-preview\/[A-Za-z0-9_-]{32}\/[^/]/;
+
+/**
+ * An HTML preview document runs in an opaque origin (`sandbox allow-scripts`),
+ * so its own subresource loads are cross-site and carry no SameSite cookie.
+ * The route authorizes them by the token in the path (lib/html-preview.ts).
+ */
+export function isHtmlPreviewAssetRequest(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  try {
+    return HTML_PREVIEW_ASSET_PATH.test(new URL(request.url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Only trust local names, IP literals, or the hostname explicitly selected by
  * the operator. IP literals preserve LAN access but cannot be DNS-rebound
@@ -169,7 +185,7 @@ export function isApiRequestAllowed(
   configuredHostnames = configuredHostnamesFromEnvironment(),
 ): boolean {
   if (!isApiRequestHostAllowed(request, configuredHostnames)) return false;
-  if (isUserInitiatedDocumentNavigation(request)) return true;
+  if (isUserInitiatedDocumentNavigation(request) || isHtmlPreviewAssetRequest(request)) return true;
   return !shouldCheckApiRequestOrigin(request) || isApiRequestOriginAllowed(request);
 }
 

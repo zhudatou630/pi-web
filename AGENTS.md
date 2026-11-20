@@ -2,7 +2,7 @@
 
 **What belongs here:** commands, environment, safety rules, and traps a reader of the code would get wrong. Feature specs, UX details, and design rationale go to `docs/*.md` or `docs/adr/`; rules already enforced by a test get one line pointing at the test. Keep entries short.
 
-Design docs: `docs/subagents.md`, `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/routines.md` (scheduled routines; scheduler on in production builds, off under `next dev` unless `PI_WEB_SCHEDULER=1`), `docs/adr/`.
+Design docs: `docs/subagents.md`, `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/html-preview.md` (file viewer HTML preview, token-served), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/routines.md` (scheduled routines; scheduler on in production builds, off under `next dev` unless `PI_WEB_SCHEDULER=1`), `docs/adr/`.
 
 ## Quick Start
 
@@ -113,6 +113,7 @@ Active tool order is prompt input: `withExtensionTools()` keeps the carried orde
 - `/api/files` is not a general filesystem browser: allowed roots are session cwds, their project roots, and `allowFileRoot()` additions. `isPathWithinRoots()` (`lib/path-security.ts`) is the single security boundary; keep one implementation.
 - One browser upload client: `lib/file-upload-client.ts`, used by the explorer and by chat drops and the attach button. Those two route non-images through `ChatWindow`'s drop path (`conflict=skip`, `@` mentions into the cwd root); folders are refused because the endpoint takes flat files.
 - Cross-site `/api/*` requests stay blocked except user-activated top-level GET navigation (`navigate`, `document`, `Sec-Fetch-User: ?1`) to session export or `/api/files/...pdf?type=read`. Android Chrome's opaque PDF placeholder opens that URL cross-site. Host validation and the file-access boundary still apply; PDF reads must remain `application/pdf` with `nosniff`. Never extend this exception to HTML/SVG, other file operations or iframe/embed requests.
+- HTML Preview loads from `/api/html-preview/<token>/...`, which bypasses the cross-site and password checks by design: the token is the authority. Never add CORS headers or drop the `sandbox` CSP there (`docs/html-preview.md`).
 - `.csv`/`.tsv` open as a table in the viewer's Preview (`lib/delimited-table.ts`, `components/DelimitedTable.tsx`). A truncated prefix is shown with its cut last record left out (`complete: false`), so keep that flag when touching the parser.
 
 ### Settings pages (plugins, skills, project overrides)

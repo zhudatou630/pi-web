@@ -3,6 +3,7 @@ import { getAuthRetryAfterMs, recordAuthFailure, retryAfterSeconds } from "@/lib
 import {
   isApiRequestAllowed,
   isApiRequestHostAllowed,
+  isHtmlPreviewAssetRequest,
 } from "@/lib/request-security";
 import {
   isValidWebSessionToken,
@@ -60,6 +61,8 @@ export function proxy(request: NextRequest) {
       : NextResponse.next();
   }
   if (request.nextUrl.pathname === "/api/web-auth") return NextResponse.next();
+  // The opaque-origin preview sends no SameSite cookie; its token was issued to a signed-in user.
+  if (isHtmlPreviewAssetRequest(request)) return NextResponse.next();
 
   if (!authenticated) {
     if (!isApiRequest) {

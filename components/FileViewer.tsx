@@ -1444,6 +1444,8 @@ function TextFileViewer({
   const attachToolbarRef = useRef<HTMLDivElement | null>(null);
   // Whole file for an HTML preview whose source view is still chunked.
   const [htmlFull, setHtmlFull] = useState<{ text?: string; error?: string } | null>(null);
+  // Served preview URL of an HTML file; `url: null` previews inline from its text.
+  const [htmlServed, setHtmlServed] = useState<{ filePath: string; url: string | null } | null>(null);
 
   onStateChangeRef.current = onStateChange;
   // A stable identity keeps the memoized markdown preview from re-parsing when the shell's callback changes.
@@ -1678,11 +1680,38 @@ function TextFileViewer({
     void fetchGitDiff(filePath);
   }, [fetchGitDiff, filePath, gitRefreshKey]);
 
-  // A half HTML document cannot render, so a chunked one previews from one
-  // whole-file fetch. A new file version (watch change) refetches it while the
-  // previous page stays up, so a live change does not flash "Loading"; more
+  // An HTML preview loads from a served URL, so the images, styles and scripts
+  // it references resolve inside its project (docs/html-preview.md). A new file
+  // version (watch change) reissues the URL while the previous page stays up.
+  // Files the server will not serve (reachable only as a session reference, or
+  // over its cap once fully loaded) preview inline from their text, without those files.
+  const htmlOverServeCap = data?.language === "html" && data.size > HTML_PREVIEW_MAX_BYTES;
+  const wantsHtmlServed = displayMode === "preview" && data?.language === "html" && !htmlOverServeCap;
+  useEffect(() => {
+    if (!wantsHtmlServed) return;
+    const controller = new AbortController();
+    fetch("/api/html-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: filePath }),
+      signal: controller.signal,
+    })
+      .then(async (response) => response.ok ? (await response.json() as { url?: unknown }).url : null)
+      .catch(() => null)
+      .then((url) => {
+        if (!controller.signal.aborted) setHtmlServed({ filePath, url: typeof url === "string" ? url : null });
+      });
+    return () => controller.abort();
+  }, [wantsHtmlServed, data?.version, filePath]);
+  const htmlServedForFile = htmlServed?.filePath === filePath ? htmlServed : null;
+  const htmlInline = htmlOverServeCap || htmlServedForFile?.url === null;
+
+  // A half HTML document cannot render, so a chunked one previews inline from
+  // one whole-file fetch. A new file version (watch change) refetches it while
+  // the previous page stays up, so a live change does not flash "Loading"; more
   // chunks of the same version do not.
-  const needsHtmlFull = displayMode === "preview"
+  const needsHtmlFull = htmlInline
+    && displayMode === "preview"
     && data?.language === "html"
     && data.truncated
     && data.size <= HTML_PREVIEW_MAX_BYTES;
@@ -1753,8 +1782,8 @@ function TextFileViewer({
       : displayMode;
   const rawHtml = data?.truncated ? htmlFull?.text : viewerContent;
   const htmlPreview = useMemo(
-    () => isHtml && effectiveDisplayMode === "preview" ? injectSandboxedHtmlPolyfill(rawHtml ?? "") : "",
-    [isHtml, effectiveDisplayMode, rawHtml],
+    () => isHtml && effectiveDisplayMode === "preview" && htmlInline ? injectSandboxedHtmlPolyfill(rawHtml ?? "") : "",
+    [isHtml, effectiveDisplayMode, htmlInline, rawHtml],
   );
   // A fresh token whenever the rendered text may change, so an open find bar searches again.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2269,7 +2298,16 @@ function TextFileViewer({
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
           <MemoizedDiffView patch={gitDiff.patch!} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
-        ) : isHtml && effectiveDisplayMode === "preview" && data?.truncated && !htmlFull?.text ? (
+        ) : isHtml && effectiveDisplayMode === "preview" && !htmlInline && htmlServedForFile?.url ? (
+          <iframe
+            // A new element per URL: changing src would add an iframe history entry.
+            key={htmlServedForFile.url}
+            src={htmlServedForFile.url}
+            sandbox="allow-scripts"
+            style={{ width: "100%", height: "100%", border: "none", background: "var(--bg)" }}
+            title={t("i18n.htmlPreview")}
+          />
+        ) : isHtml && effectiveDisplayMode === "preview" && (!htmlInline || (data?.truncated && !htmlFull?.text)) ? (
           <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, color: htmlFull?.error ? "var(--danger)" : "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
             {htmlFull?.error ?? t("i18n.loading")}
           </div>

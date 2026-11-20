@@ -3,12 +3,11 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
 
-const source = await readFile(new URL("./[...path]/route.ts", import.meta.url), "utf8");
+const source = await readFile(new URL("../../../lib/file-stream.ts", import.meta.url), "utf8");
 const start = source.indexOf("function streamFile");
-const end = source.indexOf("function escapeHtml", start);
 assert.notEqual(start, -1, "streamFile not found");
-assert.notEqual(end, -1, "streamFile end not found");
-const streamBlock = source.slice(start, end);
+// streamFile is the module's last function.
+const streamBlock = source.slice(start);
 
 test("empty byte ranges return 416, while ordinary and suffix ranges remain valid", async () => {
   const { outputText } = ts.transpileModule(`${streamBlock}\nreturn streamFile;`, {});
