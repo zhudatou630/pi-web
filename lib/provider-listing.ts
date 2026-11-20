@@ -12,7 +12,7 @@
  */
 
 export const LLAMA_CPP_PROVIDER_ID = "llama.cpp";
-export const DEFAULT_LLAMA_ROUTER_URL = "http://127.0.0.1:8080";
+export const DEFAULT_LLAMA_ROUTER_URL = "http://127.0.0.1:9931";
 
 /** Credential kinds pi stores in `auth.json`. */
 export type ProviderCredentialType = "api_key" | "oauth";
