@@ -17,7 +17,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "cwd required" }, { status: 400 });
     }
     const cwd = resolve(body.cwd);
-    if (!(await stat(cwd)).isDirectory()) {
+    const info = await stat(cwd).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+      throw error;
+    });
+    // The project folder was deleted or moved outside Pi Web: the same refusal as /api/agent/new.
+    if (!info) return NextResponse.json({ error: `Directory does not exist: ${cwd}`, reason: "cwd-missing", cwd }, { status: 400 });
+    if (!info.isDirectory()) {
       return NextResponse.json({ error: "cwd must be a directory" }, { status: 400 });
     }
     const roots = await getAllowedFileRoots();

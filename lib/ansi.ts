@@ -4,6 +4,8 @@ const ANSI_ESCAPE_AT_START_RE = /^\x1B(?:\][^\x07\x1B]*(?:\x07|\x1B\\)|\[[0-?]*[
 export const TUI_CURSOR_MARKER_RE = /\x1B_pi:[^\x07\x1B\r\n]*(?:\x07|\x1B\\)/g;
 
 export function stripAnsi(text: string): string {
+  // Runs on every streamed chunk of a reply; almost all text has no ESC at all.
+  if (!text.includes("\x1b")) return text;
   return text.replace(TUI_CURSOR_MARKER_RE, "").replace(ANSI_ESCAPE_RE, "");
 }
 

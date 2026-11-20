@@ -38,6 +38,7 @@ only the missing suffix. The server keeps at most 128 KiB of UTF-16 code units;
 an older cursor triggers a terminal reset and bounded history replay. This is
 bounded output history, not a serialized full-screen terminal snapshot. Slow
 SSE consumers are disconnected once their response queue fills.
+While xterm parses the first snapshot of a panel attaching to a running shell (restored tab, explicit reconnect), its query replies are not sent to the shell: another page may have answered them already. A new shell's first output (fish 4.1+ waits for its Device Attributes reply) and every catch-up after this panel has a cursor, output it never saw, are answered. A paste carrying `ESC[200~`/`ESC[201~` is pasted without them, since one would end the bracketed paste.
 
 Input and resizes are serialized. Pending adjacent input is batched so remote
 connections do not require one round trip per keystroke; large pastes are split
@@ -61,6 +62,8 @@ source build instead of reusing a missing or incompatible prebuilt binary.
 Restart Pi Web after repair.
 
 ## Touch keys
+
+The terminal autofocuses only with a fine pointer; on touch, tapping the terminal still focuses it.
 
 A portrait touch screen (orientation from `screen.orientation`, never the viewport, which the soft keyboard reshapes) gets Termux's two key rows as the panel's last grid row, so xterm refits above them (`components/TerminalExtraKeys.tsx`, `lib/terminal-extra-keys.ts`). Keys go through `terminal.input(seq, true)` and follow xterm's application cursor mode; CTRL/ALT are one-shot and also modify the next soft-keyboard character. Buttons `preventDefault()` on pointer/mouse down so the keyboard stays up. Resizes clamp to at least 2 rows: the keyboard can fit the panel to one, and a rejected resize disables input.
 

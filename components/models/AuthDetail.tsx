@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isImeComposing } from "@/lib/ime";
 import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
 import { DEFAULT_LLAMA_ROUTER_URL, LLAMA_CPP_PROVIDER_ID } from "@/lib/provider-listing";
@@ -219,7 +220,7 @@ export function OAuthDetail({ provider, onRefresh, cwd }: {
               className="models-input"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submitCode(loginState.token, inputValue); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !isImeComposing(e)) submitCode(loginState.token, inputValue); }}
               placeholder={loginState.phase === "auth" ? "http://localhost:1455/auth/callback?code=…" : (loginState.placeholder ?? t("models.enterValue"))}
             />
             <ConfigButton variant="primary" size="small" onClick={() => submitCode(loginState.token, inputValue)} disabled={!inputValue.trim()}>
@@ -352,7 +353,7 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
         <SecretTextInput
           value={apiKey}
           onChange={setApiKey}
-          onKeyDown={(e) => { if (e.key === "Enter") void handleSave(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !isImeComposing(e)) void handleSave(); }}
           placeholder={llama ? t("models.optionalApiKey") : provider.configured ? t("models.replaceKeyPlaceholder") : "sk-…"}
         />
         <ConfigButton

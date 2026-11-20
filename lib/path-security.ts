@@ -16,17 +16,21 @@ export function hasParentDirectorySegment(target: string): boolean {
 export function isPathWithinRoots(target: string, roots: Set<string>): boolean {
   if (hasParentDirectorySegment(target)) return false;
   for (const root of roots) {
-    const useWindowsRules = isWindowsAbsolutePath(target) || isWindowsAbsolutePath(root);
-    const resolver = useWindowsRules ? path.win32 : path;
-    const sep = useWindowsRules ? "\\" : path.sep;
-    const normalized = resolver.resolve(target);
-    const normalizedRoot = resolver.resolve(root);
-    const comparable = useWindowsRules ? normalized.toLowerCase() : normalized;
-    const comparableRoot = useWindowsRules ? normalizedRoot.toLowerCase() : normalizedRoot;
-    const rootWithSep = comparableRoot.endsWith(sep) ? comparableRoot : comparableRoot + sep;
-    if (comparable === comparableRoot || comparable.startsWith(rootWithSep)) return true;
+    if (isPathWithinRoot(target, root)) return true;
   }
   return false;
+}
+
+function isPathWithinRoot(target: string, root: string): boolean {
+  const useWindowsRules = isWindowsAbsolutePath(target) || isWindowsAbsolutePath(root);
+  const resolver = useWindowsRules ? path.win32 : path;
+  const sep = useWindowsRules ? "\\" : path.sep;
+  const normalized = resolver.resolve(target);
+  const normalizedRoot = resolver.resolve(root);
+  const comparable = useWindowsRules ? normalized.toLowerCase() : normalized;
+  const comparableRoot = useWindowsRules ? normalizedRoot.toLowerCase() : normalizedRoot;
+  const rootWithSep = comparableRoot.endsWith(sep) ? comparableRoot : comparableRoot + sep;
+  return comparable === comparableRoot || comparable.startsWith(rootWithSep);
 }
 
 export function isExistingPathWithinRoots(target: string, roots: Set<string>): boolean {
@@ -38,15 +42,32 @@ export function isExistingPathWithinRoots(target: string, roots: Set<string>): b
     return false;
   }
 
-  const realRoots = new Set<string>();
-  for (const root of roots) {
+  if (hasParentDirectorySegment(realTarget)) return false;
+  const matchesRealRoot = (root: string): boolean => {
+    let realRoot: string;
     try {
-      realRoots.add(realpathSync(root));
+      realRoot = realpathSync(root);
     } catch {
       // Ignore stale roots derived from removed sessions or worktrees.
+      return false;
     }
+    return isPathWithinRoot(realTarget, realRoot);
+  };
+
+  // Lexical containment only picks the search order: links can land in another root.
+  const remainingRoots: string[] = [];
+  for (const root of roots) {
+    let lexicalMatch = false;
+    try {
+      lexicalMatch = isPathWithinRoot(target, root);
+    } catch {
+      // A relative root may not resolve if the process cwd has disappeared.
+      // Leave it to the same realpath check as any other non-matching root.
+    }
+    if (!lexicalMatch) remainingRoots.push(root);
+    else if (matchesRealRoot(root)) return true;
   }
-  return isPathWithinRoots(realTarget, realRoots);
+  return remainingRoots.some(matchesRealRoot);
 }
 
 /** Deleted targets may be absent; never walk past a dangling link or an access error. */

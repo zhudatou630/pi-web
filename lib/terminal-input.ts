@@ -59,6 +59,20 @@ export function toTerminalKeyData(event: TerminalKeyEventLike): string | null {
   return special;
 }
 
+/** A paste ends at the first ESC[201~, so pasted text must not carry one; removing one can join another. */
+export function stripPasteMarkers(text: string): string {
+  if (!text.includes("\x1b[20")) return text;
+  // One pass, dropping a marker as soon as it completes, so nested ones cost linear time.
+  const kept: string[] = [];
+  for (const char of text) {
+    kept.push(char);
+    const n = kept.length;
+    if (char === "~" && n >= 6 && kept[n - 6] === "\x1b" && kept[n - 5] === "[" && kept[n - 4] === "2"
+      && kept[n - 3] === "0" && (kept[n - 2] === "0" || kept[n - 2] === "1")) kept.length = n - 6;
+  }
+  return kept.join("");
+}
+
 export function asBracketedPaste(text: string): string {
-  return `\x1b[200~${text}\x1b[201~`;
+  return `\x1b[200~${stripPasteMarkers(text)}\x1b[201~`;
 }

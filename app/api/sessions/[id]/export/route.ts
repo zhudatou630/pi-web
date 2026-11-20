@@ -100,7 +100,8 @@ async function exportSession(filePath: string, outputPath: string): Promise<void
   if (!packageDir) throw new Error("pi CLI not found");
 
   const exporterUrl = pathToFileURL(join(packageDir, "dist", "core", "export-html", "index.js")).href;
-  const { exportFromFile } = (await import(exporterUrl)) as ExportHtmlModule;
+  // A runtime path the bundler cannot resolve: load it with Node, as builtin-extensions.ts does.
+  const { exportFromFile } = (await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ exporterUrl)) as ExportHtmlModule;
   await exportFromFile(filePath, outputPath);
 }
 

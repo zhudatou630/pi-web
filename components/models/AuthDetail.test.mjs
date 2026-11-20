@@ -7,6 +7,7 @@ import * as jsxRuntime from "react/jsx-runtime";
 import { createJiti } from "jiti";
 
 const providerListing = await createJiti(import.meta.url).import("../../lib/provider-listing.ts");
+const ime = await createJiti(import.meta.url).import("../../lib/ime.ts");
 const compiled = ts.transpileModule(readFileSync(new URL("./AuthDetail.tsx", import.meta.url), "utf8"), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
@@ -48,6 +49,7 @@ function authDetail(fetch) {
     if (name === "react/jsx-runtime") return jsxRuntime;
     if (name === "@/lib/provider-listing") return providerListing;
     if (name === "@/hooks/useI18n") return { useI18n: () => ({ t: key => key }) };
+    if (name === "@/lib/ime") return ime;
     if (name === "@/hooks/useConfirm") return { useConfirm: () => async () => true };
     if (name === "../SettingsUi") return { ConfigButton: p => React.createElement("button", p), ConfigField: p => React.createElement("label", p) };
     if (name === "./fields") return {

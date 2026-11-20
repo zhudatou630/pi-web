@@ -1,5 +1,7 @@
 import type { BranchPreview } from "@/lib/types";
 import { projectMessageForBrowser } from "./normalize";
+import { stripAnsi } from "./ansi";
+import { truncateText } from "./truncate-text";
 
 // BranchNavigator still traverses recursively, so keep the response tree shallow.
 export const MAX_PROJECTED_TREE_DEPTH = 200;
@@ -29,7 +31,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function appendPreviewText(current: string, value: unknown): string {
   if (typeof value !== "string" || current.length > MAX_BRANCH_PREVIEW_LENGTH) return current;
-  const normalized = value.replace(/\s+/g, " ").trim();
+  const normalized = stripAnsi(value).replace(/\s+/g, " ").trim();
   if (!normalized) return current;
   const separator = current ? " " : "";
   const prefix = current + separator;
@@ -62,7 +64,7 @@ function previewForEntry(entry: ProjectableEntry): BranchPreview | undefined {
   }
 
   if (text.length > MAX_BRANCH_PREVIEW_LENGTH) {
-    text = text.slice(0, MAX_BRANCH_PREVIEW_LENGTH) + "…";
+    text = truncateText(text, MAX_BRANCH_PREVIEW_LENGTH) + "…";
   } else if (!text) {
     text = hasImage
       ? "[image]"

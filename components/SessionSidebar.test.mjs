@@ -322,7 +322,7 @@ test("a project header renames inline like a session row, optimistically, and ro
   assert.match(field, /style=\{RENAME_INPUT_STYLE\}/);
   assert.match(sessionItemSource, /className="session-rename-input"\s*style=\{RENAME_INPUT_STYLE\}/);
   // Enter and blur save, Escape cancels; the drag gesture never starts from the field.
-  assert.match(field, /if \(event\.key === "Enter"\) finish\(true\);\s*if \(event\.key === "Escape"\) finish\(false\);/);
+  assert.match(field, /if \(isImeComposing\(event\)\) return;\s*if \(event\.key === "Enter"\) finish\(true\);\s*if \(event\.key === "Escape"\) finish\(false\);/);
   assert.match(field, /onBlur=\{\(\) => finish\(true\)\}/);
   assert.match(field, /onPointerDown=\{\(event\) => event\.stopPropagation\(\)\}/);
   // Optimistic apply, rollback on refusal, and no poll overwrite while a write is in flight.

@@ -1,6 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import type { SessionInfo } from "./types";
+import { stripAnsi } from "./ansi";
 import { getSessionDisplayTitle } from "./session-display-title";
 import { isUnnamedSideChat } from "./session-family";
 import { SIDE_CHAT_TYPE } from "./side-chat";
@@ -91,7 +92,9 @@ export async function searchSessionContents(
         if (!ownText || entry?.type !== "message" || !["user", "assistant"].includes(entry.message?.role)) continue;
         const content: unknown = entry.message.content;
         const blocks = typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
-        const textBlocks = blocks.flatMap((block, blockIndex) => block?.type === "text" && typeof block.text === "string" ? [{ text: block.text as string, blockIndex }] : []);
+        // Match what the chat shows: assistant text renders without terminal escapes.
+        const shown = entry.message.role === "assistant" ? stripAnsi : (value: string) => value;
+        const textBlocks = blocks.flatMap((block, blockIndex) => block?.type === "text" && typeof block.text === "string" ? [{ text: shown(block.text as string), blockIndex }] : []);
         const text = textBlocks.map((block) => block.text).join("\n");
         pending = pending.filter((matcher) => !matcher.test(text));
         const match = snippet ? null : matchers.map((matcher) => matcher.exec(text)).find(Boolean);

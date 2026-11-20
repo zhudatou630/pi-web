@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, Fragment } from "react";
+import { isImeComposing } from "@/lib/ime";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { deleteRefusalText, SessionSidebar } from "./SessionSidebar";
@@ -870,7 +871,8 @@ export function AppShell() {
       panel?.querySelector<HTMLElement>('[aria-current="page"], button:not(:disabled)')?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || isModalDialogOpen()) return;
+      // An input method takes its Escape to close the candidate list.
+      if (event.key !== "Escape" || isImeComposing(event) || isModalDialogOpen()) return;
       event.preventDefault();
       dismissMobileSidebar();
     };
@@ -904,7 +906,7 @@ export function AppShell() {
         ?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || (!isMobile && window.innerWidth >= 960) || isModalDialogOpen()) return;
+      if (event.key !== "Escape" || isImeComposing(event) || (!isMobile && window.innerWidth >= 960) || isModalDialogOpen()) return;
       event.preventDefault();
       event.stopPropagation();
       closeRightPanel(true);
@@ -986,7 +988,7 @@ export function AppShell() {
       closeTopPanel();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isModalDialogOpen()) {
+      if (event.key === "Escape" && !isImeComposing(event) && !isModalDialogOpen()) {
         event.preventDefault();
         event.stopPropagation();
         closeTopPanel(true);

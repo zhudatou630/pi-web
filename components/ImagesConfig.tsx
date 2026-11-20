@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import { isImeComposing } from "@/lib/ime";
 import { Select } from "./Select";
 import { useI18n } from "@/hooks/useI18n";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -407,6 +408,7 @@ function ConnectionSwitch({
       aria-label={editLabel}
       onChange={(event) => onRenameChange?.(event.target.value)}
       onKeyDown={(event) => {
+        if (isImeComposing(event)) return;
         if (event.key === "Enter") {
           event.preventDefault();
           skipBlur.current = true;

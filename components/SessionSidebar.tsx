@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from "react";
+import { isImeComposing } from "@/lib/ime";
 import { hasRecentAttention, parseUnreadMarks, sameUnreadMarks, withoutReadMarks, UNREAD_SESSIONS_STORAGE_KEY, type UnreadMarks } from "@/lib/unread-state";
 import type { SessionInfo } from "@/lib/types";
 import { selectionFamilies, reconcileSessionSelection, toggleSessionSelection, sessionSelectionSummary } from "@/lib/session-selection";
@@ -1931,6 +1932,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                             setWtError(null);
                           }}
                           onKeyDown={(e) => {
+                            if (isImeComposing(e)) return;
                             if (e.key === "Enter") {
                               e.preventDefault();
                               void handleCreateWorktree();
@@ -2771,6 +2773,7 @@ function ProjectNameInput({ open, initial, onCommit, onCancel }: {
         onChange={(event) => setValue(event.target.value)}
         onBlur={() => finish(true)}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) return;
           if (event.key === "Enter") finish(true);
           if (event.key === "Escape") finish(false);
         }}
@@ -3082,6 +3085,7 @@ export function SessionItem({
           onChange={(e) => setRenameValue(e.target.value)}
           onBlur={commitRename}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") commitRename();
             if (e.key === "Escape") setRenaming(false);
           }}

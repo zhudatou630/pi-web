@@ -1,4 +1,5 @@
 import { partitionAssistantMessage } from "./message-display";
+import { truncateText } from "./truncate-text";
 import type { AssistantMessage } from "./types";
 
 export const MARKDOWN_IMAGE_PLACEHOLDER = "[image]";
@@ -51,7 +52,7 @@ export function sanitizeExportFileName(name: string, limit = FILE_STEM_LIMIT): s
     .replace(/\s+/g, " ")
     .trim()
     .replace(/ /g, "_");
-  const stem = cleaned.slice(0, limit);
+  const stem = truncateText(cleaned, limit);
   return stem || "session";
 }
 
@@ -253,7 +254,7 @@ function dialogueTitle(markdown: string): string {
       .replace(/^\d+[.)]\s+/, "");
     title = title.replace(/[`*_]/g, "").replace(/\s+/g, " ").trim();
     if (!title) continue;
-    return title.length > TITLE_LIMIT ? `${title.slice(0, TITLE_LIMIT)}…` : title;
+    return title.length > TITLE_LIMIT ? `${truncateText(title, TITLE_LIMIT)}…` : title;
   }
   return markdown.includes(MARKDOWN_IMAGE_PLACEHOLDER) ? "image" : "Untitled";
 }

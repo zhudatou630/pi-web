@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { isImeComposing } from "@/lib/ime";
 import { useI18n } from "@/hooks/useI18n";
 
 const MAX_MATCHES = 5000;
@@ -203,6 +204,7 @@ export function FileFindBar({ scrollerRef, contentKey, unsupportedMessage, parti
           setLineStatus(null);
         }}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) return;
           if (event.key === "Escape") {
             event.preventDefault();
             onClose();

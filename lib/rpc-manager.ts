@@ -107,7 +107,7 @@ type PendingUiResponse = {
 };
 
 type CustomUiComponent = {
-  render: (width: number) => string[];
+  render: (width: number) => readonly string[];
   handleInput?: (data: string) => void;
   dispose?: () => void;
   invalidate?: () => void;
@@ -1131,7 +1131,6 @@ export class AgentSessionWrapper {
           const streamingBehavior = command.streamingBehavior as "steer" | "followUp" | undefined;
           // pi resizes queued (steer/follow-up) images itself when it delivers them (1.5.1).
           const promptImages = command.images as PromptImage[] | undefined;
-          if (!streamingBehavior && !this.isRunning()) this.recordModelOnBranch();
           let parked = false;
           let started = false;
           let preflightAccepted = false;
@@ -1175,6 +1174,16 @@ export class AgentSessionWrapper {
               // validation and extension preflight have accepted the submission.
               preflightResult: (disposition) => {
                 started = disposition === "started";
+                // Right before pi's own _recordSelection(): only a prompt that starts a run
+                // records, not one an extension handled or the run queued.
+                if (started) {
+                  try {
+                    this.recordModelOnBranch();
+                  } catch (error) {
+                    // A throw here would escape pi's _startRun with the run marked active.
+                    console.error("[rpc-manager] could not record the model on the branch:", error);
+                  }
+                }
                 acceptPreflight();
               },
             });
@@ -1855,7 +1864,7 @@ export class AgentSessionWrapper {
   }
 
   private emitCustomUiRender(id: string, custom: ActiveCustomUi): void {
-    let lines: string[];
+    let lines: readonly string[];
     try {
       lines = custom.component.render(custom.width);
     } catch (error) {
@@ -1990,9 +1999,14 @@ export class AgentSessionWrapper {
     request: ExtensionUiRequestBody,
     defaultValue: T,
     parseResponse: (response: ExtensionUiResponse) => T,
-    timeout?: number,
+    rawTimeout?: number,
     signal?: AbortSignal,
   ): Promise<T> {
+    // As pi's TUI (`timeout > 0`): only a positive number is a deadline. One past setTimeout's
+    // range (Infinity included) would fire at once, so it waits for the person, as there.
+    const timeout = typeof rawTimeout === "number" && rawTimeout > 0 && rawTimeout <= 2_147_483_647
+      ? rawTimeout
+      : undefined;
     if (!this.isAlive()) return Promise.reject(new Error("Session is closing; no dialog can be shown"));
     if (signal?.aborted) return Promise.resolve(defaultValue);
     const stopSignal = this.extensionUiAbortController.signal;
@@ -2045,7 +2059,7 @@ export class AgentSessionWrapper {
   private createExtensionUiContext(): ExtensionUiContextLike {
     return {
       select: (title, options, opts) => this.requestExtensionUi(
-        { method: "select", title, options, ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        { method: "select", title, options },
         undefined,
         (response) => "value" in response ? response.value : undefined,
         opts?.timeout,
@@ -2056,7 +2070,6 @@ export class AgentSessionWrapper {
           method: "confirm", title, message,
           // Pi Web's own tools may attach a card (RoutineApprovalCard); other clients read title/message.
           ...((opts as { piWebCard?: unknown } | undefined)?.piWebCard ? { card: (opts as { piWebCard: unknown }).piWebCard } : {}),
-          ...(opts?.timeout ? { timeout: opts.timeout } : {}),
         },
         false,
         (response) => "confirmed" in response ? response.confirmed : false,
@@ -2064,14 +2077,14 @@ export class AgentSessionWrapper {
         opts?.signal,
       ),
       input: (title, placeholder, opts) => this.requestExtensionUi(
-        { method: "input", title, ...(placeholder !== undefined ? { placeholder } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        { method: "input", title, ...(placeholder !== undefined ? { placeholder } : {}) },
         undefined,
         (response) => "value" in response ? response.value : undefined,
         opts?.timeout,
         opts?.signal,
       ),
       editor: (title, prefill, opts) => this.requestExtensionUi(
-        { method: "editor", title, ...(prefill !== undefined ? { prefill } : {}), ...(opts?.timeout ? { timeout: opts.timeout } : {}) },
+        { method: "editor", title, ...(prefill !== undefined ? { prefill } : {}) },
         undefined,
         (response) => "value" in response ? response.value : undefined,
         opts?.timeout,

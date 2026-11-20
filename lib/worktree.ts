@@ -38,6 +38,7 @@ export interface WorktreeInfo {
 
 declare global {
   var __piProjectCache: Map<string, { info: ProjectInfo; expiresAt: number }> | undefined;
+  var __piPendingProjects: Map<string, Promise<ProjectInfo>> | undefined;
 }
 
 const PROJECT_CACHE_TTL_MS = 60_000;
@@ -52,7 +53,9 @@ function getProjectCache(): Map<string, { info: ProjectInfo; expiresAt: number }
 }
 
 export function invalidateProjectCache(): void {
-  globalThis.__piProjectCache?.clear();
+  // Replace, not clear: a lookup still running writes into the maps it started with.
+  globalThis.__piProjectCache = new Map();
+  globalThis.__piPendingProjects = new Map();
 }
 
 /** Large repositories can take minutes to check out; the default 10s is far too short. */
@@ -129,6 +132,16 @@ export async function resolveProject(cwd: string): Promise<ProjectInfo> {
   const cached = cache.get(cwd);
   if (cached && cached.expiresAt > Date.now()) return cached.info;
 
+  const pending = (globalThis.__piPendingProjects ??= new Map());
+  const current = pending.get(cwd);
+  if (current) return current;
+
+  const task = resolveUncachedProject(cwd, cache).finally(() => pending.delete(cwd));
+  pending.set(cwd, task);
+  return task;
+}
+
+async function resolveUncachedProject(cwd: string, cache: ReturnType<typeof getProjectCache>): Promise<ProjectInfo> {
   let info: ProjectInfo;
   try {
     if (!existsSync(cwd)) {

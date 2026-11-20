@@ -22,6 +22,7 @@ import { formatDuration } from "@/lib/i18n/format";
 import { toolClockMs, type ToolClock, type ToolClocks } from "@/lib/tool-clock";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getToolPreview } from "@/lib/tool-preview";
+import { stripAnsi } from "@/lib/ansi";
 import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
 import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { editPreview } from "@/lib/edit-preview";
@@ -849,7 +850,7 @@ function AssistantMessageView({
   const unansweredTruncation = truncated && !hasAssistantAnswer(message);
   const textContent = blocks
     .filter((block): block is TextContent => block.type === "text")
-    .map((block) => block.text)
+    .map((block) => stripAnsi(block.text))
     .join("\n");
   const time = isTurnEnd && !isStreaming ? formatTime(message.timestamp, locale) : null;
   const modelLabel = isTurnEnd && !isStreaming ? (modelName || message.model || null) : null;
@@ -1202,13 +1203,13 @@ function BlockView({ block, searchTarget, toolResults, toolsNotRun, questionAnsw
 }
 
 function TextBlock({ block, isStreaming, cwd, onOpenFile }: { block: TextContent; isStreaming?: boolean; cwd?: string; onOpenFile?: (filePath: string) => void }) {
-  return <SafeMarkdownBody className="markdown-assistant-message" isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{block.text}</SafeMarkdownBody>;
+  return <SafeMarkdownBody className="markdown-assistant-message" isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile}>{stripAnsi(block.text)}</SafeMarkdownBody>;
 }
 
 // Separate layout boxes let streaming update only the last piece. Inline boxes keep
 // selection / copy exact, including at hard cuts that did not contain a newline.
 function ThinkingText({ text }: { text: string }) {
-  const pieces = useMemo(() => splitThinkingPieces(text), [text]);
+  const pieces = useMemo(() => splitThinkingPieces(stripAnsi(text)), [text]);
   // Do not memoize pieces: old slice props would pin entire previous streaming strings.
   return pieces.map((piece, index) => (
     <span key={index} style={{ display: "inline-block", width: "100%", verticalAlign: "top" }}>{piece}</span>

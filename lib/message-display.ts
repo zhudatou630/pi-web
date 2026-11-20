@@ -1,4 +1,5 @@
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, ThinkingContent, ToolCallContent } from "./types";
+import { stripAnsi } from "./ansi";
 
 interface DisplayOptions {
   isStreaming?: boolean;
@@ -47,7 +48,7 @@ export function splitThinkingPieces(thinking: string): string[] {
 }
 
 export function getThinkingPreview(thinking: string): string {
-  return thinking.trimStart().match(/^[^\r\n]{0,240}/u)?.[0].trimEnd() ?? "";
+  return stripAnsi(thinking).trimStart().match(/^[^\r\n]{0,240}/u)?.[0].trimEnd() ?? "";
 }
 
 /**

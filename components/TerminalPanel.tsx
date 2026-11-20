@@ -8,6 +8,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { useTheme } from "@/hooks/useTheme";
 import { createSilenceWatchdog } from "@/lib/sse-watchdog";
 import { createTerminalWriter, terminalRequest } from "@/lib/terminal-client";
+import { stripPasteMarkers } from "@/lib/terminal-input";
 import {
   applyTerminalModifiers,
   NO_TERMINAL_MODIFIERS,
@@ -29,6 +30,41 @@ interface Props {
   onRestart: () => void;
   onClosed: () => void;
   onCloseError: () => void;
+}
+
+function shouldAutofocusTerminal() {
+  // Let a tap open the software keyboard on touch devices.
+  return window.matchMedia("(pointer: fine)").matches;
+}
+
+function createTerminalOutput(terminal: Terminal, attachToExistingShell: boolean) {
+  let offset: number | undefined;
+  let parsingReplay = false;
+
+  return {
+    get offset() { return offset; },
+    // xterm's replies are escape sequences; typed text in the same few milliseconds still goes through.
+    isReplayReply(data: string) { return parsingReplay && data.startsWith("\x1b"); },
+    write(event: Extract<TerminalEvent, { type: "output" }>) {
+      // Only the first snapshot of a panel attaching to a running shell (restored tab, explicit
+      // reconnect) redraws output another page may have answered. Once this panel has a cursor,
+      // the server sends only output past it (a reset means the cursor fell outside the backlog).
+      const replay = event.reset === true && offset === undefined && attachToExistingShell;
+      if (event.reset) terminal.reset();
+      else if (offset !== undefined && event.offset <= offset) return;
+      offset = event.offset;
+      if (!event.data) return;
+      if (!replay) {
+        terminal.write(event.data);
+        return;
+      }
+
+      // xterm parses writes in order: the empty write's callback runs once queued live output
+      // is parsed, right before the replay, whose own callback runs once it is parsed.
+      terminal.write("", () => { parsingReplay = true; });
+      terminal.write(event.data, () => { parsingReplay = false; });
+    },
+  };
 }
 
 export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, onCloseError }: Props) {
@@ -78,7 +114,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
     if (!container) return;
     let disposed = false;
     let events: EventSource | null = null;
-    let offset: number | undefined;
+    const attachToExistingShell = Boolean(restored) || reconnectKey > 0;
     let connected = false;
     let exited = false;
     let inputFailed = false;
@@ -121,9 +157,22 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
       setStatus("error");
     });
     writerRef.current = writer;
+    const output = createTerminalOutput(terminal, attachToExistingShell);
     const onData = terminal.onData((data) => {
+      if (output.isReplayReply(data)) return;
       if (connected && !exited && !inputFailed) writer.write(applyTerminalModifiers(data, consumeModifiers()));
     });
+    // xterm brackets a paste as is: an ESC[201~ inside would end it and type the rest.
+    const onPaste = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain");
+      if (!text) return;
+      const clean = stripPasteMarkers(text);
+      if (clean === text) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      terminal.paste(clean);
+    };
+    container.addEventListener("paste", onPaste, true);
     const fitAndResize = () => {
       if (!container.offsetWidth || !container.offsetHeight) return;
       fit.fit();
@@ -143,6 +192,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
     const connect = () => {
       if (disposed || exited || !navigator.onLine) return;
       events?.close();
+      const offset = output.offset;
       events = new EventSource(`/api/terminal/${encodeURIComponent(id)}/events${offset === undefined ? "" : `?after=${offset}`}`);
       events.addEventListener("heartbeat", () => watchdog.touch());
       watchdog.touch();
@@ -150,10 +200,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
         watchdog.touch();
         const event = JSON.parse(message.data) as TerminalEvent;
         if (event.type === "output") {
-          if (event.reset) terminal.reset();
-          else if (offset !== undefined && event.offset <= offset) return;
-          terminal.write(event.data);
-          offset = event.offset;
+          output.write(event);
         } else {
           exited = true;
           connected = false;
@@ -171,7 +218,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
         setStatus("ready");
         fitAndResize();
         writer.resize(terminal.cols, terminal.rows);
-        if (container.offsetWidth && container.offsetHeight) terminal.focus();
+        if (container.offsetWidth && container.offsetHeight && shouldAutofocusTerminal()) terminal.focus();
       };
       events.onerror = () => {
         if (disposed || exited) return;
@@ -183,7 +230,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
 
     startRef.current = (async () => {
       fitAndResize();
-      if (restored || reconnectKey > 0) {
+      if (attachToExistingShell) {
         // Restoring a tab must never silently launch a replacement shell.
         await terminalRequest(`/api/terminal/${encodeURIComponent(id)}`);
       } else {
@@ -221,6 +268,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
       clearTimeout(resizeTimer);
       onData.dispose();
       onResize.dispose();
+      container.removeEventListener("paste", onPaste, true);
       window.removeEventListener("pagehide", pageHide);
       window.removeEventListener("pageshow", pageShow);
       window.removeEventListener("offline", pageHide);
@@ -236,7 +284,7 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
   }, [palette, theme, id, cwd, restored, reconnectKey]);
 
   useEffect(() => {
-    if (active) terminalRef.current?.focus();
+    if (active && shouldAutofocusTerminal()) terminalRef.current?.focus();
   }, [active]);
 
   useEffect(() => {

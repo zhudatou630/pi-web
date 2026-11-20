@@ -1,7 +1,65 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { setImmediate } from "node:timers/promises";
+import { Script } from "node:vm";
+import xterm from "@xterm/xterm";
+import ts from "typescript";
 import { createTerminalWriter, terminalRequest } from "../lib/terminal-client.ts";
+
+const source = ts.createSourceFile("TerminalPanel.tsx", readFileSync(new URL("./TerminalPanel.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
+const outputHelper = source.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "createTerminalOutput");
+assert.ok(outputHelper);
+const createTerminalOutput = new Script(ts.transpileModule(`(${outputHelper.getText(source)})`, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022 },
+}).outputText).runInNewContext();
+
+test("only replayed snapshots suppress query replies, without dropping queued typing", async (t) => {
+  const query = "\x1b[c";
+  const reply = "\x1b[?1;2c";
+  const scenarios = [
+    { name: "new shell", snapshot: { data: query, offset: 3, reset: true }, replies: [reply] },
+    { name: "first reconnect before any output", earlier: { data: "", offset: 0, reset: true }, snapshot: { data: query, offset: 3, reset: false }, replies: [reply] },
+    { name: "reconnect with a cursor (output never drawn here)", earlier: { data: "\x1b[6n", offset: 4 }, snapshot: { data: query, offset: 7, reset: false }, replies: ["\x1b[1;1R", reply] },
+    { name: "reconnect past the kept history (output never drawn here)", earlier: { data: "\x1b[6n", offset: 4 }, snapshot: { data: query, offset: 300_000, reset: true }, replies: ["\x1b[1;1R", reply] },
+    { name: "restored tab or explicit reconnect", attachToExistingShell: true, snapshot: { data: query, offset: 3, reset: true }, replies: [] },
+  ];
+  for (const { name, attachToExistingShell = false, earlier, snapshot, replies } of scenarios) {
+    await t.test(name, async () => {
+      const terminal = new xterm.Terminal();
+      try {
+        const output = createTerminalOutput(terminal, attachToExistingShell);
+        const sent = [];
+        terminal.onData((data) => { if (!output.isReplayReply(data)) sent.push(data); });
+        const write = (event) => output.write({ type: "output", ...event });
+        if (earlier) write(earlier);
+        write(snapshot);
+        terminal.input("typed");
+        write({ data: "\x1b[>c", offset: snapshot.offset + 4 });
+        await new Promise((resolve) => terminal.write("", resolve));
+        assert.deepEqual(sent, ["typed", ...replies, "\x1b[>0;276;0c"]);
+      } finally {
+        terminal.dispose();
+      }
+    });
+  }
+});
+
+test("typing while xterm parses a replay still reaches the shell", async () => {
+  const terminal = new xterm.Terminal();
+  try {
+    const output = createTerminalOutput(terminal, true);
+    const sent = [];
+    terminal.onData((data) => { if (!output.isReplayReply(data)) sent.push(data); });
+    terminal.input("a"); // user input makes xterm parse the next write synchronously
+    output.write({ type: "output", data: "\x1b[c", offset: 3, reset: true });
+    terminal.input("typed");
+    await new Promise((resolve) => terminal.write("", resolve));
+    assert.deepEqual(sent, ["a", "typed"]);
+  } finally {
+    terminal.dispose();
+  }
+});
 
 test("terminal errors preserve server diagnostics and explain non-JSON responses", async (t) => {
   const fetch = t.mock.method(globalThis, "fetch");
