@@ -1261,12 +1261,13 @@ export function createSubagentController(
     const runInBackground = request.runInBackground ?? existing.runInBackground;
     const maxTurns = existing.maxTurns;
     const isolation = existing.isolation;
+    const description = request.description.trim();
     const initialRun: SubagentRunInfo = {
       ...existing,
       resumed: true,
       parentToolCallId: request.parentToolCallId,
       task: request.task,
-      description: request.description.trim() || existing.description,
+      description: description || existing.description,
       runInBackground,
       ...(maxTurns ? { maxTurns } : {}),
       ...(isolation ? { isolation } : {}),
@@ -1362,6 +1363,9 @@ export function createSubagentController(
                     status: "aborted",
                     completedAt: new Date().toISOString(),
                   };
+            }
+            if (description && description !== context.manager.getSessionName()) {
+              wrapper.inner.setSessionName(description);
             }
             context.manager.appendCustomEntry(SUBAGENT_STATUS_TYPE, { version: 1, status: "running" });
             stored.run = { ...stored.run, status: "running" };
@@ -1526,7 +1530,7 @@ export function createSubagentController(
       parentToolCallId: `ui:${randomUUID()}`,
       sessionId,
       task,
-      description: existing.description,
+      description: "",
       runInBackground: true,
     });
     return { action: "resumed", run: execution.run };
