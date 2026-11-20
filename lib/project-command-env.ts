@@ -9,6 +9,9 @@ import {
   type LoadExtensionsResult,
 } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
+import { sanitizeProjectCommandEnvironment } from "./host-environment";
+
+export { sanitizeProjectCommandEnvironment };
 
 const HOST_EXTENSION_NAME = "pi-web-project-command-environment";
 const HOST_EXTENSION_PATH = `<inline:${HOST_EXTENSION_NAME}>`;
@@ -27,25 +30,6 @@ type ProjectCommandBashOperationsOptions = {
   platform?: NodeJS.Platform;
   shellPath?: string;
 };
-
-function isHostRuntimeVariable(name: string, platform: NodeJS.Platform): boolean {
-  const comparableName = platform === "win32" ? name.toUpperCase() : name;
-  return comparableName === "PORT"
-    || comparableName === "NODE_ENV"
-    || comparableName === "PI_WEB_PASSWORD"
-    || comparableName.startsWith("NEXT_");
-}
-
-export function sanitizeProjectCommandEnvironment(
-  baseEnvironment: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform,
-): NodeJS.ProcessEnv {
-  const environment = { ...baseEnvironment };
-  for (const name of Object.keys(environment)) {
-    if (isHostRuntimeVariable(name, platform)) delete environment[name];
-  }
-  return environment;
-}
 
 function withAgentBinDirectory(
   environment: NodeJS.ProcessEnv,

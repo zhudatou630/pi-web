@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { gt, maxSatisfying, rcompare, valid, validRange } from "semver";
 import type { PluginScope, PluginUpdateResult } from "@/lib/api-types";
+import { sanitizeProjectCommandEnvironment } from "./host-environment";
 import { getProjectTrustStatus } from "./project-trust";
 
 const execFileAsync = promisify(execFile);
@@ -22,7 +23,7 @@ type ConfiguredPackage = {
 type CommandRunner = (
   command: string,
   args: string[],
-  options: { cwd: string; env?: NodeJS.ProcessEnv },
+  options: { cwd: string; env?: Record<string, string> },
 ) => Promise<string>;
 
 type CheckOptions = {
@@ -95,11 +96,12 @@ function result(
 async function runCommand(
   command: string,
   args: string[],
-  options: { cwd: string; env?: NodeJS.ProcessEnv },
+  options: { cwd: string; env?: Record<string, string> },
 ): Promise<string> {
   const { stdout } = await execFileAsync(command, args, {
     cwd: options.cwd,
-    env: options.env ? { ...process.env, ...options.env } : process.env,
+    // npm reads the project's .npmrc, which expands ${VAR} from this environment.
+    env: { ...sanitizeProjectCommandEnvironment(process.env), ...options.env },
     encoding: "utf8",
     timeout: 10_000,
   });
@@ -160,7 +162,7 @@ async function checkGitPackage(
   }
   const options = {
     cwd: pkg.installedPath,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: { GIT_TERMINAL_PROMPT: "0" },
   };
   const local = (await runner("git", ["rev-parse", "HEAD"], options)).trim();
   const upstream = await runner("git", ["rev-parse", "--abbrev-ref", "@{upstream}"], options)

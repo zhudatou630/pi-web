@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { promisify } from "util";
 import { allowFileRoot } from "./allowed-roots";
+import { projectGitEnvironment } from "./host-environment";
 import { samePath, toNativePath } from "./paths";
 
 const execFileAsync = promisify(execFile);
@@ -63,7 +64,7 @@ export async function git(cwd: string, args: string[], timeout = 10_000): Promis
     maxBuffer: 1024 * 1024,
     // Pin the message locale so error-text matching (e.g. the dirty-worktree
     // detection in the DELETE route) works regardless of system language.
-    env: { ...process.env, LC_ALL: "C" },
+    env: projectGitEnvironment(),
   });
   return stdout.trim();
 }

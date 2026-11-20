@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { toNativePath } from "./paths";
 import { allowFileRoot } from "./allowed-roots";
+import { projectGitEnvironment } from "./host-environment";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,7 +27,7 @@ async function git(cwd: string, args: string[], timeout = 10_000): Promise<strin
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
     timeout,
     maxBuffer: 1024 * 1024,
-    env: { ...process.env, LC_ALL: "C" },
+    env: projectGitEnvironment(),
   });
   return stdout.trim();
 }

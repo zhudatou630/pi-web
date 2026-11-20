@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { promisify } from "util";
 import { TEXT_PREVIEW_MAX_BYTES } from "./file-types";
+import { projectGitEnvironment } from "./host-environment";
 import type {
   GitFileDiffResponse,
   GitFileStatus,
@@ -22,7 +23,7 @@ async function git(cwd: string, args: string[], maxBuffer = GIT_STATUS_MAX_BUFFE
   const { stdout } = await execFileAsync("git", ["--literal-pathspecs", "-c", "core.fsmonitor=false", "-C", cwd, ...args], {
     timeout: GIT_TIMEOUT_MS,
     maxBuffer,
-    env: { ...process.env, LC_ALL: "C" },
+    env: projectGitEnvironment(),
   });
   return stdout;
 }
