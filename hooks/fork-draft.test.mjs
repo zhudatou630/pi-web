@@ -11,12 +11,13 @@ async function callback(path, name, scope) {
   return new Function("scope", `with(scope) { return ${ts.transpileModule(`(${find(file).getText(file)})`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText} }`)(scope);
 }
 const message = { role: "user", content: "try again" }, image = { data: "aW1n", mimeType: "image/png" };
-for (const scenario of ["success", "image failure", "cancelled", "failed"]) test(`message fork draft: ${scenario}`, async () => {
+for (const scenario of ["success", "running", "image failure", "cancelled", "failed"]) test(`message fork draft: ${scenario}`, async () => {
   const events = [], media = Promise.withResolvers();
   const fork = await callback("./useAgentSession.ts", "handleFork", {
-    bashRunningRef: { current: false }, sessionIdRef: { current: "source" }, setForkingEntryId() {}, console: { error() {} },
+    bashRunningRef: { current: false }, sessionIdRef: { current: "source" }, setForkingEntryId() {}, addNotice() {}, t: (v) => v,
     sendAgentCommand: async (sid, cmd) => {
-      assert.equal(sid, "source"); assert.deepEqual(cmd, { type: "fork", entryId: "entry", name: "Fork of source" });
+      assert.equal(sid, "source");
+      assert.deepEqual(cmd, { ...(scenario === "running" ? { type: "fork_branch", before: true } : { type: "fork" }), entryId: "entry", name: "Fork of source" });
       if (scenario === "failed") throw new Error("failed");
       return scenario === "cancelled" ? { cancelled: true } : { newSessionId: "copy" };
     },
@@ -25,6 +26,7 @@ for (const scenario of ["success", "image failure", "cancelled", "failed"]) test
   let imageReads = 0;
   const click = await callback("../components/ChatWindow.tsx", "handleChatFork", {
     keepTabOpen() {}, sessionRef: { current: {} }, t: (v) => v, getForkSessionName: () => "Fork of source", handleFork: fork,
+    agentRunning: scenario === "running", sessionRunning: false, isCompacting: false,
     getUserMessageText: (m) => { assert.equal(m, message); return "try again"; },
     getUserMessageDraftImages: (m) => { assert.equal(m, message); imageReads++; return media.promise; },
   });

@@ -31,7 +31,7 @@ function fixture() {
     eventConnectionRef: ref({ close() {} }),
     setSessionEnded(value) { writes.ended = value; }, cancelEventStreamGrace() {}, settleUiStage() {},
     setBashRunning() {}, setPendingBash() {}, setIsCompacting() {}, setQueuedMessages() {}, setExtensionDialogs() {}, setExtensionCustomUis() {},
-    setLoading() {}, setError() {}, setMessageKeyAliases() {},
+    setLoading() {}, setError() {}, setMessageKeyAliases() {}, deliveredUserRef: ref(null), setLiveUserEntryIds() {},
     setData(value) { writes.data = typeof value === "function" ? value(writes.data) : value; },
     setActiveLeafId(value) { writes.leaf = value; }, setMessages(value) { writes.messages = value; }, setEntryIds(value) { writes.ids = value; },
     setHistoryCursor() {}, setHasEarlierMessages() {}, setToolPresetState() {}, setCurrentModelOverride() {}, applyContextUsage() {},

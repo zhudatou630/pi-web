@@ -191,8 +191,10 @@ The wire already forwards start/end timing fields unchanged, covered by tests.
 
 The user-message Fork button copies history *before* that message, then restores
 its editable text (including skill-command recovery) and images under the new
-session's draft key before switching. Deferred images are awaited only after a
-successful fork; a media failure still keeps the text. Fork naming is unchanged.
+session's draft key before switching. During a run, it copies on disk without
+stopping the source. A just-delivered prompt gets its Fork id after pi persists
+it; that id does not affect transcript keys, Edit or scroll anchors.
+Deferred images are awaited only after a successful fork; a media failure stillkeeps the text. Fork naming is unchanged.
 The session menu's fork-through-current-leaf action does not seed a draft.
 
 ## Model changes during a run

@@ -84,6 +84,7 @@ function historyRace() {
     setData: (value) => { state.data = typeof value === "function" ? value(state.data) : value; }, setMessages: (value) => { state.messages = typeof value === "function" ? value(state.messages) : value; },
     setEntryIds: (value) => { state.entryIds = value; }, setModelSwitching() {}, setLoading() {}, setError() {},
     setMessageKeyAliases() {}, setActiveLeafId() {}, setHistoryCursor() {}, setHasEarlierMessages() {}, setToolPresetState() {},
+    deliveredUserRef: ref(null), setLiveUserEntryIds() {},
     applyContextUsage() {}, setSystemPrompt() {}, setQueuedMessages() {}, addNotice() {}, t: (key) => key,
     sendAgentCommand: async () => command.promise,
     fetch: async (url) => {

@@ -166,6 +166,7 @@ interface Props {
   onOpenFile?: (filePath: string) => void;
   onOpenSession?: (sessionId: string) => void;
   entryId?: string;
+  forkEntryId?: string;
   searchBlock?: AssistantContentBlock;
   /** Session search landed on this message (a routine run then shows its instructions). */
   searchTarget?: boolean;
@@ -284,12 +285,12 @@ function haveSameRelevantToolEntries<T>(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, steered, toolsNotRun, toolClocks, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, forkEntryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, steered, toolsNotRun, toolClocks, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user" && message.routineRun) {
     return <RoutineRunView message={message} routineRun={message.routineRun} searchTarget={searchTarget} cwd={cwd} onOpenFile={onOpenFile} />;
   }
   if (message.role === "user") {
-    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
+    return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} forkEntryId={entryId ?? forkEntryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
     return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} steered={steered} toolsNotRun={toolsNotRun} toolClocks={toolClocks} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
@@ -325,6 +326,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.onOpenFile === next.onOpenFile
     && prev.onOpenSession === next.onOpenSession
     && prev.entryId === next.entryId
+    && prev.forkEntryId === next.forkEntryId
     && prev.searchBlock === next.searchBlock
     && prev.searchTarget === next.searchTarget
     && prev.onFork === next.onFork
@@ -398,12 +400,12 @@ function stripImageHints(text: string): string {
   return lines.slice(0, end).join("\n");
 }
 
-function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing }: {
+function UserMessageView({ message, cwd, onOpenFile, forkEntryId, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing }: {
   message: UserMessage;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
-  entryId?: string;
-  onFork?: (entryId: string, message: UserMessage) => void;
+  forkEntryId?: string;
+  onFork?: (forkEntryId: string, message: UserMessage) => void;
   forking?: boolean;
   prevAssistantEntryId?: string;
   onEditContent?: (message: UserMessage, targetId: string) => void;
@@ -455,7 +457,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
     : "";
 
   const time = formatTime(message.timestamp, locale);
-  const canFork = !!entryId && !!onFork;
+  const canFork = !!forkEntryId && !!onFork;
   const copyTarget = commandText ?? content;
   const editTarget = commandText ? replaceUserMessageText(message, commandText) : message;
 
@@ -654,7 +656,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, p
                 <button
                   type="button"
                   className="message-action-button"
-                  onClick={() => { onFork!(entryId!, editTarget); }}
+                  onClick={() => { onFork!(forkEntryId!, editTarget); }}
                   disabled={forking}
                   title={forking ? t("i18n.creatingSession") : t("i18n.newSessionTitle")}
                   aria-label={forking ? t("i18n.creating") : t("i18n.newSession")}

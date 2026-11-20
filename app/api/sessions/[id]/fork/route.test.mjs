@@ -73,6 +73,47 @@ function assertCopiedThrough(copy, leafId) {
   assert.equal(copy.getEntry(copy.getLeafId()).parentId, leafId, "only the new name follows the copied leaf");
 }
 
+test("live user entry ids are announced only after append and fork before the chosen prompt without stopping the run", async (t) => {
+  const { create, live, cache } = await fixture(t);
+  const manager = create();
+  let notify;
+  const { wrapper, inner } = live(manager, {
+    isStreaming: true,
+    subscribe(listener) { notify = listener; return () => {}; },
+  });
+  wrapper.start();
+  const events = [];
+  wrapper.onEvent((event) => events.push(event));
+  const deliver = async (text) => {
+    const message = { role: "user", content: text, timestamp: 2 };
+    notify({ type: "message_end", message });
+    assert.equal(events.at(-1).type, "message_end");
+    const entryId = manager.appendMessage(message);
+    await Promise.resolve();
+    assert.deepEqual(events.at(-1), { type: "user_message_entry", entryId, timestamp: 2 });
+    return entryId;
+  };
+  const prompt = await deliver("prompt");
+  const steer = await deliver("steer");
+  const before = readFileSync(inner.sessionFile, "utf8");
+  for (const [entryId, expected] of [[prompt, []], [steer, ["prompt"]]]) {
+    const copy = await wrapper.send({ type: "fork_branch", before: true, entryId, name: "Fork: source" });
+    const saved = (await SessionManager.list(manager.getCwd())).find((s) => s.id === copy.newSessionId);
+    assert.ok(saved, "even an empty fork gets a persisted file");
+    cache(saved.id, saved.path);
+    const fork = SessionManager.open(saved.path);
+    assert.equal(fork.getHeader().parentSession, inner.sessionFile);
+    assert.equal(fork.getSessionName(), "Fork: source");
+    assert.deepEqual(fork.getEntries().filter((e) => e.type === "message").map((e) => e.message.content), expected);
+  }
+  assert.equal(readFileSync(inner.sessionFile, "utf8"), before);
+  assert.equal(manager.getLeafId(), steer);
+  assert.ok(wrapper.isAlive() && wrapper.isRunning());
+  await assert.rejects(wrapper.send({ type: "fork", entryId: steer }), /while the session is running/);
+  inner.extensionRunner.hasHandlers = (name) => name === "session_before_fork";
+  await assert.rejects(wrapper.send({ type: "fork_branch", before: true, entryId: steer }), /extension guards/);
+});
+
 test("row and RPC forks preserve a running source and its live branch, including ! shell", async (t) => {
   const { create, request, live, cache } = await fixture(t);
   const manager = create();

@@ -31,7 +31,7 @@ function harness() {
     promptRunGateRef: ref(new PromptRunGate()), pendingPromptRef: ref(null),
     unconfirmedPromptsRef: ref(new Map()), queuedMessages: { steering: [], followUp: [] }, setQueuedMessages: noop, loadedHistoryRef: ref({ messages: [], entryIds: [] }), historyBranchRef: ref(0),
     setMessages: (update) => { messages = update(messages); }, localAppendSeqRef: ref(0),
-    optimisticUserMessageKeyRef: ref(null), pendingScrollToBottomRef: ref(false),
+    optimisticUserMessageKeyRef: ref(null), optimisticUserMessageRef: ref(null), pendingScrollToBottomRef: ref(false),
     isNew: false, session: { id: "session" }, sessionHookMountedRef: ref(true),
     cancelEventStreamGrace: noop, setAgentRunning: noop, setAgentPhase: noop, setRetryInfo: noop, dispatch: noop,
     setPromptMissingCwd: noop, missingCwdFromBody: () => null, closeEvents: noop,

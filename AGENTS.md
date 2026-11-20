@@ -68,7 +68,7 @@ Browser                Next.js Server              AgentSession (in-process)
 - `lib/retry-stream-drops.ts` wraps pi's private `AgentSession._isRetryableError` to also retry relay HTTP/2 stream drops; `lib/retry-stream-drops.test.mjs` fails if the SDK renames it.
 
 ### Fork must destroy the wrapper immediately
-`AgentSession.fork()` mutates the wrapper in place: afterwards `inner.sessionId` is the *new* id. Left in the registry under the old id, the next request gets forked state and later forks corrupt the `parentSession` chain. `send("fork")` captures `newSessionId`, then calls `this.destroy()`.
+`send("fork")` is the idle replacement path and shuts the source wrapper down immediately after copying; never admit it during a run. The running message Fork uses `fork_branch` with `before: true`, an independent disk copy with the same cutoff.
 
 ### Two kinds of branching
 - **Fork** (user message Fork button copies *before* that message; `⋯` Fork session sends `fork_branch` and copies *through* the viewed leaf, keeping the source runtime alive). All fork paths pass `name` from `getForkSessionName()`: a new `.jsonl` file, listed as its own top-level sidebar row; the `parentSession` header field records the source. `parentSession` is display metadata only, so rewriting the whole file (cascade-reparenting on delete) is safe.

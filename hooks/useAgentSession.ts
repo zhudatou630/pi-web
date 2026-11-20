@@ -387,6 +387,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [activeToolResults, setActiveToolResults] = useState<Map<string, ToolResultMessage>>(new Map());
   const [toolClocks, setToolClocks] = useState<ToolClocks>(NO_TOOL_CLOCKS);
   const [entryIds, setEntryIds] = useState<string[]>([]);
+  const [liveUserEntryIds, setLiveUserEntryIds] = useState<ReadonlyMap<AgentMessage, string>>(() => new Map());
+  const deliveredUserRef = useRef<{ message: AgentMessage; optimistic?: AgentMessage } | null>(null);
   const [messageKeyAliases, setMessageKeyAliases] = useState<ReadonlyMap<string, string>>(() => new Map());
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
@@ -519,6 +521,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }>());
   const bashAbortRequestedRef = useRef(false);
   const optimisticUserMessageKeyRef = useRef<string | null>(null);
+  const optimisticUserMessageRef = useRef<AgentMessage | null>(null);
   // Bumped on every local (optimistic/SSE) append. A history snapshot requested
   // before an append must not overwrite it; the run's settle reload refreshes later.
   const localAppendSeqRef = useRef(0);
@@ -704,6 +707,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           modelSelectionAppliedIdRef.current = usageRequestId;
           setData(null);
           setActiveLeafId(null);
+          deliveredUserRef.current = null;
+          setLiveUserEntryIds(new Map());
           setMessages([]);
           setEntryIds([]);
           setMessageKeyAliases(new Map());
@@ -745,6 +750,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         },
       }));
       setActiveLeafId(d.leafId);
+      deliveredUserRef.current = null;
+      setLiveUserEntryIds(new Map());
       setMessages(merged.messages);
       setEntryIds(merged.entryIds);
       setHistoryCursor(merged.oldestEntryId);
@@ -859,6 +866,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         const previous = loadedHistoryRef.current;
         // A branch replacement must not adopt live keys, even for identical prompts.
         setMessageKeyAliases((aliases) => carryMessageKeys({ ...previous, aliases }, d.context, false));
+        deliveredUserRef.current = null;
+        setLiveUserEntryIds(new Map());
         setMessages(d.context.messages);
         setEntryIds(d.context.entryIds ?? []);
       }
@@ -1822,6 +1831,18 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         }
         break;
       }
+      case "user_message_entry": {
+        const delivered = deliveredUserRef.current;
+        deliveredUserRef.current = null;
+        const { entryId, timestamp } = event;
+        if (!agentRunningRef.current || !delivered || delivered.message.timestamp !== timestamp || typeof entryId !== "string") break;
+        setLiveUserEntryIds((ids) => {
+          const next = new Map(ids).set(delivered.message, entryId);
+          if (delivered.optimistic) next.set(delivered.optimistic, entryId);
+          return next;
+        });
+        break;
+      }
       case "message_end": {
         // Same late-event guard: after reconcile finished this run,
         // loadSession already loaded this message from the session file —
@@ -1847,6 +1868,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const deliveredKey = userMessageKey(delivered);
           const optimisticKey = optimisticUserMessageKeyRef.current;
           optimisticUserMessageKeyRef.current = null;
+          const optimistic = optimisticKey === deliveredKey ? optimisticUserMessageRef.current ?? undefined : undefined;
+          optimisticUserMessageRef.current = null;
+          deliveredUserRef.current = { message: delivered, optimistic };
           setMessages((prev) => {
             if (hasTranscriptMessage(prev, delivered)) return prev;
             const last = prev[prev.length - 1];
@@ -2081,6 +2105,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setMessages((prev) => [...prev, userMsg]);
     localAppendSeqRef.current += 1;
     optimisticUserMessageKeyRef.current = userMessageKey(userMsg);
+    optimisticUserMessageRef.current = userMsg;
     promptRunIdRef.current = promptRunId;
     agentRunningRef.current = true;
     setAgentRunning(true);
@@ -2427,14 +2452,14 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     await sendStop(command === "abort_bash" ? "abort_bash" : "abort");
   }, [addNotice, composerDraftKey, restoreRecalledQueue, restoreSubmission, session, sendAgentCommand]);
 
-  const handleFork = useCallback(async (entryId: string, name?: string, draft?: () => Promise<ChatDraft>) => {
+  const handleFork = useCallback(async (entryId: string, name?: string, draft?: () => Promise<ChatDraft>, preserveSource = false) => {
     if (bashRunningRef.current) return;
     const sid = sessionIdRef.current;
     if (!sid) return;
     setForkingEntryId(entryId);
     try {
       const result = await sendAgentCommand<{ cancelled?: boolean; newSessionId?: string }>(sid, {
-        type: "fork",
+        ...(preserveSource ? { type: "fork_branch", before: true } : { type: "fork" }),
         entryId,
         ...(name ? { name } : {}),
       });
@@ -2444,11 +2469,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         onSessionForked?.(newSessionId);
       }
     } catch (e) {
-      console.error("Fork failed:", e);
+      addNotice({ type: "error", message: e instanceof Error ? e.message : t("session.forkFailed") });
     } finally {
       setForkingEntryId(null);
     }
-  }, [onSessionForked, sendAgentCommand]);
+  }, [addNotice, onSessionForked, sendAgentCommand, t]);
 
   const handleLeafChange = useCallback(async (leafId: string | null): Promise<boolean> => {
     if (endedSessionRef.current || bashRunningRef.current || agentRunningRef.current || sessionRunningRef.current || isCompacting || navigationPendingRef.current) return false;
@@ -3128,7 +3153,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   return {
     // State
-    data, loading, error, activeLeafId, messages, activeToolResults, toolClocks, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
+    data, loading, error, activeLeafId, messages, activeToolResults, toolClocks, entryIds, liveUserEntryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
     agentRunning, sessionEnded, directImageRunning, modelNames, modelList, allModelList, providerNames, modelError, missingCwd: promptMissingCwd ?? modelsMissingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting,

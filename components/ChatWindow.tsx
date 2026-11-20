@@ -859,7 +859,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [onBranchDataChange, branchSessionId]);
 
   const {
-    data, loading, error, messages, activeToolResults, toolClocks, entryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
+    data, loading, error, messages, activeToolResults, toolClocks, entryIds, liveUserEntryIds, messageKeys, historyCursor, hasEarlierMessages, streamState,
     agentRunning, sessionEnded, directImageRunning, bashRunning, pendingBash, modelNames, modelList, allModelList, providerNames, modelError, missingCwd, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -1721,8 +1721,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       value: getUserMessageText(message),
       // Deferred media may fail independently of the fork; never lose the question's text.
       images: await getUserMessageDraftImages(message).catch(() => []),
-    }));
-  }, [handleFork, keepTabOpen, sessionRef, t]);
+    }), agentRunning || Boolean(sessionRunning) || isCompacting);
+  }, [agentRunning, handleFork, isCompacting, keepTabOpen, sessionRef, sessionRunning, t]);
 
   const handleSteerWithSubmit = useCallback((message: string, images?: AttachedImage[]) => {
     keepTabOpen();
@@ -2010,8 +2010,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     entryId={entryIds[idx]}
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
                     searchTarget={msg.role === "user" && entryIds[idx] === pendingSearchScroll?.entryId}
-                    onFork={sessionBusy || sessionEnded || isNew ? undefined : handleChatFork}
-                    forking={forkingEntryId === entryIds[idx]}
+                    onFork={bashRunning || directImageRunning || sessionEnded || isNew ? undefined : handleChatFork}
+                    forkEntryId={msg.role === "user" ? liveUserEntryIds.get(msg) : undefined}
+                    forking={forkingEntryId === (entryIds[idx] ?? liveUserEntryIds.get(msg))}
                     prevAssistantEntryId={prevAssistantEntryId}
                     onEditContent={sessionBusy || sessionEnded || isCompacting ? undefined : handleEditContent}
                     onCancelEdit={cancelEdit}

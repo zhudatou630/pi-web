@@ -26,7 +26,7 @@ SDK service diagnostics、loader errors/warnings 和绑定时 `session_start` �
 
 ## Fork 与扩展对话框
 
-消息 Fork 和 `/clone` 在复制锁之外询问已绑定的 `session_before_fork`，分别使用目标消息 `before` 和 leaf `at`。扩展取消不写文件，Clone 的扩展取消不显示“空会话”错误。Stop 期间被 SDK 吞掉的对话框异常也按取消处理；等待结束后重新检查忙碌状态、删除预留及目标。保留本项目禁止运行中消息 Fork/Clone 的规则，侧栏磁盘 Fork、fork_branch 和 side chat 不询问扩展。
+消息 Fork 和 `/clone` 在复制锁之外询问已绑定的 `session_before_fork`，分别使用目标消息 `before` 和 leaf `at`。扩展取消不写文件，Clone 的扩展取消不显示“空会话”错误。Stop 期间被 SDK 吞掉的对话框异常也按取消处理；等待结束后重新检查忙碌状态、删除预留及目标。运行中消息 Fork 走非破坏性的磁盘复制，仍在目标消息之前截断；若扩展注册了 `session_before_fork`，必须等运行结束后再分叉，避免绕过守卫。`/clone` 仍只在空闲时使用。侧栏 Fork、分叉到当前 leaf 和旁问不询问扩展。
 
 prompt、reload、tree navigation 和 compact 都会更新此前 Stop 已取消的 UI controller。SDK 的 tree hook 内部吞掉异常后仍可能移动分支；本改动不接管 SDK 的树导航事务。
 

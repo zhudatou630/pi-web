@@ -24,7 +24,7 @@ import {
   preferUserShellExtensions,
 } from "./project-command-env";
 import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, invalidateSessionPathCache, resolveSessionPath } from "./session-reader";
-import { forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fork";
+import { forkSessionBefore, forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fork";
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { computeSessionStats } from "./session-stats";
 import { TimingRecorder } from "./model-timing";
@@ -622,6 +622,20 @@ export class AgentSessionWrapper {
       if (event.type === "compaction_end") {
         this.flushCompactionQueue();
         this.resumeReportsWhenIdle();
+      }
+      if (event.type === "message_end" && this.subscriptions.length) {
+        const message = event.message as { role?: unknown; timestamp?: unknown } | undefined;
+        if (message?.role === "user") {
+          // pi appends the original message synchronously after notifying listeners.
+          const manager = this.inner.sessionManager;
+          queueMicrotask(() => {
+            if (!this._alive || this.inner.sessionManager !== manager) return;
+            const entry = manager.getLeafEntry();
+            if (entry?.type === "message" && entry.message === message) {
+              this.emit({ type: "user_message_entry", entryId: entry.id, timestamp: message.timestamp });
+            }
+          });
+        }
       }
       const routineRun = this.pendingRoutineRun;
       if (routineRun && (event.type === "message_start" || event.type === "message_end")
@@ -1349,32 +1363,8 @@ export class AgentSessionWrapper {
           if (!currentSessionFile) throw new Error("Persisted session is missing a session file");
           assertSessionFileExists(this.sessionId, currentSessionFile);
 
-          const entry = sessionManager.getEntry(entryId);
-          if (!entry) throw new Error("Invalid entry ID for forking");
-
-          const sessionDir = sessionManager.getSessionDir();
-          let newSessionFile: string;
-          let forkedManager: SessionManager;
-
-          if (!entry.parentId) {
-            // Fork before the first message: create an empty session linked to this one
-            forkedManager = SessionManager.create(sessionManager.getCwd(), sessionDir);
-            forkedManager.newSession({ parentSession: currentSessionFile });
-            newSessionFile = forkedManager.getSessionFile() as string;
-          } else {
-            // Fork after some history: copy path up to (but not including) the fork point
-            forkedManager = SessionManager.open(currentSessionFile, sessionDir);
-            const forkedPath = forkedManager.createBranchedSession(entry.parentId);
-            if (!forkedPath) throw new Error("Failed to create forked session");
-            newSessionFile = forkedPath;
-          }
-          // Before the copy is written, so an unflushed copy still keeps its name.
-          const name = (command.name as string | undefined)?.trim();
-          if (name) forkedManager.appendSessionInfo(name);
-          writeSessionCopy(forkedManager, newSessionFile, sideChatParentId(sessionManager.getHeader()));
-
-          const newSessionId = forkedManager.getSessionId();
-          cacheSessionPath(newSessionId, newSessionFile);
+          const { sessionId: newSessionId, path } = forkSessionBefore(currentSessionFile, entryId, command.name as string | undefined);
+          cacheSessionPath(newSessionId, path);
           invalidateSessionListCache();
           await this.shutdownAfterSessionReplacement("fork");
           return { cancelled: false, newSessionId };
@@ -1389,7 +1379,21 @@ export class AgentSessionWrapper {
         // Keep leaf selection and copying in the same synchronous turn.
         const currentSessionFile = this.inner.sessionFile ?? "";
         const entryId = (command.entryId as string | undefined) ?? getForkLeafId(currentSessionFile, this);
-        const fork = forkSessionBranch(currentSessionFile, entryId, command.name as string | undefined, command.side === true);
+        const name = command.name as string | undefined;
+        const before = command.before === true;
+        if (before) {
+          const entry = typeof entryId === "string" ? this.inner.sessionManager.getEntry(entryId) : undefined;
+          if (command.side === true || !command.entryId || entry?.type !== "message" || entry.message.role !== "user") {
+            throw new Error("Invalid user entry for forking");
+          }
+          // Do not bypass a replacement guard or run its extension UI during the source run.
+          if (this.inner.extensionRunner.hasHandlers?.("session_before_fork")) {
+            throw new Error("An extension guards message forks. Try again when the session is idle.");
+          }
+        }
+        const fork = before
+          ? forkSessionBefore(currentSessionFile, entryId as string, name)
+          : forkSessionBranch(currentSessionFile, entryId, name, command.side === true);
         cacheSessionPath(fork.sessionId, fork.path);
         invalidateSessionListCache();
         return { cancelled: false, newSessionId: fork.sessionId };

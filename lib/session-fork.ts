@@ -69,6 +69,25 @@ export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null
   return { sessionId: manager.getSessionId(), path, name: forkName };
 }
 
+export function forkSessionBefore(sourcePath: string, entryId: string, name?: string) {
+  if (!sourcePath || !existsSync(sourcePath)) throw new SessionForkError("not_found", "Session not found");
+  const manager = SessionManager.open(sourcePath);
+  const entry = manager.getEntry(entryId);
+  if (!entry) throw new Error("Invalid entry ID for forking");
+  const sideParentId = sideChatParentId(manager.getHeader());
+  let path: string | undefined;
+  if (entry.parentId) {
+    path = manager.createBranchedSession(entry.parentId);
+  } else {
+    manager.newSession({ parentSession: sourcePath });
+    path = manager.getSessionFile();
+  }
+  if (!path) throw new Error("Failed to create forked session");
+  if (name?.trim()) manager.appendSessionInfo(name.trim());
+  writeSessionCopy(manager, path, sideParentId);
+  return { sessionId: manager.getSessionId(), path };
+}
+
 /**
  * Finishes a copy made with `manager` (a fork, clone or side chat). Any copy of a side chat
  * stays one, owned by the same main session: `sideParentId` marks the header, which the SDK
