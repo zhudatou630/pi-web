@@ -139,7 +139,7 @@ export async function GET(
         headers: {
           "Content-Type": "text/markdown; charset=utf-8",
           "Content-Disposition": getContentDisposition(result.fileName, false),
-          "Cache-Control": "no-cache",
+          "Cache-Control": "no-cache, no-transform",
           "X-Content-Type-Options": "nosniff",
         },
       });
@@ -159,7 +159,7 @@ export async function GET(
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Content-Disposition": getContentDisposition(fileName, inline),
-          "Cache-Control": "no-cache",
+          "Cache-Control": "no-cache, no-transform",
           "Content-Security-Policy": "frame-ancestors 'none'",
           "X-Content-Type-Options": "nosniff",
           "X-Frame-Options": "DENY",

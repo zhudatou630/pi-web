@@ -19,6 +19,8 @@ media it references by relative path load from the project, `../` included.
 4. `GET /api/html-preview/<token>/...` serves any file under the root
    (`app/api/html-preview/[token]/[...path]/route.ts`). HTML gets the storage
    polyfill (`lib/html-sandbox-polyfill.ts`); everything else streams with ranges.
+   Both use `Cache-Control: no-cache, no-transform` so Next does not compress
+   the preview or change the bytes served for a range.
 
 Files reachable only as a session reference (outside every allowed root) get
 403 from step 1 and preview inline from their text as before (`srcdoc`),

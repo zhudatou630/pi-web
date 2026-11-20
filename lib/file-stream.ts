@@ -80,7 +80,7 @@ export function streamFile(
   const etag = `W/"${stat.size}-${Math.trunc(stat.mtimeMs)}"`;
   const headers: Record<string, string> = {
     "Content-Type": contentType,
-    "Cache-Control": "no-cache",
+    "Cache-Control": "no-cache, no-transform",
     ETag: etag,
     "Accept-Ranges": "bytes",
     "Content-Disposition": getContentDisposition(filePath, asDownload),

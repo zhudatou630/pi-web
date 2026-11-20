@@ -80,7 +80,7 @@ export async function GET(
         "Content-Type": image.mime,
         "Content-Length": String(bytes.byteLength),
         // Entry ids are unique and entries are append-only, so a URL's bytes never change.
-        "Cache-Control": "private, max-age=31536000, immutable",
+        "Cache-Control": "private, max-age=31536000, immutable, no-transform",
         "X-Content-Type-Options": "nosniff",
       },
     });

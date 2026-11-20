@@ -175,7 +175,7 @@ export const HTML_PREVIEW_RESPONSE_HEADERS: Readonly<Record<string, string>> = {
   "Content-Security-Policy": "sandbox allow-scripts",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
-  "Cache-Control": "no-cache",
+  "Cache-Control": "no-cache, no-transform",
 };
 
 const FONT_EXTENSIONS = new Set(["woff", "woff2", "ttf", "otf"]);

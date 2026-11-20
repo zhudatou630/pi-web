@@ -53,7 +53,9 @@ test("OAuth gets a stable global device ID flushed before login, ignoring the pr
       first = id;
       for (let n = 0; n < 3; n++) notify({ type: "progress", message: String(n) });
     });
-    const text = await (await GET(request(), context)).text();
+    const response = await GET(request(), context);
+    assert.equal(response.headers.get("cache-control"), "no-cache, no-transform");
+    const text = await response.text();
     assert.match(text, /"type":"success"/);
     assert.equal((text.match(/"type":"progress"/g) ?? []).length, 3);
     assert.doesNotThrow(() => notify({ type: "progress", message: "late" }));

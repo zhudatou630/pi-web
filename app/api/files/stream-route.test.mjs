@@ -26,6 +26,7 @@ test("empty byte ranges return 416, while ordinary and suffix ranges remain vali
     const response = streamFile("file.txt", { size: 10, mtimeMs: 0 }, "text/plain", new Headers({ range }));
     assert.equal(response.status, 206);
     assert.equal(response.headers.get("content-range"), expected);
+    assert.equal(response.headers.get("cache-control"), "no-cache, no-transform");
   }
 });
 

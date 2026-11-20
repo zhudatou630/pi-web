@@ -22,7 +22,6 @@ import { readSubagentRun, readSubagentSessionResources } from "@/lib/subagents";
 import { readSessionToolSelection } from "@/lib/session-tool-selection";
 import { updateSidebarState } from "@/lib/sidebar-state";
 import { getSessionFamily, familyHasMemberIn } from "@/lib/session-family";
-import { jsonResponse } from "@/lib/json-response";
 import { sideChatParentId } from "@/lib/side-chat";
 import { routineNameLookup } from "@/lib/routines";
 
@@ -158,7 +157,7 @@ export async function GET(
       transient: !filePath || !existsSync(filePath),
     }]))[0] : null;
 
-    return await jsonResponse(req, {
+    return NextResponse.json({
       sessionId: id,
       filePath,
       info,

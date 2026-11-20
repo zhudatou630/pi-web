@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ file: st
   return new Response(await png, {
     headers: {
       "Content-Type": "image/png",
-      "Cache-Control": current ? "public, max-age=31536000, immutable" : "no-cache",
+      "Cache-Control": current ? "public, max-age=31536000, immutable, no-transform" : "no-cache, no-transform",
     },
   });
 }

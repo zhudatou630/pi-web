@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveSessionPath, buildSessionContext, openSessionForRead } from "@/lib/session-reader";
 import { getRpcSession } from "@/lib/rpc-manager";
-import { jsonResponse } from "@/lib/json-response";
 import { routineNameLookup } from "@/lib/routines";
 
 export async function GET(
@@ -49,7 +48,7 @@ export async function GET(
       ...liveRpc?.liveSelection?.(), // optional: wrappers from before a hot reload lack it
     };
 
-    return await jsonResponse(req, { context, tail, before: before ?? null });
+    return NextResponse.json({ context, tail, before: before ?? null });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

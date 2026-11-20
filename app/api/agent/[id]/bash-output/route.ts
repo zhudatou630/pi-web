@@ -48,7 +48,7 @@ export async function GET(
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
           "Content-Disposition": "attachment; filename=\"bash-output.log\"",
-          "Cache-Control": "no-store",
+          "Cache-Control": "no-store, no-transform",
         },
       });
     }

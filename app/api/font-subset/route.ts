@@ -18,5 +18,7 @@ export async function POST(request: Request) {
   // ponytail: harfbuzz runs on the main thread (~0.3 s per face, serialized by subset-font);
   // move to a worker if exports start stalling other requests.
   const subset = await subsetFont(font, text, { targetFormat: "truetype" });
-  return new Response(new Uint8Array(subset), { headers: { "Content-Type": "font/ttf" } });
+  return new Response(new Uint8Array(subset), {
+    headers: { "Content-Type": "font/ttf", "Cache-Control": "no-transform" },
+  });
 }

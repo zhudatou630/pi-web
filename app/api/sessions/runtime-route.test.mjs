@@ -28,6 +28,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const { DELETE: deleteSession, GET: getSessionDetail, PATCH: renameSession } = await jiti.import("./[id]/route.ts");
 const { GET: getSessionList } = await jiti.import("./route.ts");
+const { GET: getSessionContext } = await jiti.import("./[id]/context/route.ts");
 const { GET: getRunningSessions } = await jiti.import("../agent/running/route.ts");
 const { GET: getSessionState } = await jiti.import("./[id]/state/route.ts");
 const { GET: getAgentState } = await jiti.import("../agent/[id]/route.ts");
@@ -86,6 +87,40 @@ test("list versions expose idle session creation, rename and deletion to other w
   assert.ok(deleted.sessionListVersion > updated.sessionListVersion);
   assert.deepEqual(deleted.sessions, []);
   assert.equal((await (await getRunningSessions(new Request("http://localhost/api/agent/running"))).json()).sessionListVersion, deleted.sessionListVersion);
+});
+
+test("large session reads leave compression to Next even when the client accepts gzip", async (t) => {
+  const dir = await mkdtemp(join(suiteSessionsDir, "compression-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+    invalidateSessionPathCache();
+    invalidateSessionListCache();
+  });
+  const content = "Large session message ".repeat(100);
+  const ids = [];
+  for (let i = 0; i < 4; i++) {
+    const manager = SessionManager.create(dir, dir);
+    manager.appendMessage({ role: "user", content, timestamp: Date.now() });
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "Fixture reply" }], timestamp: Date.now() });
+    ids.push(manager.getSessionId());
+  }
+  invalidateSessionListCache();
+  const [id] = ids;
+  const request = (path) => new Request(`http://localhost/api/sessions${path}`, { headers: { "Accept-Encoding": "gzip" } });
+  const params = { params: Promise.resolve({ id }) };
+  for (const [name, response] of [
+    ["list", await getSessionList(request(""))],
+    ["detail", await getSessionDetail(request(`/${id}`), params)],
+    ["context", await getSessionContext(request(`/${id}/context`), params)],
+  ]) {
+    assert.equal(response.status, 200, name);
+    assert.equal(response.headers.get("Content-Encoding"), null, name);
+    const text = await response.text();
+    assert.ok(Buffer.byteLength(text) > 1024, name);
+    const data = JSON.parse(text);
+    if (name === "list") assert.deepEqual(data.sessions.map((session) => session.id).sort(), ids.sort());
+    else assert.equal(data.context.messages[0].content, content);
+  }
 });
 
 test("session listing merges live registry snapshots and honors force refresh", () => {
