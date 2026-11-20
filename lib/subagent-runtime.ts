@@ -178,7 +178,11 @@ export function deriveSubagentOutcome(
 ): SubagentOutcome {
   const assistants = messages.filter((message) => message.role === "assistant");
   const lastAssistant = assistants.at(-1);
-  const result = [...assistants].reverse().map(messageText).find(Boolean);
+  const result = assistants
+    .filter((message, index) => index === assistants.length - 1 || !message.content.some((block) => block.type === "toolCall"))
+    .map(messageText)
+    .filter(Boolean)
+    .join("\n\n");
   const stopReason = lastAssistant?.role === "assistant" ? lastAssistant.stopReason : undefined;
   const terminalError = lastAssistant?.role === "assistant" ? lastAssistant.errorMessage?.trim() : undefined;
   const terminalHasToolCalls = lastAssistant?.role === "assistant"
@@ -860,6 +864,21 @@ export function subagentSkillCatalogMessage(inner: Pick<AgentSessionLike, "resou
   return "Skill catalog for the task above. When the task matches a skill description, read its <location> file directly; never search for a skill or guess its path.\n\n" + catalog;
 }
 
+function subagentRunMessages(manager: SessionManager, startIndex: number): AgentMessage[] {
+  // Live messages are projected, but compaction can shrink them and invalidate a run-start index.
+  const entries = manager.getEntries().slice(startIndex);
+  const edits = new Map(entries.flatMap((entry) => entry.type === "context_edit" ? [[entry.targetId, entry.replacement] as const] : []));
+  return entries.flatMap((entry) => {
+    if (entry.type !== "message" || entry.message.role !== "assistant") return [];
+    const edit = edits.get(entry.id);
+    if (edit === null) return [];
+    if (edit === undefined) return [entry.message];
+    const content = typeof edit.content === "string" ? [{ type: "text" as const, text: edit.content }]
+      : edit.content.filter((block) => block.type !== "image");
+    return [{ ...entry.message, content }];
+  });
+}
+
 async function promptSubagent(
   inner: AgentSessionLike,
   task: string,
@@ -919,7 +938,7 @@ async function promptSubagent(
     };
   }
 
-  const messageStartIndex = inner.agent.state?.messages?.length ?? 0;
+  const runStartIndex = inner.sessionManager.getEntries().length;
   let thrownError: string | undefined;
   try {
     if (stored.abortRequested) throw new DOMException("Subagent was stopped", "AbortError");
@@ -933,7 +952,7 @@ async function promptSubagent(
   }
 
   return deriveSubagentOutcome(
-    inner.agent.state?.messages?.slice(messageStartIndex) ?? [],
+    subagentRunMessages(inner.sessionManager, runStartIndex),
     {
       abortRequested: stored.abortRequested,
       turnLimitReached: turnLimitState.turnLimitReached,
