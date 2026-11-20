@@ -72,9 +72,10 @@ export function streamFile(
   filePath: string,
   stat: fs.Stats,
   contentType: string,
-  requestHeaders: Headers,
+  request: { headers: Headers; method?: string },
   { asDownload = false, extraHeaders }: StreamFileOptions = {},
 ): Response {
+  const requestHeaders = request.headers;
   const rangeHeader = requestHeaders.get("range");
   // Files can change in place, so revalidate every time; the ETag turns an unchanged file into a 304.
   const etag = `W/"${stat.size}-${Math.trunc(stat.mtimeMs)}"`;
@@ -97,13 +98,15 @@ export function streamFile(
     headers["Referrer-Policy"] = "no-referrer";
   }
   Object.assign(headers, extraHeaders);
+  // Next answers HEAD with the GET handler and never reads or cancels the body: open no file for it.
+  const body = (range?: { start: number; end: number }) => (request.method === "HEAD" ? null : createFileBodyStream(filePath, range));
 
   if (requestHeaders.get("if-none-match")?.split(",").some((tag) => tag.trim() === etag)) {
     return new Response(null, { status: 304, headers });
   }
 
   if (!rangeHeader) {
-    return new Response(createFileBodyStream(filePath), {
+    return new Response(body(), {
       headers: {
         ...headers,
         "Content-Length": String(stat.size),
@@ -142,7 +145,7 @@ export function streamFile(
 
   end = Math.min(end, stat.size - 1);
   const chunkSize = end - start + 1;
-  return new Response(createFileBodyStream(filePath, { start, end }), {
+  return new Response(body({ start, end }), {
     status: 206,
     headers: {
       ...headers,

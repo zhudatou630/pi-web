@@ -50,7 +50,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const currentPath = (wrapper?.isAlive() ? wrapper.sessionFile : "") || sourcePath;
     const fork = targetCwd === undefined
       ? forkSessionBranch(currentPath, getForkLeafId(currentPath, wrapper), source ? getForkSessionName({ ...source, parentSessionId: source.parentSessionPath }, prefix) : undefined)
-      : forkSessionIntoCwd(currentPath, targetCwd, prefix);
+      : forkSessionIntoCwd(currentPath, targetCwd, prefix, getForkLeafId(currentPath, wrapper));
     cacheSessionPath(fork.sessionId, fork.path);
     invalidateSessionListCache();
     if ("cwd" in fork) allowFileRoot(fork.cwd);

@@ -65,7 +65,7 @@ export function forkSessionBranch(sourcePath: string, liveLeafId?: string | null
   return { sessionId: manager.getSessionId(), path, name: forkName };
 }
 
-export function forkSessionIntoCwd(sourcePath: string, target: unknown, prefix: string) {
+export function forkSessionIntoCwd(sourcePath: string, target: unknown, prefix: string, liveLeafId?: string | null) {
   if (!existsSync(sourcePath)) throw new SessionForkError("not_found", "Session not found");
   let cwd: string;
   try {
@@ -95,6 +95,8 @@ export function forkSessionIntoCwd(sourcePath: string, target: unknown, prefix: 
   const copy = SessionManager.forkFrom(sourcePath, cwd);
   const path = copy.getSessionFile();
   if (!path) throw new Error("Failed to fork the session");
+  // Every branch is copied; continue on the one a live runtime had selected, not the last written.
+  if (liveLeafId && liveLeafId !== copy.getLeafId() && copy.getEntry(liveLeafId)) copy.branch(liveLeafId);
   copy.appendSessionInfo(name);
   return { sessionId: copy.getSessionId(), path, cwd };
 }
@@ -110,6 +112,9 @@ function nameFromSession(manager: SessionManager, prefix: string): string {
 export function forkSessionBefore(sourcePath: string, entryId: string, name?: string) {
   if (!sourcePath || !existsSync(sourcePath)) throw new SessionForkError("not_found", "Session not found");
   const manager = SessionManager.open(sourcePath);
+  if (readSubagentRun(manager.getEntries() as unknown as SessionEntry[], manager.getSessionId(), sourcePath)) {
+    throw new SessionForkError("subagent", "A subagent session cannot be forked");
+  }
   const entry = manager.getEntry(entryId);
   if (!entry) throw new Error("Invalid entry ID for forking");
   const sideParentId = sideChatParentId(manager.getHeader());

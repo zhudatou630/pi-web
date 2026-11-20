@@ -2058,7 +2058,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     entryId={entryIds[idx]}
                     searchBlock={entryIds[idx] === pendingSearchScroll?.entryId ? searchBlock : undefined}
                     searchTarget={msg.role === "user" && entryIds[idx] === pendingSearchScroll?.entryId}
-                    onFork={bashRunning || directImageRunning || sessionEnded || isNew ? undefined : handleChatFork}
+                    onFork={bashRunning || directImageRunning || sessionEnded || isNew || session?.relation?.kind === "subagent" ? undefined : handleChatFork}
                     forkEntryId={msg.role === "user" ? liveUserEntryIds.get(msg) : undefined}
                     forking={forkingEntryId === (entryIds[idx] ?? liveUserEntryIds.get(msg))}
                     prevAssistantEntryId={prevAssistantEntryId}

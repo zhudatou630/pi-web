@@ -351,19 +351,19 @@ export async function GET(
         if (stat.size > IMAGE_PREVIEW_MAX_BYTES) {
           return NextResponse.json({ error: "Image too large (>10MB)" }, { status: 413 });
         }
-        return streamFile(filePath, stat, imageMime, request.headers);
+        return streamFile(filePath, stat, imageMime, request);
       }
       const audioMime = getAudioMime(filePath);
       if (audioMime) {
-        return streamFile(filePath, stat, audioMime, request.headers);
+        return streamFile(filePath, stat, audioMime, request);
       }
       const videoMime = getVideoMime(filePath);
       if (videoMime) {
-        return streamFile(filePath, stat, videoMime, request.headers);
+        return streamFile(filePath, stat, videoMime, request);
       }
       const documentMime = getDocumentMime(filePath);
       if (documentMime) {
-        return streamFile(filePath, stat, documentMime, request.headers);
+        return streamFile(filePath, stat, documentMime, request);
       }
       const rawOffset = request.nextUrl.searchParams.get("offset");
       if (rawOffset !== null && !/^\d+$/.test(rawOffset)) {
@@ -391,7 +391,7 @@ export async function GET(
         return NextResponse.json({ error: "Not a file" }, { status: 400 });
       }
       const mime = getImageMime(filePath) || getAudioMime(filePath) || getVideoMime(filePath) || getDocumentMime(filePath) || "application/octet-stream";
-      return streamFile(filePath, stat, mime, request.headers, { asDownload: true });
+      return streamFile(filePath, stat, mime, request, { asDownload: true });
     }
 
     if (type === "meta") {

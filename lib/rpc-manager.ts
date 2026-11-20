@@ -1352,8 +1352,11 @@ export class AgentSessionWrapper {
           throw new Error("Cannot fork while the session is running");
         }
         const entryId = command.entryId as string;
-        if (this.inner.sessionManager.isPersisted() && this.inner.sessionManager.getEntry(entryId)
-          && await this.forkCancelledByExtension(entryId, "before")) return { cancelled: true };
+        if (this.inner.sessionManager.isPersisted()) {
+          // The copy reads the file; an entry this runtime has not seen would skip the extension's guard.
+          if (!this.inner.sessionManager.getEntry(entryId)) throw new Error("Invalid entry ID for forking");
+          if (await this.forkCancelledByExtension(entryId, "before")) return { cancelled: true };
+        }
         this.validateCopyAfterHook("fork");
         return this.withSessionReplacement("fork", async () => {
           const sessionManager = this.inner.sessionManager;

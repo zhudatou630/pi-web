@@ -19,7 +19,8 @@ interface SearchMessage {
   blocks: { text: string; blockIndex: number }[];
 }
 
-type FileStamp = { size: number; mtimeMs: number };
+// ctime and inode catch a same-size rewrite that restored the old mtime, as lib/session-reader.ts does.
+type FileStamp = { size: number; mtimeMs: number; ctimeMs: number; ino: number };
 
 interface CachedTranscript {
   stamp: FileStamp;
@@ -62,11 +63,12 @@ export function sessionSearchTerms(query: string): string[] {
 
 async function fileStamp(path: string): Promise<FileStamp | undefined> {
   const stamp = await stat(path).catch(() => undefined);
-  return stamp?.isFile() ? { size: stamp.size, mtimeMs: stamp.mtimeMs } : undefined;
+  return stamp?.isFile() ? { size: stamp.size, mtimeMs: stamp.mtimeMs, ctimeMs: stamp.ctimeMs, ino: stamp.ino } : undefined;
 }
 
 function sameStamp(before: FileStamp, after: FileStamp | undefined) {
-  return before.size === after?.size && before.mtimeMs === after.mtimeMs;
+  return before.size === after?.size && before.mtimeMs === after.mtimeMs
+    && before.ctimeMs === after.ctimeMs && before.ino === after.ino;
 }
 
 function dropCached(path: string) {

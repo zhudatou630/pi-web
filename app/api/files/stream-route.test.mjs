@@ -16,18 +16,25 @@ test("empty byte ranges return 416, while ordinary and suffix ranges remain vali
     () => { streams++; return "body"; }, () => "inline",
   );
   for (const size of [0, 10]) {
-    const response = streamFile("file.txt", { size, mtimeMs: 0 }, "text/plain", new Headers({ range: "bytes=-" }));
+    const response = streamFile("file.txt", { size, mtimeMs: 0 }, "text/plain", { headers: new Headers({ range: "bytes=-" }) });
     assert.equal(response.status, 416);
     assert.equal(response.headers.get("content-range"), `bytes */${size}`);
     assert.equal(await response.text(), "");
   }
   assert.equal(streams, 0);
   for (const [range, expected] of [["bytes=2-4", "bytes 2-4/10"], ["bytes=2-", "bytes 2-9/10"], ["bytes=-3", "bytes 7-9/10"]]) {
-    const response = streamFile("file.txt", { size: 10, mtimeMs: 0 }, "text/plain", new Headers({ range }));
+    const response = streamFile("file.txt", { size: 10, mtimeMs: 0 }, "text/plain", { headers: new Headers({ range }) });
     assert.equal(response.status, 206);
     assert.equal(response.headers.get("content-range"), expected);
     assert.equal(response.headers.get("cache-control"), "no-cache, no-transform");
   }
+  const opened = streams;
+  for (const headers of [new Headers(), new Headers({ range: "bytes=2-4" })]) {
+    const response = streamFile("file.txt", { size: 10, mtimeMs: 0 }, "text/plain", { headers, method: "HEAD" });
+    assert.ok(response.ok);
+    assert.equal(response.body, null);
+  }
+  assert.equal(streams, opened, "HEAD opens no file");
 });
 
 test("streamed responses are not content-type sniffable", () => {

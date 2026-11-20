@@ -14,7 +14,7 @@ const { cacheSessionPath, invalidateSessionListCache, invalidateSessionPathCache
 const { deleteSessionById } = await jiti.import("@/lib/session-delete-operation.ts");
 const { getAllowedFileRoots, isExistingFilePathAllowed } = await jiti.import("@/lib/file-access.ts");
 const { SUBAGENT_META_TYPE } = await jiti.import("@/lib/subagents.ts");
-const { forkSessionBranch, getForkLeafId } = await jiti.import("@/lib/session-fork.ts");
+const { forkSessionBefore, forkSessionBranch, forkSessionIntoCwd, getForkLeafId } = await jiti.import("@/lib/session-fork.ts");
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "pi-web-sidebar-fork-"));
@@ -383,6 +383,29 @@ test("a missing folder can fork into a new canonical cwd with every branch and a
   assert.equal(readFileSync(file, "utf8"), before);
   assert.equal(globalThis.__piSessions.size, 0);
   assert.equal(isExistingFilePathAllowed(target, roots), true, "existing allowed-root cache is updated");
+});
+
+test("a folder fork continues on the branch a live runtime selected, not the last one written", async (t) => {
+  const { root } = await fixture(t);
+  const target = join(root, "target");
+  mkdirSync(target);
+  const manager = SessionManager.create(join(root, "gone"));
+  const rootEntry = user(manager, "root prompt");
+  const first = user(manager, "first branch");
+  manager.branch(rootEntry);
+  user(manager, "second branch, written last");
+  const fork = forkSessionIntoCwd(manager.getSessionFile(), target, "Fork: ", first);
+  const copy = SessionManager.open(fork.path);
+  assert.equal(copy.getLeafEntry().type, "session_info");
+  assert.equal(copy.getLeafEntry().parentId, first);
+});
+
+test("a message fork refuses a subagent source", async (t) => {
+  const { root } = await fixture(t);
+  const sub = SessionManager.create(join(root, "cwd"));
+  sub.appendCustomEntry(SUBAGENT_META_TYPE, { version: 1, parentSessionId: "parent", parentSessionPath: join(root, "parent.jsonl") });
+  const prompt = user(sub, "task");
+  assert.throws(() => forkSessionBefore(sub.getSessionFile(), prompt), (error) => error.code === "subagent");
 });
 
 test("folder forks reject bad targets, restored folders, side chats and subagents", async (t) => {

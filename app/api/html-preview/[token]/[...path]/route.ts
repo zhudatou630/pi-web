@@ -37,7 +37,7 @@ export async function GET(
 
   const mime = getHtmlPreviewMime(filePath);
   if (!mime.startsWith("text/html")) {
-    return streamFile(filePath, stat, mime, request.headers, { extraHeaders: htmlPreviewResponseHeaders(filePath) });
+    return streamFile(filePath, stat, mime, request, { extraHeaders: htmlPreviewResponseHeaders(filePath) });
   }
   if (stat.size > HTML_PREVIEW_MAX_BYTES) {
     return NextResponse.json(

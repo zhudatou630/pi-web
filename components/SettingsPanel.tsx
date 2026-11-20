@@ -266,6 +266,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
       const response = await fetch("/api/web-auth", { method: "DELETE" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       clearAllDrafts();
+      // Draft tab titles are cut from drafts too: leave none of this tab's chat state behind.
+      try { window.sessionStorage.clear(); } catch { /* Browser storage is optional. */ }
       window.location.replace("/login");
     } catch {
       setLogoutError(t("auth.logoutFailed"));
