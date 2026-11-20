@@ -6,7 +6,6 @@ import { encodeFilePathForApi, getFileName, joinFilePath } from "@/lib/file-path
 import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import type { AgentMessage, AssistantContentBlock, AssistantMessage, BashExecutionMessage, BlockingExtensionUiRequest, ExtensionUiRequest, SessionInfo, SessionTreeNode, ToolResultMessage, UserMessage } from "@/lib/types";
 import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
@@ -17,7 +16,7 @@ import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-fi
 import { findAskUserAnswers } from "@/lib/ask-user-answer";
 import { extractTurnCreatedRoutines, type CreatedRoutine } from "@/lib/turn-routines";
 import { summarizeTurnActivity, type TurnActivity } from "@/lib/turn-activity";
-import { findQuoteInSegments, selectedTextWithTex } from "@/lib/quoted-selection";
+import { findQuoteInSegments } from "@/lib/quoted-selection";
 import { SIDE_CHAT_TYPE } from "@/lib/side-chat";
 import { scrollIntoScroller } from "./FileFindBar";
 import type { FileReveal } from "./FileViewer";
@@ -55,7 +54,7 @@ import { AppUpdateNotice } from "./AppUpdateNotice";
 import type { ToolEntry } from "@/lib/tool-presets";
 import { findChatScrollAnchor, type ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { captureReadingAnchor, restoreReadingAnchor, type ChatReadingAnchor } from "@/lib/chat-reading-anchor";
-import { placeSelectionToolbar, prefersToolbarBelow, selectionAnchor, visibleBounds, type SelectionAnchor, type ToolbarSide } from "@/lib/selection-toolbar";
+import { QuoteSelectionPopover } from "./QuoteSelectionPopover";
 import { formatModelTiming, turnModelTiming } from "@/lib/model-timing";
 import { claimDoneChime, SAME_COMPLETION_MS } from "@/lib/done-chime";
 import {
@@ -926,23 +925,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [imageEdit, setImageEdit] = useState<ImageGenerationResult | null>(null);
   const [imageSourceSeed, setImageSourceSeed] = useState<Base64ImageAttachment[]>([]);
   const [imageConfigRefreshKey, setImageConfigRefreshKey] = useState(0);
-  const [quotedSelection, setQuotedSelection] = useState<{
-    text: string;
-    anchor: SelectionAnchor;
-    source?: string;
-  } | null>(null);
-  // The side chosen for the toolbar; the inline composer keeps it and grows away from the text.
-  const quoteSideRef = useRef<ToolbarSide | undefined>(undefined);
-  // A copy of the selected range: it keeps measuring the text after the selection is cleared
-  // (the inline composer) and as the chat scrolls, so the toolbar follows its text.
-  const quoteRangeRef = useRef<Range | null>(null);
-  const [quoteInputOpen, setQuoteInputOpen] = useState(false);
-  const [quoteSubmitting, setQuoteSubmitting] = useState(false);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-  const quotePopoverRef = useRef<HTMLDivElement | null>(null);
-  const quoteChatInputRef = useRef<ChatInputHandle | null>(null);
-  const dismissingGestureRef = useRef<{ x: number; y: number } | null>(null);
-
   useEffect(() => {
     const controller = new AbortController();
     // The image button follows the per-project switch, so ask for this session's cwd.
@@ -1018,152 +1000,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (!("error" in result) && /^\/reload(?:\s|$)/.test(message.trim())) setImageConfigRefreshKey((value) => value + 1);
     return result;
   }, [activeLeafId, addNotice, handleBuiltinSlashCommand, onAskInSideChat, session?.id, sessionBusy, sessionIdRef]);
-  const closeQuotedSelection = useCallback(() => {
-    setQuotedSelection(null);
-    setQuoteInputOpen(false);
-    setQuoteError(null);
-  }, []);
-
-  useEffect(() => {
-    if (!quoteSelectionEnabled) closeQuotedSelection();
-  }, [quoteSelectionEnabled, closeQuotedSelection]);
-
-  const captureQuotedSelection = useCallback((event?: { clientX: number; clientY: number }) => {
-    const down = dismissingGestureRef.current;
-    if (down) {
-      const dragged = event != null && Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4;
-      if (!dragged) return;
-    }
-    if (!quoteSelectionEnabled || quoteInputOpen) return;
-    const selection = window.getSelection();
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    const root = messageContentRef.current;
-    if (!selection || selection.isCollapsed || !range || !root || !root.contains(range.commonAncestorContainer)) {
-      setQuotedSelection(null);
-      return;
-    }
-    const text = selectedTextWithTex(range);
-    if (!text) {
-      setQuotedSelection(null);
-      return;
-    }
-    const anchor = selectionAnchor(range);
-    if (!anchor) {
-      setQuotedSelection(null);
-      return;
-    }
-    const startElement = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
-    quoteSideRef.current = undefined;
-    quoteRangeRef.current = range.cloneRange();
-    setQuotedSelection({
-      text,
-      anchor,
-      source: startElement?.closest<HTMLElement>("[data-entry-id]")?.dataset.entryId,
-    });
-  }, [quoteSelectionEnabled, quoteInputOpen]);
-
-  useEffect(() => {
-    if (!quoteInputOpen || !quotedSelection) return;
-    quoteChatInputRef.current?.addQuote({ text: quotedSelection.text, source: quotedSelection.source });
-  }, [quoteInputOpen, quotedSelection]);
-
-  useLayoutEffect(() => {
-    const popover = quotePopoverRef.current;
-    if (!popover || !quotedSelection) return;
-    const viewport = window.visualViewport;
-    const position = () => {
-      const rect = popover.getBoundingClientRect();
-      const scroller = scrollContainerRef.current?.getBoundingClientRect();
-      const column = messageContentRef.current?.getBoundingClientRect();
-      // Stay over the message column; a toolbar wider than it (the composer on a phone) uses the pane.
-      const horizontal = column && rect.width <= column.width - 16 ? column : scroller;
-      const bounds = visibleBounds(scroller && horizontal
-        ? { top: scroller.top, bottom: scroller.bottom, left: horizontal.left, right: horizontal.right }
-        : null);
-      const anchor = (quoteRangeRef.current && selectionAnchor(quoteRangeRef.current)) ?? quotedSelection.anchor;
-      const placed = placeSelectionToolbar(anchor, rect, bounds, {
-        preferBelow: prefersToolbarBelow(),
-        side: quoteInputOpen ? quoteSideRef.current : undefined,
-      });
-      if (!quoteInputOpen) quoteSideRef.current = placed.side;
-      popover.style.top = `${placed.top}px`;
-      popover.style.left = `${placed.left}px`;
-      // Its text scrolled out of view: hide the toolbar rather than pin it to an edge.
-      const offscreen = !quoteInputOpen && (anchor.bottom < bounds.top || anchor.top > bounds.bottom);
-      popover.style.visibility = offscreen ? "hidden" : "";
-    };
-    position();
-    const observer = new ResizeObserver(position);
-    observer.observe(popover);
-    const scroller = scrollContainerRef.current;
-    scroller?.addEventListener("scroll", position, { passive: true });
-    window.addEventListener("resize", position);
-    viewport?.addEventListener("resize", position);
-    viewport?.addEventListener("scroll", position);
-    return () => {
-      observer.disconnect();
-      scroller?.removeEventListener("scroll", position);
-      window.removeEventListener("resize", position);
-      viewport?.removeEventListener("resize", position);
-      viewport?.removeEventListener("scroll", position);
-    };
-  }, [quotedSelection, quoteInputOpen, quoteError, scrollContainerRef]);
-
-  useEffect(() => {
-    if (!quotedSelection) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (quoteInputOpen || quotePopoverRef.current?.contains(event.target as Node)) return;
-      dismissingGestureRef.current = { x: event.clientX, y: event.clientY };
-      const endDismiss = () => {
-        document.removeEventListener("pointerup", endDismiss);
-        document.removeEventListener("pointercancel", endDismiss);
-        queueMicrotask(() => {
-          dismissingGestureRef.current = null;
-        });
-      };
-      document.addEventListener("pointerup", endDismiss);
-      document.addEventListener("pointercancel", endDismiss);
-      closeQuotedSelection();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || isImeComposing(event)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (!quoteSubmitting) closeQuotedSelection();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [quotedSelection, quoteInputOpen, quoteSubmitting, closeQuotedSelection]);
-
-  const askSelectionHere = useCallback(() => {
-    if (!quotedSelection) return;
-    ownChatInputRef.current?.addQuote({ text: quotedSelection.text, source: quotedSelection.source });
-    window.getSelection()?.removeAllRanges();
-    closeQuotedSelection();
-  }, [quotedSelection, closeQuotedSelection]);
-
-  const askSelectionInSideChat = useCallback(async (prompt: string) => {
+  const handleQuotedSideChat = useCallback(async (prompt: string) => {
     const sourceSessionId = sessionIdRef.current ?? session?.id;
-    if (quoteSubmitting || !prompt.trim() || !quotedSelection || !sourceSessionId || !onAskInSideChat) return;
-    setQuoteSubmitting(true);
-    setQuoteError(null);
-    unlockAudio?.();
-    try {
-      // Fork through the viewed leaf, so the side chat sees the whole conversation, not just up to the quote.
-      // During a run the server's live leaf is newer than the view's.
-      await onAskInSideChat(prompt, sourceSessionId, sessionBusy ? null : activeLeafId);
-      closeQuotedSelection();
-    } catch (error) {
-      quoteChatInputRef.current?.restoreSubmission(prompt);
-      setQuoteError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setQuoteSubmitting(false);
-    }
-  }, [onAskInSideChat, quotedSelection, quoteSubmitting, session?.id, sessionIdRef, sessionBusy, activeLeafId, closeQuotedSelection, unlockAudio]);
+    if (!sourceSessionId || !onAskInSideChat) throw new Error(t("chat.quoteForkFailed"));
+    // During a run the server's live leaf is newer than the view's.
+    await onAskInSideChat(prompt, sourceSessionId, sessionBusy ? null : activeLeafId);
+  }, [activeLeafId, onAskInSideChat, session?.id, sessionBusy, sessionIdRef, t]);
 
   const initialPromptSentRef = useRef(false);
   useEffect(() => {
@@ -2097,7 +1939,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
           }}
         >
           <div style={{ minWidth: 0, padding: `0 ${CHAT_COLUMN_PADDING}px` }}>
-            <div ref={messageContentRef} onPointerUp={captureQuotedSelection} style={{ width: "100%", minWidth: 0, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
+            <div ref={messageContentRef} style={{ width: "100%", minWidth: 0, maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
             {(() => {
               // A subagent notification triggers a model turn without posing as
               // a user message, so it is a grouping boundary but not a chat anchor.
@@ -2645,80 +2487,15 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         </>}
       </div>
 
-      {quoteSelectionEnabled && quotedSelection && createPortal(
-        <div
-          ref={quotePopoverRef}
-          role={quoteInputOpen ? "dialog" : "toolbar"}
-          aria-label={t(quoteInputOpen ? "chat.newQuoteChat" : "chat.askSelection")}
-          className="popover-surface"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            zIndex: 130,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 2,
-            width: quoteInputOpen ? "min(420px, calc(100vw - 16px))" : undefined,
-            maxWidth: "calc(100vw - 16px)",
-            maxHeight: "calc(var(--app-viewport-height, 100dvh) - 16px)",
-            overflowY: "auto",
-            padding: quoteInputOpen ? 12 : 2,
-          }}
-        >
-          {quoteInputOpen ? (
-            <fieldset
-              disabled={quoteSubmitting}
-              aria-busy={quoteSubmitting}
-              style={{ width: "100%", minWidth: 0, margin: 0, padding: 0, border: "none", display: "flex", flexDirection: "column", gap: 10 }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600 }}>{t("chat.askInNewChat")}</span>
-                <button type="button" className="file-viewer-icon-button" title={t("i18n.close")} aria-label={t("i18n.close")} disabled={quoteSubmitting} onClick={closeQuotedSelection} style={{ border: "none" }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
-                </button>
-              </div>
-              <ChatInput
-                ref={quoteChatInputRef}
-                extensionUiOpen={extensionUiOpen}
-                compact
-                onSend={askSelectionInSideChat}
-                onAbort={closeQuotedSelection}
-                isStreaming={false}
-              />
-              {quoteError && <div role="alert" style={{ color: "var(--danger)", fontSize: 12, overflowWrap: "anywhere" }}>{quoteError}</div>}
-            </fieldset>
-          ) : <>
-          <button
-            type="button"
-            className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-            title={t("chat.askInCurrent")}
-            aria-label={t("chat.askInCurrent")}
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={askSelectionHere}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 4v16M4 12h16" /></svg>
-            <span>{t("chat.askInCurrent")}</span>
-          </button>
-          {onAskInSideChat && (
-            <button
-              type="button"
-              className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] border-0 bg-transparent px-2 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-              // The tooltip says what the panel no longer spells out: the question goes to a read-only copy beside this chat.
-              title={t("chat.sideChatHint")}
-              aria-label={t("chat.askInNewChat")}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => { setQuoteInputOpen(true); window.getSelection()?.removeAllRanges(); }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M6 3v12M18 9a9 9 0 0 1-9 9" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" />
-              </svg>
-              <span>{t("chat.askInNewChat")}</span>
-            </button>
-          )}
-          </>}
-        </div>,
-        document.body,
+      {quoteSelectionEnabled && isVisiblePane && (
+        <QuoteSelectionPopover
+          messageContentRef={messageContentRef}
+          scrollContainerRef={scrollContainerRef}
+          ownChatInputRef={ownChatInputRef}
+          onAskInSideChat={onAskInSideChat ? handleQuotedSideChat : undefined}
+          extensionUiOpen={extensionUiOpen}
+          unlockAudio={unlockAudio}
+        />
       )}
 
       <div className="relative flex min-h-0 flex-col">

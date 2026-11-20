@@ -41,6 +41,7 @@ Design notes moved out of AGENTS.md. Typography rules are enforced by `component
 
 ## Selection toolbar
 - The chat's "Quote / Side chat" and the file viewer's "Quote" share `lib/selection-toolbar.ts`: anchored to where the selection starts (centered on its first line), above that line, flipping below the last line only when there is no room. Touch prefers below (the system copy menu sits above). The chat toolbar follows its text on scroll, hides when the text leaves view, and its inline composer grows away from the text. Buttons that cannot act are disabled, not removed, so the toolbar never changes width.
+- Chat selection state belongs to `QuoteSelectionPopover`, not the transcript. Keep mounted history laid out: stale intrinsic heights after a column resize make scroll restoration, search and outline offsets unreliable even with the 50-row window.
 
 ## Modal dialogs and confirms
 - Modal shells (Settings, its nested dialogs, info, trust, directory picker, agent import, image generation) render through `components/ModalDialog.tsx`: the `<dialog>` element is the full-viewport scrim (the caller's backdrop class), its children are the surface. Layering is the browser's top layer, so no z-index; the latest `showModal()` is on top and everything else is inert.
