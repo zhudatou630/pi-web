@@ -9,6 +9,14 @@ export interface OAuthProvider {
   supportsApiKey?: boolean;
 }
 
+/** Authenticated outside pi (a local CLI's own login); nothing to configure here. */
+export interface AmbientProvider {
+  id: string;
+  displayName: string;
+  label?: string;
+  modelCount: number;
+}
+
 export interface ApiKeyProvider {
   id: string;
   displayName: string;

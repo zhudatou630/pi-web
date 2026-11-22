@@ -1239,6 +1239,7 @@ export const enLocale: LocalePlugin = {
     "models.kindOAuth": "Subscription",
     "models.kindApiKey": "API key",
     "models.kindCustom": "Custom endpoint",
+    "models.kindExternal": "Signed in outside Pi",
     "models.kindDefinition": "Custom",
     "models.kindOverride": "Built-in",
     "models.deleteDefinition": "Delete model",

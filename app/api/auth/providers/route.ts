@@ -1,5 +1,5 @@
 import { getModelsConfigReadServices, resolveOptionalCwd } from "@/lib/model-config-services";
-import { buildApiKeyProviderList, buildOAuthProviderList } from "@/lib/provider-listing";
+import { buildAmbientProviderList, buildApiKeyProviderList, buildOAuthProviderList } from "@/lib/provider-listing";
 import { collectProviderListingInputs } from "@/lib/provider-listing-runtime";
 
 export const dynamic = "force-dynamic";
@@ -24,5 +24,6 @@ export async function GET(req: Request) {
   const inputs = await collectProviderListingInputs(services.modelRuntime);
   const oauthProviders = buildOAuthProviderList(inputs);
   const apiKeyProviders = buildApiKeyProviderList(inputs);
-  return Response.json({ providers: oauthProviders, oauthProviders, apiKeyProviders });
+  const ambientProviders = buildAmbientProviderList(inputs);
+  return Response.json({ providers: oauthProviders, oauthProviders, apiKeyProviders, ambientProviders });
 }

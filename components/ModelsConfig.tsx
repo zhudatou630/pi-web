@@ -55,6 +55,7 @@ import { ModelDetail } from "./models/ModelDetail";
 import { PromptCacheGroup } from "./models/PromptCacheGroup";
 import {
   runtimeToEntry,
+  type AmbientProvider,
   type ApiKeyProvider,
   type ModelEntry,
   type ModelsJson,
@@ -79,7 +80,7 @@ interface View {
   model?: ModelRef;
 }
 
-type AuthProvidersReply = { oauthProviders?: OAuthProvider[]; apiKeyProviders?: ApiKeyProvider[] };
+type AuthProvidersReply = { oauthProviders?: OAuthProvider[]; apiKeyProviders?: ApiKeyProvider[]; ambientProviders?: AmbientProvider[] };
 type RuntimeReply = { catalog?: RuntimeCatalogModel[]; builtIn?: string[]; modelError?: string };
 type ScopeReply = EnabledModelsPanelState & { error?: string };
 
@@ -88,6 +89,7 @@ interface ProviderRow {
   label: string;
   oauth?: OAuthProvider;
   apiKey?: ApiKeyProvider;
+  ambient?: AmbientProvider;
   json?: ProviderEntry;
   /** Catalog models this provider serves right now. */
   models: RuntimeCatalogModel[];
@@ -121,6 +123,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const [view, setView] = useState<View>({ provider: null });
   const [oauthProviders, setOauthProviders] = useState<OAuthProvider[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<ApiKeyProvider[]>([]);
+  const [ambientProviders, setAmbientProviders] = useState<AmbientProvider[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [discoveryFor, setDiscoveryFor] = useState<string | null>(null);
   /** Model picker: first-time setup replaces the list, adding appends to it. */
@@ -156,6 +159,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const applyAuthProviders = useCallback((d: AuthProvidersReply) => {
     if (Array.isArray(d.oauthProviders)) setOauthProviders(d.oauthProviders);
     if (Array.isArray(d.apiKeyProviders)) setApiKeyProviders(d.apiKeyProviders);
+    if (Array.isArray(d.ambientProviders)) setAmbientProviders(d.ambientProviders);
   }, []);
 
   const applyRuntime = useCallback((d: RuntimeReply) => {
@@ -608,6 +612,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const connectedIds = new Set([
     ...oauthProviders.filter((p) => p.loggedIn).map((p) => p.id),
     ...apiKeyProviders.filter((p) => p.configured).map((p) => p.id),
+    ...ambientProviders.map((p) => p.id),
   ]);
   const selectedProviderId = view.provider;
   const providerIds: string[] = [];
@@ -616,6 +621,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   };
   oauthProviders.filter((p) => p.loggedIn).forEach((p) => addId(p.id));
   apiKeyProviders.filter((p) => p.configured).forEach((p) => addId(p.id));
+  ambientProviders.forEach((p) => addId(p.id));
   Object.keys(config.providers ?? {}).forEach(addId);
   catalog.forEach((model) => addId(model.provider));
   chatRefs.forEach((model) => addId(model.provider));
@@ -624,13 +630,15 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const providerRows: ProviderRow[] = providerIds.map((id) => {
     const oauth = oauthProviders.find((p) => p.id === id);
     const apiKey = apiKeyProviders.find((p) => p.id === id);
+    const ambient = ambientProviders.find((p) => p.id === id);
     const json = config.providers?.[id];
     const models = catalog.filter((model) => model.provider === id);
     return {
       id,
-      label: providerDisplayName(id, json?.name, oauth?.name, apiKey?.displayName),
+      label: providerDisplayName(id, json?.name, oauth?.name, apiKey?.displayName ?? ambient?.displayName),
       ...(oauth ? { oauth } : {}),
       ...(apiKey ? { apiKey } : {}),
+      ...(ambient ? { ambient } : {}),
       ...(json ? { json } : {}),
       models,
       connected: connectedIds.has(id) || models.length > 0,
@@ -788,7 +796,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       ? t("models.kindOAuth")
       : row.apiKey?.configured
         ? t("models.kindApiKey")
-        : null;
+        : row.ambient
+          ? row.ambient.label ?? t("models.kindExternal")
+          : null;
 
     return (
       <div className="models-form">
@@ -1033,7 +1043,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       ? t("models.kindOAuth")
       : row.apiKey?.configured
         ? t("models.kindApiKey")
-        : row.json ? t("models.kindCustom") : t("models.notConnected");
+        : row.ambient
+          ? row.ambient.label ?? t("models.kindExternal")
+          : row.json ? t("models.kindCustom") : t("models.notConnected");
     const item = (row: ProviderRow) => (
       <SettingsLinkRow
         key={row.id}

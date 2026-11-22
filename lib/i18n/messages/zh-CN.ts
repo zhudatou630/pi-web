@@ -1239,6 +1239,7 @@ export const zhCNLocale: LocalePlugin = {
     "models.kindOAuth": "订阅",
     "models.kindApiKey": "API 密钥",
     "models.kindCustom": "自定义端点",
+    "models.kindExternal": "在 Pi 之外登录",
     "models.kindDefinition": "自定义",
     "models.kindOverride": "内置",
     "models.deleteDefinition": "删除模型",

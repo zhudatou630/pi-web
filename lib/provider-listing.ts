@@ -45,8 +45,8 @@ export interface ProviderListingInput {
   hasOAuth: boolean;
   /** Label of the OAuth method, e.g. "Anthropic (Claude Pro/Max)". */
   oauthName?: string;
-  /** Result of `ModelRuntime.getProviderAuthStatus()`. */
-  status: { configured: boolean; source?: string };
+  /** Result of `ModelRuntime.getProviderAuthStatus()`; `label` names where ambient auth comes from. */
+  status: { configured: boolean; source?: string; label?: string };
   /** Type of the credential stored for this provider, when there is one. */
   credentialType?: ProviderCredentialType;
   modelCount: number;
@@ -60,6 +60,15 @@ export interface ApiKeyProviderListing {
   modelCount: number;
   /** True when the same provider can also be authenticated with OAuth. */
   supportsOAuth: boolean;
+}
+
+/** A provider authenticated outside pi (e.g. a local CLI's own login), with nothing to log in here. */
+export interface AmbientProviderListing {
+  id: string;
+  displayName: string;
+  /** Where the provider says its auth comes from, e.g. "Antigravity CLI (agy)". */
+  label?: string;
+  modelCount: number;
 }
 
 export interface OAuthProviderListing {
@@ -106,6 +115,27 @@ export function buildApiKeyProviderList(
       ...(configured && provider.status.source ? { source: provider.status.source } : {}),
       modelCount: provider.modelCount,
       supportsOAuth: provider.hasOAuth,
+    });
+  }
+  return result;
+}
+
+/**
+ * Configured providers that declare neither an API-key nor an OAuth login: their
+ * credentials live outside pi, so the only thing to show is that they work.
+ */
+export function buildAmbientProviderList(
+  providers: readonly ProviderListingInput[],
+): AmbientProviderListing[] {
+  const result: AmbientProviderListing[] = [];
+  for (const provider of dedupeById(providers)) {
+    if (provider.hasApiKeyLogin || provider.hasOAuth || !provider.status.configured) continue;
+    if (provider.status.source && CUSTOM_PROVIDER_SOURCES.has(provider.status.source)) continue;
+    result.push({
+      id: provider.id,
+      displayName: provider.name,
+      ...(provider.status.label ? { label: provider.status.label } : {}),
+      modelCount: provider.modelCount,
     });
   }
   return result;
