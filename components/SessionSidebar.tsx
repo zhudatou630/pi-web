@@ -1053,18 +1053,28 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
 
   // Load worktrees for the current effective cwd
   const [wtRefreshKey, setWtRefreshKey] = useState(0);
+  const worktreeStateRef = useRef(worktreeState);
+  useEffect(() => { worktreeStateRef.current = worktreeState; }, [worktreeState]);
   useLayoutEffect(() => {
     if (!selectedCwd) {
       setWorktreeState(null);
       return;
     }
     let cancelled = false;
+    // A linked checkout removed outside Pi Web is refused (403, no longer on disk): go back to its project.
+    const refused = () => {
+      const previous = worktreeStateRef.current;
+      const known = previous?.forCwd === selectedCwd && previous.currentWorktreePath ? previous.currentWorktreePath : selectedCwd;
+      if (previous?.worktrees.some((w) => !w.isMain && w.path === known)) setSelectedCwd(previous.projectRoot);
+      else setWorktreeState(null);
+    };
     fetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`)
-      .then((r) => r.json())
-      .then((d: { projectRoot?: string; projectKey?: string; isGit?: boolean; isTopLevel?: boolean; currentWorktreePath?: string | null; worktrees?: WorktreeEntry[]; error?: string }) => {
+      .then(async (r) => ({ status: r.status, d: await r.json() }))
+      .then(({ status, d }: { status: number; d: { projectRoot?: string; projectKey?: string; isGit?: boolean; isTopLevel?: boolean; currentWorktreePath?: string | null; worktrees?: WorktreeEntry[]; error?: string } }) => {
         if (cancelled) return;
         if (d.error || !d.projectRoot) {
-          setWorktreeState(null);
+          if (status === 403) refused();
+          else setWorktreeState(null);
           return;
         }
         setWorktreeState({
@@ -1699,7 +1709,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                     (w.branch ?? displayCwd(w.path, homeDir)).toLowerCase().includes(wtFilter.trim().toLowerCase()))
                 : worktreeState.worktrees;
               const branchLabel = currentWorktree
-                ? (currentWorktree.branch ?? displayCwd(currentWorktree.path, homeDir))
+                ? (currentWorktree.branch ?? getFileName(currentWorktree.path))
                 : "…";
               return (
                   // The project name outranks the branch: the branch absorbs (virtually) all shrinkage
@@ -1711,6 +1721,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                         event.stopPropagation();
                         const row = event.currentTarget.closest(".workspace-list-row")!.getBoundingClientRect();
                         setWtMenuPosition({ left: row.left + 2, top: row.bottom + 4, width: row.width - 4 });
+                        // Pick up checkouts an agent or another client added since the last load.
+                        if (!wtDropdownOpen) setWtRefreshKey((k) => k + 1);
                         setWtDropdownOpen((v) => !v);
                         setDropdownOpen(false);
                       }}

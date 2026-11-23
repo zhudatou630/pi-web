@@ -223,6 +223,8 @@ export function NewSessionCwdControl({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newBranch, setNewBranch] = useState<string | null>(null);
+  const [newError, setNewError] = useState<string | null>(null);
   const [refreshedWorktree, setRefreshedWorktree] = useState<typeof worktreeInfo>(null);
   const coversCwd = (info: typeof worktreeInfo) => !!info && (info.forCwd === cwd
     || info.projectRoot === cwd
@@ -261,9 +263,13 @@ export function NewSessionCwdControl({
   }, [menuOpen, branchMenuOpen]);
 
   const worktrees = activeWorktree?.worktrees ?? [];
-  const currentWorktree = worktrees.find((w) => w.path === cwd || w.path === activeWorktree?.currentWorktreePath)
+  // Exact draft cwd first; the server-resolved path only counts for the cwd it was looked up for.
+  const currentWorktree = worktrees.find((w) => w.path === cwd)
+    ?? (activeWorktree?.forCwd === cwd && activeWorktree.currentWorktreePath
+      ? worktrees.find((w) => w.path === activeWorktree.currentWorktreePath)
+      : undefined)
     ?? worktrees.find((w) => w.isMain);
-  const currentBranch = currentWorktree?.branch ?? null;
+  const currentBranch = currentWorktree ? (currentWorktree.branch ?? getFileName(currentWorktree.path)) : null;
   const displayProject = activeWorktree?.projectRoot ?? cwd;
   const projectLabel = projectNameByRoot?.get(displayProject) ?? getFileName(displayProject);
   const menuPosition: CSSProperties = placement === "above"
@@ -272,6 +278,27 @@ export function NewSessionCwdControl({
   const closeMenus = () => {
     setMenuOpen(false);
     setBranchMenuOpen(false);
+    setNewBranch(null);
+    setNewError(null);
+  };
+  const createWorktree = () => {
+    const branch = newBranch?.trim();
+    if (!branch || busy || !activeWorktree) return;
+    setBusy(true);
+    setNewError(null);
+    void fetch("/api/worktrees", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: activeWorktree.projectRoot, branch }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({})) as { path?: string; error?: string };
+        if (!response.ok || !data.path) throw new Error(data.error ?? `HTTP ${response.status}`);
+        await onChange(data.path);
+        closeMenus();
+      })
+      .catch((cause: unknown) => setNewError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setBusy(false));
   };
   const choose = (path: string) => {
     if (path === cwd) {
@@ -321,6 +348,8 @@ export function NewSessionCwdControl({
             onClick={() => {
               setBranchMenuOpen((open) => !open);
               setMenuOpen(false);
+              setNewBranch(null);
+              setNewError(null);
             }}
             onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
             onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
@@ -409,7 +438,7 @@ export function NewSessionCwdControl({
         >
           <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
             {worktrees.map((wt) => {
-              const isCurrent = wt.path === cwd || wt.path === activeWorktree?.currentWorktreePath;
+              const isCurrent = wt.path === currentWorktree?.path;
               return (
                 <button
                   key={wt.path}
@@ -431,6 +460,39 @@ export function NewSessionCwdControl({
               );
             })}
           </div>
+          <div role="separator" className="menu-surface-divider" />
+          {newBranch === null ? (
+            <button type="button" role="option" aria-selected={false} title={t("sidebar.createWorktreeTitle")} onClick={() => setNewBranch("")}>
+              {t("sidebar.newWorktree")}
+            </button>
+          ) : (
+            <div style={{ padding: "2px 4px" }}>
+              <label className="sidebar-search-field">
+                <input
+                  autoFocus
+                  disabled={busy}
+                  value={newBranch}
+                  onChange={(event) => { setNewBranch(event.target.value); setNewError(null); }}
+                  onKeyDown={(event) => {
+                    if (isImeComposing(event)) return;
+                    if (event.key === "Enter") { event.preventDefault(); createWorktree(); }
+                    if (event.key === "Escape") { setNewBranch(null); setNewError(null); }
+                  }}
+                  placeholder={t("sidebar.branchName")}
+                  aria-label={t("sidebar.branchName")}
+                />
+              </label>
+              <div className="project-confirm-actions" style={{ marginTop: 4 }}>
+                <button type="button" disabled={busy} onClick={() => { setNewBranch(null); setNewError(null); }}>{t("sidebar.cancel")}</button>
+                <button type="button" onClick={createWorktree} disabled={busy || !newBranch.trim()}>
+                  {busy ? t("sidebar.creating") : t("sidebar.create")}
+                </button>
+              </div>
+            </div>
+          )}
+          {newError && (
+            <div style={{ padding: "5px 10px 8px", color: "var(--danger)", fontSize: 11, lineHeight: 1.35, overflowWrap: "anywhere" }}>{newError}</div>
+          )}
         </div>
       )}
       {pickerOpen && (

@@ -28,7 +28,7 @@ worktree 切换器决定 Pi Web 接下来使用哪个 checkout。
 
 ## 新建 Worktree
 
-在 worktree 菜单里选择 `New worktree...`，输入 branch name。
+在侧栏或新会话页的 worktree 菜单里选择 `New worktree...`，输入 branch name。新会话页建好后会直接切到这个 checkout。
 
 Pi Web 会把 checkout 放在：
 
@@ -48,11 +48,13 @@ Pi Web 会把 checkout 放在：
 /Users/alex/Documents/Workspace/pi-web-worktrees/codex-worktree-help
 ```
 
-如果这个 branch 已存在，Pi Web 会为它添加 worktree。如果 branch 不存在，Pi Web 会从当前 `HEAD` 创建这个 branch。
+如果这个 branch 已存在，Pi Web 会为它添加 worktree。如果 branch 不存在，Pi Web 会从已知的 `origin/<branch>` 创建，否则从 main checkout 的 `HEAD` 创建（不是当前选中的 linked worktree）。
+
+agent 或其他客户端用 `git worktree add` 新建的 checkout，会在打开 worktree 菜单或一轮 agent 结束时出现。
 
 ## 删除 Worktree
 
-非 main worktree 右侧有删除按钮。它删除的是这个 checkout 目录。
+侧栏 worktree 菜单里，非 main worktree 右侧有删除按钮（新会话页的菜单只切换和新建）。在 Pi Web 外删掉当前选中的 checkout 后，侧栏会回到 main checkout。它删除的是这个 checkout 目录。
 
 删除 worktree 不会删除：
 

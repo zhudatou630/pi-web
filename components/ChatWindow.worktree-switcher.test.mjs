@@ -167,3 +167,23 @@ test("draft cwd validation uses stable project identity without rekeying/remount
   assert.equal(tabs, beforeFailure);
   assert.doesNotMatch(declaration.getText(parsed), /rekeyDraft|setSessionKey|setNewSessionDraftId/);
 });
+
+test("draft chip prefers its own checkout over the sidebar's server-resolved one, and names a detached checkout", () => {
+  const parsed = ts.createSourceFile("ChatWindow.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const pick = (name) => find(parsed, (node) => ts.isVariableDeclaration(node) && node.name.getText(parsed) === name).initializer.getText(parsed);
+  const worktrees = [{ path: "/repo", branch: "main", isMain: true }, { path: "/repo-wt/feat", branch: "feat", isMain: false }, { path: "/repo-wt/det", branch: null, isMain: false }];
+  const current = (cwd, activeWorktree) => evaluate(pick("currentWorktree"), { worktrees, cwd, activeWorktree });
+  const sidebarOnMain = { forCwd: "/repo", currentWorktreePath: "/repo" };
+  assert.equal(current("/repo-wt/feat", sidebarOnMain).branch, "feat");
+  assert.equal(current("/repo/sub", sidebarOnMain).path, "/repo", "foreign server identity is ignored");
+  assert.equal(current("/REPO-WT/FEAT", { forCwd: "/REPO-WT/FEAT", currentWorktreePath: "/repo-wt/feat" }).branch, "feat");
+  const det = current("/repo-wt/det", sidebarOnMain);
+  assert.equal(evaluate(pick("currentBranch"), { currentWorktree: det, getFileName: (p) => p.split("/").pop() }), "det");
+});
+
+test("branch menu offers New worktree, created from the project root and then selected", () => {
+  const menu = control.slice(control.indexOf("{branchMenuOpen &&"), control.indexOf("{pickerOpen &&"));
+  assert.match(menu, /t\("sidebar\.newWorktree"\)/);
+  assert.match(control, /body: JSON\.stringify\(\{ cwd: activeWorktree\.projectRoot, branch \}\)/);
+  assert.match(control, /await onChange\(data\.path\);/);
+});

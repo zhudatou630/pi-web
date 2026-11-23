@@ -2100,10 +2100,11 @@ export function AppShell() {
           : tab
       )));
     }
+    // A slow change (e.g. creating a worktree) may finish after the user left this draft.
     if (!draftKey || activeNewSessionDraftKeyRef.current === draftKey) {
       setNewSessionCwd(nextCwd);
+      setActiveCwd(nextCwd);
     }
-    setActiveCwd(nextCwd);
   }, []);
 
   const handleToggleSplit = useCallback(() => {

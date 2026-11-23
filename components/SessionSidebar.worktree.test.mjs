@@ -95,3 +95,9 @@ test("single-project switcher navigates without destructive shortcuts", () => {
   assert.match(dropdown, /setSelectedCwd\(project\.root\)/);
   assert.doesNotMatch(dropdown, /setDeleteConfirm|sidebar\.delete/);
 });
+
+test("opening the worktree menu reloads the list; a refused linked checkout falls back to its project", () => {
+  assert.match(source, /if \(!wtDropdownOpen\) setWtRefreshKey\(\(k\) => k \+ 1\);\s*setWtDropdownOpen\(\(v\) => !v\)/);
+  assert.match(source, /previous\?\.worktrees\.some\(\(w\) => !w\.isMain && w\.path === known\)\) setSelectedCwd\(previous\.projectRoot\)/);
+  assert.match(source, /if \(status === 403\) refused\(\);\s*else setWorktreeState\(null\);/);
+});
