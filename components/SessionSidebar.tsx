@@ -216,7 +216,7 @@ interface Props {
   /** Explicitly added project directories (storage name predates the removed
       project-pin UI). They keep a project listed before it has any session. */
   pinnedCwds: string[];
-  onTogglePinnedCwd: (cwd: string) => void;
+  onUpdatePinnedCwds: (update: (paths: string[]) => string[]) => void;
   onHomeDirChange?: (homeDir: string) => void;
   onWorktreeInfoChange?: (info: {
     forCwd: string;
@@ -367,7 +367,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, onOpenBrowser, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onTogglePinnedCwd, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, onOpenBrowser, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -1175,7 +1175,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       });
       saveLastCustomCwd(data.cwd);
       setCustomPathValue(data.cwd);
-      if (!pinnedCwds.includes(data.projectRoot)) onTogglePinnedCwd(data.projectRoot);
+      onUpdatePinnedCwds((paths) => paths.includes(data.projectRoot!) ? paths : [...paths, data.projectRoot!]);
       setExpandedWorkspaceKeys((current) => new Set([...(current ?? []), data.projectKey!]));
       setSelectedCwd(data.cwd);
       setCustomPathOpen(false);
@@ -1185,7 +1185,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     } finally {
       setCustomPathValidating(false);
     }
-  }, [customPathValue, customPathValidating, onTogglePinnedCwd, pinnedCwds]);
+  }, [customPathValue, customPathValidating, onUpdatePinnedCwds]);
 
   const handleCustomPathClick = useCallback(() => {
     setCustomPathOpen(true);
@@ -1354,9 +1354,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     return orderProjects(projects, projectOrder);
   }, [pinnedCwds, projectFor, projectOrder, recentProjects, selectedProject]);
 
+  // A custom path only holds an empty project open; once it has chats it must not
+  // outlive them, or deleting every chat could never remove the project.
   useEffect(() => {
-    onProjectPathsChange?.(workspaceProjects.map((project) => project.root));
-  }, [onProjectPathsChange, workspaceProjects]);
+    if (sessionListVersion === null) return;
+    const saved = new Set(recentProjects.map((project) => project.key));
+    const isSaved = (cwd: string) => saved.has(projectFor(cwd)?.key ?? cwd);
+    if (pinnedCwds.some(isSaved)) onUpdatePinnedCwds((paths) => paths.filter((cwd) => !isSaved(cwd)));
+  }, [onUpdatePinnedCwds, pinnedCwds, projectFor, recentProjects, sessionListVersion]);
 
   const projectNameByRoot = useMemo(() => new Map(workspaceProjects.map((project) => [
     project.root, projectNames.get(project.key) ?? getFileName(project.root),
@@ -1409,6 +1414,22 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   );
   const archivedMemberIds = useMemo(() => new Set(archivedFamilies.flatMap((family) =>
     [family.root.id, ...family.subagents.map((session) => session.id)])), [archivedFamilies]);
+  // A project whose every family is archived lives only in the archive, unless it is the current project.
+  const archivedOnlyProjectKeys = useMemo(() => {
+    const archived = new Set(archivedFamilies);
+    const keys = new Set(archivedFamilies.map((family) => workspaceKeyOf(family.root)));
+    for (const family of allFamilies) if (!archived.has(family)) keys.delete(workspaceKeyOf(family.root));
+    keys.delete(selectedProject?.key ?? "");
+    return keys;
+  }, [allFamilies, archivedFamilies, selectedProject]);
+  const menuProjects = useMemo(
+    () => workspaceProjects.filter((project) => !archivedOnlyProjectKeys.has(project.key)),
+    [archivedOnlyProjectKeys, workspaceProjects],
+  );
+
+  useEffect(() => {
+    onProjectPathsChange?.(menuProjects.map((project) => project.root));
+  }, [onProjectPathsChange, menuProjects]);
   const archivedCount = singleProject
     ? archivedFamilies.filter((family) => workspaceKeyOf(family.root) === (selectedProject ?? workspaceProjects[0])?.key).length
     : archivedFamilies.length;
@@ -1568,9 +1589,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         ? isFamilyArchived(family, archivedSessionIds, runningSessionIds)
         : !pinnedSessionIds.includes(family.root.id) && !isFamilyArchived(family, archivedSessionIds, runningSessionIds));
       if (archiveView && families.length === 0) continue;
-      // A project whose every family is archived lives only in the archive, unless it is the current project.
-      if (!archiveView && !selecting && !singleProject && project.key !== selectedProject?.key && projectFamilies.length > 0
-        && projectFamilies.every((family) => isFamilyArchived(family, archivedSessionIds, runningSessionIds))) continue;
+      if (!archiveView && !selecting && !singleProject && archivedOnlyProjectKeys.has(project.key)) continue;
       rows.push({
         kind: "workspace",
         project,
@@ -1594,7 +1613,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       }
     }
     return rows;
-  }, [selectionProjectKey, allFamilies, archiveView, archivedSessionIds, expandedArchiveProjectKeys, defaultExpandedWorkspaceKeys, draggedProjectKey, expandedWorkspaceKeys, pinnedSessionIds, runningSessionIds, unreadSessionIds, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
+  }, [selectionProjectKey, allFamilies, archiveView, archivedOnlyProjectKeys, archivedSessionIds, expandedArchiveProjectKeys, defaultExpandedWorkspaceKeys, draggedProjectKey, expandedWorkspaceKeys, pinnedSessionIds, runningSessionIds, unreadSessionIds, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
 
   useLayoutEffect(() => {
     if (!selectionProjectKey || !listScrollRef.current) return;

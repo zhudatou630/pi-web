@@ -48,9 +48,3 @@ export function savePinnedCwds(
     // Persistence is best-effort; privacy mode and storage quotas must not break the sidebar.
   }
 }
-
-export function togglePinnedCwd(paths: readonly string[], cwd: string): string[] {
-  const path = cwd.trim();
-  if (!path) return readPaths(paths);
-  return paths.includes(path) ? paths.filter((item) => item !== path) : [...paths, path];
-}

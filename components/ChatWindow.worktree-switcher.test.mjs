@@ -69,12 +69,17 @@ test("cwd menu receives the exact sidebar order after reorder, including empty p
   const parsed = ts.createSourceFile("SessionSidebar.tsx", sidebar, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const effect = find(parsed, (node) => ts.isCallExpression(node) && node.expression.getText(parsed) === "useEffect"
     && node.arguments[0].getText(parsed).includes("onProjectPathsChange"));
-  assert.equal(effect.arguments[1].getText(parsed), "[onProjectPathsChange, workspaceProjects]");
+  assert.equal(effect.arguments[1].getText(parsed), "[onProjectPathsChange, menuProjects]");
+  const menu = find(parsed, (node) => ts.isVariableDeclaration(node) && node.name.getText(parsed) === "menuProjects");
   const writes = [];
-  const projects = [{ key: "empty", root: "/empty" }, { key: "repo", root: "/repo" }, { key: "other", root: "/other" }];
-  for (const workspaceProjects of [projects, [projects[2], projects[0], projects[1]]]) {
+  const projects = [{ key: "empty", root: "/empty" }, { key: "repo", root: "/repo" }, { key: "other", root: "/other" }, { key: "archived", root: "/archived" }];
+  for (const workspaceProjects of [projects, [projects[2], projects[3], projects[0], projects[1]]]) {
+    // Projects living only in the archive are hidden from the sidebar, so the menu drops them too.
+    const menuProjects = evaluate(menu.initializer.arguments[0].getText(parsed), {
+      workspaceProjects, archivedOnlyProjectKeys: new Set(["archived"]),
+    })();
     evaluate(effect.arguments[0].getText(parsed), {
-      workspaceProjects, onProjectPathsChange: (paths) => writes.push(paths),
+      menuProjects, onProjectPathsChange: (paths) => writes.push(paths),
     })();
   }
   assert.deepEqual(writes, [["/empty", "/repo", "/other"], ["/other", "/empty", "/repo"]]);

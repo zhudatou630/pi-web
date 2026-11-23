@@ -89,7 +89,7 @@ function pathForChatMention(path: string, sourceCwd?: string, targetCwd?: string
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { clearDraft, discardSessionDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import { workspaceKeyOf } from "@/lib/workspace-key";
-import { loadPinnedCwds, savePinnedCwds, togglePinnedCwd } from "@/lib/pinned-cwds";
+import { loadPinnedCwds, savePinnedCwds } from "@/lib/pinned-cwds";
 import {
   getDefaultRightPanelWidth,
   getChatSplitRatioBounds,
@@ -232,12 +232,12 @@ export function AppShell() {
   const [projectPaths, setProjectPaths] = useState<string[]>([]);
   const [pinnedCwds, setPinnedCwds] = useState<string[]>(() => loadPinnedCwds());
   const [projectNameByRoot, setProjectNameByRoot] = useState<ReadonlyMap<string, string>>(() => new Map());
-  const handleTogglePinnedCwd = useCallback((cwd: string) => {
-    setPinnedCwds((current) => {
-      const next = togglePinnedCwd(current, cwd);
-      savePinnedCwds(next);
-      return next;
-    });
+  const handleUpdatePinnedCwds = useCallback((update: (paths: string[]) => string[]) => {
+    // Apply to the stored list, not this tab's copy: another tab may have added a path since.
+    const latest = loadPinnedCwds();
+    const next = update(latest);
+    if (next.length !== latest.length || next.some((path, index) => path !== latest[index])) savePinnedCwds(next);
+    setPinnedCwds(next);
   }, []);
   const [homeDir, setHomeDir] = useState("");
   const [worktreeInfo, setWorktreeInfo] = useState<{
@@ -2663,7 +2663,7 @@ export function AppShell() {
         onProjectPathsChange={setProjectPaths}
         onProjectNamesChange={setProjectNameByRoot}
         pinnedCwds={pinnedCwds}
-        onTogglePinnedCwd={handleTogglePinnedCwd}
+        onUpdatePinnedCwds={handleUpdatePinnedCwds}
         onHomeDirChange={setHomeDir}
         onWorktreeInfoChange={setWorktreeInfo}
         explorerReveal={explorerReveal}
