@@ -1,7 +1,7 @@
 "use client";
 import { GeneratedImageResult, PendingGeneratedImage } from "./GeneratedImageResult";
 import { ImageGenerationDialog } from "./ImageGenerationDialog";
-import { displayToolName } from "@/lib/tool-names";
+import { toolPresentation } from "@/lib/tool-names";
 import { encodeFilePathForApi, getFileName, joinFilePath } from "@/lib/file-paths";
 import { getImageGenerationResult, imageToolDisplayKind, IMAGE_RESULT_TYPE, type ImageConfigView, type ImageGenerationRequest, type ImageGenerationResult } from "@/lib/image-generation";
 import type { AttachedImage, Base64ImageAttachment } from "@/lib/image-attachments";
@@ -527,12 +527,12 @@ function liveProcessSummary(
   if (isCompacting) return t("chat.compacting");
   if (phase?.kind === "running_tools") {
     const name = phase.tools[phase.tools.length - 1]?.name ?? null;
-    return imageStepLabel(name, undefined, t) ?? (name && displayToolName(name));
+    return imageStepLabel(name, undefined, t) ?? (name && toolPresentation(name).label);
   }
   const lastBlock = lastStreamingBlock(streamingMessage);
   if (lastBlock?.type === "thinking") return t("chat.thinking");
   if (lastBlock?.type === "toolCall") {
-    return imageStepLabel(lastBlock.toolName, lastBlock.input, t) ?? (lastBlock.toolName ? displayToolName(lastBlock.toolName) : null);
+    return imageStepLabel(lastBlock.toolName, lastBlock.input, t) ?? (lastBlock.toolName ? toolPresentation(lastBlock.toolName, lastBlock.input).label : null);
   }
   return null;
 }

@@ -27,7 +27,7 @@ import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, 
 import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { editPreview } from "@/lib/edit-preview";
 import { parseApplyPatch } from "@/lib/apply-patch";
-import { displayToolName, isApplyPatchToolName, isEditToolName, isWriteToolName } from "@/lib/tool-names";
+import { displayToolName, isApplyPatchToolName, isEditToolName, isWriteToolName, toolPresentation } from "@/lib/tool-names";
 import { resolveLocalFilePath } from "@/lib/file-links";
 import { getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { isThinkingExpandedByDefault, THINKING_EXPANDED_EVENT } from "@/lib/thinking-expansion-preference";
@@ -1417,7 +1417,8 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
         : extractStreamedPatchArgument(block.rawInput))
     : undefined;
   const imageKind = imageToolDisplayKind(block.toolName, block.input, result?.details);
-  const toolLabel = label ?? (imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : displayToolName(block.toolName));
+  const presentation = toolPresentation(block.toolName, block.input);
+  const toolLabel = label ?? (imageKind === "edit" ? t("image.edit") : imageKind === "generate" ? t("image.generate") : presentation.label);
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
 
   // Result display
@@ -1431,7 +1432,7 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
   const subagent = isSubagentToolDetails(result?.details) ? result.details : null;
   const preview = getToolPreview(block);
   const previewPath = preview.path;
-  const opensFile = block.toolName.toLowerCase() === "read" || isEditTool || isWriteToolName(block.toolName);
+  const opensFile = presentation.as.toLowerCase() === "read" || isEditTool || isWriteToolName(block.toolName);
   const openablePath = previewPath && opensFile && !isError ? resolveLocalFilePath(previewPath, cwd) : null;
 
   return (
@@ -1445,11 +1446,12 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
           onClick={() => setExpanded((v) => !v)}
         >
           <div className="step-icon" style={isError ? { color: "var(--danger)" } : undefined}>
-            <ToolIcon toolName={block.toolName} isError={isError} size={12} />
+            <ToolIcon toolName={presentation.as} isError={isError} size={12} />
           </div>
-          <span className="step-label" title={labelTitle ?? (displayToolName(block.toolName) === block.toolName ? undefined : block.toolName)}>
+          <span className="step-label" title={labelTitle ?? (presentation.label === block.toolName ? undefined : block.toolName)}>
             {toolLabel}
           </span>
+          {presentation.source && <span className="step-tag">{presentation.source}</span>}
           {isStreamingInput ? (
             <span className="step-preview">{t("chat.generatingToolInput")}</span>
           ) : previewPath ? (

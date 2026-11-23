@@ -1,6 +1,6 @@
 import { getImageGenerationResult, IMAGE_TOOL_NAME } from "./image-generation";
 import { thinkingDurationSeconds } from "./message-display";
-import { isApplyPatchToolName, isEditToolName, isWriteToolName } from "./tool-names";
+import { isApplyPatchToolName, isEditToolName, isWriteToolName, toolPresentation } from "./tool-names";
 import type { AssistantMessage, ToolResultMessage } from "./types";
 
 export interface TurnActivity {
@@ -49,7 +49,7 @@ export function summarizeTurnActivity(
     if (block.type !== "toolCall") continue;
     const result = toolResults?.get(block.toolCallId);
     if (!result) continue;
-    const name = block.toolName;
+    const name = toolPresentation(block.toolName).as;
     // A failed command or script still ran; a failed read or search found nothing.
     if (COMMAND_TOOLS.has(name)) activity.commands += 1;
     else if (SCRIPT_TOOLS.has(name)) activity.scripts += 1;

@@ -2039,10 +2039,22 @@ button.question-card-option:not(:disabled):hover {
   height: 14px;
 }
 .step-label {
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text);
   font-size: 11px;
   line-height: 1.35;
+  text-overflow: ellipsis; /* long `title` labels (bridge catch-all tools) */
+  white-space: nowrap;
+}
+.step-tag {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-chip-bg);
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
 }
 .is-error > .step-head .step-label {
   color: var(--danger);
