@@ -106,6 +106,7 @@ test("image export clears masks and animations in the clone and unfolds table an
   assert.match(exportCss, /mask-image:none!important;-webkit-mask-image:none!important;animation:none!important/);
   assert.match(exportCss, /\.markdown-table-frame,\.markdown-table-wrap,\.markdown-code-block\{width:max-content!important/);
   assert.match(exportCss, /\.markdown-code-block>\*\{width:auto!important\}/);
+  assert.match(exportCss, /\.markdown-code-block \.markdown-code-line\{width:auto!important\}/);
   assert.match(source, /fontEmbedCSS: EXPORT_CSS \+ await buildFontEmbedCSS\(el\)/);
   assert.match(source, /const SCROLLERS = "\.markdown-table-wrap, \.markdown-code-block pre"/);
 });

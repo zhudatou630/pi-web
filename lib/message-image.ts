@@ -21,7 +21,7 @@ const EXPORT_CSS = "*{scrollbar-width:none!important;mask-image:none!important;-
   + ".markdown-table-frame,.markdown-table-wrap,.markdown-code-block{width:max-content!important;min-width:100%!important;max-width:none!important;overflow:visible!important}"
   // flow-root keeps the block formatting context overflow:hidden gave, so margins and height stay put.
   + ".markdown-body{overflow:visible!important;display:flow-root!important}"
-  + ".markdown-code-block>*{width:auto!important}.markdown-code-block pre{overflow:visible!important}"
+  + ".markdown-code-block>*{width:auto!important}.markdown-code-block .markdown-code-line{width:auto!important}.markdown-code-block pre{overflow:visible!important}"
   // A diagram preview scrolls vertically past min(600px, 60dvh); the picture shows all of it.
   + ".mermaid-preview-button{max-height:none!important;overflow:visible!important}";
 const SCROLLERS = ".markdown-table-wrap, .markdown-code-block pre";
