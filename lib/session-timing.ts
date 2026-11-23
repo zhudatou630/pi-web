@@ -30,10 +30,14 @@ interface TimingEntry {
  * time, so counting the incoming gap could include arbitrary human idle.
  * System-prompt snapshots are skipped: they are written at prompt time just
  * before the user message, so counting them would bill the preceding idle.
+ * Compactions and custom messages may also be written while idle, right before
+ * a prompt (routine compaction + memory, manual /compact): their gaps count only
+ * once a following assistant/tool result shows they were part of a run.
  */
 export function computeSessionTotalActiveMs(entries: readonly TimingEntry[]): number {
   let totalActiveMs = 0;
   let previousTimestamp: number | undefined;
+  let pendingMs = 0;
 
   for (const entry of entries) {
     if (!isTimingEntry(entry.type)) continue;
@@ -44,14 +48,19 @@ export function computeSessionTotalActiveMs(entries: readonly TimingEntry[]): nu
     const role = entry.type === "message" ? entry.message?.role : undefined;
     if (role === "system") continue;
     if (role === "user" || role === "bashExecution") {
+      pendingMs = 0;
       previousTimestamp = timestamp;
       continue;
     }
 
-    if (previousTimestamp !== undefined && timestamp > previousTimestamp) {
-      totalActiveMs += timestamp - previousTimestamp;
-    }
+    const gap = previousTimestamp !== undefined && timestamp > previousTimestamp ? timestamp - previousTimestamp : 0;
     previousTimestamp = timestamp;
+    if (entry.type === "message") {
+      totalActiveMs += pendingMs + gap;
+      pendingMs = 0;
+    } else {
+      pendingMs += gap;
+    }
   }
 
   return totalActiveMs;
