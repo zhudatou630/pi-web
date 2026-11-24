@@ -1568,7 +1568,11 @@ pre, code {
 .markdown-body {
   min-width: 0;
   max-width: 100%;
-  overflow-x: hidden;
+  /* clip, not hidden: hidden turns overflow-y into auto, so a 1px subpixel
+     overflow (KaTeX) showed a scrollbar over the whole message. flow-root
+     keeps the margin containment hidden gave. */
+  display: flow-root;
+  overflow-x: clip;
   font-size: calc(14px + var(--chat-font-size-offset, 0px));
   line-height: 1.58;
   color: var(--text);
