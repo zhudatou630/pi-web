@@ -79,8 +79,10 @@ html[data-theme="claude"].dark {
   --tool-bg: #252524;
   --bg-subtle: rgba(255,255,255,0.03);
   --control-on-hover: #f0efeb;
-  --primary: var(--accent);
-  --primary-hover: var(--accent-hover);
+  /* Filled buttons take a deeper clay: white on the #d97757 accent was 3.1:1.
+     #bb5a37 is 4.5:1, hover darkens a step as in Claude light. */
+  --primary: #bb5a37;
+  --primary-hover: #ad5233;
   --primary-contrast: #ffffff;
   --switch-track-off: #444442;
   --segmented-track: #2a2928;
@@ -98,6 +100,9 @@ html[data-theme="claude"] ::selection {
   color: var(--bg);
 }
 html[data-theme="claude"] .markdown-body { color: var(--text-muted); }
+/* Dark keeps prose in ink: grey prose on charcoal read washed out, and bold
+   and headings jumped out of it in patches. */
+html[data-theme="claude"].dark .markdown-body { color: var(--text); }
 /* The user's own words stay in ink. */
 html[data-theme="claude"] .markdown-user-message { color: var(--text); }
 html[data-theme="claude"] .markdown-body a {

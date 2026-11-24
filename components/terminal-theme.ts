@@ -47,7 +47,7 @@ export function subscribeTerminalTheme(listener: () => void): () => void {
 
 const DEFAULT_THEMES = {
   dark: {
-    background: "#1a1a1a", foreground: "#e8e8e8", cursor: "#e8e8e8",
+    background: "#1a1a1a", foreground: "#e4e4e4", cursor: "#e4e4e4",
     selectionBackground: "#365b8a",
     black: "#1d222b", red: "#f87171", green: "#4ade80", yellow: "#facc15",
     blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#e5e7eb",

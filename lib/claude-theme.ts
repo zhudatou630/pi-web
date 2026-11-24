@@ -39,8 +39,10 @@ export const claudeCodeStyle = paperCodeStyle({
   cm: "#6b6a64", pl: "#45443e", add: "#3e7a3e", del: "#a04545",
 });
 
+// Same hues as light, desaturated to sit on warm charcoal (~6.5-8:1); Material's
+// neon green (#c3e88d, 11:1) outshone the prose.
 export const claudeDarkCodeStyle = paperCodeStyle({
-  kw: "#c792ea", fn: "#82aaff", nm: "#c3e88d", ar: "#89ddff",
+  kw: "#c49be0", fn: "#8fb0f0", nm: "#a9c682", ar: "#7cc0d6",
   cm: "#979691", pl: "#b9b7b1", add: "#9ac29a", del: "#c29a9a",
 });
 

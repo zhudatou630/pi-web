@@ -159,6 +159,8 @@ html {
 }
 
 :root {
+  /* Native scrollbars, form controls and iframe canvases follow the app theme. */
+  color-scheme: light;
   --bg: #ffffff;
   --bg-panel: #f5f5f5;
   --bg-hover: #eeeeee;
@@ -267,25 +269,32 @@ html[data-font="system"] {
   --font-chat: var(--font-ui-fallback);
 }
 
+/* Default dark: pure neutral greys throughout. The slate tint of the light
+   tiers turned blue on black and clashed with the neutral surfaces. Ink is
+   held a little under #e8e8e8 to cut glare on long reads; status colors are
+   softened from Tailwind's 300/400 neons. Floating surfaces sit a step
+   above both canvas and sidebar so menus never sink into what they cover. */
 html.dark {
+  color-scheme: dark;
   --bg: #1a1a1a;
   --bg-panel: #242424;
   --bg-hover: #2e2e2e;
   --bg-selected: #383838;
+  --bg-elevated: #262626;
   --border: #3a3a3a;
-  --text: #e8e8e8;
-  --text-muted: #c2c5cc;
-  --text-dim: #9da1ab;
+  --text: #e4e4e4;
+  --text-muted: #c6c6c6;
+  --text-dim: #a0a0a0;
   --accent: #60a5fa;
   --accent-hover: #93c5fd;
   --accent-contrast: #0f172a;
   --danger: #f87171;
   --danger-fill: #b91c1c;
-  --warning: #facc15;
-  --success: #34d399;
-  --user-bg: #22252b;
+  --warning: #e0b040;
+  --success: #4cc38a;
+  --user-bg: #262626;
   --assistant-bg: #1a1a1a;
-  --tool-bg: #1f2937;
+  --tool-bg: #222222;
   --bg-subtle: rgba(255,255,255,0.04);
   --control-on-hover: #ffffff;
   --switch-track-off: #4a4a4a;
@@ -1064,8 +1073,8 @@ body {
   --terminal-header-bg: #242424;
   --terminal-border: #3a3a3a;
   --terminal-hover: #2e2e2e;
-  --terminal-muted: #c2c5cc;
-  --terminal-strong: #e8e8e8;
+  --terminal-muted: #c6c6c6;
+  --terminal-strong: #e4e4e4;
   --terminal-accent: #60a5fa;
   --terminal-error-border: #5f2424;
   --terminal-error-bg: #321b1b;
@@ -1098,7 +1107,7 @@ body {
 html[data-theme="claude"] .terminal-panel[data-terminal-theme="dark"] {
   --terminal-bg: #1f1f1e;
   --terminal-header-bg: #191918;
-  --terminal-border: #31312f;
+  --terminal-border: #3d3d3a;
   --terminal-hover: #2a2928;
   --terminal-muted: #b9b7b1;
   --terminal-strong: #e3e2de;
