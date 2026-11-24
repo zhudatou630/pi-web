@@ -30,6 +30,24 @@ export function getForkLeafId(sourcePath: string, wrapper?: Pick<AgentSessionWra
   return leafId;
 }
 
+// Entries outside the conversation that the browser appends without reloading its leaf.
+const SETTINGS_ENTRY_TYPES = new Set(["thinking_level_change", "model_change", "custom", "label", "session_info"]);
+
+/**
+ * The browser's viewed leaf misses settings appended since it loaded (a thinking level change does
+ * not reload): when only such entries follow it on the live branch, copy through the live leaf.
+ */
+export function forkLeafWithSettings(
+  manager: Pick<SessionManager, "getBranch">,
+  viewedLeafId: string,
+  liveLeafId: string | null | undefined,
+): string {
+  if (!liveLeafId || liveLeafId === viewedLeafId) return viewedLeafId;
+  const branch = manager.getBranch(liveLeafId);
+  const at = branch.findIndex((entry) => entry.id === viewedLeafId);
+  return at >= 0 && branch.slice(at + 1).every((entry) => SETTINGS_ENTRY_TYPES.has(entry.type)) ? liveLeafId : viewedLeafId;
+}
+
 /**
  * Synchronous disk copy on an independent manager: never repoint the source runtime.
  * `side` ends the copy on the side-chat marker (lib/side-chat.ts).

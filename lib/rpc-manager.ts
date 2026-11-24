@@ -24,7 +24,7 @@ import {
   preferUserShellExtensions,
 } from "./project-command-env";
 import { cacheSessionPath, getLatestModelChange, invalidateSessionListCache, invalidateSessionPathCache, resolveSessionPath } from "./session-reader";
-import { forkSessionBefore, forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fork";
+import { forkLeafWithSettings, forkSessionBefore, forkSessionBranch, getForkLeafId, writeSessionCopy } from "./session-fork";
 import { getSessionFirstMessagePreview } from "./session-display-title";
 import { computeSessionStats } from "./session-stats";
 import { TimingRecorder } from "./model-timing";
@@ -1381,9 +1381,12 @@ export class AgentSessionWrapper {
         // Copy only persisted entries on a separate manager, even during a prompt or ! shell.
         // Keep leaf selection and copying in the same synchronous turn.
         const currentSessionFile = this.inner.sessionFile ?? "";
-        const entryId = (command.entryId as string | undefined) ?? getForkLeafId(currentSessionFile, this);
+        const liveLeafId = getForkLeafId(currentSessionFile, this);
         const name = command.name as string | undefined;
         const before = command.before === true;
+        const entryId = command.entryId === undefined ? liveLeafId
+          : before ? command.entryId as string
+          : forkLeafWithSettings(this.inner.sessionManager, command.entryId as string, liveLeafId);
         if (before) {
           const entry = typeof entryId === "string" ? this.inner.sessionManager.getEntry(entryId) : undefined;
           if (command.side === true || !command.entryId || entry?.type !== "message" || entry.message.role !== "user") {
