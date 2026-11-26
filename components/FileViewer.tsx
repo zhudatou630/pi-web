@@ -41,7 +41,7 @@ import { FileFindBar, scrollIntoScroller } from "./FileFindBar";
 import { ImageViewer as ImageLightbox } from "./ImageViewer";
 import { ImagePreview } from "./ImagePreview";
 import { MarkdownMedia } from "./MarkdownMedia";
-import { parseUnifiedPatch } from "@/lib/patch";
+import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { readTextChunks, type TextChunk } from "@/lib/text-chunk-reader";
 import { useI18n } from "@/hooks/useI18n";
@@ -389,55 +389,10 @@ function DownloadLink({ filePath, sourceSessionId }: { filePath: string; sourceS
   );
 }
 
-type DiffLine =
-  | { type: "hunk"; text: string }
-  | {
-      type: "unchanged" | "removed" | "added";
-      text: string;
-      oldLineNo: number | null;
-      newLineNo: number | null;
-    };
-
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function diffLines(patch: string): DiffLine[] {
-  const files = parseUnifiedPatch(patch);
-  if (!files) return [];
-
-  return files.flatMap((file) => file.rows.flatMap((row): DiffLine[] => {
-    if (row.type === "hunk") return [{ type: "hunk", text: row.text }];
-    if (row.left.type === "context" && row.right.type === "context") {
-      return [{
-        type: "unchanged",
-        text: row.right.text,
-        oldLineNo: row.left.lineNo,
-        newLineNo: row.right.lineNo,
-      }];
-    }
-
-    const lines: DiffLine[] = [];
-    if (row.left.type === "removed") {
-      lines.push({
-        type: "removed",
-        text: row.left.text,
-        oldLineNo: row.left.lineNo,
-        newLineNo: null,
-      });
-    }
-    if (row.right.type === "added") {
-      lines.push({
-        type: "added",
-        text: row.right.text,
-        oldLineNo: null,
-        newLineNo: row.right.lineNo,
-      });
-    }
-    return lines;
-  }));
 }
 
 function diffMetadataLines(patch: string): string[] {
@@ -467,13 +422,23 @@ const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, palett
   );
 });
 
-function DiffView({ patch, wrapLines, language = "text", prismReady = false, isDark = false, palette = "default" }: {
+function DiffView({ patch, contentRef, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false, palette = "default" }: {
+  contentRef: React.RefObject<HTMLDivElement | null>;
   patch: string; wrapLines: boolean; language?: string; prismReady?: boolean; isDark?: boolean; palette?: string;
 }) {
   const { t } = useI18n();
-  const diff = useMemo(() => diffLines(patch), [patch]);
-  const metadata = diffMetadataLines(patch);
-  const pinLineNumbers = diff.length <= SOURCE_HIGHLIGHT_MAX_LINES;
+  const [split, setSplit] = useState(false);
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const observer = new ResizeObserver(([entry]) => setSplit(entry.contentRect.width >= 520));
+    observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [contentRef]);
+  const wrapLines = split || preferWrap;
+  const diff = useMemo(() => parseUnifiedPatch(patch)?.flatMap((file) => file.rows) ?? [], [patch]);
+  const metadata = useMemo(() => diffMetadataLines(patch), [patch]);
+  const lineCount = useMemo(() => diff.reduce((n, row) => n + (row.type === "line" && row.left.type === "removed" && row.right.type === "added" ? 2 : 1), 0), [diff]);
+  const pinLineNumbers = lineCount <= SOURCE_HIGHLIGHT_MAX_LINES;
   const highlight = prismReady && language !== "text" && pinLineNumbers && patch.length <= SOURCE_HIGHLIGHT_MAX_BYTES && new TextEncoder().encode(patch).byteLength <= SOURCE_HIGHLIGHT_MAX_BYTES;
   const oldLineNumberStyle: CSSProperties = pinLineNumbers
     ? { ...FILE_DIFF_LINE_NUMBER_STYLE, position: "sticky", left: 0, zIndex: 1 }
@@ -482,11 +447,39 @@ function DiffView({ patch, wrapLines, language = "text", prismReady = false, isD
     ? { ...oldLineNumberStyle, left: 40 }
     : FILE_DIFF_LINE_NUMBER_STYLE;
 
-  const hasChanges = metadata.length > 0 || diff.some((line) => line.type === "added" || line.type === "removed");
+  const hasChanges = metadata.length > 0 || diff.some((row) => row.type === "line" && (row.left.type === "removed" || row.right.type === "added"));
   if (!hasChanges) {
     return (
       <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-dim)" }}>
         {t("i18n.noChanges")}
+      </div>
+    );
+  }
+
+  function cell(line: SplitDiffCell, oldLineNo: number | null, newLineNo: number | null, key: string) {
+    const added = line.type === "added";
+    const removed = line.type === "removed";
+    const color = added ? "var(--success)" : removed ? "var(--danger)" : "var(--text-dim)";
+    const background = added ? "color-mix(in srgb, var(--success) 12%, transparent)"
+      : removed ? "color-mix(in srgb, var(--danger) 14%, transparent)" : "transparent";
+    return (
+      <div key={key} className="file-diff-line" style={{ display: "flex", minWidth: "100%", background }}>
+        {/* Pin the change bar along with the first gutter. */}
+        <span style={added || removed ? { ...oldLineNumberStyle, boxShadow: `inset 3px 0 0 ${color}` } : oldLineNumberStyle}>
+          {split ? line.lineNo : oldLineNo}
+        </span>
+        {!split && <span style={newLineNumberStyle}>{newLineNo}</span>}
+        <span style={{ minWidth: 16, padding: "0 6px", color, userSelect: "none", flexShrink: 0 }}>
+          {added ? "+" : removed ? "-" : " "}
+        </span>
+        <span className="file-diff-line-content" style={{
+          ...(wrapLines ? { flex: 1, minWidth: 0, overflowWrap: "anywhere" } : { flexShrink: 0 }),
+          padding: "0 8px 0 0", whiteSpace: wrapLines ? "pre-wrap" : "pre", color: "var(--text)",
+        }}>
+          {highlight && line.type !== "empty"
+            ? <DiffLineCode text={line.text} language={language} isDark={isDark} palette={palette} wrapLines={wrapLines} />
+            : (line.text || "\u00a0")}
+        </span>
       </div>
     );
   }
@@ -505,70 +498,26 @@ function DiffView({ patch, wrapLines, language = "text", prismReady = false, isD
           {line}
         </div>
       ))}
-      {diff.map((line, lineIndex) => {
-          if (line.type === "hunk") {
+      {diff.flatMap((row, lineIndex) => {
+          if (row.type === "hunk") {
             return (
               <div key={`hunk-${lineIndex}`} style={{ padding: "2px 12px", color: "var(--accent)", background: "var(--bg-panel)", borderBlock: "1px solid var(--border)" }}>
-                {line.text}
+                {row.text}
               </div>
             );
           }
-          const bg =
-            line.type === "added"
-              ? "color-mix(in srgb, var(--success) 12%, transparent)"
-              : line.type === "removed"
-              ? "color-mix(in srgb, var(--danger) 14%, transparent)"
-              : "transparent";
-          const prefix =
-            line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
-          const prefixColor =
-            line.type === "added" ? "var(--success)" : line.type === "removed" ? "var(--danger)" : "var(--text-dim)";
-
-          return (
-            <div
-              key={lineIndex}
-              className="file-diff-line"
-              style={{
-                display: "flex",
-                minWidth: "100%",
-                background: bg,
-              }}
-            >
-              {/* The change bar sits on the pinned gutter so it stays visible when scrolled sideways. */}
-              <span
-                style={line.type === "added" || line.type === "removed"
-                  ? { ...oldLineNumberStyle, boxShadow: `inset 3px 0 0 ${prefixColor}` }
-                  : oldLineNumberStyle}
-              >
-                {line.oldLineNo}
-              </span>
-              <span style={newLineNumberStyle}>{line.newLineNo}</span>
-              <span
-                style={{
-                  minWidth: 16,
-                  padding: "0 6px",
-                  color: prefixColor,
-                  userSelect: "none",
-                  flexShrink: 0,
-                }}
-              >
-                {prefix}
-              </span>
-              <span
-                className="file-diff-line-content"
-                style={{
-                  ...(wrapLines ? { flex: 1, minWidth: 0, overflowWrap: "anywhere" } : { flexShrink: 0 }),
-                  padding: "0 8px 0 0",
-                  whiteSpace: wrapLines ? "pre-wrap" : "pre",
-                  color: "var(--text)",
-                }}
-              >
-                {highlight
-                  ? <DiffLineCode text={line.text} language={language} isDark={isDark} palette={palette} wrapLines={wrapLines} />
-                  : (line.text || "\u00a0")}
-              </span>
+          const { left, right } = row;
+          if (split) return (
+            <div key={lineIndex} style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              {cell(left, left.lineNo, null, "left")}
+              {cell(right, null, right.lineNo, "right")}
             </div>
           );
+          if (left.type === "context") return cell(right, left.lineNo, right.lineNo, `${lineIndex}`);
+          return [
+            ...(left.type === "removed" ? [cell(left, left.lineNo, null, `old-${lineIndex}`)] : []),
+            ...(right.type === "added" ? [cell(right, null, right.lineNo, `new-${lineIndex}`)] : []),
+          ];
       })}
     </div>
   );
@@ -2308,7 +2257,7 @@ function TextFileViewer({
         style={{ flex: 1, overflow: "auto", background: "var(--bg)", paddingBottom: data?.truncated && !(isHtml && effectiveDisplayMode === "preview") ? 48 : undefined }}
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
-          <MemoizedDiffView patch={gitDiff.patch!} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
+          <MemoizedDiffView contentRef={contentRef} patch={gitDiff.patch!} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
         ) : isHtml && effectiveDisplayMode === "preview" && !htmlInline && htmlServedForFile?.url ? (
           <iframe
             // A new element per URL: changing src would add an iframe history entry.

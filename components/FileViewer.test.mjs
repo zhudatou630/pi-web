@@ -213,11 +213,9 @@ test("lightweight source rows are skipped for highlighted, diff, and preview vie
 });
 
 test("diff view preserves Git hunk and metadata rows", () => {
-  assert.match(source, /if \(row\.type === "hunk"\) return \[\{ type: "hunk", text: row\.text \}\];/);
+  assert.match(source, /key=\{`hunk-\$\{lineIndex\}`\}/);
   assert.match(source, /function diffMetadataLines/);
   assert.doesNotMatch(source, /const CONTEXT = 3/);
-  assert.match(source, /line\.oldLineNo/);
-  assert.match(source, /line\.newLineNo/);
 });
 
 test("diff code tokens inherit the row box, wrap and palette without painting over change backgrounds", () => {
@@ -325,10 +323,18 @@ test("highlighted and bounded diff gutters stay pinned with matching line boxes"
     useMemo: (fn) => fn(),
     useI18n: () => ({ t: (key) => key }),
     diffMetadataLines: () => [],
-    diffLines: () => Array.from({ length: rowCount }, () => ({ type: "added", text: "wide line", oldLineNo: null, newLineNo: 1 })),
+    useState: () => [props.split ?? false],
+    useEffect: () => {},
+    parseUnifiedPatch: () => [{ rows: Array.from({ length: rowCount }, () => ({ type: "line", left: { type: "empty", text: "", lineNo: null }, right: { type: "added", text: "wide line", lineNo: 1 } })) }],
   });
   const lineContent = (props, count = 1) => render(count, props).props.children[1][0].props.children[3].props.children;
   const highlightProps = { language: "typescript", prismReady: true, isDark: true, palette: "claude", wrapLines: true };
+  const wide = render(1, { ...highlightProps, split: true, wrapLines: false });
+  assert.equal(wide.props.style.width, "100%");
+  const [filler, addition] = wide.props.children[1][0].props.children;
+  assert.equal(filler.props.children[0].props.children, null);
+  assert.equal(addition.props.children[0].props.children, 1);
+  assert.equal(addition.props.children[3].props.children.props.wrapLines, true);
   assert.equal(lineContent(highlightProps).type, "highlighted-code");
   assert.equal(lineContent(highlightProps).props.wrapLines, true);
   for (const props of [{ ...highlightProps, prismReady: false }, { ...highlightProps, language: "text" }, { ...highlightProps, patch: "x".repeat(128 * 1024 + 1) }, { ...highlightProps, patch: "中".repeat(50_000) }]) {
