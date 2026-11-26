@@ -6,9 +6,23 @@ const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8"
 const menuSource = await readFile(new URL("./SessionMenu.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-test("keeps session actions inline at every mobile width", () => {
+test("phone top bar holds the menu button, title, Changes N and the session menu; outline and Files move into the menu", async () => {
   const toolbar = mobileToolbarSource();
-  assert.match(toolbar, /\{renderChatToolbarActions\(true\)\}[\s\S]*?\{renderMainFileToggle\(true\)\}/);
+  const title = toolbar.indexOf('className="mobile-top-bar-title"');
+  const changes = toolbar.indexOf("<ChangesButton");
+  const actions = toolbar.indexOf("{renderChatToolbarActions(true)}");
+  assert.ok(title >= 0 && title < changes && changes < actions);
+  assert.doesNotMatch(toolbar, /renderMainFileToggle/);
+  // Changes N is fetched on phones too, on the same triggers as desktop.
+  assert.match(source, /const gitChangeCwdKey = \[\.\.\.new Set\(\[/);
+  assert.doesNotMatch(source, /const gitChangeCwdKey = isMobile/);
+  assert.match(source, /onOpenOutline=\{mobile \? \(\) => toggleTopPanel\("outline"\) : undefined\}/);
+  assert.match(source, /onOpenFiles=\{mobile && filesCwd \? \(\) => handleRevealCwdInFiles\(filesCwd\) : undefined\}/);
+  assert.match(menuSource, /\{onOpenOutline && \([\s\S]*?data-top-panel-trigger="outline"/);
+  // The closed drawer's menu button carries a dot while a session waits or failed.
+  assert.match(source, /const menuNeedsYou = isMobile && !sidebarOpen && hasBlockedSession\(sessionMarkers\)/);
+  assert.match(source, /\{menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" \/>\}/);
+  assert.match(cssSource, /\.mobile-menu-dot \{[\s\S]*?width: 6px;[\s\S]*?background: var\(--warning\);/);
   assert.doesNotMatch(source, /useIsNarrowMobile|mobileToolbarMoreOpen|data-mobile-toolbar-more|data-mobile-toolbar-actions/);
 });
 
@@ -37,7 +51,7 @@ test("closes shared top panels consistently and restores their trigger on Escape
   assert.match(source, /find\(\(candidate\) => !candidate\.closest\("\[inert\]"\)\)/);
   assert.match(source, /event\.stopPropagation\(\);\s*closeTopPanel\(true\)/);
   assert.match(source, /data-top-panel-trigger="session"/);
-  assert.match(source, /data-top-panel-trigger="outline"/);
+  assert.match(menuSource, /data-top-panel-trigger="outline"/);
   assert.match(source, /id="workspace-top-panel"/);
 });
 
@@ -200,12 +214,12 @@ test("mobile toolbar packs its whole group at the right end, fixed tools last", 
   assert.match(toolbar, /justifyContent: "flex-end"/);
   const fileToggle = functionSource("renderMainFileToggle", "const sidebarToggleButton");
   assert.doesNotMatch(fileToggle, /marginLeft/);
-  // Conditional tools (back, agents, branches) come first and grow leftwards; outline, menu, files never move.
+  // Conditional tools (back, agents, branches) come first and grow leftwards; the menu never moves.
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
+  assert.doesNotMatch(actions, /data-mobile-toolbar-action="outline"/);
   const order = [
     'data-mobile-toolbar-action={mobile ? "agents"',
     'data-mobile-toolbar-action="branches"',
-    'data-mobile-toolbar-action="outline"',
     "<SessionMenu",
   ].map((needle) => actions.indexOf(needle));
   assert.ok(order.every((index) => index >= 0));

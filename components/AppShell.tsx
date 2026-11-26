@@ -40,6 +40,7 @@ import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
 import { ChangesButton, SessionContextButton } from "./TopBarContext";
+import { hasBlockedSession } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView } from "./PanelViews";
 import type { FileExplorerHandle } from "./FileExplorer";
 import type { GitStatusResponse } from "@/lib/git-types";
@@ -256,6 +257,7 @@ export function AppShell() {
     forCwd: string;
     projectRoot: string;
     currentWorktreePath: string | null;
+    isTopLevel?: boolean;
     worktrees: { path: string; branch: string | null; isMain: boolean }[];
   } | null>(null);
   const sessionsWithSelection = useMemo(() => {
@@ -312,6 +314,8 @@ export function AppShell() {
   );
   const [initialCwdError, setInitialCwdError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // A worktree created or removed on the new-session page: the sidebar reloads its worktree list.
+  const bumpSidebarRefresh = useCallback(() => setRefreshKey((key) => key + 1), []);
   const [sessionKey, setSessionKey] = useState(0);
   const sessionScrollPositionsRef = useRef(new Map<string, ChatScrollPosition>());
   const handleSessionScrollPositionChange = useCallback((sessionId: string, position: ChatScrollPosition) => {
@@ -795,7 +799,9 @@ export function AppShell() {
         ? anchor
         : [...document.querySelectorAll<HTMLElement>(`[data-top-panel-trigger="${panel}"]`)]
           .find((candidate) => !candidate.closest("[inert]"));
-      (trigger ?? sidebarToggleRef.current)?.focus();
+      // Phones open the outline from the ⋯ menu, whose item is gone by now.
+      const menu = panel === "outline" ? document.querySelector<HTMLElement>("[data-session-menu-trigger]") : null;
+      (trigger ?? menu ?? sidebarToggleRef.current)?.focus();
     });
   }, [activeTopPanel]);
 
@@ -910,7 +916,8 @@ export function AppShell() {
 
   const closeRightPanel = useCallback((restoreFocus = false) => {
     setRightPanelOpen(false);
-    if (restoreFocus) requestAnimationFrame(() => filePanelToggleRef.current?.focus());
+    // Phones have no panel toggle in the chat bar: ⋯ (Files) is the way back.
+    if (restoreFocus) requestAnimationFrame(() => (filePanelToggleRef.current ?? document.querySelector<HTMLElement>("[data-session-menu-trigger]"))?.focus());
   }, []);
 
   useEffect(() => {
@@ -1841,7 +1848,7 @@ export function AppShell() {
   // "Changes N" in the top bar: uncommitted files per shown session cwd, also with the file panel
   // closed. Refreshed on the explorer's existing triggers (run end, writes, focus), never polled.
   const [gitChangeCounts, setGitChangeCounts] = useState<Record<string, number>>({});
-  const gitChangeCwdKey = isMobile ? "" : [...new Set([
+  const gitChangeCwdKey = [...new Set([
     selectedSession?.transient ? null : selectedSession?.cwd,
     ...(isSplitActive ? [primaryTab, secondaryTab] : []).map((tab) => tab?.kind === "session" && !tab.session?.transient ? tab.session?.cwd : null),
   ].filter((cwd): cwd is string => Boolean(cwd)))].join("\n");
@@ -2143,7 +2150,9 @@ export function AppShell() {
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
   }, [activeChatPane, activeCwd, chatTabs, isSplitActive, primaryTab, router, secondaryTab, translate]);
 
-  const handleDraftCwdChange = useCallback(async (draftKey: string | null, cwd: string) => {
+  // `opened` (Open folder… on the new-session page) also lists the folder as a project, like the
+  // sidebar's former Add project: it stays as an empty project row until its first chat.
+  const handleDraftCwdChange = useCallback(async (draftKey: string | null, cwd: string, opened = false) => {
     const res = await fetch("/api/cwd/validate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2153,6 +2162,10 @@ export function AppShell() {
     if (!res.ok || !data.cwd) throw new Error(data.error ?? `HTTP ${res.status}`);
     const nextCwd = data.cwd;
     const projectKey = data.projectKey ?? data.projectRoot ?? nextCwd;
+    if (opened) {
+      const root = data.projectRoot ?? nextCwd;
+      handleUpdatePinnedCwds((paths) => paths.includes(root) ? paths : [...paths, root]);
+    }
     if (draftKey) {
       setChatTabs((tabs) => tabs.map((tab) => (
         tab.kind === "draft" && tab.newSessionDraftKey === draftKey
@@ -2165,7 +2178,7 @@ export function AppShell() {
       setNewSessionCwd(nextCwd);
       setActiveCwd(nextCwd);
     }
-  }, []);
+  }, [handleUpdatePinnedCwds]);
 
   const handleToggleSplit = useCallback(() => {
     if (splitChatTabId) {
@@ -2456,8 +2469,9 @@ export function AppShell() {
         onDraftChange={handleDraftChange}
         onKeepTabOpen={promotePreviewSession}
         onNewSessionCwdChange={!tabSession && effectiveCwd
-          ? (cwd) => handleDraftCwdChange(effectiveDraftKey, cwd)
+          ? (cwd, opened) => handleDraftCwdChange(effectiveDraftKey, cwd, opened)
           : undefined}
+        onWorktreesChanged={bumpSidebarRefresh}
         projectPaths={projectPaths}
         projectNameByRoot={projectNameByRoot}
         worktreeInfo={worktreeInfo}
@@ -2637,6 +2651,25 @@ export function AppShell() {
   }, [focusedDraftKey, isMobile]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
+
+  // The new-session page shows no file panel: entering it folds an open panel, leaving it opens the
+  // panel again. Opening it on the page still works, and then leaving keeps it (docs/ui.md, File panel).
+  const onNewSessionPage = mainView === "chat" && selectedSession === null && effectiveNewSessionCwd !== null && !isSplitActive;
+  const panelBeforeNewPageRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (onNewSessionPage) {
+      if (panelBeforeNewPageRef.current !== null) return;
+      panelBeforeNewPageRef.current = false;
+      // Read through the updater: a same-commit restore from sessionStorage must count as open.
+      setRightPanelOpen((open) => {
+        panelBeforeNewPageRef.current = open;
+        return false;
+      });
+    } else if (panelBeforeNewPageRef.current !== null) {
+      if (panelBeforeNewPageRef.current) setRightPanelOpen(true);
+      panelBeforeNewPageRef.current = null;
+    }
+  }, [onNewSessionPage]);
 
   useEffect(() => {
     setProjectTrust(null);
@@ -2864,6 +2897,7 @@ export function AppShell() {
     const branchData = getBranchDataForSession(session);
     const sessionHasBranchesForSession = Boolean(branchData && hasSessionBranches(branchData.tree));
     const toolsUnavailable = mobile && !showChat;
+    const filesCwd = session?.cwd ?? effectiveNewSessionCwd;
     if (!mobile && !showChat) return null;
     if (!mobile && !sessionTools && !hasSubagentSessionsForSession) return null;
     return (
@@ -2974,40 +3008,6 @@ export function AppShell() {
             disabled={!branchData?.onLeafChange}
           />
         ))}
-        {sessionTools && mobile && (
-          <button
-            type="button"
-            onClick={() => toggleTopPanel("outline")}
-            title={translate("chatMinimap.userOutline") || "Outline"}
-            aria-label={translate("chatMinimap.userOutline") || "Outline"}
-            aria-pressed={activeTopPanel === "outline"}
-            aria-expanded={activeTopPanel === "outline"}
-            aria-controls="workspace-top-panel"
-            data-top-panel-trigger="outline"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: activeTopPanel === "outline" ? "var(--bg-selected)" : "none",
-              border: "none",
-              color: activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-              transition: "color var(--motion-fast), background var(--motion-fast)",
-            }}
-            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.color = activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)";
-            }}
-            className="workspace-header-action"
-            data-mobile-toolbar-action="outline"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M9 4v16" />
-              <path d="M15 4v16" />
-              <path d="M4 9h16" />
-              <path d="M4 15h16" />
-            </svg>
-          </button>
-        )}
         {sessionTools && <SessionMenu
           mobile={mobile}
           infoDisabled={toolsUnavailable}
@@ -3026,6 +3026,8 @@ export function AppShell() {
             full: translate("history.full"),
             unsaved: translate("history.unsaved"),
             menu: translate("session.moreActions"),
+            outline: translate("chatMinimap.userOutline"),
+            files: translate("panel.files"),
             exportMarkdown: translate(historyShareReady ? "history.exportMarkdownShare" : "history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
             fork: translate("session.fork"),
@@ -3035,6 +3037,8 @@ export function AppShell() {
             cacheKeepaliveNext: (time) => translate("session.cacheKeepaliveNext", { time }),
           }}
           onMenuOpenChange={handleHistoryMenuOpenChange}
+          onOpenOutline={mobile ? () => toggleTopPanel("outline") : undefined}
+          onOpenFiles={mobile && filesCwd ? () => handleRevealCwdInFiles(filesCwd) : undefined}
           infoPending={infoPending}
           onOpenTools={() => void openInfoDialog("tools")}
           onOpenSystem={() => void openInfoDialog("system")}
@@ -3130,15 +3134,18 @@ export function AppShell() {
     );
   };
 
+  // Phones: the closed drawer's ☰ carries a dot while a session waits or failed (docs/ui.md, Top bar).
+  const menuNeedsYou = isMobile && !sidebarOpen && hasBlockedSession(sessionMarkers);
   const sidebarToggleButton = (
       <button
         ref={sidebarToggleRef}
         data-dialog-focus-fallback="true"
         className="workspace-header-action"
         onClick={handleSidebarToggle}
-         title={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
-         aria-label={sidebarOpen ? translate("sidebar.hide") : translate("sidebar.show")}
+         title={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
+         aria-label={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
         style={{
+          position: "relative",
           display: "flex", alignItems: "center", justifyContent: "center",
           width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
           background: "none", border: "none",
@@ -3156,6 +3163,7 @@ export function AppShell() {
             <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         )}
+        {menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" />}
       </button>
   );
 
@@ -3320,8 +3328,12 @@ export function AppShell() {
                 height: "100%",
               }}
             >
+              {/* Phones: ☰, title, Changes N, ⋯ (outline and Files live in ⋯); conditional tools before ⋯. */}
+              <span className="mobile-top-bar-title" title={showChat ? collapsedSessionTitle : undefined}>{showChat ? collapsedSessionTitle : null}</span>
+              {showChat && selectedSession && !selectedSession.transient && (
+                <ChangesButton count={gitChangeCounts[selectedSession.cwd] ?? 0} onClick={() => handleRevealCwdInFiles(selectedSession.cwd, true)} />
+              )}
               {renderChatToolbarActions(true)}
-              {renderMainFileToggle(true)}
             </div>
           )}
           {!isMobile && (isSplitActive ? (

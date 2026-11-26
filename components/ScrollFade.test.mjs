@@ -44,7 +44,8 @@ test("both axes keep an opaque scrollbar strip", () => {
 test("session and file lists opt in without masking the whole sidebar", async () => {
   const sidebar = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
   const panelViews = await readFile(new URL("./PanelViews.tsx", import.meta.url), "utf8");
-  assert.equal((sidebar.match(/className="sidebar-list-scroll scroll-fade-block"/g) ?? []).length, 1);
+  // One per grouping: the projects list and the status list.
+  assert.equal((sidebar.match(/className="sidebar-list-scroll scroll-fade-block"/g) ?? []).length, 2);
   assert.match(sidebar, /ref=\{listScrollRef\}[\s\S]*?className="sidebar-list-scroll scroll-fade-block"/);
   // The file panel's Changes and Files lists.
   assert.equal((panelViews.match(/className="panel-view-scroll scroll-fade-block"/g) ?? []).length, 2);
@@ -58,9 +59,9 @@ test("table frame owns the border, not the masked scroller", () => {
   assert.doesNotMatch(wrap, /border|margin/);
 });
 
-test("menus and the worktree popover portal to body, while the selection bar stays outside masks", async () => {
+test("menus portal to body, while the selection bar stays outside masks", async () => {
   for (const [file, classes] of [
-    ["SessionSidebar.tsx", ["project-context-menu menu-surface", "workspace-worktree-switcher menu-surface"]],
+    ["SessionSidebar.tsx", ["project-context-menu menu-surface"]],
     ["FileExplorer.tsx", ["project-context-menu menu-surface file-context-menu"]],
   ]) {
     const source = await readFile(new URL(file, import.meta.url), "utf8");
@@ -93,8 +94,6 @@ test("menus and the worktree popover portal to body, while the selection bar sta
         if (ts.isJsxElement(parent)) assert.ok(!className(parent)?.includes("scroll-fade-block"));
       }
       assert.match(source, /closest\("\.project-context-menu"\)/);
-      assert.match(source, /!wtMenuRef\.current\?\.contains\(e\.target as Node\)/);
-      assert.match(source, /setWtMenuPosition\(\{ left: row\.left \+ 2, top: row\.bottom \+ 4, width: row\.width - 4 \}\)/);
     } else {
       assert.match(source, /closest\("\.file-context-menu"\)/);
       assert.match(source, /event\.key === "Escape"/);

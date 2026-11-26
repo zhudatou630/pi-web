@@ -12,47 +12,16 @@ test("session clicks only move explorer for a different live worktree", () => {
   assert.doesNotMatch(source, /if \(s\.cwd\) setSelectedCwd\(s\.cwd\)/);
 });
 
-test("active project row owns the only worktree switcher and its full-width menu", () => {
-  assert.doesNotMatch(source, /sidebar-switcher|Workspace context bar/);
-  assert.match(source, /const worktreeSwitcher = showWorktreeSwitcher && worktreeState/);
-  assert.match(source, /\{active \? worktreeSwitcher : null\}/);
-  assert.match(source, /className="workspace-worktree-switcher"/);
-  assert.match(source, /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*const row = event\.currentTarget\.closest\("\.workspace-list-row"\)!\.getBoundingClientRect\(\)/);
-  assert.match(source, /onTouchStart=\{\(event\) => event\.stopPropagation\(\)\}/);
-  assert.match(
-    source,
-    /\{wtDropdownOpen && wtMenuPosition && createPortal\([\s\S]*?className="workspace-worktree-switcher menu-surface"[\s\S]*?position: "fixed",[\s\S]*?\.\.\.wtMenuPosition/,
-  );
-  assert.match(source, /setWtMenuPosition\(\{ left: row\.left \+ 2, top: row\.bottom \+ 4, width: row\.width - 4 \}\)/);
-});
-
-test("worktree menu keeps filtering, creation, removal, dirty confirmation, and errors", () => {
-  assert.match(source, /const showWtFilter = worktreeState\.worktrees\.length >= 8/);
-  assert.match(source, /placeholder=\{t\("sidebar\.filterWorktrees"\)\}/);
-  assert.match(source, /void handleCreateWorktree\(\)/);
-  assert.match(source, /void handleRemoveWorktree\(wt\.path, false\)/);
-  assert.match(source, /void handleRemoveWorktree\(wt\.path, true\)/);
-  assert.match(source, /wtConfirmRemove === wt\.path/);
-  assert.match(source, /\{wtError && \(/);
-});
-
-test("project branch label appears once without a redundant main label", () => {
-  assert.match(source, /const branchLabel = currentWorktree/);
-  assert.doesNotMatch(source, /currentWorktree\?\.isMain && \(/);
-  assert.match(
-    source,
-    /wt\.isMain && \(wt\.branch \?\? ""\)\.toLowerCase\(\) !== t\("sidebar\.main"\)\.toLowerCase\(\)/,
-  );
-});
-
-test("uses the server-resolved current worktree identity", () => {
-  assert.match(source, /currentWorktreePath: string \| null/);
-  assert.match(
-    source,
-    /const currentWorktree =[\s\S]*?worktreeState\.currentWorktreePath[\s\S]*?worktree\.path === worktreeState\.currentWorktreePath/,
-  );
-  assert.match(source, /if \(currentWorktreePath === path\) setSelectedCwd\(worktreeState\.projectRoot\)/);
-  assert.doesNotMatch(source, /const isCurrent = wt\.path === selectedCwd/);
+test("the sidebar has no worktree switcher: switching, creating and removing live in the new-session page", async () => {
+  assert.doesNotMatch(source, /sidebar-switcher|Workspace context bar|workspace-worktree-switcher|worktreeSwitcher|handleCreateWorktree|handleRemoveWorktree/);
+  const chat = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
+  const control = chat.slice(chat.indexOf("function NewSessionCwdControl"), chat.indexOf("function hasSameTranscriptIdentity"));
+  assert.match(control, /removeWorktree\(wt\.path, false\)/);
+  assert.match(control, /removeWorktree\(wt\.path, true\)/);
+  assert.match(control, /confirmRemove === wt\.path/);
+  assert.match(control, /if \(data\.dirty && !force\) \{\s*setConfirmRemove\(path\);/);
+  // Removing the checkout in use moves the draft to the project's main checkout.
+  assert.match(control, /const nextCwd = path === currentWorktree\?\.path \? info\.projectRoot : cwd;/);
 });
 
 test("projects section owns workspace sessions and new-session actions", () => {
@@ -60,9 +29,9 @@ test("projects section owns workspace sessions and new-session actions", () => {
   assert.ok(source.includes("{/* Projects and their sessions */}"));
   assert.match(source, /createSessionForCwd\(workspaceCwd\)/);
   assert.match(source, /const workspaceCwd = active && selectedCwd \? selectedCwd : row\.cwd/);
-  assert.match(source, /sidebar\.openProjectExplorer/);
-  assert.match(source, /onShowFiles\?\.\(workspaceCwd\)/);
-  assert.match(source, /sidebar\.addProject/);
+  // Show in Files is the project menu's; the row's only hover action is New session.
+  assert.doesNotMatch(source, /sidebar\.openProjectExplorer|workspace-explorer/);
+  assert.match(source, /onShowFiles\?\.\(projectMenu\.cwd\)/);
   assert.doesNotMatch(source, /dropdownProjectRows/);
   assert.match(source, /const \[projectsOpen, setProjectsOpen\]/);
   assert.doesNotMatch(source, /chatsOpen|setChatsOpen/);
@@ -73,11 +42,11 @@ test("projects section owns workspace sessions and new-session actions", () => {
   assert.doesNotMatch(source, /inactiveWorktreeSelector/);
 });
 
-test("single-project mode lists only the current project and switches via the dropdown", () => {
+test("single-project mode lists only the current project and switches from its row", () => {
   assert.match(source, /isSidebarSingleProject\(\)/);
   assert.match(source, /workspaceProjects\.filter\(\(project\) => project\.key === \(selectedProject \?\? workspaceProjects\[0\]\)\?\.key\)/);
   assert.match(source, /families, selecting \|\| singleProject \? Infinity : WORKSPACE_SESSION_PREVIEW_LIMIT/);
-  assert.match(source, /singleProject \? "sidebar\.switchProject" : "sidebar\.addProject"/);
+  assert.match(source, /if \(singleProject\) \{\s*setDropdownOpen\(\(open\) => !open\);\s*return;/);
   assert.match(source, /onClick=\{\(\) => \{ setSelectedCwd\(project\.root\); setDropdownOpen\(false\); \}\}/);
   assert.match(source, /otherProjectActivity\.running > 0/);
 });
@@ -96,8 +65,7 @@ test("single-project switcher navigates without destructive shortcuts", () => {
   assert.doesNotMatch(dropdown, /setDeleteConfirm|sidebar\.delete/);
 });
 
-test("opening the worktree menu reloads the list; a refused linked checkout falls back to its project", () => {
-  assert.match(source, /if \(!wtDropdownOpen\) setWtRefreshKey\(\(k\) => k \+ 1\);\s*setWtDropdownOpen\(\(v\) => !v\)/);
+test("a refused linked checkout falls back to its project", () => {
   assert.match(source, /previous\?\.worktrees\.some\(\(w\) => !w\.isMain && w\.path === known\)\) setSelectedCwd\(previous\.projectRoot\)/);
   assert.match(source, /if \(status === 403\) refused\(\);\s*else setWorktreeState\(null\);/);
 });

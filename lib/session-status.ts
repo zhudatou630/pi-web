@@ -15,6 +15,11 @@ export function mostUrgentStatus(statuses: Iterable<SessionStatus | null | undef
   return PRIORITY[best] ?? null;
 }
 
+/** The phone's ☰ carries a dot while any session waits for input or has an unseen error. */
+export function hasBlockedSession(markers: { awaitingInput: ReadonlySet<string>; error: ReadonlySet<string> }): boolean {
+  return markers.awaitingInput.size > 0 || markers.error.size > 0;
+}
+
 export interface SessionLastError {
   /** Timestamp of the failed assistant message (server clock, like the shared readAt). */
   at: number;

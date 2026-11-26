@@ -26,8 +26,9 @@ import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { SessionSearch } from "./SessionSearch";
 import { SubagentIcon } from "./SubagentIcon";
-import { iconStroke } from "./iconStroke";
 import { MenuCheck } from "./MenuCheck";
+import { useMenuDismiss } from "@/hooks/useMenuDismiss";
+import { groupByStatus, parseSidebarGrouping, readAllTargets, SIDEBAR_GROUPING_STORAGE_KEY, type SidebarGrouping } from "@/lib/sidebar-grouping";
 
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
@@ -36,6 +37,8 @@ const SESSION_LIST_ITEM_HEIGHT = 26;
 const MENU_ROW_HEIGHT = 26;
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
 const WORKSPACE_SESSION_PAGE_SIZE = 20;
+/** Show-more window of the status grouping's RECENT section. */
+const RECENT_LIMIT_KEY = "status:recent";
 
 export function sessionRevealScrollTop(index: number, scrollTop: number, viewportHeight: number): number {
   const top = index * SESSION_LIST_ITEM_HEIGHT;
@@ -171,10 +174,6 @@ function ProjectDragGhost({ drag, label, dropdown = false }: {
   </div>, document.body);
 }
 
-function ArchiveIcon() {
-  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="4" rx="1" /><path d="M5 7v13h14V7M10 12h4" /></svg>;
-}
-
 interface Props {
   selectedSessionId: string | null;
   visibleSessionIds?: readonly string[];
@@ -215,6 +214,7 @@ interface Props {
     forCwd: string;
     projectRoot: string;
     currentWorktreePath: string | null;
+    isTopLevel: boolean;
     worktrees: { path: string; branch: string | null; isMain: boolean }[];
   } | null) => void;
   /** The file panel shows `cwd` (reveal, Changes N, worktree switch): the selected project follows. */
@@ -280,6 +280,23 @@ function saveExpandedWorkspaceKeys(keys: Set<string>): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(WORKSPACE_EXPANSION_STORAGE_KEY, JSON.stringify([...keys]));
+  } catch {
+    // Persistence is best-effort.
+  }
+}
+
+function loadSidebarGrouping(): SidebarGrouping {
+  if (typeof window === "undefined") return "project";
+  try {
+    return parseSidebarGrouping(window.localStorage.getItem(SIDEBAR_GROUPING_STORAGE_KEY));
+  } catch {
+    return "project";
+  }
+}
+
+function saveSidebarGrouping(grouping: SidebarGrouping): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_GROUPING_STORAGE_KEY, grouping);
   } catch {
     // Persistence is best-effort.
   }
@@ -386,25 +403,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
   const [homeDir, setHomeDir] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [wtFilter, setWtFilter] = useState("");
   const [customPathOpen, setCustomPathOpen] = useState(false);
   const [customPathValue, setCustomPathValue] = useState(loadLastCustomCwd);
   const [customPathError, setCustomPathError] = useState<string | null>(null);
   const [customPathValidating, setCustomPathValidating] = useState(false);
   const [validatedProject, setValidatedProject] = useState<ValidatedProject | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  // Worktree switcher state
+  // Worktrees of the selected cwd's project: project identity and the pickers outside the sidebar.
   const [worktreeState, setWorktreeState] = useState<WorktreeState | null>(null);
-  const [wtDropdownOpen, setWtDropdownOpen] = useState(false);
-  const [wtNewOpen, setWtNewOpen] = useState(false);
-  const [wtNewBranch, setWtNewBranch] = useState("");
-  const [wtError, setWtError] = useState<string | null>(null);
-  const [wtBusy, setWtBusy] = useState(false);
-  const [wtConfirmRemove, setWtConfirmRemove] = useState<string | null>(null);
-  const wtDropdownRef = useRef<HTMLDivElement>(null);
-  const wtMenuRef = useRef<HTMLDivElement>(null);
-  const [wtMenuPosition, setWtMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
-  const wtNewInputRef = useRef<HTMLInputElement>(null);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [expandedWorkspaceKeys, setExpandedWorkspaceKeys] = useState<Set<string> | null>(loadExpandedWorkspaceKeys);
@@ -421,6 +427,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   const sessionSearchActive = sessionSearchOpen && Boolean(sessionSearchQuery.trim());
+  // Server and first client render agree on "project"; the stored choice lands before paint.
+  const [grouping, setGrouping] = useState<SidebarGrouping>("project");
+  useLayoutEffect(() => setGrouping(loadSidebarGrouping()), []);
+  // The archive always lists by project.
+  const statusView = grouping === "status" && !archiveView;
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
+  useMenuDismiss(filterOpen, filterMenuRef, useCallback(() => setFilterOpen(false), []));
   useEffect(() => {
     if (explorerReveal) setSelectedCwd(explorerReveal.cwd);
   }, [explorerReveal]);
@@ -520,7 +534,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const handleListScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setSessionMenu(null);
     setProjectMenu(null);
-    setWtDropdownOpen(false);
     const top = e.currentTarget.scrollTop;
     if (listScrollRafRef.current != null) return;
     listScrollRafRef.current = requestAnimationFrame(() => {
@@ -563,7 +576,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     setListViewportH(el.clientHeight);
     setListScrollTop(el.scrollTop);
     return () => ro.disconnect();
-  }, [sessionSearchActive, projectsOpen]);
+  }, [sessionSearchActive, projectsOpen, statusView]);
 
   const loadSessions = useCallback(async (showLoading = false) => {
     const loadId = ++sessionLoadIdRef.current;
@@ -1031,7 +1044,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   }, [selectedCwdProp]);
 
   // Load worktrees for the current effective cwd
-  const [wtRefreshKey, setWtRefreshKey] = useState(0);
   const worktreeStateRef = useRef(worktreeState);
   useEffect(() => { worktreeStateRef.current = worktreeState; }, [worktreeState]);
   useLayoutEffect(() => {
@@ -1070,7 +1082,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         if (!cancelled) setWorktreeState(null);
       });
     return () => { cancelled = true; };
-  }, [selectedCwd, wtRefreshKey, refreshKey]);
+  }, [selectedCwd, refreshKey]);
 
   useEffect(() => {
     if (!onWorktreeInfoChange) return;
@@ -1082,6 +1094,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       forCwd: worktreeState.forCwd,
       projectRoot: worktreeState.projectRoot,
       currentWorktreePath: worktreeState.currentWorktreePath,
+      isTopLevel: worktreeState.isTopLevel,
       worktrees: worktreeState.worktrees,
     });
   }, [worktreeState, onWorktreeInfoChange]);
@@ -1112,18 +1125,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       if (projects.length > 0) setSelectedCwd(projects[0].root);
     }
   }, [allSessions, listedSessions, projectOrder, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession]);
-
-  // Prefer an exact UI selection while a refetch is in flight. Once the
-  // response catches up, the server-resolved path handles Windows case and
-  // separator differences without teaching the browser OS path semantics.
-  const currentWorktree = worktreeState
-    ? worktreeState.worktrees.find((worktree) => worktree.path === selectedCwd)
-      ?? (worktreeState.forCwd === selectedCwd && worktreeState.currentWorktreePath
-        ? worktreeState.worktrees.find((worktree) => worktree.path === worktreeState.currentWorktreePath)
-        : undefined)
-      ?? worktreeState.worktrees.find((worktree) => worktree.isMain)
-    : undefined;
-  const currentWorktreePath = currentWorktree?.path ?? null;
 
   const commitCustomPath = useCallback(async (candidate?: string) => {
     const path = (candidate ?? customPathValue).trim();
@@ -1172,96 +1173,15 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     setDropdownOpen(false);
   }, []);
 
-  const handleCreateWorktree = useCallback(async () => {
-    const branch = wtNewBranch.trim();
-    if (!branch || wtBusy || !worktreeState) return;
-    setWtBusy(true);
-    setWtError(null);
-    try {
-      const res = await fetch("/api/worktrees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: worktreeState.projectRoot, branch }),
-      });
-      const data = await res.json().catch(() => ({})) as { path?: string; error?: string };
-      if (!res.ok || data.error || !data.path) {
-        setWtError(data.error ?? `HTTP ${res.status}`);
-        return;
-      }
-      setWtNewOpen(false);
-      setWtNewBranch("");
-      setWtDropdownOpen(false);
-      // Optimistically register the new worktree so projectFor() resolves
-      // it to the main repo before the refetch lands (keeps AppShell from
-      // treating the new cwd as a different project).
-      setWorktreeState((prev) => prev ? {
-        ...prev,
-        forCwd: data.path!,
-        currentWorktreePath: data.path!,
-        worktrees: [...prev.worktrees, { path: data.path!, branch, isMain: false }],
-      } : prev);
-      setSelectedCwd(data.path);
-      setWtRefreshKey((k) => k + 1);
-    } catch (e) {
-      setWtError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setWtBusy(false);
-    }
-  }, [wtNewBranch, wtBusy, worktreeState]);
-
-  const handleRemoveWorktree = useCallback(async (path: string, force: boolean) => {
-    if (!worktreeState || wtBusy) return;
-    setWtBusy(true);
-    setWtError(null);
-    try {
-      const res = await fetch("/api/worktrees", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: worktreeState.projectRoot, path, force }),
-      });
-      const data = await res.json().catch(() => ({})) as { error?: string; dirty?: boolean };
-      if (!res.ok) {
-        if (data.dirty && !force) {
-          // Dirty worktree — ask the user to confirm a force removal
-          setWtConfirmRemove(path);
-          return;
-        }
-        setWtError(data.error ?? `HTTP ${res.status}`);
-        return;
-      }
-      setWtConfirmRemove(null);
-      if (currentWorktreePath === path) setSelectedCwd(worktreeState.projectRoot);
-      setWtRefreshKey((k) => k + 1);
-    } catch (e) {
-      setWtError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setWtBusy(false);
-    }
-  }, [worktreeState, wtBusy, currentWorktreePath]);
-
   // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
       }
-      if (wtDropdownRef.current && !wtDropdownRef.current.contains(e.target as Node)
-        && !wtMenuRef.current?.contains(e.target as Node)) {
-        setWtDropdownOpen(false);
-        setWtNewOpen(false);
-        setWtNewBranch("");
-        setWtError(null);
-        setWtConfirmRemove(null);
-        setWtFilter("");
-      }
     };
-    const closeWorktreeMenu = () => setWtDropdownOpen(false);
     document.addEventListener("mousedown", handler);
-    window.addEventListener("resize", closeWorktreeMenu);
-    return () => {
-      document.removeEventListener("mousedown", handler);
-      window.removeEventListener("resize", closeWorktreeMenu);
-    };
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   // Clicking a session only moves Explorer when that session lives in a
@@ -1548,13 +1468,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     }
   }, [loadSessions, onSessionDeleted, t]);
 
-  const showWorktreeSwitcher = Boolean(
-    worktreeState?.isGit
-    && worktreeState.isTopLevel
-    && selectedCwd
-    && selectedProject?.key === worktreeState.projectKey
-  );
-
   const workspaceRows = useMemo<WorkspaceRow[]>(() => {
     const rows: WorkspaceRow[] = [];
     const expanded = expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys;
@@ -1608,6 +1521,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     ? workspaceRows.flatMap((row) => row.kind === "workspace" ? [row.project.key] : [])
     : [];
 
+  const canCollapseAll = !statusView && !singleProject && (archiveView
+    ? archiveProjectKeys.some((key) => expandedArchiveProjectKeys.has(key))
+    : workspaceProjects.some((project) => (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(project.key)));
+
   const projectDragBlocks = useMemo(() => {
     const blocks: ProjectDragBlock[] = [];
     workspaceRows.forEach((row, index) => {
@@ -1619,7 +1536,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     return blocks;
   }, [workspaceRows]);
   const projectDrag = useProjectDrag({
-    enabled: !loading && projectsOpen && !sessionSearchActive,
+    enabled: !loading && projectsOpen && !sessionSearchActive && !statusView,
     allowDrag: !archiveView && !singleProject && !selection,
     blocks: projectDragBlocks, scrollRef: listScrollRef, innerRef: listInnerRef,
     onMove: (key, anchor, position) => {
@@ -1664,6 +1581,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       if (!list || !list.clientHeight) return;
       const index = pinnedFamilies.findIndex((item) => item.root.id === family.root.id);
       list.scrollTop = sessionRevealScrollTop(index, list.scrollTop, list.clientHeight);
+    } else if (statusView) {
+      const row = listScrollRef.current?.querySelector(`[data-family-id="${CSS.escape(family.root.id)}"]`);
+      if (!row) return;
+      row.scrollIntoView({ block: "nearest" });
     } else {
       if (!projectsOpen) { setProjectsOpen(true); return; }
       if (singleProject && selectedProject?.key !== projectKey) { setSelectedCwd(family.root.cwd); return; }
@@ -1681,7 +1602,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       setListScrollTop(list.scrollTop);
     }
     openRevealRef.current.done = true;
-  }, [selectedSessionId, loading, sessionListVersion, sessionSearchActive, selectionProjectKey, allFamilies, archivedMemberIds, archiveView, pinnedFamilies, pinnedOpen, projectsOpen, singleProject, selectedProject, expandedArchiveProjectKeys, expandedWorkspaceKeys, defaultExpandedWorkspaceKeys, workspaceRows, listViewportH]);
+  }, [selectedSessionId, loading, sessionListVersion, sessionSearchActive, selectionProjectKey, allFamilies, archivedMemberIds, archiveView, pinnedFamilies, pinnedOpen, projectsOpen, singleProject, selectedProject, expandedArchiveProjectKeys, expandedWorkspaceKeys, defaultExpandedWorkspaceKeys, workspaceRows, listViewportH, statusView]);
 
   const pinnedActivity = useMemo(() => [...getProjectActivity(
     pinnedFamilies.flatMap((family) => [family.root, ...family.subagents]),
@@ -1694,6 +1615,67 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     keepalive: total.keepalive + activity.keepalive,
   }), { running: 0, awaiting: 0, unread: 0, error: 0, keepalive: 0 }), [pinnedFamilies, activeSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, erroredSessionIds]);
 
+  // Grouped by status: every project's unpinned, unarchived families (docs/ui.md, Sidebar top row).
+  const statusGroups = useMemo(() => {
+    if (!statusView) return null;
+    const familyStatus = (family: SessionFamily) => {
+      const members = [family.root, ...family.subagents];
+      return sessionStatus({
+        awaiting: members.some((session) => awaitingInputSessionIds.has(session.id)),
+        error: erroredSessionIds.has(family.root.id),
+        unread: members.some((session) => unreadSessionIds.has(session.id)),
+        running: members.some((session) => activeSessionIds.has(session.id)),
+      });
+    };
+    const families = allFamilies.filter((family) => !pinnedSessionIds.includes(family.root.id) && !archivedMemberIds.has(family.root.id));
+    const groups = groupByStatus(families, familyStatus, (family) => Date.parse(family.latestModified) || 0);
+    const limit = workspaceSessionLimits[RECENT_LIMIT_KEY] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
+    const recent = previewSessionFamilies(groups.recent, WORKSPACE_SESSION_PREVIEW_LIMIT, Math.max(0, limit - WORKSPACE_SESSION_PREVIEW_LIMIT),
+      new Set(selectedSessionId ? [selectedSessionId] : []), WORKSPACE_SESSION_PAGE_SIZE);
+    return {
+      sections: [
+        { key: "sidebar.groupNeedsYou", families: groups.needsYou, count: groups.needsYou.length },
+        { key: "sidebar.groupRunning", families: groups.running, count: groups.running.length },
+        { key: "sidebar.groupRecent", families: recent.visible, count: groups.recent.length },
+      ].filter((section) => section.count > 0),
+      recentRemaining: groups.recent.length - recent.visible.length,
+      recentRevealed: recent.revealed,
+      recentNextLimit: WORKSPACE_SESSION_PREVIEW_LIMIT + recent.nextShown,
+    };
+  }, [statusView, allFamilies, pinnedSessionIds, archivedMemberIds, awaitingInputSessionIds, erroredSessionIds, unreadSessionIds, activeSessionIds, workspaceSessionLimits, selectedSessionId]);
+  // Rows of another project name it before the time; the selected project's need not.
+  const otherProjectLabel = (family: SessionFamily) => {
+    const key = workspaceKeyOf(family.root);
+    return key === selectedProject?.key ? undefined : projectNames.get(key) ?? getFileName(family.root.projectRoot ?? family.root.cwd);
+  };
+
+  // Same as each row's Mark as read: the next polls write the shared readAt, errors included.
+  const markAllRead = () => {
+    const targets = readAllTargets(allFamilies, unreadSessionIds, erroredSessionIds, readSnapshotRef.current.serverNow);
+    for (const [id, at] of targets) manualReadIdsRef.current.set(id, at);
+    const erroredReads = Object.fromEntries([...targets].filter(([id]) => erroredSessionIds.has(id)));
+    setSharedReadAt((current) => current && ({ ...current, ...erroredReads }));
+    const memberIds = new Set(allFamilies.filter((family) => targets.has(family.root.id)).flatMap((family) => [family.root.id, ...family.subagents.map((session) => session.id)]));
+    setUnreadMarks((current) => {
+      const next = new Map([...current].filter(([id]) => !memberIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  };
+  const chooseGrouping = (next: SidebarGrouping) => {
+    setFilterOpen(false);
+    if (next === grouping) return;
+    setGrouping(next);
+    saveSidebarGrouping(next);
+    // Selecting acts on one project's rows, which the status grouping does not show.
+    setSelection(null);
+    setDeleteConfirm(null);
+  };
+  const startNewSession = () => {
+    const cwd = selectedCwd ?? workspaceProjects[0]?.root;
+    if (cwd) createSessionForCwd(cwd);
+    else handleCustomPathClick();
+  };
+
   const virtualIndices = getSessionListIndices(
     workspaceRows.length,
     listScrollTop,
@@ -1702,292 +1684,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     workspaceRows.findIndex((row) => row.kind === "workspace" && row.project.key === renamingProjectKey),
   );
 
-  const worktreeSwitcher = showWorktreeSwitcher && worktreeState ? (() => {
-              const showWtFilter = worktreeState.worktrees.length >= 8;
-              const visibleWorktrees = showWtFilter && wtFilter.trim()
-                ? worktreeState.worktrees.filter((w) =>
-                    (w.branch ?? displayCwd(w.path, homeDir)).toLowerCase().includes(wtFilter.trim().toLowerCase()))
-                : worktreeState.worktrees;
-              const branchLabel = currentWorktree
-                ? (currentWorktree.branch ?? getFileName(currentWorktree.path))
-                : "…";
-              return (
-                  // The project name outranks the branch: the branch absorbs (virtually) all shrinkage
-                  // until its icon + a few chars; 100 still leaked ~1px into the name and ellipsized it.
-                  <div ref={wtDropdownRef} className="workspace-worktree-switcher" style={{ minWidth: 48, maxWidth: "60%", flex: "0 10000 auto" }}>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        const row = event.currentTarget.closest(".workspace-list-row")!.getBoundingClientRect();
-                        setWtMenuPosition({ left: row.left + 2, top: row.bottom + 4, width: row.width - 4 });
-                        // Pick up checkouts an agent or another client added since the last load.
-                        if (!wtDropdownOpen) setWtRefreshKey((k) => k + 1);
-                        setWtDropdownOpen((v) => !v);
-                        setDropdownOpen(false);
-                      }}
-                      onTouchStart={(event) => event.stopPropagation()}
-                      title={currentWorktree ? t("sidebar.switchWorktreeTitle", { path: currentWorktree.path }) : t("sidebar.switchWorktree")}
-                      aria-expanded={wtDropdownOpen}
-                      aria-haspopup="listbox"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        height: 22,
-                        maxWidth: "100%",
-                        minWidth: 0,
-                        padding: "0 4px",
-                        background: wtDropdownOpen ? "var(--bg-hover)" : "none",
-                        border: "none",
-                        borderRadius: 4,
-                        cursor: "pointer",
-                        fontSize: 11,
-                        lineHeight: 1.3,
-                        color: "var(--text-dim)",
-                        textAlign: "left",
-                        overflow: "hidden",
-                        transition: "background var(--motion-fast), color var(--motion-fast)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "var(--bg-hover)";
-                        e.currentTarget.style.color = "var(--text-muted)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!wtDropdownOpen) e.currentTarget.style.background = "none";
-                        e.currentTarget.style.color = "var(--text-dim)";
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-                        <line x1="6" y1="3" x2="6" y2="15" />
-                        <circle cx="18" cy="6" r="3" />
-                        <circle cx="6" cy="18" r="3" />
-                        <path d="M18 9a9 9 0 0 1-9 9" />
-                      </svg>
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          minWidth: 0,
-                          fontSize: 11,
-                        }}
-                      >
-                        {branchLabel}
-                      </span>
-                    </button>
-                    {/* Keep the switcher class so project dragging also ignores portal events. */}
-                    {wtDropdownOpen && wtMenuPosition && createPortal(
-                    <div
-                      ref={wtMenuRef}
-                      role="menu"
-                      className="workspace-worktree-switcher menu-surface"
-                      style={{
-                        position: "fixed",
-                        ...wtMenuPosition,
-                        // Above the mobile drawer (zIndex 200); same layer as .project-context-menu.
-                        zIndex: 1000,
-                      }}
-                    >
-                  {showWtFilter && (
-                    <div style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      height: MENU_ROW_HEIGHT,
-                      padding: "0 8px",
-                      marginBottom: 4,
-                      borderBottom: "1px solid var(--border)",
-                    }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-dim)", flexShrink: 0 }} aria-hidden="true">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                      </svg>
-                      <input
-                        className="sidebar-dropdown-filter-input"
-                        value={wtFilter}
-                        onChange={(e) => setWtFilter(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") {
-                            setWtFilter("");
-                            setWtDropdownOpen(false);
-                          }
-                        }}
-                        placeholder={t("sidebar.filterWorktrees")}
-                        autoFocus
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          fontSize: 12,
-                          fontFamily: "inherit",
-                          padding: "2px 0",
-                          border: "none",
-                          outline: "none",
-                          background: "transparent",
-                          color: "var(--text)",
-                        }}
-                      />
-                      {wtFilter && (
-                        <button
-                          type="button"
-                          onClick={() => setWtFilter("")}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: 14,
-                            height: 14,
-                            padding: 0,
-                            background: "none",
-                            border: "none",
-                            color: "var(--text-dim)",
-                            cursor: "pointer",
-                          }}
-                          title={t("chat.clear")}
-                        >
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <div style={{ maxHeight: "min(40vh, 300px)", overflowY: "auto", scrollbarWidth: "none" }}>
-                    {visibleWorktrees.map((wt) => {
-                      const isCurrent = wt.path === currentWorktreePath;
-                      if (wtConfirmRemove === wt.path) {
-                        return (
-                          <div key={wt.path} className="wt-confirm-row">
-                            <span>{t("sidebar.forceRemoveCheckout")}</span>
-                            <div className="project-confirm-actions">
-                              <button type="button" onClick={() => setWtConfirmRemove(null)}>
-                                {t("sidebar.cancel")}
-                              </button>
-                              <button type="button" className="is-danger" onClick={() => void handleRemoveWorktree(wt.path, true)} disabled={wtBusy}>
-                                {t("sidebar.force")}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={wt.path} className="menu-surface-row">
-                          <button
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={isCurrent}
-                            onClick={() => {
-                              setSelectedCwd(wt.path);
-                              setWtDropdownOpen(false);
-                              setWtError(null);
-                              setWtFilter("");
-                            }}
-                            title={wt.path}
-                            style={{ flex: 1 }}
-                          >
-                            <PathLabel text={wt.branch ?? displayCwd(wt.path, homeDir)} style={{ flex: 1 }} />
-                            {wt.isMain && (wt.branch ?? "").toLowerCase() !== t("sidebar.main").toLowerCase() && (
-                              <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 11 }}>{t("sidebar.main")}</span>
-                            )}
-                            <MenuCheck checked={isCurrent} />
-                          </button>
-                          {/* Every row keeps the trailing slot so checks line up with or without remove. */}
-                          {wt.isMain ? <span className="menu-surface-row-action" aria-hidden="true" /> : (
-                            <button
-                              type="button"
-                              className="menu-surface-row-action is-danger"
-                              onClick={() => void handleRemoveWorktree(wt.path, false)}
-                              disabled={wtBusy}
-                              title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
-                              aria-label={t("sidebar.removeWorktreeTitle", { path: wt.path })}
-                            >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(13)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                <path d="M10 11v6M14 11v6" />
-                                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {showWtFilter && visibleWorktrees.length === 0 && wtFilter.trim() && (
-                      <div style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-dim)" }}>{t("sidebar.noMatchingWorktrees")}</div>
-                    )}
-                  </div>
-
-                  <div role="separator" className="menu-surface-divider" />
-                  {!wtNewOpen ? (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setWtNewOpen(true);
-                        setWtError(null);
-                        setTimeout(() => wtNewInputRef.current?.focus(), 0);
-                      }}
-                      title={t("sidebar.createWorktreeTitle")}
-                    >
-                      <span>{t("sidebar.newWorktree")}</span>
-                    </button>
-                  ) : (
-                    <div style={{ padding: "2px 4px" }}>
-                      <label className="sidebar-search-field">
-                        <input
-                          ref={wtNewInputRef}
-                          value={wtNewBranch}
-                          onChange={(e) => {
-                            setWtNewBranch(e.target.value);
-                            setWtError(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (isImeComposing(e)) return;
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void handleCreateWorktree();
-                            }
-                            if (e.key === "Escape") {
-                              setWtNewOpen(false);
-                              setWtNewBranch("");
-                              setWtError(null);
-                            }
-                          }}
-                          placeholder={t("sidebar.branchName")}
-                          aria-label={t("sidebar.branchName")}
-                        />
-                      </label>
-                      <div className="project-confirm-actions" style={{ marginTop: 4 }}>
-                        <button type="button" onClick={() => { setWtNewOpen(false); setWtNewBranch(""); setWtError(null); }}>
-                          {t("sidebar.cancel")}
-                        </button>
-                        <button type="button" onClick={() => void handleCreateWorktree()} disabled={wtBusy || !wtNewBranch.trim()}>
-                          {wtBusy ? t("sidebar.creating") : t("sidebar.create")}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {wtError && (
-                    <div style={{
-                      padding: "5px 10px 8px",
-                      color: "var(--danger)",
-                      fontSize: 11,
-                      lineHeight: 1.35,
-                      overflowWrap: "anywhere",
-                    }}>
-                      {wtError}
-                    </div>
-                  )}
-                    </div>,
-                    document.body,
-                    )}
-                  </div>
-              );
-            })() : null;
-
-  const renderSessionFamily = (family: SessionFamily, showProject = false) => {
+  const renderSessionFamily = (family: SessionFamily, showProject = false, projectLabel?: string) => {
     const familySessions = [family.root, ...family.subagents];
     const displaySession = family.latestModified === family.root.modified ? family.root : { ...family.root, modified: family.latestModified };
     const pinned = pinnedSessionIds.includes(family.root.id);
@@ -2021,6 +1718,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           forking={forking}
           isPinned={pinned}
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
+          projectLabel={projectLabel}
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
           onToggleRead={() => {
             const errored = erroredSessionIds.has(family.root.id);
@@ -2133,9 +1831,108 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         );
       })()}
 
+      {/* New session, then search and the grouping/filter menu (docs/ui.md, Sidebar top row). */}
+      <div className="sidebar-top-row">
+        <button type="button" className="sidebar-new-session" onClick={startNewSession}>
+          <span className="sidebar-section-gutter">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </span>
+          <span>{t("sidebar.newSession")}</span>
+        </button>
+        <button
+          type="button"
+          className="sidebar-top-icon"
+          onClick={() => {
+            if (selectionBusy) return;
+            setSelection(null);
+            setDeleteConfirm(null);
+            setSessionSearchOpen((open) => {
+              const next = !open;
+              if (next) setProjectsOpen(true);
+              return next;
+            });
+            setDropdownOpen(false);
+          }}
+          title={t("sidebar.toggleSessionSearch")}
+          aria-label={t("sidebar.toggleSessionSearch")}
+          aria-pressed={sessionSearchOpen}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+          </svg>
+        </button>
+        <div ref={filterMenuRef} className="sidebar-filter">
+          <button
+            type="button"
+            className="sidebar-top-icon"
+            onClick={() => setFilterOpen((open) => !open)}
+            title={t("sidebar.filterMenu")}
+            aria-label={t("sidebar.filterMenu")}
+            aria-haspopup="menu"
+            aria-expanded={filterOpen}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+          </button>
+          {filterOpen && (
+            <div role="menu" aria-label={t("sidebar.filterMenu")} className="menu-surface sidebar-filter-menu">
+              <div className="menu-surface-label">{t("sidebar.groupBy")}</div>
+              {(["project", "status"] as const).map((value) => (
+                <button key={value} type="button" role="menuitemradio" aria-checked={grouping === value} onClick={() => chooseGrouping(value)}>
+                  <span style={{ flex: 1 }}>{t(value === "project" ? "sidebar.groupByProject" : "sidebar.groupByStatus")}</span>
+                  <MenuCheck checked={grouping === value} />
+                </button>
+              ))}
+              <div role="separator" className="menu-surface-divider" />
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={archiveView}
+                disabled={!archiveView && archivedCount === 0}
+                onClick={() => {
+                  setFilterOpen(false);
+                  setArchiveView((open) => !open);
+                  setProjectsOpen(true);
+                  setSessionSearchOpen(false);
+                }}
+              >
+                <span style={{ flex: 1 }}>{t("sidebar.showArchived")}</span>
+                {archivedCount > 0 && <span className="sidebar-filter-meta">{archivedCount}</span>}
+                <MenuCheck checked={archiveView} />
+              </button>
+              <div role="separator" className="menu-surface-divider" />
+              {!statusView && <button
+                type="button"
+                role="menuitem"
+                disabled={!canCollapseAll}
+                onClick={() => {
+                  setFilterOpen(false);
+                  if (archiveView) {
+                    setExpandedArchiveProjectKeys(new Set());
+                    setWorkspaceSessionLimits((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("archive:"))));
+                    return;
+                  }
+                  setExpandedWorkspaceKeys(new Set());
+                  setWorkspaceSessionLimits({});
+                }}
+              >
+                {t("sidebar.collapseAll")}
+              </button>}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={unreadSessionIds.size === 0 && erroredSessionIds.size === 0}
+                onClick={() => { setFilterOpen(false); markAllRead(); }}
+              >
+                {t("sidebar.markAllRead")}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Pinned sessions, across all projects */}
       {pinnedFamilies.length > 0 && !archiveView && (
-        <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)" }}>
+        <div style={{ flexShrink: 0 }}>
           <div className="sidebar-section-row">
             <button type="button" onClick={() => setPinnedOpen((open) => !open)} className="sidebar-section-label" aria-label={t("sidebar.pinned")} aria-expanded={pinnedOpen}>
               <span>{sectionTitle("sidebar.pinned")}</span>
@@ -2173,7 +1970,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
           </ToolbarIconButton>
         </div>
-      ) : (
+      ) : statusView ? null : (
       <div ref={dropdownRef} className="sidebar-section-row" style={{ position: "relative" }}>
         <button
           type="button"
@@ -2184,99 +1981,18 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         >
           <span>{archiveView ? sectionTitle("sidebar.archivedCount", { count: archivedCount }) : sectionTitle("sidebar.projects")}</span>
         </button>
-        <div className="sidebar-header-actions">
-          {projectsOpen && !singleProject && (archiveView
-            ? archiveProjectKeys.filter((key) => expandedArchiveProjectKeys.has(key)).length
-            : workspaceProjects.filter((p) => (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(p.key)).length) >= 2 && (
-            <ToolbarIconButton
-              onClick={() => {
-                if (archiveView) {
-                  setExpandedArchiveProjectKeys(new Set());
-                  setWorkspaceSessionLimits((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith("archive:"))));
-                  return;
-                }
-                setExpandedWorkspaceKeys(new Set());
-                setWorkspaceSessionLimits({});
-              }}
-              title={t("sidebar.collapseAll")}
-              color="var(--text-muted)"
+        {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0 || otherProjectActivity.error > 0 || otherProjectActivity.keepalive > 0) && (
+          <div className="sidebar-header-actions">
+            <span
+              role="status"
+              title={t("sidebar.otherProjectActivity")}
+              aria-label={`${t("sidebar.otherProjectActivity")} (${otherProjectActivity.running + otherProjectActivity.awaiting + otherProjectActivity.unread + otherProjectActivity.error})`}
+              style={{ display: "inline-flex", alignItems: "center" }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="7 20 12 15 17 20" /><polyline points="7 4 12 9 17 4" />
-              </svg>
-            </ToolbarIconButton>
-          )}
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0 || otherProjectActivity.error > 0 || otherProjectActivity.keepalive > 0) && (
-              <span
-                role="status"
-                title={t("sidebar.otherProjectActivity")}
-                aria-label={`${t("sidebar.otherProjectActivity")} (${otherProjectActivity.running + otherProjectActivity.awaiting + otherProjectActivity.unread + otherProjectActivity.error})`}
-                style={{ display: "inline-flex", alignItems: "center" }}
-              >
-                <SessionActivitySummary activity={otherProjectActivity} />
-              </span>
-            )}
-            {/* Adding a project means nothing in the archive; switching project still does. */}
-            {(singleProject || !archiveView) && <ToolbarIconButton
-              onClick={() => {
-                // Multi-project mode has nothing to pick but a path: open it directly.
-                if (singleProject) setDropdownOpen((open) => !open);
-                else handleCustomPathClick();
-                setWtDropdownOpen(false);
-              }}
-              title={t(singleProject ? "sidebar.switchProject" : "sidebar.addProject")}
-              ariaPressed={dropdownOpen}
-              color={dropdownOpen ? "var(--accent)" : "var(--text-muted)"}
-              background={dropdownOpen ? "var(--bg-selected)" : "none"}
-            >
-              {singleProject ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-                </svg>
-              ) : (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              )}
-            </ToolbarIconButton>}
+              <SessionActivitySummary activity={otherProjectActivity} />
+            </span>
           </div>
-          {archivedCount > 0 && (
-            <ToolbarIconButton
-              onClick={() => {
-                setArchiveView((open) => !open);
-                setProjectsOpen(true);
-                setSessionSearchOpen(false);
-              }}
-              title={t("sidebar.viewArchive")}
-              ariaPressed={archiveView}
-              color={archiveView ? "var(--accent)" : "var(--text-muted)"}
-              background={archiveView ? "var(--bg-selected)" : "none"}
-            ><ArchiveIcon /></ToolbarIconButton>
-          )}
-          <ToolbarIconButton
-            onClick={() => {
-              if (selectionBusy) return;
-              setSelection(null);
-              setDeleteConfirm(null);
-              setSessionSearchOpen((open) => {
-                const next = !open;
-                if (next) setProjectsOpen(true);
-                return next;
-              });
-              setWtDropdownOpen(false);
-              setDropdownOpen(false);
-            }}
-            title={t("sidebar.toggleSessionSearch")}
-            ariaPressed={sessionSearchOpen}
-            color={sessionSearchOpen ? "var(--accent)" : "var(--text-muted)"}
-            background={sessionSearchOpen ? "var(--bg-selected)" : "none"}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
-            </svg>
-          </ToolbarIconButton>
-        </div>
+        )}
         {dropdownOpen && (
         <div
           role="menu"
@@ -2327,7 +2043,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             role="menuitem"
             onClick={(event) => { event.stopPropagation(); handleCustomPathClick(); }}
           >
-            <span>{t("sidebar.customPath")}</span>
+            <span>{t("chat.openFolder")}</span>
           </button>
         </div>
         )}
@@ -2447,7 +2163,42 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       })()}
 
       <SessionSearch projectNames={projectNames} archivedSessionIds={archivedMemberIds} open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
-      {projectsOpen && (
+      {statusGroups ? (
+      // Few rows (activity plus a paged RECENT), so no windowing: section headers keep their own height.
+      <div ref={listScrollRef} onScroll={handleListScroll} className="sidebar-list-scroll scroll-fade-block" style={{ flex: "1 1 auto", minHeight: 80 }}>
+        {error && <div style={{ padding: "12px 8px", color: "var(--danger)", fontSize: 12 }}>{error}</div>}
+        {!loading && !error && statusGroups.sections.length === 0 && (
+          <div style={{ padding: "16px 8px", color: "var(--text-muted)", fontSize: 12 }}>{t("sidebar.noSessions")}</div>
+        )}
+        {statusGroups.sections.map((section) => (
+          <section key={section.key} aria-label={t(section.key)}>
+            <div className="sidebar-section-row">
+              <div className="sidebar-section-label is-static" role="heading" aria-level={2}>
+                <span>{sectionTitle(section.key)}</span>
+                <span className="sidebar-section-count">{section.count}</span>
+              </div>
+            </div>
+            {section.families.map((family) => (
+              <div key={family.root.id} data-family-id={family.root.id}>{renderSessionFamily(family, false, otherProjectLabel(family))}</div>
+            ))}
+            {section.key === "sidebar.groupRecent" && statusGroups.recentRemaining > 0 && (
+              <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: SESSION_LIST_ITEM_HEIGHT }}
+                aria-label={t("sidebar.showMoreSessionsLabel", { count: statusGroups.recentRemaining })}
+                onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [RECENT_LIMIT_KEY]: statusGroups.recentNextLimit }))}>
+                <span>{t("sidebar.showMoreSessions")}</span>
+                <span className="workspace-show-more-count">{statusGroups.recentRemaining}</span>
+              </button>
+            )}
+            {section.key === "sidebar.groupRecent" && statusGroups.recentRevealed > 0 && (
+              <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: SESSION_LIST_ITEM_HEIGHT }}
+                onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [RECENT_LIMIT_KEY]: WORKSPACE_SESSION_PREVIEW_LIMIT }))}>
+                {t("sidebar.showLessSessions")}
+              </button>
+            )}
+          </section>
+        ))}
+      </div>
+      ) : projectsOpen && (
       <div
         ref={listScrollRef}
         onScroll={handleListScroll}
@@ -2515,7 +2266,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                         }
                         if (singleProject) {
                           setDropdownOpen((open) => !open);
-                          setWtDropdownOpen(false);
                           return;
                         }
                         if (expanded) forgetWorkspaceWindow(row.project.key);
@@ -2534,19 +2284,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                       <SessionActivitySummary activity={activity} showStatus={!singleProject && !expanded} />
                     </button>
                     )}
-                    {active ? worktreeSwitcher : null}
                     <span className="workspace-row-action">
-                      <ToolbarIconButton
-                        onClick={() => {
-                          setSelectedCwd(workspaceCwd);
-                          onShowFiles?.(workspaceCwd);
-                        }}
-                        title={t("sidebar.openProjectExplorer", { path: workspaceCwd })}
-                        color="var(--text-muted)"
-                        className="workspace-explorer"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5h4" /><path d="M10 5h10" /><path d="M4 12h4" /><path d="M10 12h10" /><path d="M4 19h4" /><path d="M10 19h10" /></svg>
-                      </ToolbarIconButton>
                       <ToolbarIconButton
                         onClick={() => {
                           setSelectedCwd(workspaceCwd);
@@ -2723,6 +2461,7 @@ export function SessionItem({
   isArchived = false,
   onToggleArchive,
   projectHint,
+  projectLabel,
   pendingDelete = false,
   deleting = false,
   onRequestDelete,
@@ -2761,6 +2500,8 @@ export function SessionItem({
   onToggleArchive?: () => void;
   /** Shown under the title in the tooltip where the project isn't visible from context. */
   projectHint?: string;
+  /** Another project's name before the time (status grouping lists every project together). */
+  projectLabel?: string;
   pendingDelete?: boolean;
   deleting?: boolean;
   onRequestDelete?: (x: number, y: number) => void;
@@ -3060,7 +2801,10 @@ export function SessionItem({
 
           <div className="session-row-meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
             {needsYou ? <SessionStatusWord status={needsYou} /> : (
-              <span title={session.modified}>{formatCompactRelativeTime(session.modified, locale)}</span>
+              <>
+                {projectLabel && <><span className="session-row-project">{projectLabel}</span>{"\u00a0·\u00a0"}</>}
+                <span title={session.modified}>{formatCompactRelativeTime(session.modified, locale)}</span>
+              </>
             )}
           </div>
 

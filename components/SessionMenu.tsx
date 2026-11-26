@@ -30,6 +30,9 @@ type Props = {
     full: string;
     unsaved: string;
     menu: string;
+    /** Phones only: the outline and the file panel live in this menu. */
+    outline?: string;
+    files?: string;
     exportMarkdown: string;
     exportMarkdownTitle: string;
     fork: string;
@@ -45,6 +48,8 @@ type Props = {
   onViewFullHistory: () => void;
   onExportMarkdown: () => void;
   onMenuOpenChange: (open: boolean) => void;
+  onOpenOutline?: () => void;
+  onOpenFiles?: () => void;
 };
 
 export function SessionMenu({
@@ -67,6 +72,8 @@ export function SessionMenu({
   onViewFullHistory,
   onExportMarkdown,
   onMenuOpenChange,
+  onOpenOutline,
+  onOpenFiles,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -179,6 +186,17 @@ export function SessionMenu({
             zIndex: 520,
           }}
         >
+          {onOpenOutline && (
+            <button type="button" role="menuitem" data-top-panel-trigger="outline" onClick={() => { onMenuOpenChange(false); onOpenOutline(); }}>
+              {labels.outline}
+            </button>
+          )}
+          {onOpenFiles && (
+            <button type="button" role="menuitem" onClick={() => { onMenuOpenChange(false); onOpenFiles(); }}>
+              {labels.files}
+            </button>
+          )}
+          {(onOpenOutline || onOpenFiles) && <div role="separator" className="menu-surface-divider" />}
           <button
             type="button"
             role="menuitem"

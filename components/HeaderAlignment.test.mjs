@@ -50,7 +50,11 @@ test("sidebar starts with project sections sharing one chevron gutter and settin
   assert.equal(footer.padding, "2px var(--sidebar-inset, 5px)");
   assert.equal(declarations(".sidebar-footer-item").width, "100%");
   assert.equal(label.padding, "0 4px 0 6px");
-  assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 2);
+  // PINNED, PROJECTS, and the status grouping's section rows.
+  assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 3);
+  // The top row (New session, search, filter) is as tall as a section header, like the chat's top bar.
+  assert.equal(declarations(".sidebar-top-row").height, "var(--workspace-header-height, 30px)");
+  assert.ok(sidebar.indexOf('className="sidebar-top-row"') < sidebar.indexOf("{/* Pinned sessions, across all projects */}"));
   assert.doesNotMatch(sidebar, /className="sidebar-switcher"|Workspace context bar/);
   assert.match(shell, /className="sidebar-footer"/);
   assert.equal(footer.display, "flex");

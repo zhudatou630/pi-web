@@ -17,7 +17,7 @@ function fixture(overrides = {}) {
     projectsOpen: true, singleProject: false, selectedProject: { key: "/project" }, expandedArchiveProjectKeys: new Set(),
     expandedWorkspaceKeys: new Set(), defaultExpandedWorkspaceKeys: new Set(), workspaceRows: [], listViewportH: 104,
     listScrollRef: { current: { scrollTop: 0, clientHeight: 104 } }, pinnedListRef: { current: { scrollTop: 0, clientHeight: 26 } },
-    workspaceKeyOf: () => "/project", sessionRevealScrollTop, setListScrollTop() {}, useLayoutEffect: (fn) => fn(), ...overrides,
+    statusView: false, workspaceKeyOf: () => "/project", sessionRevealScrollTop, setListScrollTop() {}, useLayoutEffect: (fn) => fn(), ...overrides,
   };
   for (const [setter, key] of [["setPinnedOpen", "pinnedOpen"], ["setProjectsOpen", "projectsOpen"], ["setExpandedWorkspaceKeys", "expandedWorkspaceKeys"], ["setExpandedArchiveProjectKeys", "expandedArchiveProjectKeys"], ["setSelectedCwd", "cwd"]]) scope[setter] = (v) => { scope[key] = v; };
   return { scope, render: () => script.runInNewContext(scope) };
@@ -47,6 +47,18 @@ test("pinned roots unfold; archive and single-project navigation retain their bo
   assert.ok(archived.scope.expandedArchiveProjectKeys.has("/project"));
   const single = fixture({ singleProject: true, selectedProject: { key: "/other" } });
   single.render(); assert.equal(single.scope.cwd, "/project");
+});
+test("the status grouping reveals the family's row in place, without unfolding projects", () => {
+  const scrolled = [];
+  const row = { scrollIntoView: (options) => scrolled.push(options) };
+  const list = { querySelector: (selector) => selector === '[data-family-id="root"]' ? row : null };
+  const f = fixture({ statusView: true, projectsOpen: false, listScrollRef: { current: list }, CSS: { escape: (id) => id } });
+  f.render();
+  assert.deepEqual(scrolled.map((options) => options.block), ["nearest"]);
+  assert.equal(f.scope.projectsOpen, false);
+  assert.equal(f.scope.expandedWorkspaceKeys.size, 0);
+  f.render();
+  assert.equal(scrolled.length, 1, "once per selection");
 });
 test("reveal leaves fully visible rows and uses nearest edges for clipped rows", () => {
   assert.equal(sessionRevealScrollTop(1, 0, 104), 0);

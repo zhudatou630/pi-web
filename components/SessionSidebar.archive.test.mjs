@@ -114,10 +114,10 @@ test("the actual virtual row model hides archived families, keeps cross-project 
 });
 
 test("archive entry, shared non-danger confirm, pane protection, and subtle search tag use existing UI", () => {
-  assert.match(source, /archivedCount > 0 &&[\s\S]*?ariaPressed=\{archiveView\}/);
-  const header = source.slice(source.indexOf('{/* Projects and their sessions */}'), source.indexOf('{dropdownOpen && ('));
-  assert.ok(header.indexOf('sidebar.addProject') < header.indexOf('sidebar.viewArchive'));
-  assert.ok(header.indexOf('sidebar.viewArchive') < header.indexOf('sidebar.toggleSessionSearch'));
+  // The archive is the filter menu's "Show archived"; search is the top row's.
+  const topRow = source.slice(source.indexOf('className="sidebar-top-row"'), source.indexOf("{/* Pinned sessions, across all projects */}"));
+  assert.ok(topRow.indexOf("sidebar.toggleSessionSearch") < topRow.indexOf("sidebar.showArchived"));
+  assert.match(topRow, /setArchiveView\(\(open\) => !open\);/);
   assert.match(source, /archiveView \? setArchiveView\(false\)/);
   assert.match(source, /className=\{archiving \? "is-primary" : "is-danger"\}/);
   assert.match(source, /archiveProjectConfirm/);

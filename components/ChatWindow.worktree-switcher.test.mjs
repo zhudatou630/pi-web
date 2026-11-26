@@ -192,3 +192,76 @@ test("branch menu offers New worktree, created from the project root and then se
   assert.match(control, /body: JSON\.stringify\(\{ cwd: activeWorktree\.projectRoot, branch \}\)/);
   assert.match(control, /await onChange\(data\.path\);/);
 });
+
+test("the new-session page: text menus for project and where it runs sit above the composer, no brand", () => {
+  const attention = source.slice(source.indexOf("attention={("), source.indexOf("const composerStack"));
+  assert.match(attention, /\{isEmptyNew && newSessionCwd && onNewSessionCwdChange && \(\s*<NewSessionCwdControl/);
+  const heroStart = source.indexOf('className="empty-hero-anchor');
+  const hero = source.slice(heroStart, source.indexOf("{composerStack}", heroStart));
+  assert.doesNotMatch(hero, /<svg|NewSessionCwdControl/);
+  assert.match(hero, /<AppUpdateNotice \/>/);
+  // Project directory · branch for the main checkout, the branch glyph for a linked one.
+  assert.match(control, /currentWorktree\?\.isMain \? \(\s*<span className="new-session-pick-label">\{t\("chat\.projectDirectory"\)\} · \{currentBranch\}<\/span>/);
+  // "From <branch>" only inside the New worktree form.
+  const form = control.slice(control.indexOf("{newBranch === null ? ("), control.indexOf("{newError && ("));
+  assert.match(form, /t\("chat\.worktreeBase", \{ branch: mainBranch \}\)/);
+  assert.equal((control.match(/chat\.worktreeBase/g) ?? []).length, 1);
+  // Open folder… tells the page it was opened, so AppShell lists it as a project.
+  assert.match(control, /t\("chat\.openFolder"\)/);
+  assert.match(control, /void onChange\(path, true\)\.then\(/);
+});
+
+test("Open folder… on the new-session page lists the folder as a project; other cwd changes do not", async () => {
+  const text = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
+  const parsed = ts.createSourceFile("AppShell.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declaration = find(parsed, (node) => ts.isVariableDeclaration(node) && node.name.getText(parsed) === "handleDraftCwdChange");
+  let pinned = ["/existing"];
+  const bindings = {
+    fetch: async () => Response.json({ cwd: "/new/sub", projectKey: "k", projectRoot: "/new" }),
+    setChatTabs: () => {}, activeNewSessionDraftKeyRef: { current: "d" }, setNewSessionCwd: () => {}, setActiveCwd: () => {},
+    handleUpdatePinnedCwds: (update) => { pinned = update(pinned); },
+  };
+  const change = evaluate(declaration.initializer.arguments[0].getText(parsed), bindings);
+  await change("d", "/new/sub");
+  assert.deepEqual(pinned, ["/existing"]);
+  await change("d", "/new/sub", true);
+  await change("d", "/new/sub", true);
+  assert.deepEqual(pinned, ["/existing", "/new"]);
+  assert.match(text, /\? \(cwd, opened\) => handleDraftCwdChange\(effectiveDraftKey, cwd, opened\)/);
+});
+
+test("the new-session page folds an open file panel and opens it again on leaving", async () => {
+  const text = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
+  const parsed = ts.createSourceFile("AppShell.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const effect = find(parsed, (node) => ts.isCallExpression(node) && node.expression.getText(parsed) === "useEffect"
+    && node.arguments[1]?.getText(parsed) === "[onNewSessionPage]");
+  assert.match(text, /const onNewSessionPage = mainView === "chat" && selectedSession === null && effectiveNewSessionCwd !== null && !isSplitActive;/);
+  let open = true;
+  const scope = { panelBeforeNewPageRef: { current: null }, setRightPanelOpen: (value) => { open = typeof value === "function" ? value(open) : value; } };
+  const run = (onNewSessionPage) => evaluate(effect.arguments[0].getText(parsed), { ...scope, onNewSessionPage })();
+  run(true);
+  assert.equal(open, false, "entering folds the panel");
+  run(true);
+  assert.equal(open, false, "staying does not toggle");
+  run(false);
+  assert.equal(open, true, "leaving restores it");
+  run(true);
+  open = true; // opened on the page by the user
+  run(false);
+  assert.equal(open, true, "an explicit open on the page survives leaving");
+  open = false;
+  run(true);
+  run(false);
+  assert.equal(open, false, "a closed panel stays closed");
+});
+
+test("no worktree choice inside a repo subdirectory; creating or removing one reloads the shared list", async () => {
+  assert.match(control, /const subdirectory = activeWorktree\?\.forCwd === cwd && activeWorktree\.isTopLevel === false;/);
+  assert.match(control, /\{currentBranch && !subdirectory && \(/);
+  assert.match(control, /isTopLevel: data\.isTopLevel/);
+  assert.equal((control.match(/onWorktreesChanged\?\.\(\);/g) ?? []).length, 2);
+  const sidebar = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
+  assert.match(sidebar, /isTopLevel: worktreeState\.isTopLevel,/);
+  const appShell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
+  assert.match(appShell, /onWorktreesChanged=\{bumpSidebarRefresh\}/);
+});

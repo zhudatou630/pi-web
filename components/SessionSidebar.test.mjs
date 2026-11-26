@@ -365,16 +365,57 @@ test("reveals row action buttons on hover, keyboard focus (:has(:focus-visible))
   assert.doesNotMatch(globalCss, /\.session-list-row:has\(\.session-row-actions\):focus-within \.session-row-meta/);
 });
 
-test("collapse all shows only while two or more listed projects are expanded", () => {
-  assert.match(source, /sidebar\.collapseAll/);
-  assert.match(source, /!singleProject && \(archiveView\s*\? archiveProjectKeys\.filter\(\(key\) => expandedArchiveProjectKeys\.has\(key\)\)\.length\s*: workspaceProjects\.filter\(\(p\) => \(expandedWorkspaceKeys \?\? defaultExpandedWorkspaceKeys\)\.has\(p\.key\)\)\.length\) >= 2/);
+test("collapse all lives in the filter menu, enabled while a listed project is expanded (by project only)", () => {
+  const menu = source.slice(source.indexOf('className="menu-surface sidebar-filter-menu"'), source.indexOf("{/* Pinned sessions, across all projects */}"));
+  assert.match(menu, /sidebar\.collapseAll/);
+  assert.match(menu, /disabled=\{!canCollapseAll\}/);
+  assert.match(source, /const canCollapseAll = !statusView && !singleProject && \(archiveView\s*\? archiveProjectKeys\.some\(\(key\) => expandedArchiveProjectKeys\.has\(key\)\)\s*: workspaceProjects\.some\(\(project\) => \(expandedWorkspaceKeys \?\? defaultExpandedWorkspaceKeys\)\.has\(project\.key\)\)\)/);
   assert.match(source, /setExpandedWorkspaceKeys\(new Set\(\)\)/);
 });
 
-test("projects have no pin toggle and the add menu does not switch projects", () => {
+test("the filter menu groups by project or status, shows the archive, and marks all as read", () => {
+  const menu = source.slice(source.indexOf('className="menu-surface sidebar-filter-menu"'), source.indexOf("{/* Pinned sessions, across all projects */}"));
+  const order = ["sidebar.groupBy", "sidebar.groupByProject", "sidebar.showArchived", "sidebar.collapseAll", "sidebar.markAllRead"].map((key) => menu.indexOf(key));
+  assert.ok(order.every((index) => index >= 0));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.match(menu, /role="menuitemradio" aria-checked=\{grouping === value\} onClick=\{\(\) => chooseGrouping\(value\)\}/);
+  assert.match(menu, /role="menuitemcheckbox"\s*aria-checked=\{archiveView\}\s*disabled=\{!archiveView && archivedCount === 0\}/);
+  assert.match(menu, /disabled=\{unreadSessionIds\.size === 0 && erroredSessionIds\.size === 0\}/);
+  // The choice is remembered per device; the archive always lists by project.
+  // Server and first client render agree; the stored choice lands in a layout effect (no hydration mismatch).
+  assert.match(source, /useState<SidebarGrouping>\("project"\);\s*useLayoutEffect\(\(\) => setGrouping\(loadSidebarGrouping\(\)\), \[\]\);/);
+  assert.match(menu, /\{!statusView && <button/);
+  assert.match(source, /saveSidebarGrouping\(next\)/);
+  assert.match(source, /const statusView = grouping === "status" && !archiveView;/);
+  // The top row: New session, search, filter; the old PROJECTS header buttons are gone.
+  assert.doesNotMatch(source, /sidebar\.(addProject|switchProject|viewArchive)\b/);
+  assert.match(source, /className="sidebar-new-session" onClick=\{startNewSession\}/);
+});
+
+test("mark all as read takes each row's read path: manual reads for the shared readAt, errors hidden at once", () => {
+  const body = source.slice(source.indexOf("const markAllRead = () => {"), source.indexOf("const chooseGrouping"));
+  assert.match(body, /readAllTargets\(allFamilies, unreadSessionIds, erroredSessionIds, readSnapshotRef\.current\.serverNow\)/);
+  assert.match(body, /manualReadIdsRef\.current\.set\(id, at\)/);
+  assert.match(body, /setSharedReadAt\(/);
+  assert.match(body, /setUnreadMarks\(/);
+});
+
+test("status grouping: pinned first, then non-empty NEEDS YOU, RUNNING, RECENT with show more", () => {
+  const groups = source.slice(source.indexOf("const statusGroups = useMemo"), source.indexOf("const otherProjectLabel"));
+  assert.match(groups, /!pinnedSessionIds\.includes\(family\.root\.id\) && !archivedMemberIds\.has\(family\.root\.id\)/);
+  assert.match(groups, /groupByStatus\(families, familyStatus/);
+  assert.match(groups, /\.filter\(\(section\) => section\.count > 0\)/);
+  assert.match(groups, /previewSessionFamilies\(groups\.recent, WORKSPACE_SESSION_PREVIEW_LIMIT/);
+  assert.match(source, /renderSessionFamily\(family, false, otherProjectLabel\(family\)\)/);
+  assert.match(source, /\{projectLabel && <><span className="session-row-project">\{projectLabel\}<\/span>/);
+  // Only in by-project mode: the PROJECTS header and the project drag.
+  assert.match(source, /\) : statusView \? null : \(\s*<div ref=\{dropdownRef\} className="sidebar-section-row"/);
+  assert.match(source, /enabled: !loading && projectsOpen && !sessionSearchActive && !statusView/);
+});
+
+test("projects have no pin toggle", () => {
   assert.doesNotMatch(source, /dropdownProjectRows/);
   assert.doesNotMatch(source, /sidebar\.(un)?pinDirectory/);
-  assert.match(source, /sidebar\.addProject/);
 });
 
 test("viewing a project keeps the saved order instead of promoting it", () => {
@@ -406,7 +447,7 @@ test("folding a project drops its show-more window on every explicit fold path, 
   assert.match(source, /if \(expanded\) forgetWorkspaceWindow\(row\.project\.key\);/, "toggle");
   assert.match(source, /next\.delete\(key\);\s*return next;\s*\}\);\s*forgetWorkspaceWindow\(key\);\s*moveProject\(key, anchor, position\);/, "drag keeps the lifted project folded");
   assert.match(source, /if \(expanded\) forgetWorkspaceWindow\(`archive:\$\{row\.project\.key\}`\);/, "archive toggle");
-  assert.match(source, /onClick=\{\(\) => \{\s*if \(archiveView\) \{\s*setExpandedArchiveProjectKeys\(new Set\(\)\);\s*setWorkspaceSessionLimits\(\(current\) => Object\.fromEntries\(Object\.entries\(current\)\.filter\(\(\[key\]\) => !key\.startsWith\("archive:"\)\)\)\);\s*return;\s*\}\s*setExpandedWorkspaceKeys\(new Set\(\)\);\s*setWorkspaceSessionLimits\(\{\}\);\s*\}\}/, "collapse all, archive view included");
+  assert.match(source, /onClick=\{\(\) => \{\s*setFilterOpen\(false\);\s*if \(archiveView\) \{\s*setExpandedArchiveProjectKeys\(new Set\(\)\);\s*setWorkspaceSessionLimits\(\(current\) => Object\.fromEntries\(Object\.entries\(current\)\.filter\(\(\[key\]\) => !key\.startsWith\("archive:"\)\)\)\);\s*return;\s*\}\s*setExpandedWorkspaceKeys\(new Set\(\)\);\s*setWorkspaceSessionLimits\(\{\}\);\s*\}\}/, "collapse all, archive view included");
 });
 
 test("project rows carry no session count", () => {

@@ -891,6 +891,115 @@ button.turn-files-head:hover {
   color: var(--text-dim);
 }
 
+/* Sidebar top row (docs/ui.md, Sidebar top row): "+ New session" fills it, then search and the
+   grouping/filter menu. As tall as a section header; the + sits in the folder icons' slot. */
+.sidebar-top-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  height: var(--workspace-header-height, 30px);
+  padding-inline: var(--sidebar-inset, 5px);
+}
+
+.sidebar-new-session,
+.sidebar-top-icon {
+  display: flex;
+  align-items: center;
+  height: var(--ui-row-height);
+  border: none;
+  border-radius: var(--ui-radius-md);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+
+.sidebar-new-session {
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  padding: 0 4px 0 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.sidebar-new-session > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-new-session .sidebar-section-gutter {
+  color: inherit;
+}
+
+.sidebar-top-icon {
+  justify-content: center;
+  width: 26px;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.sidebar-top-icon svg {
+  display: block;
+}
+
+.sidebar-new-session:hover,
+.sidebar-top-icon:hover,
+.sidebar-top-icon[aria-pressed="true"],
+.sidebar-top-icon[aria-expanded="true"] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.sidebar-filter {
+  position: relative;
+  display: flex;
+}
+
+.sidebar-filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  min-width: 180px;
+}
+
+.sidebar-filter-meta {
+  margin-left: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status grouping: NEEDS YOU / RUNNING / RECENT are headings, not toggles; the count is UI text. */
+.sidebar-section-label.is-static {
+  cursor: default;
+}
+
+.sidebar-section-count {
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+}
+
+/* Inside a list the gutter is already reserved by the scroller. */
+.sidebar-list-scroll .sidebar-section-row {
+  padding-inline: 0;
+}
+
+/* Another project's name before a row's time: it gives way before the title does. */
+.session-row-project {
+  max-width: 96px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Mirrors a section header: as tall, its first label where a title starts.
    Settings and Routines split the bar. */
 .sidebar-footer {
@@ -4943,7 +5052,8 @@ span.token.table {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 6px 0 22px;
+  /* The label starts where session titles start. */
+  padding: 0 6px 0 26px;
   border: none;
   border-radius: var(--ui-radius-sm);
   background: none;
@@ -4983,31 +5093,20 @@ span.token.table {
   }
 
   /* Row actions stay hidden until a long press, except "new session in this
-     project" and, on an expanded project, its Explorer: phones have no hover,
-     so expanding stands in for it.
+     project": phones have no hover.
      A 26px row cannot host a 44px target; give it the full row height instead.
      ToolbarIconButton sizes itself inline, so this needs !important. */
-  .workspace-list-row .workspace-row-action > .workspace-new-session,
-  .workspace-list-row[data-expanded="true"] .workspace-row-action > .workspace-explorer {
+  .workspace-list-row .workspace-row-action > .workspace-new-session {
     max-width: 26px !important;
     filter: none;
     pointer-events: auto;
     width: 26px !important;
     height: 26px !important;
   }
-
-  /* No hover-intent sweep to smooth here: the width steps in the same frame the
-     session rows appear, and only the fade animates. A max-width transition
-     relayouts the row every frame and drags the branch label left in
-     pixel-snapped steps while the newly mounted rows compete for the frame. */
-  .workspace-row-action > .workspace-explorer {
-    transition: filter var(--motion-fast) var(--ease-out), color var(--motion-slow), background var(--motion-slow) !important;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-row-action > button,
-  .workspace-row-action > .workspace-explorer {
+  .workspace-row-action > button {
     transition: none !important;
   }
 }
@@ -6607,3 +6706,119 @@ span.token.table {
 /* The chat's bottom fade is a mask, which repaints the whole chat column through an offscreen
    surface on every divider-drag frame; drop it while dragging. */
 html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
+
+/* New-session page (and the routine composer): "project ⌄" and "where it runs ⌄" as text menus,
+   above the composer at its left edge (docs/ui.md, New-session page). */
+.new-session-picks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+}
+
+.new-session-picks.is-below {
+  margin-bottom: 6px;
+}
+
+.new-session-pick-slot {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.new-session-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: min(60vw, 320px);
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+
+.new-session-pick.is-secondary {
+  color: var(--text-muted);
+}
+
+.new-session-pick:hover,
+.new-session-pick[aria-expanded="true"] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.new-session-pick svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.new-session-pick-chevron {
+  color: var(--text-dim);
+}
+
+.new-session-pick-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-session-pick-menu {
+  position: absolute;
+  z-index: 50;
+  width: max-content;
+  /* Wide enough for the New worktree form, so opening it does not resize the menu. */
+  min-width: 240px;
+  max-width: min(90vw, 300px);
+}
+
+.new-session-pick-meta {
+  margin-left: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Phone top bar: ☰, title, "Changes N", ⋯ (docs/ui.md, Top bar and composer panels). */
+.mobile-top-bar-title {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  padding: 0 4px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A session waits or failed: one 6px dot on the closed drawer's ☰. */
+.mobile-menu-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  pointer-events: none;
+}
+
+/* Phones: both menus start at the row's left edge, so the second one cannot run off the screen. */
+@media (max-width: 640px) {
+  .new-session-picks.is-below {
+    position: relative;
+  }
+
+  .new-session-picks.is-below .new-session-pick-slot {
+    position: static;
+  }
+}

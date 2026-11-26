@@ -38,6 +38,7 @@ import { MarkdownBody, MarkdownSessionContext } from "./MarkdownBody";
 import { ChatInput, getUserMessageDraftImages, getUserMessageText, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { MenuCheck } from "./MenuCheck";
+import { iconStroke } from "./iconStroke";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { MobileOutlineSync, type MobileOutlineView } from "./MobileChatNav";
 import { AnsiText } from "./AnsiText";
@@ -81,7 +82,8 @@ interface Props {
   onDraftChange?: (draftKey: string, value: string, imageCount: number) => void;
   /** Preserve the source tab when the user sends work or starts a fork. */
   onKeepTabOpen?: (sessionId: string) => void;
-  onNewSessionCwdChange?: (cwd: string) => Promise<void>;
+  onNewSessionCwdChange?: (cwd: string, opened?: boolean) => Promise<void>;
+  onWorktreesChanged?: () => void;
   projectPaths?: string[];
   /** Project display names by root, shown in the new-session bar in place of the path. */
   projectNameByRoot?: ReadonlyMap<string, string>;
@@ -211,17 +213,23 @@ export function NewSessionCwdControl({
   worktreeInfo,
   projectNameByRoot,
   placement = "below",
+  onWorktreesChanged,
 }: {
   cwd: string;
-  onChange: (cwd: string) => Promise<void>;
+  /** `opened`: the user picked a folder with Open folder… (the new-session page lists it as a project). */
+  onChange: (cwd: string, opened?: boolean) => Promise<void>;
   projectPaths: string[];
   /** "above": menus open upward and align right, for a composer toolbar (Routines). */
   placement?: "below" | "above";
+  /** A worktree was created or removed: lists elsewhere (the Files view's menu) reload. */
+  onWorktreesChanged?: () => void;
   projectNameByRoot?: ReadonlyMap<string, string>;
   worktreeInfo: {
     forCwd: string;
     projectRoot: string;
     currentWorktreePath: string | null;
+    /** False for a repo subdirectory: no worktree choice there (docs/worktrees.md). */
+    isTopLevel?: boolean;
     worktrees: { path: string; branch: string | null; isMain: boolean }[];
   } | null;
 }) {
@@ -234,6 +242,7 @@ export function NewSessionCwdControl({
   const [error, setError] = useState<string | null>(null);
   const [newBranch, setNewBranch] = useState<string | null>(null);
   const [newError, setNewError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [refreshedWorktree, setRefreshedWorktree] = useState<typeof worktreeInfo>(null);
   const coversCwd = (info: typeof worktreeInfo) => !!info && (info.forCwd === cwd
     || info.projectRoot === cwd
@@ -248,9 +257,9 @@ export function NewSessionCwdControl({
     void fetch(`/api/worktrees?cwd=${encodeURIComponent(cwd)}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json() as { projectRoot?: string; currentWorktreePath?: string | null; worktrees?: NonNullable<typeof worktreeInfo>["worktrees"]; error?: string };
+        const data = await response.json() as { projectRoot?: string; currentWorktreePath?: string | null; isTopLevel?: boolean; worktrees?: NonNullable<typeof worktreeInfo>["worktrees"]; error?: string };
         if (!controller.signal.aborted && data.projectRoot && !data.error) {
-          setRefreshedWorktree({ forCwd: cwd, projectRoot: data.projectRoot, currentWorktreePath: data.currentWorktreePath ?? null, worktrees: data.worktrees ?? [] });
+          setRefreshedWorktree({ forCwd: cwd, projectRoot: data.projectRoot, currentWorktreePath: data.currentWorktreePath ?? null, isTopLevel: data.isTopLevel, worktrees: data.worktrees ?? [] });
         }
       })
       .catch(() => { /* Keep the last known list on a refresh failure. */ });
@@ -281,14 +290,20 @@ export function NewSessionCwdControl({
   const currentBranch = currentWorktree ? (currentWorktree.branch ?? getFileName(currentWorktree.path)) : null;
   const displayProject = activeWorktree?.projectRoot ?? cwd;
   const projectLabel = projectNameByRoot?.get(displayProject) ?? getFileName(displayProject);
+  // Inside a repo subdirectory the draft keeps its folder: nothing to switch, create or remove.
+  const subdirectory = activeWorktree?.forCwd === cwd && activeWorktree.isTopLevel === false;
+  const mainWorktree = worktrees.find((w) => w.isMain);
+  const linkedWorktrees = worktrees.filter((w) => !w.isMain);
+  const mainBranch = mainWorktree?.branch ?? t("sidebar.main");
   const menuPosition: CSSProperties = placement === "above"
     ? { bottom: "calc(100% + 6px)", right: 0 }
-    : { top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)" };
+    : { top: "calc(100% + 4px)", left: 0 };
   const closeMenus = () => {
     setMenuOpen(false);
     setBranchMenuOpen(false);
     setNewBranch(null);
     setNewError(null);
+    setConfirmRemove(null);
   };
   const createWorktree = () => {
     const branch = newBranch?.trim();
@@ -304,7 +319,38 @@ export function NewSessionCwdControl({
         const data = await response.json().catch(() => ({})) as { path?: string; error?: string };
         if (!response.ok || !data.path) throw new Error(data.error ?? `HTTP ${response.status}`);
         await onChange(data.path);
+        onWorktreesChanged?.();
         closeMenus();
+      })
+      .catch((cause: unknown) => setNewError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => setBusy(false));
+  };
+  // Removes the checkout directory only (docs/worktrees.md); git refuses a dirty one until forced.
+  const removeWorktree = (path: string, force: boolean) => {
+    if (busy || !activeWorktree) return;
+    const info = activeWorktree;
+    setBusy(true);
+    setNewError(null);
+    void fetch("/api/worktrees", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: info.projectRoot, path, force }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({})) as { error?: string; dirty?: boolean };
+        if (!response.ok) {
+          if (data.dirty && !force) {
+            setConfirmRemove(path);
+            return;
+          }
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
+        setConfirmRemove(null);
+        const remaining = info.worktrees.filter((wt) => wt.path !== path);
+        const nextCwd = path === currentWorktree?.path ? info.projectRoot : cwd;
+        setRefreshedWorktree({ ...info, forCwd: nextCwd, worktrees: remaining });
+        if (nextCwd !== cwd) await onChange(nextCwd);
+        onWorktreesChanged?.();
       })
       .catch((cause: unknown) => setNewError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setBusy(false));
@@ -317,190 +363,220 @@ export function NewSessionCwdControl({
     setBusy(true);
     void onChange(path).then(closeMenus).finally(() => setBusy(false));
   };
+  const chevron = (
+    <svg className="new-session-pick-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="2 3.5 5 6.5 8 3.5" />
+    </svg>
+  );
 
   return (
-    <div ref={rootRef} style={{ position: "relative", marginTop: placement === "above" ? 0 : 10, maxWidth: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-      <button
-        type="button"
-        title={t("chat.changeWorkingDirectory")}
-        aria-label={`${t("chat.changeWorkingDirectory")}: ${displayProject}`}
-        aria-expanded={menuOpen}
-        onClick={() => {
-          setMenuOpen((open) => !open);
-          setBranchMenuOpen(false);
-        }}
-        onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
-        style={{
-          maxWidth: "min(80vw, 360px)",
-          border: "none",
-          background: "none",
-          color: "var(--text-muted)",
-          fontSize: 12,
-          lineHeight: 1.4,
-          padding: 0,
-          cursor: "pointer",
-        }}
-      >
-        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", direction: "rtl", textAlign: "center" }}>
-          <span style={{ unicodeBidi: "plaintext" }}>{projectLabel}</span>
-        </span>
-      </button>
-      {currentBranch && (
-        <>
-          <span aria-hidden="true" style={{ color: "var(--text-dim)", fontSize: 12, userSelect: "none" }}>|</span>
+    <div ref={rootRef} className={`new-session-picks${placement === "above" ? "" : " is-below"}`}>
+      <div className="new-session-pick-slot">
+        <button
+          type="button"
+          className="new-session-pick"
+          title={displayProject}
+          aria-label={`${t("chat.changeWorkingDirectory")}: ${displayProject}`}
+          aria-haspopup="listbox"
+          aria-expanded={menuOpen}
+          onClick={() => {
+            setMenuOpen((open) => !open);
+            setBranchMenuOpen(false);
+          }}
+        >
+          <span className="new-session-pick-label">{projectLabel}</span>
+          {chevron}
+        </button>
+        {menuOpen && (
+          <div
+            role="listbox"
+            aria-label={t("chat.changeWorkingDirectory")}
+            className="menu-surface new-session-pick-menu"
+            style={menuPosition}
+          >
+            <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
+              {projectPaths.map((path) => {
+                const isSelected = path === cwd || Boolean(activeWorktree?.projectRoot && path === activeWorktree.projectRoot);
+                return (
+                  <button
+                    key={path}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    disabled={busy}
+                    onClick={() => choose(path)}
+                    title={path}
+                  >
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {projectNameByRoot?.get(path) ?? getFileName(path)}
+                    </span>
+                    <MenuCheck checked={isSelected} />
+                  </button>
+                );
+              })}
+            </div>
+            <div role="separator" className="menu-surface-divider" />
+            <button
+              type="button"
+              role="option"
+              aria-selected={false}
+              onClick={() => {
+                setMenuOpen(false);
+                setPickerOpen(true);
+                setError(null);
+              }}
+            >
+              {t("chat.openFolder")}
+            </button>
+          </div>
+        )}
+      </div>
+      {currentBranch && !subdirectory && (
+        <div className="new-session-pick-slot">
           <button
             type="button"
+            className="new-session-pick is-secondary"
             title={currentWorktree?.path}
             aria-label={`${t("sidebar.switchWorktree")}: ${currentBranch}`}
+            aria-haspopup="listbox"
             aria-expanded={branchMenuOpen}
             onClick={() => {
               setBranchMenuOpen((open) => !open);
               setMenuOpen(false);
               setNewBranch(null);
               setNewError(null);
-            }}
-            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
-            style={{
-              maxWidth: 220,
-              border: "none",
-              background: "none",
-              color: "var(--text-muted)",
-              fontSize: 12,
-              lineHeight: 1.4,
-              padding: 0,
-              cursor: "pointer",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              setConfirmRemove(null);
             }}
           >
-            {currentBranch}
+            {currentWorktree?.isMain ? (
+              <span className="new-session-pick-label">{t("chat.projectDirectory")} · {currentBranch}</span>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 3v12" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
+                </svg>
+                <span className="new-session-pick-label">{currentBranch}</span>
+              </>
+            )}
+            {chevron}
           </button>
-        </>
-      )}
-
-      {menuOpen && (
-        <div
-          role="listbox"
-          aria-label={t("chat.changeWorkingDirectory")}
-          className="menu-surface"
-          style={{
-            position: "absolute",
-            ...menuPosition,
-            width: "max-content",
-            minWidth: 200,
-            maxWidth: "min(90vw, 260px)",
-            zIndex: 50,
-          }}
-        >
-          <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
-            {projectPaths.map((path) => {
-              const isSelected = path === cwd || Boolean(activeWorktree?.projectRoot && path === activeWorktree.projectRoot);
-              return (
-                <button
-                  key={path}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  disabled={busy}
-                  onClick={() => choose(path)}
-                  title={path}
-                >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {projectNameByRoot?.get(path) ?? getFileName(path)}
-                  </span>
-                  <MenuCheck checked={isSelected} />
+          {branchMenuOpen && worktrees.length > 0 && (
+            <div
+              role="listbox"
+              aria-label={t("sidebar.switchWorktree")}
+              className="menu-surface new-session-pick-menu"
+              style={menuPosition}
+            >
+              {mainWorktree && (
+                <div className="menu-surface-row">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={mainWorktree.path === currentWorktree?.path}
+                    disabled={busy}
+                    onClick={() => choose(mainWorktree.path)}
+                    title={mainWorktree.path}
+                    style={{ flex: 1 }}
+                  >
+                    <span style={{ flex: 1 }}>{t("chat.projectDirectory")}</span>
+                    <span className="new-session-pick-meta">{mainBranch}</span>
+                    <MenuCheck checked={mainWorktree.path === currentWorktree?.path} />
+                  </button>
+                  {/* The main checkout cannot be removed; the empty slot keeps the checks in one column. */}
+                  {linkedWorktrees.length > 0 && <span className="menu-surface-row-action" aria-hidden="true" />}
+                </div>
+              )}
+              {linkedWorktrees.length > 0 && (
+                <>
+                  <div role="separator" className="menu-surface-divider" />
+                  <div className="menu-surface-label">{t("chat.existingWorktrees")}</div>
+                  <div style={{ maxHeight: 240, overflowY: "auto", scrollbarWidth: "none" }}>
+                    {linkedWorktrees.map((wt) => {
+                      const isCurrent = wt.path === currentWorktree?.path;
+                      if (confirmRemove === wt.path) {
+                        return (
+                          <div key={wt.path} className="wt-confirm-row">
+                            <span>{t("sidebar.forceRemoveCheckout")}</span>
+                            <div className="project-confirm-actions">
+                              <button type="button" onClick={() => setConfirmRemove(null)}>{t("sidebar.cancel")}</button>
+                              <button type="button" className="is-danger" disabled={busy} onClick={() => removeWorktree(wt.path, true)}>{t("sidebar.force")}</button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={wt.path} className="menu-surface-row">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={isCurrent}
+                            disabled={busy}
+                            onClick={() => choose(wt.path)}
+                            title={wt.path}
+                            style={{ flex: 1 }}
+                          >
+                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {wt.branch ?? wt.path}
+                            </span>
+                            <MenuCheck checked={isCurrent} />
+                          </button>
+                          <button
+                            type="button"
+                            className="menu-surface-row-action is-danger"
+                            disabled={busy}
+                            onClick={() => removeWorktree(wt.path, false)}
+                            title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
+                            aria-label={t("sidebar.removeWorktreeTitle", { path: wt.path })}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(13)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              <path d="M10 11v6M14 11v6" />
+                              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                            </svg>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              <div role="separator" className="menu-surface-divider" />
+              {newBranch === null ? (
+                <button type="button" role="option" aria-selected={false} title={t("sidebar.createWorktreeTitle")} onClick={() => { setNewBranch(""); setConfirmRemove(null); }}>
+                  {t("sidebar.newWorktree")}
                 </button>
-              );
-            })}
-          </div>
-          <div role="separator" className="menu-surface-divider" />
-          <button
-            type="button"
-            role="option"
-            aria-selected={false}
-            onClick={() => {
-              setMenuOpen(false);
-              setPickerOpen(true);
-              setError(null);
-            }}
-          >
-            {t("sidebar.customPath")}
-          </button>
-        </div>
-      )}
-      {branchMenuOpen && worktrees.length > 0 && (
-        <div
-          role="listbox"
-          aria-label={t("sidebar.switchWorktree")}
-          className="menu-surface"
-          style={{
-            position: "absolute",
-            ...menuPosition,
-            width: "max-content",
-            minWidth: 180,
-            maxWidth: "min(90vw, 260px)",
-            zIndex: 50,
-          }}
-        >
-          <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
-            {worktrees.map((wt) => {
-              const isCurrent = wt.path === currentWorktree?.path;
-              return (
-                <button
-                  key={wt.path}
-                  type="button"
-                  role="option"
-                  aria-selected={Boolean(isCurrent)}
-                  disabled={busy}
-                  onClick={() => choose(wt.path)}
-                  title={wt.path}
-                >
-                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {wt.branch ?? wt.path}
-                  </span>
-                  {wt.isMain && (wt.branch ?? "").toLowerCase() !== t("sidebar.main").toLowerCase() && (
-                    <span style={{ flexShrink: 0, color: "var(--text-dim)", fontSize: 11 }}>{t("sidebar.main")}</span>
-                  )}
-                  <MenuCheck checked={Boolean(isCurrent)} />
-                </button>
-              );
-            })}
-          </div>
-          <div role="separator" className="menu-surface-divider" />
-          {newBranch === null ? (
-            <button type="button" role="option" aria-selected={false} title={t("sidebar.createWorktreeTitle")} onClick={() => setNewBranch("")}>
-              {t("sidebar.newWorktree")}
-            </button>
-          ) : (
-            <div style={{ padding: "2px 4px" }}>
-              <label className="sidebar-search-field">
-                <input
-                  autoFocus
-                  disabled={busy}
-                  value={newBranch}
-                  onChange={(event) => { setNewBranch(event.target.value); setNewError(null); }}
-                  onKeyDown={(event) => {
-                    if (isImeComposing(event)) return;
-                    if (event.key === "Enter") { event.preventDefault(); createWorktree(); }
-                    if (event.key === "Escape") { setNewBranch(null); setNewError(null); }
-                  }}
-                  placeholder={t("sidebar.branchName")}
-                  aria-label={t("sidebar.branchName")}
-                />
-              </label>
-              <div className="project-confirm-actions" style={{ marginTop: 4 }}>
-                <button type="button" disabled={busy} onClick={() => { setNewBranch(null); setNewError(null); }}>{t("sidebar.cancel")}</button>
-                <button type="button" onClick={createWorktree} disabled={busy || !newBranch.trim()}>
-                  {busy ? t("sidebar.creating") : t("sidebar.create")}
-                </button>
-              </div>
+              ) : (
+                <div style={{ padding: "2px 4px" }}>
+                  <label className="sidebar-search-field">
+                    <input
+                      autoFocus
+                      disabled={busy}
+                      value={newBranch}
+                      onChange={(event) => { setNewBranch(event.target.value); setNewError(null); }}
+                      onKeyDown={(event) => {
+                        if (isImeComposing(event)) return;
+                        if (event.key === "Enter") { event.preventDefault(); createWorktree(); }
+                        if (event.key === "Escape") { setNewBranch(null); setNewError(null); }
+                      }}
+                      placeholder={t("sidebar.branchName")}
+                      aria-label={t("sidebar.branchName")}
+                    />
+                  </label>
+                  <div className="project-confirm-actions" style={{ marginTop: 4 }}>
+                    {/* A new branch starts from the main checkout's HEAD (docs/worktrees.md). */}
+                    <span className="new-session-pick-meta" style={{ marginRight: "auto" }}>{t("chat.worktreeBase", { branch: mainBranch })}</span>
+                    <button type="button" disabled={busy} onClick={() => { setNewBranch(null); setNewError(null); }}>{t("sidebar.cancel")}</button>
+                    <button type="button" onClick={createWorktree} disabled={busy || !newBranch.trim()}>
+                      {busy ? t("sidebar.creating") : t("sidebar.create")}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {newError && (
+                <div style={{ padding: "5px 10px 8px", color: "var(--danger)", fontSize: 11, lineHeight: 1.35, overflowWrap: "anywhere" }}>{newError}</div>
+              )}
             </div>
-          )}
-          {newError && (
-            <div style={{ padding: "5px 10px 8px", color: "var(--danger)", fontSize: 11, lineHeight: 1.35, overflowWrap: "anywhere" }}>{newError}</div>
           )}
         </div>
       )}
@@ -513,7 +589,7 @@ export function NewSessionCwdControl({
           onSelect={(path) => {
             setBusy(true);
             setError(null);
-            void onChange(path).then(
+            void onChange(path, true).then(
               () => setPickerOpen(false),
               (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
             ).finally(() => setBusy(false));
@@ -523,7 +599,6 @@ export function NewSessionCwdControl({
     </div>
   );
 }
-
 
 function hasSameTranscriptIdentity(messages: AgentMessage[], message: AgentMessage): boolean {
   return typeof message.timestamp === "number"
@@ -868,7 +943,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, filePanelOpen = false, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, onWorktreesChanged, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, filePanelOpen = false, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -1963,6 +2038,17 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} onCollapsedChange={setExtensionDialogCollapsed} />
           )}
           {runError !== null && <RunErrorTray reason={runError} onViewOutput={viewErrorOutput} />}
+          {/* New-session page: project and where it runs, as text menus above the composer. */}
+          {isEmptyNew && newSessionCwd && onNewSessionCwdChange && (
+            <NewSessionCwdControl
+              cwd={newSessionCwd}
+              onChange={onNewSessionCwdChange}
+              projectPaths={projectPaths}
+              projectNameByRoot={projectNameByRoot}
+              worktreeInfo={worktreeInfo}
+              onWorktreesChanged={onWorktreesChanged}
+            />
+          )}
         </>
       )}
     />
@@ -2675,20 +2761,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
 
       <div className="relative flex min-h-0 flex-col">
         {isEmptyNew && (
-          <div className="empty-hero-anchor mx-auto mb-6 select-none text-center" style={{ maxWidth: "var(--chat-content-max-width, 820px)", padding: "0 16px" }}>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 82 32" width="82" height="32" fill="currentColor" role="img" aria-label="Pi Web" style={{ color: "var(--text)", display: "block", margin: "0 auto" }}>
-              <path d="M0 0H24V16H16V8H0ZM0 8H8V16H16V24H8V32H0ZM24 16H32V32H24ZM44 16H46V26H44ZM46 26H48V32H46ZM48 22H50V26H48ZM50 26H52V32H50ZM52 16H54V26H52ZM60 16H68V18H60ZM58 18H60V30H58ZM60 22H66V24H60ZM60 30H68V32H60ZM72 16H80V18H74V22H80V24H74V30H80V32H72ZM80 18H82V22H80ZM80 24H82V30H80Z" />
-            </svg>
+          // The new-session page: no brand or tagline, only the update notice (when there is one).
+          <div className="empty-hero-anchor mx-auto mb-3 select-none text-center empty:hidden" style={{ maxWidth: "var(--chat-content-max-width, 820px)", padding: "0 16px" }}>
             <AppUpdateNotice />
-            {newSessionCwd && onNewSessionCwdChange && (
-              <NewSessionCwdControl
-                  cwd={newSessionCwd}
-                  onChange={onNewSessionCwdChange}
-                  projectPaths={projectPaths}
-                  projectNameByRoot={projectNameByRoot}
-                  worktreeInfo={worktreeInfo}
-              />
-            )}
           </div>
         )}
         {composerStack}
