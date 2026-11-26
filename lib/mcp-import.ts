@@ -69,6 +69,29 @@ function shellWords(text: string): string[] {
   return words;
 }
 
+function commandPrefix(words: string[]) {
+  const env: [string, string][] = [];
+  let i = 0;
+  const assignments = () => {
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i] ?? "")) {
+      const pair = words[i++], separator = pair.indexOf("=");
+      env.push([pair.slice(0, separator), pair.slice(separator + 1)]);
+    }
+  };
+  assignments();
+  if (words[i] === "env") {
+    i++;
+    assignments();
+    if (words[i]?.startsWith("-")) throw new Error("env options are not supported in an MCP command.");
+  }
+  return { env, program: words.slice(i) };
+}
+
+const cliPackages = new Map([
+  ["@earendil-works/pi-coding-agent", "pi"], ["@anthropic-ai/claude-code", "claude"],
+  ["@openai/codex", "codex"], ["@google/gemini-cli", "gemini"],
+]);
+
 async function piEntries(args: string[], deps: Partial<ImportDeps>): Promise<Entry[]> {
   const run = deps.runMcpCommand ?? (await importSdkFile<ImportDeps>("extensions/mcp/cli.js")).runMcpCommand;
   const root = await mkdtemp(join(tmpdir(), "pi-web-mcp-import-"));
@@ -168,18 +191,28 @@ export async function parseMcpPaste(text: string, deps: Partial<ImportDeps> = {}
       const config = { url: /^https?:\/\//i.test(text) ? text : `http://${text}` };
       entries = [[configName(config), config]];
     } else {
-      const words = shellWords(text);
-      if (words[0] === "npx" && words[1] === "pi" && words[2] === "mcp" && words[3] === "add") words.shift();
-      if (words[0] === "pi" && words[1] === "mcp" && words[2] === "add") entries = await piEntries(words.slice(3), deps);
-      else if (words[0] === "claude" && words[1] === "mcp" && words[2] === "add") entries = [claudeEntry(words.slice(3), notes)];
-      else {
-        const env: [string, string][] = [];
-        while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
-          const pair = words.shift()!, separator = pair.indexOf("=");
-          env.push([pair.slice(0, separator), pair.slice(separator + 1)]);
+      const { env, program } = commandPrefix(shellWords(text));
+      const [command, ...args] = program;
+      if (!command) throw new Error("A command is required after environment assignments.");
+      let cli = command.split(/[\\/]/).pop()!.replace(/\.(?:exe|cmd)$/i, "");
+      let index = 1;
+      if (["npx", "bunx", "pnpx"].includes(cli)) {
+        while (program[index]?.startsWith("-")) {
+          index += ["-p", "--package"].includes(program[index]) ? 2 : 1;
         }
-        const [command, ...args] = words;
-        if (!command) throw new Error("A command is required after environment assignments.");
+        const pkg = (program[index++] ?? "").replace(/(?!^)@[^/]*$/, "");
+        cli = cliPackages.get(pkg) ?? pkg;
+      }
+      const sub = program[index];
+      if (["pi", "claude", "codex", "gemini"].includes(cli) && sub === "mcp") {
+        // The prefix configures the CLI process, not the server being added.
+        if (program[index + 1] === "add" && cli === "pi") entries = await piEntries(program.slice(index + 2), deps);
+        else if (program[index + 1] === "add" && cli === "claude") entries = [claudeEntry(program.slice(index + 2), notes)];
+        else throw new Error(`This ${cli} MCP management command is not a server command.`);
+      } else {
+        if (cli === "pi" && ["install", "remove", "uninstall", "update", "list", "config"].includes(sub)) {
+          throw new Error("A pi package management command is not a server command.");
+        }
         entries = [[commandName(command, args), { command, args, ...(env.length ? { env: Object.fromEntries(env) } : {}) }]];
       }
     }

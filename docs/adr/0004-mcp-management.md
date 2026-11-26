@@ -74,6 +74,9 @@ P2 — Add by paste
 - URL; command line; `pi mcp add …` (the SDK's `runMcpCommand(["add", …])` with a temporary `cwd`
   and agent dir, so `-l` cannot touch the project; succeed only when an entry was written);
   `claude mcp add …`; JSON (single entry, name map, `mcpServers`, VS Code `servers`).
+  Leading assignments (also after `env`) belong to the invoked program: keep them for plain servers,
+  not for the server described by an add command. Reject other MCP management and pi package commands
+  rather than offering to run them as servers.
 - Preview: the command that will run, the variables it reads, `!command` values. Nothing connects
   before Save; Save checks that server once.
 
