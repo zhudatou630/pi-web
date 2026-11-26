@@ -208,6 +208,7 @@ export async function parseMcpPaste(text: string, deps: Partial<ImportDeps> = {}
         // The prefix configures the CLI process, not the server being added.
         if (program[index + 1] === "add" && cli === "pi") entries = await piEntries(program.slice(index + 2), deps);
         else if (program[index + 1] === "add" && cli === "claude") entries = [claudeEntry(program.slice(index + 2), notes)];
+        else if (program[index + 1] === "add") throw new Error(`Importing \`${cli} mcp add\` is not supported. Paste the server's command or JSON configuration instead.`);
         else throw new Error(`This ${cli} MCP management command is not a server command.`);
       } else {
         if (cli === "pi" && ["install", "remove", "uninstall", "update", "list", "config"].includes(sub)) {
