@@ -57,6 +57,8 @@ function advertisedEfforts(value: Record<string, unknown>): Set<string> | undefi
     const list = EFFORT_LIST_FIELDS.map((field) => source[field]).find((entry) => Array.isArray(entry) && entry.length > 0);
     if (list) return effortSet(list as unknown[]);
   }
+  const levels = isRecord(value.effort) ? value.effort.supported_levels : undefined;
+  if (Array.isArray(levels) && levels.length) return effortSet(levels);
   if (!Array.isArray(value.parameters)) return undefined;
   const parameter = value.parameters.find((entry) =>
     isRecord(entry) && typeof entry.id === "string" && EFFORT_PARAMETER_IDS.has(entry.id) && Array.isArray(entry.values));
@@ -100,8 +102,9 @@ function thinkingLevelMapFrom(value: Record<string, unknown>, efforts: Set<strin
 
 function inputModalities(value: Record<string, unknown>): DiscoveredModel["input"] {
   const nested = isRecord(value.modalities) ? value.modalities.input : undefined;
-  const list = Array.isArray(nested) ? nested : value.input;
-  if (!Array.isArray(list)) return undefined;
+  const architectureInput = isRecord(value.architecture) ? value.architecture.input_modalities : undefined;
+  const list = [nested, value.input_modalities, architectureInput, value.input].find(Array.isArray);
+  if (!list) return undefined;
   const input = [...new Set(list.map((entry) => typeof entry === "string" ? entry.trim().toLowerCase() : entry)
     .filter((entry): entry is "text" | "image" => entry === "text" || entry === "image"))];
   return input.length ? input : undefined;
