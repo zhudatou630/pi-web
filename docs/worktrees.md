@@ -4,7 +4,7 @@ Pi Web 会把同一个 Git 项目的 main checkout 和 linked worktree 放在同
 
 ## 什么时候会看到 Worktree 控件
 
-当左上角选择的是 Git 仓库根目录时，项目选择器下面会出现 worktree 切换控件。
+新建会话页（侧栏顶部「新建会话」，或项目行的 +）的输入框上方有两个文字菜单：「项目 ⌄」和「运行位置 ⌄」。项目是 Git 仓库根目录时才有「运行位置」：项目目录 · 当前分支（默认）、已有 worktree、新建 worktree…。右栏「文件」视图在项目有多个 checkout 时也有分支菜单，只用来切换。
 
 以下情况不会显示：
 
@@ -12,7 +12,7 @@ Pi Web 会把同一个 Git 项目的 main checkout 和 linked worktree 放在同
 - 当前目录在某个 Git 仓库里面，但不是仓库根目录。
 - Git 无法读取这个仓库的 worktree 列表。
 
-如果你在仓库子目录里，先从项目选择器打开仓库根目录，再管理 worktree。
+如果你在仓库子目录里，先从「项目 ⌄ → 打开文件夹…」打开仓库根目录，再管理 worktree。
 
 ## 切换 Worktree 会影响什么
 
@@ -20,15 +20,15 @@ worktree 切换器决定 Pi Web 接下来使用哪个 checkout。
 
 它会影响：
 
-- 从侧边栏新建的会话。
+- 新建会话页正在写的这个会话。
 - 右栏「改动」「文件」两个视图显示的目录。
 - 从「文件」视图插入到输入框里的文件路径。
 
-已有会话仍然按同一个 project root 分组。点开另一个还活着的 worktree 里的会话时，右栏会切到那个 checkout；同一 checkout 里的历史会话不会改右栏。「文件」视图的分支菜单也能切换已有的 worktree（和侧栏的切换器是同一个状态）；新建、删除仍在侧栏。
+已有会话仍然按同一个 project root 分组。点开另一个还活着的 worktree 里的会话时，右栏会切到那个 checkout；同一 checkout 里的历史会话不会改右栏。「文件」视图的分支菜单也能切换已有的 worktree（和新建会话页的「运行位置」是同一个状态）；新建、删除在新建会话页。
 
 ## 新建 Worktree
 
-在侧栏或新会话页的 worktree 菜单里选择 `New worktree...`，输入 branch name。新会话页建好后会直接切到这个 checkout。
+在新建会话页的「运行位置 ⌄」里选「新建 worktree…」，输入 branch name（输入框下写着「基于 <main checkout 的分支>」）。建好后草稿直接切到这个 checkout。从侧栏开始数：新建会话、运行位置、新建 worktree…、输入名字后点创建，共 4 次点击。
 
 Pi Web 会把 checkout 放在：
 
@@ -54,7 +54,7 @@ agent 或其他客户端用 `git worktree add` 新建的 checkout，会在打开
 
 ## 删除 Worktree
 
-侧栏 worktree 菜单里，非 main worktree 右侧有删除按钮（新会话页的菜单只切换和新建）。在 Pi Web 外删掉当前选中的 checkout 后，侧栏会回到 main checkout。它删除的是这个 checkout 目录。
+新建会话页「运行位置 ⌄」的「已有 worktree」里，每行右侧有删除按钮。删掉草稿正在用的 checkout 后，草稿回到 main checkout；在 Pi Web 外删掉当前选中的 checkout 后，侧栏也会回到 main checkout。它删除的是这个 checkout 目录。
 
 删除 worktree 不会删除：
 
@@ -76,8 +76,8 @@ Pi Web 按 project root 分组会话，所以 main checkout 和 linked worktree 
 
 ## 常见问题
 
-**为什么我看不到 worktree 切换器？**
-请确认当前选择的是 Git 仓库根目录。非 Git 目录和仓库子目录会显示一行轻提示，而不是切换器。
+**为什么新建会话页没有「运行位置」？**
+请确认当前选择的是 Git 仓库根目录。非 Git 目录和仓库子目录只显示项目菜单。
 
 **为什么某个 branch 不能创建 worktree？**
 Git 不允许同一个 branch 同时被多个 worktree checkout。你可以切到已有的 worktree，或者先删除那个 checkout。
