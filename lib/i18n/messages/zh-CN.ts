@@ -589,6 +589,7 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.projects": "项目",
     "sidebar.moveProjectUp": "上移",
     "sidebar.moveProjectDown": "下移",
+    "sidebar.removeEmptyProject": "从侧栏移除",
     "sidebar.addProject": "添加项目",
     "sidebar.otherProjectActivity": "其他项目有动态",
     "sidebar.switchProject": "切换项目",

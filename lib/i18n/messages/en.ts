@@ -589,6 +589,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.projects": "Projects",
     "sidebar.moveProjectUp": "Move up",
     "sidebar.moveProjectDown": "Move down",
+    "sidebar.removeEmptyProject": "Remove from sidebar",
     "sidebar.addProject": "Add project",
     "sidebar.otherProjectActivity": "Activity in other projects",
     "sidebar.switchProject": "Switch project",

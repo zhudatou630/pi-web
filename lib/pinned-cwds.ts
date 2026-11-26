@@ -1,4 +1,4 @@
-const PINNED_CWDS_STORAGE_KEY = "pi-web:pinned-cwds";
+export const PINNED_CWDS_STORAGE_KEY = "pi-web:pinned-cwds";
 
 interface StorageLike {
   getItem(key: string): string | null;

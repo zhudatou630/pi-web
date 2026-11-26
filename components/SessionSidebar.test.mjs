@@ -382,10 +382,10 @@ test("projects have no pin toggle and the add menu does not switch projects", ()
 test("viewing a project keeps the saved order instead of promoting it", () => {
   const pinned = source.indexOf("[...pinnedCwds].reverse().forEach");
   const recent = source.indexOf("recentProjects.forEach(add)");
-  const selected = source.indexOf("add(selectedProject)", recent);
+  const membership = source.slice(source.indexOf("const workspaceProjects = useMemo"), source.indexOf("return orderProjects(projects, projectOrder)"));
   assert.ok(pinned >= 0 && pinned < recent);
   assert.match(source, /return orderProjects\(projects, projectOrder\)/);
-  assert.ok(recent < selected);
+  assert.doesNotMatch(membership, /selectedProject|selectedCwd/, "a restored cwd must not resurrect a deleted project");
 });
 
 test("limits recent sessions per project and loads more without marking them as subagents", () => {

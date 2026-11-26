@@ -1332,7 +1332,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // Empty-state CTA is only for a loaded sidebar with nothing to restore.
   // First paint has no cwd yet; treating that as "please select" flashes blue.
   const showSelectProjectPrompt = !selectedCwd && !loading && !error && recentProjects.length === 0;
-  const selectedProject = useMemo(() => projectFor(selectedCwd), [projectFor, selectedCwd]);
   const workspaceProjects = useMemo(() => {
     const projects: ProjectSelection[] = [];
     const seen = new Set<string>();
@@ -1348,11 +1347,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       if (project && !recentKeys.has(project.key)) add(project);
     });
     recentProjects.forEach(add);
-    // Selection is navigation, not activity. Only append a selected directory
-    // that has no session history; never promote an existing project on view.
-    add(selectedProject);
     return orderProjects(projects, projectOrder);
-  }, [pinnedCwds, projectFor, projectOrder, recentProjects, selectedProject]);
+  }, [pinnedCwds, projectFor, projectOrder, recentProjects]);
+  // A draft may remember its cwd after the last chat is deleted; it does not own a sidebar row.
+  const selectedKey = projectFor(selectedCwd)?.key;
+  const selectedProject = workspaceProjects.find((project) => project.key === selectedKey);
 
   // A custom path only holds an empty project open; once it has chats it must not
   // outlive them, or deleting every chat could never remove the project.
@@ -2117,6 +2116,12 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             >
               {t("sidebar.rename")}
             </button>
+            {pinnedCwds.some((cwd) => projectFor(cwd)?.key === projectMenu.key) && !recentProjects.some((project) => project.key === projectMenu.key) && (
+              <button type="button" role="menuitem" onClick={() => {
+                onUpdatePinnedCwds((paths) => paths.filter((cwd) => projectFor(cwd)?.key !== projectMenu.key));
+                setProjectMenu(null);
+              }}>{t("sidebar.removeEmptyProject")}</button>
+            )}
             {!archiveView && (["before", "after"] as const).map((position) => {
               const anchor = workspaceProjects[projectIndex + (position === "before" ? -1 : 1)];
               return <button key={position} type="button" role="menuitem" disabled={projectIndex < 0 || !anchor}

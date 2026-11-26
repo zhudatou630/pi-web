@@ -89,7 +89,7 @@ function pathForChatMention(path: string, sourceCwd?: string, targetCwd?: string
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { clearDraft, discardSessionDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import { workspaceKeyOf } from "@/lib/workspace-key";
-import { loadPinnedCwds, savePinnedCwds } from "@/lib/pinned-cwds";
+import { PINNED_CWDS_STORAGE_KEY, loadPinnedCwds, savePinnedCwds } from "@/lib/pinned-cwds";
 import {
   getDefaultRightPanelWidth,
   getChatSplitRatioBounds,
@@ -232,6 +232,13 @@ export function AppShell() {
   const [projectPaths, setProjectPaths] = useState<string[]>([]);
   const [pinnedCwds, setPinnedCwds] = useState<string[]>(() => loadPinnedCwds());
   const [projectNameByRoot, setProjectNameByRoot] = useState<ReadonlyMap<string, string>>(() => new Map());
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.storageArea === window.localStorage && (event.key === PINNED_CWDS_STORAGE_KEY || event.key === null)) setPinnedCwds(loadPinnedCwds());
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
   const handleUpdatePinnedCwds = useCallback((update: (paths: string[]) => string[]) => {
     // Apply to the stored list, not this tab's copy: another tab may have added a path since.
     const latest = loadPinnedCwds();

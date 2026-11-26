@@ -144,7 +144,10 @@ test("project menus clamp using their measured height on desktop, phone, and in 
     for (const [innerHeight, rowHeight] of [[900, 28], [640, 32]]) {
       const projectMenu = { key: "p", cwd: "/p", x: 30, y: innerHeight - 5 };
       const noop = () => {};
+      let savedPaths = ["/p", "/keep"];
       const menu = evaluate(expression.right, {
+        pinnedCwds: savedPaths, recentProjects: archiveView ? [{ key: "p" }] : [],
+        projectFor: (cwd) => ({ key: cwd.slice(1) }), onUpdatePinnedCwds: (update) => { savedPaths = update(savedPaths); },
         React, projectMenu, archiveView, window: { innerWidth: 390, innerHeight },
         projectActivity: new Map(), archiveOlderFamilies: () => [], archivedFamilies: [],
         workspaceProjects: [{ key: "p" }], workspaceKeyOf: (session) => session.projectKey,
@@ -153,7 +156,13 @@ test("project menus clamp using their measured height on desktop, phone, and in 
         setRenamingProjectKey: noop, moveProject: noop, updateSessionSidebarState: noop, setDeleteConfirm: noop,
       });
       const items = menu.props.children.flat(Infinity).filter((child) => child?.props?.role === "menuitem");
-      assert.equal(items.length, archiveView ? 3 : 6, "includes Rename and all disabled items");
+      assert.equal(items.length, archiveView ? 3 : 7, "includes all disabled items");
+      const remove = items.find((item) => item.props.children === "sidebar.removeEmptyProject");
+      if (archiveView) assert.equal(remove, undefined, "a project with history cannot be forgotten");
+      else {
+        remove.props.onClick();
+        assert.deepEqual(savedPaths, ["/keep"], "forget only the empty project, without accessing its directory");
+      }
       // Supply the DOM measurement including the actual row count, padding and borders.
       const element = { offsetHeight: items.length * rowHeight + 10, style: {} };
       menu.props.ref(element);
