@@ -1,4 +1,5 @@
 import type { Element as HastElement, Root as HastRoot, RootContent as HastContent } from "hast";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import type { Content, Link, Parent, Root } from "mdast";
 import type { Plugin } from "unified";
 import type { Extension } from "micromark-util-types";
@@ -54,6 +55,32 @@ function rewriteEscapedInlineCodeBackticks(line: string): string {
     if (code === content) return match;
     const marker = "`".repeat(Math.max(...(code.match(/`+/g)?.map((run) => run.length) ?? [0])) + 1);
     return `${marker}${code}${marker}`;
+  });
+}
+
+// Ask CommonMark for verbatim ranges only when a candidate coexists with possible code.
+// Counting indentation or backticks ourselves misses code nested in lists and quotes.
+export function normalizeLocalFileLinks(markdown: string): string {
+  const verbatim: { start: number; end: number }[] = [];
+  let checkedCode = false;
+  let index = 0;
+  return markdown.replace(/\]\(((?:file:\/\/|\/(?!\/)|[a-z]:\/)[^<>()\r\n\t]*)\)/gi, (match, target: string, offset: number) => {
+    if (!target.includes(" ") || target.endsWith(" ") || / (["']).*\1$/.test(target)) return match;
+    if (!checkedCode) {
+      checkedCode = true;
+      if (/[`<\t]|~~~| {4}/.test(markdown)) {
+        const visit = (node: Root | Content): void => {
+          if (node.type === "code" || node.type === "inlineCode" || node.type === "html") {
+            const pos = node.position;
+            if (pos?.start.offset != null && pos.end.offset != null) verbatim.push({ start: pos.start.offset, end: pos.end.offset });
+          } else if ("children" in node) node.children.forEach(visit);
+        };
+        visit(fromMarkdown(markdown));
+      }
+    }
+    while (index < verbatim.length && verbatim[index].end <= offset) index++;
+    if (index < verbatim.length && verbatim[index].start < offset + match.length) return match;
+    return `](<${target}>)`;
   });
 }
 

@@ -30,7 +30,7 @@ import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from 
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { injectSandboxedHtmlPolyfill } from "@/lib/html-sandbox-polyfill";
 import { extractMarkdownOutline, findHeadingBySlug } from "@/lib/markdown-outline";
-import { markdownAppUrlTransform, markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { markdownAppUrlTransform, markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins, markdownUrlTransform, normalizeDisplayMath, normalizeLocalFileLinks } from "@/lib/markdown";
 import { MarkdownFence } from "./MarkdownFence";
 import { MarkdownTableBlock, tableSource } from "./MarkdownBody";
 import { DelimitedTable } from "./DelimitedTable";
@@ -1741,7 +1741,7 @@ function TextFileViewer({
   }, [requestedInitialDisplayMode, hasGitDiff, updateDisplayMode]);
 
   const markdownPreview = useMemo(
-    () => (data?.language === "markdown" ? normalizeDisplayMath(data.content) : ""),
+    () => (data?.language === "markdown" ? normalizeLocalFileLinks(normalizeDisplayMath(data.content)) : ""),
     [data],
   );
 

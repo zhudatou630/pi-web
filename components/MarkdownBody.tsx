@@ -11,7 +11,7 @@ import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from 
 import { parsePreviewTarget, requestPreview } from "@/lib/preview-target";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { isAudioPath, isVideoPath } from "@/lib/file-types";
-import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownTextLayoutRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath } from "@/lib/markdown";
+import { markdownAppUrlTransform, markdownRehypePlugins, markdownRemarkPlugins, markdownTextLayoutRemarkPlugins, markdownUserRemarkPlugins, markdownUrlTransform, normalizeDisplayMath, normalizeLocalFileLinks } from "@/lib/markdown";
 import { parseStreamingFence, splitMarkdownBlocks } from "@/lib/markdown-blocks";
 import { findHeadingBySlug } from "@/lib/markdown-outline";
 import { ImagePreview } from "./ImagePreview";
@@ -44,13 +44,14 @@ function MathDisplay({ source, children }: { source: string; children: ReactNode
 
 interface MarkdownBlockProps {
   markdown: string;
+  streaming?: boolean;
   remarkPlugins: typeof markdownRemarkPlugins;
   urlTransform: typeof markdownUrlTransform;
   components: Components;
 }
 
 /** One parse; skipped while its text and renderers stay the same. */
-const MarkdownBlock = memo(function MarkdownBlock({ markdown, remarkPlugins, urlTransform, components }: MarkdownBlockProps) {
+const MarkdownBlock = memo(function MarkdownBlock({ markdown, streaming, remarkPlugins, urlTransform, components }: MarkdownBlockProps) {
   return (
     <ReactMarkdown
       remarkPlugins={remarkPlugins}
@@ -58,7 +59,7 @@ const MarkdownBlock = memo(function MarkdownBlock({ markdown, remarkPlugins, url
       urlTransform={urlTransform}
       components={components}
     >
-      {markdown}
+      {streaming ? normalizeLocalFileLinks(markdown) : markdown}
     </ReactMarkdown>
   );
 });
@@ -66,7 +67,10 @@ const MarkdownBlock = memo(function MarkdownBlock({ markdown, remarkPlugins, url
 export const MarkdownBody = memo(function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
   const sessionId = useContext(MarkdownSessionContext);
   const classNames = className?.split(/\s+/) ?? [];
-  const normalizedMarkdown = useMemo(() => normalizeDisplayMath(children), [children]);
+  const normalizedMarkdown = useMemo(() => {
+    const markdown = normalizeDisplayMath(children);
+    return isStreaming ? markdown : normalizeLocalFileLinks(markdown);
+  }, [children, isStreaming]);
   // A streaming reply grows by a few characters per chunk; parsing all of it each
   // time made a long reply quadratic. Its finished blocks keep their parse and only
   // the last is parsed again. A finished message is one block, so node offsets
@@ -192,6 +196,7 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
         <MarkdownBlock
           key={index}
           markdown={block}
+          streaming={isStreaming}
           remarkPlugins={classNames.includes("markdown-custom-message") ? markdownTextLayoutRemarkPlugins
             : classNames.includes("markdown-user-message") ? markdownUserRemarkPlugins : markdownRemarkPlugins}
           urlTransform={onOpenFile ? markdownUrlTransform : markdownAppUrlTransform}
