@@ -92,21 +92,26 @@ export function normalizeLocalFileLinks(markdown: string): string {
   });
 }
 
-// Consult CommonMark only for the ambiguous combination of a raw tag and
-// backticks. Preserve columns (and newlines) for the raw closing-tag search.
-function blankInlineCode(markdown: string): string[] {
-  const parts: string[] = [];
-  let cursor = 0;
-  const visit = (node: Root | Content): void => {
-    if (node.type === "inlineCode") {
-      const start = node.position!.start.offset!;
-      const end = node.position!.end.offset!;
-      parts.push(markdown.slice(cursor, start), markdown.slice(start, end).replace(/[^\r\n]/g, " "));
-      cursor = end;
-    } else if ("children" in node) node.children.forEach(visit);
-  };
-  visit(fromMarkdown(markdown));
-  return (parts.join("") + markdown.slice(cursor)).split(/\r?\n/);
+// Blank code spans in place, with updateInlineCodeMarker's run matching (`markerSize`: a span
+// carried over from earlier lines), so only a tag outside them opens a raw block. Columns
+// stay valid for the closing-tag search in the line as written.
+function blankCodeSpans(line: string, markerSize: number): string {
+  let out = "";
+  for (let cursor = 0; cursor < line.length;) {
+    if (line[cursor] !== "`") {
+      out += markerSize ? " " : line[cursor];
+      cursor++;
+      continue;
+    }
+    let end = cursor + 1;
+    while (line[end] === "`") end++;
+    const runSize = end - cursor;
+    if (markerSize === 0) markerSize = runSize;
+    else if (runSize === markerSize) markerSize = 0;
+    out += " ".repeat(runSize);
+    cursor = end;
+  }
+  return out;
 }
 
 export function normalizeDisplayMath(markdown: string): string {
@@ -116,7 +121,6 @@ export function normalizeDisplayMath(markdown: string): string {
   let fence: { marker: string; size: number } | null = null;
   let inlineCodeMarkerSize = 0;
   let rawCodeTag: string | null = null;
-  let unquotedLines: string[] | undefined;
   const unmatchedDisplayMathUntil = new Map<string, number>();
   const untouchedCloseAt = new Set<number>();
 
@@ -147,10 +151,7 @@ export function normalizeDisplayMath(markdown: string): string {
 
     const rawTag = /<(code|pre|script|style)\b/i;
     let rawCodeOpen = line.match(rawTag);
-    if (rawCodeOpen && (inlineCodeMarkerSize || line.includes("`"))) {
-      unquotedLines ??= blankInlineCode(markdown);
-      rawCodeOpen = unquotedLines[index].match(rawTag);
-    }
+    if (rawCodeOpen && (inlineCodeMarkerSize || line.includes("`"))) rawCodeOpen = blankCodeSpans(line, inlineCodeMarkerSize).match(rawTag);
     if (rawCodeOpen) {
       const tag = rawCodeOpen[1].toLowerCase();
       const remainder = line.slice((rawCodeOpen.index ?? 0) + rawCodeOpen[0].length);
