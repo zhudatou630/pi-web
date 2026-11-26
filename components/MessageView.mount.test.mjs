@@ -44,10 +44,11 @@ test("mounted thinking keeps its full DOM and scroll when the same message becom
     ts.isFunctionDeclaration(node) ? names.has(node.name?.text)
       : ts.isVariableStatement(node) && node.declarationList.declarations.some((declaration) => names.has(declaration.name.getText(ast)))
   )).map((node) => node.getText(ast)).join("\n");
-  const display = await readFile(new URL("../lib/message-display.ts", import.meta.url), "utf8");
-  const code = ts.transpileModule(`${display}\n${components}`, {
+  // message-display imports stripAnsi from ansi: inline both, since a plain script tag cannot import.
+  const helpers = await Promise.all(["../lib/ansi.ts", "../lib/message-display.ts"].map((path) => readFile(new URL(path, import.meta.url), "utf8")));
+  const code = ts.transpileModule(`${helpers.join("\n")}\n${components}`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.React },
-  }).outputText.replace(/^export /gm, "");
+  }).outputText.replace(/^import .*$/gm, "").replace(/^export /gm, "");
   await page.addScriptTag({ content: `
     const { memo, useState, useRef, useEffect, useMemo } = React;
     const useI18n = () => ({ t: (key) => key });
