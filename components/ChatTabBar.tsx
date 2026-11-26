@@ -399,14 +399,14 @@ export function ChatTabBar({
                 touchAction: "pan-x",
                 position: "relative",
                 transition: "background var(--motion-fast), color var(--motion-fast)",
-                // Visible tabs drop the bottom rule to join their pane; the focused
-                // pane's tab also carries the top accent bar.
+                // Visible tabs drop the bottom rule to join their pane (the unified header has
+                // none at all); the focused pane's tab also carries the top accent bar.
                 // In the unified header the first tab sits next to header icons, so a
                 // visible first tab also takes a left rule.
                 boxShadow: [
                   isCurrentPane && "inset 0 2px 0 var(--accent)",
                   isVisible && index === 0 && unifiedHeader && pane !== "secondary" && "inset 1px 0 0 var(--border)",
-                  !isVisible && "inset 0 -1px 0 var(--border)",
+                  !isVisible && !unifiedHeader && "inset 0 -1px 0 var(--border)",
                 ].filter(Boolean).join(", ") || undefined,
               }}
               title={tab.preview ? `${tab.title} · ${t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })}` : tab.title}

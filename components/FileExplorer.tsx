@@ -7,7 +7,6 @@ import { getFileIcon, SidebarChevronGlyph } from "./FileIcons";
 import {
   encodeFilePathForApi,
   getFileDirectory,
-  getFileName,
   getRelativeFilePath,
   joinFilePath,
   normalizeFilePathSlashes,
@@ -45,10 +44,8 @@ interface Props {
   onUploadBusyChange?: (busy: boolean) => void;
   /** Whether the visible tree has an open folder, i.e. collapseAll() would change anything. */
   onCanCollapseChange?: (canCollapse: boolean) => void;
-  changesCollapsed: boolean;
-  onChangesCountChange?: (count: number) => void;
-  fileSearchOpen?: boolean;
-  onFileSearchOpenChange?: (open: boolean) => void;
+  /** Actions shown at the end of the search row (worktree, upload, refresh). */
+  toolbar?: React.ReactNode;
   /** Expand to, select and scroll to `path` once the explorer shows `cwd`. */
   reveal?: { cwd: string; path: string; nonce: number } | null;
 }
@@ -56,6 +53,7 @@ interface Props {
 export interface FileExplorerHandle {
   openUploadPicker: () => void;
   collapseAll: () => void;
+  focusSearch: () => void;
 }
 
 type UploadPhase = "idle" | "checking" | "uploading";
@@ -99,7 +97,8 @@ async function fetchEntries(dirPath: string): Promise<FileNode[]> {
 }
 
 async function fetchGitStatus(cwd: string, signal: AbortSignal): Promise<GitStatusResponse> {
-  const params = new URLSearchParams({ cwd });
+  // The tree shows status letters only; the Changes view reads the line counts.
+  const params = new URLSearchParams({ cwd, lines: "0" });
   const res = await fetch(`/api/git/status?${params.toString()}`, { signal });
   if (!res.ok) throw new Error(`Failed to load Git status (HTTP ${res.status})`);
   return res.json() as Promise<GitStatusResponse>;
@@ -481,62 +480,6 @@ function TreeNode({
 
 type OpenFileOptions = { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string; preview?: boolean };
 
-type OpenFileHandler = (filePath: string, fileName: string, options?: OpenFileOptions) => void;
-
-function ChangeRow({
-  status,
-  cwd,
-  onOpenFile,
-  t,
-}: {
-  status: GitFileStatus;
-  cwd: string;
-  onOpenFile: OpenFileHandler;
-  t: Translate;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const name = getFileName(status.filePath);
-  const rel = getRelativeFilePath(status.filePath, cwd);
-  return (
-    <div
-      onClick={() => onOpenFile(status.filePath, name, { modeHint: "diff", cwd })}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      title={status.filePath}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        paddingLeft: 8,
-        paddingRight: 6,
-        height: 26,
-        boxSizing: "border-box",
-        cursor: "pointer",
-        background: hovered ? "var(--bg-hover)" : "transparent",
-        borderRadius: 4,
-        userSelect: "none",
-      }}
-    >
-      <GitStatusBadge status={status} t={t} />
-      <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", color: hovered ? "var(--text)" : "var(--text-muted)" }}>
-        {getFileIcon(name, 13)}
-      </span>
-      <span
-        style={{
-          fontSize: 12,
-          color: hovered ? "var(--text)" : "var(--text-muted)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          flex: 1,
-        }}
-      >
-        {rel}
-      </span>
-    </div>
-  );
-}
-
 export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileExplorer({
   cwd,
   onOpenFile,
@@ -545,10 +488,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   onAtMentions,
   onUploadBusyChange,
   onCanCollapseChange,
-  changesCollapsed,
-  onChangesCountChange,
-  fileSearchOpen = false,
-  onFileSearchOpenChange,
+  toolbar,
   reveal = null,
 }, ref) {
   const { t } = useI18n();
@@ -566,8 +506,6 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   }, [highlightedPaths]);
   const [revealed, setRevealed] = useState<{ path: string; nonce: number } | null>(null);
   const [gitFiles, setGitFiles] = useState<GitFileStatus[]>([]);
-  const [gitLineStats, setGitLineStats] = useState({ additions: 0, deletions: 0 });
-  const [gitStatusCwd, setGitStatusCwd] = useState<string | null>(null);
   const [gitError, setGitError] = useState<string | null>(null);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -604,7 +542,6 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   // Only a manual refresh forces a rebuild: run-time refreshKey bumps (up to 1/s)
   // would re-walk large repos; the index's 10 s TTL covers agent edits.
   useEffect(() => {
-    if (!fileSearchOpen) return;
     const query = searchQuery.trim();
     if (!query) {
       setSearchPaths([]);
@@ -628,12 +565,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
         .finally(() => { if (!controller.signal.aborted) setSearchLoading(false); });
     }, 150);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [cwd, fileSearchOpen, treeRefreshKey, searchQuery]);
-
-  // Focus the search input whenever the search panel opens.
-  useEffect(() => {
-    if (fileSearchOpen) searchInputRef.current?.focus();
-  }, [fileSearchOpen]);
+  }, [cwd, treeRefreshKey, searchQuery]);
 
   // Results render as a tree; keep every directory that contains a match
   // expanded, while preserving the user's manual collapses as they type.
@@ -874,13 +806,17 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       setExpandedPaths(new Set());
       rememberExpandedPaths(cwd, []);
     },
+    focusSearch() {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    },
   }), [cwd, uploadBlocked]);
 
   useEffect(() => {
     onUploadBusyChange?.(uploadBlocked);
   }, [onUploadBusyChange, uploadBlocked]);
 
-  const treeVisible = (changesCollapsed || gitStatusCwd !== cwd || gitFiles.length === 0) && (!fileSearchOpen || !hasSearchQuery);
+  const treeVisible = !hasSearchQuery;
   const canCollapse = treeVisible && expandedPaths.size > 0;
   useEffect(() => {
     onCanCollapseChange?.(canCollapse);
@@ -923,6 +859,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     if (!reveal || normalizeFilePathSlashes(reveal.cwd).replace(/\/$/, "") !== root) return;
     const path = normalizeFilePathSlashes(reveal.path);
     if (!path.startsWith(`${root}/`)) return;
+    // Search results replace the tree: show the tree so the revealed row is on screen.
+    setSearchQuery("");
     setExpandedPaths((previous) => {
       const next = new Set(previous);
       for (let parent = getFileDirectory(path); parent.startsWith(`${root}/`) && parent.length > root.length + 1; parent = getFileDirectory(parent)) {
@@ -945,9 +883,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     let cancelled = false;
     const cwdChanged = gitStatusCwdRef.current !== cwd;
     if (cwdChanged) {
-      setGitStatusCwd(null);
       setGitFiles([]);
-      setGitLineStats({ additions: 0, deletions: 0 });
     }
     setGitError(null);
     const controller = new AbortController();
@@ -955,11 +891,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       .then((status) => {
         if (!cancelled) {
           setGitFiles(status.isGitRepository ? status.files : []);
-          setGitLineStats(status.isGitRepository
-            ? { additions: status.additions, deletions: status.deletions }
-            : { additions: 0, deletions: 0 });
           gitStatusCwdRef.current = cwd;
-          setGitStatusCwd(cwd);
         }
       })
       .catch((error) => {
@@ -969,10 +901,6 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       });
     return () => { cancelled = true; controller.abort(); };
   }, [cwd, refreshKey, treeRefreshKey]);
-
-  useEffect(() => {
-    onChangesCountChange?.(gitStatusCwd === cwd ? gitFiles.length : 0);
-  }, [cwd, gitFiles, gitStatusCwd, onChangesCountChange]);
 
   const showUploadFeedback = uploadBusy || pendingConflict !== null || uploadError !== null || uploadSummary !== null;
 
@@ -1152,8 +1080,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
         </div>
       )}
 
-      {fileSearchOpen && (
-      <div className="sidebar-search-container">
+      <div className="sidebar-search-container file-search-row">
+        <div className="file-search-bar">
         <label className="sidebar-search-field">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
             <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
@@ -1164,13 +1092,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
+              if (event.key === "Escape" && searchQuery) {
                 event.stopPropagation();
-                if (searchQuery) {
-                  setSearchQuery("");
-                } else {
-                  onFileSearchOpenChange?.(false);
-                }
+                setSearchQuery("");
               }
             }}
             placeholder={t("sidebar.searchFilesPlaceholder")}
@@ -1190,6 +1114,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             </button>
           )}
         </label>
+        {toolbar}
+        </div>
         {hasSearchQuery && (
           <div style={{ paddingTop: 3 }}>
             {searchLoading && <div role="status" style={{ padding: "6px 2px", fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.searchingFiles")}</div>}
@@ -1228,7 +1154,6 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           </div>
         )}
       </div>
-      )}
 
       {fileMenu && createPortal(
         <div
@@ -1296,28 +1221,6 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       {gitError && (
         <div role="alert" title={gitError} style={{ padding: "6px 6px", fontSize: 11, color: "var(--danger)" }}>
           {t("files.gitStatusFailed")}
-        </div>
-      )}
-
-      {!changesCollapsed && gitStatusCwd === cwd && gitFiles.length > 0 && (
-        <div style={{ padding: "0 0 2px" }}>
-          <div
-            aria-label={t("files.changeStats", {
-              count: gitFiles.length,
-              additions: gitLineStats.additions,
-              deletions: gitLineStats.deletions,
-            })}
-            style={{ display: "flex", alignItems: "center", gap: 6, height: 24, padding: "0 8px", fontSize: 12 }}
-          >
-            <span style={{ color: "var(--text-dim)" }}>
-              {t("files.changedCount", { count: gitFiles.length })}
-            </span>
-            <span style={{ color: "var(--success)", fontVariantNumeric: "tabular-nums" }}>+{gitLineStats.additions}</span>
-            <span style={{ color: "var(--danger)", fontVariantNumeric: "tabular-nums" }}>-{gitLineStats.deletions}</span>
-          </div>
-          {gitFiles.map((status) => (
-            <ChangeRow key={status.filePath} status={status} cwd={cwd} onOpenFile={onOpenFile} t={t} />
-          ))}
         </div>
       )}
 

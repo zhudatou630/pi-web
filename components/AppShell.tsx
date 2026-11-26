@@ -40,6 +40,8 @@ import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
 import { ChangesButton, SessionContextButton } from "./TopBarContext";
+import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView } from "./PanelViews";
+import type { FileExplorerHandle } from "./FileExplorer";
 import type { GitStatusResponse } from "@/lib/git-types";
 import { InfoDialog } from "./InfoDialog";
 import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
@@ -65,7 +67,7 @@ import { useOpenSessionLeases } from "@/hooks/useOpenSessionLeases";
 import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand as postAgentCommand } from "@/lib/agent-client";
 import type { CacheKeepaliveStatus } from "@/lib/cache-keepalive";
-import { getFileName, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
+import { getFileName, getRelativeFilePath, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
 import { CHAT_WORKSPACE_STORAGE_KEY, restoreChatWorkspace, serializeChatWorkspace } from "@/lib/chat-workspace-state";
 import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getSideChatName } from "@/lib/side-chat";
@@ -128,6 +130,7 @@ import { parsePreviewTarget, PREVIEW_OPEN_EVENT } from "@/lib/preview-target";
 import { OPEN_ROUTINE_EVENT } from "@/lib/routine-events";
 
 const BROWSER_TAB_KEY = "pi-web:browser-tab";
+const PANEL_VIEW_KEY = "pi-web:panel-view";
 
 function restoreBrowserTab(raw: string | null): { url: string; active: boolean; open: boolean } | null {
   try {
@@ -1029,6 +1032,11 @@ export function AppShell() {
   const [terminalActionsSlot, setTerminalActionsSlot] = useState<HTMLDivElement | null>(null);
   const [panelTabsRestored, setPanelTabsRestored] = useState(false);
   const [panelTabOrder, setPanelTabOrder] = useState<string[]>([]);
+  // The fixed views show while no content tab is active (activeFileTabId null); see docs/ui.md, File panel.
+  const [panelView, setPanelView] = useState<PanelView>("changes");
+  const [filesViewMounted, setFilesViewMounted] = useState(false);
+  const [changesScope, setChangesScope] = useState<ChangesScope>("uncommitted");
+  const filesExplorerRef = useRef<FileExplorerHandle>(null);
   const panelTabs = useMemo<Tab[]>(() => orderPanelTabs([
     ...fileTabs,
     ...terminalTabs.map((tab) => ({
@@ -1056,9 +1064,18 @@ export function AppShell() {
       setPanelTabOrder(restorePanelTabOrder(window.sessionStorage.getItem(PANEL_TAB_ORDER_KEY)));
       // An active terminal keeps the panel; otherwise the active file tab does.
       const active = saved.activeId ? saved : { activeId: files.activeTabId, open: files.open };
+      const view = (() => {
+        try { return JSON.parse(window.sessionStorage.getItem(PANEL_VIEW_KEY) ?? "null") as { view?: unknown; open?: unknown } | null; } catch { return null; }
+      })();
+      if (view?.view === "files" || view?.view === "changes") {
+        setPanelView(view.view);
+        setFilesViewMounted(view.view === "files");
+      }
       if (active.activeId) {
         setActiveFileTabId(active.activeId);
         setRightPanelOpen(active.open);
+      } else if (view?.open === true && !browser?.active) {
+        setRightPanelOpen(true);
       }
       if (browser) {
         setBrowserPage({ url: browser.url, id: 0 });
@@ -1082,6 +1099,13 @@ export function AppShell() {
       }));
     } catch { /* storage is optional */ }
   }, [terminalTabs, activeFileTabId, rightPanelOpen, panelTabsRestored]);
+
+  useEffect(() => {
+    if (!panelTabsRestored) return;
+    try {
+      window.sessionStorage.setItem(PANEL_VIEW_KEY, JSON.stringify({ view: panelView, open: rightPanelOpen && activeFileTabId === null }));
+    } catch { /* storage is optional */ }
+  }, [panelView, activeFileTabId, rightPanelOpen, panelTabsRestored]);
 
   useEffect(() => {
     if (!panelTabsRestored) return;
@@ -2290,12 +2314,10 @@ export function AppShell() {
 
   const handleTerminalClosed = (tab: TerminalTab) => {
     const replacement = tab.closing === "restart" ? newTerminalTab(tab.cwd) : null;
-    const remaining = terminalTabs.filter((item) => item.id !== tab.id);
     const adjacentTabId = getAdjacentTabId(panelTabs, tab.id);
     if (replacement) setPanelTabOrder((order) => replacePanelTabId(order, tab.id, replacement.id));
     setTerminalTabs((tabs) => tabs.flatMap((item) => item.id !== tab.id ? [item] : replacement ? [replacement] : []));
     setActiveFileTabId((current) => current !== tab.id ? current : replacement?.id ?? adjacentTabId);
-    if (!replacement && !remaining.length && !fileTabs.length && !browserPage) setRightPanelOpen(false);
   };
 
   const handleCloseFileTab = useCallback((tabId: string) => {
@@ -2305,16 +2327,13 @@ export function AppShell() {
     }
     const adjacentTabId = getAdjacentTabId(panelTabs, tabId);
     if (tabId === BROWSER_TAB_ID) setBrowserPage(null);
-    setFileTabs((prev) => {
-      const next = prev.filter((t) => t.id !== tabId);
-      if (next.length === 0 && terminalTabs.length === 0 && (!browserPage || tabId === BROWSER_TAB_ID)) setRightPanelOpen(false);
-      return next;
-    });
+    // The last closed tab leaves the panel open on its fixed view (adjacentTabId null).
+    setFileTabs((prev) => prev.filter((t) => t.id !== tabId));
     setActiveFileTabId((cur) => {
       if (cur !== tabId) return cur;
       return adjacentTabId;
     });
-  }, [browserPage, panelTabs, terminalTabs]);
+  }, [panelTabs, terminalTabs]);
 
   // `keepId` stays open, so the panel never empties here. Terminals close through their own flow.
   const handleCloseFileTabs = useCallback((tabIds: string[], keepId: string) => {
@@ -2329,19 +2348,41 @@ export function AppShell() {
     setPanelTabOrder(movePanelTab(panelTabs.map((tab) => tab.id), tabId, beforeId));
   }, [panelTabs]);
 
-  // One-shot request for the sidebar explorer to show `path` under `cwd` (`changes`: open its changes list).
-  const [explorerReveal, setExplorerReveal] = useState<{ cwd: string; path: string; nonce: number; changes?: boolean } | null>(null);
-  const handleRevealCwdInFiles = useCallback((cwd: string, changes = false) => {
-    setExplorerReveal((previous) => ({ cwd, path: cwd, nonce: (previous?.nonce ?? 0) + 1, changes }));
-    desktopSidebarOpenRef.current = true;
-    setSidebarOpen(true);
+  const selectPanelView = useCallback((view: PanelView) => {
+    setPanelView(view);
+    if (view === "files") setFilesViewMounted(true);
+    setActiveFileTabId(null);
   }, []);
+  // One-shot request: the panel (and the sidebar's selected project) moves to `cwd`; the Files view
+  // also shows `path` in the tree.
+  const [explorerReveal, setExplorerReveal] = useState<{ cwd: string; path: string; nonce: number } | null>(null);
+  const showInPanel = useCallback((cwd: string, view: PanelView, path = cwd) => {
+    setExplorerReveal((previous) => ({ cwd, path, nonce: (previous?.nonce ?? 0) + 1 }));
+    selectPanelView(view);
+    setRightPanelOpen(true);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile, selectPanelView]);
+  const handleRevealCwdInFiles = useCallback((cwd: string, changes = false) => {
+    if (changes) setChangesScope("uncommitted");
+    showInPanel(cwd, changes ? "changes" : "files");
+  }, [showInPanel]);
+  const handleReviewTurnChanges = useCallback((cwd: string) => {
+    setChangesScope("turn");
+    showInPanel(cwd, "changes");
+  }, [showInPanel]);
   const handleRevealInExplorer = useCallback((tab: Tab) => {
-    if (!tab.cwd) return;
-    const cwd = tab.cwd;
-    setExplorerReveal((previous) => ({ cwd, path: tab.filePath, nonce: (previous?.nonce ?? 0) + 1 }));
-    desktopSidebarOpenRef.current = true;
-    setSidebarOpen(true);
+    if (tab.cwd) showInPanel(tab.cwd, "files", tab.filePath);
+  }, [showInPanel]);
+  // A diff only means something inside the cwd's repository; a file the turn wrote elsewhere opens
+  // plainly, still authorized through its session.
+  const handleOpenDiff = useCallback((filePath: string, cwd?: string, sourceSessionId: string | null = null) => {
+    const inside = Boolean(cwd) && getRelativeFilePath(filePath, cwd) !== filePath;
+    handleOpenFile(filePath, getFileName(filePath), { ...(inside ? { modeHint: "diff" as const } : {}), cwd, sourceSessionId });
+  }, [handleOpenFile]);
+  // Files the focused chat's last turn wrote: the Changes view's "this turn" scope.
+  const [turnFiles, setTurnFiles] = useState<readonly string[]>([]);
+  const handleTurnFilesChange = useCallback((files: readonly string[]) => {
+    setTurnFiles((current) => current.length === files.length && current.every((file, index) => file === files[index]) ? current : files);
   }, []);
 
   const handleViewFullHistory = useCallback(() => {
@@ -2424,6 +2465,10 @@ export function AppShell() {
         onAgentEnd={handleAgentEnd}
         onToolEnd={handleToolEnd}
         onFilesChanged={requestExplorerRefresh}
+        filePanelOpen={rightPanelOpen}
+        onReviewTurnChanges={handleReviewTurnChanges}
+        onOpenDiff={handleOpenDiff}
+        onTurnFilesChange={isFocusedPane ? handleTurnFilesChange : undefined}
         onAttentionNeeded={handleAttentionNeeded}
         onSessionCreated={handleSessionCreated}
         onSessionForked={handleSessionForked}
@@ -2658,6 +2703,9 @@ export function AppShell() {
     });
   }, [activeFileTab?.cwd, activeFileTab?.sourceSessionId, handleOpenFile]);
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
+  // The fixed views follow the sidebar's selected cwd, which follows the active session (lib/explorer-cwd.ts).
+  const panelCwd = activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null;
+  const showPanelView = !activeFileTab?.filePath && !terminalTabs.some((tab) => tab.id === activeFileTabId) && !(browserPage && activeFileTabId === BROWSER_TAB_ID);
 
   useEffect(() => {
     // The server's app name (app/layout.tsx, Settings › General › Appearance).
@@ -2688,15 +2736,9 @@ export function AppShell() {
         skipInitialProjectSelection={initialNavigation.requestedCwd !== null}
         refreshKey={refreshKey}
         onSessionDeleted={handleSessionDeleted}
-        selectedCwd={activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null}
+        selectedCwd={panelCwd}
         onCwdChange={handleCwdChange}
-        onOpenFile={handleOpenFile}
-        onOpenTerminal={handleOpenTerminal}
-        onOpenBrowser={() => handleOpenBrowser()}
-        explorerRefreshKey={explorerRefreshKey}
-        onExplorerRefresh={handleExplorerRefresh}
-        onAtMention={handleAtMention}
-        onAtMentions={handleAtMentions}
+        onShowFiles={(cwd) => showInPanel(cwd, "files")}
         onBackgroundTaskDone={handleBackgroundTaskDone}
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionMarkersChange={handleSessionMarkersChange}
@@ -3209,8 +3251,8 @@ export function AppShell() {
         style={{
           "--sidebar-width": `${sidebarResizer.width}px`,
           "--panel-transition": `${getPanelTransitionMs(sidebarResizer.width)}ms`,
+          // Layered by color, no rule (docs/ui.md, Borders): --bg-panel against the chat's --bg.
           background: "var(--bg-panel)",
-          borderRight: "1px solid var(--border)",
           display: "flex",
           flexDirection: "column",
           flexShrink: 0,
@@ -3236,7 +3278,8 @@ export function AppShell() {
       <div inert={panelCoversPage || undefined} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
-        <div className="workspace-header" style={{ position: "relative" }}>
+        {/* No bottom rule: the bar's --bg-panel against the chat's --bg is the edge (docs/ui.md, Borders). */}
+        <div className="workspace-header" style={{ position: "relative", boxShadow: "none" }}>
           {mainView === "routines" ? (
             <>
               {sidebarToggleButton}
@@ -3922,13 +3965,44 @@ export function AppShell() {
           "--panel-transition": `${getPanelTransitionMs(rightPanelResizer.width)}ms`,
           display: "flex",
           flexDirection: "column",
-          borderLeft: "1px solid var(--border)",
+          borderLeft: isMobile ? "none" : "1px solid var(--border)",
           background: "var(--bg)",
         } as React.CSSProperties}
       >
         {/* Right panel tab bar */}
-        <div className="workspace-header" style={{ background: "var(--bg-panel)" }}>
-          <div style={{ flex: 1, height: "100%", overflow: "hidden" }}>
+        {/* Fixed views | content tabs + (docs/ui.md, File panel); text tabs on the chat's --bg. */}
+        <div className="workspace-header" style={{ background: "var(--bg)", paddingLeft: 4 }}>
+          {isMobile && (
+            // Full screen on phones: back to the chat from where the eye starts.
+            <button
+              type="button"
+              onClick={() => closeRightPanel(true)}
+              className="ghost-icon-button"
+              aria-controls="file-panel"
+              title={translate("files.hidePanel")}
+              aria-label={translate("files.hidePanel")}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+          )}
+          <div role="tablist" aria-label={translate("panel.views")} className="panel-view-tabs">
+            {(["changes", "files"] as const).map((view) => (
+              <button
+                key={view}
+                type="button"
+                role="tab"
+                aria-selected={showPanelView && panelView === view}
+                className="panel-view-tab"
+                onClick={() => selectPanelView(view)}
+              >
+                {translate(view === "changes" ? "panel.changes" : "panel.files")}
+              </button>
+            ))}
+          </div>
+          <span className="panel-tab-separator" aria-hidden="true" />
+          <div className="panel-content-tabs">
             <TabBar
               tabs={panelTabs}
               activeTabId={activeFileTabId ?? ""}
@@ -3941,6 +4015,15 @@ export function AppShell() {
               isMobile={isMobile}
             />
           </div>
+          <PanelAddMenu
+            onOpenTerminal={panelCwd ? () => handleOpenTerminal(panelCwd) : undefined}
+            onOpenBrowser={() => handleOpenBrowser()}
+            onOpenFile={panelCwd ? () => {
+              selectPanelView("files");
+              requestAnimationFrame(() => filesExplorerRef.current?.focusSearch());
+            } : undefined}
+          />
+          <span style={{ flex: 1 }} />
           {/* The selected terminal portals its actions here: one header row, no inner toolbar. */}
           <div ref={setTerminalActionsSlot} className="terminal-header-actions" />
           {!isMobile && (
@@ -3959,26 +4042,28 @@ export function AppShell() {
               </svg>
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => closeRightPanel(true)}
-            className="workspace-header-action right-panel-header-close"
-            aria-controls="file-panel"
-            title={translate("files.hidePanel")}
-            aria-label={translate("files.hidePanel")}
-            style={{
-              alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: "none", border: "none",
-              color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
-            }}
-            onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-            onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
-            </svg>
-          </button>
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={() => closeRightPanel(true)}
+              className="workspace-header-action right-panel-header-close"
+              aria-controls="file-panel"
+              title={translate("files.hidePanel")}
+              aria-label={translate("files.hidePanel")}
+              style={{
+                alignItems: "center", justifyContent: "center",
+                width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+                background: "none", border: "none",
+                color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
+              }}
+              onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+              onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* The active viewer plus a few recent ones are mounted; evicted tabs save their state on unmount and restore it on activation. */}
@@ -4017,11 +4102,40 @@ export function AppShell() {
               </div>
             );
           })}
-          {!activeFileTab?.filePath && !terminalTabs.some((tab) => tab.id === activeFileTabId) && !(browserPage && activeFileTabId === BROWSER_TAB_ID) ? (
+          {panelCwd && showPanelView && panelView === "changes" && (
+            <div style={{ position: "absolute", inset: 0 }}>
+              <ChangesView
+                cwd={panelCwd}
+                refreshKey={explorerRefreshKey}
+                active={rightPanelOpen}
+                scope={changesScope}
+                onScopeChange={setChangesScope}
+                turnFiles={turnFiles}
+                onOpenDiff={(filePath) => handleOpenDiff(filePath, panelCwd)}
+              />
+            </div>
+          )}
+          {panelCwd && filesViewMounted && (
+            <div hidden={!(showPanelView && panelView === "files")} style={{ position: "absolute", inset: 0 }}>
+              <FilesView
+                cwd={panelCwd}
+                refreshKey={explorerRefreshKey}
+                onRefresh={handleExplorerRefresh}
+                explorerRef={filesExplorerRef}
+                onOpenFile={handleOpenFile}
+                onAtMention={handleAtMention}
+                onAtMentions={handleAtMentions}
+                reveal={explorerReveal}
+                worktreeInfo={worktreeInfo?.forCwd === panelCwd ? worktreeInfo : null}
+                onSelectWorktree={(path) => showInPanel(path, "files")}
+              />
+            </div>
+          )}
+          {!panelCwd && showPanelView && (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
                {translate("files.noneOpen")}
             </div>
-          ) : null}
+          )}
           {terminalTabs.map((tab) => (
             <div key={tab.id} hidden={tab.id !== activeFileTabId} style={{ width: "100%", height: "100%" }}>
               <TerminalPanel

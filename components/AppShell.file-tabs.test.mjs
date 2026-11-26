@@ -4,11 +4,13 @@ import test from "node:test";
 
 const shell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const explorer = await readFile(new URL("./FileExplorer.tsx", import.meta.url), "utf8");
+const panelViews = await readFile(new URL("./PanelViews.tsx", import.meta.url), "utf8");
 
 test("only tree single clicks request previews; double clicks and diff rows pin", () => {
   assert.match(explorer, /onOpenFile\(node\.fullPath, node\.name, \{ cwd, preview: true \}\)/);
   assert.match(explorer, /onDoubleClick=\{\(event\) => \{[\s\S]*?!node\.isDir[\s\S]*?onOpenFile\(node\.fullPath, node\.name, \{ cwd \}\)/);
-  assert.match(explorer, /onClick=\{\(\) => onOpenFile\(status\.filePath, name, \{ modeHint: "diff", cwd \}\)\}/);
+  assert.match(panelViews, /onClick=\{\(\) => onOpenDiff\(file\.filePath\)\}/);
+  assert.match(shell, /handleOpenFile\(filePath, getFileName\(filePath\), \{ \.\.\.\(inside \? \{ modeHint: "diff" as const \} : \{\}\), cwd, sourceSessionId \}\)/);
   assert.match(shell, /preview: options\?\.preview/);
   assert.match(shell, /onPinTab=\{\(tabId\) => setFileTabs\(\(tabs\) => pinFileTab\(tabs, tabId\)\)\}/);
 });

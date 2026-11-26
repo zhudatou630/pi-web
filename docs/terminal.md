@@ -1,7 +1,7 @@
 # Workspace Terminals
 
-The Explorer terminal action opens or focuses a terminal for its selected cwd
-in the right panel's existing tab bar. Each terminal tab keeps the cwd it was
+The file panel's "+ › Terminal" (the panel's cwd) and the top bar's "Open in
+terminal" (the session cwd) open or focus a terminal in the right panel's tab bar. Each terminal tab keeps the cwd it was
 created with. Files still mount only their active viewer; terminal panels stay
 mounted behind inactive tabs, hidden panels, and session or project switches.
 

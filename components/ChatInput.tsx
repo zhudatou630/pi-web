@@ -96,6 +96,8 @@ interface Props {
   retryInfo?: { attempt: number; maxAttempts: number; errorMessage?: string } | null;
   queuedMessages?: QueuedMessages | null;
   extensionUiOpen?: boolean;
+  /** What needs you, docked above the composer at its width: extension dialogs, the run error. */
+  attention?: React.ReactNode;
   inputHistory?: string[];
   onRecallQueue?: () => void;
   slashCommands?: SlashCommandInfo[];
@@ -670,7 +672,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
-  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, extensionUiOpen = false,
+  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, extensionUiOpen = false, attention,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
   onAudioUnlock,
@@ -2141,6 +2143,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         }}
       />}
       <div className={compact ? undefined : "chat-input-column"} style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
+        {attention}
         {missingCwd
           ? <ModelNoticeBanner tone="error" title={t("chat.folderMissing")} body={t("chat.folderMissingDetail", { cwd: missingCwd })}
               action={onForkMissingCwd && <ConfigButton variant="ghost" size="small" style={{ marginTop: 4 }} onClick={onForkMissingCwd}>{t("chat.forkMissingFolder")}</ConfigButton>} />

@@ -61,7 +61,7 @@ test("gives a shallow-unique conflict a shorter parent than deeper twins", () =>
   assert.doesNotMatch(html, /route\.ts · app\/api\/sessions/);
 });
 
-test("keeps a non-basename custom label and file icon source", () => {
+test("keeps a non-basename custom label; tabs are text only", () => {
   const html = render([
     { id: "file:/repo/docs/README.md", label: "notes", filePath: "/repo/docs/README.md" },
     { id: "file:/repo/app/page.tsx", label: "page.tsx", filePath: "/repo/app/page.tsx" },
@@ -70,8 +70,9 @@ test("keeps a non-basename custom label and file icon source", () => {
   assert.match(html, /aria-label="notes"/);
   assert.doesNotMatch(html, /aria-label="README\.md"/);
   assert.match(html, /title="\/repo\/docs\/README\.md"/);
-  assert.match(html, /_file\.svg/);
-  assert.match(html, /typescript-react\.svg/);
+  assert.doesNotMatch(html, /<svg[^>]*><(path|circle|polyline)|\.svg/);
+  assert.match(html, /box-shadow:inset 0 -2px 0 var\(--text\)/);
+  assert.doesNotMatch(html, /--accent/);
 });
 
 test("windows and root paths keep browser slash rules in the rendered tabs", () => {

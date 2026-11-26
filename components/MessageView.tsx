@@ -185,6 +185,8 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
+  /** The written files belong to the session's last turn ("this turn", with Review). */
+  writtenFilesLatest?: boolean;
   /** Routines the turn created or updated, shown as chips like the written files. */
   createdRoutines?: CreatedRoutine[];
   questionAnswers?: ReadonlyMap<string, string | null>;
@@ -283,7 +285,7 @@ function haveSameRelevantToolEntries<T>(
 
 export { MessageNoticeContext } from "./ExportImage";
 
-export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, forkEntryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, steered, toolsNotRun, toolClocks, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
+export const MessageView = memo(function MessageView({ message, modelName, isStreaming, toolResults, cwd, onOpenFile, onOpenSession, entryId, forkEntryId, searchBlock, searchTarget, onFork, forking, prevAssistantEntryId, onEditContent, onCancelEdit, isEditing, isTurnEnd, expandOutput, sessionId, writtenFiles, writtenFilesLatest, createdRoutines, questionAnswers, activeQuestionId, onAnswer, turnDurationSeconds, turnTiming, isProcess, steered, toolsNotRun, toolClocks, continuePrompt, onContinue, onCompact, isCompacting, compactError }: Props) {
   if (message.role === "user" && message.routineRun) {
     return <RoutineRunView message={message} routineRun={message.routineRun} searchTarget={searchTarget} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -291,7 +293,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} forkEntryId={entryId ?? forkEntryId} onFork={onFork} forking={forking} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} onCancelEdit={onCancelEdit} isEditing={isEditing} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} steered={steered} toolsNotRun={toolsNotRun} toolClocks={toolClocks} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
+    return <AssistantMessageView message={message as AssistantMessage} modelName={modelName} isStreaming={isStreaming} toolResults={toolResults} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} isTurnEnd={isTurnEnd} sessionId={sessionId} entryId={entryId} searchBlock={searchBlock} writtenFiles={writtenFiles} writtenFilesLatest={writtenFilesLatest} createdRoutines={createdRoutines} questionAnswers={questionAnswers} activeQuestionId={activeQuestionId} onAnswer={onAnswer} turnDurationSeconds={turnDurationSeconds} turnTiming={turnTiming} isProcess={isProcess} steered={steered} toolsNotRun={toolsNotRun} toolClocks={toolClocks} continuePrompt={continuePrompt} onContinue={onContinue} onCompact={onCompact} isCompacting={isCompacting} compactError={compactError} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -337,6 +339,7 @@ export const MessageView = memo(function MessageView({ message, modelName, isStr
     && prev.expandOutput === next.expandOutput
     && prev.modelName === next.modelName
     && prev.writtenFiles === next.writtenFiles
+    && prev.writtenFilesLatest === next.writtenFilesLatest
     && prev.createdRoutines === next.createdRoutines
     && prev.activeQuestionId === next.activeQuestionId
     && prev.onAnswer === next.onAnswer
@@ -772,6 +775,7 @@ function AssistantMessageView({
   entryId,
   searchBlock,
   writtenFiles,
+  writtenFilesLatest,
   createdRoutines,
   questionAnswers,
   activeQuestionId,
@@ -800,6 +804,8 @@ function AssistantMessageView({
   entryId?: string;
   searchBlock?: AssistantContentBlock;
   writtenFiles?: WrittenFile[];
+  /** The written files belong to the session's last turn ("this turn", with Review). */
+  writtenFilesLatest?: boolean;
   createdRoutines?: CreatedRoutine[];
   questionAnswers?: ReadonlyMap<string, string | null>;
   activeQuestionId?: string | null;
@@ -923,6 +929,7 @@ function AssistantMessageView({
         ) : (
           <div
             role="alert"
+            data-turn-error=""
             style={{
               marginTop: blocks.length > 0 ? 8 : 0,
               padding: "7px 10px",
@@ -978,7 +985,7 @@ function AssistantMessageView({
       )}
 
       {writtenFiles && writtenFiles.length > 0 && (
-        <TurnWrittenFiles files={writtenFiles} onOpenFile={onOpenFile} />
+        <TurnWrittenFiles files={writtenFiles} cwd={cwd} latest={writtenFilesLatest} onOpenFile={onOpenFile} />
       )}
 
       {createdRoutines && createdRoutines.length > 0 && <TurnCreatedRoutines routines={createdRoutines} />}
@@ -1082,7 +1089,7 @@ function ProcessErrorCard({ error }: { error: string }) {
   }, [error]);
 
   return (
-    <div data-step-card="" className="is-error">
+    <div data-step-card="" className="is-error" data-turn-error="">
       <div className="step-head">
         <button
           type="button"

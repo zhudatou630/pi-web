@@ -43,9 +43,11 @@ test("both axes keep an opaque scrollbar strip", () => {
 
 test("session and file lists opt in without masking the whole sidebar", async () => {
   const sidebar = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
-  assert.equal((sidebar.match(/className="sidebar-list-scroll scroll-fade-block"/g) ?? []).length, 2);
+  const panelViews = await readFile(new URL("./PanelViews.tsx", import.meta.url), "utf8");
+  assert.equal((sidebar.match(/className="sidebar-list-scroll scroll-fade-block"/g) ?? []).length, 1);
   assert.match(sidebar, /ref=\{listScrollRef\}[\s\S]*?className="sidebar-list-scroll scroll-fade-block"/);
-  assert.match(sidebar, /className="sidebar-list-scroll scroll-fade-block" style=\{\{ flex: 1 \}\}/);
+  // The file panel's Changes and Files lists.
+  assert.equal((panelViews.match(/className="panel-view-scroll scroll-fade-block"/g) ?? []).length, 2);
 });
 
 test("table frame owns the border, not the masked scroller", () => {

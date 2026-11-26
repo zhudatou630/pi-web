@@ -13,6 +13,8 @@ import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { isImeComposing } from "@/lib/ime";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
+import { truncateStatusReason } from "@/lib/session-status";
+import { TurnFilesContext } from "./TurnWrittenFiles";
 import { findAskUserAnswers } from "@/lib/ask-user-answer";
 import { extractTurnCreatedRoutines, type CreatedRoutine } from "@/lib/turn-routines";
 import { summarizeTurnActivity, type TurnActivity } from "@/lib/turn-activity";
@@ -93,6 +95,13 @@ interface Props {
   onAgentEnd?: (session?: SessionInfo | null, end?: AgentEndInfo) => void;
   onToolEnd?: (toolName: string) => void;
   onFilesChanged?: () => void;
+  /** The file panel is open: turn file cards fold to their title row. */
+  filePanelOpen?: boolean;
+  /** A turn card's Review: the panel's Changes view on this turn's files, at the session cwd. */
+  onReviewTurnChanges?: (cwd: string) => void;
+  onOpenDiff?: (filePath: string, cwd: string | undefined, sourceSessionId: string | null) => void;
+  /** The last turn's written files (focused pane only), for the Changes view's turn scope. */
+  onTurnFilesChange?: (files: readonly string[]) => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest, session: SessionInfo | null) => void;
   onSessionCreated?: (session: SessionInfo, sourceDraftKey: string) => void;
   onSessionForked?: (newSessionId: string, sourceSessionId: string | null, session?: SessionInfo) => void;
@@ -859,7 +868,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, filePanelOpen = false, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -1562,6 +1571,11 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);
 
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
+  const turnFilesContext = useMemo(() => ({
+    panelOpen: filePanelOpen,
+    onOpenDiff: onOpenDiff ? (filePath: string) => onOpenDiff(filePath, messageCwd, session?.id ?? null) : undefined,
+    onReview: onReviewTurnChanges && messageCwd ? () => onReviewTurnChanges(messageCwd) : undefined,
+  }), [filePanelOpen, messageCwd, onOpenDiff, onReviewTurnChanges, session?.id]);
   const openGroupTail = agentRunning || streamState.isStreaming;
   const groupBoundaries = useMemo(
     () => getMessageGroupBoundaries(messages, { openTail: openGroupTail }),
@@ -1591,7 +1605,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const completedAssistantParts = useMemo(() => messages.map((message) => (
     message.role === "assistant" ? partitionAssistantMessage(message) : null
   )), [messages]);
-  const { writtenFilesByAssistantIndex, routinesByAssistantIndex, turnActivityByAssistantIndex } = useMemo(() => {
+  const { writtenFilesByAssistantIndex, routinesByAssistantIndex, turnActivityByAssistantIndex, lastTurnFiles } = useMemo(() => {
     const filesByIndex = new Map<number, WrittenFile[]>();
     const routinesByIndex = new Map<number, CreatedRoutine[]>();
     const activityByIndex = new Map<number, TurnActivity>();
@@ -1612,8 +1626,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       }
       idx = endIdx;
     }
-    return { writtenFilesByAssistantIndex: filesByIndex, routinesByAssistantIndex: routinesByIndex, turnActivityByAssistantIndex: activityByIndex };
+    // "This turn": the files of the answer after the last group boundary (none while it runs).
+    const lastBoundary = Math.max(-1, ...groupBoundaries.keys());
+    const lastTurnFiles = [...filesByIndex].find(([index]) => index > lastBoundary)?.[1].map((file) => file.filePath) ?? [];
+    return { writtenFilesByAssistantIndex: filesByIndex, routinesByAssistantIndex: routinesByIndex, turnActivityByAssistantIndex: activityByIndex, lastTurnFiles };
   }, [completedAssistantParts, groupBoundaries, messageCwd, messages, toolResultsMap]);
+  useEffect(() => { onTurnFilesChange?.(lastTurnFiles); }, [lastTurnFiles, onTurnFilesChange]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
     const history: string[] = [];
@@ -1857,6 +1875,30 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const recoverTruncation = Boolean(session && !sessionEnded && !sessionBusy && !streamState.isStreaming && !isQueuedSubagent
     && lastMessage?.role === "assistant" && lastMessage.stopReason === "length" && !hasAssistantAnswer(lastMessage));
   const handleContinue = useCallback((prompt: string) => { void handleChatSend(prompt); }, [handleChatSend]);
+  // The run ended in an error (same test as the sidebar's error state): one line above the composer
+  // until the next message. The reason is the session list's; a fresh failure falls back to the reply's.
+  const runError = session && !sessionBusy && !streamState.isStreaming && lastMessage?.role === "assistant"
+    && lastMessage.stopReason === "error" && !isAbortedAssistantError(lastMessage)
+    ? truncateStatusReason((session.lastError && session.lastError.at >= (lastMessage.timestamp ?? 0) ? session.lastError.message : "")
+      || getAssistantErrorMessage(lastMessage) || "")
+    : null;
+  // Scrolls to the failed reply's error card and opens it (and its folded process group if needed).
+  const viewErrorOutput = useCallback(() => {
+    const root = messageContentRef.current;
+    if (!root) return;
+    const show = () => {
+      const card = [...root.querySelectorAll<HTMLElement>("[data-turn-error]")].at(-1);
+      card?.querySelector<HTMLButtonElement>('[data-step-trigger][aria-expanded="false"]')?.click();
+      card?.scrollIntoView({ block: "center", behavior: "smooth" });
+    };
+    // The failed reply ends the transcript: open its (last) process group, then take the last card.
+    const lastGroup = [...root.querySelectorAll<HTMLButtonElement>(".process-details-summary")].at(-1);
+    if (lastGroup?.getAttribute("aria-expanded") !== "false") show();
+    else {
+      lastGroup.click();
+      requestAnimationFrame(() => { show(); });
+    }
+  }, []);
 
   const chatInputElement = (
     <ChatInput
@@ -1915,6 +1957,14 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       draftPersistenceWarning={draftPersistenceWarning}
       cwd={session?.cwd ?? newSessionCwd}
       onAttachFiles={onAttachFiles}
+      attention={(
+        <>
+          {extensionDialog && !routineApproval && (
+            <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} onCollapsedChange={setExtensionDialogCollapsed} />
+          )}
+          {runError !== null && <RunErrorTray reason={runError} onViewOutput={viewErrorOutput} />}
+        </>
+      )}
     />
   );
   const composerStack = chatInputElement;
@@ -1951,6 +2001,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   return (
     <MarkdownSessionContext.Provider value={session?.id ?? null}>
     <MessageNoticeContext.Provider value={addNotice}>
+    <TurnFilesContext.Provider value={turnFilesContext}>
     <div
       className="chat-content relative flex h-full min-w-0 flex-col overflow-hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -2025,9 +2076,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             onClose={() => { setImageDialogOpen(false); setImageEdit(null); }}
             onSubmit={submitDirectImage}
           />
-        )}
-        {extensionDialog && !routineApproval && (
-          <ExtensionDialog key={extensionDialog.id} request={extensionDialog} onRespond={respondToExtensionUi} onCollapsedChange={setExtensionDialogCollapsed} />
         )}
         {extensionCustomUi && (
           <ExtensionCustomPanel key={extensionCustomUi.id} request={extensionCustomUi} onInput={sendExtensionCustomInput} onCollapsedChange={setExtensionCustomUiCollapsed} />
@@ -2131,6 +2179,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     expandOutput={idx === messages.length - 1}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
+                    writtenFilesLatest={idx > lastBoundaryIdx}
                     createdRoutines={options.createdRoutines}
                     turnDurationSeconds={options.turnDurationSeconds}
                     turnTiming={options.turnTiming}
@@ -2646,6 +2695,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       </div>
       {isEmptyNew && <div className="min-h-0 flex-1" />}
     </div>
+    </TurnFilesContext.Provider>
     </MessageNoticeContext.Provider>
     </MarkdownSessionContext.Provider>
   );
@@ -2779,6 +2829,18 @@ function NoticeShelf({ notices, floating = false, onPauseChange, onOpenMcpSettin
   );
 }
 
+/** "Error · reason · View output" above the composer; no retry (docs/ui.md, Session state). */
+function RunErrorTray({ reason, onViewOutput }: { reason: string; onViewOutput: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div role="alert" className="composer-attention run-error-tray">
+      <span className="run-error-tag">{t("chat.errorTag")}</span>
+      <span className="run-error-reason" title={reason}>{reason}</span>
+      <ConfigButton variant="ghost" size="small" onClick={onViewOutput}>{t("chat.viewOutput")}</ConfigButton>
+    </div>
+  );
+}
+
 type ExtensionDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
 
 function getExtensionDialogSummary(request: ExtensionDialogRequest): string | undefined {
@@ -2839,16 +2901,8 @@ function ExtensionDialog({
         event.stopPropagation();
         onRespond(request, { cancelled: true });
       }}
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 90,
-        display: "flex",
-        alignItems: collapsed ? "flex-start" : "center",
-        justifyContent: "center",
-        padding: 20,
-        pointerEvents: "none",
-      }}
+      // Docked above the composer, its width (docs/ui.md, Modal dialogs: pane-scoped, not modal).
+      className="composer-attention"
     >
       {collapsed ? (
         <button
@@ -2856,7 +2910,6 @@ function ExtensionDialog({
           onClick={() => setCollapsed(false)}
           aria-expanded={false}
           className="popover-surface extension-collapsed-bar"
-          style={{ pointerEvents: "auto", maxWidth: "min(560px, 100%)" }}
         >
           <span className="extension-collapsed-tag">{t("chat.extensionPending")}</span>
           <span className="extension-collapsed-title">{stripAnsi(request.title)}</span>
@@ -2868,8 +2921,7 @@ function ExtensionDialog({
       <div
         role="dialog"
         aria-label={stripAnsi(request.title)}
-        className="models-dialog extension-dialog"
-        style={{ pointerEvents: "auto", width: request.method === "select" ? "min(440px, 100%)" : "min(560px, 100%)", maxHeight: "min(760px, 100%)" }}
+        className="extension-dialog extension-dialog-docked"
       >
         <div className="extension-dialog-header">
           <div className="extension-dialog-heading">
@@ -2962,6 +3014,7 @@ function ExtensionDialog({
         </div>
 
         <div className="models-dialog-footer extension-dialog-footer">
+          <span className="extension-dialog-hint">{t(request.method === "select" ? "chat.extensionHintSelect" : "chat.extensionHintEsc")}</span>
           <ConfigButton
             variant="secondary"
             autoFocus={request.method === "confirm" || (request.method === "select" && request.options.length === 0)}

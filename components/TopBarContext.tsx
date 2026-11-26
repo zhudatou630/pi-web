@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { isModalDialogOpen } from "./ModalDialog";
+import { useMenuDismiss } from "@/hooks/useMenuDismiss";
 
 /**
  * The top bar's "project · branch ⌄" text: where the active session runs, and a menu of what
@@ -20,21 +20,7 @@ export function SessionContextButton({ project, branch, isWorktree, cwd, onOpenT
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isModalDialogOpen()) setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [open]);
+  useMenuDismiss(open, rootRef, useCallback(() => setOpen(false), []));
   const item = (action: () => void) => () => { setOpen(false); action(); };
   return (
     <div ref={rootRef} className="top-bar-context">

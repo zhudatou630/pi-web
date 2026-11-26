@@ -69,7 +69,7 @@ test("unread storage updates replace dated markers without echoing writes", () =
 
 test("background completion waits across waves, respects Stop, and treats either pane as read", () => {
   const start = source.indexOf("  useEffect(() => {\n    const previous = previousRunningSessionIdsRef.current;");
-  const code = source.slice(start, source.indexOf("  useEffect(() => {\n    if (explorerRefreshKey", start));
+  const code = source.slice(start, source.indexOf("  useEffect(() => {\n    fetch(\"/api/home\")", start));
   for (const [visibleSessionKey, attended] of ["", "primary\nparent", "parent\nsecondary"].flatMap((key) => [true, false].map((attended) => [key, attended]))) {
     let unread = new Map();
     const notices = [];
@@ -407,12 +407,6 @@ test("folding a project drops its show-more window on every explicit fold path, 
   assert.match(source, /next\.delete\(key\);\s*return next;\s*\}\);\s*forgetWorkspaceWindow\(key\);\s*moveProject\(key, anchor, position\);/, "drag keeps the lifted project folded");
   assert.match(source, /if \(expanded\) forgetWorkspaceWindow\(`archive:\$\{row\.project\.key\}`\);/, "archive toggle");
   assert.match(source, /onClick=\{\(\) => \{\s*if \(archiveView\) \{\s*setExpandedArchiveProjectKeys\(new Set\(\)\);\s*setWorkspaceSessionLimits\(\(current\) => Object\.fromEntries\(Object\.entries\(current\)\.filter\(\(\[key\]\) => !key\.startsWith\("archive:"\)\)\)\);\s*return;\s*\}\s*setExpandedWorkspaceKeys\(new Set\(\)\);\s*setWorkspaceSessionLimits\(\{\}\);\s*\}\}/, "collapse all, archive view included");
-});
-
-test("the changed-files button hands focus to the key after it only when it had focus and goes away", () => {
-  assert.match(source, /const changesButtonRef = useCallback\(\(button: HTMLButtonElement \| null\) => \{\s*if \(!button\) return;\s*return \(\) => \{\s*if \(button\.ownerDocument\.activeElement !== button\) return;\s*const next = button\.nextElementSibling;\s*if \(next instanceof HTMLElement\) next\.focus\(\);\s*\};\s*\}, \[\]\);/);
-  assert.match(source, /<ToolbarIconButton\s*buttonRef=\{changesButtonRef\}\s*onClick=\{\(\) => setChangesCollapsed/);
-  assert.match(source, /ref=\{buttonRef\}/);
 });
 
 test("project rows carry no session count", () => {

@@ -6,7 +6,6 @@ import { hasRecentAttention, parseUnreadMarks, sameUnreadMarks, withoutReadMarks
 import type { SessionInfo } from "@/lib/types";
 import { selectionFamilies, reconcileSessionSelection, toggleSessionSelection, sessionSelectionSummary } from "@/lib/session-selection";
 import { familyParentId, listSessionFamilies, isFamilyArchived, familyHasMemberIn, familiesToArchive, previewSessionFamilies, markSessionFamilyRead, type SessionFamily } from "@/lib/session-family";
-import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
@@ -25,7 +24,6 @@ import { SessionStatusDot, SessionStatusWord } from "./SessionStateBadge";
 import { sessionStatus, unseenErrorSessionIds } from "@/lib/session-status";
 import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
-import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { SessionSearch } from "./SessionSearch";
 import { SubagentIcon } from "./SubagentIcon";
 import { iconStroke } from "./iconStroke";
@@ -195,13 +193,8 @@ interface Props {
     projectRoot?: string | null,
     projectKey?: string | null,
   ) => void;
-  onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string }) => void;
-  onOpenTerminal?: (cwd: string) => void;
-  onOpenBrowser?: () => void;
-  explorerRefreshKey?: number;
-  onExplorerRefresh?: () => void;
-  onAtMention?: (relativePath: string, isDir: boolean, sourceCwd?: string) => void;
-  onAtMentions?: (relativePaths: string[], sourceCwd?: string) => void;
+  /** Show `cwd` in the file panel's Files view (project row action and menu). */
+  onShowFiles?: (cwd: string) => void;
   /** Fired when a session that is not visible in any pane finishes running.
    *  Lets the app play a cross-workspace completion tone. */
   /** `since`: when this page last saw them running; a chime claimed after it was another page's. */
@@ -224,9 +217,8 @@ interface Props {
     currentWorktreePath: string | null;
     worktrees: { path: string; branch: string | null; isMain: boolean }[];
   } | null) => void;
-  /** File tab "Reveal in explorer": switch to `cwd` and show `path` in the tree. */
-  /** `changes`: open the explorer on its changes list (the top bar's "Changes N"). */
-  explorerReveal?: { cwd: string; path: string; nonce: number; changes?: boolean } | null;
+  /** The file panel shows `cwd` (reveal, Changes N, worktree switch): the selected project follows. */
+  explorerReveal?: { cwd: string; nonce: number } | null;
 }
 
 interface WorktreeEntry {
@@ -368,7 +360,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, onOpenBrowser, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -413,7 +405,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const wtMenuRef = useRef<HTMLDivElement>(null);
   const [wtMenuPosition, setWtMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const wtNewInputRef = useRef<HTMLInputElement>(null);
-  const [explorerOpen, setExplorerOpen] = useState(true);
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [expandedWorkspaceKeys, setExpandedWorkspaceKeys] = useState<Set<string> | null>(loadExpandedWorkspaceKeys);
@@ -427,33 +418,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       return next;
     });
   }, []);
-  const [explorerKey, setExplorerKey] = useState(0);
-  const [explorerUploadBusy, setExplorerUploadBusy] = useState(false);
-  const [explorerCanCollapse, setExplorerCanCollapse] = useState(false);
-  const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [sessionSearchQuery, setSessionSearchQuery] = useState("");
   const sessionSearchActive = sessionSearchOpen && Boolean(sessionSearchQuery.trim());
-  const [changesCount, setChangesCount] = useState(0);
-  // The count goes when nothing is changed any more (a commit, a revert). A
-  // focused count hands focus to the key after it while it is still mounted.
-  const changesButtonRef = useCallback((button: HTMLButtonElement | null) => {
-    if (!button) return;
-    return () => {
-      if (button.ownerDocument.activeElement !== button) return;
-      const next = button.nextElementSibling;
-      if (next instanceof HTMLElement) next.focus();
-    };
-  }, []);
-  const [changesCollapsed, setChangesCollapsed] = useState(true);
-  // The tree is hidden behind the changes list and search results, so a reveal leaves both.
   useEffect(() => {
-    if (!explorerReveal) return;
-    setSelectedCwd(explorerReveal.cwd);
-    setExplorerOpen(true);
-    saveExplorerOpen(true);
-    setChangesCollapsed(!explorerReveal.changes);
-    setFileSearchOpen(false);
+    if (explorerReveal) setSelectedCwd(explorerReveal.cwd);
   }, [explorerReveal]);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const [subagentsActiveSessionIds, setSubagentsActiveSessionIds] = useState<Set<string>>(() => new Set());
@@ -500,7 +469,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // Once polling has delivered a snapshot it is the source of truth for
   // running state; late /api/sessions responses must not overwrite it.
   const runningPollAuthoritativeRef = useRef(false);
-  const fileExplorerRef = useRef<FileExplorerHandle>(null);
 
   // Virtualized session list: only the visible window of rows is mounted.
   const listScrollRef = useRef<HTMLDivElement>(null);
@@ -788,12 +756,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     void loadSessions(isFirst);
   }, [loadSessions, refreshKey]);
 
-  // Browser storage is unavailable during server rendering. Restore the panel
-  // preference after hydration so a collapsed explorer stays collapsed on reload.
-  useEffect(() => {
-    setExplorerOpen(loadExplorerOpen());
-  }, []);
-
   // Persist unread markers so they survive a browser refresh before the user
   // has actually opened the completed session.
   useEffect(() => {
@@ -998,10 +960,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       ),
     );
   }, [runningSessionIds, subagentsActiveSessionIds, visibleSessionKey, allSessions, loadSessions, onBackgroundTaskDone]);
-
-  useEffect(() => {
-    if (explorerRefreshKey !== undefined) setExplorerKey((k) => k + 1);
-  }, [explorerRefreshKey]);
 
   useEffect(() => {
     fetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
@@ -2130,11 +2088,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
               onClick={() => {
                 setProjectMenu(null);
                 setSelectedCwd(projectMenu.cwd);
-                setExplorerOpen(true);
-                saveExplorerOpen(true);
+                onShowFiles?.(projectMenu.cwd);
               }}
             >
-              {t("files.explorer")}
+              {t("topBar.revealInFiles")}
             </button>
             <div role="separator" className="menu-surface-divider" />
             <button
@@ -2496,7 +2453,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         onScroll={handleListScroll}
         onClickCapture={projectDrag.onClickCapture}
         className="sidebar-list-scroll scroll-fade-block"
-        style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", minHeight: 80 }}
+        style={{ flex: "1 1 auto", minHeight: 80 }}
       >
         {error && <div style={{ padding: "12px 8px", color: "var(--danger)", fontSize: 12 }}>{error}</div>}
         {!loading && !error && !showSelectProjectPrompt && workspaceProjects.length === 0 && (
@@ -2582,8 +2539,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                       <ToolbarIconButton
                         onClick={() => {
                           setSelectedCwd(workspaceCwd);
-                          setExplorerOpen(true);
-                          saveExplorerOpen(true);
+                          onShowFiles?.(workspaceCwd);
                         }}
                         title={t("sidebar.openProjectExplorer", { path: workspaceCwd })}
                         color="var(--text-muted)"
@@ -2649,147 +2605,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       )}
       </SessionSearch>
 
-      {/* File Explorer section */}
-      {(selectedCwdProp || selectedCwd) && (
-        <div
-          style={{
-            borderTop: "1px solid var(--border)",
-            display: "flex",
-            flexDirection: "column",
-            flex: explorerOpen ? "1 1 0" : "0 0 auto",
-            minHeight: 0,
-            overflow: "hidden",
-          }}
-        >
-          <div className="sidebar-section-row">
-            <button
-              onClick={() => setExplorerOpen((open) => {
-                const next = !open;
-                saveExplorerOpen(next);
-                return next;
-              })}
-              className="sidebar-section-label"
-              aria-label={t("files.explorer")}
-            >
-              <span>{sectionTitle("files.explorer")}</span>
-            </button>
-            <div className="sidebar-header-actions">
-            {explorerOpen && explorerCanCollapse && (
-              <ToolbarIconButton
-                onClick={() => fileExplorerRef.current?.collapseAll()}
-                title={t("sidebar.collapseAll")}
-                color="var(--text-muted)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="7 20 12 15 17 20" /><polyline points="7 4 12 9 17 4" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {explorerOpen && changesCount > 0 && (
-              <ToolbarIconButton
-                buttonRef={changesButtonRef}
-                onClick={() => setChangesCollapsed((v) => !v)}
-                title={t("sidebar.changedFiles", { count: changesCount })}
-                ariaPressed={!changesCollapsed}
-                color={changesCollapsed ? "var(--text-muted)" : "var(--accent)"}
-                background={changesCollapsed ? "none" : "var(--bg-selected)"}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M3 12h6" />
-                  <path d="M15 12h6" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {explorerOpen && (
-              <ToolbarIconButton
-                onClick={() => {
-                  setFileSearchOpen((open) => !open);
-                }}
-                title={t("sidebar.searchFiles")}
-                ariaPressed={fileSearchOpen}
-                color={fileSearchOpen ? "var(--accent)" : "var(--text-muted)"}
-                background={fileSearchOpen ? "var(--bg-selected)" : "none"}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {explorerOpen && (
-              <ToolbarIconButton
-                onClick={() => fileExplorerRef.current?.openUploadPicker()}
-                disabled={explorerUploadBusy}
-                title={t("sidebar.uploadFilesTitle")}
-                color="var(--text-muted)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <path d="m17 8-5-5-5 5" />
-                  <path d="M12 3v12" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {/* Always-present actions stay rightmost, so collapsing the explorer only drops
-                the open-only ones on the left. */}
-            {onOpenTerminal && (
-              <ToolbarIconButton
-                onClick={() => onOpenTerminal(selectedCwd ?? selectedCwdProp!)}
-                title={t("terminal.open")}
-                color="var(--text-muted)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            {onOpenBrowser && (
-              <ToolbarIconButton
-                onClick={onOpenBrowser}
-                title={t("browser.open")}
-                color="var(--text-muted)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18" />
-                </svg>
-              </ToolbarIconButton>
-            )}
-            <ToolbarIconButton
-              onClick={() => {
-                if (onExplorerRefresh) onExplorerRefresh();
-                else setExplorerKey((k) => k + 1);
-              }}
-              title={t("sidebar.refreshExplorer")}
-              color="var(--text-muted)"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-              </svg>
-            </ToolbarIconButton>
-            </div>
-          </div>
-          {explorerOpen && (
-            <div className="sidebar-list-scroll scroll-fade-block" style={{ flex: 1 }}>
-              <FileExplorer
-                ref={fileExplorerRef}
-                cwd={selectedCwd ?? selectedCwdProp!}
-                onOpenFile={onOpenFile ?? (() => {})}
-                refreshKey={explorerKey}
-                onAtMention={onAtMention}
-                onAtMentions={onAtMentions}
-                onUploadBusyChange={setExplorerUploadBusy}
-                onCanCollapseChange={setExplorerCanCollapse}
-                changesCollapsed={changesCollapsed}
-                onChangesCountChange={setChangesCount}
-                fileSearchOpen={fileSearchOpen}
-                onFileSearchOpenChange={setFileSearchOpen}
-                reveal={explorerReveal}
-              />
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

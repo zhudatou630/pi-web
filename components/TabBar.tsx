@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { getFileIcon } from "./FileIcons";
 import { isModalDialogOpen } from "./ModalDialog";
 import { useI18n } from "@/hooks/useI18n";
 import { copyText } from "@/lib/clipboard";
@@ -148,8 +147,6 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
       style={{
         display: "flex",
         alignItems: "stretch",
-        background: "var(--bg-panel)",
-        boxShadow: "inset 0 -1px 0 var(--border)",
         overflowX: "auto",
         flexShrink: 0,
         height: "100%",
@@ -216,19 +213,15 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
               alignItems: "center",
               gap: 6,
               height: "100%",
-              paddingLeft: 12,
-              paddingRight: 6,
-              borderRight: "1px solid var(--border)",
-              background: isActive ? "var(--bg)" : "var(--bg-panel)",
-              // Same language as chat tabs: the active tab joins the viewer below
-              // and carries the top accent bar; the others keep the bottom rule.
-              boxShadow: isActive ? "inset 0 2px 0 var(--accent)" : "inset 0 -1px 0 var(--border)",
+              paddingLeft: 10,
+              paddingRight: 4,
+              // Text tabs (docs/ui.md, File panel): the current one is underlined in --text, no accent.
+              boxShadow: isActive ? "inset 0 -2px 0 var(--text)" : undefined,
               cursor: "pointer",
               fontSize: 12,
               color: isActive ? "var(--text)" : "var(--text-muted)",
               whiteSpace: "nowrap",
               maxWidth: 180,
-              minWidth: 80,
               flexShrink: 0,
               userSelect: "none",
               position: "relative",
@@ -249,17 +242,6 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
                 }}
               />
             )}
-            <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center" }}>
-              {tab.kind === "browser" ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }} aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18" />
-                </svg>
-              ) : tab.kind === "terminal" ? (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }} aria-hidden="true">
-                  <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
-                </svg>
-              ) : getFileIcon(tab.label, 13)}
-            </span>
             <span
               style={{
                 overflow: "hidden",

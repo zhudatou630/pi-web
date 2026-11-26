@@ -61,7 +61,7 @@ test("projects section owns workspace sessions and new-session actions", () => {
   assert.match(source, /createSessionForCwd\(workspaceCwd\)/);
   assert.match(source, /const workspaceCwd = active && selectedCwd \? selectedCwd : row\.cwd/);
   assert.match(source, /sidebar\.openProjectExplorer/);
-  assert.match(source, /setExplorerOpen\(true\)/);
+  assert.match(source, /onShowFiles\?\.\(workspaceCwd\)/);
   assert.match(source, /sidebar\.addProject/);
   assert.doesNotMatch(source, /dropdownProjectRows/);
   assert.match(source, /const \[projectsOpen, setProjectsOpen\]/);
