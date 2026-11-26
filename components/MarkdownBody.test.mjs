@@ -182,7 +182,7 @@ test("keeps local file markdown links in the app", () => {
 test("keeps file URLs inert without an in-app file handler", () => {
   const html = renderMarkdown("[report](file:///home/me/project/report.html)", { onOpenFile: undefined });
 
-  assert.match(html, /<a href="" target="_blank" rel="noopener noreferrer">report<\/a>/);
+  assert.match(html, /<a target="_blank" rel="noopener noreferrer">report<\/a>/);
 });
 
 test("keeps single-tilde CJK numeric ranges literal instead of striking them", () => {

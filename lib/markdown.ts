@@ -37,13 +37,21 @@ const markdownSanitizeSchema = {
   strip: [...(defaultSchema.strip || []), "iframe", "object", "style", "form"],
 };
 
+// The colon looks like a scheme to both URL filters. Carry just this grammar
+// through sanitize as a file URL; do not allow arbitrary dotted schemes.
+const bareLineHref = /^[^\s/:?#\\]+\.[a-z\d]+:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/i;
+const bareLinePrefix = "file:bare-line:";
+
 /** react-markdown's URL filter, plus links to the apps above. */
-export function markdownAppUrlTransform(value: string): string {
-  return appLinkPattern.test(value) ? value : defaultUrlTransform(value);
+export function markdownAppUrlTransform(value: string): string | undefined {
+  if (bareLineHref.test(value)) return undefined;
+  return appLinkPattern.test(value) ? value : defaultUrlTransform(value) || undefined;
 }
 
 /** Also keeps `file:` links, for renderers that open local files in the app. */
-export function markdownUrlTransform(value: string): string {
+export function markdownUrlTransform(value: string): string | undefined {
+  const href = value.startsWith(bareLinePrefix) ? value.slice(bareLinePrefix.length) : value;
+  if (bareLineHref.test(href)) return href;
   return /^file:/i.test(value) ? value : markdownAppUrlTransform(value);
 }
 
@@ -548,10 +556,11 @@ function remarkSplitAutolinkLiterals() {
   };
 }
 
-function remarkDriveFileLinks() {
+function remarkLocalFileLinks() {
   const walk = (node: Root | Content): void => {
-    if ((node.type === "link" || node.type === "definition") && /^\/?[a-z]:\//i.test(node.url)) {
-      node.url = `file:///${node.url.replace(/^\//, "")}`;
+    if (node.type === "link" || node.type === "definition") {
+      if (/^\/?[a-z]:\//i.test(node.url)) node.url = `file:///${node.url.replace(/^\//, "")}`;
+      else if (bareLineHref.test(node.url)) node.url = bareLinePrefix + node.url;
     }
     if ("children" in node) node.children.forEach(walk);
   };
@@ -604,7 +613,7 @@ const remarkCurrencySafeMath: Plugin = function () {
 export const markdownRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
-  remarkDriveFileLinks,
+  remarkLocalFileLinks,
   remarkSplitAutolinkLiterals,
   remarkCurrencySafeMath,
   remarkCjkFriendly,
@@ -705,7 +714,7 @@ export const markdownTextLayoutRemarkPlugins: ReactMarkdownOptions["remarkPlugin
 export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
-  remarkDriveFileLinks,
+  remarkLocalFileLinks,
   remarkSplitAutolinkLiterals,
   remarkCurrencySafeMath,
   remarkCjkFriendly,
