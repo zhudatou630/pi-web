@@ -986,8 +986,6 @@ function AssistantMessageView({
 
       {createdRoutines && createdRoutines.length > 0 && <TurnCreatedRoutines routines={createdRoutines} />}
 
-      {isProcess && cost && <div className="font-ui text-[11px] text-text-dim tabular-nums">{cost}</div>}
-
       {showFooter && (
         // Who answered, how long the turn took, when it ended; copy sits right after them.
         <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>

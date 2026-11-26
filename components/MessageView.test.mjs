@@ -439,7 +439,7 @@ test("restores copy and time only on a completed final answer", () => {
   assert.equal((html.match(/GPT-6 Astra/g) ?? []).length, 1);
   assert.match(html, /data-answer-footer[^]*?\$0\.08/);
   const stepHtml = renderMessage(message, { isProcess: true });
-  assert.match(stepHtml, /\$0\.08/);
+  assert.doesNotMatch(stepHtml, /\$0\.08/);
   assert.doesNotMatch(stepHtml, /data-answer-footer/);
   const fallbackHtml = renderMessage(message, { isTurnEnd: true });
   assert.match(fallbackHtml, /data-answer-footer[\s\S]*data-answer-model[^>]*>hidden-model<\/span>/);

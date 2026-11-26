@@ -815,7 +815,7 @@ function ProcessDetailsGroup({
             {stepsLabel}
           </span>
         )}
-        {!isPanelOpen && cost > 0 && <span className="shrink-0">· {formatMessageCost(cost)}</span>}
+        {cost > 0 && <span className="shrink-0">· {formatMessageCost(cost)}</span>}
         <svg
           width="10"
           height="10"

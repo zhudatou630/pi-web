@@ -151,9 +151,9 @@ only when followed by another assistant (or at a running agent's tail).
 
 The last visible custom anchors an inferred turn; otherwise the last hidden
 custom is boundary-only, with no rendered row or scroll ref. Shell cards stay
-outside the process fold even between anchor and answer. A folded group shows the
-sum of its assistant steps’ costs; opening it shows those costs individually.
-Split answers keep their own usage outside that sum. Timing starts at the
+outside the process fold even between anchor and answer. The group header shows the
+sum of its assistant steps’ costs (steps show none of their own); the final
+answer's cost stays in its footer, outside that sum. Timing starts at the
 stretch's last custom, not its visible anchor, and uses the existing timestamps
 and `completedAt`. Pagination keeps the preceding assistant as inference evidence,
 subject to the existing 1000-entry extension cap. This is an ordering heuristic:
