@@ -59,7 +59,8 @@ export function summarizeTurnActivity(
     else if (WEB_TOOLS.has(name)) activity.researched = true;
     else if (name === "Agent") activity.subagents += 1;
     else if (name === IMAGE_TOOL_NAME) { if (getImageGenerationResult(result.details)) activity.images += 1; }
-    else if (!SKIP_TOOLS.has(name) && !isWriteToolName(name) && !isEditToolName(name) && !isApplyPatchToolName(name)) activity.tools += 1;
+    // By the call's own name: only those are listed as written files. A catch-all's move or delete is not.
+    else if (!SKIP_TOOLS.has(name) && !isWriteToolName(block.toolName) && !isEditToolName(block.toolName) && !isApplyPatchToolName(block.toolName)) activity.tools += 1;
   }
   return activity;
 }
