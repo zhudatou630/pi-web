@@ -970,6 +970,7 @@ export const enLocale: LocalePlugin = {
     "chat.bashExitCode": "exit {code}",
     "chat.bashBusy": "Wait for the current run or shell command to finish before running a ! command.",
     "chat.bashCancelled": "cancelled",
+    "chat.bashFullNotSaved": "Output truncated. Could not save the full output: {reason}",
     "chat.bashTruncated": "Output truncated",
     "chat.bashFullShown": "Showing the full output.",
     "chat.bashFullTooLarge": "The full output is too large to display here. Download it instead.",

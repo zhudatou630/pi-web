@@ -2351,9 +2351,11 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
       {message.cancelled && <BashTag>{t("chat.bashCancelled")}</BashTag>}
     </>
   );
-  const footer = message.truncated && fullOutputUrl ? (
+  const footer = message.truncated ? (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, padding: "0 10px 6px", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>
-      <span role="status">{t(fullError ?? (fullOutput !== null ? "chat.bashFullShown" : "chat.bashTruncated"))}</span>
+      <span role="status">{!message.fullOutputPath && message.fullOutputError
+        ? t("chat.bashFullNotSaved", { reason: message.fullOutputError })
+        : t(fullError ?? (fullOutput !== null ? "chat.bashFullShown" : "chat.bashTruncated"))}</span>
       {showFullButton && (
         <>
           <span aria-hidden="true">·</span>
@@ -2362,7 +2364,7 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
           </button>
         </>
       )}
-      <a className="meta-link" href={`${fullOutputUrl}&download=1`}>{t("chat.bashDownloadFull")}</a>
+      {fullOutputUrl && <a className="meta-link" href={`${fullOutputUrl}&download=1`}>{t("chat.bashDownloadFull")}</a>}
     </div>
   ) : undefined;
 
