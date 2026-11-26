@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { isPiOffline } from "@/lib/pi-offline";
 import type { AppUpdateResponse } from "@/lib/api-types";
 import { getPiWebReleaseUrl, isNewerStableVersion } from "@/lib/app-update";
 
@@ -86,7 +87,7 @@ async function loadUpdateStatus(force: boolean): Promise<AppUpdateResponse> {
 
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
-  if (SKIP_VERSION_CHECK || params.get("status") === "1") {
+  if (SKIP_VERSION_CHECK || isPiOffline() || params.get("status") === "1") {
     return updateResponse({
       currentVersion: CURRENT_VERSION,
       latestVersion: CURRENT_VERSION,
@@ -105,6 +106,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST() {
+  if (isPiOffline()) return NextResponse.json({ error: "Updates are disabled while PI_OFFLINE is set." }, { status: 409 });
   if (!CAN_UPDATE || !process.connected) {
     return NextResponse.json({ error: "Use a writable npm global installation started with pi-web to update here." }, { status: 409 });
   }

@@ -486,7 +486,7 @@ export const enLocale: LocalePlugin = {
     "appUpdate.upToDate": "Up to date",
     "appUpdate.checkFailed": "Check failed",
     "appUpdate.checkNow": "Check for updates",
-    "appUpdate.checkDisabled": "Version checks are disabled (PI_WEB_SKIP_VERSION_CHECK=1)",
+    "appUpdate.checkDisabled": "Version checks are disabled (PI_OFFLINE is set or PI_WEB_SKIP_VERSION_CHECK=1)",
     "appUpdate.manualUpdate": "This installation requires a manual update. Follow the installation instructions.",
     "appUpdate.manualCommand": "The npm global folder is not writable. Update manually with:",
     "appUpdate.releaseNotes": "Pi Web v{version} is available. View release notes",

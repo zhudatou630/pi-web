@@ -1,5 +1,6 @@
 import { createModelsConfigServices, resolveOptionalCwd } from "@/lib/model-config-services";
 import { NextResponse } from "next/server";
+import { isPiOffline } from "@/lib/pi-offline";
 import { invalidateModelsCache } from "@/lib/models-cache";
 import { LLAMA_CPP_PROVIDER_ID } from "@/lib/provider-listing";
 import { hasJsonContentType, isApiRequestAllowed } from "@/lib/request-security";
@@ -79,8 +80,9 @@ export async function POST(req: Request, { params }: Params) {
     if (llama) {
       // A saved credential stays successful even if its catalog refresh fails.
       try {
-        const result = await modelRuntime.refresh({ providers: [provider], allowNetwork: true, force: true, signal });
-        return NextResponse.json({ success: true, catalog: { completed: !result.aborted && result.errors.size === 0 && process.env.PI_OFFLINE === undefined, modelCount: modelRuntime.getModels(provider).length } });
+        const allowNetwork = !isPiOffline();
+        const result = await modelRuntime.refresh({ providers: [provider], allowNetwork, force: true, signal });
+        return NextResponse.json({ success: true, catalog: { completed: allowNetwork && !result.aborted && result.errors.size === 0, modelCount: modelRuntime.getModels(provider).length } });
       } catch {
         return NextResponse.json({ success: true, catalog: { completed: false } });
       } finally {

@@ -10,6 +10,7 @@ import {
 import { gt, maxSatisfying, rcompare, valid, validRange } from "semver";
 import type { PluginScope, PluginUpdateResult } from "@/lib/api-types";
 import { sanitizeProjectCommandEnvironment } from "./host-environment";
+import { isPiOffline } from "./pi-offline";
 import { npmLookupFolder } from "./host-package-manager";
 import { getProjectTrustStatus } from "./project-trust";
 
@@ -177,10 +178,6 @@ async function checkGitPackage(
   return result(pkg, local === remote ? "up-to-date" : "update-available");
 }
 
-function isOffline(): boolean {
-  return /^(1|true|yes)$/i.test(process.env.PI_OFFLINE ?? "");
-}
-
 export async function checkPluginUpdates(
   cwd: string,
   filter?: { source?: string; scope?: PluginScope },
@@ -208,8 +205,8 @@ export async function checkPluginUpdates(
     if (!isPluginSourceCheckable(pkg.source)) {
       return result(pkg, "unsupported", "Pinned or local packages cannot be checked automatically.");
     }
-    if (isOffline()) {
-      return result(pkg, "error", "Update checks are disabled while PI_OFFLINE=1.");
+    if (isPiOffline()) {
+      return result(pkg, "error", "Update checks are disabled while PI_OFFLINE is set.");
     }
     try {
       return parseNpmSource(pkg.source)
