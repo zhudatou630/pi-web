@@ -26,7 +26,7 @@ import {
   isVideoPath,
 } from "@/lib/file-types";
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
-import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
+import { lineRangeFromHref, pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { injectSandboxedHtmlPolyfill } from "@/lib/html-sandbox-polyfill";
 import { extractMarkdownOutline, findHeadingBySlug } from "@/lib/markdown-outline";
@@ -71,7 +71,7 @@ interface Props {
   filePath: string;
   cwd?: string;
   sourceSessionId?: string | null;
-  onOpenFile?: (filePath: string, page?: number) => void;
+  onOpenFile?: (filePath: string, page?: number, reveal?: FileReveal) => void;
   /** Add the selection to the chat as a quote chip: whole source lines, or markdown preview text. */
   onAttachSelection?: (attachment: FileSelectionAttachment) => void;
   /** Scroll to and mark these source lines, or this preview text, once; then call onRevealed. */
@@ -1243,7 +1243,7 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
   markdownPreview: string;
   frontmatterData: ReturnType<typeof parseFrontmatter>["data"];
   markdownDirectory: string;
-  onOpenFile?: (filePath: string, page?: number) => void;
+  onOpenFile?: Props["onOpenFile"];
   sourceSessionId?: string | null;
 }) {
   const { t } = useI18n();
@@ -1331,7 +1331,7 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
               const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
                 if (!shouldOpenLocalFileInApp(event)) return;
                 event.preventDefault();
-                onOpenFile(linkedFile, pdfPageFromHref(href) ?? undefined);
+                onOpenFile(linkedFile, pdfPageFromHref(href) ?? undefined, lineRangeFromHref(href));
               };
 
               return <a href={href} {...props} onClick={handleClick}>{children}</a>;
@@ -1442,7 +1442,7 @@ function TextFileViewer({
   // A stable identity keeps the memoized markdown preview from re-parsing when the shell's callback changes.
   const onOpenFileRef = useRef(onOpenFile);
   onOpenFileRef.current = onOpenFile;
-  const openFile = useCallback((path: string, page?: number) => onOpenFileRef.current?.(path, page), []);
+  const openFile = useCallback((path: string, page?: number, reveal?: FileReveal) => onOpenFileRef.current?.(path, page, reveal), []);
 
   const updateDisplayMode = useCallback((nextDisplayMode: DisplayMode) => {
     viewerStateRef.current.displayMode = nextDisplayMode;
@@ -1482,7 +1482,7 @@ function TextFileViewer({
   // Read chunks from `startOffset` (appending to the shown content) or from 0 (replacing it) until
   // `minBytes`, then publish once: a half-read refresh would drop a large markdown file back to
   // Source and render it twice. A newer request supersedes this one (returns null).
-  const readContent = useCallback(async (filePath: string, startOffset: number, minBytes: number) => {
+  const readContent = useCallback(async (filePath: string, startOffset: number, minBytes: number, lines?: { completed: number; target: number }) => {
     const requestId = ++contentRequestRef.current;
     const readAt = async (nextOffset: number) => {
       const response = await fetch(getFileApiUrl(filePath, "read", sourceSessionId, { offset: nextOffset || undefined }));
@@ -1495,6 +1495,7 @@ function TextFileViewer({
         startOffset: startOffset === contentNextOffsetRef.current ? startOffset : 0,
         version: contentVersionRef.current,
         minBytes,
+        lines,
         isCurrent: () => requestId === contentRequestRef.current,
       });
       if (result.kind === "superseded") return null;
@@ -1734,11 +1735,12 @@ function TextFileViewer({
   // Wait for the git request before restoring diff mode so the unresolved
   // placeholder cannot immediately demote it back to source.
   useEffect(() => {
+    if (reveal && "start" in reveal) autoDiffAppliedRef.current = true;
     if (requestedInitialDisplayMode === "diff" && hasGitDiff && !autoDiffAppliedRef.current) {
       autoDiffAppliedRef.current = true;
       updateDisplayMode("diff");
     }
-  }, [requestedInitialDisplayMode, hasGitDiff, updateDisplayMode]);
+  }, [requestedInitialDisplayMode, hasGitDiff, reveal, updateDisplayMode]);
 
   const markdownPreview = useMemo(
     () => (data?.language === "markdown" ? normalizeLocalFileLinks(normalizeDisplayMath(data.content)) : ""),
@@ -1927,11 +1929,27 @@ function TextFileViewer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [attachSelection, onAttachSelection, readSelectionAttachment]);
 
+  const attemptedLineLoad = useRef<FileReveal | undefined>(undefined);
   const revealHighlightTimerRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!reveal || !data) return;
+    if (!reveal || !data || loading || !contentRef.current) return;
+    if ("start" in reveal && !isDeletedDiff) {
+      if (displayMode !== "source") {
+        updateDisplayMode("source");
+        return;
+      }
+      if (loadingMore) return;
+      if (data.truncated && sourceLines.length <= reveal.end && attemptedLineLoad.current !== reveal) {
+        // One bounded read per click, even on an error or a non-advancing chunk.
+        attemptedLineLoad.current = reveal;
+        setLoadingMore(true);
+        void readContent(filePath, data.nextOffset, Infinity, { completed: sourceLines.length - 1, target: reveal.end })
+          .finally(() => setLoadingMore(false));
+        return;
+      }
+    }
     // Text came from the markdown preview, lines from the source view: show the view it came from.
-    const wantedMode = "text" in reveal ? (isMarkdown && hasPreview ? "preview" : effectiveDisplayMode) : "source";
+    const wantedMode = "text" in reveal ? (isMarkdown && hasPreview ? "preview" : effectiveDisplayMode) : effectiveDisplayMode;
     if (effectiveDisplayMode !== wantedMode) {
       updateDisplayMode(wantedMode);
       return;
@@ -1950,13 +1968,11 @@ function TextFileViewer({
         ranges.push(range);
       }
     } else if (root && "start" in reveal) {
-      const lineElement = (line: number) => root.querySelector<HTMLElement>(`.file-source-line[data-line-number="${line}"] .file-source-line-content`)
-        ?? root.querySelector<HTMLElement>(`.file-source-line[data-line-number="${line}"]`);
-      // One range per line, so the line-number gutter between them stays unmarked.
-      // shortcut: lines past a partially loaded file are not revealed; load more first if this matters.
-      for (let line = reveal.start; line <= reveal.end; line++) {
-        const element = lineElement(line);
-        if (!element) break;
+      // Source renders one content span per line in file order. Don't search the
+      // whole DOM again for every line of a large selected range.
+      const contents = root.getElementsByClassName("file-source-line-content");
+      for (let line = reveal.start; line <= reveal.end && line <= contents.length; line++) {
+        const element = contents[line - 1];
         const range = document.createRange();
         range.selectNodeContents(element);
         ranges.push(range);
@@ -1965,17 +1981,21 @@ function TextFileViewer({
     if (root && ranges.length) {
       // Offscreen blocks only have estimated heights (content-visibility) until laid out,
       // so re-aim once the scroll has made them real.
+      scrollRestorePendingRef.current = false;
+      root.classList.add("is-laid-out");
       const aim = () => scrollIntoScroller(root, ranges[0]);
       aim();
       requestAnimationFrame(() => { aim(); requestAnimationFrame(aim); });
       if (typeof Highlight !== "undefined") {
-        CSS.highlights.set("quote-source", new Highlight(...ranges));
+        const highlight = new Highlight();
+        for (const range of ranges) highlight.add(range);
+        CSS.highlights.set("quote-source", highlight);
         if (revealHighlightTimerRef.current !== null) window.clearTimeout(revealHighlightTimerRef.current);
         revealHighlightTimerRef.current = window.setTimeout(() => CSS.highlights.delete("quote-source"), 2000);
       }
     }
     onRevealed?.();
-  }, [data, effectiveDisplayMode, hasPreview, highlightedSource, isMarkdown, lightweightSourceLines, markdownPreview, onRevealed, reveal, updateDisplayMode]);
+  }, [data, displayMode, effectiveDisplayMode, filePath, hasPreview, highlightedSource, isDeletedDiff, isMarkdown, lightweightSourceLines, loading, loadingMore, markdownPreview, onRevealed, readContent, reveal, sourceLines.length, updateDisplayMode]);
 
   // Cmd/Ctrl+F opens the in-file find once the viewer was last clicked or holds focus;
   // anywhere else the browser's own find stays.

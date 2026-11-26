@@ -246,7 +246,7 @@ test("offscreen skipping starts at once without a position to restore, else afte
   assert.match(source, /const offscreenSkipFromStart = initialScrollTop === 0 && initialScrollLeft === 0;/);
   assert.match(source, /className=\{offscreenSkipFromStart \? "file-viewer-content is-laid-out" : "file-viewer-content"\}/);
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  const restore = source.slice(source.indexOf("scrollRestorePendingRef.current = false;"));
+  const restore = source.slice(source.lastIndexOf("scrollRestorePendingRef.current = false;"));
   assert.match(restore, /^scrollRestorePendingRef\.current = false;[\s\S]{0,300}content\.classList\.add\("is-laid-out"\)/);
   assert.match(css, /\.markdown-file-preview > \* \{ contain: layout; contain-intrinsic-size: auto 4em; \}/);
   assert.match(css, /\.file-viewer-content\.is-laid-out \.markdown-file-preview > \* \{ content-visibility: auto; \}/);
@@ -283,7 +283,7 @@ test("file preview retains stable pre and code renderer types across re-parses",
 });
 
 test("the markdown preview gets a stable open-file callback, so shell changes do not re-parse it", () => {
-  assert.match(source, /const openFile = useCallback\(\(path: string, page\?: number\) => onOpenFileRef\.current\?\.\(path, page\), \[\]\);/);
+  assert.match(source, /const openFile = useCallback\(\(path: string, page\?: number, reveal\?: FileReveal\) => onOpenFileRef\.current\?\.\(path, page, reveal\), \[\]\);/);
   assert.match(source, /onOpenFile=\{onOpenFile \? openFile : undefined\}/);
 });
 

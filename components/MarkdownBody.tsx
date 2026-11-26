@@ -7,7 +7,7 @@ import { iconStroke } from "./iconStroke";
 import { CopyGlyph } from "./CopyGlyph";
 import { ExportImageIcon, useExportImage } from "./ExportImage";
 import ReactMarkdown, { type Components } from "react-markdown";
-import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
+import { lineRangeFromHref, pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { parsePreviewTarget, requestPreview } from "@/lib/preview-target";
 import { encodeFilePathForApi } from "@/lib/file-paths";
 import { isAudioPath, isVideoPath } from "@/lib/file-types";
@@ -27,7 +27,7 @@ interface MarkdownBodyProps {
   className?: string;
   isStreaming?: boolean;
   cwd?: string;
-  onOpenFile?: (filePath: string, page?: number) => void;
+  onOpenFile?: (filePath: string, page?: number, reveal?: { start: number; end: number }) => void;
 }
 
 function MathDisplay({ source, children }: { source: string; children: ReactNode }) {
@@ -141,7 +141,7 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
         const target = event.currentTarget.getAttribute("target");
         if (target && target !== "_self") return;
         event.preventDefault();
-        openFile(filePath, page ?? undefined);
+        openFile(filePath, page ?? undefined, lineRangeFromHref(href));
       };
 
       return (

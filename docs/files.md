@@ -24,6 +24,8 @@ Added, removed and context text reuse Source's Prism pipeline and both palettes.
 
 ## Windows shell paths
 
+Markdown file links with a `:line` or `:start-end` suffix open in Source and mark the requested lines. Optional column numbers are ignored; the viewer reads more chunks only as needed to reach the end of the range.
+
 File links and tool paths normalize `/d`, `/mnt/d` and `/cygdrive/d` to `D:/` only when the caller's cwd has a Windows drive letter. No browser OS inference is used: POSIX paths and UNC inputs retain their meaning. Cross-drive paths, drive roots and PDF page fragments work through the same resolvers.
 
 ## Session export

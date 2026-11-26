@@ -900,8 +900,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const wrappedOnSessionForked = useCallback((newSessionId: string) => {
     onSessionForked?.(newSessionId, sessionRef.current?.id ?? null);
   }, [onSessionForked]);
-  const openFileFromSession = useCallback((filePath: string, page?: number) => {
-    onOpenFile?.(filePath, sessionRef.current?.id ?? null, page);
+  const openFileFromSession = useCallback((filePath: string, page?: number, reveal?: FileReveal) => {
+    onOpenFile?.(filePath, sessionRef.current?.id ?? null, page, reveal);
   }, [onOpenFile]);
   const keepTabOpen = useCallback(() => {
     const sessionId = sessionRef.current?.id;

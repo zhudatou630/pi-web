@@ -37,8 +37,18 @@ function normalizeShellDrivePath(filePath: string, baseDir?: string): string {
   return filePath.replace(/^\/(?:mnt\/|cygdrive\/)?([a-zA-Z])(?:\/(.*))?$/, (_, drive: string, rest: string | undefined) => `${drive.toUpperCase()}:/${rest ?? ""}`);
 }
 
+const lineSuffix = /:(\d+)(?::\d+)?(?:-(\d+)(?::\d+)?)?$/;
+
 function stripLineSuffix(filePath: string): string {
-  return filePath.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, "");
+  return filePath.replace(lineSuffix, "");
+}
+
+export function lineRangeFromHref(href: string | undefined) {
+  const match = href && lineSuffix.exec(safeDecode(href.split(/[?#]/, 1)[0].trim()));
+  if (!match) return undefined;
+  const start = Number(match[1]);
+  const end = Number(match[2] ?? start);
+  return start > 0 && end >= start && Number.isSafeInteger(start) && Number.isSafeInteger(end) ? { start, end } : undefined;
 }
 
 function normalizeLocalPath(filePath: string): string {
