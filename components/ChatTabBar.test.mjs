@@ -102,13 +102,14 @@ test("renders tab items with titles and running indicator", () => {
 });
 
 test("mirrors the sidebar's dot: awaiting beats running, then error, then unread", () => {
-  const tabs = ["s1", "s2", "s3", "s4"].map((id) => ({ id, kind: "session", title: id, session: { id }, newSessionCwd: null, newSessionDraftKey: null }));
-  const renderedTabs = tabNodes(render(tabs, "s1", null, { unread: new Set(["s3", "s4"]), awaitingInput: new Set(["s2"]), error: new Set(["s4"]) }));
+  const tabs = ["s1", "s2", "s3", "s4", "s5"].map((id) => ({ id, kind: "session", title: id, session: { id }, newSessionCwd: null, newSessionDraftKey: null }));
+  const renderedTabs = tabNodes(render(tabs, "s1", null, { unread: new Set(["s3", "s4"]), awaitingInput: new Set(["s2"]), error: new Set(["s4"]), subagentsActive: new Set(["s5"]) }));
   const dot = (html) => html.match(/class="session-status-dot" data-status="(\w+)"/)?.[1];
   assert.equal(dot(renderedTabs[0]), undefined);
   assert.equal(dot(renderedTabs[1]), "awaiting");
   assert.equal(dot(renderedTabs[2]), "unread");
   assert.equal(dot(renderedTabs[3]), "error");
+  assert.equal(dot(renderedTabs[4]), "running", "idle main session with running subagents");
 });
 
 test("marks selected tab and split tab appropriately", () => {

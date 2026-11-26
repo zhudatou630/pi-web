@@ -208,7 +208,7 @@ interface Props {
   onBackgroundTaskDone?: (completedSessionIds: string[], since: number) => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   /** Unread and awaiting-input markers, mirrored onto the chat tabs. */
-  onSessionMarkersChange?: (markers: { unread: Set<string>; awaitingInput: Set<string>; error: Set<string> }) => void;
+  onSessionMarkersChange?: (markers: { unread: Set<string>; awaitingInput: Set<string>; error: Set<string>; subagentsActive: Set<string> }) => void;
   onSessionsChange?: (sessions: SessionInfo[]) => void;
   /** Display names keyed by project root, for the pickers outside the sidebar. */
   onProjectPathsChange?: (paths: string[]) => void;
@@ -476,8 +476,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const [awaitingInputSessionIds, setAwaitingInputSessionIds] = useState<Set<string>>(() => new Set());
   /** Session id -> the question a waiting run asks (`/api/agent/running`). */
   const [awaitingInputReasons, setAwaitingInputReasons] = useState<Record<string, string>>({});
-  /** The shared readAt (`lib/sidebar-state.ts`) as state: it clears error marks like unread ones. */
-  const [sharedReadAt, setSharedReadAt] = useState<Record<string, number>>({});
+  /** The shared readAt (`lib/sidebar-state.ts`) as state: it clears error marks like unread ones.
+   *  null until the first poll, so long-read errors never flash on load. */
+  const [sharedReadAt, setSharedReadAt] = useState<Record<string, number> | null>(null);
   /** Session id -> next scheduled cache refresh (`/api/agent/running`). */
   const [cacheKeepaliveSessions, setCacheKeepaliveSessions] = useState<Map<string, number>>(() => new Map());
   const cacheKeepaliveSessionIds = useMemo(() => new Set(cacheKeepaliveSessions.keys()), [cacheKeepaliveSessions]);
@@ -880,7 +881,12 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         }
         readSnapshotRef.current = { serverNow: data.serverNow, receivedAt: performance.now(), readAtVersion: data.readAtVersion, readAt, completedAt: data.completedAt ?? {}, pendingIds: new Set([...(data.runningSessionIds ?? []), ...(data.subagentsActiveSessionIds ?? [])]) };
         setUnreadMarks((marks) => withoutReadMarks(marks, readAt));
-        if (data.readAt) setSharedReadAt(data.readAt);
+        if (data.readAt) {
+          // Manual reads still being written stay read here (the server may take a throttled retry).
+          const shared = { ...data.readAt };
+          for (const [id, at] of manualReadIdsRef.current) if (!(shared[id] >= at)) shared[id] = at;
+          setSharedReadAt(shared);
+        }
         runningPollAuthoritativeRef.current = true;
         currentSuppressedCompletionSessionIdsRef.current = new Set(
           data.completionNotificationSuppressedSessionIds ?? [],
@@ -932,13 +938,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // A main session whose subagents still run is active too: same dot as running.
   const activeSessionIds = useMemo(() => new Set([...runningSessionIds, ...subagentsActiveSessionIds]), [runningSessionIds, subagentsActiveSessionIds]);
   const erroredSessionIds = useMemo(
-    () => unseenErrorSessionIds(allSessions, sharedReadAt, activeSessionIds, new Set(visibleSessionKey.split("\n"))),
+    () => sharedReadAt ? unseenErrorSessionIds(allSessions, sharedReadAt, activeSessionIds, new Set(visibleSessionKey.split("\n"))) : new Set<string>(),
     [allSessions, sharedReadAt, activeSessionIds, visibleSessionKey],
   );
 
   useEffect(() => {
-    onSessionMarkersChange?.({ unread: unreadSessionIds, awaitingInput: awaitingInputSessionIds, error: erroredSessionIds });
-  }, [onSessionMarkersChange, unreadSessionIds, awaitingInputSessionIds, erroredSessionIds]);
+    onSessionMarkersChange?.({ unread: unreadSessionIds, awaitingInput: awaitingInputSessionIds, error: erroredSessionIds, subagentsActive: subagentsActiveSessionIds });
+  }, [onSessionMarkersChange, unreadSessionIds, awaitingInputSessionIds, erroredSessionIds, subagentsActiveSessionIds]);
 
   useEffect(() => {
     if (sessionListVersion !== null) onSessionsChange?.(allSessions);
@@ -2059,14 +2065,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
           onToggleRead={() => {
-            const read = familySessions.some((session) => unreadMarks.has(session.id)) || erroredSessionIds.has(family.root.id);
-            if (read) manualReadIdsRef.current.set(family.root.id, readSnapshotRef.current.serverNow);
+            const errored = erroredSessionIds.has(family.root.id);
+            const read = familySessions.some((session) => unreadMarks.has(session.id)) || errored;
+            // A listed error may be newer than the last poll: the read must reach it.
+            const readUntil = Math.max(readSnapshotRef.current.serverNow, errored ? family.root.lastError?.at ?? 0 : 0);
+            if (read) manualReadIdsRef.current.set(family.root.id, readUntil);
             else manualReadIdsRef.current.delete(family.root.id);
             // The error mark has no local copy: hide it now, the next poll writes the shared read.
-            if (read && erroredSessionIds.has(family.root.id)) {
-              const { serverNow, receivedAt } = readSnapshotRef.current;
-              setSharedReadAt((current) => ({ ...current, [family.root.id]: serverNow + Math.max(0, performance.now() - receivedAt) }));
-            }
+            if (errored) setSharedReadAt((current) => current && ({ ...current, [family.root.id]: readUntil }));
             setUnreadMarks((current) => {
               const ids = markSessionFamilyRead(family, new Set(current.keys()), read);
               const { serverNow, receivedAt, readAt } = readSnapshotRef.current;
@@ -3112,7 +3118,7 @@ export function SessionItem({
         cursor: renaming ? "default" : "pointer",
         background: pendingDelete
           ? "color-mix(in srgb, var(--danger) 6%, transparent)"
-          : selection?.checked || isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "transparent",
+          : selection?.checked || isSelected ? "var(--bg-selected)" : hovered || menuAt ? "var(--bg-hover)" : "transparent",
         borderRadius: 4,
         transition: "background var(--motion-fast)",
         color: deleting ? "var(--text-dim)" : undefined,
@@ -3158,7 +3164,7 @@ export function SessionItem({
           )}
           {/* Subagent indicator for child sessions */}
           {depth > 0 && (
-            <SubagentIcon size={13} style={{ color: "var(--accent)" }} />
+            <SubagentIcon size={13} style={{ color: "var(--text-dim)" }} />
           )}
           <button
             type="button"
@@ -3202,15 +3208,17 @@ export function SessionItem({
               )}
             </div>
           </button>
+          {/* A worktree is a glyph; its branch is in the tooltip, so the title keeps the width. */}
           {session.isWorktree && session.branch && (
             <span
+              role="img"
               title={`Worktree: ${session.branch}\n${session.cwd}`}
-              style={{ display: "flex", alignItems: "center", gap: 3, maxWidth: 82, color: "var(--text-dim)", flexShrink: 1, fontSize: 10, lineHeight: 1.3 }}
+              aria-label={`Worktree: ${session.branch}`}
+              style={{ display: "flex", alignItems: "center", color: "var(--text-dim)", flexShrink: 0 }}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
               </svg>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{session.branch}</span>
             </span>
           )}
 
@@ -3309,6 +3317,7 @@ export function SessionItem({
         {reasonLine && (
           <>
             <div className="menu-surface-head">
+              <div className="menu-surface-head-title">{title}</div>
               <SessionStatusWord status={needsYou!} /> · {statusReason}
             </div>
             <div role="separator" className="menu-surface-divider" />

@@ -409,6 +409,7 @@ html.dark {
   align-items: center;
   flex-shrink: 0;
   height: 100%;
+  margin-left: 8px;
   padding: 0 4px;
 }
 .top-bar-context-trigger {
@@ -438,6 +439,11 @@ html.dark {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.3;
+}
+@media (max-width: 900px) {
+  .top-bar-context-label {
+    max-width: 80px;
+  }
 }
 .top-bar-context-menu {
   position: absolute;
@@ -2125,7 +2131,9 @@ button.question-card-option:not(:disabled):hover {
   width: 8px;
   height: 8px;
 }
+/* A minimum action width lines the objects up in one column (Thinking, bash, read). */
 [data-step-card] .step-label {
+  min-width: 56px;
   color: var(--text-muted);
 }
 [data-step-card]:has(> .step-head .step-icon > .session-status-dot) .step-label {
@@ -2182,6 +2190,16 @@ button.question-card-option:not(:disabled):hover {
   gap: 6px;
   padding-right: 8px;
   cursor: pointer;
+}
+/* Row actions (copy command, open file) show with the row's hover or focus; touch keeps them. */
+@media (hover: hover) and (pointer: fine) {
+  [data-step-card] [data-step-action] {
+    opacity: 0;
+    transition: opacity var(--motion-fast);
+  }
+  [data-step-card] .step-head:is(:hover, :focus-within) [data-step-action] {
+    opacity: 1;
+  }
 }
 /* An expanded section under the header. */
 .step-body {
@@ -5752,7 +5770,8 @@ span.token.table {
   line-height: 1.3;
 }
 
-/* Why a session row needs you (waiting question, error), above its context menu's actions. */
+/* Why a session row needs you (waiting question, error), above its context menu's actions:
+   the session title, then the state word and its reason. */
 .menu-surface-head {
   max-width: 240px;
   padding: 4px 8px;
@@ -5760,6 +5779,13 @@ span.token.table {
   font-size: 11px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+.menu-surface-head-title {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-input-menu {

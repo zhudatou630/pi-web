@@ -274,10 +274,11 @@ export function AppShell() {
       return ids;
     });
   }, []);
-  const [sessionMarkers, setSessionMarkers] = useState<SessionMarkers>(() => ({ unread: new Set(), awaitingInput: new Set(), error: new Set() }));
+  const [sessionMarkers, setSessionMarkers] = useState<SessionMarkers>(() => ({ unread: new Set(), awaitingInput: new Set(), error: new Set(), subagentsActive: new Set() }));
   // The sidebar keeps each set's identity until it changes, so reference equality suffices.
   const handleSessionMarkersChange = useCallback((markers: SessionMarkers) => {
-    setSessionMarkers((previous) => previous.unread === markers.unread && previous.awaitingInput === markers.awaitingInput && previous.error === markers.error ? previous : markers);
+    setSessionMarkers((previous) => previous.unread === markers.unread && previous.awaitingInput === markers.awaitingInput && previous.error === markers.error
+      && previous.subagentsActive === markers.subagentsActive ? previous : markers);
   }, []);
   // On-screen sessions that finished while the page was hidden also count toward the favicon badge.
   const [finishedWhileHidden, setFinishedWhileHidden] = useState<Set<string>>(() => new Set());
@@ -1812,7 +1813,7 @@ export function AppShell() {
   // "Changes N" in the top bar: uncommitted files per shown session cwd, also with the file panel
   // closed. Refreshed on the explorer's existing triggers (run end, writes, focus), never polled.
   const [gitChangeCounts, setGitChangeCounts] = useState<Record<string, number>>({});
-  const gitChangeCwdKey = [...new Set([
+  const gitChangeCwdKey = isMobile ? "" : [...new Set([
     selectedSession?.transient ? null : selectedSession?.cwd,
     ...(isSplitActive ? [primaryTab, secondaryTab] : []).map((tab) => tab?.kind === "session" && !tab.session?.transient ? tab.session?.cwd : null),
   ].filter((cwd): cwd is string => Boolean(cwd)))].join("\n");
@@ -1820,7 +1821,7 @@ export function AppShell() {
     if (!gitChangeCwdKey) return;
     const controller = new AbortController();
     for (const cwd of gitChangeCwdKey.split("\n")) {
-      fetch(`/api/git/status?${new URLSearchParams({ cwd })}`, { signal: controller.signal, cache: "no-store" })
+      fetch(`/api/git/status?${new URLSearchParams({ cwd, lines: "0" })}`, { signal: controller.signal, cache: "no-store" })
         .then((response) => response.ok ? response.json() as Promise<GitStatusResponse> : null)
         .then((status) => {
           const count = status?.isGitRepository ? status.files.length : 0;

@@ -229,10 +229,10 @@ test("formats session timestamps with the active locale", () => {
   assert.match(sessionItemSource, /formatCompactRelativeTime\(session\.modified, locale\)/);
 });
 
-test("worktree sessions expose a compact branch label without changing grouping", () => {
+test("worktree sessions show a branch glyph, with the branch in its tooltip, without changing grouping", () => {
   assert.match(sessionItemSource, /session\.isWorktree && session\.branch/);
-  assert.match(sessionItemSource, /\{session\.branch\}<\/span>/);
-  assert.match(sessionItemSource, /maxWidth: 82/);
+  assert.match(sessionItemSource, /title=\{`Worktree: \$\{session\.branch\}\\n\$\{session\.cwd\}`\}/);
+  assert.doesNotMatch(sessionItemSource, /\{session\.branch\}<\/span>/, "no branch text: the title keeps the width");
 });
 
 test("does not persist an unchanged fallback title ending in whitespace", () => {

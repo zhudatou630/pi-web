@@ -178,7 +178,8 @@ async function countUntrackedLines(files: GitFileStatus[], signal?: AbortSignal)
   return total;
 }
 
-export async function getGitStatus(cwd: string, signal?: AbortSignal): Promise<GitStatusResponse> {
+/** `lines: false` skips the +/− line counts (numstat, untracked file reads) for a file count only. */
+export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = true }: { lines?: boolean } = {}): Promise<GitStatusResponse> {
   signal?.throwIfAborted();
   const repositoryRoot = await findRepositoryRoot(cwd);
   if (!repositoryRoot) {
@@ -197,7 +198,7 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal): Promise<G
   signal?.throwIfAborted();
   const [entries, trackedLineStats] = await Promise.all([
     readStatusEntries(repositoryRoot),
-    readTrackedLineStats(realRoot, realCwd),
+    lines ? readTrackedLineStats(realRoot, realCwd) : { additions: 0, deletions: 0 },
   ]);
   const files: GitFileStatus[] = [];
   for (let index = 0; index < entries.length; index++) {
@@ -229,7 +230,7 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal): Promise<G
       worktreeStatus: entry.worktreeStatus,
     });
   }
-  const untrackedAdditions = await countUntrackedLines(files, signal);
+  const untrackedAdditions = lines ? await countUntrackedLines(files, signal) : 0;
 
   return {
     isGitRepository: true,

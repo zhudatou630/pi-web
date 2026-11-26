@@ -20,6 +20,8 @@ export interface SessionMarkers {
   unread: ReadonlySet<string>;
   awaitingInput: ReadonlySet<string>;
   error: ReadonlySet<string>;
+  /** Main sessions idle while their subagents run: shown as running. */
+  subagentsActive: ReadonlySet<string>;
 }
 
 const TAB_DRAG_MIME = "application/x-pi-chat-tab";
@@ -207,7 +209,7 @@ export function ChatTabBar({
       awaiting: sessionMarkers?.awaitingInput.has(id),
       error: sessionMarkers?.error.has(id),
       unread: sessionMarkers?.unread.has(id),
-      running: runningSessionIds?.has(id),
+      running: runningSessionIds?.has(id) || sessionMarkers?.subagentsActive.has(id),
     });
   };
   const hiddenTabs = tabs.filter((tab) => hiddenTabIds.has(tab.id));

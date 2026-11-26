@@ -49,7 +49,8 @@ interface ScanState extends RoutineMarks {
 	firstMessage: string;
 	hasFirstMessage: boolean;
 	lastActivityTime?: number;
-	lastError?: SessionLastError;
+	/** `entryId` lets a later recovery omission (pi's retry bookkeeping) clear it. */
+	lastError?: SessionLastError & { entryId?: string };
 }
 
 interface ResumePoint {
@@ -161,15 +162,28 @@ function foldLine(state: ScanState, bytes: Buffer): boolean {
 		return true;
 	}
 	foldRoutineMarks(state, entry);
+	// pi omits a failed attempt from the context when it schedules a retry; a run stopped during
+	// the retry's wait ends there, so an omitted failure is never the run's final error.
+	if (entry.type === "context_edit" && entry.replacement === null && state.lastError?.entryId === entry.targetId) {
+		delete state.lastError;
+		return true;
+	}
 	if (entry.type !== "message") return true;
 	state.messageCount++;
 	const activityTime = activityTimeOf(entry);
 	if (typeof activityTime === "number") state.lastActivityTime = Math.max(state.lastActivityTime ?? 0, activityTime);
 	const message = entry.message as RawEntry | undefined;
 	// pi persists every failed attempt; a later retry, prompt or result appends another message.
-	// Aborted replies are "aborted", not "error", so a Stop never reads as a failure here.
-	if (message?.role === "assistant" && message.stopReason === "error" && typeof activityTime === "number") {
-		state.lastError = { at: activityTime, message: truncateStatusReason(typeof message.errorMessage === "string" ? message.errorMessage : "") };
+	// Aborted replies are "aborted", not "error", so a Stop never reads as a failure here. The time is
+	// when the failure was written (the message's own timestamp is when its request started), so a
+	// read during the request never covers it.
+	const failedAt = new Date(entry.timestamp as string).getTime();
+	if (message?.role === "assistant" && message.stopReason === "error" && Number.isFinite(failedAt)) {
+		state.lastError = {
+			at: failedAt,
+			message: truncateStatusReason(typeof message.errorMessage === "string" ? message.errorMessage : ""),
+			...(typeof entry.id === "string" ? { entryId: entry.id } : {}),
+		};
 	} else {
 		delete state.lastError;
 	}
@@ -288,7 +302,7 @@ async function scanSessionFile(filePath: string, previous?: IndexEntry): Promise
 				messageCount: visible.messageCount,
 				firstMessage: visible.hasFirstMessage ? visible.firstMessage : "(no messages)",
 				...routineMarksInfo(visible, typeof header.parentSession === "string"),
-				...(visible.lastError ? { lastError: visible.lastError } : {}),
+				...(visible.lastError ? { lastError: { at: visible.lastError.at, message: visible.lastError.message } } : {}),
 			},
 			// shortcut: headers beyond the 1 KiB sample use full scans; enlarge the sample if needed.
 			resume: headerSampled && fp.ino > 0 ? {
@@ -383,9 +397,10 @@ function readResumePoint(value: unknown, size: number): ResumePoint | undefined 
 	return { offset, head, tail, state: { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime, ...(lastError !== undefined ? { lastError: readLastError(lastError) } : {}), routineId, routineMode, routinePending: flag(routinePending), routineStarted: flag(routineStarted), userReplied: flag(userReplied) } };
 }
 
-function readLastError(value: unknown): SessionLastError | undefined {
+function readLastError(value: unknown): (SessionLastError & { entryId?: string }) | undefined {
 	return isRecord(value) && typeof value.at === "number" && Number.isFinite(value.at) && typeof value.message === "string"
-		? { at: value.at, message: truncateStatusReason(value.message) } : undefined;
+		&& (value.entryId === undefined || typeof value.entryId === "string")
+		? { at: value.at, message: truncateStatusReason(value.message), ...(typeof value.entryId === "string" ? { entryId: value.entryId } : {}) } : undefined;
 }
 
 function loadPersistedIndex(path: string): void {
