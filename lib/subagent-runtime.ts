@@ -91,6 +91,8 @@ export interface SubagentRuntimeDependencies {
 export interface SubagentController {
   readonly extensionRuntime: SubagentExtensionRuntime;
   get(sessionId: string): Promise<SubagentRunInfo | null>;
+  /** The settled run: an active run's completion, else its persisted state. */
+  wait(sessionId: string): Promise<SubagentRunInfo | null>;
   steer(sessionId: string, message: string): Promise<void>;
   abort(sessionId: string): Promise<void>;
   sendUiMessage(sessionId: string, message: string): Promise<{
@@ -1599,6 +1601,7 @@ export function createSubagentController(
       consume: consumePendingSubagentResult,
     },
     get,
+    wait: async (sessionId) => getSubagentRuns().get(sessionId)?.completion ?? get(sessionId),
     steer,
     abort,
     sendUiMessage,

@@ -57,6 +57,7 @@ import {
   subagentToolOptions,
   SUBAGENT_CONTROL_TOOL_NAMES,
 } from "./subagents";
+import { createSubagentBridge, installSubagentBridge } from "./subagent-bridge";
 import { createSubagentController, createSubagentShellTools, getActiveSubagentRuns, hasUnsettledSubagents, isSubagentQueued, SUBAGENT_NOTIFICATION_TYPE, type SubagentController } from "./subagent-runtime";
 import { isSubagentsEnabledForProject } from "./subagent-settings";
 import { resolveProject } from "./worktree";
@@ -2360,6 +2361,8 @@ const SUBAGENT_CONTROLLER = createSubagentController({
   isSessionFileMutationReserved: (sessionId) => getSessionFileMutations().has(sessionId),
   invalidateSessionList: invalidateSessionListCache,
 });
+
+installSubagentBridge(createSubagentBridge(SUBAGENT_CONTROLLER, (sessionId) => getRegistry().get(sessionId), listSubagentProfiles));
 
 export function getSubagentRun(sessionId: string) {
   return SUBAGENT_CONTROLLER.get(sessionId);
