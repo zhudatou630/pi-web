@@ -66,7 +66,7 @@ async function listWithGit(cwd: string): Promise<FileListing | null> {
   try {
     const { stdout } = await execFileAsync(
       "git",
-      ["-c", "core.fsmonitor=false", "-C", cwd, "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+      ["-c", "core.fsmonitor=false", "-C", cwd, "ls-files", "--cached", "--others", "--deduplicate", "--exclude-standard", "-z"],
       { timeout: 10_000, maxBuffer: 64 * 1024 * 1024, env: projectGitEnvironment() },
     );
     const all = stdout.split("\0").filter(Boolean);
