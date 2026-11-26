@@ -68,7 +68,7 @@ export function createSubagentBridge(
   listProfiles: (cwd: string) => readonly SubagentProfile[],
 ): SubagentBridgeV1 {
   // The `Agent` tool being active already encodes the host's rules: switched on for the project,
-  // an enabled profile, not Chat only or read-only, not itself a sub-agent. Side chats keep the
+  // an enabled profile, not Chat only, not itself a sub-agent (the read-only preset keeps it). Side chats keep the
   // parent's tools but must not act.
   const parentOf = (parentSessionId: string) => {
     const parent = getSession(parentSessionId);
