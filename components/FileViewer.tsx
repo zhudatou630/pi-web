@@ -110,6 +110,8 @@ const HTML_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 // "Load more" reads to the end; past this size the whole file stays in page state, so ask first.
 const LOAD_ALL_CONFIRM_BYTES = 16 * 1024 * 1024;
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
+// The viewer's own width, not the window's: a desktop panel can be as narrow as a phone.
+const DIFF_SPLIT_MIN_WIDTH = 520;
 const WATCH_CHANGE_DEBOUNCE_MS = 150;
 const FIND_SHORTCUT_LABEL = "Ctrl/⌘ F";
 const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;
@@ -428,10 +430,13 @@ function DiffView({ patch, contentRef, wrapLines: preferWrap, language = "text",
 }) {
   const { t } = useI18n();
   const [split, setSplit] = useState(false);
-  useEffect(() => {
-    if (!contentRef.current) return;
-    const observer = new ResizeObserver(([entry]) => setSplit(entry.contentRect.width >= 520));
-    observer.observe(contentRef.current);
+  // Layout effect: measure before the first paint, so a wide viewer never flashes the unified view.
+  useLayoutEffect(() => {
+    const element = contentRef.current;
+    if (!element) return;
+    setSplit(element.clientWidth >= DIFF_SPLIT_MIN_WIDTH);
+    const observer = new ResizeObserver(([entry]) => setSplit(entry.contentRect.width >= DIFF_SPLIT_MIN_WIDTH));
+    observer.observe(element);
     return () => observer.disconnect();
   }, [contentRef]);
   const wrapLines = split || preferWrap;
@@ -460,10 +465,12 @@ function DiffView({ patch, contentRef, wrapLines: preferWrap, language = "text",
     const added = line.type === "added";
     const removed = line.type === "removed";
     const color = added ? "var(--success)" : removed ? "var(--danger)" : "var(--text-dim)";
+    // Filler cells and the column divider match the chat's split patch cards.
     const background = added ? "color-mix(in srgb, var(--success) 12%, transparent)"
-      : removed ? "color-mix(in srgb, var(--danger) 14%, transparent)" : "transparent";
+      : removed ? "color-mix(in srgb, var(--danger) 14%, transparent)"
+      : line.type === "empty" ? "var(--bg-subtle)" : "transparent";
     return (
-      <div key={key} className="file-diff-line" style={{ display: "flex", minWidth: "100%", background }}>
+      <div key={key} className="file-diff-line" style={{ display: "flex", minWidth: "100%", background, ...(split && key === "left" ? { borderRight: "1px solid var(--border)" } : {}) }}>
         {/* Pin the change bar along with the first gutter. */}
         <span style={added || removed ? { ...oldLineNumberStyle, boxShadow: `inset 3px 0 0 ${color}` } : oldLineNumberStyle}>
           {split ? line.lineNo : oldLineNo}
