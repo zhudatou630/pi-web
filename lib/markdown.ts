@@ -92,6 +92,23 @@ export function normalizeLocalFileLinks(markdown: string): string {
   });
 }
 
+// Consult CommonMark only for the ambiguous combination of a raw tag and
+// backticks. Preserve columns (and newlines) for the raw closing-tag search.
+function blankInlineCode(markdown: string): string[] {
+  const parts: string[] = [];
+  let cursor = 0;
+  const visit = (node: Root | Content): void => {
+    if (node.type === "inlineCode") {
+      const start = node.position!.start.offset!;
+      const end = node.position!.end.offset!;
+      parts.push(markdown.slice(cursor, start), markdown.slice(start, end).replace(/[^\r\n]/g, " "));
+      cursor = end;
+    } else if ("children" in node) node.children.forEach(visit);
+  };
+  visit(fromMarkdown(markdown));
+  return (parts.join("") + markdown.slice(cursor)).split(/\r?\n/);
+}
+
 export function normalizeDisplayMath(markdown: string): string {
   const lineBreak = markdown.includes("\r\n") ? "\r\n" : "\n";
   const lines = markdown.split(/\r?\n/);
@@ -99,6 +116,7 @@ export function normalizeDisplayMath(markdown: string): string {
   let fence: { marker: string; size: number } | null = null;
   let inlineCodeMarkerSize = 0;
   let rawCodeTag: string | null = null;
+  let unquotedLines: string[] | undefined;
   const unmatchedDisplayMathUntil = new Map<string, number>();
   const untouchedCloseAt = new Set<number>();
 
@@ -127,7 +145,12 @@ export function normalizeDisplayMath(markdown: string): string {
       continue;
     }
 
-    const rawCodeOpen = line.match(/<(code|pre|script|style)\b/i);
+    const rawTag = /<(code|pre|script|style)\b/i;
+    let rawCodeOpen = line.match(rawTag);
+    if (rawCodeOpen && (inlineCodeMarkerSize || line.includes("`"))) {
+      unquotedLines ??= blankInlineCode(markdown);
+      rawCodeOpen = unquotedLines[index].match(rawTag);
+    }
     if (rawCodeOpen) {
       const tag = rawCodeOpen[1].toLowerCase();
       const remainder = line.slice((rawCodeOpen.index ?? 0) + rawCodeOpen[0].length);
