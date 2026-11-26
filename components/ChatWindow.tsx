@@ -1997,25 +1997,23 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
         </div>
       )}
 
-      <div
-        className="notice-shelf-wrapper"
-        style={{
-          position: "absolute",
-          top: 12,
-          left: 0,
-          right: 0,
-          zIndex: 40,
-          display: "flex",
-          // Toasts live in the top-right corner
-          justifyContent: "flex-end",
-          padding: `0 ${CHAT_COLUMN_PADDING}px`,
-          pointerEvents: "none",
-        }}
-      >
-        <NoticeShelf notices={sessionEnded ? [...notices, { id: "session-ended", type: "info", message: t("chat.sessionEnded") }] : notices} floating onPauseChange={setNoticePaused} onOpenMcpSettings={onOpenMcpSettings} />
-      </div>
-
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div
+          className="notice-shelf-wrapper"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 40,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "flex-end",
+            padding: `12px ${CHAT_COLUMN_PADDING}px`,
+            overflowY: "auto",
+            pointerEvents: "none",
+          }}
+        >
+          <NoticeShelf notices={sessionEnded ? [...notices, { id: "session-ended", type: "info", message: t("chat.sessionEnded") }] : notices} floating onPauseChange={setNoticePaused} onOpenMcpSettings={onOpenMcpSettings} />
+        </div>
         {imageDialogOpen && !sessionEnded && imageConfig && (
           <ImageGenerationDialog
             config={imageConfig}
