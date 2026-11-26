@@ -768,6 +768,19 @@ test("renders assistant image answers instead of leaving a blank final answer", 
   assert.doesNotMatch(onlyImage, /data-message-text/);
 });
 
+test("read image cards explain the model placeholder beneath both image sizes", () => {
+  const block = { type: "toolCall", toolCallId: "read-img", toolName: "read", input: { path: "image.png" } };
+  const result = { role: "toolResult", toolCallId: block.toolCallId, content: [{ type: "image", data: "YWJj", mimeType: "image/png" }] };
+  const render = (defaultExpanded, details) => renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ToolCallBlock, { block, result: { ...result, details }, defaultExpanded })));
+  for (const expanded of [false, true]) {
+    const html = render(expanded, { imageUnsupportedByModel: "text-model" });
+    assert.match(html, /<img[^>]*>[\s\S]*text-model does not support images/);
+    assert.equal(html.split("saw a placeholder").length - 1, 1);
+    assert.doesNotMatch(render(expanded, {}), /saw a placeholder/);
+  }
+});
+
 test("tool-result images render on a collapsed card, not only when expanded (#826)", async () => {
   const source = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
   // The image grid must exist outside the `expanded` gate: a screenshot or a

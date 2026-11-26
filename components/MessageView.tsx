@@ -1426,6 +1426,7 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
     ? result.content.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("\n")
     : null;
   // A generated image has its own result card; its preview in content is for the model.
+  const unsupportedBy = block.toolName === "read" && isRecord(result?.details) ? result.details.imageUnsupportedByModel : undefined;
   const resultImages = imageKind ? [] : getMessageImages(result?.content ?? []);
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
@@ -1571,9 +1572,6 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
         )
       )}
 
-      {expanded && footer}
-      {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
-
       {/* ── Tool-result images stay visible while the card is collapsed ──
           They are the point of the call (reading a screenshot, a generated
           image), and hiding them behind the toggle meant reopening every card. */}
@@ -1584,6 +1582,13 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
           </div>
         </div>
       )}
+      {typeof unsupportedBy === "string" && unsupportedBy && (
+        <div className="step-body" style={{ padding: "4px 10px", color: "var(--warning)" }}>
+          {t("chat.readImagePlaceholder", { model: unsupportedBy })}
+        </div>
+      )}
+      {expanded && footer}
+      {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
     </div>
   );
 }

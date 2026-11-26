@@ -970,6 +970,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.bashExitCode": "退出码 {code}",
     "chat.bashBusy": "请等待当前 Agent 或 Shell 命令结束后再执行 ! 命令。",
     "chat.bashCancelled": "已取消",
+    "chat.readImagePlaceholder": "{model} 不支持图片，只收到了占位符。",
     "chat.bashFullNotSaved": "输出已截断，无法保存完整输出：{reason}",
     "chat.bashTruncated": "输出已截断",
     "chat.bashFullShown": "已显示完整输出。",
