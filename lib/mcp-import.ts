@@ -79,7 +79,7 @@ function commandPrefix(words: string[]) {
     }
   };
   assignments();
-  if (words[i] === "env") {
+  if (programName(words[i]) === "env") {
     i++;
     assignments();
     if (words[i]?.startsWith("-")) throw new Error("env options are not supported in an MCP command.");
@@ -91,6 +91,28 @@ const cliPackages = new Map([
   ["@earendil-works/pi-coding-agent", "pi"], ["@anthropic-ai/claude-code", "claude"],
   ["@openai/codex", "codex"], ["@google/gemini-cli", "gemini"],
 ]);
+const agentClis = new Set(cliPackages.values());
+
+function programName(word = ""): string {
+  return word.split(/[\\/]/).pop()!.replace(/\.(?:exe|cmd)$/i, "");
+}
+
+/** The program a package runner (`npx`, `npm exec`, `pnpm dlx`, …) starts, and where its arguments begin. */
+function runProgram(program: string[]): { cli: string; index: number } {
+  let cli = programName(program[0]);
+  let index = 1;
+  if ((cli === "npm" && program[1] === "exec") || (cli === "pnpm" && ["exec", "dlx"].includes(program[1])) || (cli === "yarn" && program[1] === "dlx")) {
+    cli = "npx";
+    index = 2;
+  }
+  if (["npx", "bunx", "pnpx"].includes(cli)) {
+    // Options, including `--`, come before the package.
+    while (program[index]?.startsWith("-")) index += ["-p", "--package"].includes(program[index]) ? 2 : 1;
+    const pkg = (program[index++] ?? "").replace(/(?!^)@[^/]*$/, "");
+    cli = cliPackages.get(pkg) ?? programName(pkg);
+  }
+  return { cli, index };
+}
 
 async function piEntries(args: string[], deps: Partial<ImportDeps>): Promise<Entry[]> {
   const run = deps.runMcpCommand ?? (await importSdkFile<ImportDeps>("extensions/mcp/cli.js")).runMcpCommand;
@@ -194,26 +216,17 @@ export async function parseMcpPaste(text: string, deps: Partial<ImportDeps> = {}
       const { env, program } = commandPrefix(shellWords(text));
       const [command, ...args] = program;
       if (!command) throw new Error("A command is required after environment assignments.");
-      let cli = command.split(/[\\/]/).pop()!.replace(/\.(?:exe|cmd)$/i, "");
-      let index = 1;
-      if (["npx", "bunx", "pnpx"].includes(cli)) {
-        while (program[index]?.startsWith("-")) {
-          index += ["-p", "--package"].includes(program[index]) ? 2 : 1;
-        }
-        const pkg = (program[index++] ?? "").replace(/(?!^)@[^/]*$/, "");
-        cli = cliPackages.get(pkg) ?? pkg;
-      }
-      const sub = program[index];
-      if (["pi", "claude", "codex", "gemini"].includes(cli) && sub === "mcp") {
-        // The prefix configures the CLI process, not the server being added.
-        if (program[index + 1] === "add" && cli === "pi") entries = await piEntries(program.slice(index + 2), deps);
-        else if (program[index + 1] === "add" && cli === "claude") entries = [claudeEntry(program.slice(index + 2), notes)];
-        else if (program[index + 1] === "add") throw new Error(`Importing \`${cli} mcp add\` is not supported. Paste the server's command or JSON configuration instead.`);
-        else throw new Error(`This ${cli} MCP management command is not a server command.`);
+      const { cli, index } = runProgram(program);
+      const sub = program[index], action = program[index + 1];
+      // The prefix configures the CLI process, not the server being added.
+      if (cli === "pi" && sub === "mcp" && action === "add") entries = await piEntries(program.slice(index + 2), deps);
+      else if (cli === "claude" && sub === "mcp" && action === "add") entries = [claudeEntry(program.slice(index + 2), notes)];
+      // Any other agent CLI line (logout, mcp remove, package updates, …) would run as Test: only their own MCP servers pass.
+      else if (agentClis.has(cli) && !(cli === "claude" && sub === "mcp" && action === "serve") && !(cli === "codex" && sub === "mcp-server")) {
+        throw new Error(sub === "mcp" && action === "add"
+          ? `Importing \`${cli} mcp add\` is not supported. Paste the server's command or JSON configuration instead.`
+          : `This ${cli} command is not an MCP server command.`);
       } else {
-        if (cli === "pi" && ["install", "remove", "uninstall", "update", "list", "config"].includes(sub)) {
-          throw new Error("A pi package management command is not a server command.");
-        }
         entries = [[commandName(command, args), { command, args, ...(env.length ? { env: Object.fromEntries(env) } : {}) }]];
       }
     }
