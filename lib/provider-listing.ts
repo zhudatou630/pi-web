@@ -56,6 +56,7 @@ export interface ApiKeyProviderListing {
   id: string;
   displayName: string;
   configured: boolean;
+  unresolved?: boolean;
   source?: string;
   modelCount: number;
   /** True when the same provider can also be authenticated with OAuth. */
@@ -108,11 +109,13 @@ export function buildApiKeyProviderList(
     if (provider.status.source && CUSTOM_PROVIDER_SOURCES.has(provider.status.source)) continue;
 
     const configured = provider.status.configured && provider.credentialType !== "oauth";
+    const unresolved = !provider.status.configured && provider.status.source === "stored" && provider.credentialType !== "oauth";
     result.push({
       id: provider.id,
       displayName: provider.name,
       configured,
-      ...(configured && provider.status.source ? { source: provider.status.source } : {}),
+      ...(unresolved ? { unresolved: true } : {}),
+      ...((configured || unresolved) && provider.status.source ? { source: provider.status.source } : {}),
       modelCount: provider.modelCount,
       supportsOAuth: provider.hasOAuth,
     });

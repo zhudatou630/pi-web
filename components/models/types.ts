@@ -21,6 +21,7 @@ export interface ApiKeyProvider {
   id: string;
   displayName: string;
   configured: boolean;
+  unresolved?: boolean;
   source?: string;
   modelCount: number;
   /** Provider also supports OAuth, so it appears in both picker sections. */

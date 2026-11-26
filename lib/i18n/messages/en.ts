@@ -1253,6 +1253,7 @@ export const enLocale: LocalePlugin = {
     "models.modelId": "Model ID",
     "models.baseUrl": "Base URL",
     "models.apiProtocol": "API protocol",
+    "models.keyUnresolved": "Stored API key did not resolve",
     "models.apiKeyTitle": "API key",
     "models.saveKey": "Save key",
     "models.endpointKeyPlaceholder": "ENV_VAR_NAME, !shell-command, or literal key",

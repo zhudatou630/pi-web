@@ -1253,6 +1253,7 @@ export const zhCNLocale: LocalePlugin = {
     "models.modelId": "模型 ID",
     "models.baseUrl": "Base URL",
     "models.apiProtocol": "API 协议",
+    "models.keyUnresolved": "无法读取已保存的 API 密钥",
     "models.apiKeyTitle": "API 密钥",
     "models.saveKey": "保存密钥",
     "models.endpointKeyPlaceholder": "环境变量名、!shell 命令或密钥原文",

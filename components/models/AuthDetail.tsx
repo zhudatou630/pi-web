@@ -331,11 +331,11 @@ export function ApiKeyDetail({ provider, onRefresh, cwd }: {
       <div className="models-auth-row">
         <div className="models-auth-copy">
           <strong>{llama ? provider.displayName : t("models.apiKeyTitle")}</strong>
-          <StatusPill tone={provider.configured ? "success" : "muted"}>
-            {provider.configured ? t("i18n.configured") : t("i18n.notConfigured")}
+          <StatusPill tone={provider.unresolved ? "danger" : provider.configured ? "success" : "muted"}>
+            {provider.unresolved ? t("models.keyUnresolved") : provider.configured ? t("i18n.configured") : t("i18n.notConfigured")}
           </StatusPill>
         </div>
-        {provider.configured && (
+        {(provider.configured || provider.unresolved) && (
           <div className="models-auth-actions">
             <ConfigButton size="small" variant="ghost" className="models-danger-ghost" onClick={handleRemove} disabled={removing}>
               {removing ? t("i18n.removing") : t("i18n.disconnect")}
