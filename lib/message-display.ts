@@ -260,6 +260,15 @@ function withAssistantBlocks(
   return next;
 }
 
+// Fold the rendered process projections, not their originals: split answers own their usage.
+export function addProcessCost(total: number, message: AssistantMessage): number {
+  return total + (message.usage?.cost?.total ?? 0);
+}
+
+export function formatMessageCost(cost: number): string {
+  return cost > 0 ? `$${cost.toFixed(cost < 0.01 ? 4 : 2)}` : "";
+}
+
 export function partitionAssistantMessage(
   message: AssistantMessage,
   options: DisplayOptions = {},
@@ -277,7 +286,7 @@ export function partitionAssistantMessage(
   );
   const processMessage = (processVisible.length > 0 || (hasError && !hasTrailingAnswer))
     ? withAssistantBlocks(message, split.processBlocks, {
-        omitUsage: Boolean(answerMessage) && !options.isStreaming,
+        omitUsage: Boolean(answerMessage),
         omitError: hasTrailingAnswer,
         omitAbort: aborted && Boolean(answerMessage),
       })

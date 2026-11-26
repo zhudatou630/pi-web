@@ -11,7 +11,7 @@ import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { isImeComposing } from "@/lib/ime";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
+import { addProcessCost, formatMessageCost, countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { findAskUserAnswers } from "@/lib/ask-user-answer";
 import { extractTurnCreatedRoutines, type CreatedRoutine } from "@/lib/turn-routines";
@@ -680,6 +680,7 @@ function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: str
 function ProcessDetailsGroup({
   messageCount,
   toolCallCount,
+  cost,
   durationSeconds,
   startTime,
   defaultExpanded = false,
@@ -693,6 +694,7 @@ function ProcessDetailsGroup({
 }: {
   messageCount: number;
   toolCallCount: number;
+  cost: number;
   /** Only for turns without a final answer; answered turns show it in the footer. */
   durationSeconds?: number;
   activityLabel?: string | null;
@@ -813,6 +815,7 @@ function ProcessDetailsGroup({
             {stepsLabel}
           </span>
         )}
+        {!isPanelOpen && cost > 0 && <span className="shrink-0">· {formatMessageCost(cost)}</span>}
         <svg
           width="10"
           height="10"
@@ -2219,6 +2222,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       <div key={`process-group-${messageKeys[firstIdx]}`}>
                         <ProcessDetailsGroup
                           messageCount={1}
+                          cost={addProcessCost(0, streamingParts.processMessage)}
                           toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
                           durationSeconds={streamingDuration}
                           startTime={turnStartTime}
@@ -2268,6 +2272,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 const processEntryIds: string[] = [];
                 const promotedAnswers: { idx: number; message: AssistantMessage }[] = [];
                 let processToolCount = 0;
+                let processCost = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
                 let processStartTime: number | undefined;
@@ -2309,6 +2314,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   const hasError = Boolean(getAssistantErrorMessage(message));
                   if (blocks.length === 0 && !hasError && message.stopReason !== "length") continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
+                  processCost = addProcessCost(processCost, message);
                   processToolCount += countToolCallBlocks(blocks);
                   revealProcess ||= Boolean(
                     locateEntryId
@@ -2326,6 +2332,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 }
 
                 if (isLiveTail && streamingParts.processMessage) {
+                  processCost = addProcessCost(processCost, streamingParts.processMessage);
                   processToolCount += countToolCallBlocks(streamingParts.processMessage.content ?? []);
                   processViews.push(
                     <MessageView
@@ -2410,6 +2417,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                       <ProcessDetailsGroup
                         messageCount={processViews.length}
                         toolCallCount={processToolCount}
+                        cost={processCost}
                         durationSeconds={finalAnswerMessage || answeringLive || steered ? undefined : processDurationSeconds}
                         activityLabel={activityLabel}
                         startTime={turnStartTime ?? processStartTime}

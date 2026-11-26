@@ -23,7 +23,7 @@ import { toolClockMs, type ToolClock, type ToolClocks } from "@/lib/tool-clock";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getToolPreview } from "@/lib/tool-preview";
 import { stripAnsi } from "@/lib/ansi";
-import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
+import { formatMessageCost, getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
 import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { editPreview } from "@/lib/edit-preview";
 import { parseApplyPatch } from "@/lib/apply-patch";
@@ -748,7 +748,7 @@ function CacheWarmView({ message }: { message: CustomMessage }) {
   const parts = [
     t("chat.cacheWarmCount", { count: details.count }),
     details.missed ? t("chat.cacheWarmMissed") : time,
-    details.cost > 0 ? `$${details.cost.toFixed(details.cost < 0.01 ? 4 : 2)}` : "",
+    formatMessageCost(details.cost),
   ].filter((part): part is string => Boolean(part));
   return (
     <TranscriptMarker
@@ -858,7 +858,8 @@ function AssistantMessageView({
   const modelLabel = isTurnEnd && !isStreaming ? (modelName || message.model || null) : null;
   const duration = isTurnEnd && !isStreaming && turnDurationSeconds ? formatDuration(turnDurationSeconds, t) : null;
   const timing = isTurnEnd && !isStreaming ? turnTiming ?? null : null;
-  const showFooter = aborted || steered || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent));
+  const cost = formatMessageCost(message.usage?.cost?.total ?? 0);
+  const showFooter = aborted || steered || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent || cost));
   const copyContent = () => {
     copyText(textContent).then(() => {
       setCopied(true);
@@ -985,6 +986,8 @@ function AssistantMessageView({
 
       {createdRoutines && createdRoutines.length > 0 && <TurnCreatedRoutines routines={createdRoutines} />}
 
+      {isProcess && cost && <div className="font-ui text-[11px] text-text-dim tabular-nums">{cost}</div>}
+
       {showFooter && (
         // Who answered, how long the turn took, when it ended; copy sits right after them.
         <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>
@@ -1002,6 +1005,7 @@ function AssistantMessageView({
               {duration}
             </span>
           )}
+          {cost && !steered && !isProcess && <span>{cost}</span>}
           {timing && (
             <span data-answer-timing title={t("session.performance")} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
               {/* Same raised Lucide gauge as the composer readout. */}
