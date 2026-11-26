@@ -19,13 +19,14 @@ export interface TurnActivity {
   thoughtSeconds: number;
 }
 
-const EXPLORE_TOOLS = new Set(["read", "grep", "find", "ls"]);
+// "search" and "fetch" below: the ACP kind a bridge's catch-all tool stands for (toolPresentation).
+const EXPLORE_TOOLS = new Set(["read", "grep", "find", "ls", "search"]);
 const COMMAND_TOOLS = new Set(["bash", "powershell"]);
 const SCRIPT_TOOLS = new Set(["codemode"]);
 // Covered elsewhere: written files by `extractTurnWrittenFiles`, subagent follow-ups by the Agent count.
 const SKIP_TOOLS = new Set(["get_subagent_result", "steer_subagent", "abort_subagent"]);
 // ponytail: pi-web-access and pi-kit web.ts names only; other web tools stay uncounted.
-const WEB_TOOLS = new Set(["web_search", "web_fetch", "fetch_content", "get_search_content", "source_check", "code_search", "x_search"]);
+const WEB_TOOLS = new Set(["web_search", "web_fetch", "fetch_content", "get_search_content", "source_check", "code_search", "x_search", "fetch"]);
 
 /**
  * What a settled turn did, from tool calls that returned. Commands, scripts,
@@ -49,7 +50,7 @@ export function summarizeTurnActivity(
     if (block.type !== "toolCall") continue;
     const result = toolResults?.get(block.toolCallId);
     if (!result) continue;
-    const name = toolPresentation(block.toolName).as;
+    const name = toolPresentation(block.toolName, block.input).as;
     // A failed command or script still ran; a failed read or search found nothing.
     if (COMMAND_TOOLS.has(name)) activity.commands += 1;
     else if (SCRIPT_TOOLS.has(name)) activity.scripts += 1;
