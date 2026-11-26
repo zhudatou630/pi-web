@@ -107,7 +107,7 @@ function stripWrappingQuotes(value: string): string {
 
 export function parseGeneratedSessionTitle(raw: string): string {
   let value = raw.trim();
-  const fenced = value.match(/^```(?:json|text)?\s*([\s\S]*?)\s*```$/i);
+  const fenced = value.match(/^```(?:[\w-]+[^\S\r\n]*\r?\n)?([\s\S]*?)```$/);
   if (fenced) value = fenced[1].trim();
 
   if (value.startsWith("{")) {
