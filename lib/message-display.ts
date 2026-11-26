@@ -260,7 +260,7 @@ function withAssistantBlocks(
   return next;
 }
 
-// Fold the rendered process projections, not their originals: split answers own their usage.
+// Sum of a process group's step costs (the final answer's footer shows its own).
 export function addProcessCost(total: number, message: AssistantMessage): number {
   return total + (message.usage?.cost?.total ?? 0);
 }

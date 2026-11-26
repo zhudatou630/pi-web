@@ -2307,6 +2307,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   if (processIdx !== finalAssistantIdx && parts?.answerMessage) {
                     promotedAnswers.push({ idx: processIdx, message: parts.answerMessage });
                   }
+                  // A step's whole usage, promoted text included (it has no footer); only the final
+                  // answer's footer shows its own message's cost.
+                  if (processIdx !== finalAssistantIdx || !finalAnswerMessage) processCost = addProcessCost(processCost, processMessage);
                   const message = parts?.processMessage
                     ?? (processMessage.stopReason === "length" && !parts?.answerMessage ? processMessage : null);
                   if (!message) continue;
@@ -2314,7 +2317,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                   const hasError = Boolean(getAssistantErrorMessage(message));
                   if (blocks.length === 0 && !hasError && message.stopReason !== "length") continue;
                   processRefIdx ??= visibleRefIndexByMessage.get(processIdx);
-                  processCost = addProcessCost(processCost, message);
                   processToolCount += countToolCallBlocks(blocks);
                   revealProcess ||= Boolean(
                     locateEntryId
