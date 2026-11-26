@@ -13,6 +13,7 @@ import { SIDE_CHAT_HEADER_KEY, sideChatParentId } from "./side-chat";
 import { getSessionFirstMessagePreview, SESSION_FIRST_MESSAGE_PREVIEW_MAX_LENGTH } from "./session-display-title";
 import { IMAGE_RESULT_TYPE } from "./image-generation";
 import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine-run-entry";
+import { truncateStatusReason, type SessionLastError } from "./session-status";
 
 export interface ScannedSessionInfo {
 	path: string;
@@ -30,6 +31,8 @@ export interface ScannedSessionInfo {
 	routineId?: string;
 	/** A chat a routine run started for itself and nobody has written in: kept out of the sidebar lists. */
 	routineRunOnly?: boolean;
+	/** The last message is an assistant reply that failed (retries exhausted): the sidebar's error state. */
+	lastError?: SessionLastError;
 }
 
 interface Fingerprint {
@@ -46,6 +49,7 @@ interface ScanState extends RoutineMarks {
 	firstMessage: string;
 	hasFirstMessage: boolean;
 	lastActivityTime?: number;
+	lastError?: SessionLastError;
 }
 
 interface ResumePoint {
@@ -76,7 +80,7 @@ function isRecord(value: unknown): value is RawEntry {
 // Bump when counting/preview rules change: resumed totals keep the old rules.
 // The file name carries the version: the npm-installed service shares the agent dir, and an older
 // build writing the same file would drop fields a newer one reads (and the reverse forces cold rebuilds).
-const INDEX_FORMAT_VERSION = 7;
+const INDEX_FORMAT_VERSION = 8;
 const RESUME_SAMPLE_BYTES = 1024;
 const INDEX_PERSIST_DELAY_MS = 5_000;
 
@@ -162,6 +166,13 @@ function foldLine(state: ScanState, bytes: Buffer): boolean {
 	const activityTime = activityTimeOf(entry);
 	if (typeof activityTime === "number") state.lastActivityTime = Math.max(state.lastActivityTime ?? 0, activityTime);
 	const message = entry.message as RawEntry | undefined;
+	// pi persists every failed attempt; a later retry, prompt or result appends another message.
+	// Aborted replies are "aborted", not "error", so a Stop never reads as a failure here.
+	if (message?.role === "assistant" && message.stopReason === "error" && typeof activityTime === "number") {
+		state.lastError = { at: activityTime, message: truncateStatusReason(typeof message.errorMessage === "string" ? message.errorMessage : "") };
+	} else {
+		delete state.lastError;
+	}
 	if (!state.hasFirstMessage && message?.role === "user" && "content" in message) {
 		const text = extractTextContent(message);
 		if (text) {
@@ -277,6 +288,7 @@ async function scanSessionFile(filePath: string, previous?: IndexEntry): Promise
 				messageCount: visible.messageCount,
 				firstMessage: visible.hasFirstMessage ? visible.firstMessage : "(no messages)",
 				...routineMarksInfo(visible, typeof header.parentSession === "string"),
+				...(visible.lastError ? { lastError: visible.lastError } : {}),
 			},
 			// shortcut: headers beyond the 1 KiB sample use full scans; enlarge the sample if needed.
 			resume: headerSampled && fp.ino > 0 ? {
@@ -350,7 +362,7 @@ function indexFilePath(agentDir: string): string {
 function readResumePoint(value: unknown, size: number): ResumePoint | undefined {
 	if (!isRecord(value) || !isRecord(value.state)) return undefined;
 	const { offset, head, tail, state } = value;
-	const { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime, routineId, routineMode, routinePending, routineStarted, userReplied } = state;
+	const { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime, lastError, routineId, routineMode, routinePending, routineStarted, userReplied } = state;
 	if (
 		typeof offset !== "number" || !Number.isSafeInteger(offset) || offset <= 0 || offset > size ||
 		typeof head !== "string" || !/^[a-f0-9]{64}$/.test(head) ||
@@ -362,12 +374,18 @@ function readResumePoint(value: unknown, size: number): ResumePoint | undefined 
 		typeof messageCount !== "number" || !Number.isSafeInteger(messageCount) || messageCount < 0 ||
 		typeof firstMessage !== "string" || firstMessage.length > SESSION_FIRST_MESSAGE_PREVIEW_MAX_LENGTH || typeof hasFirstMessage !== "boolean" ||
 		(lastActivityTime !== undefined && (typeof lastActivityTime !== "number" || !Number.isFinite(lastActivityTime))) ||
+		(lastError !== undefined && !readLastError(lastError)) ||
 		(routineId !== undefined && typeof routineId !== "string") ||
 		(routineMode !== undefined && typeof routineMode !== "string") ||
 		[routinePending, routineStarted, userReplied].some((flag) => flag !== undefined && typeof flag !== "boolean")
 	) return undefined;
 	const flag = (value: unknown) => value as boolean | undefined; // checked just above
-	return { offset, head, tail, state: { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime, routineId, routineMode, routinePending: flag(routinePending), routineStarted: flag(routineStarted), userReplied: flag(userReplied) } };
+	return { offset, head, tail, state: { header, name, messageCount, firstMessage, hasFirstMessage, lastActivityTime, ...(lastError !== undefined ? { lastError: readLastError(lastError) } : {}), routineId, routineMode, routinePending: flag(routinePending), routineStarted: flag(routineStarted), userReplied: flag(userReplied) } };
+}
+
+function readLastError(value: unknown): SessionLastError | undefined {
+	return isRecord(value) && typeof value.at === "number" && Number.isFinite(value.at) && typeof value.message === "string"
+		? { at: value.at, message: truncateStatusReason(value.message) } : undefined;
 }
 
 function loadPersistedIndex(path: string): void {
@@ -397,6 +415,7 @@ function loadPersistedIndex(path: string): void {
 				(info.sideParentSessionId !== undefined && typeof info.sideParentSessionId !== "string") ||
 				(info.routineId !== undefined && typeof info.routineId !== "string") ||
 				(info.routineRunOnly !== undefined && typeof info.routineRunOnly !== "boolean") ||
+				(info.lastError !== undefined && !readLastError(info.lastError)) ||
 				typeof info.messageCount !== "number" || !Number.isSafeInteger(info.messageCount) || info.messageCount < 0 ||
 				typeof info.created !== "string" || typeof info.modified !== "string"
 			) continue;
@@ -417,6 +436,7 @@ function loadPersistedIndex(path: string): void {
 					...(typeof info.sideParentSessionId === "string" ? { sideParentSessionId: info.sideParentSessionId } : {}),
 					...(typeof info.routineId === "string" ? { routineId: info.routineId } : {}),
 					...(info.routineRunOnly === true ? { routineRunOnly: true } : {}),
+					...(info.lastError !== undefined ? { lastError: readLastError(info.lastError) } : {}),
 					firstMessage: info.firstMessage,
 					messageCount: info.messageCount,
 					created,

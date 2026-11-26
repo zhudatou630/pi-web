@@ -15,6 +15,7 @@ import { isBase64ImageWithinLimits, validateAgentImages } from "./image-attachme
 import { parseQueuedDeliverySnapshot, snapshotAgentQueuedMessages, stampQueuedMessagesOnDelivery } from "./queued-messages";
 import { invalidateModelsCache } from "./models-cache";
 import { isBlockingExtensionUiRequest } from "./browser-notifications";
+import { truncateStatusReason } from "./session-status";
 import { THINKING_LEVELS as VALID_THINKING_LEVELS } from "./thinking-levels";
 import { resolveVisibleModels, selectInitialModelScope } from "./model-scope";
 import {
@@ -533,6 +534,18 @@ export class AgentSessionWrapper {
   /** A running session parked on an extension dialog only a person can answer (select/confirm/input/editor, or an open custom overlay). */
   isAwaitingInput(): boolean {
     return this.isRunning() && this.hasBlockingUiRequest();
+  }
+
+  /** Title of the dialog a waiting run is parked on (custom panels: their first text line), for the sidebar row. */
+  awaitingInputReason(): string | null {
+    if (!this.isRunning()) return null;
+    for (const event of this.pendingUiRequests.values()) {
+      const request = event as unknown as ExtensionUiRequest;
+      if (!isBlockingExtensionUiRequest(request)) continue;
+      const text = request.method === "custom" ? request.lines.map(stripAnsi).find((line) => line.trim()) ?? "" : stripAnsi(request.title);
+      return truncateStatusReason(text);
+    }
+    return null;
   }
 
   private hasBlockingUiRequest(): boolean {
@@ -2871,6 +2884,16 @@ export function getAwaitingInputRpcSessionIds(): string[] {
     if (session.isAwaitingInput?.()) ids.add(session.sessionId || sessionId);
   }
   return [...ids];
+}
+
+/** Session id -> what a waiting run asks (truncated), for the sidebar row's title and menu header. */
+export function getAwaitingInputRpcSessionReasons(): Record<string, string> {
+  const reasons: Record<string, string> = {};
+  for (const [sessionId, session] of getRegistry()) {
+    const reason = session.awaitingInputReason?.();
+    if (reason) reasons[session.sessionId || sessionId] = reason;
+  }
+  return reasons;
 }
 
 /** Session id -> next scheduled cache refresh, for sessions whose keepalive is actually spending. */

@@ -395,6 +395,8 @@ export interface SessionInfo {
   /** A chat a routine's run started for itself that nobody has written in: not listed in the
    *  sidebar's projects (reached from the routine's history), archived with the routine. */
   routineRunOnly?: boolean;
+  /** Last reply failed after its retries (lib/session-status.ts); the sidebar shows it until read. */
+  lastError?: { at: number; message: string };
   parentSessionId?: string; // source session for a fork, or parent session for a subagent
   /** How this session relates to another session. Forks remain top-level in the
    *  UI; subagents and side chats live in their main session's family (lib/session-family.ts). */

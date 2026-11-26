@@ -227,6 +227,7 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       parentSessionId: originSessionId,
       ...(s.routineId ? { routineId: s.routineId } : {}),
       ...(s.routineRunOnly ? { routineRunOnly: true } : {}),
+      ...(s.lastError ? { lastError: s.lastError } : {}),
       ...(subagent
         ? { relation: { kind: "subagent" as const, parentSessionId: subagent.parentSessionId, profile: subagent.profile, description: subagent.description, status: subagent.status, ...(model ? { model } : {}), thinkingLevel } }
         : s.sideParentSessionId

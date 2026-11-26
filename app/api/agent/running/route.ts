@@ -9,6 +9,7 @@ import { resolveProject } from "@/lib/worktree";
 import { projectIdentityKey } from "@/lib/project-identity";
 import {
   getAwaitingInputRpcSessionIds,
+  getAwaitingInputRpcSessionReasons,
   getCacheKeepaliveRpcSessions,
   getCompletionNotificationSuppressedRpcSessionIds,
   getRunningRpcSessionIds,
@@ -51,6 +52,7 @@ async function snapshot(readIds: string[] = [], observedAt = 0, knownReadAtVersi
       subagentsActiveSessionIds,
       runningSessionIds,
       awaitingInputSessionIds: getAwaitingInputRpcSessionIds(),
+      awaitingInputReasons: getAwaitingInputRpcSessionReasons(),
       cacheKeepaliveSessions: getCacheKeepaliveRpcSessions(),
       routineProjects: await scheduledRoutinesByProject(new Date(serverNow)),
       completionNotificationSuppressedSessionIds: getCompletionNotificationSuppressedRpcSessionIds(),
