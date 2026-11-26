@@ -1,29 +1,31 @@
-// The tab's favicon mirrors the sidebar's row badges, so a background tab still shows it needs
-// attention once the completion sound is over: amber with the count while any session waits for
-// input (awaiting plus unread), green with the unread count otherwise, the stock icon when clear.
-// Colors are the light theme's --warning and --success (components/SessionStateBadge.tsx).
+// The tab's favicon mirrors the sidebar's state marks, so a background tab still shows it needs
+// attention once the completion sound is over. The count covers every marked session; the color is
+// the most urgent kind: amber while any session waits for input, red while any unseen error
+// remains, green for unread only, the stock icon when clear. Colors are the light theme's
+// --warning, --danger and --success.
 
 export interface FaviconBadge {
-  kind: "awaiting" | "unread";
+  kind: "awaiting" | "error" | "unread";
   count: number;
 }
 
-const COLORS = { awaiting: "#b45309", unread: "#059669" } as const;
+const COLORS = { awaiting: "#b45309", error: "#dc2626", unread: "#059669" } as const;
 
-export function getFaviconBadge(awaiting: number, unread: number): FaviconBadge | null {
-  const total = awaiting + unread;
+export function getFaviconBadge(awaiting: number, error: number, unread: number): FaviconBadge | null {
+  const total = awaiting + error + unread;
   if (total <= 0) return null;
-  return { kind: awaiting > 0 ? "awaiting" : "unread", count: Math.min(total, 99) };
+  return { kind: awaiting > 0 ? "awaiting" : error > 0 ? "error" : "unread", count: Math.min(total, 99) };
 }
 
 /**
- * Unread markers plus sessions that finished while the page was hidden. Those are usually on
- * screen, which the sidebar never marks unread ("already looking", false while hidden).
+ * Unread markers plus sessions that finished while the page was hidden (usually on screen, which
+ * the sidebar never marks unread), without the errored ones: a failed run is often unread too and
+ * is counted once, as an error.
  */
-export function countFaviconUnread(unread: ReadonlySet<string>, finishedWhileHidden: ReadonlySet<string>): number {
-  let extra = 0;
-  for (const id of finishedWhileHidden) if (!unread.has(id)) extra += 1;
-  return unread.size + extra;
+export function countFaviconUnread(unread: ReadonlySet<string>, finishedWhileHidden: ReadonlySet<string>, errors: ReadonlySet<string> = new Set()): number {
+  const ids = new Set([...unread, ...finishedWhileHidden]);
+  for (const id of errors) ids.delete(id);
+  return ids.size;
 }
 
 // null until the first sync, which must also clear an app badge a closed page left behind.
@@ -78,8 +80,8 @@ async function drawBadge(badge: FaviconBadge, key: string, links: HTMLLinkElemen
 }
 
 /** Browser only. Also sets the installed app's icon badge where the platform supports it. */
-export function syncFaviconBadge(awaiting: number, unread: number): void {
-  const badge = getFaviconBadge(awaiting, unread);
+export function syncFaviconBadge(awaiting: number, error: number, unread: number): void {
+  const badge = getFaviconBadge(awaiting, error, unread);
   const key = badge ? `${badge.kind}:${badge.count}` : "none";
   if (key === syncedKey) return;
   syncedKey = key;

@@ -294,7 +294,11 @@ export function AppShell() {
     };
   }, []);
   useEffect(() => {
-    syncFaviconBadge(sessionMarkers.awaitingInput.size, countFaviconUnread(sessionMarkers.unread, finishedWhileHidden));
+    syncFaviconBadge(
+      sessionMarkers.awaitingInput.size,
+      sessionMarkers.error.size,
+      countFaviconUnread(sessionMarkers.unread, finishedWhileHidden, sessionMarkers.error),
+    );
   }, [finishedWhileHidden, sessionMarkers]);
   // The temporary id distinguishes consecutive fresh composers in one cwd.
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);

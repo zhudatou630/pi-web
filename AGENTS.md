@@ -106,7 +106,7 @@ Active tool order is prompt input: `withExtensionTools()` keeps the carried orde
 - While running, `useAgentSession` polls `GET /api/agent/[id]` and reconciles on `visibilitychange`/`online` to recover missed terminal events. Prompt runs carry a monotonic run id; ignore late events from old runs.
 - Accept both `compaction_start/end` and legacy `auto_compaction_start/end`.
 - The sidebar polls `/api/agent/running` every 2.5 s while visible and every 30 s while hidden (the favicon badge needs it).
-- The favicon (and installed app badge) mirrors the sidebar markers (`lib/favicon-badge.ts`); on-screen completions while hidden also remain counted until the page is seen again.
+- The favicon (and installed app badge) mirrors the sidebar markers, unseen errors included (`lib/favicon-badge.ts`); on-screen completions while hidden also remain counted until the page is seen again.
 
 ### Paths, worktrees, file access
 - Linked worktrees resolve to the main repo `projectRoot` (`lib/worktree.ts`) so the sidebar groups them; sessions in removed worktrees fold back into the main project. See `docs/worktrees.md`.
