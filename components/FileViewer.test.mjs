@@ -325,6 +325,7 @@ test("highlighted and bounded diff gutters stay pinned with matching line boxes"
     diffMetadataLines: () => [],
     useState: () => [props.split ?? false],
     useLayoutEffect: () => {},
+    useRef: () => ({ current: null }),
     parseUnifiedPatch: () => [{ rows: Array.from({ length: rowCount }, () => ({ type: "line", left: { type: "empty", text: "", lineNo: null }, right: { type: "added", text: "wide line", lineNo: 1 } })) }],
   });
   const lineContent = (props, count = 1) => render(count, props).props.children[1][0].props.children[3].props.children;

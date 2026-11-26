@@ -424,21 +424,12 @@ const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, palett
   );
 });
 
-function DiffView({ patch, contentRef, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false, palette = "default" }: {
-  contentRef: React.RefObject<HTMLDivElement | null>;
+function DiffView({ patch, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false, palette = "default" }: {
   patch: string; wrapLines: boolean; language?: string; prismReady?: boolean; isDark?: boolean; palette?: string;
 }) {
   const { t } = useI18n();
   const [split, setSplit] = useState(false);
-  // Layout effect: measure before the first paint, so a wide viewer never flashes the unified view.
-  useLayoutEffect(() => {
-    const element = contentRef.current;
-    if (!element) return;
-    setSplit(element.clientWidth >= DIFF_SPLIT_MIN_WIDTH);
-    const observer = new ResizeObserver(([entry]) => setSplit(entry.contentRect.width >= DIFF_SPLIT_MIN_WIDTH));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [contentRef]);
+  const rootRef = useRef<HTMLDivElement>(null);
   const wrapLines = split || preferWrap;
   const diff = useMemo(() => parseUnifiedPatch(patch)?.flatMap((file) => file.rows) ?? [], [patch]);
   const metadata = useMemo(() => diffMetadataLines(patch), [patch]);
@@ -453,6 +444,17 @@ function DiffView({ patch, contentRef, wrapLines: preferWrap, language = "text",
     : FILE_DIFF_LINE_NUMBER_STYLE;
 
   const hasChanges = metadata.length > 0 || diff.some((row) => row.type === "line" && (row.left.type === "removed" || row.right.type === "added"));
+  // Measure the viewer's scroller (this view's parent) before the first paint, by its border box:
+  // the scrollbar that wrapped columns can bring must not flip the layout back.
+  useLayoutEffect(() => {
+    const box = rootRef.current?.parentElement;
+    if (!box) return;
+    const update = () => setSplit(box.offsetWidth >= DIFF_SPLIT_MIN_WIDTH);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [hasChanges]);
   if (!hasChanges) {
     return (
       <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-dim)" }}>
@@ -493,6 +495,7 @@ function DiffView({ patch, contentRef, wrapLines: preferWrap, language = "text",
 
   return (
     <div
+      ref={rootRef}
       className="file-diff-view"
       style={{
         width: wrapLines ? "100%" : "max-content",
@@ -1896,10 +1899,11 @@ function TextFileViewer({
       }
       if (loadingMore) return;
       if (data.truncated && sourceLines.length <= reveal.end && attemptedLineLoad.current !== reveal) {
-        // One bounded read per click, even on an error or a non-advancing chunk.
+        // One read per click, even on an error or a non-advancing chunk, and no further than
+        // Load all goes without asking: a minified one-line file would otherwise load whole.
         attemptedLineLoad.current = reveal;
         setLoadingMore(true);
-        void readContent(filePath, data.nextOffset, Infinity, { completed: sourceLines.length - 1, target: reveal.end })
+        void readContent(filePath, data.nextOffset, data.nextOffset + LOAD_ALL_CONFIRM_BYTES, { completed: sourceLines.length - 1, target: reveal.end })
           .finally(() => setLoadingMore(false));
         return;
       }
@@ -2264,7 +2268,7 @@ function TextFileViewer({
         style={{ flex: 1, overflow: "auto", background: "var(--bg)", paddingBottom: data?.truncated && !(isHtml && effectiveDisplayMode === "preview") ? 48 : undefined }}
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
-          <MemoizedDiffView contentRef={contentRef} patch={gitDiff.patch!} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
+          <MemoizedDiffView patch={gitDiff.patch!} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
         ) : isHtml && effectiveDisplayMode === "preview" && !htmlInline && htmlServedForFile?.url ? (
           <iframe
             // A new element per URL: changing src would add an iframe history entry.
