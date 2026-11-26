@@ -100,36 +100,36 @@ async function readStatusEntries(repositoryRoot: string, pathspec?: string): Pro
   return parseGitPorcelainV1(output);
 }
 
-async function readTrackedLineStats(
-  repositoryRoot: string,
-  cwd: string,
-): Promise<{ additions: number; deletions: number }> {
+type LineStats = { additions: number; deletions: number };
+
+/** Tracked +/− per repo-relative path (no rename pairing: a rename counts on its new path). */
+async function readTrackedLineStats(repositoryRoot: string, cwd: string): Promise<Map<string, LineStats>> {
   const relativeCwd = toGitPath(path.relative(repositoryRoot, cwd));
   const pathspec = relativeCwd || ".";
+  const stats = new Map<string, LineStats>();
   try {
     const output = await git(repositoryRoot, [
       "diff",
       "--no-color",
       "--no-ext-diff",
+      "--no-renames",
       "--numstat",
+      "-z",
       "HEAD",
       "--",
       pathspec,
     ]);
-    let additions = 0;
-    let deletions = 0;
-    for (const line of output.split(/\r?\n/)) {
-      if (!line) continue;
-      const [added, deleted] = line.split("\t", 2);
-      const addedCount = Number(added);
-      const deletedCount = Number(deleted);
-      if (Number.isInteger(addedCount)) additions += addedCount;
-      if (Number.isInteger(deletedCount)) deletions += deletedCount;
+    for (const record of output.split("\0")) {
+      const [added, deleted, ...name] = record.split("\t");
+      const gitPath = name.join("\t");
+      if (!gitPath) continue;
+      // Binary files report "-": they have no line counts.
+      stats.set(gitPath, { additions: Number(added) || 0, deletions: Number(deleted) || 0 });
     }
-    return { additions, deletions };
   } catch {
-    return { additions: 0, deletions: 0 };
+    // No HEAD yet, or git failed: no line counts.
   }
+  return stats;
 }
 
 async function countUntrackedTextLines(filePath: string, buffer: Buffer, signal?: AbortSignal): Promise<number> {
@@ -159,26 +159,27 @@ async function countUntrackedTextLines(filePath: string, buffer: Buffer, signal?
   }
 }
 
-async function countUntrackedLines(files: GitFileStatus[], signal?: AbortSignal): Promise<number> {
+/** Adds each untracked text file's line count to its `additions`. */
+async function countUntrackedLines(files: GitFileStatus[], signal?: AbortSignal): Promise<void> {
   let next = 0;
-  let total = 0;
   // Four workers share libuv's default pool without queueing thousands of reads.
   await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
     const buffer = Buffer.allocUnsafe(64 * 1024);
     while (next < files.length && !signal?.aborted) {
       const file = files[next++];
       if (file.status === "untracked") {
-        const lines = await countUntrackedTextLines(file.filePath, buffer, signal);
-        total += lines;
+        file.additions = await countUntrackedTextLines(file.filePath, buffer, signal);
       }
       if (next % 1000 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
     }
   }));
   signal?.throwIfAborted();
-  return total;
 }
 
-/** `lines: false` skips the +/− line counts (numstat, untracked file reads) for a file count only. */
+/**
+ * `lines: false` skips the +/− line counts (numstat, untracked file reads) for a file count only;
+ * otherwise each file carries its own uncommitted `additions`/`deletions` and the totals add them up.
+ */
 export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = true }: { lines?: boolean } = {}): Promise<GitStatusResponse> {
   signal?.throwIfAborted();
   const repositoryRoot = await findRepositoryRoot(cwd);
@@ -198,8 +199,18 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
   signal?.throwIfAborted();
   const [entries, trackedLineStats] = await Promise.all([
     readStatusEntries(repositoryRoot),
-    lines ? readTrackedLineStats(realRoot, realCwd) : { additions: 0, deletions: 0 },
+    lines ? readTrackedLineStats(realRoot, realCwd) : null,
   ]);
+  const lineStatsByPath = new Map<string, LineStats>();
+  for (const [gitPath, stats] of trackedLineStats ?? []) {
+    const filePath = mapCwdGitPath(cwd, realCwd, realRoot, gitPath);
+    if (filePath) lineStatsByPath.set(filePath, stats);
+  }
+  // A rename's numstat lists its old path (deletions) and new path (additions) separately.
+  const statsFor = (...filePaths: (string | null)[]) => lines ? filePaths.reduce<LineStats>((sum, filePath) => {
+    const stats = filePath ? lineStatsByPath.get(filePath) : undefined;
+    return stats ? { additions: sum.additions + stats.additions, deletions: sum.deletions + stats.deletions } : sum;
+  }, { additions: 0, deletions: 0 }) : {};
   const files: GitFileStatus[] = [];
   for (let index = 0; index < entries.length; index++) {
     if (index % 1000 === 0) {
@@ -218,6 +229,7 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
           code: "D",
           indexStatus: entry.indexStatus,
           worktreeStatus: entry.worktreeStatus,
+          ...statsFor(filePath),
         });
         continue;
       }
@@ -228,16 +240,18 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
       ...classified,
       indexStatus: entry.indexStatus,
       worktreeStatus: entry.worktreeStatus,
+      // `git rm --cached` lists a path twice (D and ??): numstat belongs to the tracked entry only.
+      ...(classified.status === "untracked" ? statsFor() : statsFor(filePath, entry.originalPath ? mapCwdGitPath(cwd, realCwd, realRoot, entry.originalPath) : null)),
     });
   }
-  const untrackedAdditions = lines ? await countUntrackedLines(files, signal) : 0;
+  if (lines) await countUntrackedLines(files, signal);
 
   return {
     isGitRepository: true,
     repositoryRoot,
     files,
-    additions: trackedLineStats.additions + untrackedAdditions,
-    deletions: trackedLineStats.deletions,
+    additions: files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
+    deletions: files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
   };
 }
 
