@@ -2681,6 +2681,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
             placeholder={disabled ? t("agentSwitcher.status.queued")
               : compact ? t("chat.sideChatPlaceholder")
               : isCompacting ? t("chat.compactingQueueHint")
+              // Enter steers while a run streams: the message joins the current turn.
+              : isStreaming && onSteer ? t(isMobile ? "chat.composerHintRunningCompact" : "chat.composerHintRunning")
               : t(isMobile ? "chat.composerHintCompact" : "chat.composerHint")}
             value={value}
             onInput={() => { pendingPasteRef.current = null; }}

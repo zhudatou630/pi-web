@@ -114,15 +114,6 @@ const GIT_STATUS_KEYS: Record<GitFileStatusKind, string> = {
   conflict: "files.conflict",
 };
 
-const GIT_STATUS_COLORS: Record<GitFileStatusKind, string> = {
-  modified: "var(--warning)",
-  added: "var(--success)",
-  deleted: "var(--danger)",
-  renamed: "var(--accent)",
-  untracked: "var(--success)",
-  conflict: "var(--danger)",
-};
-
 function GitStatusBadge({ status, t }: { status: GitFileStatus; t: Translate }) {
   return (
     <span
@@ -135,7 +126,8 @@ function GitStatusBadge({ status, t }: { status: GitFileStatus; t: Translate }) 
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: GIT_STATUS_COLORS[status.status],
+        // Color is for diffs and things that need you; the letter alone tells the kind.
+        color: "var(--text-dim)",
         fontSize: 11,
       }}
     >
@@ -399,7 +391,7 @@ function TreeNode({
               justifyContent: "center",
             }}
           >
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warning)" }} />
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--text-dim)" }} />
           </span>
         )}
         {loading && (
@@ -1320,8 +1312,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             <span style={{ color: "var(--text-dim)" }}>
               {t("files.changedCount", { count: gitFiles.length })}
             </span>
-            <span style={{ color: GIT_STATUS_COLORS.added, fontVariantNumeric: "tabular-nums" }}>+{gitLineStats.additions}</span>
-            <span style={{ color: GIT_STATUS_COLORS.deleted, fontVariantNumeric: "tabular-nums" }}>-{gitLineStats.deletions}</span>
+            <span style={{ color: "var(--success)", fontVariantNumeric: "tabular-nums" }}>+{gitLineStats.additions}</span>
+            <span style={{ color: "var(--danger)", fontVariantNumeric: "tabular-nums" }}>-{gitLineStats.deletions}</span>
           </div>
           {gitFiles.map((status) => (
             <ChangeRow key={status.filePath} status={status} cwd={cwd} onOpenFile={onOpenFile} t={t} />

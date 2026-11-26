@@ -86,7 +86,7 @@ test("the actual virtual row model hides archived families, keeps cross-project 
     expandedWorkspaceKeys: new Set(["/p", "/other"]), defaultExpandedWorkspaceKeys: new Set(),
     workspaceSessionLimits: {}, archiveView: false, expandedArchiveProjectKeys: new Set(),
     archivedSessionIds: { "0": "2026-02-01T00:00:00.000Z", other: "2026-02-01T00:00:00.000Z" },
-    runningSessionIds: new Set(["child"]), unreadSessionIds: new Set(["7"]), pinnedSessionIds: ["1"],
+    runningSessionIds: new Set(["child"]), activeSessionIds: new Set(["child"]), erroredSessionIds: new Set(), unreadSessionIds: new Set(["7"]), pinnedSessionIds: ["1"],
   };
   const dragging = workspaceRows({ ...scope, draggedProjectKey: "/p" });
   assert.deepEqual(Array.from(dragging, (r) => r.project?.key), ["/p"], "drag only collapses the source group, without changing expansion storage");
@@ -101,11 +101,11 @@ test("the actual virtual row model hides archived families, keeps cross-project 
   assert.deepEqual(Array.from(archived.filter((r) => r.kind === "session"), (r) => r.family.root.id), ["0", "other"]);
   const single = workspaceRows({ ...scope, archiveView: true, singleProject: true });
   assert.deepEqual(Array.from(single.filter((r) => r.kind === "session"), (r) => r.family.root.id), ["0"]);
-  const expanded = workspaceRows({ ...scope, archivedSessionIds: {}, pinnedSessionIds: [], selectedSessionId: null, runningSessionIds: new Set(), unreadSessionIds: new Set(), workspaceSessionLimits: { "/p": 26 } });
+  const expanded = workspaceRows({ ...scope, archivedSessionIds: {}, pinnedSessionIds: [], selectedSessionId: null, runningSessionIds: new Set(), activeSessionIds: new Set(), unreadSessionIds: new Set(), workspaceSessionLimits: { "/p": 26 } });
   assert.ok(expanded.some((r) => r.kind === "showLess"));
   assert.ok(!workspaceRows({ ...scope, archivedSessionIds: {} }).some((r) => r.kind === "showLess"));
   const allArchived = Object.fromEntries(sessions.map((s) => [s.id, "2026-02-01T00:00:00.000Z"]));
-  const archivePage = { ...scope, archiveView: true, expandedArchiveProjectKeys: new Set(["/p"]), archivedSessionIds: allArchived, selectedSessionId: null, runningSessionIds: new Set(), unreadSessionIds: new Set() };
+  const archivePage = { ...scope, archiveView: true, expandedArchiveProjectKeys: new Set(["/p"]), archivedSessionIds: allArchived, selectedSessionId: null, runningSessionIds: new Set(), activeSessionIds: new Set(), unreadSessionIds: new Set() };
   const paged = workspaceRows(archivePage);
   assert.equal(paged.filter((r) => r.kind === "session").length, 6, "archive pages like the main list");
   assert.equal(paged.find((r) => r.kind === "showMore").limitKey, "archive:/p");
@@ -234,7 +234,7 @@ test("selection expands the entire scoped project including pins without changin
     selectedProject: { key: "/p", root: "/p" }, selectedSessionId: null, singleProject: false,
     expandedWorkspaceKeys: new Set(), defaultExpandedWorkspaceKeys: new Set(), workspaceSessionLimits: {},
     archiveView: false, expandedArchiveProjectKeys: new Set(), archivedSessionIds: {},
-    runningSessionIds: new Set(), unreadSessionIds: new Set(), pinnedSessionIds: ["24"], selectionProjectKey: "/p",
+    runningSessionIds: new Set(), activeSessionIds: new Set(), erroredSessionIds: new Set(), unreadSessionIds: new Set(), pinnedSessionIds: ["24"], selectionProjectKey: "/p",
   };
   const rows = workspaceRows(scope);
   assert.equal(rows.filter((row) => row.kind === "session").length, 25);

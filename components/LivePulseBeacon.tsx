@@ -8,6 +8,7 @@ interface Props {
   style?: CSSProperties;
 }
 
+/** The running dot (8px, breathing) centered in a `size` box, for live rows outside the sidebar. */
 export function LivePulseBeacon({
   size = 14,
   title,
@@ -15,7 +16,6 @@ export function LivePulseBeacon({
   className,
   style,
 }: Props) {
-  const coreSize = size <= 10 ? 4 : 5;
   return (
     <span
       className={`live-pulse-beacon${className ? ` ${className}` : ""}`}
@@ -27,16 +27,7 @@ export function LivePulseBeacon({
         ...style,
       }}
     >
-      <span
-        className="live-pulse-beacon-halo"
-        style={{ width: coreSize, height: coreSize }}
-        aria-hidden="true"
-      />
-      <span
-        className="live-pulse-beacon-core"
-        style={{ width: coreSize, height: coreSize }}
-        aria-hidden="true"
-      />
+      <span className="session-status-dot" data-status="running" aria-hidden="true" />
     </span>
   );
 }

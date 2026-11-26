@@ -149,6 +149,11 @@ test("tool steps use per-call monotonic clocks and frozen SDK durations, not ser
   assert.match(live, />5s</); assert.match(live, />2s</);
   const frozen = renderMessage(message, { toolClocks: new Map([["a", { durationMs: 4200 }], ["b", toolClocks.get("b")]]) });
   assert.match(frozen, />4s</); assert.match(frozen, />2s</);
+  // Steps are text; only an executing step carries the running dot.
+  const dots = (html) => (html.match(/class="step-icon"><span class="session-status-dot" data-status="running"/g) ?? []).length;
+  assert.equal(dots(live), 2);
+  assert.equal(dots(frozen), 1);
+  assert.doesNotMatch(live, /class="step-icon"><svg/, "no tool icons");
   const props = { message, toolClocks };
   assert.equal(MessageView.compare(props, { ...props, toolClocks: new Map(toolClocks).set("unrelated", { startedAt: 1 }) }), true);
   assert.equal(MessageView.compare(props, { ...props, toolClocks: new Map(toolClocks).set("a", { durationMs: 4200 }) }), false);
@@ -445,6 +450,11 @@ test("restores copy and time only on a completed final answer", () => {
   assert.match(html, /title="Copy message"/);
   assert.ok(html.includes(new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })));
   assert.doesNotMatch(html, /opacity:0|hidden-model|246 in|267 out|\$0\.0774/);
+  // Text only: first-token latency and speed move into the footer's title.
+  const timed = renderMessage(message, { isTurnEnd: true, modelName: "GPT-6 Astra", turnDurationSeconds: 47, turnTiming: "2.1s · 131 tok/s" });
+  assert.match(timed, /data-answer-footer="true" title="TTFT 2\.1s · 131 tok\/s"/);
+  assert.doesNotMatch(timed, />TTFT|data-answer-timing|meta-row-icon/);
+  assert.match(timed, />GPT-6 Astra<\/span><span aria-hidden="true">·<\/span><span data-answer-duration/);
 
   for (const props of [{ isTurnEnd: false }, { isTurnEnd: true, isStreaming: true }]) {
     const processHtml = renderMessage(message, { ...props, modelName: "GPT-6 Astra" });
@@ -524,8 +534,8 @@ test("keeps pending and successful tools neutral while retaining error emphasis"
       toolResults: new Map(result ? [[block.toolCallId, result]] : []),
     });
     if (state === "error") {
+      // Text only: the error color comes from the card's class (CSS), not an icon.
       assert.match(html, /data-step-card="" class="is-error"/);
-      assert.match(html, /color:var\(--danger\)/);
     } else {
       assert.match(html, /data-step-card=""><div class="step-head">/);
       assert.doesNotMatch(html, /--success|--danger|is-error/);

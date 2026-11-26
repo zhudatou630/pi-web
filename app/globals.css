@@ -401,6 +401,74 @@ html.dark {
   display: block;
 }
 
+/* Top bar context: "project · branch ⌄" in 11px dim text, then a "Changes N" text button. */
+/* Kept whole: the chat tabs give way first (they fold into their +N list). */
+.top-bar-context {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 4px;
+}
+.top-bar-context-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-fast), background var(--motion-fast);
+}
+.top-bar-context-trigger:hover,
+.top-bar-context-trigger[aria-expanded="true"] {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+.top-bar-context-label {
+  max-width: 140px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.top-bar-context-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 4px;
+  z-index: 520;
+  min-width: 180px;
+}
+.top-bar-text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--motion-fast);
+}
+.top-bar-text-button:hover {
+  color: var(--text);
+}
+.top-bar-text-button-count {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .workspace-header-action[aria-pressed="true"] {
   box-shadow: inset 0 2px 0 var(--accent);
 }
@@ -2051,6 +2119,21 @@ button.question-card-option:not(:disabled):hover {
   width: 14px;
   height: 14px;
 }
+/* Steps are plain text (action, object, time): the slot holds only the executing step's
+   running dot. The action reads one tier above its object; the live step's action is --text. */
+[data-step-card] .step-icon {
+  width: 8px;
+  height: 8px;
+}
+[data-step-card] .step-label {
+  color: var(--text-muted);
+}
+[data-step-card]:has(> .step-head .step-icon > .session-status-dot) .step-label {
+  color: var(--text);
+}
+[data-step-card] .step-preview {
+  color: var(--text-dim);
+}
 .step-label {
   min-width: 0;
   overflow: hidden;
@@ -2712,8 +2795,7 @@ button.question-card-option:not(:disabled):hover {
 /* Sarasa UI inks 11px digits and CJK ~0.9px above the centre of their line box
    (measured against a flex-centred 12px icon), so icons in those metadata rows
    rise by that much to centre on the ink of the text, not its box. */
-.message-action-button svg,
-.meta-row-icon {
+.message-action-button svg {
   position: relative;
   top: -0.875px;
 }
@@ -4338,17 +4420,13 @@ span.token.table {
   pointer-events: auto !important;
 }
 
-/* Pin and open-in-new-tab behave alike: fade in with the row's hover, rest at the row's
+/* Row actions (pin, open in new tab) fade in with the row's hover, rest at the row's
    text tier, and answer their own hover with a neutral fill (no accent: it marks state). */
 .session-row-pin,
 .session-row-open {
   background: transparent;
   color: var(--text-muted);
   transition: opacity var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
-}
-
-.session-row-pin {
-  opacity: 0;
 }
 
 .session-list-row:is(:hover, :has([aria-current="page"])) :is(.session-row-pin, .session-row-open) {
@@ -4361,13 +4439,7 @@ span.token.table {
   }
 }
 
-.session-row-pin.is-pinned,
-.session-list-row:hover .session-row-pin,
-.session-list-row:has(:focus-visible) .session-row-pin {
-  opacity: 1;
-}
-
-/* The time cross-fades with the actions that cover it. */
+/* The time (or the waiting/error word) cross-fades with the actions that cover it. */
 .session-row-meta {
   transition: opacity var(--motion-fast);
 }
@@ -4377,25 +4449,27 @@ span.token.table {
   opacity: 0 !important;
 }
 
-/* Touch has no hover: row actions live in the long-press menu. A pinned row keeps
-   its pin as a state mark that ignores taps, so scrolling cannot unpin it. */
+/* Touch has no hover: row actions (pin included) live in the long-press menu. */
 @media (hover: none) {
   .session-list-row:hover .session-row-actions {
     opacity: 0 !important;
     pointer-events: none !important;
   }
 
-  .session-list-row:hover .session-row-pin:not(.is-pinned) {
-    opacity: 0;
-  }
-
-  .session-row-pin {
-    pointer-events: none;
-  }
-
   .session-list-row:has(.session-row-actions):hover .session-row-meta {
     opacity: 1 !important;
   }
+}
+
+/* The state dot sits in the leading slot, in the project folders' column, so titles never shift. */
+.session-row-status {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 16px;
+  pointer-events: none;
 }
 
 /* Project row actions take no width until revealed, so the branch label can sit
@@ -4453,10 +4527,6 @@ span.token.table {
 /* Project state lives on the folder glyph, not a side rail or a tinted row. */
 .workspace-folder-icon {
   color: inherit;
-}
-
-.workspace-list-row[data-active="true"] .workspace-folder-icon {
-  color: var(--accent);
 }
 
 .workspace-list-row[data-pending-delete="true"] .workspace-folder-icon {
@@ -4760,78 +4830,64 @@ span.token.table {
   background: color-mix(in srgb, var(--danger-fill) 86%, #000000);
 }
 
-/* Compact running-state beacon: refined 5px core with a smooth expanding wave ring */
+/* Session state: one 8px dot (docs/ui.md, Session state). Running breathes in the dim gray;
+   unread is the accent, waiting and error the two "needs you" colors. */
+.session-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.session-status-dot[data-status="running"] {
+  background: var(--text-dim);
+  animation: session-status-breathe 1.6s ease-in-out infinite;
+}
+.session-status-dot[data-status="unread"] { background: var(--accent); }
+.session-status-dot[data-status="awaiting"] { background: var(--warning); }
+.session-status-dot[data-status="error"] { background: var(--danger); }
+
+@keyframes session-status-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-status-dot[data-status="running"] {
+    animation: none;
+  }
+}
+
+.session-status-word {
+  font-size: 11px;
+}
+.session-status-word[data-status="awaiting"] { color: var(--warning); }
+.session-status-word[data-status="error"] { color: var(--danger); }
+
+/* The tab list button's corner mark: the hidden tabs' most urgent state (or an unsent draft). */
+.chat-tab-hidden-status {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.chat-tab-hidden-status[data-status="running"] { animation: session-status-breathe 1.6s ease-in-out infinite; }
+.chat-tab-hidden-status[data-status="unread"] { background: var(--accent); }
+.chat-tab-hidden-status[data-status="awaiting"] { background: var(--warning); }
+.chat-tab-hidden-status[data-status="error"] { background: var(--danger); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-tab-hidden-status { animation: none !important; }
+}
+
+/* Box around the running dot where a row reserves a fixed icon slot. */
 .live-pulse-beacon {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  vertical-align: middle;
-}
-
-.live-pulse-beacon-halo {
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  pointer-events: none;
-  box-sizing: border-box;
-  border: 1.2px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  opacity: 0;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform, opacity;
-  animation: live-pulse-wave 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-.live-pulse-beacon-core {
-  position: relative;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 4px color-mix(in srgb, var(--accent) 50%, transparent);
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  will-change: transform, opacity;
-  animation: live-pulse-core 1.6s ease-in-out infinite;
-}
-
-@keyframes live-pulse-wave {
-  0% {
-    transform: scale(0.9);
-    opacity: 0.85;
-  }
-  65% {
-    transform: scale(2.2);
-    opacity: 0.15;
-  }
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
-}
-
-@keyframes live-pulse-core {
-  0%, 100% {
-    transform: scale(0.88);
-    opacity: 0.85;
-  }
-  50% {
-    transform: scale(1.05);
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .live-pulse-beacon-halo {
-    display: none;
-  }
-  .live-pulse-beacon-core {
-    animation: none;
-  }
 }
 
 /* Toolbar sub-agent count while any sub-agent runs: same shape as idle, breathing tint. */
@@ -5694,6 +5750,16 @@ span.token.table {
   color: var(--text-dim);
   font-size: 11px;
   line-height: 1.3;
+}
+
+/* Why a session row needs you (waiting question, error), above its context menu's actions. */
+.menu-surface-head {
+  max-width: 240px;
+  padding: 4px 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .chat-input-menu {

@@ -10,9 +10,7 @@ import { mentionImageUrl } from "./GeneratedImageResult";
 import { QuoteCard } from "./QuoteCard";
 import { splitQuotedPrompt } from "@/lib/quoted-selection";
 import { imageToolDisplayKind, splitImageMentions } from "@/lib/image-generation";
-import { ThinkingIcon } from "./ThinkingIcon";
 import { ToolIcon } from "./ToolIcon";
-import { SubagentIcon } from "./SubagentIcon";
 import { LivePulseBeacon } from "./LivePulseBeacon";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
@@ -987,46 +985,25 @@ function AssistantMessageView({
 
       {showFooter && (
         // Who answered, how long the turn took, when it ended; copy sits right after them.
-        <div data-answer-footer style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>
+        // Text only: model · duration · time. First-token latency and speed stay in the row's title.
+        <div data-answer-footer title={timing ? `TTFT ${timing}` : undefined} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, marginTop: 2, color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35, fontFamily: "var(--font-ui)", fontVariantNumeric: "tabular-nums" }}>
           {(aborted || steered) && <span data-answer-stopped>{t(aborted ? "chat.operationAborted" : "chat.steered")}</span>}
-          {modelLabel && (
-            <span data-answer-model style={{ fontVariantNumeric: "normal", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
-          )}
-          {duration && (
-            <span data-answer-duration title={t("chat.turnDuration")} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
-              <svg className="meta-row-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 22h14M5 2h14" />
-                <path d="M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22" />
-                <path d="M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2" />
-              </svg>
-              {duration}
-            </span>
-          )}
-          {timing && (
-            <span data-answer-timing title={t("session.performance")} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
-              {/* Same raised Lucide gauge as the composer readout. */}
-              <svg className="meta-row-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="m12 12 4-4" />
-                <path d="M3.34 17a10 10 0 1 1 17.32 0" />
-              </svg>
-              {/* Spelled out: a bare "6.7s" beside the turn duration reads as another span. */}
-              TTFT {timing}
-            </span>
-          )}
-          {time && (
-            <span data-answer-time style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
-              <svg className="meta-row-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-              {time}
-            </span>
-          )}
+          {[
+            modelLabel && (
+              <span key="model" data-answer-model style={{ fontVariantNumeric: "normal", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{modelLabel}</span>
+            ),
+            duration && (
+              <span key="duration" data-answer-duration title={t("chat.turnDuration")} style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{duration}</span>
+            ),
+            time && (
+              <span key="time" data-answer-time style={{ flexShrink: 0, whiteSpace: "nowrap" }}>{time}</span>
+            ),
+          ].filter(Boolean).flatMap((item, index) => index ? [<span key={`sep-${index}`} aria-hidden="true">·</span>, item] : [item])}
           {textContent && (
               <button
                 type="button"
                 className="answer-copy-button message-action-button"
-                style={{ marginLeft: -5 }}
+                style={{ marginLeft: -1 }}
                 data-copied={copied ? "true" : undefined}
                 onClick={copyContent}
                 title={copied ? t("i18n.copied") : t("i18n.copyMessage")}
@@ -1047,7 +1024,7 @@ function AssistantMessageView({
               <button
                 type="button"
                 className="answer-copy-button message-action-button"
-                style={{ marginLeft: -10 }}
+                style={{ marginLeft: -6 }}
                 data-copied={image.done ? "true" : undefined}
                 disabled={image.busy}
                 onClick={() => image.run(rootRef.current, `pi-answer-${entryId ?? message.timestamp}.png`)}
@@ -1115,13 +1092,7 @@ function ProcessErrorCard({ error }: { error: string }) {
           title={expanded ? t("chat.collapseProcess") : t("chat.expandProcess")}
           onClick={() => setExpanded((v) => !v)}
         >
-          <div className="step-icon">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
+          <StepSlot />
           <span className="step-label">{t("chat.modelError")}</span>
           <span className="step-preview">{preview}</span>
           <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1146,6 +1117,11 @@ function ProcessErrorCard({ error }: { error: string }) {
       )}
     </div>
   );
+}
+
+/** Steps are text (action, object, time); only the step that is executing gets the running dot. */
+function StepSlot({ running = false }: { running?: boolean }) {
+  return <span className="step-icon">{running && <span className="session-status-dot" data-status="running" aria-hidden="true" />}</span>;
 }
 
 /** The one time slot on a step card: frozen duration when done, ticking while live, start time on hover. */
@@ -1303,9 +1279,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ block, duration, star
           title={t("i18n.thinking")}
           onClick={() => setExpanded((v) => !v)}
         >
-          <div className="step-icon">
-            <ThinkingIcon size={12} />
-          </div>
+          <StepSlot running={live} />
           <span className="step-label">{t("i18n.thinking")}</span>
           {!expanded && (
             <span className="step-preview">
@@ -1445,9 +1419,7 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
           data-step-trigger=""
           onClick={() => setExpanded((v) => !v)}
         >
-          <div className="step-icon" style={isError ? { color: "var(--danger)" } : undefined}>
-            <ToolIcon toolName={presentation.as} isError={isError} size={12} />
-          </div>
+          <StepSlot running={clock ? "startedAt" in clock : live && !result} />
           <span className="step-label" title={labelTitle ?? (presentation.label === block.toolName ? undefined : block.toolName)}>
             {toolLabel}
           </span>
@@ -2083,9 +2055,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
         title={label}
         onClick={() => setExpanded((value) => !value)}
       >
-        <span className="step-icon">
-          <SubagentIcon size={12} />
-        </span>
+        <StepSlot />
         <span className="step-preview" style={{ color: "var(--text)" }}>{label}</span>
         <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="2 3.5 5 6.5 8 3.5" />
@@ -2134,11 +2104,7 @@ function CustomMessageView({ message, cwd, onOpenFile, isProcess }: { message: C
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
-          <span className="step-icon">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(12)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z" />
-            </svg>
-          </span>
+          <StepSlot />
           <span className="step-label">{title}</span>
           <span className="step-preview">{expanded || !text ? "" : previewText(text)}</span>
           <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

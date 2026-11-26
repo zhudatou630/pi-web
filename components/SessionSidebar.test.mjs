@@ -10,30 +10,26 @@ const { parseUnreadMarks, sameUnreadMarks, withoutReadMarks, hasRecentAttention 
 const { getSessionListIndices, SessionItem, SessionActivitySummary } = await jiti.import("./SessionSidebar.tsx");
 
 const source = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
-test("folded summaries use each state's row glyph and count only from 2", async () => {
+test("a folded group shows only its most urgent state as one dot, without counts", async () => {
   const React = await jiti.import("react");
   const { renderToStaticMarkup } = await jiti.import("react-dom/server");
   const { I18nProvider } = await jiti.import("@/hooks/useI18n");
-  const render = activity => renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SessionActivitySummary, { activity })));
-  const waiting = render({ awaiting: 2, running: 0, unread: 0 });
-  assert.match(waiting, /Awaiting input \(2\)/);
-  assert.match(waiting, /var\(--warning\)/);
-  assert.doesNotMatch(waiting, /live-pulse-beacon/);
-  const warm = render({ awaiting: 0, running: 0, unread: 0, keepalive: 2 });
-  assert.match(warm, /aria-label="Keeping prompt cache warm"/);
-  assert.doesNotMatch(warm, />2</);
-  const mixed = render({ awaiting: 2, running: 1, unread: 3, keepalive: 0 });
-  assert.match(mixed, /Agent running… \(1\)/);
-  assert.match(mixed, /live-pulse-beacon/);
-  assert.match(mixed, /New session activity \(3\)/);
-  assert.match(mixed, /var\(--success\)[^]*<path d="M3\.6 6\.2/, "unread uses the row's check badge");
-  assert.match(mixed, />3</);
-  const single = render({ awaiting: 0, running: 1, unread: 1, keepalive: 0 });
-  assert.doesNotMatch(single, />1</, "a single running/unread family shows its glyph alone");
-  assert.match(single, /Agent running… \(1\)/);
-  assert.match(single, /New session activity \(1\)/);
+  const render = (activity, props = {}) => renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SessionActivitySummary, { activity, ...props })));
+  const base = { awaiting: 0, running: 0, unread: 0, error: 0, keepalive: 0 };
+  const dots = (html) => [...html.matchAll(/data-status="(\w+)"/g)].map((match) => match[1]);
+  assert.deepEqual(dots(render({ ...base, awaiting: 2, running: 1, unread: 3, error: 1 })), ["awaiting"]);
+  assert.deepEqual(dots(render({ ...base, running: 1, unread: 3, error: 1 })), ["error"]);
+  assert.deepEqual(dots(render({ ...base, running: 4, unread: 3 })), ["unread"]);
+  assert.deepEqual(dots(render({ ...base, running: 4 })), ["running"]);
+  const mixed = render({ ...base, awaiting: 2, running: 1, unread: 3 });
+  assert.match(mixed, /aria-label="Awaiting input"/);
+  assert.doesNotMatch(mixed, />[0-9]+</, "no counts");
+  // An expanded group already shows its rows' dots; standing glyphs (keepalive, routines) stay.
+  const expanded = render({ ...base, running: 1, keepalive: 2 }, { showStatus: false });
+  assert.deepEqual(dots(expanded), []);
+  assert.match(expanded, /aria-label="Keeping prompt cache warm"/);
   assert.match(source, /!pinnedOpen && <SessionActivitySummary activity=\{pinnedActivity\}/);
-  assert.equal((source.match(/<SessionActivitySummary activity=\{activity\}/g) ?? []).length, 2);
+  assert.match(source, /<SessionActivitySummary activity=\{activity\} showStatus=\{!singleProject && !expanded\} \/>/);
 });
 
 test("unread storage updates replace dated markers without echoing writes", () => {
@@ -227,17 +223,6 @@ test("subagent completion stays silent and never becomes unread", () => {
   );
 });
 
-test("includes project activity counts in accessible labels", () => {
-  assert.match(
-    source,
-    /aria-label=\{`\$\{t\("sidebar\.agentRunning"\)\} \(\$\{activity\.running\}\)`\}/,
-  );
-  assert.match(
-    source,
-    /aria-label=\{`\$\{t\("sidebar\.newSessionActivity"\)\} \(\$\{activity\.unread\}\)`\}/,
-  );
-});
-
 test("formats session timestamps with the active locale", () => {
   assert.match(source, /import \{ formatCompactRelativeTime \} from "@\/lib\/i18n\/format"/);
   assert.match(sessionItemSource, /const \{ locale, t \} = useI18n\(\)/);
@@ -289,28 +274,41 @@ test("does not expose disk-backed actions for transient sessions", () => {
 test("hides subagent rows and aggregates their state into the main session row", () => {
   assert.match(source, /const projectFamilies = allFamilies\.filter\(\(family\) => workspaceKeyOf\(family\.root\) === project\.key\)/);
   assert.match(source, /familySessions\.some\(\(session\) => session\.id === selectedSessionId\)/);
-  assert.match(source, /familySessions\.some\(\(session\) => runningSessionIds\.has\(session\.id\)\)/);
+  assert.match(source, /familySessions\.some\(\(session\) => activeSessionIds\.has\(session\.id\)\)/);
   assert.doesNotMatch(source, /function SessionTreeItem/);
 });
 
-test("a run parked on an extension dialog shows a static warning badge in the running slot", async () => {
+test("a row's state is one dot left of the title; waiting and error also replace the time with a word", async () => {
   const React = await jiti.import("react");
   const { renderToStaticMarkup } = await jiti.import("react-dom/server");
   const { I18nProvider } = await jiti.import("@/hooks/useI18n");
   const session = { id: "parked", name: "Parked", firstMessage: "", modified: new Date().toISOString(), messageCount: 1 };
   const render = (props) => renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SessionItem, {
-    session, isSelected: false, onClick() {}, ...props,
+    session, isSelected: false, onClick() {}, onTogglePin() {}, ...props,
   })));
-  const awaiting = render({ isRunning: true, isAwaiting: true });
-  // The unread badge's shape (12px filled circle, white glyph) in the warning token, without animation.
-  assert.match(awaiting, /<span role="img" title="Awaiting input" aria-label="Awaiting input"[^>]*><svg[^>]*><circle cx="6" cy="6" r="5" fill="var\(--warning\)">/);
-  assert.doesNotMatch(awaiting, /live-pulse-beacon|animation/);
-  assert.match(render({ isRunning: true }), /live-pulse-beacon/);
-  assert.doesNotMatch(render({ isRunning: true }), /--warning/);
-  assert.match(render({ isUnread: true }), /<circle cx="6" cy="6" r="5" fill="var\(--success\)">/);
+  const slot = (html) => html.match(/class="session-row-status"[^>]*><span role="img" class="session-status-dot" data-status="(\w+)"/)?.[1];
+  const awaiting = render({ isRunning: true, isAwaiting: true, statusReason: "Overwrite pinned?" });
+  assert.equal(slot(awaiting), "awaiting");
+  assert.match(awaiting, /<span class="session-status-word" data-status="awaiting">Waiting<\/span>/);
+  assert.match(awaiting, /title="Parked\nWaiting: Overwrite pinned\?"/);
+  assert.ok(awaiting.indexOf("session-row-status") < awaiting.indexOf(">Parked<"), "the dot sits before the title");
+  const error = render({ isError: true, isUnread: true, statusReason: "401" });
+  assert.equal(slot(error), "error");
+  assert.match(error, /data-status="error">Error<\/span>/);
+  assert.match(error, /title="Parked\nError: 401"/);
+  const running = render({ isRunning: true });
+  assert.equal(slot(running), "running");
+  assert.doesNotMatch(running, /session-status-word/, "running and unread keep the time");
+  assert.equal(slot(render({ isUnread: true })), "unread");
+  assert.equal(slot(render({})), undefined);
+  // Pinning is a hover action now (and in the long-press menu), not a mark in the title's slot.
+  assert.match(render({ isPinned: true }), /class="session-row-actions"[^>]*><button type="button" class="session-row-pin"/);
   // The family's awaiting state rides the poll's own ids, like running does.
   assert.match(source, /isAwaiting=\{familySessions\.some\(\(session\) => awaitingInputSessionIds\.has\(session\.id\)\)\}/);
   assert.equal((source.match(/setAwaitingInputSessionIds\(\(current\) => sameIdSet\(current, data\.awaitingInputSessionIds\)\)/g) ?? []).length, 2);
+  // Errors stay out of "show more" and auto-archive, like running and unread.
+  assert.match(source, /const forcedIds = new Set\(\[\.\.\.activeSessionIds, \.\.\.unreadSessionIds, \.\.\.erroredSessionIds\]\)/);
+  assert.match(source, /unreadIds: new Set\(\[\.\.\.unreadSessionIds, \.\.\.erroredSessionIds\]\)/);
 });
 
 test("a project header renames inline like a session row, optimistically, and rolls back a refused write", () => {
@@ -434,7 +432,8 @@ test("workspace actions stay quiet on touch; long press and right-click open the
   assert.match(source, /setProjectMenu\(\{ key: row\.project\.key, cwd: workspaceCwd, x: event\.clientX, y: event\.clientY \}\)/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row \.workspace-row-action/);
   assert.match(globalCss, /@media \(hover: none\)[\s\S]*?\.workspace-list-row:hover[\s\S]*?background: transparent !important;/);
-  assert.match(globalCss, /\.workspace-list-row\[data-active="true"\] \.workspace-folder-icon \{\s*color: var\(--accent\);/);
+  // The current project's folder is not tinted: color is kept for states that need you.
+  assert.doesNotMatch(globalCss, /\.workspace-list-row\[data-active="true"\] \.workspace-folder-icon/);
   assert.doesNotMatch(globalCss, /\.workspace-list-row\[[^\]]+\]::before/);
   assert.doesNotMatch(globalCss, /\.workspace-list-row\[data-active="true"\][\s\S]{0,80}?background: var\(--bg-selected\)/);
   // New session is the one action phones can reach without a long press.

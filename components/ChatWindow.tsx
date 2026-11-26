@@ -153,7 +153,7 @@ function CompactionActivity({ t }: { t: (key: string, params?: Record<string, st
       <LivePulseBeacon size={12} />
       <ProcessLiveDuration startTime={startTime} t={t} />
       <span style={{ color: "var(--text-dim)" }}>·</span>
-      <span style={{ color: "var(--accent)" }}>{t("chat.compacting")}</span>
+      <span style={{ color: "var(--text-muted)" }}>{t("chat.compacting")}</span>
     </div>
   );
 }
@@ -671,7 +671,7 @@ function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: str
   }, [startTime]);
 
   return (
-    <span style={{ fontSize: 11, color: "var(--accent)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+    <span style={{ fontSize: 11, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
       {formatDuration(elapsed, t)}
     </span>
   );
@@ -783,7 +783,7 @@ function ProcessDetailsGroup({
                 gap: 5,
                 minWidth: 0,
                 fontSize: 11,
-                color: "var(--accent)",
+                color: "var(--text-muted)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",

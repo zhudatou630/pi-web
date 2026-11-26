@@ -37,7 +37,7 @@ for (const missedRunning of [false, true]) {
       RUNNING_SESSIONS_POLL_MS: 2500, HIDDEN_RUNNING_SESSIONS_POLL_MS: 30000,
       setTimeout: (fn) => { timers.push(fn); return 1; }, clearTimeout() {}, loadSessions() {},
       withoutReadMarks: (marks) => marks, sameIdSet: (current) => current, sameTimes: (current) => current,
-      family: { root: { id: "root" } }, familySessions: [{ id: "root" }], unreadMarks: new Map([["root", 100]]),
+      family: { root: { id: "root" } }, familySessions: [{ id: "root" }], unreadMarks: new Map([["root", 100]]), erroredSessionIds: new Set(),
       markSessionFamilyRead: () => new Set(),
       fetch: async (_url, options) => {
         const body = options.body ? JSON.parse(options.body) : null;
@@ -50,7 +50,7 @@ for (const missedRunning of [false, true]) {
       },
     };
     scope.manualReadIdsRef = execute(manualRef.initializer.getText(ast), scope);
-    for (const name of ["UnreadMarks", "SubagentsActiveSessionIds", "RunningSessionIds", "AwaitingInputSessionIds", "CacheKeepaliveSessions"]) scope[`set${name}`] = () => {};
+    for (const name of ["UnreadMarks", "SubagentsActiveSessionIds", "RunningSessionIds", "AwaitingInputSessionIds", "AwaitingInputReasons", "SharedReadAt", "CacheKeepaliveSessions"]) scope[`set${name}`] = () => {};
     execute(toggle.initializer.expression.getText(ast), scope)();
     const cleanup = execute(effect.arguments[0].getText(ast), scope)();
     await setImmediate();

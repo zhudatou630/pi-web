@@ -39,6 +39,8 @@ import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
+import { ChangesButton, SessionContextButton } from "./TopBarContext";
+import type { GitStatusResponse } from "@/lib/git-types";
 import { InfoDialog } from "./InfoDialog";
 import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
 import { SystemPromptPanel } from "./SystemPromptPanel";
@@ -272,10 +274,10 @@ export function AppShell() {
       return ids;
     });
   }, []);
-  const [sessionMarkers, setSessionMarkers] = useState<SessionMarkers>(() => ({ unread: new Set(), awaitingInput: new Set() }));
+  const [sessionMarkers, setSessionMarkers] = useState<SessionMarkers>(() => ({ unread: new Set(), awaitingInput: new Set(), error: new Set() }));
   // The sidebar keeps each set's identity until it changes, so reference equality suffices.
   const handleSessionMarkersChange = useCallback((markers: SessionMarkers) => {
-    setSessionMarkers((previous) => previous.unread === markers.unread && previous.awaitingInput === markers.awaitingInput ? previous : markers);
+    setSessionMarkers((previous) => previous.unread === markers.unread && previous.awaitingInput === markers.awaitingInput && previous.error === markers.error ? previous : markers);
   }, []);
   // On-screen sessions that finished while the page was hidden also count toward the favicon badge.
   const [finishedWhileHidden, setFinishedWhileHidden] = useState<Set<string>>(() => new Set());
@@ -1806,6 +1808,28 @@ export function AppShell() {
 
   const canSplitChat = !isMobile && chatPanesWide;
   const isSplitActive = Boolean(canSplitChat && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
+
+  // "Changes N" in the top bar: uncommitted files per shown session cwd, also with the file panel
+  // closed. Refreshed on the explorer's existing triggers (run end, writes, focus), never polled.
+  const [gitChangeCounts, setGitChangeCounts] = useState<Record<string, number>>({});
+  const gitChangeCwdKey = [...new Set([
+    selectedSession?.transient ? null : selectedSession?.cwd,
+    ...(isSplitActive ? [primaryTab, secondaryTab] : []).map((tab) => tab?.kind === "session" && !tab.session?.transient ? tab.session?.cwd : null),
+  ].filter((cwd): cwd is string => Boolean(cwd)))].join("\n");
+  useEffect(() => {
+    if (!gitChangeCwdKey) return;
+    const controller = new AbortController();
+    for (const cwd of gitChangeCwdKey.split("\n")) {
+      fetch(`/api/git/status?${new URLSearchParams({ cwd })}`, { signal: controller.signal, cache: "no-store" })
+        .then((response) => response.ok ? response.json() as Promise<GitStatusResponse> : null)
+        .then((status) => {
+          const count = status?.isGitRepository ? status.files.length : 0;
+          setGitChangeCounts((current) => current[cwd] === count ? current : { ...current, [cwd]: count });
+        })
+        .catch(() => {});
+    }
+    return () => controller.abort();
+  }, [gitChangeCwdKey, explorerRefreshKey]);
   isSplitActiveRef.current = isSplitActive;
   canSplitChatRef.current = canSplitChat;
   const primaryPaneHasFocus = !isSplitActive || activeChatPane === "primary";
@@ -2300,8 +2324,13 @@ export function AppShell() {
     setPanelTabOrder(movePanelTab(panelTabs.map((tab) => tab.id), tabId, beforeId));
   }, [panelTabs]);
 
-  // One-shot request for the sidebar explorer to show `path` under `cwd`.
-  const [explorerReveal, setExplorerReveal] = useState<{ cwd: string; path: string; nonce: number } | null>(null);
+  // One-shot request for the sidebar explorer to show `path` under `cwd` (`changes`: open its changes list).
+  const [explorerReveal, setExplorerReveal] = useState<{ cwd: string; path: string; nonce: number; changes?: boolean } | null>(null);
+  const handleRevealCwdInFiles = useCallback((cwd: string, changes = false) => {
+    setExplorerReveal((previous) => ({ cwd, path: cwd, nonce: (previous?.nonce ?? 0) + 1, changes }));
+    desktopSidebarOpenRef.current = true;
+    setSidebarOpen(true);
+  }, []);
   const handleRevealInExplorer = useCallback((tab: Tab) => {
     if (!tab.cwd) return;
     const cwd = tab.cwd;
@@ -3083,6 +3112,22 @@ export function AppShell() {
       </button>
   );
 
+  const renderTopBarContext = (session: SessionInfo | null | undefined) => {
+    if (!showChat || !session || session.transient) return null;
+    const projectRoot = session.projectRoot ?? session.cwd;
+    return (
+      <SessionContextButton
+        project={projectNameByRoot.get(projectRoot) ?? getFileName(projectRoot)}
+        branch={session.branch}
+        isWorktree={session.isWorktree}
+        cwd={session.cwd}
+        onOpenTerminal={() => handleOpenTerminal(session.cwd)}
+        onRevealInFiles={() => handleRevealCwdInFiles(session.cwd)}
+        onCopyPath={() => { void copyText(session.cwd).catch(() => {}); }}
+      />
+    );
+  };
+
   const renderDesktopHeaderActions = (options?: { inert?: boolean; session?: SessionInfo | null }) => (
     <div
       data-desktop-header-actions="true"
@@ -3097,6 +3142,12 @@ export function AppShell() {
         pointerEvents: options?.inert ? "none" : undefined,
       }}
     >
+      {showChat && (() => {
+        const session = options?.session === undefined ? selectedSession : options.session;
+        return session && !session.transient
+          ? <ChangesButton count={gitChangeCounts[session.cwd] ?? 0} onClick={() => handleRevealCwdInFiles(session.cwd, true)} />
+          : null;
+      })()}
       {renderProjectTrustWarning(false, !options?.inert)}
       {renderChatToolbarActions(false, { sessionTools: showChat, interactive: !options?.inert, session: options?.session })}
     </div>
@@ -3258,6 +3309,7 @@ export function AppShell() {
                     unifiedHeader={true}
                   />
                 </div>
+                {renderTopBarContext(primaryTab?.kind === "session" ? primaryTab.session : null)}
                 <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}>
                   {renderDesktopHeaderActions({
                     inert: activeChatPane !== "primary",
@@ -3292,6 +3344,7 @@ export function AppShell() {
                     unifiedHeader={true}
                   />
                 </div>
+                {renderTopBarContext(secondaryTab?.kind === "session" ? secondaryTab.session : null)}
                 <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}>
                   {renderDesktopHeaderActions({
                     inert: activeChatPane !== "secondary",
@@ -3327,6 +3380,7 @@ export function AppShell() {
                 </div>
               )}
               {renderCollapsedSessionTitle()}
+              {renderTopBarContext(selectedSession)}
               {renderDesktopHeaderActions()}
             </>
           ))}

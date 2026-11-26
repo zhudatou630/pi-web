@@ -526,7 +526,7 @@ test("keeps rare session controls in one always-available menu", () => {
   assert.doesNotMatch(source, /title=\{t\("chat.collapseControls"\)\}/);
 });
 
-test("hints composer syntax only in the main input, independent of run state", () => {
+test("hints composer syntax only in the main input; a streaming run hints that Enter interjects", () => {
   for (const compact of [false, true]) {
     for (const isStreaming of [false, true]) {
       const html = renderToStaticMarkup(React.createElement(
@@ -540,6 +540,7 @@ test("hints composer syntax only in the main input, independent of run state", (
       assert.ok(textarea);
       // The side chat asks a question; the @ / ! syntax hint belongs to the main input.
       if (compact) assert.match(textarea, /placeholder="Ask about the selection…"/);
+      else if (isStreaming) assert.match(textarea, /placeholder="Running: what you send joins this turn"/);
       else assert.match(textarea, /placeholder="@ for files\u2009·\u2009\/ for commands and skills\u2009·\u2009! for shell"/);
       assert.match(textarea, /aria-label="[^"]+"/);
     }

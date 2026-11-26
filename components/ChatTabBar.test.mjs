@@ -97,17 +97,18 @@ test("renders tab items with titles and running indicator", () => {
   assert.equal(renderedTabs.length, 3);
   assert.match(renderedTabs[0], /Task 1/);
   assert.match(renderedTabs[1], /Task 2/);
-  assert.match(renderedTabs[1], /Running/);
+  assert.match(renderedTabs[1], /class="session-status-dot" data-status="running"/);
   assert.match(renderedTabs[2], /新会话/);
 });
 
-test("mirrors sidebar markers: awaiting input beats running, unread shows once finished", () => {
-  const tabs = ["s1", "s2", "s3"].map((id) => ({ id, kind: "session", title: id, session: { id }, newSessionCwd: null, newSessionDraftKey: null }));
-  const renderedTabs = tabNodes(render(tabs, "s1", null, { unread: new Set(["s3"]), awaitingInput: new Set(["s2"]) }));
-  assert.doesNotMatch(renderedTabs[0], /aria-label="(Running|Awaiting input|New session activity)"/);
-  assert.match(renderedTabs[1], /Awaiting input/);
-  assert.doesNotMatch(renderedTabs[1], /Running/);
-  assert.match(renderedTabs[2], /New session activity/);
+test("mirrors the sidebar's dot: awaiting beats running, then error, then unread", () => {
+  const tabs = ["s1", "s2", "s3", "s4"].map((id) => ({ id, kind: "session", title: id, session: { id }, newSessionCwd: null, newSessionDraftKey: null }));
+  const renderedTabs = tabNodes(render(tabs, "s1", null, { unread: new Set(["s3", "s4"]), awaitingInput: new Set(["s2"]), error: new Set(["s4"]) }));
+  const dot = (html) => html.match(/class="session-status-dot" data-status="(\w+)"/)?.[1];
+  assert.equal(dot(renderedTabs[0]), undefined);
+  assert.equal(dot(renderedTabs[1]), "awaiting");
+  assert.equal(dot(renderedTabs[2]), "unread");
+  assert.equal(dot(renderedTabs[3]), "error");
 });
 
 test("marks selected tab and split tab appropriately", () => {

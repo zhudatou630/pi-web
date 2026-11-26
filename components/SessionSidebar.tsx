@@ -21,12 +21,12 @@ import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import { interpolateMessage } from "@/lib/i18n/format";
 import { enLocale } from "@/lib/i18n/messages/en";
 import { useI18n } from "@/hooks/useI18n";
-import { AwaitingSessionIndicator, UnreadSessionIndicator } from "./SessionStateBadge";
+import { SessionStatusDot, SessionStatusWord } from "./SessionStateBadge";
+import { sessionStatus, unseenErrorSessionIds } from "@/lib/session-status";
 import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 import { SessionSearch } from "./SessionSearch";
-import { LivePulseBeacon } from "./LivePulseBeacon";
 import { SubagentIcon } from "./SubagentIcon";
 import { iconStroke } from "./iconStroke";
 import { MenuCheck } from "./MenuCheck";
@@ -208,7 +208,7 @@ interface Props {
   onBackgroundTaskDone?: (completedSessionIds: string[], since: number) => void;
   onRunningSessionIdsChange?: (ids: Set<string>) => void;
   /** Unread and awaiting-input markers, mirrored onto the chat tabs. */
-  onSessionMarkersChange?: (markers: { unread: Set<string>; awaitingInput: Set<string> }) => void;
+  onSessionMarkersChange?: (markers: { unread: Set<string>; awaitingInput: Set<string>; error: Set<string> }) => void;
   onSessionsChange?: (sessions: SessionInfo[]) => void;
   /** Display names keyed by project root, for the pickers outside the sidebar. */
   onProjectPathsChange?: (paths: string[]) => void;
@@ -225,7 +225,8 @@ interface Props {
     worktrees: { path: string; branch: string | null; isMain: boolean }[];
   } | null) => void;
   /** File tab "Reveal in explorer": switch to `cwd` and show `path` in the tree. */
-  explorerReveal?: { cwd: string; path: string; nonce: number } | null;
+  /** `changes`: open the explorer on its changes list (the top bar's "Changes N"). */
+  explorerReveal?: { cwd: string; path: string; nonce: number; changes?: boolean } | null;
 }
 
 interface WorktreeEntry {
@@ -451,7 +452,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     setSelectedCwd(explorerReveal.cwd);
     setExplorerOpen(true);
     saveExplorerOpen(true);
-    setChangesCollapsed(true);
+    setChangesCollapsed(!explorerReveal.changes);
     setFileSearchOpen(false);
   }, [explorerReveal]);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
@@ -473,6 +474,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     };
   }, []);
   const [awaitingInputSessionIds, setAwaitingInputSessionIds] = useState<Set<string>>(() => new Set());
+  /** Session id -> the question a waiting run asks (`/api/agent/running`). */
+  const [awaitingInputReasons, setAwaitingInputReasons] = useState<Record<string, string>>({});
+  /** The shared readAt (`lib/sidebar-state.ts`) as state: it clears error marks like unread ones. */
+  const [sharedReadAt, setSharedReadAt] = useState<Record<string, number>>({});
   /** Session id -> next scheduled cache refresh (`/api/agent/running`). */
   const [cacheKeepaliveSessions, setCacheKeepaliveSessions] = useState<Map<string, number>>(() => new Map());
   const cacheKeepaliveSessionIds = useMemo(() => new Set(cacheKeepaliveSessions.keys()), [cacheKeepaliveSessions]);
@@ -862,6 +867,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           runningSessionIds?: string[];
           subagentsActiveSessionIds?: string[];
           awaitingInputSessionIds?: string[];
+          awaitingInputReasons?: Record<string, string>;
           cacheKeepaliveSessions?: Record<string, number>;
           routineProjects?: Record<string, string[]>;
           completionNotificationSuppressedSessionIds?: string[];
@@ -874,6 +880,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         }
         readSnapshotRef.current = { serverNow: data.serverNow, receivedAt: performance.now(), readAtVersion: data.readAtVersion, readAt, completedAt: data.completedAt ?? {}, pendingIds: new Set([...(data.runningSessionIds ?? []), ...(data.subagentsActiveSessionIds ?? [])]) };
         setUnreadMarks((marks) => withoutReadMarks(marks, readAt));
+        if (data.readAt) setSharedReadAt(data.readAt);
         runningPollAuthoritativeRef.current = true;
         currentSuppressedCompletionSessionIdsRef.current = new Set(
           data.completionNotificationSuppressedSessionIds ?? [],
@@ -882,6 +889,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         runningObservedAtRef.current = Date.now();
         setRunningSessionIds((current) => sameIdSet(current, data.runningSessionIds));
         setAwaitingInputSessionIds((current) => sameIdSet(current, data.awaitingInputSessionIds));
+        setAwaitingInputReasons((current) => JSON.stringify(current) === JSON.stringify(data.awaitingInputReasons ?? {}) ? current : data.awaitingInputReasons ?? {});
         setCacheKeepaliveSessions((current) => sameTimes(current, data.cacheKeepaliveSessions));
         setRoutineProjects((current) => JSON.stringify(current) === JSON.stringify(data.routineProjects ?? {}) ? current : data.routineProjects ?? {});
         if (data.sessionListVersion !== sessionListVersionRef.current) {
@@ -918,12 +926,19 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     onRunningSessionIdsChange?.(runningSessionIds);
   }, [onRunningSessionIdsChange, runningSessionIds]);
 
-  useEffect(() => {
-    onSessionMarkersChange?.({ unread: unreadSessionIds, awaitingInput: awaitingInputSessionIds });
-  }, [onSessionMarkersChange, unreadSessionIds, awaitingInputSessionIds]);
-
   // Joined so the effects below see a stable dependency across renders.
   const visibleSessionKey = visibleReadIdsRef.current.join("\n");
+
+  // A main session whose subagents still run is active too: same dot as running.
+  const activeSessionIds = useMemo(() => new Set([...runningSessionIds, ...subagentsActiveSessionIds]), [runningSessionIds, subagentsActiveSessionIds]);
+  const erroredSessionIds = useMemo(
+    () => unseenErrorSessionIds(allSessions, sharedReadAt, activeSessionIds, new Set(visibleSessionKey.split("\n"))),
+    [allSessions, sharedReadAt, activeSessionIds, visibleSessionKey],
+  );
+
+  useEffect(() => {
+    onSessionMarkersChange?.({ unread: unreadSessionIds, awaitingInput: awaitingInputSessionIds, error: erroredSessionIds });
+  }, [onSessionMarkersChange, unreadSessionIds, awaitingInputSessionIds, erroredSessionIds]);
 
   useEffect(() => {
     if (sessionListVersion !== null) onSessionsChange?.(allSessions);
@@ -1437,7 +1452,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   }, [archiveView, archivedCount]);
   const archiveOlderFamilies = (projectKey: string) => familiesToArchive({
     families: allFamilies, projectKey, archived: archivedSessionIds,
-    pinnedIds: new Set(pinnedSessionIds), runningIds: runningSessionIds, unreadIds: unreadSessionIds,
+    pinnedIds: new Set(pinnedSessionIds), runningIds: activeSessionIds, unreadIds: new Set([...unreadSessionIds, ...erroredSessionIds]),
     selectedSessionId, visibleSessionIds: new Set(visibleSessionIds),
   });
 
@@ -1445,26 +1460,28 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // Scheduled routines join on the project rows only: they are standing setup, not activity to
   // surface from other projects or the pinned group.
   const projectActivity = useMemo(() => {
-    const activity = getProjectActivity(listedSessions.filter((session) => !archivedMemberIds.has(session.id)), runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds);
+    const activity = getProjectActivity(listedSessions.filter((session) => !archivedMemberIds.has(session.id)), activeSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, erroredSessionIds);
     for (const [key, routines] of Object.entries(routineProjects)) {
-      activity.set(key, { ...(activity.get(key) ?? { running: 0, awaiting: 0, unread: 0, keepalive: 0 }), routines });
+      activity.set(key, { ...(activity.get(key) ?? { running: 0, awaiting: 0, unread: 0, error: 0, keepalive: 0 }), routines });
     }
     return activity;
-  }, [listedSessions, archivedMemberIds, runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, routineProjects]);
+  }, [listedSessions, archivedMemberIds, activeSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, erroredSessionIds, routineProjects]);
 
   const otherProjectActivity = useMemo(() => {
     let running = 0;
     let awaiting = 0;
     let unread = 0;
+    let error = 0;
     let keepalive = 0;
     for (const [key, activity] of projectActivity) {
       if (key === selectedProject?.key) continue;
       running += activity.running;
       awaiting += activity.awaiting;
       unread += activity.unread;
+      error += activity.error;
       keepalive += activity.keepalive;
     }
-    return { running, awaiting, unread, keepalive };
+    return { running, awaiting, unread, error, keepalive };
   }, [projectActivity, selectedProject?.key]);
 
   const selectionProjectKey = selection?.archiveView === archiveView ? selection.projectKey : null;
@@ -1599,7 +1616,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         // The archive pages each project separately from the main list.
         const limitKey = archiveView ? `archive:${project.key}` : project.key;
         const limit = workspaceSessionLimits[limitKey] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
-        const forcedIds = new Set([...runningSessionIds, ...unreadSessionIds]);
+        const forcedIds = new Set([...activeSessionIds, ...unreadSessionIds, ...erroredSessionIds]);
         if (selectedSessionId) forcedIds.add(selectedSessionId);
         const { visible: visibleFamilies, revealed, nextShown } = previewSessionFamilies(
           families, selecting || singleProject ? Infinity : WORKSPACE_SESSION_PREVIEW_LIMIT,
@@ -1612,7 +1629,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       }
     }
     return rows;
-  }, [selectionProjectKey, allFamilies, archiveView, archivedOnlyProjectKeys, archivedSessionIds, expandedArchiveProjectKeys, defaultExpandedWorkspaceKeys, draggedProjectKey, expandedWorkspaceKeys, pinnedSessionIds, runningSessionIds, unreadSessionIds, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
+  }, [selectionProjectKey, allFamilies, archiveView, archivedOnlyProjectKeys, archivedSessionIds, expandedArchiveProjectKeys, defaultExpandedWorkspaceKeys, draggedProjectKey, expandedWorkspaceKeys, pinnedSessionIds, runningSessionIds, activeSessionIds, unreadSessionIds, erroredSessionIds, selectedProject, selectedSessionId, singleProject, workspaceProjects, workspaceSessionLimits]);
 
   useLayoutEffect(() => {
     if (!selectionProjectKey || !listScrollRef.current) return;
@@ -1704,13 +1721,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
 
   const pinnedActivity = useMemo(() => [...getProjectActivity(
     pinnedFamilies.flatMap((family) => [family.root, ...family.subagents]),
-    runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds,
+    activeSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, erroredSessionIds,
   ).values()].reduce((total, activity) => ({
     running: total.running + activity.running,
     awaiting: total.awaiting + activity.awaiting,
     unread: total.unread + activity.unread,
+    error: total.error + activity.error,
     keepalive: total.keepalive + activity.keepalive,
-  }), { running: 0, awaiting: 0, unread: 0, keepalive: 0 }), [pinnedFamilies, runningSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds]);
+  }), { running: 0, awaiting: 0, unread: 0, error: 0, keepalive: 0 }), [pinnedFamilies, activeSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, erroredSessionIds]);
 
   const virtualIndices = getSessionListIndices(
     workspaceRows.length,
@@ -2020,9 +2038,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           session={displaySession}
           indent={14}
           isSelected={familySessions.some((session) => session.id === selectedSessionId)}
-          isRunning={familySessions.some((session) => runningSessionIds.has(session.id))}
+          isRunning={familySessions.some((session) => activeSessionIds.has(session.id))}
           isAwaiting={familySessions.some((session) => awaitingInputSessionIds.has(session.id))}
           isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
+          isError={erroredSessionIds.has(family.root.id)}
+          statusReason={familySessions.map((session) => awaitingInputReasons[session.id]).find(Boolean) ?? family.root.lastError?.message}
           cacheKeepaliveNextAt={familySessions.reduce<number | null>((next, session) => {
             const at = cacheKeepaliveSessions.get(session.id);
             return at === undefined || (next !== null && next <= at) ? next : at;
@@ -2039,9 +2059,14 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
           onToggleRead={() => {
-            const read = familySessions.some((session) => unreadMarks.has(session.id));
+            const read = familySessions.some((session) => unreadMarks.has(session.id)) || erroredSessionIds.has(family.root.id);
             if (read) manualReadIdsRef.current.set(family.root.id, readSnapshotRef.current.serverNow);
             else manualReadIdsRef.current.delete(family.root.id);
+            // The error mark has no local copy: hide it now, the next poll writes the shared read.
+            if (read && erroredSessionIds.has(family.root.id)) {
+              const { serverNow, receivedAt } = readSnapshotRef.current;
+              setSharedReadAt((current) => ({ ...current, [family.root.id]: serverNow + Math.max(0, performance.now() - receivedAt) }));
+            }
             setUnreadMarks((current) => {
               const ids = markSessionFamilyRead(family, new Set(current.keys()), read);
               const { serverNow, receivedAt, readAt } = readSnapshotRef.current;
@@ -2219,11 +2244,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             </ToolbarIconButton>
           )}
           <div style={{ display: "flex", alignItems: "center" }}>
-            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0 || otherProjectActivity.keepalive > 0) && (
+            {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0 || otherProjectActivity.error > 0 || otherProjectActivity.keepalive > 0) && (
               <span
                 role="status"
                 title={t("sidebar.otherProjectActivity")}
-                aria-label={`${t("sidebar.otherProjectActivity")} (${otherProjectActivity.running + otherProjectActivity.awaiting + otherProjectActivity.unread})`}
+                aria-label={`${t("sidebar.otherProjectActivity")} (${otherProjectActivity.running + otherProjectActivity.awaiting + otherProjectActivity.unread + otherProjectActivity.error})`}
                 style={{ display: "inline-flex", alignItems: "center" }}
               >
                 <SessionActivitySummary activity={otherProjectActivity} />
@@ -2543,7 +2568,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                     >
                       <ProjectFolderIcon open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{projectNames.get(row.project.key) ?? getFileName(row.project.root)}</span>
-                      <SessionActivitySummary activity={activity} />
+                      <SessionActivitySummary activity={activity} showStatus={!singleProject && !expanded} />
                     </button>
                     )}
                     {active ? worktreeSwitcher : null}
@@ -2822,28 +2847,14 @@ function ProjectNameInput({ open, initial, onCommit, onCancel }: {
   );
 }
 
-// Each state is its row glyph (same meaning at every level); a count only from 2, so "1 1" never appears.
-export function SessionActivitySummary({ activity }: { activity?: ProjectActivity }) {
+// A folded group shows only its most urgent state, as the rows' dot: no counts, no second glyph.
+export function SessionActivitySummary({ activity, showStatus = true }: { activity?: ProjectActivity; showStatus?: boolean }) {
   const { t } = useI18n();
   if (!activity) return null;
-  const count = (n: number) => n > 1 ? n : null;
+  const status = showStatus ? sessionStatus({ awaiting: activity.awaiting > 0, error: activity.error > 0, unread: activity.unread > 0, running: activity.running > 0 }) : null;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, fontVariantNumeric: "tabular-nums", fontFamily: "var(--font-ui)" }}>
-      {activity.awaiting > 0 && (
-        <span role="status" aria-label={`${t("sidebar.awaitingInput")} (${activity.awaiting})`} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "var(--warning)" }}>
-          <AwaitingSessionIndicator />{count(activity.awaiting)}
-        </span>
-      )}
-      {activity.running > 0 && (
-        <span role="status" aria-label={`${t("sidebar.agentRunning")} (${activity.running})`} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-          <LivePulseBeacon size={11} />{count(activity.running)}
-        </span>
-      )}
-      {activity.unread > 0 && (
-        <span role="status" aria-label={`${t("sidebar.newSessionActivity")} (${activity.unread})`} style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "var(--success)" }}>
-          <UnreadSessionIndicator />{count(activity.unread)}
-        </span>
-      )}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: 4, fontFamily: "var(--font-ui)" }}>
+      {status && <SessionStatusDot status={status} />}
       {activity.keepalive > 0 && (
         // Presence only, like every glyph here at a count of 1.
         <span role="img" title={t("sidebar.cacheKeepalive")} aria-label={t("sidebar.cacheKeepalive")} style={{ display: "inline-flex", alignItems: "center", color: "var(--text-dim)" }}>
@@ -2867,17 +2878,6 @@ function RoutineClockIcon({ size = 12 }: { size?: number }) {
   );
 }
 
-function RunningSessionIndicator() {
-  const { t } = useI18n();
-  return (
-    <LivePulseBeacon
-      size={14}
-      title={t("sidebar.agentRunning")}
-      ariaLabel={t("sidebar.agentRunning")}
-    />
-  );
-}
-
 export function SessionItem({
   selection,
   session,
@@ -2885,6 +2885,8 @@ export function SessionItem({
   isRunning,
   isAwaiting = false,
   isUnread,
+  isError = false,
+  statusReason,
   cacheKeepaliveNextAt = null,
   menuAt = null,
   onOpenMenu,
@@ -2913,9 +2915,13 @@ export function SessionItem({
   session: SessionInfo;
   isSelected: boolean;
   isRunning?: boolean;
-  /** Running and parked on an extension dialog: the slot shows the dot instead of the beacon. */
+  /** Running and parked on an extension dialog: the waiting dot and word instead of the running dot. */
   isAwaiting?: boolean;
   isUnread?: boolean;
+  /** The last run failed and nobody has looked since (lib/session-status.ts). */
+  isError?: boolean;
+  /** What a waiting row asks, or why an errored one failed: the row's title and the menu header. */
+  statusReason?: string;
   /** Next scheduled prompt-cache refresh while keepalive is spending; null when none. */
   cacheKeepaliveNextAt?: number | null;
   /** Open context-menu position; the sidebar owns which row's menu is open. */
@@ -3050,6 +3056,10 @@ export function SessionItem({
   }, [onOpenMenu, onRenamed, session.cwd, session.id, session.name, session.path, session.transient]);
 
   const menuItem = (action: () => void) => () => { onCloseMenu?.(); action(); };
+  const status = sessionStatus({ awaiting: isAwaiting, error: isError, unread: isUnread, running: isRunning });
+  const needsYou = status === "awaiting" || status === "error" ? status : null;
+  const reasonLine = needsYou && statusReason
+    ? t(needsYou === "awaiting" ? "sidebar.awaitingReason" : "sidebar.errorReason", { reason: statusReason }) : null;
 
   // Fixed-height outer wrapper — content swaps in place so the list never reflows
   return (
@@ -3140,31 +3150,11 @@ export function SessionItem({
                 onClick={(event) => { event.stopPropagation(); if (!selection.disabled) selection.onToggle(event.shiftKey); }} />
             </span>
           )}
-          {/* Pin toggle sits in the row's left indent so titles never shift */}
-          {!selection && onTogglePin && !session.transient && (
-            <button
-              type="button"
-              className={`session-row-pin${isPinned ? " is-pinned" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePin();
-              }}
-              onDoubleClick={(e) => e.stopPropagation()}
-              title={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
-              aria-label={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
-              aria-pressed={isPinned}
-              style={{
-                position: "absolute", left: indent + depth * 14 - 10, top: (SESSION_LIST_ITEM_HEIGHT - 20) / 2,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 20, height: 20, padding: 0,
-                border: "none", borderRadius: 4, cursor: "pointer",
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="12" y1="17" x2="12" y2="22" />
-                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
-              </svg>
-            </button>
+          {/* The state dot sits in the row's left indent so titles never shift. */}
+          {!selection && status && (
+            <span className="session-row-status" style={{ left: indent + depth * 14 - 10, top: (SESSION_LIST_ITEM_HEIGHT - 16) / 2 }}>
+              <SessionStatusDot status={status} />
+            </span>
           )}
           {/* Subagent indicator for child sessions */}
           {depth > 0 && (
@@ -3196,7 +3186,7 @@ export function SessionItem({
                 lineHeight: 1.4,
                 color: isSelected || hovered ? "var(--text)" : "var(--text-muted)",
               }}
-              title={(session.name || displayFirstMessage || session.id) + (projectHint ? `\n${projectHint}` : "")}
+              title={(session.name || displayFirstMessage || session.id) + (reasonLine ? `\n${reasonLine}` : "") + (projectHint ? `\n${projectHint}` : "")}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {title}
@@ -3246,7 +3236,7 @@ export function SessionItem({
           )}
 
           <div className="session-row-meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
-            {isAwaiting ? <AwaitingSessionIndicator /> : isRunning ? <RunningSessionIndicator /> : isUnread ? <UnreadSessionIndicator /> : (
+            {needsYou ? <SessionStatusWord status={needsYou} /> : (
               <span title={session.modified}>{formatCompactRelativeTime(session.modified, locale)}</span>
             )}
           </div>
@@ -3254,6 +3244,30 @@ export function SessionItem({
           {/* Action buttons — shown on hover or keyboard focus */}
           {!selection && !session.transient && (
             <div className="session-row-actions" style={{ display: "flex", alignItems: "center", gap: 2, position: "absolute", right: 4, top: 0, height: "100%", background: isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "var(--bg-panel)", paddingLeft: 4, borderRadius: 4 }}>
+              {onTogglePin && (
+                <button
+                  type="button"
+                  className="session-row-pin"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTogglePin();
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  title={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
+                  aria-label={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
+                  aria-pressed={isPinned}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 20, height: 20, padding: 0,
+                    border: "none", borderRadius: 4, cursor: "pointer", flexShrink: 0,
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <line x1="12" y1="17" x2="12" y2="22" />
+                    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                  </svg>
+                </button>
+              )}
               {onOpenInNewTab && (
                 <button
                   type="button"
@@ -3292,6 +3306,14 @@ export function SessionItem({
           top: Math.min(menuAt.y + 2, window.innerHeight - 240),
         }}
       >
+        {reasonLine && (
+          <>
+            <div className="menu-surface-head">
+              <SessionStatusWord status={needsYou!} /> · {statusReason}
+            </div>
+            <div role="separator" className="menu-surface-divider" />
+          </>
+        )}
         {onOpenInNewTab && (
           <button type="button" role="menuitem" onClick={menuItem(onOpenInNewTab)}>
             {t("chatTabs.openInNewTab")}
@@ -3313,7 +3335,7 @@ export function SessionItem({
         )}
         {onToggleRead && (
           <button type="button" role="menuitem" onClick={menuItem(onToggleRead)}>
-            {t(isUnread ? "sidebar.markRead" : "sidebar.markUnread")}
+            {t(isUnread || isError ? "sidebar.markRead" : "sidebar.markUnread")}
           </button>
         )}
         <div role="separator" className="menu-surface-divider" />
