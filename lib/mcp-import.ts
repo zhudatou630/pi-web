@@ -97,21 +97,36 @@ function programName(word = ""): string {
   return word.split(/[\\/]/).pop()!.replace(/\.(?:exe|cmd)$/i, "");
 }
 
+const withoutVersion = (pkg: string) => pkg.replace(/(?!^)@[^/]*$/, "");
+const agentCliName = (word: string) => cliPackages.get(withoutVersion(word)) ?? (agentClis.has(word) ? word : undefined);
+
 /** The program a package runner (`npx`, `npm exec`, `pnpm dlx`, …) starts, and where its arguments begin. */
 function runProgram(program: string[]): { cli: string; index: number } {
-  let cli = programName(program[0]);
+  const cli = programName(program[0]);
+  if (["npm", "pnpm", "yarn"].includes(cli)) {
+    // Their options take values in many forms: any word naming an agent CLI or its package is the program.
+    for (let index = 1; index < program.length; index++) {
+      const agent = agentCliName(program[index]);
+      if (agent) return { cli: agent, index: index + 1 };
+    }
+    return { cli, index: 1 };
+  }
+  if (!["npx", "bunx", "pnpx"].includes(cli)) return { cli, index: 1 };
+  // Options, including `--`, come before the package.
   let index = 1;
-  if ((cli === "npm" && program[1] === "exec") || (cli === "pnpm" && ["exec", "dlx"].includes(program[1])) || (cli === "yarn" && program[1] === "dlx")) {
-    cli = "npx";
-    index = 2;
-  }
-  if (["npx", "bunx", "pnpx"].includes(cli)) {
-    // Options, including `--`, come before the package.
-    while (program[index]?.startsWith("-")) index += ["-p", "--package"].includes(program[index]) ? 2 : 1;
-    const pkg = (program[index++] ?? "").replace(/(?!^)@[^/]*$/, "");
-    cli = cliPackages.get(pkg) ?? programName(pkg);
-  }
-  return { cli, index };
+  while (program[index]?.startsWith("-")) index += ["-p", "--package"].includes(program[index]) ? 2 : 1;
+  const pkg = withoutVersion(program[index++] ?? "");
+  return { cli: cliPackages.get(pkg) ?? programName(pkg), index };
+}
+
+/** Save tests a pasted server by running it: an agent CLI line (logout, mcp remove, updates, …) must not get there. */
+function refuseAgentCli(program: string[]): void {
+  const { cli, index } = runProgram(program);
+  const sub = program[index], action = program[index + 1];
+  if (!agentClis.has(cli) || (cli === "claude" && sub === "mcp" && action === "serve") || (cli === "codex" && sub === "mcp-server")) return;
+  throw new Error(sub === "mcp" && action === "add" && cli !== "pi" && cli !== "claude"
+    ? `Importing \`${cli} mcp add\` is not supported. Paste the server's command or JSON configuration instead.`
+    : `This ${cli} command is not an MCP server command.`);
 }
 
 async function piEntries(args: string[], deps: Partial<ImportDeps>): Promise<Entry[]> {
@@ -218,15 +233,16 @@ export async function parseMcpPaste(text: string, deps: Partial<ImportDeps> = {}
       if (!command) throw new Error("A command is required after environment assignments.");
       const { cli, index } = runProgram(program);
       const sub = program[index], action = program[index + 1];
-      // The prefix configures the CLI process, not the server being added.
-      if (cli === "pi" && sub === "mcp" && action === "add") entries = await piEntries(program.slice(index + 2), deps);
-      else if (cli === "claude" && sub === "mcp" && action === "add") entries = [claudeEntry(program.slice(index + 2), notes)];
-      // Any other agent CLI line (logout, mcp remove, package updates, …) would run as Test: only their own MCP servers pass.
-      else if (agentClis.has(cli) && !(cli === "claude" && sub === "mcp" && action === "serve") && !(cli === "codex" && sub === "mcp-server")) {
-        throw new Error(sub === "mcp" && action === "add"
-          ? `Importing \`${cli} mcp add\` is not supported. Paste the server's command or JSON configuration instead.`
-          : `This ${cli} command is not an MCP server command.`);
+      if ((cli === "pi" || cli === "claude") && sub === "mcp" && action === "add") {
+        // The prefix configures the CLI process, not the server being added.
+        entries = cli === "pi" ? await piEntries(program.slice(index + 2), deps) : [claudeEntry(program.slice(index + 2), notes)];
+        for (const [, config] of entries) {
+          if (isRecord(config) && typeof config.command === "string") {
+            refuseAgentCli([config.command, ...(Array.isArray(config.args) ? config.args.map(String) : [])]);
+          }
+        }
       } else {
+        refuseAgentCli(program);
         entries = [[commandName(command, args), { command, args, ...(env.length ? { env: Object.fromEntries(env) } : {}) }]];
       }
     }
