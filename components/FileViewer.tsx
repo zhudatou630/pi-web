@@ -111,7 +111,7 @@ const HTML_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const LOAD_ALL_CONFIRM_BYTES = 16 * 1024 * 1024;
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
 // The viewer's own width, not the window's: a desktop panel can be as narrow as a phone.
-const DIFF_SPLIT_MIN_WIDTH = 520;
+const DIFF_SPLIT_MIN_WIDTH = 760;
 const WATCH_CHANGE_DEBOUNCE_MS = 150;
 const FIND_SHORTCUT_LABEL = "Ctrl/⌘ F";
 const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;

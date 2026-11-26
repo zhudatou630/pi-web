@@ -18,7 +18,7 @@ Media/document URLs use page-wide monotonically increasing versions on reopen an
 
 ## Diff rendering
 
-Git diffs use paired old/new columns when the viewer content is at least 520 px wide. Both columns wrap; narrower panels use the unified view and its normal wrap preference.
+Git diffs use paired old/new columns when the viewer content is at least 760 px wide (about 50 code columns a side; the default side panel stays unified). Both columns wrap; narrower panels use the unified view and its normal wrap preference.
 
 Added, removed and context text reuse Source's Prism pipeline and both palettes. Language detection lives in `lib/file-types.ts` and is shared with the read route, so deleted files highlight without fetching missing content. Memoized inline line components reset theme pre/code geometry so gutters, row backgrounds and wrapping stay unchanged; Git mode/rename metadata stays plain. Diffs exceeding 1,000 rows or the 128 KiB UTF-8 highlighting budget fall back to plain text.
 
