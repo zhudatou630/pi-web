@@ -1894,7 +1894,9 @@ function TextFileViewer({
     if (!reveal || !data || loading || !contentRef.current) return;
     if ("start" in reveal && !isDeletedDiff) {
       if (displayMode !== "source") {
-        updateDisplayMode("source");
+        // A target still waiting past the bounded read gives way when the reader picks another mode.
+        if (attemptedLineLoad.current === reveal) onRevealed?.();
+        else updateDisplayMode("source");
         return;
       }
       if (loadingMore) return;
@@ -1954,6 +1956,8 @@ function TextFileViewer({
         revealHighlightTimerRef.current = window.setTimeout(() => CSS.highlights.delete("quote-source"), 2000);
       }
     }
+    // Past the bounded read: keep the target, so Load more or Load all still lands on it.
+    if (!ranges.length && "start" in reveal && data.truncated) return;
     onRevealed?.();
   }, [data, displayMode, effectiveDisplayMode, filePath, hasPreview, highlightedSource, isDeletedDiff, isMarkdown, lightweightSourceLines, loading, loadingMore, markdownPreview, onRevealed, readContent, reveal, sourceLines.length, updateDisplayMode]);
 
