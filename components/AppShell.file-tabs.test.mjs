@@ -42,11 +42,16 @@ test("an open file docks the project tree, a diff the changes list; one instance
   // The same FilesView / ChangesView element moves between full size and the dock (no remount).
   assert.equal(source.match(/<FilesView\b/g)?.length, 1);
   assert.equal(source.match(/<ChangesView\b/g)?.length, 1);
-  assert.match(source, /hidden=\{!\(\(showPanelView && panelView === "files"\) \|\| panelDock === "files"\)\}\s*style=\{panelDock === "files" \? panelDockStyle/);
+  assert.match(source, /hidden=\{!\(\(showPanelView && panelView === "files"\) \|\| panelDock === "files"\)\}\s*className="panel-view-host"\s*style=\{panelDock === "files" \? panelDockStyle/);
   assert.match(source, /activePath=\{panelDock === "changes" \? activeFileTab\?\.filePath : undefined\}/);
   assert.match(source, /activePath=\{panelDock === "files" \? activeFileTab\?\.filePath : undefined\}/);
   assert.match(explorer, /const isRevealed = revealed\?\.path === node\.fullPath \|\| activePath === node\.fullPath;/);
   assert.match(source, /window\.localStorage\.setItem\(PANEL_DOCK_KEY, String\(next\)\)/);
+  // The control sits on the column: a title row (name + collapse) while docked, a labeled strip on
+  // the panel's right edge while collapsed; no header toggle.
+  assert.equal(source.match(/\{panelDock === "(files|changes)" && renderPanelDockHead\(\)\}/g)?.length, 2);
+  assert.match(source, /\{panelDockStrip && \(\s*<button\s*type="button"\s*className="panel-dock-strip"\s*onClick=\{togglePanelDock\}/);
+  assert.doesNotMatch(source, /panel-dock-toggle/);
   // A narrow panel widens by the dock when it is shown and gives the width back when hidden.
   assert.match(source, /if \(next && width < PANEL_DOCK_MIN_WIDTH\) \{\s*panelDockWidenedFromRef\.current = width;\s*setRightPanelWidth\(width \+ PANEL_DOCK_WIDTH\);/);
   assert.match(source, /else if \(!next && panelDockWidenedFromRef\.current !== null\) \{\s*setRightPanelWidth\(panelDockWidenedFromRef\.current\);/);

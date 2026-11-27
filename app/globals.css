@@ -708,6 +708,62 @@ html.dark {
   min-width: 0;
   margin-right: 4px;
 }
+/* The Changes / Files view host: full size as a view, or the docked column beside a file with a
+   title row (name + collapse) on top. */
+.panel-view-host {
+  display: flex;
+  flex-direction: column;
+}
+.panel-view-host[hidden] {
+  display: none;
+}
+.panel-view-host-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.panel-dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  height: var(--ui-row-height);
+  margin-top: 4px;
+  padding: 0 4px 0 10px;
+}
+.panel-dock-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+/* The collapsed column: a narrow strip on the panel's right edge, its name written down it. */
+.panel-dock-strip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 0;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.panel-dock-strip:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.panel-dock-strip > span {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.1em;
+}
 /* Docked beside a file (220px) the search row cannot hold the field and every action: actions
    (worktree left, icons right) take the first line, search the second. */
 .panel-view {
@@ -831,19 +887,12 @@ button.turn-files-head:hover {
 .workspace-header-action[aria-pressed="true"] {
   box-shadow: inset 0 2px 0 var(--accent);
 }
-/* The file panel header's icon buttons rest muted and hover to text (docs/ui.md, icons). The dock
-   toggle is a view toggle, not a panel trigger: on is the icon at full text strength, no accent line. */
-.panel-dock-toggle,
+/* The file panel header's maximize button rests muted and hovers to text (docs/ui.md, icons). */
 .right-panel-maximize {
   color: var(--text-muted);
   transition: color var(--motion-fast);
 }
-.panel-dock-toggle:hover,
 .right-panel-maximize:hover {
-  color: var(--text);
-}
-.workspace-header-action.panel-dock-toggle[aria-pressed="true"] {
-  box-shadow: none;
   color: var(--text);
 }
 

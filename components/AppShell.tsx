@@ -149,6 +149,7 @@ type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktre
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
 const PANEL_DOCK_KEY = "pi-web:panel-dock";
 const PANEL_DOCK_WIDTH = 220;
+const PANEL_DOCK_STRIP_WIDTH = 20;
 /** Below this panel width the docked list starts hidden (the viewer would get too narrow). */
 const PANEL_DOCK_MIN_WIDTH = 600;
 // A right/middle press (or ctrl-click) on a tab strip acts on that tab (context menu, close);
@@ -2798,7 +2799,8 @@ export function AppShell() {
   // Beside an open file the panel docks the project tree on its right, beside a diff the changes
   // list (docs/ui.md, File panel). Narrow panels start without it; the header toggle is remembered.
   const panelDockOpen = panelDockPref ?? rightPanelResizer.width >= PANEL_DOCK_MIN_WIDTH;
-  const activeTabIsDiff = (activeFileTab?.viewerState?.displayMode ?? activeFileTab?.initialDisplayMode) === "diff";
+  // How the tab was opened, not its current Source/Diff mode: the column never swaps mid-tab.
+  const activeTabIsDiff = activeFileTab?.initialDisplayMode === "diff";
   const panelDockAvailable = !isMobile && Boolean(panelCwd && activeFileTab?.filePath);
   const panelDock: PanelView | null = panelDockAvailable && panelDockOpen ? (activeTabIsDiff ? "changes" : "files") : null;
   // Showing the dock on a narrow panel widens the panel by the dock instead of squeezing the viewer;
@@ -2821,10 +2823,32 @@ export function AppShell() {
   useEffect(() => {
     if (panelDock === "files") setFilesViewMounted(true);
   }, [panelDock]);
+  // Collapsed, the column leaves a labeled strip on the panel's right edge that opens it again.
+  const panelDockKind: PanelView = activeTabIsDiff ? "changes" : "files";
+  const panelDockStrip = panelDockAvailable && !panelDockOpen;
+  const panelDockLabel = translate(panelDockKind === "files" ? "panel.dockTree" : "panel.dockChanges");
+  const panelViewerRight = panelDock ? PANEL_DOCK_WIDTH : panelDockStrip ? PANEL_DOCK_STRIP_WIDTH : 0;
   const panelDockStyle: React.CSSProperties = {
     position: "absolute", top: 0, bottom: 0, right: 0, width: PANEL_DOCK_WIDTH,
     borderLeft: "1px solid var(--border)", background: "var(--bg)",
   };
+  const renderPanelDockHead = () => (
+    <div className="panel-dock-head">
+      <span className="panel-dock-title">{panelDockLabel}</span>
+      <button
+        type="button"
+        className="ghost-icon-button"
+        onClick={togglePanelDock}
+        title={translate("panel.hideDock", { name: panelDockLabel })}
+        aria-label={translate("panel.hideDock", { name: panelDockLabel })}
+      >
+        {/* » : the column folds away to the right edge. */}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m6 17 5-5-5-5M13 17l5-5-5-5" />
+        </svg>
+      </button>
+    </div>
+  );
 
   useEffect(() => {
     // The server's app name (app/layout.tsx, Settings › General › Appearance).
@@ -4177,21 +4201,6 @@ export function AppShell() {
           <span style={{ flex: 1 }} />
           {/* The selected terminal portals its actions here: one header row, no inner toolbar. */}
           <div ref={setTerminalActionsSlot} className="terminal-header-actions" />
-          {panelDockAvailable && (
-            <button
-              type="button"
-              onClick={togglePanelDock}
-              className="workspace-header-action panel-dock-toggle"
-              aria-pressed={panelDockOpen}
-              title={translate(panelDockOpen ? "panel.hideDock" : "panel.showDock")}
-              aria-label={translate(panelDockOpen ? "panel.hideDock" : "panel.showDock")}
-            >
-              {/* A frame with its right column, as Cursor's toggle for the same column. */}
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 3v18" />
-              </svg>
-            </button>
-          )}
           {!isMobile && (
             <button
               type="button"
@@ -4243,7 +4252,7 @@ export function AppShell() {
                 key={`${tab.id}:${tab.viewerRevision ?? 0}`}
                 aria-hidden={active ? undefined : true}
                 inert={active ? undefined : true}
-                style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: panelDock ? PANEL_DOCK_WIDTH : 0, ...(active ? null : { visibility: "hidden", contentVisibility: "hidden" }) }}
+                style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: panelViewerRight, ...(active ? null : { visibility: "hidden", contentVisibility: "hidden" }) }}
               >
                 <FileViewer
                   filePath={tab.filePath}
@@ -4270,11 +4279,15 @@ export function AppShell() {
           })}
           {/* One Changes and one Files instance, full size as a view or docked beside a file: moving
               between the two keeps the tree's expansion and scroll. */}
+          {/* Docked, a title row names the column and holds its collapse control (docs/ui.md). */}
           {panelCwd && ((showPanelView && panelView === "changes") || panelDock === "changes") && (
             <div
+              className="panel-view-host"
               style={panelDock === "changes" ? panelDockStyle : { position: "absolute", inset: 0 }}
-              {...(panelDock === "changes" ? { role: "complementary", "aria-label": translate("panel.changes") } : {})}
+              {...(panelDock === "changes" ? { role: "complementary", "aria-label": panelDockLabel } : {})}
             >
+              {panelDock === "changes" && renderPanelDockHead()}
+              <div className="panel-view-host-body">
               <ChangesView
                 cwd={panelCwd}
                 refreshKey={explorerRefreshKey}
@@ -4285,14 +4298,18 @@ export function AppShell() {
                 turnFiles={turnFiles}
                 onOpenDiff={(filePath) => handleOpenDiff(filePath, panelCwd)}
               />
+              </div>
             </div>
           )}
           {panelCwd && filesViewMounted && (
             <div
               hidden={!((showPanelView && panelView === "files") || panelDock === "files")}
+              className="panel-view-host"
               style={panelDock === "files" ? panelDockStyle : { position: "absolute", inset: 0 }}
-              {...(panelDock === "files" ? { role: "complementary", "aria-label": translate("panel.files") } : {})}
+              {...(panelDock === "files" ? { role: "complementary", "aria-label": panelDockLabel } : {})}
             >
+              {panelDock === "files" && renderPanelDockHead()}
+              <div className="panel-view-host-body">
               <FilesView
                 cwd={panelCwd}
                 refreshKey={explorerRefreshKey}
@@ -4306,7 +4323,19 @@ export function AppShell() {
                 onSelectWorktree={(path) => showInPanel(path, "files")}
                 activePath={panelDock === "files" ? activeFileTab?.filePath : undefined}
               />
+              </div>
             </div>
+          )}
+          {panelDockStrip && (
+            <button
+              type="button"
+              className="panel-dock-strip"
+              onClick={togglePanelDock}
+              title={translate("panel.showDock", { name: panelDockLabel })}
+              aria-label={translate("panel.showDock", { name: panelDockLabel })}
+            >
+              <span>{panelDockLabel}</span>
+            </button>
           )}
           {!panelCwd && showPanelView && (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
