@@ -147,6 +147,10 @@ function restoreBrowserTab(raw: string | null): { url: string; active: boolean; 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
+const PANEL_DOCK_KEY = "pi-web:panel-dock";
+const PANEL_DOCK_WIDTH = 220;
+/** Below this panel width the docked list starts hidden (the viewer would get too narrow). */
+const PANEL_DOCK_MIN_WIDTH = 600;
 // A right/middle press (or ctrl-click) on a tab strip acts on that tab (context menu, close);
 // only a primary press moves focus to the group.
 const isPrimaryPointerPress = (event: React.PointerEvent) => event.button === 0 && !event.ctrlKey;
@@ -1042,6 +1046,16 @@ export function AppShell() {
   // The fixed views show while no content tab is active (activeFileTabId null); see docs/ui.md, File panel.
   const [panelView, setPanelView] = useState<PanelView>("changes");
   const [filesViewMounted, setFilesViewMounted] = useState(false);
+  // Docked list beside an open file (Cursor / VS Code Agents): null = follow the panel width.
+  const [panelDockPref, setPanelDockPref] = useState<boolean | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = window.localStorage.getItem(PANEL_DOCK_KEY);
+      return stored === null ? null : stored === "true";
+    } catch {
+      return null;
+    }
+  });
   const [changesScope, setChangesScope] = useState<ChangesScope>("uncommitted");
   const filesExplorerRef = useRef<FileExplorerHandle>(null);
   const panelTabs = useMemo<Tab[]>(() => orderPanelTabs([
@@ -2781,6 +2795,24 @@ export function AppShell() {
   // The fixed views follow the sidebar's selected cwd, which follows the active session (lib/explorer-cwd.ts).
   const panelCwd = activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null;
   const showPanelView = !activeFileTab?.filePath && !terminalTabs.some((tab) => tab.id === activeFileTabId) && !(browserPage && activeFileTabId === BROWSER_TAB_ID);
+  // Beside an open file the panel docks the project tree on its right, beside a diff the changes
+  // list (docs/ui.md, File panel). Narrow panels start without it; the header toggle is remembered.
+  const panelDockOpen = panelDockPref ?? rightPanelResizer.width >= PANEL_DOCK_MIN_WIDTH;
+  const activeTabIsDiff = (activeFileTab?.viewerState?.displayMode ?? activeFileTab?.initialDisplayMode) === "diff";
+  const panelDockAvailable = !isMobile && Boolean(panelCwd && activeFileTab?.filePath);
+  const panelDock: PanelView | null = panelDockAvailable && panelDockOpen ? (activeTabIsDiff ? "changes" : "files") : null;
+  const togglePanelDock = useCallback(() => {
+    const next = !panelDockOpen;
+    setPanelDockPref(next);
+    try { window.localStorage.setItem(PANEL_DOCK_KEY, String(next)); } catch { /* private mode */ }
+  }, [panelDockOpen]);
+  useEffect(() => {
+    if (panelDock === "files") setFilesViewMounted(true);
+  }, [panelDock]);
+  const panelDockStyle: React.CSSProperties = {
+    position: "absolute", top: 0, bottom: 0, right: 0, width: PANEL_DOCK_WIDTH,
+    borderLeft: "1px solid var(--border)", background: "var(--bg)",
+  };
 
   useEffect(() => {
     // The server's app name (app/layout.tsx, Settings › General › Appearance).
@@ -4133,6 +4165,21 @@ export function AppShell() {
           <span style={{ flex: 1 }} />
           {/* The selected terminal portals its actions here: one header row, no inner toolbar. */}
           <div ref={setTerminalActionsSlot} className="terminal-header-actions" />
+          {panelDockAvailable && (
+            <button
+              type="button"
+              onClick={togglePanelDock}
+              className="workspace-header-action"
+              aria-pressed={panelDockOpen}
+              title={translate(panelDockOpen ? "panel.hideDock" : "panel.showDock")}
+              aria-label={translate(panelDockOpen ? "panel.hideDock" : "panel.showDock")}
+            >
+              {/* A list tree: the docked column is the project tree or the changes list. */}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 12h-8M21 6H8M21 18h-8M3 6v4c0 1.1.9 2 2 2h3M3 10v6c0 1.1.9 2 2 2h3" />
+              </svg>
+            </button>
+          )}
           {!isMobile && (
             <button
               type="button"
@@ -4184,7 +4231,7 @@ export function AppShell() {
                 key={`${tab.id}:${tab.viewerRevision ?? 0}`}
                 aria-hidden={active ? undefined : true}
                 inert={active ? undefined : true}
-                style={{ position: "absolute", inset: 0, ...(active ? null : { visibility: "hidden", contentVisibility: "hidden" }) }}
+                style={{ position: "absolute", inset: 0, right: panelDock ? PANEL_DOCK_WIDTH : 0, ...(active ? null : { visibility: "hidden", contentVisibility: "hidden" }) }}
               >
                 <FileViewer
                   filePath={tab.filePath}
@@ -4209,12 +4256,15 @@ export function AppShell() {
               </div>
             );
           })}
-          {panelCwd && showPanelView && panelView === "changes" && (
-            <div style={{ position: "absolute", inset: 0 }}>
+          {/* One Changes and one Files instance, full size as a view or docked beside a file: moving
+              between the two keeps the tree's expansion and scroll. */}
+          {panelCwd && ((showPanelView && panelView === "changes") || panelDock === "changes") && (
+            <div style={panelDock === "changes" ? panelDockStyle : { position: "absolute", inset: 0 }}>
               <ChangesView
                 cwd={panelCwd}
                 refreshKey={explorerRefreshKey}
                 active={rightPanelOpen}
+                activePath={panelDock === "changes" ? activeFileTab?.filePath : undefined}
                 scope={changesScope}
                 onScopeChange={setChangesScope}
                 turnFiles={turnFiles}
@@ -4223,7 +4273,7 @@ export function AppShell() {
             </div>
           )}
           {panelCwd && filesViewMounted && (
-            <div hidden={!(showPanelView && panelView === "files")} style={{ position: "absolute", inset: 0 }}>
+            <div hidden={!((showPanelView && panelView === "files") || panelDock === "files")} style={panelDock === "files" ? panelDockStyle : { position: "absolute", inset: 0 }}>
               <FilesView
                 cwd={panelCwd}
                 refreshKey={explorerRefreshKey}
@@ -4235,6 +4285,7 @@ export function AppShell() {
                 reveal={explorerReveal}
                 worktreeInfo={worktreeInfo?.forCwd === panelCwd ? worktreeInfo : null}
                 onSelectWorktree={(path) => showInPanel(path, "files")}
+                activePath={panelDock === "files" ? activeFileTab?.filePath : undefined}
               />
             </div>
           )}

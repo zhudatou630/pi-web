@@ -638,6 +638,10 @@ html.dark {
   background: var(--bg-hover);
   color: var(--text);
 }
+.changes-row[aria-current] {
+  background: var(--bg-selected);
+  color: var(--text);
+}
 .changes-row-name,
 .changes-row-dir,
 .turn-files-name,

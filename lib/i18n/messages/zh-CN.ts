@@ -593,6 +593,8 @@ export const zhCNLocale: LocalePlugin = {
     "panel.terminal": "终端",
     "panel.browser": "浏览器",
     "panel.openFile": "打开文件…",
+    "panel.showDock": "显示文件列表",
+    "panel.hideDock": "隐藏文件列表",
     "changes.scopeAll": "全部未提交",
     "changes.scopeTurn": "仅本轮写过的",
     "changes.headerAll": "未提交 · {count} 个文件",

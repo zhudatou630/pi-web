@@ -75,8 +75,10 @@ const sum = (files: readonly GitFileStatus[], key: "additions" | "deletions") =>
  * in VS Code / Cursor source control; a deleted file's name is struck through. The
  * "turn" scope keeps only the files the focused session's last turn wrote; numbers stay uncommitted.
  */
-export function ChangesView({ cwd, refreshKey, active, scope, onScopeChange, turnFiles, onOpenDiff }: {
+export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScopeChange, turnFiles, onOpenDiff }: {
   cwd: string;
+  /** Docked beside a diff: the file it shows, marked in the list. */
+  activePath?: string;
   refreshKey: number;
   active: boolean;
   scope: ChangesScope;
@@ -119,7 +121,7 @@ export function ChangesView({ cwd, refreshKey, active, scope, onScopeChange, tur
           const relative = getRelativeFilePath(file.filePath, cwd);
           const slash = relative.lastIndexOf("/");
           return (
-            <button key={`${file.status}:${file.filePath}`} type="button" className="changes-row" title={file.filePath} onClick={() => onOpenDiff(file.filePath)}>
+            <button key={`${file.status}:${file.filePath}`} type="button" className="changes-row" title={file.filePath} aria-current={file.filePath === activePath || undefined} onClick={() => onOpenDiff(file.filePath)}>
               <span className="changes-row-icon">{getFileIcon(getFileName(file.filePath), 13)}</span>
               <span className="changes-row-name" data-deleted={file.status === "deleted" || undefined}>{getFileName(file.filePath)}</span>
               <span className="changes-row-dir">{slash > 0 ? relative.slice(0, slash) : ""}</span>
@@ -167,8 +169,10 @@ function IconButton({ title, onClick, disabled, children }: { title: string; onC
 }
 
 /** The project tree of `cwd` with search, worktree switch, collapse, upload and refresh. */
-export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, reveal, worktreeInfo, onSelectWorktree }: {
+export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, reveal, worktreeInfo, onSelectWorktree, activePath }: {
   cwd: string;
+  /** Docked beside an open file: that file's row stays marked. */
+  activePath?: string;
   refreshKey: number;
   onRefresh: () => void;
   explorerRef: RefObject<FileExplorerHandle | null>;
@@ -228,6 +232,7 @@ export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile,
           onCanCollapseChange={setCanCollapse}
           toolbar={toolbar}
           reveal={reveal}
+          activePath={activePath}
         />
       </div>
     </div>

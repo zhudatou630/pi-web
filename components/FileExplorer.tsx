@@ -46,6 +46,8 @@ interface Props {
   onCanCollapseChange?: (canCollapse: boolean) => void;
   /** Actions shown at the end of the search row (worktree, upload, refresh). */
   toolbar?: React.ReactNode;
+  /** Docked beside an open file: that file's row stays marked. */
+  activePath?: string;
   /** Expand to, select and scroll to `path` once the explorer shows `cwd`. */
   reveal?: { cwd: string; path: string; nonce: number } | null;
 }
@@ -181,6 +183,7 @@ function TreeNode({
   onFileMenu,
   deleteMark,
   revealed,
+  activePath,
   t,
 }: {
   node: FileNode;
@@ -200,10 +203,12 @@ function TreeNode({
   deleteMark: { path: string; phase: "pending" | "deleting" } | null;
   /** Last "Reveal in explorer" target; the nonce re-scrolls a repeated request. */
   revealed: { path: string; nonce: number } | null;
+  /** The file the panel shows beside this tree (docked): marked like a reveal, without scrolling. */
+  activePath?: string;
   t: Translate;
 }) {
   const open = expandedPaths.has(node.fullPath);
-  const isRevealed = revealed?.path === node.fullPath;
+  const isRevealed = revealed?.path === node.fullPath || activePath === node.fullPath;
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (revealed?.path === node.fullPath) rowRef.current?.scrollIntoView({ block: "nearest" });
@@ -454,6 +459,7 @@ function TreeNode({
               onFileMenu={onFileMenu}
               deleteMark={deleteMark}
               revealed={revealed}
+              activePath={activePath}
               t={t}
             />
           ))}
@@ -490,6 +496,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   onCanCollapseChange,
   toolbar,
   reveal = null,
+  activePath,
 }, ref) {
   const { t } = useI18n();
   const [roots, setRoots] = useState<FileNode[]>([]);
@@ -1249,6 +1256,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
                 onFileMenu={openFileMenu}
                 deleteMark={deleteMark}
                 revealed={revealed}
+                activePath={activePath}
                 t={t}
               />
             ))

@@ -593,6 +593,8 @@ export const enLocale: LocalePlugin = {
     "panel.terminal": "Terminal",
     "panel.browser": "Browser",
     "panel.openFile": "Open file…",
+    "panel.showDock": "Show file list",
+    "panel.hideDock": "Hide file list",
     "changes.scopeAll": "All uncommitted",
     "changes.scopeTurn": "Only this turn's files",
     "changes.headerAll": "Uncommitted · {count} files",

@@ -33,3 +33,18 @@ test("pagehide persists synchronous viewer reports rather than waiting for React
   assert.match(shell, /window\.removeEventListener\("pagehide", persistFileTabs\)/);
   assert.match(shell, /\[persistFileTabs, fileTabs, activeFileTabId\]/);
 });
+
+test("an open file docks the project tree, a diff the changes list; one instance each, toggle remembered", () => {
+  const source = shell;
+  assert.match(source, /const panelDock: PanelView \| null = panelDockAvailable && panelDockOpen \? \(activeTabIsDiff \? "changes" : "files"\) : null;/);
+  assert.match(source, /const panelDockOpen = panelDockPref \?\? rightPanelResizer\.width >= PANEL_DOCK_MIN_WIDTH;/);
+  assert.match(source, /const panelDockAvailable = !isMobile && Boolean\(panelCwd && activeFileTab\?\.filePath\);/);
+  // The same FilesView / ChangesView element moves between full size and the dock (no remount).
+  assert.equal(source.match(/<FilesView\b/g)?.length, 1);
+  assert.equal(source.match(/<ChangesView\b/g)?.length, 1);
+  assert.match(source, /hidden=\{!\(\(showPanelView && panelView === "files"\) \|\| panelDock === "files"\)\} style=\{panelDock === "files" \? panelDockStyle/);
+  assert.match(source, /activePath=\{panelDock === "changes" \? activeFileTab\?\.filePath : undefined\}/);
+  assert.match(source, /activePath=\{panelDock === "files" \? activeFileTab\?\.filePath : undefined\}/);
+  assert.match(explorer, /const isRevealed = revealed\?\.path === node\.fullPath \|\| activePath === node\.fullPath;/);
+  assert.match(source, /window\.localStorage\.setItem\(PANEL_DOCK_KEY, String\(next\)\)/);
+});
