@@ -35,7 +35,6 @@ import { TabBar, type Tab } from "./TabBar";
 import { FILE_TABS_KEY, getAdjacentTabId, mergeFileViewerStates, movePanelTab, openFileTab, orderPanelTabs, PANEL_TAB_ORDER_KEY, pinFileTab, replacePanelTabId, restoreFileTabs, restorePanelTabOrder, serializeFileTabs, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel } from "./SettingsPanel";
 import { RoutinesView } from "./RoutinesView";
-import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
@@ -666,7 +665,6 @@ export function AppShell() {
   const systemInfoLoadIdRef = useRef(0);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
   const filePanelToggleRef = useRef<HTMLButtonElement>(null);
-  const agentsButtonRef = useRef<HTMLButtonElement>(null);
   const agentsAnchorRef = useRef<HTMLElement | null>(null);
   const topPanelRef = useRef<HTMLDivElement>(null);
 
@@ -804,9 +802,7 @@ export function AppShell() {
         ? anchor
         : [...document.querySelectorAll<HTMLElement>(`[data-top-panel-trigger="${panel}"]`)]
           .find((candidate) => !candidate.closest("[inert]"));
-      // Phones open the outline from the ⋯ menu, whose item is gone by now.
-      const menu = panel === "outline" ? document.querySelector<HTMLElement>("[data-session-menu-trigger]") : null;
-      (trigger ?? menu ?? sidebarToggleRef.current)?.focus();
+      (trigger ?? sidebarToggleRef.current)?.focus();
     });
   }, [activeTopPanel]);
 
@@ -969,7 +965,7 @@ export function AppShell() {
         // The collapsed session title shares the trigger name but is not the pill.
         const triggerSelector = `[data-top-panel-trigger="${activeTopPanel}"]`;
         const anchor = activeTopPanel === "agents"
-          ? agentsAnchorRef.current ?? agentsButtonRef.current
+          ? agentsAnchorRef.current
           : document.activeElement?.closest<HTMLElement>(triggerSelector)
             ?? document.querySelector<HTMLElement>(`${triggerSelector}:not([data-collapsed-session-title])`);
         const wantedWidth = activeTopPanel === "agents" ? AGENT_PANEL_WIDTH : activeTopPanel === "session" ? SESSION_PANEL_WIDTH : BRANCH_PANEL_WIDTH;
@@ -979,6 +975,11 @@ export function AppShell() {
           // A trigger in the lower half (the composer pill) opens upward from the pill itself (a tall draft must
           // not push it to the top), right-aligned to the composer box and never wider than it.
           if (rect.top > window.innerHeight / 2) {
+            // "Agents N" above the composer opens upward, left-aligned to itself like its neighbours' menus.
+            if (anchor.closest(".composer-context")) {
+              setTopPanelPos({ bottom: window.innerHeight - rect.top + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - panelWidth - 8)), width: panelWidth });
+              return;
+            }
             const box = (anchor.closest(".chat-input-composer") ?? anchor).getBoundingClientRect();
             const width = Math.min(panelWidth, box.width);
             setTopPanelPos({ bottom: window.innerHeight - rect.top + 4, left: box.right - width, width });
@@ -3017,10 +3018,6 @@ export function AppShell() {
     const session = options?.session === undefined ? selectedSession : options.session;
     const sessionFamily = getSessionFamily(sessionsWithSelection, session?.id);
     const hasSubagentSessionsForSession = Boolean(sessionFamily?.subagents.length);
-    const runningSubagentCount = sessionFamily?.subagents.filter((subagent) => runningSessionIds.has(subagent.id)).length ?? 0;
-    const agentsButtonLabel = runningSubagentCount > 0
-      ? `${translate("agentSwitcher.title")} · ${translate("agentSwitcher.runningCount", { count: runningSubagentCount })}`
-      : translate("agentSwitcher.title");
     const branchData = getBranchDataForSession(session);
     const sessionHasBranchesForSession = Boolean(branchData && hasSessionBranches(branchData.tree));
     const toolsUnavailable = mobile && !showChat;
@@ -3049,52 +3046,6 @@ export function AppShell() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
             </svg>
-          </button>
-        )}
-        {hasSubagentSessionsForSession && (
-          <button
-            ref={!mobile && interactive ? agentsButtonRef : undefined}
-            type="button"
-            onClick={(event) => {
-              agentsAnchorRef.current = event.currentTarget;
-              toggleTopPanel("agents");
-            }}
-            title={agentsButtonLabel}
-            aria-label={agentsButtonLabel}
-            aria-pressed={interactive && activeTopPanel === "agents"}
-            aria-expanded={interactive && activeTopPanel === "agents"}
-            aria-controls="workspace-top-panel"
-            data-top-panel-trigger={interactive ? "agents" : undefined}
-            style={{
-              position: "relative",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE,
-              height: "100%", padding: 0,
-              background: interactive && activeTopPanel === "agents" ? "var(--bg-selected)" : "none",
-              border: "none",
-              color: interactive && activeTopPanel === "agents" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-              transition: "color var(--motion-fast), background var(--motion-fast)",
-            }}
-            className="workspace-header-action"
-            data-mobile-toolbar-action={mobile ? "agents" : undefined}
-          >
-            <SubagentIcon size={13} />
-            <span
-              aria-hidden="true"
-              className={runningSubagentCount > 0 ? "subagent-badge-running" : undefined}
-              style={{
-                position: "absolute", top: 2, right: 2,
-                minWidth: 13, height: 13, padding: "0 3px", display: "grid", placeItems: "center",
-                borderRadius: 4,
-                // Running: the class animates the background, so no inline background may override it.
-                background: runningSubagentCount > 0 ? undefined : "var(--bg-selected)",
-                color: runningSubagentCount > 0 ? "var(--accent)" : "var(--text-dim)",
-                fontSize: 10, lineHeight: 1, fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {sessionFamily!.subagents.length}
-            </span>
           </button>
         )}
         {sessionTools && sessionHasBranchesForSession && (mobile ? (
@@ -3135,6 +3086,33 @@ export function AppShell() {
             disabled={!branchData?.onLeafChange}
           />
         ))}
+        {/* Phones: the outline (desktop's minimap) keeps its own button beside ⋯, one tap away. */}
+        {sessionTools && mobile && (
+          <button
+            type="button"
+            onClick={() => toggleTopPanel("outline")}
+            title={translate("chatMinimap.userOutline")}
+            aria-label={translate("chatMinimap.userOutline")}
+            aria-pressed={activeTopPanel === "outline"}
+            aria-expanded={activeTopPanel === "outline"}
+            aria-controls="workspace-top-panel"
+            data-top-panel-trigger="outline"
+            className="workspace-header-action"
+            data-mobile-toolbar-action="outline"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+              background: activeTopPanel === "outline" ? "var(--bg-selected)" : "none",
+              border: "none",
+              color: activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)",
+              cursor: "pointer", flexShrink: 0,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 4v16M15 4v16M4 9h16M4 15h16" />
+            </svg>
+          </button>
+        )}
         {sessionTools && <SessionMenu
           mobile={mobile}
           infoDisabled={toolsUnavailable}
@@ -3153,7 +3131,6 @@ export function AppShell() {
             full: translate("history.full"),
             unsaved: translate("history.unsaved"),
             menu: translate("session.moreActions"),
-            outline: translate("chatMinimap.userOutline"),
             files: translate("panel.files"),
             exportMarkdown: translate(historyShareReady ? "history.exportMarkdownShare" : "history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
@@ -3164,7 +3141,6 @@ export function AppShell() {
             cacheKeepaliveNext: (time) => translate("session.cacheKeepaliveNext", { time }),
           }}
           onMenuOpenChange={handleHistoryMenuOpenChange}
-          onOpenOutline={mobile ? () => toggleTopPanel("outline") : undefined}
           onOpenFiles={mobile && filesCwd ? () => handleRevealCwdInFiles(filesCwd) : undefined}
           infoPending={infoPending}
           onOpenTools={() => void openInfoDialog("tools")}
@@ -3273,6 +3249,19 @@ export function AppShell() {
         cwd={session.cwd}
         changeCount={gitChangeCounts[session.cwd] ?? 0}
         onOpenChanges={() => handleRevealCwdInFiles(session.cwd, true)}
+        agents={(() => {
+          const family = getSessionFamily(sessionsWithSelection, session.id);
+          if (!family?.subagents.length) return undefined;
+          return {
+            count: family.subagents.length,
+            running: family.subagents.filter((subagent) => runningSessionIds.has(subagent.id)).length,
+            open: activeTopPanel === "agents" && selectedSession?.id === session.id,
+            onToggle: (anchor: HTMLElement) => {
+              agentsAnchorRef.current = anchor;
+              toggleTopPanel("agents");
+            },
+          };
+        })()}
         onOpenTerminal={() => handleOpenTerminal(session.cwd)}
         onRevealInFiles={() => handleRevealCwdInFiles(session.cwd)}
         onCopyPath={() => { void copyText(session.cwd).catch(() => {}); }}
@@ -3295,30 +3284,6 @@ export function AppShell() {
       }}
     >
       {renderProjectTrustWarning(false, !options?.inert)}
-      {/* VS Code's Split Editor Right: only unsplit (two panes at most), right before the session tools. */}
-      {!options && showChat && chatTabs.length > 0 && canSplitChat && (
-        <button
-          type="button"
-          onClick={handleSplitRight}
-          className="workspace-header-action"
-          title={translate(chatTabs.length > 1 ? "chatTabs.splitViewHint" : "chatTabs.splitViewNewHint")}
-          aria-label={translate("chatTabs.splitView")}
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-            background: "none", border: "none",
-            color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
-          }}
-          onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-          onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            {/* Two separate panes: unlike the sidebar and file panel toggles (one frame, one rule). */}
-            <rect x="3" y="4" width="7.5" height="16" rx="1.5" />
-            <rect x="13.5" y="4" width="7.5" height="16" rx="1.5" />
-          </svg>
-        </button>
-      )}
       {renderChatToolbarActions(false, { sessionTools: showChat, interactive: !options?.inert, session: options?.session })}
     </div>
   );
@@ -3555,6 +3520,8 @@ export function AppShell() {
                     onMoveTab={handleMoveChatTab}
                     onTabDragChange={handleTabDragChange}
                     canMoveToOtherPane={canSplitChat && chatTabs.length > 1}
+                    // No header button for Split right: the tab menu has it, a lone tab included.
+                    onSplitNew={canSplitChat && chatTabs.length === 1 ? handleSplitRight : undefined}
                     unifiedHeader={true}
                   />
                 </div>

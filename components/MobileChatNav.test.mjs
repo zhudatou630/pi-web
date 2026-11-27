@@ -34,9 +34,9 @@ test("syncs mobile outline data into the shared top panel instead of a portal sh
   assert.doesNotMatch(mobileNavSource, /createPortal|pi-toggle-outline|session-sheet-pop/);
 });
 
-test("provides the outline from the phone's session menu", () => {
-  assert.doesNotMatch(appShellSource, /data-mobile-toolbar-action="outline"/);
-  assert.match(appShellSource, /onOpenOutline=\{mobile \? \(\) => toggleTopPanel\("outline"\) : undefined\}/);
+test("provides the outline from its own phone top-bar button", () => {
+  assert.match(appShellSource, /data-mobile-toolbar-action="outline"/);
+  assert.doesNotMatch(appShellSource, /onOpenOutline=/);
   assert.match(appShellSource, /<MobileOutlineList view=\{outlineView \?\? \{ items: \[\], onJumpToEntry: async \(\) => \{\} \}\} onClose=\{closeTopPanel\} \/>/);
 });
 

@@ -1064,6 +1064,23 @@ button.turn-files-head:hover {
   padding-inline: 0;
 }
 
+/* The relative time takes a fixed width, right-aligned, so what stands before it (the worktree
+   glyph) lines up across rows whatever the number: "23h" in English, "59分钟" in Chinese. */
+.session-row-time {
+  min-width: 24px;
+  text-align: right;
+}
+:lang(zh) .session-row-time {
+  min-width: 38px;
+}
+.session-row-worktree {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0 4px 0 6px;
+  color: var(--text-dim);
+}
+
 /* Another project's name before a row's time: it gives way before the title does. */
 .session-row-project {
   max-width: 96px;
@@ -2202,6 +2219,37 @@ pre, code {
       .markdown-code-block pre,
       .markdown-table-wrap { --scroll-fade-gutter: 5px; }
     }
+  }
+}
+
+/* Titles too long for their tab or row fade out over their last 24px instead of ending in an
+   ellipsis (Cursor): the "…" carries nothing and takes room. The fade shows only when the text
+   overflows, because a scroll timeline on a box that cannot scroll is inactive. Without scroll
+   timelines the ellipsis stays. */
+@property --title-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes title-fade {
+  from, to { --title-fade: 24px; }
+}
+.fade-clip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+@supports (animation-timeline: scroll(self inline)) {
+  .fade-clip {
+    text-overflow: clip;
+    animation-name: title-fade;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self inline);
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--title-fade)), transparent);
   }
 }
 
@@ -5511,23 +5559,6 @@ span.token.table {
 }
 
 /* Toolbar sub-agent count while any sub-agent runs: same shape as idle, breathing tint. */
-.subagent-badge-running {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  animation: subagent-badge-breathe 1.6s ease-in-out infinite;
-}
-
-@keyframes subagent-badge-breathe {
-  50% {
-    background: color-mix(in srgb, var(--accent) 28%, transparent);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .subagent-badge-running {
-    animation: none;
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
-  }
-}
 
 .image-pending-sheen {
   position: absolute;

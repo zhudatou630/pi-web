@@ -54,6 +54,8 @@ interface Props {
   /** Which group this strip shows. */
   pane?: ChatPane;
   canMoveToOtherPane?: boolean;
+  /** Unsplit with one tab: the menu's Split right keeps it here and opens a new session on the right. */
+  onSplitNew?: () => void;
   unifiedHeader?: boolean;
   isMobile?: boolean;
 }
@@ -76,6 +78,7 @@ export function ChatTabBar({
   onMergePanes,
   pane = "primary",
   canMoveToOtherPane = false,
+  onSplitNew,
   unifiedHeader = false,
   isMobile = false,
 }: Props) {
@@ -426,14 +429,7 @@ export function ChatTabBar({
               )}
 
               {/* Title */}
-              <span
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  flex: 1,
-                  lineHeight: 1.3,
-                }}
-              >
+              <span className="fade-clip" style={{ flex: 1 }}>
                 {tab.title}
               </span>
 
@@ -612,6 +608,11 @@ export function ChatTabBar({
                 onClick={run(() => onMoveTab(menuTab.id, pane === "primary" ? "secondary" : "primary", null))}
               >
                 {moveLabel}
+              </button>
+            )}
+            {onSplitNew && !canMoveToOtherPane && (
+              <button type="button" role="menuitem" onClick={run(onSplitNew)}>
+                {t("chatTabs.splitView")}
               </button>
             )}
             {onMergePanes && (

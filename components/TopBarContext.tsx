@@ -9,7 +9,7 @@ import { useMenuDismiss } from "@/hooks/useMenuDismiss";
  * the session runs, with a menu of what to do there, then "Changes N". Quiet text menus styled
  * like the new-session page's picks, which sit in the same place.
  */
-export function SessionComposerContext({ project, branch, isWorktree, cwd, changeCount, onOpenChanges, onOpenTerminal, onRevealInFiles, onCopyPath }: {
+export function SessionComposerContext({ project, branch, isWorktree, cwd, changeCount, onOpenChanges, agents, onOpenTerminal, onRevealInFiles, onCopyPath }: {
   project: string;
   branch?: string;
   isWorktree?: boolean;
@@ -17,6 +17,8 @@ export function SessionComposerContext({ project, branch, isWorktree, cwd, chang
   /** Uncommitted files in the cwd; "Changes N" hides at 0. */
   changeCount: number;
   onOpenChanges: () => void;
+  /** The session's subagents and side chats: "Agents N", the running dot first while any runs (Cursor's Agents pill). */
+  agents?: { count: number; running: number; open: boolean; onToggle: (anchor: HTMLElement) => void };
   onOpenTerminal: () => void;
   onRevealInFiles: () => void;
   onCopyPath: () => void;
@@ -65,6 +67,22 @@ export function SessionComposerContext({ project, branch, isWorktree, cwd, chang
         <button type="button" className="new-session-pick is-secondary" title={t("topBar.changesTitle", { count: changeCount })} onClick={onOpenChanges}>
           {t("topBar.changes")}
           <span className="composer-context-count">{changeCount}</span>
+        </button>
+      )}
+      {agents && (
+        <button
+          type="button"
+          className="new-session-pick is-secondary"
+          title={agents.running > 0 ? `${t("agentSwitcher.title")} · ${t("agentSwitcher.runningCount", { count: agents.running })}` : t("agentSwitcher.title")}
+          aria-haspopup="dialog"
+          aria-expanded={agents.open}
+          aria-controls="workspace-top-panel"
+          data-top-panel-trigger="agents"
+          onClick={(event) => agents.onToggle(event.currentTarget)}
+        >
+          {agents.running > 0 && <span className="session-status-dot" data-status="running" aria-hidden="true" />}
+          {t("agentSwitcher.title")}
+          <span className="composer-context-count">{agents.count}</span>
         </button>
       )}
     </div>

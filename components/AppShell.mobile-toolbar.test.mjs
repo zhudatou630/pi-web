@@ -6,7 +6,7 @@ const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8"
 const menuSource = await readFile(new URL("./SessionMenu.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-test("phone top bar holds the menu button, title and the session menu; outline and Files move into the menu", async () => {
+test("phone top bar holds the menu button, title, the outline button and the session menu; Files is in the menu", async () => {
   const toolbar = mobileToolbarSource();
   const title = toolbar.indexOf('className="mobile-top-bar-title"');
   const actions = toolbar.indexOf("{renderChatToolbarActions(true)}");
@@ -18,9 +18,10 @@ test("phone top bar holds the menu button, title and the session menu; outline a
   // Changes N is fetched on phones too, on the same triggers as desktop.
   assert.match(source, /const gitChangeCwdKey = \[\.\.\.new Set\(\[/);
   assert.doesNotMatch(source, /const gitChangeCwdKey = isMobile/);
-  assert.match(source, /onOpenOutline=\{mobile \? \(\) => toggleTopPanel\("outline"\) : undefined\}/);
   assert.match(source, /onOpenFiles=\{mobile && filesCwd \? \(\) => handleRevealCwdInFiles\(filesCwd\) : undefined\}/);
-  assert.match(menuSource, /\{onOpenOutline && \([\s\S]*?data-top-panel-trigger="outline"/);
+  // The outline (desktop's minimap) is one tap away, its own button beside ⋯, not a menu item.
+  assert.doesNotMatch(menuSource, /onOpenOutline|labels\.outline/);
+  assert.match(source, /\{sessionTools && mobile && \(\s*<button[\s\S]*?onClick=\{\(\) => toggleTopPanel\("outline"\)\}[\s\S]*?data-mobile-toolbar-action="outline"/);
   // The closed drawer's menu button carries a dot while a session waits or failed.
   assert.match(source, /const menuNeedsYou = isMobile && !sidebarOpen && hasBlockedSession\(sessionMarkers\)/);
   assert.match(source, /\{menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" \/>\}/);
@@ -53,7 +54,7 @@ test("closes shared top panels consistently and restores their trigger on Escape
   assert.match(source, /find\(\(candidate\) => !candidate\.closest\("\[inert\]"\)\)/);
   assert.match(source, /event\.stopPropagation\(\);\s*closeTopPanel\(true\)/);
   assert.match(source, /data-top-panel-trigger="session"/);
-  assert.match(menuSource, /data-top-panel-trigger="outline"/);
+  assert.match(source, /data-top-panel-trigger="outline"/);
   assert.match(source, /id="workspace-top-panel"/);
 });
 
@@ -63,14 +64,19 @@ test("uses a single inline mobile toolbar", () => {
   assert.match(source, /const toolsUnavailable = mobile && !showChat;/);
 
   assert.match(menuSource, /data-mobile-toolbar-action=\{mobile \? "session-menu"/);
-  for (const action of ["agents", "branches"]) {
+  for (const action of ["branches"]) {
     assert.match(source, new RegExp(`data-mobile-toolbar-action=(?:\\{mobile \\? )?"${action}"`));
   }
 });
 
-test("only renders the Agents switcher for the header pane's session family", () => {
+test("Agents N sits above each pane's composer for that pane's session family, not in the top bar", () => {
   assert.match(source, /const hasSubagentSessionsForSession = Boolean\(sessionFamily\?\.subagents\.length\)/);
-  assert.match(source, /\{hasSubagentSessionsForSession && \(\s*<button[\s\S]*?toggleTopPanel\("agents"\)/);
+  const context = functionSource("renderComposerContext", "const renderDesktopHeaderActions");
+  assert.match(context, /const family = getSessionFamily\(sessionsWithSelection, session\.id\);\s*if \(!family\?\.subagents\.length\) return undefined;/);
+  assert.match(context, /agentsAnchorRef\.current = anchor;\s*toggleTopPanel\("agents"\);/);
+  assert.doesNotMatch(functionSource("renderChatToolbarActions", "const collapsedSessionTitle"), /toggleTopPanel\("agents"\)/);
+  // It opens upward, left-aligned to itself.
+  assert.match(source, /if \(anchor\.closest\("\.composer-context"\)\) \{/);
   assert.match(source, /session: primaryTab\?\.kind === "session" \? primaryTab\.session : null/);
   assert.match(source, /session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null/);
   assert.match(source, /activeTopPanel === "agents" && activeSessionFamily && selectedSession/);
@@ -180,7 +186,6 @@ test("desktop chat toolbar actions are icon-only", () => {
 test("desktop session controls follow the task-first order", () => {
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   const order = [
-    'data-top-panel-trigger={interactive ? "agents" : undefined}',
     "<BranchNavigator",
     "<SessionMenu",
   ].map((needle) => actions.indexOf(needle));
@@ -193,7 +198,6 @@ test("toolbar actions use spacing rather than per-button dividers, preserving re
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   assert.doesNotMatch(actions, /borderRight:/);
   assert.doesNotMatch(actions, /borderTop:/);
-  assert.match(actions, /aria-pressed=\{interactive && activeTopPanel === "agents"\}/);
   assert.match(cssSource, /\.workspace-header-action\[aria-pressed="true"\][\s\S]*?box-shadow: inset 0 2px 0 var\(--accent\)/);
   const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(branchNavigator, /borderRight:/);
@@ -218,10 +222,9 @@ test("mobile toolbar packs its whole group at the right end, fixed tools last", 
   assert.doesNotMatch(fileToggle, /marginLeft/);
   // Conditional tools (back, agents, branches) come first and grow leftwards; the menu never moves.
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
-  assert.doesNotMatch(actions, /data-mobile-toolbar-action="outline"/);
   const order = [
-    'data-mobile-toolbar-action={mobile ? "agents"',
     'data-mobile-toolbar-action="branches"',
+    'data-mobile-toolbar-action="outline"',
     "<SessionMenu",
   ].map((needle) => actions.indexOf(needle));
   assert.ok(order.every((index) => index >= 0));

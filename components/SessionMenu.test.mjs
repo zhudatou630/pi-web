@@ -12,8 +12,8 @@ test("session menu is one icon button opening a dropdown of info and history act
   assert.match(source, /data-mobile-toolbar-action=\{mobile \? "session-menu" : undefined\}/);
 });
 
-test("menu lists (phones: outline, files, a divider) tools, system prompt, a divider, then history and export", () => {
-  const order = ["labels.outline", "labels.files", 'role="separator"', "labels.tools", "labels.system", 'role="separator"', "labels.fork", "labels.full", "labels.exportMarkdown"];
+test("menu lists (phones: files, a divider) tools, system prompt, a divider, then history and export", () => {
+  const order = ["labels.files", 'role="separator"', "labels.tools", "labels.system", 'role="separator"', "labels.fork", "labels.full", "labels.exportMarkdown"];
   let from = source.indexOf('role="menu"');
   const indices = order.map((needle) => (from = source.indexOf(needle, from + 1)));
   assert.ok(indices.every((index) => index >= 0));

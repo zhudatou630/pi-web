@@ -243,12 +243,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
               />
             )}
             <span
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                flex: 1,
-                lineHeight: 1.3,
-              }}
+              className="fade-clip"
+              style={{ flex: 1 }}
               title={tab.preview ? `${tab.filePath} · ${t("files.previewTabHint")}` : tab.filePath}
             >
               {displayLabel}

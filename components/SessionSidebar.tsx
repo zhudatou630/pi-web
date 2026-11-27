@@ -2321,7 +2321,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                       style={{ display: "flex", alignItems: "center", gap: 7, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 5px", border: "none", background: "none", color: "inherit", cursor: "pointer", textAlign: "left", fontSize: 13 }}
                     >
                       <ProjectFolderIcon open={singleProject ? dropdownOpen : expanded} />
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{projectNames.get(row.project.key) ?? getFileName(row.project.root)}</span>
+                      <span className="fade-clip">{projectNames.get(row.project.key) ?? getFileName(row.project.root)}</span>
                       <SessionActivitySummary activity={activity} showStatus={!singleProject && !expanded} />
                     </button>
                     )}
@@ -2569,6 +2569,13 @@ export function SessionItem({
   onToggleCollapse?: () => void;
 }) {
   const { locale, t } = useI18n();
+  const worktree = session.isWorktree && session.branch ? (
+    <span role="img" className="session-row-worktree" title={`Worktree: ${session.branch}\n${session.cwd}`} aria-label={`Worktree: ${session.branch}`}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
+      </svg>
+    </span>
+  ) : null;
   const [hovered, setHovered] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -2815,7 +2822,7 @@ export function SessionItem({
               }}
               title={(session.name || displayFirstMessage || session.id) + (reasonLine ? `\n${reasonLine}` : "") + (projectHint ? `\n${projectHint}` : "")}
             >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+              <span className="fade-clip">
                 {title}
               </span>
               {/* Keepalive refreshes cost money; a glyph here survives the hover actions that cover the time. */}
@@ -2829,20 +2836,6 @@ export function SessionItem({
               )}
             </div>
           </button>
-          {/* A worktree is a glyph; its branch is in the tooltip, so the title keeps the width. */}
-          {session.isWorktree && session.branch && (
-            <span
-              role="img"
-              title={`Worktree: ${session.branch}\n${session.cwd}`}
-              aria-label={`Worktree: ${session.branch}`}
-              style={{ display: "flex", alignItems: "center", color: "var(--text-dim)", flexShrink: 0 }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
-              </svg>
-            </span>
-          )}
-
 
           {/* Collapse toggle — always visible when has children */}
           {hasChildren && (
@@ -2865,10 +2858,14 @@ export function SessionItem({
           )}
 
           <div className="session-row-meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
-            {needsYou ? <SessionStatusWord status={needsYou} /> : (
+            {needsYou ? <>{worktree}<SessionStatusWord status={needsYou} /></> : (
               <>
-                {projectLabel && <><span className="session-row-project">{projectLabel}</span>{"\u00a0·\u00a0"}</>}
-                <span title={session.modified}>{formatCompactRelativeTime(session.modified, locale)}</span>
+                {projectLabel && <span className="session-row-project">{projectLabel}</span>}
+                {/* A worktree is the branch glyph right before the time, as Cursor places it (branch in the
+                    tooltip), standing in for the project separator; the fixed-width time keeps
+                    the glyphs in one column. */}
+                {worktree ?? (projectLabel && "\u00a0·\u00a0")}
+                <span className="session-row-time" title={session.modified}>{formatCompactRelativeTime(session.modified, locale)}</span>
               </>
             )}
           </div>

@@ -143,7 +143,8 @@ test("session rows use one compact line without message counts", async () => {
   assert.match(html, /height:32px/);
   assert.match(html, /<span class="session-status-dot" data-status="idle" aria-hidden="true"><\/span>/);
   assert.doesNotMatch(html, /min-width:60px/);
-  assert.match(html, /text-overflow:ellipsis;white-space:nowrap/);
+  // Long titles fade out at the end instead of an ellipsis (Cursor; .fade-clip in globals.css).
+  assert.match(html, /<span class="fade-clip">/);
   assert.ok(html.includes(`title="${title}"`));
   assert.match(html, />2h<\/span>/);
   assert.doesNotMatch(html, /987654|msgs|messagesCount/);
@@ -417,7 +418,9 @@ test("status and time groupings: pinned first, then non-empty titled sections wi
   assert.match(source, /const allFamilies = useMemo\(\(\) => orderFamilies\(listedFamilies, ordering, orderStatus\)/);
   assert.match(source, /const shownTime = ordering === "created" \? family\.root\.created : family\.latestModified;/);
   assert.match(source, /renderSessionFamily\(family, false, otherProjectLabel\(family\)\)/);
-  assert.match(source, /\{projectLabel && <><span className="session-row-project">\{projectLabel\}<\/span>/);
+  assert.match(source, /\{projectLabel && <span className="session-row-project">\{projectLabel\}<\/span>\}/);
+  // The worktree glyph sits right before the fixed-width time (one column), standing in for the separator.
+  assert.match(source, /\{worktree \?\? \(projectLabel && "\\u00a0·\\u00a0"\)\}\s*<span className="session-row-time"/);
   // Only in by-project mode: the PROJECTS header and the project drag.
   assert.match(source, /\) : flatView \? null : \(\s*<div ref=\{dropdownRef\} className="sidebar-section-row"/);
   assert.match(source, /enabled: !loading && projectsOpen && !flatView/);

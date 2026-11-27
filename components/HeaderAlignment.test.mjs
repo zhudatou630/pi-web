@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import postcss from "postcss";
@@ -118,4 +119,12 @@ test("file tabs are chips centered in the header row, like chat tabs", () => {
   assert.match(shell, /className="workspace-header" style=\{\{ background: "var\(--bg\)", paddingLeft: 8, boxShadow: "none" \}\}/);
   // Preview tabs: a quieter title instead of italic or an underline.
   assert.equal(declarations(".chat-tab[data-preview=\"true\"]:not(:hover),\n.panel-file-tab[data-preview=\"true\"]:not(:hover)").color, "var(--text-muted)");
+});
+
+test("long tab and row titles fade out instead of an ellipsis, only when they overflow", () => {
+  const text = css.toString();
+  assert.match(text, /@keyframes title-fade \{\s*from, to \{ --title-fade: 24px; \}\s*\}/);
+  assert.match(text, /@supports \(animation-timeline: scroll\(self inline\)\) \{\s*\.fade-clip \{[\s\S]*?text-overflow: clip;[\s\S]*?animation-timeline: scroll\(self inline\);[\s\S]*?mask-image: linear-gradient\(to right, #000 calc\(100% - var\(--title-fade\)\), transparent\);/);
+  for (const name of ["ChatTabBar.tsx", "TabBar.tsx"]) assert.match(readFileSync(new URL(`./${name}`, import.meta.url), "utf8"), /<span\s+className="fade-clip"/);
+  assert.equal((sidebar.match(/className="fade-clip"/g) ?? []).length, 2);
 });

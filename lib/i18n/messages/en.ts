@@ -970,8 +970,6 @@ export const enLocale: LocalePlugin = {
     "chatTabs.newTab": "New chat tab",
     "chatTabs.closeTab": "Close tab",
     "chatTabs.splitView": "Split right",
-    "chatTabs.splitViewHint": "Split right: move this tab to a new right pane",
-    "chatTabs.splitViewNewHint": "Split right: open a new session in a right pane",
     "chatTabs.openInNewTab": "Open in new tab",
     "chatTabs.previewTabHint": "Preview tab — double-click to pin",
     "chatTabs.unsentDraft": "Unsent draft",

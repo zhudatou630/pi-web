@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
@@ -68,7 +69,7 @@ test("renders ChatTabBar when chat is active and tabs exist", () => {
   assert.match(source, /onTabDragChange=\{handleTabDragChange\}/);
 });
 
-test("split right (VS Code): a header action that moves the current tab right, never a merge toggle", () => {
+test("split right lives in the tab menu (no header button); it moves the current tab right, never merges", () => {
   const split = source.slice(source.indexOf("const handleSplitRight"), source.indexOf("const handleMergePanes"));
   assert.match(split, /if \(isSplitActive \|\| !canSplitChat \|\| !activeChatTabId\) return;/);
   assert.match(split, /chatTabs\.length > 1\) \{\s*handleMoveChatTab\(activeChatTabId, "secondary", null\);/);
@@ -77,9 +78,12 @@ test("split right (VS Code): a header action that moves the current tab right, n
   assert.doesNotMatch(split, /mergeChatTabPanes/);
   // Ending a split: the tab context menu's Merge panes, on both strips.
   assert.equal(source.match(/onMergePanes=\{handleMergePanes\}/g)?.length, 2);
-  // The button sits in the header actions, only while unsplit, before the session tools.
+  // No header button: a lone tab's menu offers Split right (more tabs use the menu's move item).
   const actions = source.slice(source.indexOf("const renderDesktopHeaderActions"), source.indexOf("return (\n    <>"));
-  assert.match(actions, /\{!options && showChat && chatTabs\.length > 0 && canSplitChat && \([\s\S]*?onClick=\{handleSplitRight\}[\s\S]*?\)\}\s*\{renderChatToolbarActions/);
+  assert.doesNotMatch(actions, /handleSplitRight/);
+  assert.match(source, /onSplitNew=\{canSplitChat && chatTabs\.length === 1 \? handleSplitRight : undefined\}/);
+  const bar = readFileSync(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(bar, /\{onSplitNew && !canMoveToOtherPane && \(\s*<button type="button" role="menuitem" onClick=\{run\(onSplitNew\)\}>\s*\{t\("chatTabs\.splitView"\)\}/);
 });
 
 test("dragging a tab or sidebar row offers the other half of the chat area as a drop zone", () => {
