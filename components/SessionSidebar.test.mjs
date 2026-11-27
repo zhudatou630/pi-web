@@ -335,7 +335,9 @@ test("a project header renames inline like a session row, optimistically, and ro
   // Validation is the server's rule; the header and the pickers show the alias, the folder otherwise.
   assert.match(source, /const name = projectDisplayName\(value\);/);
   assert.match(source, /projectNames\.get\(row\.project\.key\) \?\? getFileName\(row\.project\.root\)/);
-  assert.match(source, /projectNames\.get\(project\.key\) \?\? displayCwd\(project\.root, homeDir\)/);
+  // The single-project switcher names projects like the rows (path in the tooltip), never by path.
+  assert.match(source, /<span className="fade-clip" style=\{\{ flex: 1 \}\}>\{projectNames\.get\(project\.key\) \?\? getFileName\(project\.root\)\}<\/span>/);
+  assert.doesNotMatch(source, /PathLabel/);
 });
 
 test("right-click and mobile long-press open one session menu with every row action", () => {

@@ -351,36 +351,9 @@ function saveUnreadMarks(marks: UnreadMarks): void {
   } catch { /* storage is best-effort */ }
 }
 
-/** Substitute the home dir prefix with ~ (no path truncation — see PathLabel) */
+/** Substitute the home dir prefix with ~ */
 function displayCwd(cwd: string, homeDir?: string): string {
   return (homeDir && cwd.startsWith(homeDir)) ? "~" + cwd.slice(homeDir.length) : cwd;
-}
-
-/**
- * Path label that ellipsizes on the LEFT, keeping the (most relevant) trailing
- * segments visible: "…orkspace/pi-web". Shows as much of the path as fits
- * instead of a fixed number of segments. The rtl container moves the ellipsis
- * to the left edge; the inner plaintext bidi isolation keeps the path itself
- * rendered strictly left-to-right (no punctuation reordering).
- */
-function PathLabel({ text, style }: { text: string; style?: CSSProperties }) {
-  return (
-    <span
-      style={{
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        display: "block",
-        minWidth: 0,
-        lineHeight: 1.35,
-        direction: "rtl",
-        textAlign: "left",
-        ...style,
-      }}
-    >
-      <span style={{ unicodeBidi: "plaintext" }}>{text}</span>
-    </span>
-  );
 }
 
 /** The polled ids as a Set, or `current` itself when nothing changed, so React skips the render. */
@@ -2130,7 +2103,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
               <div ref={projectDropdownInnerRef} style={{ position: "relative" }}>
               <ProjectDragGhost drag={dropdownDrag} dropdown label={(() => {
                 const root = workspaceProjects.find((project) => project.key === dropdownDrag.view?.key)?.root;
-                return root && <PathLabel text={projectNames.get(dropdownDrag.view?.key ?? "") ?? displayCwd(root, homeDir)} style={{ flex: 1 }} />;
+                return root && <span className="fade-clip" style={{ flex: 1 }}>{projectNames.get(dropdownDrag.view?.key ?? "") ?? getFileName(root)}</span>;
               })()} />
               {workspaceProjects.map((project, index) => {
                 const active = project.key === selectedProject?.key;
@@ -2147,7 +2120,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                       title={project.root}
                       style={{ flex: 1, height: MENU_ROW_HEIGHT }}
                     >
-                      <PathLabel text={projectNames.get(project.key) ?? displayCwd(project.root, homeDir)} style={{ flex: 1 }} />
+                      {/* Named like the project rows; the path is the tooltip. */}
+                      <span className="fade-clip" style={{ flex: 1 }}>{projectNames.get(project.key) ?? getFileName(project.root)}</span>
                       <SessionActivitySummary activity={activity} />
                       <MenuCheck checked={active} />
                     </button>
