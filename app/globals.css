@@ -708,6 +708,34 @@ html.dark {
   min-width: 0;
   margin-right: 4px;
 }
+/* Docked beside a file (220px) the search row cannot hold the field and every action: actions
+   (worktree left, icons right) take the first line, search the second. */
+.panel-view {
+  container-type: inline-size;
+}
+@container (max-width: 320px) {
+  .file-search-bar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 4px;
+  }
+  .file-search-bar > .sidebar-search-field {
+    order: 1;
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+  .file-search-bar > .files-worktree-menu {
+    margin-right: auto;
+    min-width: 0;
+  }
+  /* The tree scrolls and clips sideways: open the menu rightwards, no wider than the column. */
+  .files-worktree-menu .panel-text-menu-list {
+    left: 0;
+    right: auto;
+    min-width: 0;
+    max-width: calc(100cqw - 8px);
+  }
+}
 
 /* A turn's written files under the answer: a title row, then name + folder rows (no counts). */
 .turn-files-card {
