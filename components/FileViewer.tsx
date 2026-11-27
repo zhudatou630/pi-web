@@ -26,7 +26,7 @@ import {
   isVideoPath,
 } from "@/lib/file-types";
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
-import { pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
+import { lineRangeFromHref, pdfPageFromHref, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { injectSandboxedHtmlPolyfill } from "@/lib/html-sandbox-polyfill";
 import { extractMarkdownOutline, findHeadingBySlug } from "@/lib/markdown-outline";
@@ -41,7 +41,7 @@ import { FileFindBar, scrollIntoScroller } from "./FileFindBar";
 import { ImageViewer as ImageLightbox } from "./ImageViewer";
 import { ImagePreview } from "./ImagePreview";
 import { MarkdownMedia } from "./MarkdownMedia";
-import { parseUnifiedPatch } from "@/lib/patch";
+import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
 import type { GitFileDiffResponse } from "@/lib/git-types";
 import { readTextChunks, type TextChunk } from "@/lib/text-chunk-reader";
 import { useI18n } from "@/hooks/useI18n";
@@ -71,7 +71,7 @@ interface Props {
   filePath: string;
   cwd?: string;
   sourceSessionId?: string | null;
-  onOpenFile?: (filePath: string, page?: number) => void;
+  onOpenFile?: (filePath: string, page?: number, reveal?: FileReveal) => void;
   /** Add the selection to the chat as a quote chip: whole source lines, or markdown preview text. */
   onAttachSelection?: (attachment: FileSelectionAttachment) => void;
   /** Scroll to and mark these source lines, or this preview text, once; then call onRevealed. */
@@ -110,6 +110,8 @@ const HTML_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 // "Load more" reads to the end; past this size the whole file stays in page state, so ask first.
 const LOAD_ALL_CONFIRM_BYTES = 16 * 1024 * 1024;
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
+// The viewer's own width, not the window's: a desktop panel can be as narrow as a phone.
+const DIFF_SPLIT_MIN_WIDTH = 760;
 const WATCH_CHANGE_DEBOUNCE_MS = 150;
 const FIND_SHORTCUT_LABEL = "Ctrl/⌘ F";
 const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;
@@ -381,55 +383,10 @@ function DownloadLink({ filePath, sourceSessionId }: { filePath: string; sourceS
   );
 }
 
-type DiffLine =
-  | { type: "hunk"; text: string }
-  | {
-      type: "unchanged" | "removed" | "added";
-      text: string;
-      oldLineNo: number | null;
-      newLineNo: number | null;
-    };
-
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function diffLines(patch: string): DiffLine[] {
-  const files = parseUnifiedPatch(patch);
-  if (!files) return [];
-
-  return files.flatMap((file) => file.rows.flatMap((row): DiffLine[] => {
-    if (row.type === "hunk") return [{ type: "hunk", text: row.text }];
-    if (row.left.type === "context" && row.right.type === "context") {
-      return [{
-        type: "unchanged",
-        text: row.right.text,
-        oldLineNo: row.left.lineNo,
-        newLineNo: row.right.lineNo,
-      }];
-    }
-
-    const lines: DiffLine[] = [];
-    if (row.left.type === "removed") {
-      lines.push({
-        type: "removed",
-        text: row.left.text,
-        oldLineNo: row.left.lineNo,
-        newLineNo: null,
-      });
-    }
-    if (row.right.type === "added") {
-      lines.push({
-        type: "added",
-        text: row.right.text,
-        oldLineNo: null,
-        newLineNo: row.right.lineNo,
-      });
-    }
-    return lines;
-  }));
 }
 
 function diffMetadataLines(patch: string): string[] {
@@ -459,13 +416,17 @@ const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, palett
   );
 });
 
-function DiffView({ patch, wrapLines, language = "text", prismReady = false, isDark = false, palette = "default" }: {
+function DiffView({ patch, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false, palette = "default" }: {
   patch: string; wrapLines: boolean; language?: string; prismReady?: boolean; isDark?: boolean; palette?: string;
 }) {
   const { t } = useI18n();
-  const diff = useMemo(() => diffLines(patch), [patch]);
-  const metadata = diffMetadataLines(patch);
-  const pinLineNumbers = diff.length <= SOURCE_HIGHLIGHT_MAX_LINES;
+  const [split, setSplit] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const wrapLines = split || preferWrap;
+  const diff = useMemo(() => parseUnifiedPatch(patch)?.flatMap((file) => file.rows) ?? [], [patch]);
+  const metadata = useMemo(() => diffMetadataLines(patch), [patch]);
+  const lineCount = useMemo(() => diff.reduce((n, row) => n + (row.type === "line" && row.left.type === "removed" && row.right.type === "added" ? 2 : 1), 0), [diff]);
+  const pinLineNumbers = lineCount <= SOURCE_HIGHLIGHT_MAX_LINES;
   const highlight = prismReady && language !== "text" && pinLineNumbers && patch.length <= SOURCE_HIGHLIGHT_MAX_BYTES && new TextEncoder().encode(patch).byteLength <= SOURCE_HIGHLIGHT_MAX_BYTES;
   const oldLineNumberStyle: CSSProperties = pinLineNumbers
     ? { ...FILE_DIFF_LINE_NUMBER_STYLE, position: "sticky", left: 0, zIndex: 1 }
@@ -474,7 +435,18 @@ function DiffView({ patch, wrapLines, language = "text", prismReady = false, isD
     ? { ...oldLineNumberStyle, left: 40 }
     : FILE_DIFF_LINE_NUMBER_STYLE;
 
-  const hasChanges = metadata.length > 0 || diff.some((line) => line.type === "added" || line.type === "removed");
+  const hasChanges = metadata.length > 0 || diff.some((row) => row.type === "line" && (row.left.type === "removed" || row.right.type === "added"));
+  // Measure the viewer's scroller (this view's parent) before the first paint, by its border box:
+  // the scrollbar that wrapped columns can bring must not flip the layout back.
+  useLayoutEffect(() => {
+    const box = rootRef.current?.parentElement;
+    if (!box) return;
+    const update = () => setSplit(box.offsetWidth >= DIFF_SPLIT_MIN_WIDTH);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [hasChanges]);
   if (!hasChanges) {
     return (
       <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-dim)" }}>
@@ -483,8 +455,39 @@ function DiffView({ patch, wrapLines, language = "text", prismReady = false, isD
     );
   }
 
+  function cell(line: SplitDiffCell, oldLineNo: number | null, newLineNo: number | null, key: string) {
+    const added = line.type === "added";
+    const removed = line.type === "removed";
+    const color = added ? "var(--success)" : removed ? "var(--danger)" : "var(--text-dim)";
+    // Filler cells and the column divider match the chat's split patch cards.
+    const background = added ? "color-mix(in srgb, var(--success) 12%, transparent)"
+      : removed ? "color-mix(in srgb, var(--danger) 14%, transparent)"
+      : line.type === "empty" ? "var(--bg-subtle)" : "transparent";
+    return (
+      <div key={key} className="file-diff-line" style={{ display: "flex", minWidth: "100%", background, ...(split && key === "left" ? { borderRight: "1px solid var(--border)" } : {}) }}>
+        {/* Pin the change bar along with the first gutter. */}
+        <span style={added || removed ? { ...oldLineNumberStyle, boxShadow: `inset 3px 0 0 ${color}` } : oldLineNumberStyle}>
+          {split ? line.lineNo : oldLineNo}
+        </span>
+        {!split && <span style={newLineNumberStyle}>{newLineNo}</span>}
+        <span style={{ minWidth: 16, padding: "0 6px", color, userSelect: "none", flexShrink: 0 }}>
+          {added ? "+" : removed ? "-" : " "}
+        </span>
+        <span className="file-diff-line-content" style={{
+          ...(wrapLines ? { flex: 1, minWidth: 0, overflowWrap: "anywhere" } : { flexShrink: 0 }),
+          padding: "0 8px 0 0", whiteSpace: wrapLines ? "pre-wrap" : "pre", color: "var(--text)",
+        }}>
+          {highlight && line.type !== "empty"
+            ? <DiffLineCode text={line.text} language={language} isDark={isDark} palette={palette} wrapLines={wrapLines} />
+            : (line.text || "\u00a0")}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
+      ref={rootRef}
       className="file-diff-view"
       style={{
         width: wrapLines ? "100%" : "max-content",
@@ -497,70 +500,26 @@ function DiffView({ patch, wrapLines, language = "text", prismReady = false, isD
           {line}
         </div>
       ))}
-      {diff.map((line, lineIndex) => {
-          if (line.type === "hunk") {
+      {diff.flatMap((row, lineIndex) => {
+          if (row.type === "hunk") {
             return (
               <div key={`hunk-${lineIndex}`} style={{ padding: "2px 12px", color: "var(--accent)", background: "var(--bg-panel)", borderBlock: "1px solid var(--border)" }}>
-                {line.text}
+                {row.text}
               </div>
             );
           }
-          const bg =
-            line.type === "added"
-              ? "color-mix(in srgb, var(--success) 12%, transparent)"
-              : line.type === "removed"
-              ? "color-mix(in srgb, var(--danger) 14%, transparent)"
-              : "transparent";
-          const prefix =
-            line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
-          const prefixColor =
-            line.type === "added" ? "var(--success)" : line.type === "removed" ? "var(--danger)" : "var(--text-dim)";
-
-          return (
-            <div
-              key={lineIndex}
-              className="file-diff-line"
-              style={{
-                display: "flex",
-                minWidth: "100%",
-                background: bg,
-              }}
-            >
-              {/* The change bar sits on the pinned gutter so it stays visible when scrolled sideways. */}
-              <span
-                style={line.type === "added" || line.type === "removed"
-                  ? { ...oldLineNumberStyle, boxShadow: `inset 3px 0 0 ${prefixColor}` }
-                  : oldLineNumberStyle}
-              >
-                {line.oldLineNo}
-              </span>
-              <span style={newLineNumberStyle}>{line.newLineNo}</span>
-              <span
-                style={{
-                  minWidth: 16,
-                  padding: "0 6px",
-                  color: prefixColor,
-                  userSelect: "none",
-                  flexShrink: 0,
-                }}
-              >
-                {prefix}
-              </span>
-              <span
-                className="file-diff-line-content"
-                style={{
-                  ...(wrapLines ? { flex: 1, minWidth: 0, overflowWrap: "anywhere" } : { flexShrink: 0 }),
-                  padding: "0 8px 0 0",
-                  whiteSpace: wrapLines ? "pre-wrap" : "pre",
-                  color: "var(--text)",
-                }}
-              >
-                {highlight
-                  ? <DiffLineCode text={line.text} language={language} isDark={isDark} palette={palette} wrapLines={wrapLines} />
-                  : (line.text || "\u00a0")}
-              </span>
+          const { left, right } = row;
+          if (split) return (
+            <div key={lineIndex} style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              {cell(left, left.lineNo, null, "left")}
+              {cell(right, null, right.lineNo, "right")}
             </div>
           );
+          if (left.type === "context") return cell(right, left.lineNo, right.lineNo, `${lineIndex}`);
+          return [
+            ...(left.type === "removed" ? [cell(left, left.lineNo, null, `old-${lineIndex}`)] : []),
+            ...(right.type === "added" ? [cell(right, null, right.lineNo, `new-${lineIndex}`)] : []),
+          ];
       })}
     </div>
   );
@@ -1235,7 +1194,7 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
   markdownPreview: string;
   frontmatterData: ReturnType<typeof parseFrontmatter>["data"];
   markdownDirectory: string;
-  onOpenFile?: (filePath: string, page?: number) => void;
+  onOpenFile?: Props["onOpenFile"];
   sourceSessionId?: string | null;
 }) {
   const { t } = useI18n();
@@ -1323,7 +1282,7 @@ const MarkdownFilePreview = memo(function MarkdownFilePreview({
               const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
                 if (!shouldOpenLocalFileInApp(event)) return;
                 event.preventDefault();
-                onOpenFile(linkedFile, pdfPageFromHref(href) ?? undefined);
+                onOpenFile(linkedFile, pdfPageFromHref(href) ?? undefined, lineRangeFromHref(href));
               };
 
               return <a href={href} {...props} onClick={handleClick}>{children}</a>;
@@ -1435,7 +1394,7 @@ function TextFileViewer({
   // A stable identity keeps the memoized markdown preview from re-parsing when the shell's callback changes.
   const onOpenFileRef = useRef(onOpenFile);
   onOpenFileRef.current = onOpenFile;
-  const openFile = useCallback((path: string, page?: number) => onOpenFileRef.current?.(path, page), []);
+  const openFile = useCallback((path: string, page?: number, reveal?: FileReveal) => onOpenFileRef.current?.(path, page, reveal), []);
 
   const updateDisplayMode = useCallback((nextDisplayMode: DisplayMode) => {
     viewerStateRef.current.displayMode = nextDisplayMode;
@@ -1475,7 +1434,7 @@ function TextFileViewer({
   // Read chunks from `startOffset` (appending to the shown content) or from 0 (replacing it) until
   // `minBytes`, then publish once: a half-read refresh would drop a large markdown file back to
   // Source and render it twice. A newer request supersedes this one (returns null).
-  const readContent = useCallback(async (filePath: string, startOffset: number, minBytes: number) => {
+  const readContent = useCallback(async (filePath: string, startOffset: number, minBytes: number, lines?: { completed: number; target: number }) => {
     const requestId = ++contentRequestRef.current;
     const readAt = async (nextOffset: number) => {
       const response = await fetch(getFileApiUrl(filePath, "read", sourceSessionId, { offset: nextOffset || undefined }));
@@ -1488,6 +1447,7 @@ function TextFileViewer({
         startOffset: startOffset === contentNextOffsetRef.current ? startOffset : 0,
         version: contentVersionRef.current,
         minBytes,
+        lines,
         isCurrent: () => requestId === contentRequestRef.current,
       });
       if (result.kind === "superseded") return null;
@@ -1727,11 +1687,12 @@ function TextFileViewer({
   // Wait for the git request before restoring diff mode so the unresolved
   // placeholder cannot immediately demote it back to source.
   useEffect(() => {
+    if (reveal && "start" in reveal) autoDiffAppliedRef.current = true;
     if (requestedInitialDisplayMode === "diff" && hasGitDiff && !autoDiffAppliedRef.current) {
       autoDiffAppliedRef.current = true;
       updateDisplayMode("diff");
     }
-  }, [requestedInitialDisplayMode, hasGitDiff, updateDisplayMode]);
+  }, [requestedInitialDisplayMode, hasGitDiff, reveal, updateDisplayMode]);
 
   const markdownPreview = useMemo(
     () => (data?.language === "markdown" ? normalizeLocalFileLinks(normalizeDisplayMath(data.content)) : ""),
@@ -1920,11 +1881,30 @@ function TextFileViewer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [attachSelection, onAttachSelection, readSelectionAttachment]);
 
+  const attemptedLineLoad = useRef<FileReveal | undefined>(undefined);
   const revealHighlightTimerRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!reveal || !data) return;
+    if (!reveal || !data || loading || !contentRef.current) return;
+    if ("start" in reveal && !isDeletedDiff) {
+      if (displayMode !== "source") {
+        // A target still waiting past the bounded read gives way when the reader picks another mode.
+        if (attemptedLineLoad.current === reveal) onRevealed?.();
+        else updateDisplayMode("source");
+        return;
+      }
+      if (loadingMore) return;
+      if (data.truncated && sourceLines.length <= reveal.end && attemptedLineLoad.current !== reveal) {
+        // One read per click, even on an error or a non-advancing chunk, and no further than
+        // Load all goes without asking: a minified one-line file would otherwise load whole.
+        attemptedLineLoad.current = reveal;
+        setLoadingMore(true);
+        void readContent(filePath, data.nextOffset, data.nextOffset + LOAD_ALL_CONFIRM_BYTES, { completed: sourceLines.length - 1, target: reveal.end })
+          .finally(() => setLoadingMore(false));
+        return;
+      }
+    }
     // Text came from the markdown preview, lines from the source view: show the view it came from.
-    const wantedMode = "text" in reveal ? (isMarkdown && hasPreview ? "preview" : effectiveDisplayMode) : "source";
+    const wantedMode = "text" in reveal ? (isMarkdown && hasPreview ? "preview" : effectiveDisplayMode) : effectiveDisplayMode;
     if (effectiveDisplayMode !== wantedMode) {
       updateDisplayMode(wantedMode);
       return;
@@ -1943,13 +1923,11 @@ function TextFileViewer({
         ranges.push(range);
       }
     } else if (root && "start" in reveal) {
-      const lineElement = (line: number) => root.querySelector<HTMLElement>(`.file-source-line[data-line-number="${line}"] .file-source-line-content`)
-        ?? root.querySelector<HTMLElement>(`.file-source-line[data-line-number="${line}"]`);
-      // One range per line, so the line-number gutter between them stays unmarked.
-      // shortcut: lines past a partially loaded file are not revealed; load more first if this matters.
-      for (let line = reveal.start; line <= reveal.end; line++) {
-        const element = lineElement(line);
-        if (!element) break;
+      // Source renders one content span per line in file order. Don't search the
+      // whole DOM again for every line of a large selected range.
+      const contents = root.getElementsByClassName("file-source-line-content");
+      for (let line = reveal.start; line <= reveal.end && line <= contents.length; line++) {
+        const element = contents[line - 1];
         const range = document.createRange();
         range.selectNodeContents(element);
         ranges.push(range);
@@ -1958,17 +1936,23 @@ function TextFileViewer({
     if (root && ranges.length) {
       // Offscreen blocks only have estimated heights (content-visibility) until laid out,
       // so re-aim once the scroll has made them real.
+      scrollRestorePendingRef.current = false;
+      root.classList.add("is-laid-out");
       const aim = () => scrollIntoScroller(root, ranges[0]);
       aim();
       requestAnimationFrame(() => { aim(); requestAnimationFrame(aim); });
       if (typeof Highlight !== "undefined") {
-        CSS.highlights.set("quote-source", new Highlight(...ranges));
+        const highlight = new Highlight();
+        for (const range of ranges) highlight.add(range);
+        CSS.highlights.set("quote-source", highlight);
         if (revealHighlightTimerRef.current !== null) window.clearTimeout(revealHighlightTimerRef.current);
         revealHighlightTimerRef.current = window.setTimeout(() => CSS.highlights.delete("quote-source"), 2000);
       }
     }
+    // Past the bounded read: keep the target, so Load more or Load all still lands on it.
+    if (!ranges.length && "start" in reveal && data.truncated) return;
     onRevealed?.();
-  }, [data, effectiveDisplayMode, hasPreview, highlightedSource, isMarkdown, lightweightSourceLines, markdownPreview, onRevealed, reveal, updateDisplayMode]);
+  }, [data, displayMode, effectiveDisplayMode, filePath, hasPreview, highlightedSource, isDeletedDiff, isMarkdown, lightweightSourceLines, loading, loadingMore, markdownPreview, onRevealed, readContent, reveal, sourceLines.length, updateDisplayMode]);
 
   // Cmd/Ctrl+F opens the in-file find once the viewer was last clicked or holds focus;
   // anywhere else the browser's own find stays.

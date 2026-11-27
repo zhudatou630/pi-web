@@ -23,7 +23,7 @@ import { toolClockMs, type ToolClock, type ToolClocks } from "@/lib/tool-clock";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getToolPreview } from "@/lib/tool-preview";
 import { stripAnsi } from "@/lib/ansi";
-import { getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
+import { formatMessageCost, getAssistantErrorMessage, getThinkingPreview, thinkingDurationSeconds, isEmptyThinkingBlock, isAssistantAborted, isAssistantTruncated, isSubagentNotificationMessage, splitThinkingPieces } from "@/lib/message-display";
 import { parseUnifiedPatch, unifiedDiffRows, type SplitDiffCell, type SplitDiffFile } from "@/lib/patch";
 import { editPreview } from "@/lib/edit-preview";
 import { parseApplyPatch } from "@/lib/apply-patch";
@@ -751,7 +751,7 @@ function CacheWarmView({ message }: { message: CustomMessage }) {
   const parts = [
     t("chat.cacheWarmCount", { count: details.count }),
     details.missed ? t("chat.cacheWarmMissed") : time,
-    details.cost > 0 ? `$${details.cost.toFixed(details.cost < 0.01 ? 4 : 2)}` : "",
+    formatMessageCost(details.cost),
   ].filter((part): part is string => Boolean(part));
   return (
     <TranscriptMarker
@@ -864,7 +864,8 @@ function AssistantMessageView({
   const modelLabel = isTurnEnd && !isStreaming ? (modelName || message.model || null) : null;
   const duration = isTurnEnd && !isStreaming && turnDurationSeconds ? formatDuration(turnDurationSeconds, t) : null;
   const timing = isTurnEnd && !isStreaming ? turnTiming ?? null : null;
-  const showFooter = aborted || steered || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent));
+  const cost = formatMessageCost(message.usage?.cost?.total ?? 0);
+  const showFooter = aborted || steered || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent || cost));
   const copyContent = () => {
     copyText(textContent).then(() => {
       setCopied(true);
@@ -1009,6 +1010,7 @@ function AssistantMessageView({
               {duration}
             </span>
           )}
+          {cost && !steered && !isProcess && <span>{cost}</span>}
           {timing && (
             <span data-answer-timing title={t("session.performance")} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
               {/* Same raised Lucide gauge as the composer readout. */}
@@ -1433,6 +1435,7 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
     ? result.content.filter((b): b is { type: "text"; text: string } => b.type === "text").map((b) => b.text).join("\n")
     : null;
   // A generated image has its own result card; its preview in content is for the model.
+  const unsupportedBy = block.toolName === "read" && isRecord(result?.details) ? result.details.imageUnsupportedByModel : undefined;
   const resultImages = imageKind ? [] : getMessageImages(result?.content ?? []);
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
@@ -1578,9 +1581,6 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
         )
       )}
 
-      {expanded && footer}
-      {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
-
       {/* ── Tool-result images stay visible while the card is collapsed ──
           They are the point of the call (reading a screenshot, a generated
           image), and hiding them behind the toggle meant reopening every card. */}
@@ -1591,6 +1591,13 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
           </div>
         </div>
       )}
+      {typeof unsupportedBy === "string" && unsupportedBy && (
+        <div className="step-body" style={{ padding: "4px 10px", color: "var(--warning)" }}>
+          {t("chat.readImagePlaceholder", { model: unsupportedBy })}
+        </div>
+      )}
+      {expanded && footer}
+      {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
     </div>
   );
 }
@@ -2358,9 +2365,11 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
       {message.cancelled && <BashTag>{t("chat.bashCancelled")}</BashTag>}
     </>
   );
-  const footer = message.truncated && fullOutputUrl ? (
+  const footer = message.truncated ? (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, padding: "0 10px 6px", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>
-      <span role="status">{t(fullError ?? (fullOutput !== null ? "chat.bashFullShown" : "chat.bashTruncated"))}</span>
+      <span role="status">{!message.fullOutputPath && message.fullOutputError
+        ? t("chat.bashFullNotSaved", { reason: message.fullOutputError })
+        : t(fullError ?? (fullOutput !== null ? "chat.bashFullShown" : "chat.bashTruncated"))}</span>
       {showFullButton && (
         <>
           <span aria-hidden="true">·</span>
@@ -2369,7 +2378,7 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
           </button>
         </>
       )}
-      <a className="meta-link" href={`${fullOutputUrl}&download=1`}>{t("chat.bashDownloadFull")}</a>
+      {fullOutputUrl && <a className="meta-link" href={`${fullOutputUrl}&download=1`}>{t("chat.bashDownloadFull")}</a>}
     </div>
   ) : undefined;
 

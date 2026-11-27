@@ -15,15 +15,22 @@ function nodes(root, type) {
   if (!root || typeof root !== "object") return [];
   return [...(root.type === type ? [root] : []), ...(root.props?.children ?? []).flat(Infinity).flatMap((child) => nodes(child, type))];
 }
-function setup(fetch) {
-  const bindings = { useState, useI18n: () => ({ t: (key) => key }), fetch, element, Fragment: "fragment", ToolCallBlock: "card", BashTag: "tag", LivePulseBeacon: "pulse" };
+function setup(fetch, message = {}) {
+  const bindings = { useState, useI18n: () => ({ t: (key, vars) => vars ? [key, vars] : key }), fetch, element, Fragment: "fragment", ToolCallBlock: "card", BashTag: "tag", LivePulseBeacon: "pulse" };
   const view = new Function(...Object.keys(bindings), js)(...Object.values(bindings));
-  const hook = renderHook(view, { message: { role: "bashExecution", command: "seq", output: "tail", exitCode: 0, truncated: true, fullOutputPath: "/tmp/pi-bash-test.log" }, sessionId: "test", expanded: true });
+  const hook = renderHook(view, { message: { role: "bashExecution", command: "seq", output: "tail", exitCode: 0, truncated: true, fullOutputPath: "/tmp/pi-bash-test.log", ...message }, sessionId: "test", expanded: true });
   const card = () => nodes(hook.result, "card")[0].props;
   const load = async () => { await nodes(card().footer, "button")[0].props.onClick(); hook.flush(); };
   return { hook, card, load };
 }
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
+
+test("an unsaved truncated result gives the reason without file actions", () => {
+  const h = setup(undefined, { fullOutputPath: undefined, fullOutputError: "disk full" });
+  assert.deepEqual(nodes(h.card().footer, "span")[0].props.children[0], ["chat.bashFullNotSaved", { reason: "disk full" }]);
+  assert.equal(nodes(h.card().footer, "button").length + nodes(h.card().footer, "a").length, 0);
+  h.hook.unmount();
+});
 
 test("full output replaces the tail, shows an explicit status, and retains download", async () => {
   for (const output of ["full\noutput", ""]) {

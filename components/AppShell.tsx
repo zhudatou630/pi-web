@@ -2815,7 +2815,8 @@ export function AppShell() {
     recentFileTabIdsRef.current = next;
     return new Set(next);
   }, [activeFileTabId, fileTabs]);
-  const handleActiveFileOpen = useCallback((filePath: string, page?: number) => {
+  const handleActiveFileOpen = useCallback((filePath: string, page?: number, reveal?: FileReveal) => {
+    setFileReveal(reveal ? { path: filePath, target: reveal } : null);
     handleOpenFile(filePath, getFileName(filePath), {
       sourceSessionId: activeFileTab?.sourceSessionId,
       cwd: activeFileTab?.cwd,
@@ -4225,7 +4226,7 @@ export function AppShell() {
                     viewerState,
                   )}
                   onAttachSelection={rightPanelOpen && active ? handleFileAttach : undefined}
-                  reveal={fileReveal?.path === tab.filePath ? fileReveal.target : undefined}
+                  reveal={active && fileReveal?.path === tab.filePath ? fileReveal.target : undefined}
                   onRevealed={() => setFileReveal(null)}
                   onAtMention={handleAtMention}
                   onOpenFile={handleActiveFileOpen}

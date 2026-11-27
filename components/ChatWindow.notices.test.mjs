@@ -15,13 +15,13 @@ test("loading keeps the composer and does not report stats until ready", () => {
   assert.match(source, /sessionStats\.contextUsage\?\.tokens \?\? "null"/);
 });
 
-test("renders temporary notices once at the top right of the chat column", () => {
+test("scrolls notices inside the stationary transcript frame above the composer", () => {
   const noticeShelfUsages = source.match(/<NoticeShelf notices=/g) ?? [];
 
   assert.equal(noticeShelfUsages.length, 1);
   assert.match(
     source,
-    /position: "absolute",\s*top: 12,\s*left: 0,\s*right: 0,[\s\S]*?justifyContent: "flex-end",[\s\S]*?<NoticeShelf notices=\{[\s\S]*?\} floating onPauseChange=\{setNoticePaused\} onOpenMcpSettings=\{onOpenMcpSettings\} \/>/,
+    /<div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">\s*<div\s+className="notice-shelf-wrapper"[\s\S]*?position: "absolute",\s*inset: 0,[\s\S]*?justifyContent: "flex-end",[\s\S]*?overflowY: "auto",\s*pointerEvents: "none",[\s\S]*?<NoticeShelf notices=/,
   );
 });
 

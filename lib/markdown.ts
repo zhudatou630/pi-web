@@ -37,13 +37,21 @@ const markdownSanitizeSchema = {
   strip: [...(defaultSchema.strip || []), "iframe", "object", "style", "form"],
 };
 
+// The colon looks like a scheme to both URL filters. Carry just this grammar
+// through sanitize as a file URL; do not allow arbitrary dotted schemes.
+const bareLineHref = /^[^\s/:?#\\]+\.[a-z\d]+:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/i;
+const bareLinePrefix = "file:bare-line:";
+
 /** react-markdown's URL filter, plus links to the apps above. */
-export function markdownAppUrlTransform(value: string): string {
-  return appLinkPattern.test(value) ? value : defaultUrlTransform(value);
+export function markdownAppUrlTransform(value: string): string | undefined {
+  if (bareLineHref.test(value)) return undefined;
+  return appLinkPattern.test(value) ? value : defaultUrlTransform(value) || undefined;
 }
 
 /** Also keeps `file:` links, for renderers that open local files in the app. */
-export function markdownUrlTransform(value: string): string {
+export function markdownUrlTransform(value: string): string | undefined {
+  const href = value.startsWith(bareLinePrefix) ? value.slice(bareLinePrefix.length) : value;
+  if (bareLineHref.test(href)) return href;
   return /^file:/i.test(value) ? value : markdownAppUrlTransform(value);
 }
 
@@ -84,6 +92,28 @@ export function normalizeLocalFileLinks(markdown: string): string {
   });
 }
 
+// Blank code spans in place, with updateInlineCodeMarker's run matching (`markerSize`: a span
+// carried over from earlier lines), so only a tag outside them opens a raw block. Columns
+// stay valid for the closing-tag search in the line as written.
+function blankCodeSpans(line: string, markerSize: number): string {
+  let out = "";
+  for (let cursor = 0; cursor < line.length;) {
+    if (line[cursor] !== "`") {
+      out += markerSize ? " " : line[cursor];
+      cursor++;
+      continue;
+    }
+    let end = cursor + 1;
+    while (line[end] === "`") end++;
+    const runSize = end - cursor;
+    if (markerSize === 0) markerSize = runSize;
+    else if (runSize === markerSize) markerSize = 0;
+    out += " ".repeat(runSize);
+    cursor = end;
+  }
+  return out;
+}
+
 export function normalizeDisplayMath(markdown: string): string {
   const lineBreak = markdown.includes("\r\n") ? "\r\n" : "\n";
   const lines = markdown.split(/\r?\n/);
@@ -119,7 +149,9 @@ export function normalizeDisplayMath(markdown: string): string {
       continue;
     }
 
-    const rawCodeOpen = line.match(/<(code|pre|script|style)\b/i);
+    const rawTag = /<(code|pre|script|style)\b/i;
+    let rawCodeOpen = line.match(rawTag);
+    if (rawCodeOpen && (inlineCodeMarkerSize || line.includes("`"))) rawCodeOpen = blankCodeSpans(line, inlineCodeMarkerSize).match(rawTag);
     if (rawCodeOpen) {
       const tag = rawCodeOpen[1].toLowerCase();
       const remainder = line.slice((rawCodeOpen.index ?? 0) + rawCodeOpen[0].length);
@@ -548,10 +580,11 @@ function remarkSplitAutolinkLiterals() {
   };
 }
 
-function remarkDriveFileLinks() {
+function remarkLocalFileLinks() {
   const walk = (node: Root | Content): void => {
-    if ((node.type === "link" || node.type === "definition") && /^\/?[a-z]:\//i.test(node.url)) {
-      node.url = `file:///${node.url.replace(/^\//, "")}`;
+    if (node.type === "link" || node.type === "definition") {
+      if (/^\/?[a-z]:\//i.test(node.url)) node.url = `file:///${node.url.replace(/^\//, "")}`;
+      else if (bareLineHref.test(node.url)) node.url = bareLinePrefix + node.url;
     }
     if ("children" in node) node.children.forEach(walk);
   };
@@ -604,7 +637,7 @@ const remarkCurrencySafeMath: Plugin = function () {
 export const markdownRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
-  remarkDriveFileLinks,
+  remarkLocalFileLinks,
   remarkSplitAutolinkLiterals,
   remarkCurrencySafeMath,
   remarkCjkFriendly,
@@ -705,7 +738,7 @@ export const markdownTextLayoutRemarkPlugins: ReactMarkdownOptions["remarkPlugin
 export const markdownPreviewRemarkPlugins: ReactMarkdownOptions["remarkPlugins"] = [
   [remarkFrontmatter, ["yaml"]],
   [remarkGfm, remarkGfmOptions],
-  remarkDriveFileLinks,
+  remarkLocalFileLinks,
   remarkSplitAutolinkLiterals,
   remarkCurrencySafeMath,
   remarkCjkFriendly,

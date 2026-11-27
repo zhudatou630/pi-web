@@ -174,6 +174,17 @@ test("files and file-index refuse traversal, including the session-reference exc
   assert.equal((await request(index, "/api/file-index", { cwd: `${root}/linked/..` })).status, 403);
 });
 
+test("file-index returns a conflicted path only once", async () => {
+  const root = fixture();
+  fs.writeFileSync(path.join(root, "conflicted.txt"), "conflict\n");
+  const oid = git(root, "hash-object", "-w", "conflicted.txt").trim();
+  execFileSync("git", ["-C", root, "update-index", "--index-info"], {
+    input: [1, 2, 3].map(stage => `100644 ${oid} ${stage}\tconflicted.txt\n`).join(""),
+  });
+  const response = await request(index, "/api/file-index", { cwd: root });
+  assert.deepEqual((await response.json()).files, ["conflicted.txt"]);
+});
+
 test("path query parameters preserve trailing spaces", { skip: process.platform === "win32" }, async () => {
   const parent = fixture();
   const root = path.join(parent, "project ");

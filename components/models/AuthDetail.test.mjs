@@ -80,10 +80,21 @@ function authDetail(fetch) {
   return {
     setProvider,
     save: async () => { await nodes(tree).find(node => node.type === "button" && node.props.variant === "primary").props.onClick(); render(); },
+    disconnect: () => nodes(tree).find(node => node.type === "button" && node.props.children === "i18n.disconnect")?.props.onClick(),
+    status: () => nodes(tree).find(node => node.props.className === "models-status is-danger")?.props.children.at(-1),
     alerts: () => nodes(tree).filter(node => node.props.role === "alert").map(node => node.props.children),
     routerUrl: () => nodes(tree).find(node => node.type === "input" && node.props.type === "url")?.props.value,
   };
 }
+
+test("an unresolved key shows an error and disconnects through the API-key route", async () => {
+  const requests = [];
+  const form = authDetail(async (url, init) => { requests.push([url, init.method]); return Response.json({ success: true }); });
+  form.setProvider({ id: "anthropic", displayName: "Anthropic", configured: false, unresolved: true });
+  assert.equal(form.status(), "models.keyUnresolved");
+  await form.disconnect();
+  assert.deepEqual(requests, [["/api/auth/api-key/anthropic", "DELETE"]]);
+});
 
 test("the first llama connection keeps its refresh warning when configured changes, resetting only for a different provider", async () => {
   const form = authDetail(async () => Response.json({ success: true, catalog: { completed: false } }));

@@ -150,6 +150,7 @@ export interface BashExecutionMessage {
   cancelled?: boolean;
   truncated?: boolean;
   fullOutputPath?: string;
+  fullOutputError?: string;
   excludeFromContext?: boolean;
   timestamp?: number;
 }

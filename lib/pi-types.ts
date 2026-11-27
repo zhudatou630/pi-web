@@ -213,7 +213,7 @@ export interface AgentSessionLike {
   executeBash(command: string, onChunk?: (chunk: string) => void, options?: {
     excludeFromContext?: boolean;
     operations?: BashOperations;
-  }): Promise<{ output: string; exitCode?: number; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string }>;
+  }): Promise<{ output: string; exitCode?: number; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string; fullOutputError?: string }>;
   recordBashResult(command: string, result: NonNullable<UserBashEventResult["result"]>, options?: { excludeFromContext?: boolean }): void;
   abortBash(): void;
   readonly isBashRunning: boolean;

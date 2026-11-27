@@ -74,6 +74,10 @@ P2 — Add by paste
 - URL; command line; `pi mcp add …` (the SDK's `runMcpCommand(["add", …])` with a temporary `cwd`
   and agent dir, so `-l` cannot touch the project; succeed only when an entry was written);
   `claude mcp add …`; JSON (single entry, name map, `mcpServers`, VS Code `servers`).
+  Leading assignments (also after `env`) belong to the invoked program: keep them for plain servers,
+  not for the server described by an add command. Any other pi/claude/codex/gemini line (also through
+  npx, npm exec, pnpm dlx, yarn dlx) is refused rather than offered as a server, since Save runs it;
+  only `claude mcp serve` and `codex mcp-server` import as servers.
 - Preview: the command that will run, the variables it reads, `!command` values. Nothing connects
   before Save; Save checks that server once.
 

@@ -2,10 +2,12 @@ import {
   SessionManager,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
-import { closeSync, type Dirent, fstatSync, openSync, readSync, statSync } from "fs";
-import { readdir } from "fs/promises";
+import { closeSync, createReadStream, type Dirent, fstatSync, openSync, readSync, statSync } from "fs";
+import { readdir, stat } from "fs/promises";
+import { createInterface } from "node:readline";
 import { isAbsolute, join, normalize as normalizePath, relative, resolve as resolvePath, sep } from "path";
 import type { AgentMessage, ImageContent, SessionEntry, SessionHeader, SessionInfo, SessionContext, SessionOutlineItem } from "./types";
+import type { AgentSessionWrapper } from "./rpc-manager";
 import { normalizeToolCalls, projectMessageForBrowser } from "./normalize";
 import { getMessageGroupBoundaries, getThinkingPreview, isMessageGroupBoundary, type MessageGroupMessage } from "./message-display";
 import { projectIdentityKey } from "./project-identity";
@@ -612,6 +614,50 @@ export function openSessionForRead(filePath: string, options: { fresh?: boolean 
     }
   }
   return manager;
+}
+
+/** null means no such session; undefined means the session lacks this entry. */
+export async function readSessionEntryById(
+  sessionId: string, entryId: string, live?: AgentSessionWrapper,
+  cacheLimit = SESSION_READ_CACHE_MAX_BYTES,
+): Promise<SessionEntry | undefined | null> {
+  const current = live?.isAlive() ? live.inner.sessionManager.getEntry(entryId) : undefined;
+  if (current) return current as unknown as SessionEntry;
+
+  const filePath = await resolveSessionPath(sessionId);
+  if (!filePath) return null;
+  let size: number;
+  try { size = (await stat(filePath)).size; } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (size > cacheLimit) {
+    const stream = createReadStream(filePath, { encoding: "utf8", highWaterMark: 1024 * 1024 });
+    const lines = createInterface({ input: stream, crlfDelay: Infinity });
+    const literal = JSON.stringify(entryId);
+    let legacy = false;
+    let first = true;
+    try {
+      for await (const line of lines) {
+        if (!first && !line.includes(literal)) continue;
+        let record;
+        try { record = JSON.parse(line); } catch { continue; }
+        if (first) {
+          first = false;
+          if (record?.type === "session" && (record.version ?? 1) < 2) {
+            legacy = true; // v1 needs the SDK to assign entry ids.
+            break;
+          }
+        }
+        if (record?.id === entryId && record.type !== "session") return record;
+      }
+      if (!legacy) return undefined;
+    } finally {
+      lines.close();
+      stream.destroy();
+    }
+  }
+  return openSessionForRead(filePath).getEntry(entryId) as unknown as SessionEntry | undefined;
 }
 
 export function getSessionEntries(filePath: string): SessionEntry[] {

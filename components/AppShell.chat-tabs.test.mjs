@@ -298,7 +298,7 @@ test("binds per-tab actions to the target session instead of global selection", 
   assert.match(source, /isFocusedPane=\{isFocusedPane\}/);
   assert.match(chatWindowSource, /onAttentionNeeded\?\.\(request, sessionRef\.current\)/);
   // The optional `page` carries a PDF `#page=` fragment through to the viewer.
-  assert.match(chatWindowSource, /onOpenFile\?\.\(filePath, sessionRef\.current\?\.id \?\? null, page\)/);
+  assert.match(chatWindowSource, /onOpenFile\?\.\(filePath, sessionRef\.current\?\.id \?\? null, page, reveal\)/);
   assert.match(chatWindowSource, /chatInputRef: ownChatInputRef/);
   assert.match(chatWindowSource, /ref=\{setChatInputElement\}/);
 });

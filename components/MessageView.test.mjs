@@ -437,6 +437,10 @@ test("restores copy and time only on a completed final answer", () => {
   const html = renderMessage(message, { isTurnEnd: true, modelName: "GPT-6 Astra", turnDurationSeconds: 47 });
   assert.match(html, /data-answer-footer[\s\S]*data-answer-model[^>]*>GPT-6 Astra<\/span>[\s\S]*data-answer-duration[\s\S]*47s[\s\S]*data-answer-time[\s\S]*title="Copy message"/);
   assert.equal((html.match(/GPT-6 Astra/g) ?? []).length, 1);
+  assert.match(html, /data-answer-footer[^]*?\$0\.08/);
+  const stepHtml = renderMessage(message, { isProcess: true });
+  assert.doesNotMatch(stepHtml, /\$0\.08/);
+  assert.doesNotMatch(stepHtml, /data-answer-footer/);
   const fallbackHtml = renderMessage(message, { isTurnEnd: true });
   assert.match(fallbackHtml, /data-answer-footer[\s\S]*data-answer-model[^>]*>hidden-model<\/span>/);
   assert.doesNotMatch(fallbackHtml, /47s/);
@@ -766,6 +770,19 @@ test("renders assistant image answers instead of leaving a blank final answer", 
   });
   assert.match(onlyImage, /<img[^>]+src="data:image\/png;base64,YWJj"/);
   assert.doesNotMatch(onlyImage, /data-message-text/);
+});
+
+test("read image cards explain the model placeholder beneath both image sizes", () => {
+  const block = { type: "toolCall", toolCallId: "read-img", toolName: "read", input: { path: "image.png" } };
+  const result = { role: "toolResult", toolCallId: block.toolCallId, content: [{ type: "image", data: "YWJj", mimeType: "image/png" }] };
+  const render = (defaultExpanded, details) => renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ToolCallBlock, { block, result: { ...result, details }, defaultExpanded })));
+  for (const expanded of [false, true]) {
+    const html = render(expanded, { imageUnsupportedByModel: "text-model" });
+    assert.match(html, /<img[^>]*>[\s\S]*text-model does not support images/);
+    assert.equal(html.split("saw a placeholder").length - 1, 1);
+    assert.doesNotMatch(render(expanded, {}), /saw a placeholder/);
+  }
 });
 
 test("tool-result images render on a collapsed card, not only when expanded (#826)", async () => {

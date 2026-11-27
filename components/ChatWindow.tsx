@@ -11,7 +11,7 @@ import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { isImeComposing } from "@/lib/ime";
-import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
+import { addProcessCost, formatMessageCost, countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { truncateStatusReason } from "@/lib/session-status";
 import { TurnFilesContext } from "./TurnWrittenFiles";
@@ -819,6 +819,7 @@ function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: str
 function ProcessDetailsGroup({
   messageCount,
   toolCallCount,
+  cost,
   durationSeconds,
   startTime,
   defaultExpanded = false,
@@ -832,6 +833,7 @@ function ProcessDetailsGroup({
 }: {
   messageCount: number;
   toolCallCount: number;
+  cost: number;
   /** Only for turns without a final answer; answered turns show it in the footer. */
   durationSeconds?: number;
   activityLabel?: string | null;
@@ -952,6 +954,7 @@ function ProcessDetailsGroup({
             {stepsLabel}
           </span>
         )}
+        {cost > 0 && <span className="shrink-0">· {formatMessageCost(cost)}</span>}
         <svg
           width="10"
           height="10"
@@ -1036,8 +1039,8 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
   const wrappedOnSessionForked = useCallback((newSessionId: string) => {
     onSessionForked?.(newSessionId, sessionRef.current?.id ?? null);
   }, [onSessionForked]);
-  const openFileFromSession = useCallback((filePath: string, page?: number) => {
-    onOpenFile?.(filePath, sessionRef.current?.id ?? null, page);
+  const openFileFromSession = useCallback((filePath: string, page?: number, reveal?: FileReveal) => {
+    onOpenFile?.(filePath, sessionRef.current?.id ?? null, page, reveal);
   }, [onOpenFile]);
   const keepTabOpen = useCallback(() => {
     const sessionId = sessionRef.current?.id;
@@ -2190,25 +2193,23 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
         </div>
       )}
 
-      <div
-        className="notice-shelf-wrapper"
-        style={{
-          position: "absolute",
-          top: 12,
-          left: 0,
-          right: 0,
-          zIndex: 40,
-          display: "flex",
-          // Toasts live in the top-right corner
-          justifyContent: "flex-end",
-          padding: `0 ${CHAT_COLUMN_PADDING}px`,
-          pointerEvents: "none",
-        }}
-      >
-        <NoticeShelf notices={sessionEnded ? [...notices, { id: "session-ended", type: "info", message: t("chat.sessionEnded") }] : notices} floating onPauseChange={setNoticePaused} onOpenMcpSettings={onOpenMcpSettings} />
-      </div>
-
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div
+          className="notice-shelf-wrapper"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 40,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "flex-end",
+            padding: `12px ${CHAT_COLUMN_PADDING}px`,
+            overflowY: "auto",
+            pointerEvents: "none",
+          }}
+        >
+          <NoticeShelf notices={sessionEnded ? [...notices, { id: "session-ended", type: "info", message: t("chat.sessionEnded") }] : notices} floating onPauseChange={setNoticePaused} onOpenMcpSettings={onOpenMcpSettings} />
+        </div>
         {imageDialogOpen && !sessionEnded && imageConfig && (
           <ImageGenerationDialog
             config={imageConfig}
@@ -2412,6 +2413,7 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                       <div key={`process-group-${messageKeys[firstIdx]}`}>
                         <ProcessDetailsGroup
                           messageCount={1}
+                          cost={addProcessCost(0, streamingParts.processMessage)}
                           toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
                           durationSeconds={streamingDuration}
                           startTime={turnStartTime}
@@ -2461,6 +2463,7 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                 const processEntryIds: string[] = [];
                 const promotedAnswers: { idx: number; message: AssistantMessage }[] = [];
                 let processToolCount = 0;
+                let processCost = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
                 let processStartTime: number | undefined;
@@ -2495,6 +2498,9 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                   if (processIdx !== finalAssistantIdx && parts?.answerMessage) {
                     promotedAnswers.push({ idx: processIdx, message: parts.answerMessage });
                   }
+                  // A step's whole usage, promoted text included (it has no footer); only the final
+                  // answer's footer shows its own message's cost.
+                  if (processIdx !== finalAssistantIdx || !finalAnswerMessage) processCost = addProcessCost(processCost, processMessage);
                   const message = parts?.processMessage
                     ?? (processMessage.stopReason === "length" && !parts?.answerMessage ? processMessage : null);
                   if (!message) continue;
@@ -2519,6 +2525,7 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                 }
 
                 if (isLiveTail && streamingParts.processMessage) {
+                  processCost = addProcessCost(processCost, streamingParts.processMessage);
                   processToolCount += countToolCallBlocks(streamingParts.processMessage.content ?? []);
                   processViews.push(
                     <MessageView
@@ -2603,6 +2610,7 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                       <ProcessDetailsGroup
                         messageCount={processViews.length}
                         toolCallCount={processToolCount}
+                        cost={processCost}
                         durationSeconds={finalAnswerMessage || answeringLive || steered ? undefined : processDurationSeconds}
                         activityLabel={activityLabel}
                         startTime={turnStartTime ?? processStartTime}

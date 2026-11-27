@@ -6,6 +6,7 @@ import ts from "typescript";
 import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url);
+const offline = await jiti.import("../../../lib/pi-offline.ts");
 const versionHelpers = await jiti.import("../../../lib/app-update.ts");
 const source = ts.transpileModule(readFileSync(new URL("./route.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -25,6 +26,7 @@ function route({ enabled = true, sessions = false, terminals = false, blocked = 
     fetch: async () => Response.json({ version: "1.1.0" }),
     require: (name) => {
       if (name === "next/server") return { NextResponse: Response, after: (fn) => deferred.push(fn) };
+      if (name === "@/lib/pi-offline") return offline;
       if (name === "@/lib/app-update") return versionHelpers;
       if (name === "@/lib/rpc-manager") return { hasAppUpdateBlockingSessions: () => sessions };
       if (name === "@/lib/terminal-manager") return { hasAppUpdateBlockingTerminals: () => terminals };
@@ -43,6 +45,19 @@ test("version checks are enabled by default and responses cannot be cached by th
   assert.equal(data.updateAvailable, true);
   assert.equal(data.canUpdate, true);
   assert.equal(response.headers.get("Cache-Control"), "no-store");
+});
+
+test("any defined PI_OFFLINE skips even a forced lookup", async (t) => {
+  const original = process.env.PI_OFFLINE;
+  t.after(() => { if (original === undefined) delete process.env.PI_OFFLINE; else process.env.PI_OFFLINE = original; });
+  const api = route();
+  api.context.fetch = () => assert.fail("offline must not contact npm");
+  for (const value of ["", "0", "false", "1"]) {
+    process.env.PI_OFFLINE = value;
+    const response = await api.GET(new Request("http://localhost/api/app-update?force=1"));
+    assert.equal((await response.json()).releaseUrl, "");
+    assert.equal((await api.POST()).status, 409);
+  }
 });
 
 test("restart status returns the installed version without contacting npm", async () => {

@@ -69,6 +69,66 @@ function shellWords(text: string): string[] {
   return words;
 }
 
+function commandPrefix(words: string[]) {
+  const env: [string, string][] = [];
+  let i = 0;
+  const assignments = () => {
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i] ?? "")) {
+      const pair = words[i++], separator = pair.indexOf("=");
+      env.push([pair.slice(0, separator), pair.slice(separator + 1)]);
+    }
+  };
+  assignments();
+  if (programName(words[i]) === "env") {
+    i++;
+    assignments();
+    if (words[i]?.startsWith("-")) throw new Error("env options are not supported in an MCP command.");
+  }
+  return { env, program: words.slice(i) };
+}
+
+const cliPackages = new Map([
+  ["@earendil-works/pi-coding-agent", "pi"], ["@anthropic-ai/claude-code", "claude"],
+  ["@openai/codex", "codex"], ["@google/gemini-cli", "gemini"],
+]);
+const agentClis = new Set(cliPackages.values());
+
+function programName(word = ""): string {
+  return word.split(/[\\/]/).pop()!.replace(/\.(?:exe|cmd)$/i, "");
+}
+
+const withoutVersion = (pkg: string) => pkg.replace(/(?!^)@[^/]*$/, "");
+const agentCliName = (word: string) => cliPackages.get(withoutVersion(word)) ?? (agentClis.has(word) ? word : undefined);
+
+/** The program a package runner (`npx`, `npm exec`, `pnpm dlx`, …) starts, and where its arguments begin. */
+function runProgram(program: string[]): { cli: string; index: number } {
+  const cli = programName(program[0]);
+  if (["npm", "pnpm", "yarn"].includes(cli)) {
+    // Their options take values in many forms: any word naming an agent CLI or its package is the program.
+    for (let index = 1; index < program.length; index++) {
+      const agent = agentCliName(program[index]);
+      if (agent) return { cli: agent, index: index + 1 };
+    }
+    return { cli, index: 1 };
+  }
+  if (!["npx", "bunx", "pnpx"].includes(cli)) return { cli, index: 1 };
+  // Options, including `--`, come before the package.
+  let index = 1;
+  while (program[index]?.startsWith("-")) index += ["-p", "--package"].includes(program[index]) ? 2 : 1;
+  const pkg = withoutVersion(program[index++] ?? "");
+  return { cli: cliPackages.get(pkg) ?? programName(pkg), index };
+}
+
+/** Save tests a pasted server by running it: an agent CLI line (logout, mcp remove, updates, …) must not get there. */
+function refuseAgentCli(program: string[]): void {
+  const { cli, index } = runProgram(program);
+  const sub = program[index], action = program[index + 1];
+  if (!agentClis.has(cli) || (cli === "claude" && sub === "mcp" && action === "serve") || (cli === "codex" && sub === "mcp-server")) return;
+  throw new Error(sub === "mcp" && action === "add" && cli !== "pi" && cli !== "claude"
+    ? `Importing \`${cli} mcp add\` is not supported. Paste the server's command or JSON configuration instead.`
+    : `This ${cli} command is not an MCP server command.`);
+}
+
 async function piEntries(args: string[], deps: Partial<ImportDeps>): Promise<Entry[]> {
   const run = deps.runMcpCommand ?? (await importSdkFile<ImportDeps>("extensions/mcp/cli.js")).runMcpCommand;
   const root = await mkdtemp(join(tmpdir(), "pi-web-mcp-import-"));
@@ -168,18 +228,21 @@ export async function parseMcpPaste(text: string, deps: Partial<ImportDeps> = {}
       const config = { url: /^https?:\/\//i.test(text) ? text : `http://${text}` };
       entries = [[configName(config), config]];
     } else {
-      const words = shellWords(text);
-      if (words[0] === "npx" && words[1] === "pi" && words[2] === "mcp" && words[3] === "add") words.shift();
-      if (words[0] === "pi" && words[1] === "mcp" && words[2] === "add") entries = await piEntries(words.slice(3), deps);
-      else if (words[0] === "claude" && words[1] === "mcp" && words[2] === "add") entries = [claudeEntry(words.slice(3), notes)];
-      else {
-        const env: [string, string][] = [];
-        while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
-          const pair = words.shift()!, separator = pair.indexOf("=");
-          env.push([pair.slice(0, separator), pair.slice(separator + 1)]);
+      const { env, program } = commandPrefix(shellWords(text));
+      const [command, ...args] = program;
+      if (!command) throw new Error("A command is required after environment assignments.");
+      const { cli, index } = runProgram(program);
+      const sub = program[index], action = program[index + 1];
+      if ((cli === "pi" || cli === "claude") && sub === "mcp" && action === "add") {
+        // The prefix configures the CLI process, not the server being added.
+        entries = cli === "pi" ? await piEntries(program.slice(index + 2), deps) : [claudeEntry(program.slice(index + 2), notes)];
+        for (const [, config] of entries) {
+          if (isRecord(config) && typeof config.command === "string") {
+            refuseAgentCli([config.command, ...(Array.isArray(config.args) ? config.args.map(String) : [])]);
+          }
         }
-        const [command, ...args] = words;
-        if (!command) throw new Error("A command is required after environment assignments.");
+      } else {
+        refuseAgentCli(program);
         entries = [[commandName(command, args), { command, args, ...(env.length ? { env: Object.fromEntries(env) } : {}) }]];
       }
     }

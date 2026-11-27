@@ -47,7 +47,7 @@ import {
   SettingsRow,
 } from "./SettingsUi";
 import { ProviderIcon } from "./ProviderIcon";
-import { ApiKeyDetail, OAuthDetail } from "./models/AuthDetail";
+import { ApiKeyDetail, OAuthDetail, StatusPill } from "./models/AuthDetail";
 import { AddProviderPicker, ModelPickerDialog } from "./models/dialogs";
 import { EndpointForm, ModelDiscovery } from "./models/EndpointSections";
 import { Notice, SectionHeading } from "./models/fields";
@@ -611,7 +611,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   const connectedIds = new Set([
     ...oauthProviders.filter((p) => p.loggedIn).map((p) => p.id),
-    ...apiKeyProviders.filter((p) => p.configured).map((p) => p.id),
+    ...apiKeyProviders.filter((p) => p.configured || p.unresolved).map((p) => p.id),
     ...ambientProviders.map((p) => p.id),
   ]);
   const selectedProviderId = view.provider;
@@ -619,9 +619,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const addId = (id: string | null | undefined) => {
     if (id && !providerIds.includes(id)) providerIds.push(id);
   };
-  oauthProviders.filter((p) => p.loggedIn).forEach((p) => addId(p.id));
-  apiKeyProviders.filter((p) => p.configured).forEach((p) => addId(p.id));
-  ambientProviders.forEach((p) => addId(p.id));
+  connectedIds.forEach(addId);
   Object.keys(config.providers ?? {}).forEach(addId);
   catalog.forEach((model) => addId(model.provider));
   chatRefs.forEach((model) => addId(model.provider));
@@ -794,7 +792,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
     const activeAuthLabel = row.oauth?.loggedIn
       ? t("models.kindOAuth")
-      : row.apiKey?.configured
+      : row.apiKey?.configured || row.apiKey?.unresolved
         ? t("models.kindApiKey")
         : row.ambient
           ? row.ambient.label ?? t("models.kindExternal")
@@ -1050,7 +1048,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
       <SettingsLinkRow
         key={row.id}
         label={<span className="models-provider-label"><ProviderIcon id={row.id} size={13} />{row.label}{providerDirty(row.id) && <span className="models-dirty-dot" title={t("models.unsavedProvider")} />}</span>}
-        description={authLabel(row)}
+        description={row.apiKey?.unresolved ? <StatusPill tone="danger">{t("models.keyUnresolved")}</StatusPill> : authLabel(row)}
         muted={!row.connected}
         onOpen={() => openProvider(row.id)}
       >
