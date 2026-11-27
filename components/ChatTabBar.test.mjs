@@ -225,25 +225,20 @@ test("mobile mode hides split toggle and only shows close button on active tab",
   // Tab bar scroll container must enable touch panning
   assert.match(html, /touch-action:\s*pan-x/i);
   assert.match(html, /width:\s*100%/i);
-  assert.match(renderedTabs[0], /border-right:1px solid var\(--border\)/);
-  assert.doesNotMatch(renderedTabs[1], /border-right:1px solid var\(--border\)/);
   assert.doesNotMatch(html, /box-shadow:-4px 0 10px/);
 });
 
 
-test("a visible tab is ruled off on both sides", () => {
+test("tabs are chips without rules (docs/ui.md, Tabs and top bars)", () => {
   const tabs = [
     { id: "s1", kind: "session", title: "First", session: { id: "s1" }, newSessionCwd: null, newSessionDraftKey: null },
     { id: "s2", kind: "session", title: "Last", session: { id: "s2" }, newSessionCwd: null, newSessionDraftKey: null },
   ];
-  const render = (props) => tabNodes(renderToStaticMarkup(React.createElement(I18nProvider, null,
-    React.createElement(ChatTabBar, { tabs, onSelectTab() {}, onCloseTab() {}, onNewTab() {}, ...props }))));
-
-  // Unified header: the first tab sits beside header icons and needs a left rule only when visible.
-  assert.match(render({ activeTabId: "s1", unifiedHeader: true })[0], /box-shadow:[^;"]*inset 1px 0 0 var\(--border\)/);
-  assert.doesNotMatch(render({ activeTabId: "s2", unifiedHeader: true })[0], /inset 1px 0 0/);
-  // Mobile: the last tab keeps its right rule while visible.
-  assert.match(render({ activeTabId: "s2", isMobile: true })[1], /border-right:1px solid var\(--border\)/);
+  const html = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatTabBar, { tabs, activeTabId: "s1", unifiedHeader: true, onSelectTab() {}, onCloseTab() {}, onNewTab() {} })));
+  const styles = [...html.matchAll(/class="chat-tab"[^>]*style="([^"]*)"/g)].map((match) => match[1]);
+  assert.equal(styles.length, 2);
+  for (const style of styles) assert.doesNotMatch(style, /border-right|box-shadow|background:/);
 });
 
 test("tabs are draggable only when the parent handles moves and not on mobile", () => {
@@ -287,16 +282,18 @@ test("overflow button reports how many tabs are hidden; the context menu can bat
   assert.match(source, /const rightIds = tabs\.slice\(tabs\.indexOf\(menuTab\) \+ 1\)/);
 });
 
-test("top line (VS Code): 1px accent on the focused pane's tab, neutral on the other pane's", () => {
+test("the focused pane's shown tab is current (filled chip); the other pane's is only shown (tinted)", () => {
   const tabs = [
     { id: "s1", kind: "session", title: "One", session: { id: "s1" } },
     { id: "s2", kind: "session", title: "Two", session: { id: "s2" } },
   ];
   const nodes = (activePane) => tabNodes(renderToStaticMarkup(React.createElement(I18nProvider, null,
     React.createElement(ChatTabBar, { tabs, activeTabId: "s1", activePane, onSelectTab() {}, onCloseTab() {}, onNewTab() {} }))));
-  assert.match(nodes("primary")[0], /inset 0 1px 0 var\(--accent\)/);
-  assert.match(nodes("secondary")[0], /inset 0 1px 0 var\(--text-dim\)/);
-  assert.doesNotMatch(nodes("primary")[1], /inset 0 1px 0/);
+  assert.match(nodes("primary")[0], /data-shown="true" data-current="true"/);
+  assert.match(nodes("secondary")[0], /data-shown="true"/);
+  assert.doesNotMatch(nodes("secondary")[0], /data-current/);
+  assert.match(nodes("primary")[1], /data-shown="false"/);
+  assert.doesNotMatch(nodes("primary")[1], /data-current/);
 });
 
 test("split: the context menu offers Merge panes; drafts carry no left icon", async () => {

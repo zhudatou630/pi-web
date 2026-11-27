@@ -6,12 +6,14 @@ const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8"
 const menuSource = await readFile(new URL("./SessionMenu.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-test("phone top bar holds the menu button, title, Changes N and the session menu; outline and Files move into the menu", async () => {
+test("phone top bar holds the menu button, title and the session menu; outline and Files move into the menu", async () => {
   const toolbar = mobileToolbarSource();
   const title = toolbar.indexOf('className="mobile-top-bar-title"');
-  const changes = toolbar.indexOf("<ChangesButton");
   const actions = toolbar.indexOf("{renderChatToolbarActions(true)}");
-  assert.ok(title >= 0 && title < changes && changes < actions);
+  assert.ok(title >= 0 && title < actions);
+  // Changes N sits above the composer on phones too (docs/ui.md, Composer context).
+  assert.doesNotMatch(source, /ChangesButton|renderTopBarContext/);
+  assert.match(source, /composerContext=\{renderComposerContext\(tabSession\)\}/);
   assert.doesNotMatch(toolbar, /renderMainFileToggle/);
   // Changes N is fetched on phones too, on the same triggers as desktop.
   assert.match(source, /const gitChangeCwdKey = \[\.\.\.new Set\(\[/);
@@ -212,7 +214,7 @@ test("places trust warnings below the mobile toolbar and the file toggle in tool
 test("mobile toolbar packs its whole group at the right end, fixed tools last", () => {
   const toolbar = mobileToolbarSource();
   assert.match(toolbar, /justifyContent: "flex-end"/);
-  const fileToggle = functionSource("renderMainFileToggle", "const sidebarToggleButton");
+  const fileToggle = functionSource("renderMainFileToggle", "const renderComposerContext");
   assert.doesNotMatch(fileToggle, /marginLeft/);
   // Conditional tools (back, agents, branches) come first and grow leftwards; the menu never moves.
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");

@@ -12,14 +12,15 @@ const themeSource = await readFile(new URL("../hooks/useTheme.ts", import.meta.u
 const enSource = await readFile(new URL("../lib/i18n/messages/en.ts", import.meta.url), "utf8");
 const zhSource = await readFile(new URL("../lib/i18n/messages/zh-CN.ts", import.meta.url), "utf8");
 
-test("opens settings from a single sidebar text control", () => {
+test("opens settings from the sidebar toolbar row", async () => {
   assert.match(shellSource, /<SettingsPanel/);
   assert.match(shellSource, /setSettingsSection\(getLastSettingsSection\(projectTrustCwd\)\)/);
   assert.match(shellSource, /initialSection=\{settingsSection\}/);
-  assert.match(shellSource, /translate\("common\.settings"\)/);
-  assert.match(shellSource, /className="sidebar-footer"/);
+  assert.match(await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8"), /aria-label=\{t\("common\.settings"\)\}/);
   assert.match(shellSource, /color: "var\(--text-muted\)"/);
-  assert.match(shellSource, /className="sidebar-footer-label"/);
+  // The sidebar's toolbar row ends with Settings (prefetched on hover or focus).
+  assert.match(shellSource, /onPrefetchSettings=\{\(\) => prefetchSettings\(projectTrustCwd\)\}/);
+  assert.doesNotMatch(shellSource, /sidebar-footer/);
   assert.doesNotMatch(shellSource, /SettingsSectionIcon/);
   assert.doesNotMatch(shellSource, /\["models", translate\("common\.models"\)\]/);
   assert.doesNotMatch(shellSource, /\["skills", translate\("common\.skills"\)\]/);

@@ -39,7 +39,7 @@ import { SubagentIcon } from "./SubagentIcon";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
-import { ChangesButton, SessionContextButton } from "./TopBarContext";
+import { SessionComposerContext } from "./TopBarContext";
 import { hasBlockedSession } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView } from "./PanelViews";
 import type { FileExplorerHandle } from "./FileExplorer";
@@ -2516,6 +2516,7 @@ export function AppShell() {
       <ChatWindow
         key={tabKey ?? sessionKey}
         session={tabSession}
+        composerContext={renderComposerContext(tabSession)}
         searchTarget={isFocusedPane && searchTarget?.sessionId === tabSession?.id ? searchTarget : null}
         onSearchTargetHandled={handleSearchTargetHandled}
         initialScrollPosition={tabSession ? sessionScrollPositionsRef.current.get(tabSession.id) ?? null : null}
@@ -2864,9 +2865,48 @@ export function AppShell() {
     return () => observer.disconnect();
   }, [activeCwdName]);
 
+  // Phones: the closed drawer's ☰ carries a dot while a session waits or failed (docs/ui.md, Top bar).
+  const menuNeedsYou = isMobile && !sidebarOpen && hasBlockedSession(sessionMarkers);
+  // Desktop with the sidebar open: the toggle leads the sidebar's top row (Cursor); otherwise the
+  // chat top bar's. One element, mounted in one place at a time (its ref restores focus).
+  const sidebarToggleInHeader = isMobile || !sidebarOpen;
+  const sidebarToggleButton = (
+      <button
+        ref={sidebarToggleRef}
+        data-dialog-focus-fallback="true"
+        className="workspace-header-action"
+        onClick={handleSidebarToggle}
+         title={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
+         aria-label={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
+        style={{
+          position: "relative",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+          background: "none", border: "none",
+          color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+      >
+        {sidebarOpen ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2.5" y="5" width="19" height="14" rx="2.5" /><line x1="9" y1="5" x2="9" y2="19" />
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        )}
+        {menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" />}
+      </button>
+  );
+
   const sidebarContent = (
     <>
       <SessionSidebar
+        sidebarToggle={sidebarToggleInHeader ? null : sidebarToggleButton}
+        onOpenSettings={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
+        onPrefetchSettings={() => prefetchSettings(projectTrustCwd)}
         selectedSessionId={selectedSession?.id ?? null}
         visibleSessionIds={mainView === "chat" && !panelCoversPage && !settingsSection && !(isMobile && (sidebarOpen || rightPanelOpen))
           ? [primaryTab?.session?.id ?? selectedSession?.id, isSplitActive ? secondaryTab?.session?.id : null].filter((id): id is string => Boolean(id)) : []}
@@ -2905,22 +2945,6 @@ export function AppShell() {
           if (isMobile) setSidebarOpen(false);
         }}
       />
-      {/* Settings where a section title starts (Routines is a nav row under New session). */}
-      <div className="sidebar-footer">
-        <button
-          type="button"
-          onClick={() => setSettingsSection(getLastSettingsSection(projectTrustCwd))}
-          onPointerEnter={() => prefetchSettings(projectTrustCwd)}
-          onFocus={() => prefetchSettings(projectTrustCwd)}
-          title={translate("common.settings")}
-          aria-label={translate("common.settings")}
-          className="sidebar-footer-item"
-        >
-          {/* The brand face has Latin only, so the label stays English in every locale;
-              the button's accessible name and tooltip are translated. */}
-          <span className="sidebar-footer-label" aria-hidden="true">Settings</span>
-        </button>
-      </div>
     </>
   );
 
@@ -3237,48 +3261,18 @@ export function AppShell() {
     );
   };
 
-  // Phones: the closed drawer's ☰ carries a dot while a session waits or failed (docs/ui.md, Top bar).
-  const menuNeedsYou = isMobile && !sidebarOpen && hasBlockedSession(sessionMarkers);
-  const sidebarToggleButton = (
-      <button
-        ref={sidebarToggleRef}
-        data-dialog-focus-fallback="true"
-        className="workspace-header-action"
-        onClick={handleSidebarToggle}
-         title={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
-         aria-label={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
-        style={{
-          position: "relative",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-          background: "none", border: "none",
-          color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
-      >
-        {sidebarOpen ? (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" />
-          </svg>
-        ) : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        )}
-        {menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" />}
-      </button>
-  );
-
-  const renderTopBarContext = (session: SessionInfo | null | undefined) => {
-    if (!showChat || !session || session.transient) return null;
+  // Above each pane's composer (docs/ui.md, Composer context): where it runs, then "Changes N".
+  const renderComposerContext = (session: SessionInfo | null | undefined) => {
+    if (!session || session.transient) return null;
     const projectRoot = session.projectRoot ?? session.cwd;
     return (
-      <SessionContextButton
+      <SessionComposerContext
         project={projectNameByRoot.get(projectRoot) ?? getFileName(projectRoot)}
         branch={session.branch}
         isWorktree={session.isWorktree}
         cwd={session.cwd}
+        changeCount={gitChangeCounts[session.cwd] ?? 0}
+        onOpenChanges={() => handleRevealCwdInFiles(session.cwd, true)}
         onOpenTerminal={() => handleOpenTerminal(session.cwd)}
         onRevealInFiles={() => handleRevealCwdInFiles(session.cwd)}
         onCopyPath={() => { void copyText(session.cwd).catch(() => {}); }}
@@ -3300,12 +3294,6 @@ export function AppShell() {
         pointerEvents: options?.inert ? "none" : undefined,
       }}
     >
-      {showChat && (() => {
-        const session = options?.session === undefined ? selectedSession : options.session;
-        return session && !session.transient
-          ? <ChangesButton count={gitChangeCounts[session.cwd] ?? 0} onClick={() => handleRevealCwdInFiles(session.cwd, true)} />
-          : null;
-      })()}
       {renderProjectTrustWarning(false, !options?.inert)}
       {/* VS Code's Split Editor Right: only unsplit (two panes at most), right before the session tools. */}
       {!options && showChat && chatTabs.length > 0 && canSplitChat && (
@@ -3412,8 +3400,8 @@ export function AppShell() {
       {/* Center: chat */}
       <div inert={panelCoversPage || undefined} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
-        {/* No bottom rule: the bar's --bg-panel against the chat's --bg is the edge (docs/ui.md, Borders). */}
+        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg)" }}>
+        {/* One surface with the chat, no rule (Cursor; docs/ui.md, Tabs and top bars). */}
         <div
           className="workspace-header"
           style={{ position: "relative", boxShadow: "none" }}
@@ -3427,7 +3415,7 @@ export function AppShell() {
         >
           {mainView === "routines" ? (
             <>
-              {sidebarToggleButton}
+              {sidebarToggleInHeader && sidebarToggleButton}
               <button
                 type="button"
                 className="workspace-header-action"
@@ -3452,7 +3440,7 @@ export function AppShell() {
               {renderMainFileToggle(isMobile)}
             </>
           ) : (<>
-          {!isSplitActive && sidebarToggleButton}
+          {!isSplitActive && sidebarToggleInHeader && sidebarToggleButton}
           {isMobile && (
             <div
               data-mobile-toolbar="true"
@@ -3465,11 +3453,8 @@ export function AppShell() {
                 height: "100%",
               }}
             >
-              {/* Phones: ☰, title, Changes N, ⋯ (outline and Files live in ⋯); conditional tools before ⋯. */}
+              {/* Phones: ☰, title, ⋯ (outline and Files live in ⋯); conditional tools before ⋯. */}
               <span className="mobile-top-bar-title" title={showChat ? collapsedSessionTitle : undefined}>{showChat ? collapsedSessionTitle : null}</span>
-              {showChat && selectedSession && !selectedSession.transient && (
-                <ChangesButton count={gitChangeCounts[selectedSession.cwd] ?? 0} onClick={() => handleRevealCwdInFiles(selectedSession.cwd, true)} />
-              )}
               {renderChatToolbarActions(true)}
             </div>
           )}
@@ -3481,7 +3466,7 @@ export function AppShell() {
                 data-header-segment="primary"
                 style={{ display: "flex", alignItems: "stretch", width: `${chatSplitRatio * 100}%`, flexShrink: 0, minWidth: 0, height: "100%" }}
               >
-                {sidebarToggleButton}
+                {sidebarToggleInHeader && sidebarToggleButton}
                 <div
                   onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}
                   style={{ flex: 1, minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}
@@ -3506,7 +3491,6 @@ export function AppShell() {
                     unifiedHeader={true}
                   />
                 </div>
-                {renderTopBarContext(primaryTab?.kind === "session" ? primaryTab.session : null)}
                 <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}>
                   {renderDesktopHeaderActions({
                     inert: activeChatPane !== "primary",
@@ -3542,7 +3526,6 @@ export function AppShell() {
                     unifiedHeader={true}
                   />
                 </div>
-                {renderTopBarContext(secondaryTab?.kind === "session" ? secondaryTab.session : null)}
                 <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}>
                   {renderDesktopHeaderActions({
                     inert: activeChatPane !== "secondary",
@@ -3577,7 +3560,6 @@ export function AppShell() {
                 </div>
               )}
               {renderCollapsedSessionTitle()}
-              {renderTopBarContext(selectedSession)}
               {renderDesktopHeaderActions()}
             </>
           ))}
@@ -3935,8 +3917,8 @@ export function AppShell() {
             style={{
               boxShadow: "inset 0 -1px 0 var(--border)",
               background: "var(--bg-panel)",
-              height: "var(--workspace-header-height, 30px)",
-              minHeight: "var(--workspace-header-height, 30px)",
+              height: "var(--workspace-header-height, 40px)",
+              minHeight: "var(--workspace-header-height, 40px)",
               width: "100%",
               maxWidth: "100%",
               minWidth: 0,
@@ -4138,7 +4120,7 @@ export function AppShell() {
       >
         {/* Right panel tab bar */}
         {/* Fixed views | content tabs + (docs/ui.md, File panel); text tabs on the chat's --bg. */}
-        <div className="workspace-header" style={{ background: "var(--bg)", paddingLeft: 4 }}>
+        <div className="workspace-header" style={{ background: "var(--bg)", paddingLeft: 8, boxShadow: "none" }}>
           {isMobile && (
             // Full screen on phones: back to the chat from where the eye starts.
             <button

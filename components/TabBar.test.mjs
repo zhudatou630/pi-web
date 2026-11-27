@@ -71,8 +71,9 @@ test("keeps a non-basename custom label; tabs are text only", () => {
   assert.doesNotMatch(html, /aria-label="README\.md"/);
   assert.match(html, /title="\/repo\/docs\/README\.md"/);
   assert.doesNotMatch(html, /<svg[^>]*><(path|circle|polyline)|\.svg/);
-  assert.match(html, /box-shadow:inset 0 -2px 0 var\(--text\)/);
-  assert.doesNotMatch(html, /--accent/);
+  // One tab look (docs/ui.md, Tabs and top bars): chips styled in CSS, no inline lines.
+  assert.match(html, /class="panel-file-tab"/);
+  assert.doesNotMatch(html, /box-shadow|--accent/);
 });
 
 test("windows and root paths keep browser slash rules in the rendered tabs", () => {
@@ -118,9 +119,10 @@ test("keeps tab roles, keyboard tabindexes, and close controls", () => {
   assert.equal([...html.matchAll(/class="file-tab-close"/g)].length, 2);
 });
 
-test("preview tabs reuse the dotted underline convention and show the pin hint", () => {
+test("preview tabs are marked for the quieter title (no underline) and show the pin hint", () => {
   const html = render([{ id: "file:/repo/a.ts", label: "a.ts", filePath: "/repo/a.ts", preview: true }]);
-  assert.match(html, /text-decoration:underline dotted/);
+  assert.match(html, /class="panel-file-tab" data-preview="true"/);
+  assert.doesNotMatch(html, /text-decoration/);
   assert.match(html, /Preview tab, double-click to keep open/);
   assert.doesNotMatch(html, /font-style:italic|font-weight:/);
   assert.match(source, /onDoubleClick=\{\(\) => \{ if \(tab\.preview\) onPinTab\?\.\(tab\.id\); \}\}/);

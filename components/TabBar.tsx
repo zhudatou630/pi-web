@@ -146,7 +146,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
       }}
       style={{
         display: "flex",
-        alignItems: "stretch",
+        alignItems: "center",
+        gap: 4,
         overflowX: "auto",
         flexShrink: 0,
         height: "100%",
@@ -208,18 +209,17 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
               e.stopPropagation();
               if (!tab.closing) onCloseTab(tab.id);
             }}
+            // One tab look (docs/ui.md, Tabs and top bars): the current tab is a filled chip.
+            className="panel-file-tab"
+            data-preview={tab.preview ? "true" : undefined}
             style={{
               display: "flex",
               alignItems: "center",
               gap: 6,
-              height: "100%",
               paddingLeft: 10,
               paddingRight: 4,
-              // Text tabs (docs/ui.md, File panel): the current one is underlined in --text, no accent.
-              boxShadow: isActive ? "inset 0 -2px 0 var(--text)" : undefined,
               cursor: "pointer",
               fontSize: 12,
-              color: isActive ? "var(--text)" : "var(--text-muted)",
               whiteSpace: "nowrap",
               maxWidth: 180,
               flexShrink: 0,
@@ -247,10 +247,6 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 flex: 1,
-                textDecoration: tab.preview ? "underline dotted" : undefined,
-                textDecorationColor: "var(--text-dim)",
-                textUnderlineOffset: 5,
-                paddingBlock: tab.preview ? 5 : undefined,
                 lineHeight: 1.3,
               }}
               title={tab.preview ? `${tab.filePath} · ${t("files.previewTabHint")}` : tab.filePath}

@@ -17,8 +17,6 @@ import { workspaceKeyOf } from "@/lib/workspace-key";
 import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
 import { isSidebarSingleProject, SIDEBAR_SINGLE_PROJECT_EVENT } from "@/lib/sidebar-single-project-preference";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
-import { interpolateMessage } from "@/lib/i18n/format";
-import { enLocale } from "@/lib/i18n/messages/en";
 import { useI18n } from "@/hooks/useI18n";
 import { SessionStatusDot, SessionStatusWord } from "./SessionStateBadge";
 import { sessionStatus, unseenErrorSessionIds } from "@/lib/session-status";
@@ -78,12 +76,6 @@ export function deleteRefusalText(t: ReturnType<typeof useI18n>["t"], data: { co
   if (data.code === "child_running") return t("sidebar.deleteChildRunning");
   if (data.code === "session_running") return t("sidebar.deleteSessionRunning");
   return data.error ?? t("sidebar.deleteFailed");
-}
-
-// Section titles use the Latin-only brand face, so they show the English text in
-// every locale; their buttons carry the translated name as aria-label.
-function sectionTitle(key: string, params?: Record<string, string | number>): string {
-  return interpolateMessage(enLocale.messages[key], params);
 }
 
 function ToolbarIconButton({
@@ -225,6 +217,11 @@ interface Props {
   } | null) => void;
   /** The file panel shows `cwd` (reveal, Changes N, worktree switch): the selected project follows. */
   explorerReveal?: { cwd: string; nonce: number } | null;
+  /** Settings, the last icon of the top row; prefetch on hover or focus. */
+  onOpenSettings?: () => void;
+  onPrefetchSettings?: () => void;
+  /** Desktop with the sidebar open: AppShell's toggle, leading the top row (Cursor). */
+  sidebarToggle?: ReactNode;
   /** The new-session page shows: its nav row is current, like Cursor's New Chat. */
   newSessionOpen?: boolean;
   /** The Routines nav row under New session (Cursor's Automations); pressed while the page shows. */
@@ -397,7 +394,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, onOpenSettings, onPrefetchSettings, sidebarToggle = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -1886,14 +1883,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         );
       })()}
 
-      {/* New session, then search and the grouping/filter menu (docs/ui.md, Sidebar top row). */}
+      {/* Cursor's layout (docs/ui.md, Sidebar top row): a toolbar row (sidebar toggle, search …
+          group and filter), then nav rows (New session, Routines). */}
       <div className="sidebar-top-row">
-        <button type="button" className="sidebar-nav-item" aria-current={newSessionOpen ? "page" : undefined} onClick={startNewSession}>
-          <span className="sidebar-section-gutter">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-          </span>
-          <span>{t("sidebar.newSession")}</span>
-        </button>
+        {sidebarToggle}
         <button
           type="button"
           className="sidebar-top-icon"
@@ -1906,11 +1899,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           aria-haspopup="dialog"
           aria-expanded={sessionSearchOpen}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" /><path d="m21 21-4.5-4.5" />
           </svg>
         </button>
-        <div ref={filterMenuRef} className="sidebar-filter">
+        <div ref={filterMenuRef} className="sidebar-filter" style={{ marginLeft: "auto" }}>
           <button
             type="button"
             className="sidebar-top-icon"
@@ -1920,7 +1913,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             aria-haspopup="menu"
             aria-expanded={filterOpen}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M6.5 12h11M10 18h4" /></svg>
           </button>
           {filterOpen && (
             <div role="menu" aria-label={t("sidebar.filterMenu")} className="menu-surface sidebar-filter-menu">
@@ -1953,7 +1946,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                 }}
               >
                 <span style={{ flex: 1 }}>{t("sidebar.showArchived")}</span>
-                {archivedCount > 0 && <span className="sidebar-filter-meta">{archivedCount}</span>}
                 <MenuCheck checked={archiveView} />
               </button>
               <div role="separator" className="menu-surface-divider" />
@@ -1985,12 +1977,39 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             </div>
           )}
         </div>
+        {/* Settings ends the toolbar row: a tool like search and filter, no footer row for it. */}
+        {onOpenSettings && (
+          <button
+            type="button"
+            className="sidebar-top-icon"
+            onClick={onOpenSettings}
+            onPointerEnter={onPrefetchSettings}
+            onFocus={onPrefetchSettings}
+            title={t("common.settings")}
+            aria-label={t("common.settings")}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              {/* Three dots: the lightest mark in the row (a gear, sliders and blocks read heavy). */}
+              <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+            </svg>
+          </button>
+        )}
+      </div>
+      <div className="sidebar-nav-row">
+        <button type="button" className="sidebar-nav-item" aria-current={newSessionOpen ? "page" : undefined} onClick={startNewSession}>
+          <span className="sidebar-section-gutter">
+            {/* Cursor's New Chat glyph: a paper plane seen nose-on. */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 4h19L11 21.5l-2-8z" /><path d="M21.5 4 9 13.5" /></svg>
+          </span>
+          <span>{t("sidebar.newSession")}</span>
+        </button>
       </div>
       {onToggleRoutines && (
         <div className="sidebar-nav-row">
           <button type="button" className="sidebar-nav-item" aria-pressed={routinesOpen} onClick={onToggleRoutines}>
             <span className="sidebar-section-gutter">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              {/* Cursor's Automations glyph: a small robot. */}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="8" width="17" height="13" rx="2.5" /><path d="M12 8V3.5" /><path d="M9 13v3M15 13v3" /></svg>
             </span>
             <span>{t("routines.title")}</span>
           </button>
@@ -2002,7 +2021,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         <div style={{ flexShrink: 0 }}>
           <div className="sidebar-section-row">
             <button type="button" onClick={() => setPinnedOpen((open) => !open)} className="sidebar-section-label" aria-label={t("sidebar.pinned")} aria-expanded={pinnedOpen}>
-              <span>{sectionTitle("sidebar.pinned")}</span>
+              <span>{t("sidebar.pinned")}</span>
               {!pinnedOpen && <SessionActivitySummary activity={pinnedActivity} />}
             </button>
           </div>
@@ -2046,7 +2065,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           title={archiveView ? t("sidebar.backToSessions") : undefined}
           aria-label={archiveView ? t("sidebar.archivedCount", { count: archivedCount }) : t("sidebar.projects")}
         >
-          <span>{archiveView ? sectionTitle("sidebar.archivedCount", { count: archivedCount }) : sectionTitle("sidebar.projects")}</span>
+          <span>{archiveView ? t("sidebar.archivedCount", { count: archivedCount }) : t("sidebar.projects")}</span>
         </button>
         {singleProject && (otherProjectActivity.running > 0 || otherProjectActivity.awaiting > 0 || otherProjectActivity.unread > 0 || otherProjectActivity.error > 0 || otherProjectActivity.keepalive > 0) && (
           <div className="sidebar-header-actions">
@@ -2197,21 +2216,22 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           <section key={section.key} aria-label={t(section.key)}>
             <div className="sidebar-section-row">
               <div className="sidebar-section-label is-static" role="heading" aria-level={2}>
-                <span>{sectionTitle(section.key)}</span>
+                <span>{t(section.key)}</span>
               </div>
             </div>
             {section.families.map((family) => (
               <div key={family.root.id} data-family-id={family.root.id}>{renderSessionFamily(family, false, otherProjectLabel(family))}</div>
             ))}
+            {/* Paging rows stay short here so the next section's title keeps Cursor's spacing. */}
             {section.remaining > 0 && (
-              <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: SESSION_LIST_ITEM_HEIGHT }}
+              <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: "var(--ui-row-height)" }}
                 aria-label={t("sidebar.showMoreSessionsLabel", { count: section.remaining })}
                 onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [section.limitKey]: section.nextLimit }))}>
                 <span>{t("sidebar.showMoreSessions")}</span>
               </button>
             )}
             {section.revealed > 0 && (
-              <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: SESSION_LIST_ITEM_HEIGHT }}
+              <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: "var(--ui-row-height)" }}
                 onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [section.limitKey]: WORKSPACE_SESSION_PREVIEW_LIMIT }))}>
                 {t("sidebar.showLessSessions")}
               </button>

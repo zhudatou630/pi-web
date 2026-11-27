@@ -36,6 +36,8 @@ function maxBodySize(): SizeLimit {
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: configDir,
+  // Dev only: the badge's default bottom-left corner covers the sidebar footer (Settings).
+  devIndicators: { position: "bottom-right" },
   images: {
     // Next's image pipeline is only used for the static login logo, so the whole
     // /_next/image endpoint is turned off. The AVIF RCE (GHSA-2xp9-vwfh-vxw4) is

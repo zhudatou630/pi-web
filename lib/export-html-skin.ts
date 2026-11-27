@@ -52,14 +52,6 @@ export const EXPORT_SKIN_CSS = `
 }
 
 @font-face {
-  font-family: "Departure Mono Web";
-  src: url("/fonts/DepartureMono-Regular.woff2?v=1") format("woff2");
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-}
-
-@font-face {
   font-family: "LXGW WenKai Web";
   src: url("/fonts/LXGWWenKaiScreen.woff2?v=1") format("woff2");
   font-style: normal;

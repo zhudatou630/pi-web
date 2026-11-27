@@ -275,11 +275,10 @@ export function ChatTabBar({
       style={{
         display: "flex",
         alignItems: "stretch",
-        background: unifiedHeader ? "transparent" : "var(--bg-panel)",
-        boxShadow: unifiedHeader ? undefined : "inset 0 -1px 0 var(--border)",
-        height: "var(--workspace-header-height, 30px)",
-        minHeight: "var(--workspace-header-height, 30px)",
-        maxHeight: "var(--workspace-header-height, 30px)",
+        background: unifiedHeader ? "transparent" : "var(--bg)",
+        height: "var(--workspace-header-height, 40px)",
+        minHeight: "var(--workspace-header-height, 40px)",
+        maxHeight: "var(--workspace-header-height, 40px)",
         width: unifiedHeader ? "auto" : "100%",
         maxWidth: "100%",
         minWidth: 0,
@@ -298,7 +297,10 @@ export function ChatTabBar({
         }}
         style={{
           display: "flex",
-          alignItems: "stretch",
+          alignItems: "center",
+          gap: 4,
+          // Chips keep Cursor's 8px from the pane edge.
+          paddingLeft: isMobile ? 4 : 8,
           flex: "0 1 auto",
           minWidth: 0,
           overflowX: "auto",
@@ -372,22 +374,21 @@ export function ChatTabBar({
                   });
                 }
               }}
+              // One tab look (docs/ui.md, Tabs and top bars): a quiet chip, no lines. The focused
+              // pane's shown tab is filled, the other pane's shown tab tinted.
               className="chat-tab"
               data-shown={isVisible ? "true" : "false"}
+              data-current={isCurrentPane ? "true" : undefined}
+              // Preview (unpinned): a quieter title, where Cursor and VS Code use italic (no italic here).
+              data-preview={tab.preview ? "true" : undefined}
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: isMobile ? 4 : 6,
-                height: "100%",
                 paddingLeft: isMobile ? 8 : 10,
                 paddingRight: isMobile ? (isVisible ? 4 : 8) : 4,
-                // A visible tab is always ruled off from its neighbors; only an inactive
-                // last tab on mobile drops its edge to avoid a doubled strip edge.
-                borderRight: isMobile && index === tabs.length - 1 && !isVisible ? "none" : "1px solid var(--border)",
-                background: isVisible ? "var(--bg)" : "var(--bg-panel)",
                 cursor: "pointer",
                 fontSize: 12,
-                color: isVisible ? "var(--text)" : "var(--text-muted)",
                 whiteSpace: "nowrap",
                 maxWidth: isMobile ? 130 : 200,
                 minWidth: isMobile ? 70 : 96,
@@ -399,18 +400,6 @@ export function ChatTabBar({
                 WebkitUserSelect: "none",
                 touchAction: "pan-x",
                 position: "relative",
-                transition: "background var(--motion-fast), color var(--motion-fast)",
-                // Visible tabs drop the bottom rule to join their pane (the unified header has
-                // none at all). As in VS Code, the focused pane's tab carries a 1px accent top
-                // line and the other pane's shown tab a neutral one.
-                // In the unified header the first tab sits next to header icons, so a
-                // visible first tab also takes a left rule.
-                boxShadow: [
-                  isCurrentPane && "inset 0 1px 0 var(--accent)",
-                  isVisible && !isCurrentPane && "inset 0 1px 0 var(--text-dim)",
-                  isVisible && index === 0 && unifiedHeader && pane !== "secondary" && "inset 1px 0 0 var(--border)",
-                  !isVisible && !unifiedHeader && "inset 0 -1px 0 var(--border)",
-                ].filter(Boolean).join(", ") || undefined,
               }}
               title={tab.preview ? `${tab.title} · ${t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })}` : tab.title}
             >
@@ -442,11 +431,7 @@ export function ChatTabBar({
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   flex: 1,
-                  // Preview (unpinned) tab. Not italic: CJK has no italic and color already means visibility.
-                  textDecoration: tab.preview ? "underline dotted" : undefined,
-                  textDecorationColor: "var(--text-dim)",
-                  textUnderlineOffset: 5,
-                  paddingBlock: 5, // room for the offset underline; overflow:hidden would clip it
+                  lineHeight: 1.3,
                 }}
               >
                 {tab.title}
@@ -529,9 +514,10 @@ export function ChatTabBar({
               alignItems: "center",
               justifyContent: "center",
               width: 32,
-              height: "100%",
+              height: 26,
               padding: 0,
               border: "none",
+              borderRadius: "var(--ui-radius-md)",
               fontSize: 11,
               lineHeight: 1,
               fontVariantNumeric: "tabular-nums",
@@ -561,8 +547,10 @@ export function ChatTabBar({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            width: 28,
-            height: "100%",
+            width: 26,
+            height: 26,
+            marginLeft: 4,
+            borderRadius: "var(--ui-radius-md)",
             background: "transparent",
             border: "none",
             color: "var(--text-muted)",

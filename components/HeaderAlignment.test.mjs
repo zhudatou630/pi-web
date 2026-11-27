@@ -24,46 +24,52 @@ function render(component, props) {
   return renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(component, props)));
 }
 
-test("conversation and file headers keep the aligned 30px row", () => {
+test("conversation and file headers keep the aligned 40px row (Cursor)", () => {
   const header = declarations(".workspace-header");
-  assert.equal(declarations(":root")["--workspace-header-height"], "30px");
+  assert.equal(declarations(":root")["--workspace-header-height"], "40px");
   assert.equal(header.height, "calc(var(--workspace-header-height) + env(safe-area-inset-top))");
   assert.equal(header["padding-top"], "env(safe-area-inset-top)");
   assert.equal(header["box-shadow"], "inset 0 -1px 0 var(--border)");
   assert.equal((shell.match(/className="workspace-header"/g) ?? []).length, 2);
   assert.match(shell, /const TOP_BAR_ICON_BUTTON_SIZE = 30/);
-  assert.equal(declarations(".sidebar-section-row").height, "var(--workspace-header-height, 30px)");
+  // Section headers are session-row tall with 12px of air above (Cursor's grouping).
+  assert.equal(declarations(".sidebar-section-row").height, "32px");
+  assert.equal(declarations(".sidebar-section-row")["margin-top"], "12px");
   assert.equal(declarations(".sidebar-switcher")["border-bottom"], undefined);
 });
 
-test("sidebar starts with project sections sharing one chevron gutter and settings footer", () => {
+test("sidebar starts with a toolbar row (Settings last), nav rows, then sections; no footer", () => {
   const label = declarations(".sidebar-section-label");
   const gutter = declarations(".sidebar-section-gutter");
-  const footer = declarations(".sidebar-footer");
   assert.equal(gutter.width, "20px");
   assert.equal(gutter["justify-content"], "center");
-  const brand = declarations(".sidebar-section-label,\n.sidebar-footer-label");
-  assert.equal(brand["font-family"], "var(--font-brand)");
-  assert.equal(brand["font-size"], "12px");
+  // Section titles are UI type, sentence case, the rows' size, one tier quieter (Cursor).
+  assert.equal(label["font-family"], undefined);
+  assert.equal(label["text-transform"], undefined);
+  assert.equal(label["font-size"], "13px");
+  assert.equal(label.color, "var(--text-dim)");
   assert.equal(label["font-weight"], undefined);
-  assert.equal(footer.height, "calc(var(--workspace-header-height, 30px) + 1px)");
-  assert.equal(footer.padding, "2px var(--sidebar-inset, 5px)");
-  assert.equal(declarations(".sidebar-footer-item").width, "100%");
+  assert.doesNotMatch(css.toString(), /--font-brand|Departure Mono/);
   assert.equal(label.padding, "0 4px 0 9px");
   // PINNED, PROJECTS, and the status grouping's section rows.
   assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 3);
   // The top row (search, filter) is as tall as a section header, like the chat's top bar.
-  assert.equal(declarations(".sidebar-top-row").height, "var(--workspace-header-height, 30px)");
+  assert.equal(declarations(".sidebar-top-row").height, "var(--workspace-header-height, 40px)");
   assert.ok(sidebar.indexOf('className="sidebar-top-row"') < sidebar.indexOf("{/* Pinned sessions, across all projects */}"));
   assert.doesNotMatch(sidebar, /className="sidebar-switcher"|Workspace context bar/);
-  assert.match(shell, /className="sidebar-footer"/);
-  assert.equal(footer.display, "flex");
-  // Settings alone; Routines is a nav row under New session (Cursor's Automations).
-  assert.equal((shell.match(/className="sidebar-footer-item"/g) ?? []).length, 1);
-  assert.doesNotMatch(shell, /sidebar-footer-item is-end/);
+  assert.doesNotMatch(shell + css.toString(), /sidebar-footer/);
+  // Settings alone, a nav row; Routines is a nav row under New session (Cursor's Automations).
+  // Settings ends the toolbar row, after Group and filter (Cursor's Customize glyph).
+  const topRow = sidebar.slice(sidebar.indexOf('<div className="sidebar-top-row">'), sidebar.indexOf('<div className="sidebar-nav-row">'));
+  assert.ok(topRow.indexOf("sidebar.filterMenu") < topRow.indexOf('aria-label={t("common.settings")}'));
+  assert.match(shell, /onOpenSettings=\{\(\) => setSettingsSection\(getLastSettingsSection\(projectTrustCwd\)\)\}/);
   assert.match(shell, /routinesOpen=\{mainView === "routines"\}/);
   // New session is the first nav row, current on the new-session page (Cursor's New Chat).
   assert.match(shell, /newSessionOpen=\{onNewSessionPage\}/);
+  // Cursor's toolbar row: the sidebar toggle leads it while the sidebar is open on desktop.
+  assert.match(shell, /const sidebarToggleInHeader = isMobile \|\| !sidebarOpen;/);
+  assert.match(shell, /sidebarToggle=\{sidebarToggleInHeader \? null : sidebarToggleButton\}/);
+  assert.match(sidebar, /<div className="sidebar-top-row">\s*\{sidebarToggle\}/);
   assert.ok(sidebar.indexOf('className="sidebar-top-row"') < sidebar.indexOf('className="sidebar-nav-item" aria-current'));
   assert.match(sidebar, /<div className="sidebar-nav-row">/);
   assert.equal(declarations(".sidebar-nav-row").height, "32px");
@@ -94,15 +100,22 @@ test("inline branch controls keep identical geometry when their panel opens", ()
   }
 });
 
-test("file tabs inherit the header content height instead of a separate fixed row", () => {
+test("file tabs are chips centered in the header row, like chat tabs", () => {
   const html = render(TabBar, {
     tabs: [{ id: "a", label: "a.ts", filePath: "/project/a.ts" }],
     activeTabId: "a", onSelectTab() {}, onCloseTab() {},
   });
-  for (const role of ["tablist", "tab"]) {
-    const element = html.match(new RegExp(`<div[^>]*role="${role}"[^>]*>`))?.[0];
-    assert.ok(element);
-    assert.match(element, /height:100%/);
-    assert.doesNotMatch(element, /height:36px/);
-  }
+  const strip = html.match(/<div[^>]*role="tablist"[^>]*>/)?.[0];
+  assert.match(strip, /height:100%/);
+  assert.match(strip, /align-items:center/);
+  assert.doesNotMatch(html.match(/<div[^>]*role="tab"[^>]*>/)?.[0], /height:/);
+  const chip = declarations(".chat-tab,\n.panel-view-tab,\n.panel-file-tab");
+  assert.equal(chip.height, "26px");
+  assert.equal(chip["border-radius"], "var(--ui-radius-md)");
+  assert.equal(declarations(".chat-tab[data-current=\"true\"],\n.panel-view-tab[aria-selected=\"true\"],\n.panel-file-tab[aria-selected=\"true\"]").background, "var(--bg-selected)");
+  // One surface: the chat top bar and the file panel header are the chat's --bg, unruled.
+  assert.match(shell, /<div ref=\{topBarRef\} style=\{\{ flexShrink: 0, background: "var\(--bg\)" \}\}>/);
+  assert.match(shell, /className="workspace-header" style=\{\{ background: "var\(--bg\)", paddingLeft: 8, boxShadow: "none" \}\}/);
+  // Preview tabs: a quieter title instead of italic or an underline.
+  assert.equal(declarations(".chat-tab[data-preview=\"true\"]:not(:hover),\n.panel-file-tab[data-preview=\"true\"]:not(:hover)").color, "var(--text-muted)");
 });

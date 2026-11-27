@@ -104,17 +104,6 @@
   font-display: swap;
 }
 
-/* Brand face: Departure Mono v1.500 (pi.dev's nav font), Latin only. Pixel-exact
-   at multiples of 11px. Block, not swap: a UI-font flash would read as a
-   different label for the moment the 22 KB file takes. */
-@font-face {
-  font-family: "Departure Mono Web";
-  src: url("/fonts/DepartureMono-Regular.woff2?v=1") format("woff2");
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-}
-
 /* Kai scheme prose: LXGW WenKai v1.522, CJK + Latin in each face. The family
    tops out at Medium and the Screen cut (body) is already about Medium, so
    there is no real bold. CSS 400 matches Screen; CSS 600 finds no face at or
@@ -237,7 +226,8 @@ html {
   --chat-content-max-width: 820px;
   --chat-content-font-size: 14px;
   --chat-font-size-offset: calc(var(--chat-content-font-size, 14px) - 14px);
-  --workspace-header-height: 30px;
+  /* Cursor's top bars: about 40px, a 26px tab chip with 7px above and below. */
+  --workspace-header-height: 40px;
   /* Font schemes only redefine the three role variables (UI, prose, code).
      Faces are always the bundled web fonts, never local installs, so every
      machine renders the same cut and version (except the opt-in system scheme). The system tail only shows
@@ -402,106 +392,72 @@ html.dark {
   display: block;
 }
 
-/* Top bar context: "project · branch ⌄" in 11px dim text, then a "Changes N" text button. */
-/* Kept whole: the chat tabs give way first (they fold into their +N list). */
-.top-bar-context {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  height: 100%;
-  margin-left: 8px;
-  padding: 0 4px;
+/* Chat and file panel top bars hold only icons; they rest one tier down so nothing there holds
+   the eye (docs/ui.md, Tabs and top bars). Their inline colors set hover; !important wins rest. */
+.workspace-header .workspace-header-action:not(:hover):not([aria-pressed="true"]):not([aria-expanded="true"]) {
+  color: var(--text-dim) !important;
 }
-.top-bar-context-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-  height: 22px;
-  padding: 0 4px;
-  border: none;
-  border-radius: var(--ui-radius-sm);
-  background: none;
-  color: var(--text-dim);
-  font-size: 11px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color var(--motion-fast), background var(--motion-fast);
+
+/* Composer context (docs/ui.md): "project · branch ⌄" and "Changes N" above the composer, on the
+   new-session picks' style; its menu opens upward, away from the composer. */
+.composer-context-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+  left: 0;
 }
-.top-bar-context-trigger:hover,
-.top-bar-context-trigger[aria-expanded="true"] {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-}
-.top-bar-context-label {
-  max-width: 140px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.3;
-}
-@media (max-width: 900px) {
-  .top-bar-context-label {
-    max-width: 80px;
-  }
-}
-.top-bar-context-menu {
-  position: absolute;
-  top: calc(100% - 2px);
-  left: 4px;
-  z-index: 520;
-  min-width: 180px;
-}
-.top-bar-text-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 100%;
-  padding: 0 8px;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color var(--motion-fast);
-}
-.top-bar-text-button:hover {
-  color: var(--text);
-}
-.top-bar-text-button-count {
+.composer-context-count {
+  margin-left: 2px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-/* File panel (docs/ui.md, File panel): text tabs "Changes · Files | content tabs … +".
-   The current tab is underlined in --text; no accent, no per-tab rules or fills. */
+/* One tab look everywhere (docs/ui.md, Tabs and top bars): chat tabs, the file panel's
+   Changes / Files and its content tabs are Cursor's quiet chips, no lines or rules. The
+   current tab is filled; a chat tab shown in the other split pane is tinted. */
+.chat-tab,
+.panel-view-tab,
+.panel-file-tab {
+  height: 26px;
+  border-radius: var(--ui-radius-md);
+  background: none;
+  color: var(--text-muted);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.chat-tab:hover,
+.panel-view-tab:hover,
+.panel-file-tab:hover,
+.chat-tab[data-shown="true"] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.chat-tab[data-current="true"],
+.panel-view-tab[aria-selected="true"],
+.panel-file-tab[aria-selected="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+}
+/* Preview (unpinned) tabs: Cursor and VS Code set the title in italic; with no italic face the
+   title stays a tier quieter instead, filled or not. No underline (it read as a shadow). */
+.chat-tab[data-preview="true"]:not(:hover),
+.panel-file-tab[data-preview="true"]:not(:hover) {
+  color: var(--text-muted);
+}
+
+/* File panel (docs/ui.md, File panel): tabs "Changes · Files | content tabs … +", chips above. */
 .panel-view-tabs {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
   height: 100%;
 }
 .panel-view-tab {
-  height: 100%;
   padding: 0 10px;
   border: none;
-  background: none;
-  color: var(--text-muted);
   font: inherit;
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
-  transition: color var(--motion-fast);
-}
-.panel-view-tab:hover,
-.panel-view-tab[aria-selected="true"] {
-  color: var(--text);
-}
-.panel-view-tab[aria-selected="true"] {
-  box-shadow: inset 0 -2px 0 var(--text);
 }
 .panel-tab-separator {
   flex-shrink: 0;
@@ -914,12 +870,15 @@ button.turn-files-head:hover {
   padding-inline: calc(var(--sidebar-inset, 5px) - var(--sidebar-scrollbar-gutter, 0px));
 }
 
+/* Section headers (Cursor's "Repositories", "Needs Attention"): a row as tall as a session row,
+   with 12px of air above it, so a section reads as a group without a rule. */
 .sidebar-section-row {
   display: flex;
   align-items: center;
   flex-shrink: 0;
   box-sizing: border-box;
-  height: var(--workspace-header-height, 30px);
+  height: 32px;
+  margin-top: 12px;
   padding-inline: var(--sidebar-inset, 5px);
 }
 
@@ -935,24 +894,16 @@ button.turn-files-head:hover {
   padding: 0 4px 0 9px;
   background: none;
   border: none;
-  color: var(--text-muted);
+  /* Cursor's section titles: the rows' size, sentence case, one tier quieter than the rows. */
+  color: var(--text-dim);
+  font-size: 13px;
   cursor: pointer;
   line-height: 1;
   text-align: left;
 }
 
-/* Section titles and the footer label share pi.dev's nav type: Departure Mono,
-   uppercase, 0.08em tracking, at the sidebar's 12px text size (the face's native
-   11px read lighter and smaller than the 13px icons; 14px overpowered them). The
-   face is Latin only, so these texts are English in every locale (see
-   sectionTitle in SessionSidebar). */
-.sidebar-section-label,
-.sidebar-footer-label {
-  font-family: var(--font-brand);
-  font-size: 12px;
-  font-variant-ligatures: none;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.sidebar-section-label:not(.is-static):hover {
+  color: var(--text-muted);
 }
 
 /* A narrow sidebar truncates the title instead of wrapping it under the actions. */
@@ -1008,7 +959,7 @@ button.turn-files-head:hover {
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
-  height: var(--workspace-header-height, 30px);
+  height: var(--workspace-header-height, 40px);
   padding-inline: var(--sidebar-inset, 5px);
 }
 
@@ -1043,8 +994,20 @@ button.turn-files-head:hover {
   white-space: nowrap;
 }
 
-.sidebar-nav-item .sidebar-section-gutter {
+/* Cursor's sidebar icons: 16px line glyphs, a tier lighter than their labels at rest;
+   hover and the current row bring them up with the text. */
+.sidebar-nav-item .sidebar-section-gutter,
+.sidebar-top-icon {
+  color: var(--text-dim);
+}
+.sidebar-nav-item:hover .sidebar-section-gutter,
+.sidebar-nav-item[aria-current="page"] .sidebar-section-gutter,
+.sidebar-nav-item[aria-pressed="true"] .sidebar-section-gutter {
   color: inherit;
+}
+/* The sidebar toggle is AppShell's button (inline colors set hover); rest it like the icons beside it. */
+.sidebar-top-row .workspace-header-action:not(:hover) {
+  color: var(--text-dim) !important;
 }
 
 /* Nav rows under the top row (Cursor's New Chat / Automations block): as tall as a session row. */
@@ -1091,13 +1054,6 @@ button.turn-files-head:hover {
   min-width: 180px;
 }
 
-.sidebar-filter-meta {
-  margin-left: 8px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
 /* Status grouping: NEEDS YOU / RUNNING / RECENT are headings, not toggles; the count is UI text. */
 .sidebar-section-label.is-static {
   cursor: default;
@@ -1114,44 +1070,6 @@ button.turn-files-head:hover {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Mirrors a section header: as tall, its first label where a title starts.
-   Settings and Routines split the bar. */
-.sidebar-footer {
-  display: flex;
-  gap: 2px;
-  flex-shrink: 0;
-  /* 1px border + 2 + 26 + 2: the content is as tall as a section header. */
-  height: calc(var(--workspace-header-height, 30px) + 1px);
-  padding: 2px var(--sidebar-inset, 5px);
-  border-top: 1px solid var(--border);
-}
-
-.sidebar-footer-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 26px;
-  margin: 0;
-  padding: 0 2px;
-  border: none;
-  border-radius: var(--ui-radius-sm);
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.sidebar-footer-item:hover {
-  color: var(--text);
-  background: var(--bg-hover);
-}
-
-/* The label starts where a section title starts. */
-.sidebar-footer-label {
-  margin-left: 7px;
-  line-height: 1;
   white-space: nowrap;
 }
 
@@ -2214,8 +2132,6 @@ html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
      with explicit CJK families: on systems where the generic monospace face
      has no Chinese glyphs the browser would otherwise pick an arbitrary
      CJK fallback, often a proportional one. */
-  /* Brand labels only (sidebar section titles and footer), never UI or code text. */
-  --font-brand: "Departure Mono Web", var(--font-ui);
   --font-mono: "Sarasa Term SC Web", ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', var(--font-noto-mono), monospace, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
 }
 
@@ -5239,8 +5155,12 @@ span.token.table {
   color: var(--text);
 }
 
-/* Project state lives on the folder glyph, not a side rail or a tinted row. */
+/* Project state lives on the folder glyph, not a side rail or a tinted row. At rest the glyph
+   sits a tier under the name, like Cursor's folders and the nav icons; hover brings it up. */
 .workspace-folder-icon {
+  color: var(--text-dim);
+}
+.workspace-list-row:hover .workspace-folder-icon {
   color: inherit;
 }
 

@@ -1,6 +1,6 @@
 # Workspace Terminals
 
-The file panel's "+ › Terminal" (the panel's cwd) and the top bar's "Open in
+The file panel's "+ › Terminal" (the panel's cwd) and the composer context's "Open in
 terminal" (the session cwd) open or focus a terminal in the right panel's tab bar. Each terminal tab keeps the cwd it was
 created with. Files still mount only their active viewer; terminal panels stay
 mounted behind inactive tabs, hidden panels, and session or project switches.

@@ -730,7 +730,7 @@ export const enLocale: LocalePlugin = {
     "sidebar.forkFailed": "Could not fork session: {error}",
     "sidebar.delete": "Delete",
     "sidebar.expandSubagents": "Expand subagents",
-    "sidebar.newSession": "New session",
+    "sidebar.newSession": "New Session",
     "sidebar.filterMenu": "Group and filter",
     "sidebar.groupBy": "Group",
     "sidebar.groupByProject": "By project",
