@@ -35,6 +35,8 @@ export interface SubagentProfile {
   disallowedExtensionTools?: string[];
   loadSkills: boolean;
   loadExtensions: boolean;
+  /** `mcp_servers`: MCP servers from the parent's config the child may connect; `["*"]` = every enabled one. */
+  mcpServers?: string[];
   model?: string;
   thinking?: ThinkingLevel;
   maxTurns?: number;
@@ -73,7 +75,10 @@ export interface SubagentResourceSnapshot {
   tools: string[];
   loadSkills: boolean;
   loadExtensions: boolean;
-  /** Extensions load without `ext:` selectors or deny rules: every tool they register is admitted (#883). */
+  mcpServers?: string[];
+  /** codemode/tool_search the profile lists; kept out of `tools`, which older readers validate strictly. */
+  builtinTools?: string[];
+  /** Extensions (or MCP) load without `ext:` selectors or deny rules: every tool they register is admitted (#883). */
   allExtensionTools?: true;
   exactSystemPrompt?: string;
 }
@@ -83,6 +88,7 @@ export interface SubagentSessionResources {
   tools: string[];
   loadSkills: boolean;
   loadExtensions: boolean;
+  mcpServers?: string[];
   allExtensionTools?: true;
   exactSystemPrompt?: string;
 }
@@ -127,6 +133,27 @@ export interface SubagentRunInfo {
 
 const DEFAULT_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const BUILTIN_TOOLS = new Set([...DEFAULT_TOOLS, "powershell"]);
+/** Tools of pi's built-in extensions (`codemode`, `tool-search`); listing one loads them in the child. */
+export const SUBAGENT_EXTENSION_BUILTIN_TOOLS = ["codemode", "tool_search"] as const;
+const PROFILE_TOOLS = new Set<string>([...BUILTIN_TOOLS, ...SUBAGENT_EXTENSION_BUILTIN_TOOLS]);
+
+/**
+ * A snapshot's tool fields. codemode/tool_search go in `builtinTools`: an older Pi Web sharing these
+ * files rejects them in `tools` and would reopen the child as an unrestricted session.
+ */
+export function snapshotTools(tools: readonly string[]): { tools: string[]; builtinTools?: string[] } {
+  const builtinTools = tools.filter((tool) => (SUBAGENT_EXTENSION_BUILTIN_TOOLS as readonly string[]).includes(tool));
+  return {
+    tools: tools.filter((tool) => !builtinTools.includes(tool)),
+    ...(builtinTools.length > 0 ? { builtinTools } : {}),
+  };
+}
+
+/** Whether the child loads pi's built-in extensions (MCP, codemode, tool_search). */
+export function subagentUsesBuiltinExtensions(resources: { tools: readonly string[]; mcpServers?: readonly string[] }): boolean {
+  return (resources.mcpServers?.length ?? 0) > 0
+    || resources.tools.some((tool) => (SUBAGENT_EXTENSION_BUILTIN_TOOLS as readonly string[]).includes(tool));
+}
 const SUBAGENT_CONTROL_TOOLS = new Set<string>(SUBAGENT_CONTROL_TOOL_NAMES);
 const THINKING_LEVELS = new Set<ThinkingLevel>(VALID_THINKING_LEVELS);
 
@@ -137,6 +164,7 @@ const MANAGED_FRONTMATTER_KEYS = new Set([
   "tools",
   "load_skills",
   "load_extensions",
+  "mcp_servers",
   "enabled",
   "inherit_context",
   "run_in_background",
@@ -212,7 +240,16 @@ function parseTools(value: unknown, fallback: string[]): string[] {
   if (tools.includes("none")) return [];
   if (tools.includes("all") || tools.includes("*")) return [...DEFAULT_TOOLS];
   if (tools.length === 0) return [...fallback];
-  return [...new Set(tools.filter((tool) => BUILTIN_TOOLS.has(tool)))];
+  return [...new Set(tools.filter((tool) => PROFILE_TOOLS.has(tool)))];
+}
+
+function parseMcpServers(value: unknown): string[] {
+  if (value !== undefined && typeof value !== "string" && (!Array.isArray(value) || value.some((name) => typeof name !== "string"))) {
+    throw new Error("mcp_servers must be a string or an array of strings");
+  }
+  const names = stringList(value);
+  // Only `*` is a wildcard: `all` and `none` may be server names.
+  return names.includes("*") ? ["*"] : [...new Set(names)];
 }
 
 function parseExtensionToolSelectors(value: unknown): string[] {
@@ -258,7 +295,7 @@ function assertKnownProfileTools(value: unknown): void {
     && tool !== "all"
     && tool !== "*"
     && !tool.toLowerCase().startsWith("ext:")
-    && !BUILTIN_TOOLS.has(tool)
+    && !PROFILE_TOOLS.has(tool)
   ));
   if (unknown.length > 0) throw new Error(`Unknown subagent tools: ${unknown.join(", ")}`);
 }
@@ -378,6 +415,7 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
       "extensions",
       extensionTools.length > 0,
     );
+    const mcpServers = parseMcpServers(data?.mcp_servers);
     return {
       name,
       displayName: stringValue(data?.display_name) ?? name,
@@ -388,6 +426,7 @@ function parseProfileFile(filePath: string, scope: SubagentScope): SubagentProfi
       ...(disallowedExtensionTools.length > 0 ? { disallowedExtensionTools } : {}),
       loadSkills,
       loadExtensions,
+      ...(mcpServers.length > 0 ? { mcpServers } : {}),
       ...(stringValue(data?.model) ? { model: stringValue(data?.model) } : {}),
       ...(thinkingValue && THINKING_LEVELS.has(thinkingValue) ? { thinking: thinkingValue } : {}),
       ...(maxTurnsValue && maxTurnsValue > 0 ? { maxTurns: maxTurnsValue } : {}),
@@ -563,6 +602,7 @@ export function saveSubagentProfile(
   const loadSkills = profile.loadSkills === true;
   const loadExtensions = profile.loadExtensions === true;
   const extensionTools = validateSavedExtensionTools(profile.extensionTools);
+  const mcpServers = parseMcpServers(profile.mcpServers);
   const dir = assertWritableProfileDirectory(cwd, scope);
   mkdirSync(dir, { recursive: true });
   if (scope !== "global" && !isProjectProfilePathAllowed(cwd, dir)) {
@@ -582,6 +622,7 @@ export function saveSubagentProfile(
   };
   syncFlagAlias(managed, "skills", stored.skills, loadSkills);
   syncFlagAlias(managed, "extensions", stored.extensions, loadExtensions);
+  if (mcpServers.length > 0) managed.mcp_servers = mcpServers.join(", ");
   if (model) managed.model = model;
   if (profile.thinking) managed.thinking = profile.thinking;
   if (maxTurns) managed.max_turns = maxTurns;
@@ -604,6 +645,7 @@ export function saveSubagentProfile(
     ...(preservedSelectors.length > 0 ? { extensionTools: preservedSelectors } : { extensionTools: undefined }),
     loadSkills,
     loadExtensions,
+    ...(mcpServers.length > 0 ? { mcpServers } : { mcpServers: undefined }),
     ...(model ? { model } : { model: undefined }),
     ...(maxTurns ? { maxTurns } : { maxTurns: undefined }),
     scope,
@@ -834,6 +876,13 @@ export function readSubagentSessionResources(
   const snapshot = data.resourceSnapshot;
   const loadSkills = isRecord(snapshot) && snapshot.loadSkills === true;
   const loadExtensions = isRecord(snapshot) && snapshot.loadExtensions === true;
+  const mcpServers = isRecord(snapshot) && Array.isArray(snapshot.mcpServers)
+    && snapshot.mcpServers.every((name) => typeof name === "string" && name.length > 0)
+    ? [...new Set(snapshot.mcpServers as string[])]
+    : [];
+  const builtinTools = isRecord(snapshot) && Array.isArray(snapshot.builtinTools)
+    ? snapshot.builtinTools.filter((name): name is string => (SUBAGENT_EXTENSION_BUILTIN_TOOLS as readonly string[]).includes(name as string))
+    : [];
   if (
     isRecord(snapshot)
     && snapshot.version === 1
@@ -849,10 +898,11 @@ export function readSubagentSessionResources(
   ) {
     return {
       appendSystemPrompt: [...snapshot.appendSystemPrompt],
-      tools: [...new Set(snapshot.tools)],
+      tools: [...new Set([...snapshot.tools, ...builtinTools])],
       loadSkills,
       loadExtensions,
-      ...(loadExtensions && snapshot.allExtensionTools === true ? { allExtensionTools: true as const } : {}),
+      ...(mcpServers.length > 0 ? { mcpServers } : {}),
+      ...((loadExtensions || mcpServers.length > 0) && snapshot.allExtensionTools === true ? { allExtensionTools: true as const } : {}),
       ...(typeof snapshot.exactSystemPrompt === "string"
         ? { exactSystemPrompt: snapshot.exactSystemPrompt }
         : {}),
@@ -889,13 +939,14 @@ export function subagentToolOptions(resources: { tools: readonly string[]; allEx
   if (!resources.allExtensionTools) {
     return { tools: [...resources.tools], excludeTools: [...SUBAGENT_EXCLUDED_TOOLS] };
   }
-  const builtins = resources.tools.filter((name) => BUILTIN_TOOLS.has(name));
+  const builtins = resources.tools.filter((name) => PROFILE_TOOLS.has(name));
   return {
     noTools: "builtin",
     // Only `+name` entries: they add to the default selection instead of forming an allowlist.
     ...(builtins.length > 0 ? { tools: builtins.map((name) => `+${name}`) } : {}),
     excludeTools: [
       ...SUBAGENT_EXCLUDED_TOOLS,
+      // codemode/tool_search stay activatable: MCP switches them on for codemode/deferred servers.
       ...[...BUILTIN_TOOLS].filter((name) => !builtins.includes(name)),
     ],
   };

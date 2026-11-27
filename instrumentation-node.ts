@@ -29,6 +29,9 @@ export async function registerNodeRuntime(): Promise<void> {
   if (host[SHUTDOWN_HOOK_KEY]) return;
   host[SHUTDOWN_HOOK_KEY] = true;
   startPreviewProxy();
+  Promise.all([import("@/lib/codemode-settings"), import("@earendil-works/pi-coding-agent")])
+    .then(([{ applyCodemodeDefault }, { getAgentDir }]) => applyCodemodeDefault(getAgentDir()))
+    .catch((error) => console.error("[pi-web] could not apply the codemode default:", error));
   if (isRoutineSchedulerEnabled()) {
     import("@/lib/routine-runner")
       .then(({ startRoutineScheduler }) => startRoutineScheduler())

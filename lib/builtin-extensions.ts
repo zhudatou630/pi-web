@@ -128,13 +128,21 @@ export const llamaCppExtension: InlineExtension = {
   },
 };
 
-export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
+export interface SubagentMcpOptions {
+  /** MCP servers the child may connect; `["*"]` = all. The rest are treated as disabled. */
+  servers: readonly string[];
+  /** The parent's directory: a child's own cwd may be a tmpdir worktree without the project's config. */
+  configCwd: string;
+}
+
+export async function createBuiltinExtensions(subagent?: SubagentMcpOptions): Promise<InlineExtension[]> {
   const [createTransport, validator, parsers] = await Promise.all([
     loadSafeMcpTransport(), importSdkFile<McpConfigValidator>("core/mcp-servers.js"),
     importSdkFile<McpValueParsers>("core/resolve-config-value.js"),
   ]);
   return [
-    llamaCppExtension,
+    // A child uses its parent's model runtime: no provider extension.
+    ...(subagent ? [] : [llamaCppExtension]),
     { name: "codemode", factory: createCodemodeExtension(), replaceable: true, builtin: true },
     { name: "tool-search", factory: createToolSearchExtension(), replaceable: true, builtin: true },
     // The OAuth page must open in the user's browser, not on the server: the URL is
@@ -143,7 +151,17 @@ export async function createBuiltinExtensions(): Promise<InlineExtension[]> {
       name: "mcp",
       factory: deferMcpStart(createMcpExtension({
         openUrl: () => {}, createTransport,
-        loadConfig: (ctx) => loadSafeMcpConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() }, validator, parsers),
+        loadConfig: (ctx) => {
+          const config = loadSafeMcpConfig({ agentDir: getAgentDir(), cwd: subagent?.configCwd ?? ctx.cwd, projectTrusted: ctx.isProjectTrusted() }, validator, parsers);
+          if (!subagent || subagent.servers.includes("*")) return config;
+          // Narrows only: a server switched off in the config stays off.
+          return {
+            ...config,
+            servers: config.servers.map((server) => subagent.servers.includes(server.name)
+              ? server
+              : { ...server, config: { ...server.config, enabled: false } }),
+          };
+        },
         updateConfig: (entry, patch) => {
           const path = entry.override ?? entry.source;
           const projectRoot = entry.override || entry.scope === "project" ? dirname(dirname(path)) : undefined;

@@ -83,13 +83,39 @@ async function updateDefaultTools(path: string, update: (tools: Tools) => Tools)
   const release = await lockfile.lock(path, { realpath: false, retries: 10 });
   try {
     const settings = parseSettings(path);
-    const next = update(configuredTools(settings));
+    const current = configuredTools(settings);
+    const next = update(current);
+    if (next === current) return; // unchanged: keep the user's file as written
     if (next === undefined) delete settings.defaultTools;
     else settings.defaultTools = next;
     writeFileSync(path, JSON.stringify(settings, null, 2), "utf8");
   } finally {
     await release();
   }
+}
+
+const offeredMarker = (agentDir: string) => join(agentDir, "pi-web", "codemode-default-applied");
+
+/**
+ * Pi Web offers codemode by default: once per agent dir, a global `defaultTools` that is absent or
+ * a `+`/`-` delta without any codemode entry gets `+codemode`, written to pi's own setting so the
+ * CLI agrees. A plain list is a complete selection the user made and is left alone, as is any
+ * later choice (the marker keeps a removed entry from coming back).
+ */
+export async function applyCodemodeDefault(agentDir: string): Promise<boolean> {
+  const marker = offeredMarker(agentDir);
+  if (existsSync(marker)) return false;
+  let apply = false;
+  // Decided under the settings lock, so a choice the user saves meanwhile is never overridden.
+  await updateDefaultTools(globalPath(agentDir), (tools) => {
+    // `[]` is a plain (empty) selection too.
+    apply = tools === undefined
+      || (tools.length > 0 && tools.every(isToolModifier) && !tools.some((entry) => entry.slice(1) === CODEMODE));
+    return apply ? withCodemode(tools, undefined, true) : tools;
+  });
+  mkdirSync(dirname(marker), { recursive: true });
+  writeFileSync(marker, `${new Date().toISOString()}\n`, { mode: 0o600 });
+  return apply;
 }
 
 export function writeGlobalCodemode(agentDir: string, enabled: boolean): Promise<void> {

@@ -25,7 +25,7 @@
 
 开关只管 agent 的三个定时任务工具（`create_routine`、`routines`、`ask_user`），与子代理、图片生成的开关规则一致：
 
-- 设置 › 常规 › 对话里的"Agent 定时任务工具"是全局默认值（默认开），存在 `routines.json` 顶层的 `toolsDisabled: true`（`RoutineStore.isToolsEnabled()` / `setToolsEnabled()`，`GET/PUT /api/routines/settings`）。
+- 设置 › 常规 › 对话里的"Agent 定时任务工具"是全局默认值（默认关），存在 `routines.json` 顶层：开 = `toolsEnabled: true`，关 = `toolsDisabled: true`（旧版本只认后者，共用此文件时两边一致）。两者都没有时：已有任务的旧文件按以前的默认算开，其余为关；任何写入都会把当时的值落盘（`toolsDefault()`），所以首个任务或删掉最后一个任务都不会改变它（`RoutineStore.isToolsEnabled()` / `setToolsEnabled()`，`GET/PUT /api/routines/settings`）。
 - 项目设置页的同名开关可向两个方向覆盖全局（`projects: { [项目根]: boolean }`，按侧边栏项目根记录，worktree 共用；`RoutineStore.projectState()` / `setProjectEnabled()`，`GET/PUT /api/routines/settings?cwd=`），项目优先；切回与全局相同即去掉覆盖。
 - 关闭的项目不注册这三个工具。开关前已启动的会话在重新加载前仍带着它们，所以 `execute()` 再查一次并拒绝。
 - 开关不影响调度和入口：侧栏的 Routines 导航行始终显示，任务是否运行只看它自己的暂停/启用状态。

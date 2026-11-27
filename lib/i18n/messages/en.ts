@@ -425,6 +425,8 @@ export const enLocale: LocalePlugin = {
     "agents.resources": "Resources",
     "agents.loadSkills": "Load skills",
     "agents.loadExtensions": "Load extensions",
+    "agents.mcpServers": "MCP servers",
+    "agents.mcpAll": "All enabled",
     "agents.model": "Model override",
     "agents.modelsLoading": "Loading models...",
     "agents.modelUnavailable": "{model} (unavailable)",

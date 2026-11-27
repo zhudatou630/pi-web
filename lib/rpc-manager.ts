@@ -56,8 +56,10 @@ import {
   readSubagentRun,
   readSubagentSessionResources,
   subagentToolOptions,
+  subagentUsesBuiltinExtensions,
   SUBAGENT_CONTROL_TOOL_NAMES,
 } from "./subagents";
+import { subagentBuiltinExtensionOptions } from "./subagent-builtin-extensions";
 import { createSubagentBridge, installSubagentBridge } from "./subagent-bridge";
 import { createSubagentController, createSubagentShellTools, getActiveSubagentRuns, hasUnsettledSubagents, isSubagentQueued, SUBAGENT_NOTIFICATION_TYPE, type SubagentController } from "./subagent-runtime";
 import { isSubagentsEnabledForProject } from "./subagent-settings";
@@ -2986,7 +2988,8 @@ export async function startRpcSession(
     appendSessionToolSelection(sessionManager, requestedToolNames);
   }
   const subagentLoadsResources = Boolean(
-    subagentResources?.loadExtensions || subagentResources?.loadSkills,
+    subagentResources?.loadExtensions || subagentResources?.loadSkills
+    || (subagentResources && subagentUsesBuiltinExtensions(subagentResources)),
   );
   const chatOnly = selectedToolNames?.length === 0 && !subagentLoadsResources;
   const finishStartingSession = trackStartingSession(sessionCwd);
@@ -3044,6 +3047,9 @@ export async function startRpcSession(
     const settingsManager = SettingsManager.create(configCwd, agentDir, {
       projectTrusted: getProjectTrustStatus(configCwd, agentDir).trusted,
     });
+    const subagentBuiltins = subagentResources
+      ? await subagentBuiltinExtensionOptions(subagentResources, configCwd, agentDir, settingsManager)
+      : undefined;
     const services = await createAgentSessionServices({
       cwd: configCwd,
       agentDir,
@@ -3056,9 +3062,13 @@ export async function startRpcSession(
             noPromptTemplates: true,
             noThemes: true,
             noContextFiles: true,
+            additionalExtensionPaths: subagentBuiltins!.additionalExtensionPaths,
+            extensionFactories: [
+              ...subagentBuiltins!.extensionFactories,
+              ...(subagentResources.exactSystemPrompt !== undefined ? [createExactSystemPromptExtension(subagentResources.exactSystemPrompt)] : []),
+            ],
             ...(subagentResources.exactSystemPrompt !== undefined
               ? {
-                  extensionFactories: [createExactSystemPromptExtension(subagentResources.exactSystemPrompt)],
                   systemPrompt: " ",
                   systemPromptOverride: () => undefined,
                   appendSystemPrompt: [],
@@ -3083,7 +3093,7 @@ export async function startRpcSession(
             }
         : {
             extensionFactories: [
-              // ponytail: sub-agents are left out; their `tools:` allow-list would hide MCP tools anyway.
+              // sub-agents get them per profile, without llama.cpp (`subagentBuiltinExtensionOptions`).
               ...(await createBuiltinExtensions()),
               { name: "read-only-guard", factory: readOnlyToolGuard, hidden: true },
               { name: "side-chat-guard", factory: sideChatToolGuard, hidden: true },

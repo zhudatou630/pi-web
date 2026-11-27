@@ -77,8 +77,12 @@ export interface Routine {
 
 interface RoutinesFile {
   version: 1;
-  /** Settings › General: the routines tools are off by default in every project. Scheduling is unaffected. */
+  /**
+   * Settings › General default for the routines tools; scheduling is unaffected. Off is still written
+   * as `toolsDisabled` so older Pi Web versions sharing this file agree. Neither = see `toolsDefault()`.
+   */
   toolsDisabled?: true;
+  toolsEnabled?: true;
   /** Legacy master switch (entry, scheduler and tools); migrated by `migrate()`. */
   featureDisabled?: true;
   /** Per-project override of `toolsDisabled`, keyed by project root; the project wins either way. */
@@ -305,12 +309,27 @@ function loadFile(path: string): RoutinesFile {
 function migrate(state: RoutinesFile): RoutinesFile {
   if (state.featureDisabled) {
     delete state.featureDisabled;
+    delete state.toolsEnabled;
     state.toolsDisabled = true;
     for (const routine of state.routines) {
       if (routine.schedule.kind !== "manual") routine.enabled = false;
     }
   }
   return state;
+}
+
+/**
+ * The tools used to default to on: a file with routines but no switch value predates the off default
+ * and keeps them on. Every write pins the value (`mutate`), so routine count never flips it later.
+ */
+function toolsDefault(state: RoutinesFile): boolean {
+  if (state.toolsDisabled) return false;
+  return state.toolsEnabled === true || state.routines.length > 0;
+}
+
+function recordToolsDefault(state: RoutinesFile, enabled: boolean): void {
+  if (enabled) { state.toolsEnabled = true; delete state.toolsDisabled; }
+  else { state.toolsDisabled = true; delete state.toolsEnabled; }
 }
 
 /** Current routine names by id for the chat's run rows, read once on first use; unreadable file = none. */
@@ -346,30 +365,27 @@ export class RoutineStore {
     return state.routines;
   }
 
-  /** Settings › General: the default for the routines tools in every project. On unless switched off. */
+  /** Settings › General: the default for the routines tools in every project. Off unless switched on. */
   isToolsEnabled(): boolean {
-    return migrate(loadFile(this.path)).toolsDisabled !== true;
+    return toolsDefault(migrate(loadFile(this.path)));
   }
 
   /** This project's routines tools: the global default unless the project overrides it either way. */
   projectState(projectRoot: string): ProjectFeatureState {
     const state = migrate(loadFile(this.path));
-    return projectFeatureState(state as unknown as Record<string, unknown>, projectRoot, state.toolsDisabled !== true);
+    return projectFeatureState(state as unknown as Record<string, unknown>, projectRoot, toolsDefault(state));
   }
 
   async setProjectEnabled(projectRoot: string, enabled: boolean): Promise<void> {
     await this.mutate((state) => {
-      const { projects } = withProjectOverride(state as unknown as Record<string, unknown>, projectRoot, enabled, state.toolsDisabled !== true);
+      const { projects } = withProjectOverride(state as unknown as Record<string, unknown>, projectRoot, enabled, toolsDefault(state));
       if (projects) state.projects = projects as Record<string, boolean>;
       else delete state.projects;
     });
   }
 
   async setToolsEnabled(enabled: boolean): Promise<void> {
-    await this.mutate((state) => {
-      if (enabled) delete state.toolsDisabled;
-      else state.toolsDisabled = true;
-    });
+    await this.mutate((state) => recordToolsDefault(state, enabled));
   }
 
   /** All read-modify-writes share this lock (also across Pi Web processes). */
@@ -389,12 +405,17 @@ export class RoutineStore {
       const state = loadFile(this.path);
       const before = JSON.stringify(state);
       migrate(state);
+      const defaultBefore = toolsDefault(state);
       settleOrphans(state, this.isAlive);
       const result = mutate(state);
       if (compromised) throw compromised;
       // The scheduler mutates every tick; most ticks change nothing.
-      const after = JSON.stringify(state, null, 2);
-      if (JSON.stringify(state) !== before) writePrivateFileAtomicSync(this.path, after + "\n");
+      if (JSON.stringify(state) !== before) {
+        // Every real write records the default it had, so routine count never flips it later and an
+        // older version (which reads a missing value as on) agrees.
+        if (!state.toolsEnabled && !state.toolsDisabled) recordToolsDefault(state, defaultBefore);
+        writePrivateFileAtomicSync(this.path, JSON.stringify(state, null, 2) + "\n");
+      }
       return result;
     } finally {
       await release();

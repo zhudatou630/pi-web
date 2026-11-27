@@ -31,6 +31,7 @@ import {
   readSubagentRun,
   resolveSubagentProfile,
   selectSubagentExtensionTools,
+  snapshotTools,
   subagentNotFoundMessage,
   subagentToolOptions,
   SUBAGENT_META_TYPE,
@@ -44,6 +45,8 @@ import {
 } from "./subagents";
 import type { SessionEntry } from "./types";
 import { buildSubagentPromptPlan } from "./subagent-prompt";
+import { subagentBuiltinExtensionOptions } from "./subagent-builtin-extensions";
+import { BUILTIN_EXTENSION_PREFIX } from "./builtin-extensions";
 import { appendSubagentInputFiles, loadSubagentInputFiles, subagentInputByteLimit } from "./subagent-input";
 import { getProjectTrustStatus, projectTrustReloadOptions } from "./project-trust";
 import { resolveShellTools } from "./powershell-settings";
@@ -1058,7 +1061,8 @@ export function createSubagentController(
     const inheritContext = profile.inheritContext;
     const maxTurns = profile.maxTurns;
     // Deny rules need the name allowlist: without it a denied extension's late tools would be admitted.
-    const allExtensionTools = profile.loadExtensions
+    const mcpServers = profile.mcpServers ?? [];
+    const allExtensionTools = (profile.loadExtensions || mcpServers.length > 0)
       && !profile.extensionTools?.length
       && !profile.disallowedExtensionTools?.length;
     if (maxTurns !== undefined && (!Number.isFinite(maxTurns) || maxTurns < 0)) {
@@ -1102,7 +1106,7 @@ export function createSubagentController(
       projectInstructions,
       tools: profile.tools,
       loadSkills: profile.loadSkills,
-      loadExtensions: profile.loadExtensions,
+      loadExtensions: profile.loadExtensions || mcpServers.length > 0,
       promptMode: profile.promptMode,
       task: appendSubagentInputFiles(request.task, inputFiles),
       inheritedParentContext,
@@ -1132,9 +1136,10 @@ export function createSubagentController(
       resourceSnapshot: {
         version: 1,
         appendSystemPrompt: [...appendSystemPrompt],
-        tools: [...profile.tools],
+        ...snapshotTools(profile.tools),
         loadSkills: profile.loadSkills,
         loadExtensions: profile.loadExtensions,
+        ...(mcpServers.length > 0 ? { mcpServers: [...mcpServers] } : {}),
         ...(allExtensionTools ? { allExtensionTools: true as const } : {}),
         ...(promptPlan.exactSystemPrompt !== undefined
           ? { exactSystemPrompt: promptPlan.exactSystemPrompt }
@@ -1190,6 +1195,12 @@ export function createSubagentController(
             projectTrusted: getProjectTrustStatus(configCwd, agentDir).trusted,
           });
           if (!chatOnly) initTheme();
+          const builtins = await subagentBuiltinExtensionOptions(
+            { tools: profile.tools, loadExtensions: profile.loadExtensions, mcpServers },
+            configCwd,
+            agentDir,
+            settingsManager,
+          );
           const services = await createAgentSessionServices({
             cwd: configCwd,
             agentDir,
@@ -1201,22 +1212,27 @@ export function createSubagentController(
               noPromptTemplates: true,
               noThemes: true,
               noContextFiles: true,
+              additionalExtensionPaths: builtins.additionalExtensionPaths,
+              extensionFactories: [
+                ...builtins.extensionFactories,
+                ...(promptPlan.exactSystemPrompt !== undefined ? [createExactSystemPromptExtension(promptPlan.exactSystemPrompt)] : []),
+              ],
               ...(promptPlan.exactSystemPrompt !== undefined
                 ? {
-                    extensionFactories: [createExactSystemPromptExtension(promptPlan.exactSystemPrompt)],
                     systemPrompt: " ",
                     systemPromptOverride: () => undefined,
                     appendSystemPrompt: [],
                   }
                 : { systemPrompt: " ", systemPromptOverride: () => undefined, appendSystemPrompt }),
             },
-            ...((profile.loadExtensions || profile.loadSkills)
+            ...((profile.loadExtensions || profile.loadSkills || builtins.extensionFactories.length > 0)
               ? { resourceLoaderReloadOptions: projectTrustReloadOptions(configCwd, agentDir) }
               : {}),
           });
           const extensionToolNames = profile.loadExtensions
             ? selectSubagentExtensionTools(
-                services.resourceLoader.getExtensions().extensions,
+                // pi's built-ins are granted by `mcp_servers`/`tools:` alone; MCP switches codemode/tool_search on itself.
+                services.resourceLoader.getExtensions().extensions.filter((extension) => !extension.path.startsWith(BUILTIN_EXTENSION_PREFIX)),
                 profile.extensionTools?.length ? profile.extensionTools : ["ext:*"],
                 profile.disallowedExtensionTools,
               )
@@ -1227,7 +1243,7 @@ export function createSubagentController(
           );
           const runtimeMetadata: SubagentMetadata = {
             ...currentMetadata,
-            resourceSnapshot: { ...currentMetadata.resourceSnapshot, tools: [...activeTools] },
+            resourceSnapshot: { ...currentMetadata.resourceSnapshot, ...snapshotTools(activeTools) },
           };
           context.manager.appendCustomEntry(SUBAGENT_META_TYPE, runtimeMetadata);
           currentMetadata = runtimeMetadata;

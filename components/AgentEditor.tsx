@@ -8,6 +8,7 @@ import type { ModelsData } from "@/lib/models-cache";
 import { subagentProfileSources } from "@/lib/subagent-profile-precedence";
 import { THINKING_LEVELS as THINKING_LEVEL_VALUES, THINKING_LEVEL_LABELS } from "@/lib/thinking-levels";
 import type { SubagentProfile, SubagentScope, SubagentWritableScope } from "@/lib/subagents";
+import type { McpSettingsResponse } from "@/lib/api-types";
 import {
   ConfigButton,
   ConfigEmptyState,
@@ -21,7 +22,7 @@ import { SettingsScopeRow } from "./SettingsScope";
 import { ModelSelector } from "./ModelSelector";
 import { Select } from "./Select";
 
-const TOOL_OPTIONS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+const TOOL_OPTIONS = ["read", "bash", "edit", "write", "grep", "find", "ls", "codemode", "tool_search"];
 const THINKING_OPTIONS = ["", ...THINKING_LEVEL_VALUES] as const;
 
 export type EditableProfile = Omit<SubagentProfile, "scope" | "filePath">;
@@ -82,6 +83,7 @@ function editableProfile(profile: SubagentProfile): EditableProfile {
     tools: [...profile.tools],
     loadSkills: profile.loadSkills,
     loadExtensions: profile.loadExtensions,
+    ...(profile.mcpServers?.length ? { mcpServers: [...profile.mcpServers] } : {}),
     ...(profile.model ? { model: profile.model } : {}),
     ...(profile.thinking ? { thinking: profile.thinking } : {}),
     ...(profile.maxTurns ? { maxTurns: profile.maxTurns } : {}),
@@ -396,6 +398,23 @@ export function useModelOptions(cwd: string) {
   return { options, loading, error, data };
 }
 
+/** Server names for the MCP field: the parent's effective config here; failures leave the list empty. */
+function useMcpServerNames(cwd: string): string[] {
+  const url = settingsUrls.mcp(cwd);
+  const seed = peekJson<McpSettingsResponse>(url);
+  const [names, setNames] = useState<string[]>(() => (seed?.ok ? mcpNames(seed.data) : []));
+  useEffect(() => {
+    let cancelled = false;
+    getJson<McpSettingsResponse>(url)
+      .then((reply) => { if (!cancelled && reply.ok) setNames(mcpNames(reply.data)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [url]);
+  return names;
+}
+
+const mcpNames = (data: McpSettingsResponse) => [...new Set((data.servers ?? []).filter((server) => !server.overridden).map((server) => server.name))];
+
 /** The Save button for the editor, shown while the form is editable. */
 export function AgentSaveFooter({ editor }: { editor: AgentEditor }) {
   const { t } = useI18n();
@@ -423,6 +442,7 @@ export function AgentSaveFooter({ editor }: { editor: AgentEditor }) {
 export function AgentDetail({ editor }: { editor: AgentEditor }) {
   const { t } = useI18n();
   const models = useModelOptions(editor.cwd);
+  const mcpServerNames = useMcpServerNames(editor.cwd);
   const {
     draft, mode, effective, shadowed, shown, effectiveTag, writing, disabled, saving, toggling,
     canPickScope, overriding, pendingFile, displayedPath, fullPath, followsOwnCopy, removable, fixedScope, update,
@@ -453,6 +473,11 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
   const toolOptions = draft.tools.includes("powershell") || shown?.tools.includes("powershell")
     ? [...TOOL_OPTIONS, "powershell"]
     : TOOL_OPTIONS;
+  const selectedServers = draft.mcpServers ?? [];
+  const allServers = selectedServers.includes("*");
+  // Names the file lists but the config no longer has stay visible, so saving never drops them silently.
+  const serverOptions = [...new Set([...mcpServerNames, ...selectedServers.filter((name) => name !== "*")])];
+  const setServers = (servers: string[]) => update("mcpServers", servers.length > 0 ? servers : undefined);
 
   return (
     <SettingsDetailPage
@@ -545,6 +570,14 @@ export function AgentDetail({ editor }: { editor: AgentEditor }) {
             <div className="settings-checkbox-grid">
               <Toggle label={t("agents.loadSkills")} disabled={disabled} checked={draft.loadSkills} onChange={(checked) => update("loadSkills", checked)} />
               <Toggle label={t("agents.loadExtensions")} disabled={disabled} checked={draft.loadExtensions} onChange={(checked) => update("loadExtensions", checked)} />
+            </div>
+          </Field>
+          <Field label={t("agents.mcpServers")}>
+            <div className="settings-checkbox-grid">
+              <Toggle label={t("agents.mcpAll")} disabled={disabled} checked={allServers} onChange={(checked) => setServers(checked ? ["*"] : [])} />
+              {serverOptions.map((name) => (
+                <Toggle key={name} label={name} disabled={disabled || allServers} checked={allServers || selectedServers.includes(name)} onChange={(checked) => setServers(checked ? [...selectedServers, name] : selectedServers.filter((item) => item !== name))} />
+              ))}
             </div>
           </Field>
         </div>

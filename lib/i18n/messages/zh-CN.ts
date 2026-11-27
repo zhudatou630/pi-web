@@ -425,6 +425,8 @@ export const zhCNLocale: LocalePlugin = {
     "agents.resources": "资源",
     "agents.loadSkills": "加载技能",
     "agents.loadExtensions": "加载扩展",
+    "agents.mcpServers": "MCP 服务器",
+    "agents.mcpAll": "全部已启用",
     "agents.model": "指定模型",
     "agents.modelsLoading": "正在加载模型...",
     "agents.modelUnavailable": "{model}（不可用）",
