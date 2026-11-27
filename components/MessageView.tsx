@@ -864,8 +864,7 @@ function AssistantMessageView({
   const modelLabel = isTurnEnd && !isStreaming ? (modelName || message.model || null) : null;
   const duration = isTurnEnd && !isStreaming && turnDurationSeconds ? formatDuration(turnDurationSeconds, t) : null;
   const timing = isTurnEnd && !isStreaming ? turnTiming ?? null : null;
-  const cost = formatMessageCost(message.usage?.cost?.total ?? 0);
-  const showFooter = aborted || steered || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent || cost));
+  const showFooter = aborted || steered || (isTurnEnd && !isStreaming && Boolean(modelLabel || duration || time || textContent));
   const copyContent = () => {
     copyText(textContent).then(() => {
       setCopied(true);
@@ -1010,7 +1009,6 @@ function AssistantMessageView({
               {duration}
             </span>
           )}
-          {cost && !steered && !isProcess && <span>{cost}</span>}
           {timing && (
             <span data-answer-timing title={t("session.performance")} style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0, whiteSpace: "nowrap", userSelect: "none" }}>
               {/* Same raised Lucide gauge as the composer readout. */}

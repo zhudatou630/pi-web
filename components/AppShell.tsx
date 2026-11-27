@@ -2461,6 +2461,8 @@ export function AppShell() {
   // plainly, still authorized through its session.
   const handleOpenDiff = useCallback((filePath: string, cwd?: string, sourceSessionId: string | null = null) => {
     const inside = Boolean(cwd) && getRelativeFilePath(filePath, cwd) !== filePath;
+    // An explicit diff request wins over a pending reveal for this file.
+    if (inside) setFileReveal((pending) => pending?.path === filePath ? null : pending);
     handleOpenFile(filePath, getFileName(filePath), { ...(inside ? { modeHint: "diff" as const } : {}), cwd, sourceSessionId });
   }, [handleOpenFile]);
   // Files the focused chat's last turn wrote: the Changes view's "this turn" scope.

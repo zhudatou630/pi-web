@@ -111,7 +111,7 @@ const HTML_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const LOAD_ALL_CONFIRM_BYTES = 16 * 1024 * 1024;
 const SOURCE_HIGHLIGHT_MAX_LINES = 1_000;
 // The viewer's own width, not the window's: a desktop panel can be as narrow as a phone.
-const DIFF_SPLIT_MIN_WIDTH = 760;
+const DIFF_SPLIT_MIN_WIDTH = 720;
 const WATCH_CHANGE_DEBOUNCE_MS = 150;
 const FIND_SHORTCUT_LABEL = "Ctrl/⌘ F";
 const SOURCE_HIGHLIGHT_MAX_BYTES = 128 * 1024;
@@ -416,11 +416,11 @@ const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, palett
   );
 });
 
-function DiffView({ patch, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false, palette = "default" }: {
-  patch: string; wrapLines: boolean; language?: string; prismReady?: boolean; isDark?: boolean; palette?: string;
+function DiffView({ patch, split, onSplitChange, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false, palette = "default" }: {
+  patch: string; split: boolean; onSplitChange: (split: boolean) => void; wrapLines: boolean;
+  language?: string; prismReady?: boolean; isDark?: boolean; palette?: string;
 }) {
   const { t } = useI18n();
-  const [split, setSplit] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const wrapLines = split || preferWrap;
   const diff = useMemo(() => parseUnifiedPatch(patch)?.flatMap((file) => file.rows) ?? [], [patch]);
@@ -440,13 +440,16 @@ function DiffView({ patch, wrapLines: preferWrap, language = "text", prismReady 
   // the scrollbar that wrapped columns can bring must not flip the layout back.
   useLayoutEffect(() => {
     const box = rootRef.current?.parentElement;
-    if (!box) return;
-    const update = () => setSplit(box.offsetWidth >= DIFF_SPLIT_MIN_WIDTH);
+    if (!box) {
+      onSplitChange(false);
+      return;
+    }
+    const update = () => onSplitChange(box.offsetWidth >= DIFF_SPLIT_MIN_WIDTH);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(box);
     return () => observer.disconnect();
-  }, [hasChanges]);
+  }, [hasChanges, onSplitChange]);
   if (!hasChanges) {
     return (
       <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--text-dim)" }}>
@@ -1353,6 +1356,7 @@ function TextFileViewer({
   // Nothing to restore: skip offscreen layout from the first frame (halves a large first open).
   const offscreenSkipFromStart = initialScrollTop === 0 && initialScrollLeft === 0;
   const [displayMode, setDisplayMode] = useState<DisplayMode>(requestedInitialDisplayMode);
+  const [diffSplit, setDiffSplit] = useState(false);
   const [wrapLines, setWrapLines] = useState(initialWrapLines);
   const [watching, setWatching] = useState(false);
   const esRef = useRef<EventSource | null>(null);
@@ -1730,9 +1734,10 @@ function TextFileViewer({
     () => isHtml && effectiveDisplayMode === "preview" && htmlInline ? injectSandboxedHtmlPolyfill(rawHtml ?? "") : "",
     [isHtml, effectiveDisplayMode, htmlInline, rawHtml],
   );
+  const isSplitDiff = effectiveDisplayMode === "diff" && diffSplit;
   // A fresh token whenever the rendered text may change, so an open find bar searches again.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const findContentKey = useMemo(() => ({}), [data, gitDiff, htmlFull, effectiveDisplayMode, wrapLines]);
+  const findContentKey = useMemo(() => ({}), [data, gitDiff, htmlFull, effectiveDisplayMode, wrapLines, isSplitDiff]);
   const useLightweightSource = (
     sourceLines.length > SOURCE_HIGHLIGHT_MAX_LINES
     || (data?.size ?? 0) > SOURCE_HIGHLIGHT_MAX_BYTES
@@ -2155,7 +2160,7 @@ function TextFileViewer({
                 <MentionIcon />
               </button>
             )}
-            {(effectiveDisplayMode === "source" || effectiveDisplayMode === "diff") && (
+            {!isSplitDiff && (effectiveDisplayMode === "source" || effectiveDisplayMode === "diff") && (
               <>
                 <button
                   type="button"
@@ -2258,7 +2263,7 @@ function TextFileViewer({
         style={{ flex: 1, overflow: "auto", background: "var(--bg)", paddingBottom: data?.truncated && !(isHtml && effectiveDisplayMode === "preview") ? 48 : undefined }}
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
-          <MemoizedDiffView patch={gitDiff.patch!} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
+          <MemoizedDiffView patch={gitDiff.patch!} split={isSplitDiff} onSplitChange={setDiffSplit} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
         ) : isHtml && effectiveDisplayMode === "preview" && !htmlInline && htmlServedForFile?.url ? (
           <iframe
             // A new element per URL: changing src would add an iframe history entry.

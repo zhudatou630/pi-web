@@ -18,6 +18,12 @@ test("only tree single clicks request previews; double clicks and diff rows pin"
   assert.match(shell, /onPinTab=\{\(tabId\) => setFileTabs\(\(tabs\) => pinFileTab\(tabs, tabId\)\)\}/);
 });
 
+test("an explicit diff open clears only a pending reveal for the same file", () => {
+  const start = shell.indexOf("const handleOpenDiff = useCallback(");
+  const body = shell.slice(start, shell.indexOf("}, [handleOpenFile]);", start));
+  assert.match(body, /if \(inside\) setFileReveal\(\(pending\) => pending\?\.path === filePath \? null : pending\);\s*handleOpenFile\(/);
+});
+
 test("file tabs are one list restored on reload, independent of the sidebar project", () => {
   assert.match(shell, /const files = restoreFileTabs\(window\.sessionStorage\.getItem\(FILE_TABS_KEY\)\)/);
   // An active terminal keeps the panel; otherwise the active file tab does.

@@ -23,6 +23,14 @@ test("Cmd/Ctrl+F opens find only for the engaged, visible viewer", () => {
   assert.match(viewer, /if \(!engaged && !shell\.contains\(document\.activeElement\)\) return;/);
 });
 
+test("crossing the diff layout threshold invalidates find ranges", () => {
+  assert.match(viewer, /onSplitChange\(box\.offsetWidth >= DIFF_SPLIT_MIN_WIDTH\)/);
+  assert.match(viewer, /<MemoizedDiffView[^>]+split=\{isSplitDiff\} onSplitChange=\{setDiffSplit\}/);
+  assert.match(viewer, /const findContentKey = useMemo\(\(\) => \(\{\}\), \[[^\]]*\bisSplitDiff\b[^\]]*\]\)/);
+  assert.match(viewer, /<FileFindBar\s+scrollerRef=\{contentRef\}\s+contentKey=\{findContentKey\}/);
+  assert.match(findBar, /\[query, contentKey, scrollerRef, unsupportedMessage\]/);
+});
+
 test("markdown images open the zoom viewer, linked images keep their link", () => {
   // SVG previews are buttons with their own viewer, so they are skipped too.
   assert.match(viewer, /if \(image && !image\.closest\("a, button"\)\) openZoom\(image\);/);

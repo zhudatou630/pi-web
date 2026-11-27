@@ -437,13 +437,13 @@ test("restores copy and time only on a completed final answer", () => {
   const html = renderMessage(message, { isTurnEnd: true, modelName: "GPT-6 Astra", turnDurationSeconds: 47 });
   assert.match(html, /data-answer-footer[\s\S]*data-answer-model[^>]*>GPT-6 Astra<\/span>[\s\S]*data-answer-duration[\s\S]*47s[\s\S]*data-answer-time[\s\S]*title="Copy message"/);
   assert.equal((html.match(/GPT-6 Astra/g) ?? []).length, 1);
-  assert.match(html, /data-answer-footer[^]*?\$0\.08/);
+  assert.doesNotMatch(html, /data-answer-footer[^]*?\$0\.08/);
   const stepHtml = renderMessage(message, { isProcess: true });
   assert.doesNotMatch(stepHtml, /\$0\.08/);
   assert.doesNotMatch(stepHtml, /data-answer-footer/);
   const fallbackHtml = renderMessage(message, { isTurnEnd: true });
   assert.match(fallbackHtml, /data-answer-footer[\s\S]*data-answer-model[^>]*>hidden-model<\/span>/);
-  assert.doesNotMatch(fallbackHtml, /47s/);
+  assert.doesNotMatch(fallbackHtml, /47s|\$0\.08/);
   assert.match(html, /data-message-role="assistant"[^>]*class="is-turn-end"/);
   assert.doesNotMatch(source, /toLocale(?:Date|Time)?String\(\[\]/, "dates follow the app locale, not the browser's");
   assert.match(html, /title="Copy message"/);

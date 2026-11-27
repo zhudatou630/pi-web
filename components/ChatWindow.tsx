@@ -11,7 +11,7 @@ import { normalizeCustomPanelLines, stripAnsi } from "@/lib/ansi";
 import { splitNoticeLinks, splitNoticeText } from "@/lib/notice-text";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { isImeComposing } from "@/lib/ime";
-import { addProcessCost, formatMessageCost, countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
+import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, hasTrailingFinalAnswer, isAbortedAssistantError, getMessageGroupBoundaries, isHiddenCustomMessage, isSubagentNotificationMessage, partitionAssistantMessage } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
 import { truncateStatusReason } from "@/lib/session-status";
 import { TurnFilesContext } from "./TurnWrittenFiles";
@@ -819,7 +819,6 @@ function ProcessLiveDuration({ startTime, t }: { startTime: number; t: (key: str
 function ProcessDetailsGroup({
   messageCount,
   toolCallCount,
-  cost,
   durationSeconds,
   startTime,
   defaultExpanded = false,
@@ -833,7 +832,6 @@ function ProcessDetailsGroup({
 }: {
   messageCount: number;
   toolCallCount: number;
-  cost: number;
   /** Only for turns without a final answer; answered turns show it in the footer. */
   durationSeconds?: number;
   activityLabel?: string | null;
@@ -954,7 +952,6 @@ function ProcessDetailsGroup({
             {stepsLabel}
           </span>
         )}
-        {cost > 0 && <span className="shrink-0">· {formatMessageCost(cost)}</span>}
         <svg
           width="10"
           height="10"
@@ -2413,7 +2410,6 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                       <div key={`process-group-${messageKeys[firstIdx]}`}>
                         <ProcessDetailsGroup
                           messageCount={1}
-                          cost={addProcessCost(0, streamingParts.processMessage)}
                           toolCallCount={countToolCallBlocks(streamingParts.processMessage.content ?? [])}
                           durationSeconds={streamingDuration}
                           startTime={turnStartTime}
@@ -2463,7 +2459,6 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                 const processEntryIds: string[] = [];
                 const promotedAnswers: { idx: number; message: AssistantMessage }[] = [];
                 let processToolCount = 0;
-                let processCost = 0;
                 let processRefIdx: number | undefined;
                 let revealProcess = false;
                 let processStartTime: number | undefined;
@@ -2498,9 +2493,6 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                   if (processIdx !== finalAssistantIdx && parts?.answerMessage) {
                     promotedAnswers.push({ idx: processIdx, message: parts.answerMessage });
                   }
-                  // A step's whole usage, promoted text included (it has no footer); only the final
-                  // answer's footer shows its own message's cost.
-                  if (processIdx !== finalAssistantIdx || !finalAnswerMessage) processCost = addProcessCost(processCost, processMessage);
                   const message = parts?.processMessage
                     ?? (processMessage.stopReason === "length" && !parts?.answerMessage ? processMessage : null);
                   if (!message) continue;
@@ -2525,7 +2517,6 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                 }
 
                 if (isLiveTail && streamingParts.processMessage) {
-                  processCost = addProcessCost(processCost, streamingParts.processMessage);
                   processToolCount += countToolCallBlocks(streamingParts.processMessage.content ?? []);
                   processViews.push(
                     <MessageView
@@ -2610,7 +2601,6 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
                       <ProcessDetailsGroup
                         messageCount={processViews.length}
                         toolCallCount={processToolCount}
-                        cost={processCost}
                         durationSeconds={finalAnswerMessage || answeringLive || steered ? undefined : processDurationSeconds}
                         activityLabel={activityLabel}
                         startTime={turnStartTime ?? processStartTime}

@@ -218,6 +218,12 @@ test("diff view preserves Git hunk and metadata rows", () => {
   assert.doesNotMatch(source, /const CONTEXT = 3/);
 });
 
+test("diff splits at 720px and only unified diff and Source offer a wrap toggle", () => {
+  assert.match(source, /const DIFF_SPLIT_MIN_WIDTH = 720;/);
+  assert.match(source, /const isSplitDiff = effectiveDisplayMode === "diff" && diffSplit;/);
+  assert.match(source, /!isSplitDiff && \(effectiveDisplayMode === "source" \|\| effectiveDisplayMode === "diff"\)[\s\S]*?onClick=\{toggleWrapLines\}/);
+});
+
 test("diff code tokens inherit the row box, wrap and palette without painting over change backgrounds", () => {
   const line = source.slice(source.indexOf("const DiffLineCode"), source.indexOf("function DiffView"));
   for (const rule of [/border: 0/, /backgroundColor: "transparent"/, /fontFamily: "inherit"/, /lineHeight: "inherit"/, /whiteSpace: "inherit"/, /wrapLongLines=\{wrapLines\}/, /claudeDarkCodeStyle/]) assert.match(line, rule);
@@ -315,7 +321,7 @@ test("highlighted and bounded diff gutters stay pinned with matching line boxes"
   assert.match(source, /overflow: "visible"/, "the viewer, not the pre, must own scrolling");
 
   const diffView = file.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "DiffView").getText(file);
-  const render = (rowCount, props = {}) => evaluate(`${declarations}\nreturn (${diffView})({ patch: "", ...props });`, {
+  const render = (rowCount, props = {}) => evaluate(`${declarations}\nreturn (${diffView})({ patch: "", split: false, ...props });`, {
     props,
     TextEncoder,
     DiffLineCode: "highlighted-code",
@@ -323,7 +329,6 @@ test("highlighted and bounded diff gutters stay pinned with matching line boxes"
     useMemo: (fn) => fn(),
     useI18n: () => ({ t: (key) => key }),
     diffMetadataLines: () => [],
-    useState: () => [props.split ?? false],
     useLayoutEffect: () => {},
     useRef: () => ({ current: null }),
     parseUnifiedPatch: () => [{ rows: Array.from({ length: rowCount }, () => ({ type: "line", left: { type: "empty", text: "", lineNo: null }, right: { type: "added", text: "wide line", lineNo: 1 } })) }],
