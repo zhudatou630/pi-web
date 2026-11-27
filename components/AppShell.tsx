@@ -4181,14 +4181,14 @@ export function AppShell() {
             <button
               type="button"
               onClick={togglePanelDock}
-              className="workspace-header-action"
+              className="workspace-header-action panel-dock-toggle"
               aria-pressed={panelDockOpen}
               title={translate(panelDockOpen ? "panel.hideDock" : "panel.showDock")}
               aria-label={translate(panelDockOpen ? "panel.hideDock" : "panel.showDock")}
             >
-              {/* A list tree: the docked column is the project tree or the changes list. */}
+              {/* A frame with its right column, as Cursor's toggle for the same column. */}
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M21 12h-8M21 6H8M21 18h-8M3 6v4c0 1.1.9 2 2 2h3M3 10v6c0 1.1.9 2 2 2h3" />
+                <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M15 3v18" />
               </svg>
             </button>
           )}

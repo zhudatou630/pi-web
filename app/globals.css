@@ -831,6 +831,21 @@ button.turn-files-head:hover {
 .workspace-header-action[aria-pressed="true"] {
   box-shadow: inset 0 2px 0 var(--accent);
 }
+/* The file panel header's icon buttons rest muted and hover to text (docs/ui.md, icons). The dock
+   toggle is a view toggle, not a panel trigger: on is the icon at full text strength, no accent line. */
+.panel-dock-toggle,
+.right-panel-maximize {
+  color: var(--text-muted);
+  transition: color var(--motion-fast);
+}
+.panel-dock-toggle:hover,
+.right-panel-maximize:hover {
+  color: var(--text);
+}
+.workspace-header-action.panel-dock-toggle[aria-pressed="true"] {
+  box-shadow: none;
+  color: var(--text);
+}
 
 .workspace-header-action[data-active] {
   box-shadow: inset 0 2px 0 var(--accent);
