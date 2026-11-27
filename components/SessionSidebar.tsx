@@ -25,7 +25,6 @@ import { sessionStatus, unseenErrorSessionIds } from "@/lib/session-status";
 import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { SessionSearch } from "./SessionSearch";
-import { SESSION_DRAG_MIME } from "@/lib/chat-view-state";
 import { SubagentIcon } from "./SubagentIcon";
 import { MenuCheck } from "./MenuCheck";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
@@ -34,8 +33,6 @@ import { groupByStatus, parseSidebarGrouping, readAllTargets, SIDEBAR_GROUPING_S
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
 const SESSION_LIST_ITEM_HEIGHT = 26;
-/** Newest activity first (status sections, keyboard needs-you order). */
-const familyTime = (family: SessionFamily) => Date.parse(family.latestModified) || 0;
 /** Menu rows, phones included: keep equal to `--ui-row-height` in app/globals.css. */
 const MENU_ROW_HEIGHT = 26;
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
@@ -181,21 +178,7 @@ interface Props {
   selectedSessionId: string | null;
   visibleSessionIds?: readonly string[];
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
-  /** Sessions the chat panes show: all get the selected background (ADR 0005). */
-  shownSessionIds?: readonly string[];
-  /** Desktop with room to split: row menu, middle click and drag open a session in the right pane. */
-  onOpenSessionInSplit?: (session: SessionInfo) => void;
-  /** The primary pane's session cannot also open on the right. */
-  primarySessionId?: string | null;
-  /** A row drag started (true) or ended (false): the chat area shows its split drop zone. */
-  onSessionDragChange?: (dragging: boolean) => void;
-  /** Root session ids for the keyboard (ADR 0005): `displayed` in list order (search results while
-   *  searching) for Alt+↑/↓, `needsYou` in NEEDS YOU order over every listed family for Alt+Shift+↑/↓. */
-  onSessionOrderChange?: (order: { displayed: string[]; needsYou: string[] }) => void;
-  /** Filled by the sidebar: select a listed session by id as a row click does. */
-  selectSessionRef?: React.MutableRefObject<((sessionId: string) => void) | null>;
-  /** Bumped by Alt+K: open the search and focus its field. */
-  searchFocusRequest?: number;
+  onOpenSessionInNewTab?: (session: SessionInfo) => void;
   onForkSession?: (session: SessionInfo) => void;
   forking?: boolean;
   onNewSession?: (sessionId: string, cwd: string) => void;
@@ -394,7 +377,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, shownSessionIds, onOpenSessionInSplit, primarySessionId = null, onSessionDragChange, onSessionOrderChange, selectSessionRef, searchFocusRequest = 0, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -1226,16 +1209,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     onSelectSession(s, false, entryId, blockIndex);
   }, [onSelectSession, projectFor, selectedCwd, worktreeState]);
 
-  // The keyboard's session picks go through the same path as a row click.
-  useEffect(() => {
-    if (!selectSessionRef) return;
-    selectSessionRef.current = (id) => {
-      const session = allSessions.find((candidate) => candidate.id === id);
-      if (session) handleSelectSessionFromList(session);
-    };
-    return () => { selectSessionRef.current = null; };
-  }, [allSessions, handleSelectSessionFromList, selectSessionRef]);
-
   const createSessionForCwd = useCallback((cwd: string) => {
     // Generate a temporary UUID client-side — no backend call needed.
     // Pi will be spawned lazily when the user sends the first message.
@@ -1642,20 +1615,20 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     keepalive: total.keepalive + activity.keepalive,
   }), { running: 0, awaiting: 0, unread: 0, error: 0, keepalive: 0 }), [pinnedFamilies, activeSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, erroredSessionIds]);
 
-  const familyStatus = useCallback((family: SessionFamily) => {
-    const members = [family.root, ...family.subagents];
-    return sessionStatus({
-      awaiting: members.some((session) => awaitingInputSessionIds.has(session.id)),
-      error: erroredSessionIds.has(family.root.id),
-      unread: members.some((session) => unreadSessionIds.has(session.id)),
-      running: members.some((session) => activeSessionIds.has(session.id)),
-    });
-  }, [activeSessionIds, awaitingInputSessionIds, erroredSessionIds, unreadSessionIds]);
   // Grouped by status: every project's unpinned, unarchived families (docs/ui.md, Sidebar top row).
   const statusGroups = useMemo(() => {
     if (!statusView) return null;
+    const familyStatus = (family: SessionFamily) => {
+      const members = [family.root, ...family.subagents];
+      return sessionStatus({
+        awaiting: members.some((session) => awaitingInputSessionIds.has(session.id)),
+        error: erroredSessionIds.has(family.root.id),
+        unread: members.some((session) => unreadSessionIds.has(session.id)),
+        running: members.some((session) => activeSessionIds.has(session.id)),
+      });
+    };
     const families = allFamilies.filter((family) => !pinnedSessionIds.includes(family.root.id) && !archivedMemberIds.has(family.root.id));
-    const groups = groupByStatus(families, familyStatus, familyTime);
+    const groups = groupByStatus(families, familyStatus, (family) => Date.parse(family.latestModified) || 0);
     const limit = workspaceSessionLimits[RECENT_LIMIT_KEY] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
     const recent = previewSessionFamilies(groups.recent, WORKSPACE_SESSION_PREVIEW_LIMIT, Math.max(0, limit - WORKSPACE_SESSION_PREVIEW_LIMIT),
       new Set(selectedSessionId ? [selectedSessionId] : []), WORKSPACE_SESSION_PAGE_SIZE);
@@ -1669,38 +1642,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       recentRevealed: recent.revealed,
       recentNextLimit: WORKSPACE_SESSION_PREVIEW_LIMIT + recent.nextShown,
     };
-  }, [statusView, allFamilies, pinnedSessionIds, archivedMemberIds, familyStatus, workspaceSessionLimits, selectedSessionId]);
-  // Alt+↑/↓ walk what the list shows (ADR 0005): PINNED, then the status sections or the project
-  // rows (collapsed projects and "show more" rows are not rendered, so they are skipped); while a
-  // search shows results, the results.
-  const [searchResultIds, setSearchResultIds] = useState<string[] | null>(null);
-  const displayedOrder = useMemo(() => {
-    // While the search shows (even before results arrive) only its results count.
-    if (sessionSearchActive) return searchResultIds ?? [];
-    const ids = pinnedOpen && !archiveView ? pinnedFamilies.map((family) => family.root.id) : [];
-    if (statusGroups) ids.push(...statusGroups.sections.flatMap((section) => section.families.map((family) => family.root.id)));
-    else if (projectsOpen) ids.push(...workspaceRows.flatMap((row) => row.kind === "session" ? [row.family.root.id] : []));
-    return ids;
-  }, [archiveView, pinnedFamilies, pinnedOpen, projectsOpen, searchResultIds, sessionSearchActive, statusGroups, workspaceRows]);
-  const needsYouOrder = useMemo(() => groupByStatus(allFamilies.filter((family) => !archivedMemberIds.has(family.root.id)), familyStatus, familyTime)
-    .needsYou.map((family) => family.root.id), [allFamilies, archivedMemberIds, familyStatus]);
-  useEffect(() => { onSessionOrderChange?.({ displayed: displayedOrder, needsYou: needsYouOrder }); }, [displayedOrder, needsYouOrder, onSessionOrderChange]);
-  // Alt+K: the search is the session switcher.
-  useEffect(() => {
-    if (!searchFocusRequest) return;
-    setSelection(null);
-    setDeleteConfirm(null);
-    setDropdownOpen(false);
-    setProjectsOpen(true);
-    setSessionSearchOpen(true);
-    const frame = requestAnimationFrame(() => {
-      const input = document.getElementById("session-search-input") as HTMLInputElement | null;
-      input?.focus();
-      input?.select();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [searchFocusRequest]);
-
+  }, [statusView, allFamilies, pinnedSessionIds, archivedMemberIds, awaitingInputSessionIds, erroredSessionIds, unreadSessionIds, activeSessionIds, workspaceSessionLimits, selectedSessionId]);
   // Rows of another project name it before the time; the selected project's need not.
   const otherProjectLabel = (family: SessionFamily) => {
     const key = workspaceKeyOf(family.root);
@@ -1756,7 +1698,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           } : undefined}
           session={displaySession}
           indent={14}
-          isSelected={familySessions.some((session) => session.id === selectedSessionId || shownSessionIds?.includes(session.id))}
+          isSelected={familySessions.some((session) => session.id === selectedSessionId)}
           isRunning={familySessions.some((session) => activeSessionIds.has(session.id))}
           isAwaiting={familySessions.some((session) => awaitingInputSessionIds.has(session.id))}
           isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
@@ -1771,9 +1713,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           onCloseMenu={() => setSessionMenu(null)}
           onClick={() => handleSelectSessionFromList(family.root)}
           onRenamed={loadSessions}
-          onOpenInSplit={onOpenSessionInSplit ? () => onOpenSessionInSplit(family.root) : undefined}
-          splitDisabled={family.root.id === primarySessionId}
-          onDragChange={onSessionDragChange}
+          onOpenInNewTab={onOpenSessionInNewTab ? () => onOpenSessionInNewTab(family.root) : undefined}
           onFork={onForkSession ? () => onForkSession(family.root) : undefined}
           forking={forking}
           isPinned={pinned}
@@ -1913,9 +1853,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             });
             setDropdownOpen(false);
           }}
-          title={`${t("sidebar.toggleSessionSearch")}\n${t("sidebar.sessionShortcuts")}`}
+          title={t("sidebar.toggleSessionSearch")}
           aria-label={t("sidebar.toggleSessionSearch")}
-          aria-keyshortcuts="Alt+K"
           aria-pressed={sessionSearchOpen}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -2127,16 +2066,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
               placeholder={t("sidebar.searchSessions")}
               onChange={(event) => setSessionSearchQuery(event.target.value)}
               onKeyDown={(event) => {
-                if (isImeComposing(event)) return;
-                // Switcher keys: Enter opens the first result, ↓ moves into the results.
-                if (event.key === "Enter" || event.key === "ArrowDown") {
-                  const first = document.querySelector<HTMLButtonElement>("[data-session-search-result]");
-                  if (!first) return;
-                  event.preventDefault();
-                  if (event.key === "Enter") first.click();
-                  else first.focus();
-                  return;
-                }
                 if (event.key === "Escape") {
                   event.stopPropagation();
                   if (sessionSearchQuery) {
@@ -2233,7 +2162,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         );
       })()}
 
-      <SessionSearch projectNames={projectNames} onResultIdsChange={setSearchResultIds} archivedSessionIds={archivedMemberIds} open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
+      <SessionSearch projectNames={projectNames} archivedSessionIds={archivedMemberIds} open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
       {statusGroups ? (
       // Few rows (activity plus a paged RECENT), so no windowing: section headers keep their own height.
       <div ref={listScrollRef} onScroll={handleListScroll} className="sidebar-list-scroll scroll-fade-block" style={{ flex: "1 1 auto", minHeight: 80 }}>
@@ -2523,9 +2452,7 @@ export function SessionItem({
   onCloseMenu,
   onClick,
   onRenamed,
-  onOpenInSplit,
-  splitDisabled = false,
-  onDragChange,
+  onOpenInNewTab,
   onFork,
   forking = false,
   isPinned = false,
@@ -2563,10 +2490,7 @@ export function SessionItem({
   onCloseMenu?: () => void;
   onClick: () => void;
   onRenamed?: () => void;
-  onOpenInSplit?: () => void;
-  /** The primary pane shows this session: it cannot also open on the right. */
-  splitDisabled?: boolean;
-  onDragChange?: (dragging: boolean) => void;
+  onOpenInNewTab?: () => void;
   onFork?: () => void;
   forking?: boolean;
   isPinned?: boolean;
@@ -2719,6 +2643,10 @@ export function SessionItem({
         if (renaming) return;
         onClick();
       }}
+      onDoubleClick={() => {
+        if (selection || renaming || session.transient) return;
+        onOpenInNewTab?.();
+      }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -2727,20 +2655,12 @@ export function SessionItem({
         if (e.button === 1) e.preventDefault();
       }}
       onAuxClick={(e) => {
-        if (e.button === 1 && onOpenInSplit && !splitDisabled && !renaming && !selection) {
+        if (e.button === 1 && onOpenInNewTab && !renaming && !selection) {
           e.preventDefault();
           e.stopPropagation();
-          onOpenInSplit();
+          onOpenInNewTab();
         }
       }}
-      // Drag to the chat area's right half to open it there (desktop only: onOpenInSplit is set only then).
-      draggable={Boolean(onOpenInSplit) && !splitDisabled && !selection && !renaming && !session.transient}
-      onDragStart={(e) => {
-        e.dataTransfer.setData(SESSION_DRAG_MIME, session.id);
-        e.dataTransfer.effectAllowed = "copy";
-        onDragChange?.(true);
-      }}
-      onDragEnd={() => onDragChange?.(false)}
       onContextMenu={selection ? (event) => event.preventDefault() : renaming ? undefined : handleContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}
@@ -2899,6 +2819,7 @@ export function SessionItem({
                     e.stopPropagation();
                     onTogglePin();
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   title={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
                   aria-label={t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
                   aria-pressed={isPinned}
@@ -2911,6 +2832,30 @@ export function SessionItem({
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <line x1="12" y1="17" x2="12" y2="22" />
                     <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+                  </svg>
+                </button>
+              )}
+              {onOpenInNewTab && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenInNewTab();
+                  }}
+                  title={t("chatTabs.openInNewTab", { defaultValue: "在新标签页打开" })}
+                  aria-label={t("chatTabs.openInNewTab", { defaultValue: "在新标签页打开" })}
+                  className="session-row-open"
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 20, height: 20, padding: 0,
+                    border: "none", borderRadius: 4,
+                    cursor: "pointer", flexShrink: 0,
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
                   </svg>
                 </button>
               )}
@@ -2937,12 +2882,12 @@ export function SessionItem({
             <div role="separator" className="menu-surface-divider" />
           </>
         )}
-        {onOpenInSplit && (
-          <button type="button" role="menuitem" disabled={splitDisabled} onClick={menuItem(onOpenInSplit)}>
-            {t("sessionView.openInSplit")}
+        {onOpenInNewTab && (
+          <button type="button" role="menuitem" onClick={menuItem(onOpenInNewTab)}>
+            {t("chatTabs.openInNewTab")}
           </button>
         )}
-        {onOpenInSplit && <div role="separator" className="menu-surface-divider" />}
+        {onOpenInNewTab && <div role="separator" className="menu-surface-divider" />}
         {onTogglePin && (
           <button type="button" role="menuitem" onClick={menuItem(onTogglePin)}>
             {t(isPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}

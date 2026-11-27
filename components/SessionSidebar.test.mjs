@@ -273,8 +273,7 @@ test("does not expose disk-backed actions for transient sessions", () => {
 
 test("hides subagent rows and aggregates their state into the main session row", () => {
   assert.match(source, /const projectFamilies = allFamilies\.filter\(\(family\) => workspaceKeyOf\(family\.root\) === project\.key\)/);
-  // Both chat panes' sessions are highlighted (ADR 0005).
-  assert.match(source, /familySessions\.some\(\(session\) => session\.id === selectedSessionId \|\| shownSessionIds\?\.includes\(session\.id\)\)/);
+  assert.match(source, /familySessions\.some\(\(session\) => session\.id === selectedSessionId\)/);
   assert.match(source, /familySessions\.some\(\(session\) => activeSessionIds\.has\(session\.id\)\)/);
   assert.doesNotMatch(source, /function SessionTreeItem/);
 });
@@ -340,11 +339,7 @@ test("right-click and mobile long-press open one session menu with every row act
   assert.match(sessionItemSource, /onTouchStart=\{handleTouchStart\}/);
   assert.match(sessionItemSource, /onOpenMenu\?\.\(touch\.clientX, touch\.clientY\)/);
   assert.match(sessionItemSource, /if \(!handled\) onOpenMenu\?\.\(e\.clientX, e\.clientY\)/);
-  assert.match(sessionItemSource, /disabled=\{splitDisabled\} onClick=\{menuItem\(onOpenInSplit\)\}>\s*\{t\("sessionView\.openInSplit"\)\}/);
-  // Middle click and drag open the row in the right pane; double click is a plain click.
-  assert.match(sessionItemSource, /e\.button === 1 && onOpenInSplit && !splitDisabled/);
-  assert.match(sessionItemSource, /e\.dataTransfer\.setData\(SESSION_DRAG_MIME, session\.id\)/);
-  assert.doesNotMatch(sessionItemSource, /onDoubleClick=\{\(\) =>|session-row-open/);
+  assert.match(sessionItemSource, /t\("chatTabs\.openInNewTab"\)/);
   assert.match(sessionItemSource, /t\(isPinned \? "sidebar\.unpinSession" : "sidebar\.pinSession"\)/);
   assert.match(sessionItemSource, /menuItem\(startRename\)/);
   assert.match(sessionItemSource, /onRequestDelete\?\.\(menuAt\.x, menuAt\.y\)/);

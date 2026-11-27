@@ -16,7 +16,7 @@ interface Props {
   selectedSessionId: string;
   runningSessionIds: ReadonlySet<string>;
   onSelectSession: (session: SessionInfo) => void;
-  onOpenInSplit?: (session: SessionInfo) => void;
+  onOpenInNewTab?: (session: SessionInfo) => void;
   /** Deletes one side chat (the main session and its other members stay). */
   onDeleteSideChat?: (session: SessionInfo) => void;
 }
@@ -85,7 +85,7 @@ function AgentRow({
   selected,
   running,
   onSelect,
-  onOpenInSplit,
+  onOpenInNewTab,
   actionSlot,
   onDelete,
 }: {
@@ -95,7 +95,7 @@ function AgentRow({
   selected: boolean;
   running: boolean;
   onSelect: () => void;
-  onOpenInSplit?: () => void;
+  onOpenInNewTab?: () => void;
   /** Keeps the trailing action column, so checks line up with rows that have Delete. */
   actionSlot?: boolean;
   onDelete?: () => void;
@@ -127,9 +127,9 @@ function AgentRow({
       aria-selected={selected}
       onClick={onSelect}
       onAuxClick={(event) => {
-        if (event.button === 1 && onOpenInSplit) {
+        if (event.button === 1 && onOpenInNewTab) {
           event.preventDefault();
-          onOpenInSplit();
+          onOpenInNewTab();
         }
       }}
       className="agent-row"
@@ -205,7 +205,7 @@ export function AgentSessionPanel({
   selectedSessionId,
   runningSessionIds,
   onSelectSession,
-  onOpenInSplit,
+  onOpenInNewTab,
   onDeleteSideChat,
 }: Props) {
   const { t } = useI18n();
@@ -271,7 +271,7 @@ export function AgentSessionPanel({
             selected={rootSession.id === selectedSessionId}
             running={runningSessionIds.has(rootSession.id)}
             onSelect={() => onSelectSession(rootSession)}
-            onOpenInSplit={onOpenInSplit ? () => onOpenInSplit(rootSession) : undefined}
+            onOpenInNewTab={onOpenInNewTab ? () => onOpenInNewTab(rootSession) : undefined}
             actionSlot={actionSlot}
           />
           {visibleSubagents.map((session) => (
@@ -282,7 +282,7 @@ export function AgentSessionPanel({
               selected={session.id === selectedSessionId}
               running={runningSessionIds.has(session.id)}
               onSelect={() => onSelectSession(session)}
-              onOpenInSplit={onOpenInSplit ? () => onOpenInSplit(session) : undefined}
+              onOpenInNewTab={onOpenInNewTab ? () => onOpenInNewTab(session) : undefined}
               actionSlot={actionSlot}
               onDelete={onDeleteSideChat && session.relation?.kind === "side" ? () => onDeleteSideChat(session) : undefined}
             />

@@ -5,7 +5,6 @@ import test from "node:test";
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const menuSource = await readFile(new URL("./SessionMenu.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-const inputSource = await readFile(new URL("./ChatInput.tsx", import.meta.url), "utf8");
 
 test("phone top bar holds the menu button, title, Changes N and the session menu; outline and Files move into the menu", async () => {
   const toolbar = mobileToolbarSource();
@@ -51,8 +50,7 @@ test("closes shared top panels consistently and restores their trigger on Escape
   assert.match(source, /target\.closest\("\[data-top-panel-trigger\]"\)/);
   assert.match(source, /find\(\(candidate\) => !candidate\.closest\("\[inert\]"\)\)/);
   assert.match(source, /event\.stopPropagation\(\);\s*closeTopPanel\(true\)/);
-  // The composer's context pill is the session panel's only trigger (docs/ui.md).
-  assert.match(inputSource, /data-top-panel-trigger=\{onOpenSessionStats \? "session" : undefined\}/);
+  assert.match(source, /data-top-panel-trigger="session"/);
   assert.match(menuSource, /data-top-panel-trigger="outline"/);
   assert.match(source, /id="workspace-top-panel"/);
 });
@@ -71,8 +69,8 @@ test("uses a single inline mobile toolbar", () => {
 test("only renders the Agents switcher for the header pane's session family", () => {
   assert.match(source, /const hasSubagentSessionsForSession = Boolean\(sessionFamily\?\.subagents\.length\)/);
   assert.match(source, /\{hasSubagentSessionsForSession && \(\s*<button[\s\S]*?toggleTopPanel\("agents"\)/);
-  // Each pane's title bar passes its own session to its copy of the tools.
-  assert.match(source, /const session = item\?\.kind === "session" \? item\.session : null;[\s\S]*?renderDesktopHeaderActions\(pane \? \{ inert: activeChatPane !== pane, session \} : undefined\)/);
+  assert.match(source, /session: primaryTab\?\.kind === "session" \? primaryTab\.session : null/);
+  assert.match(source, /session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null/);
   assert.match(source, /activeTopPanel === "agents" && activeSessionFamily && selectedSession/);
 });
 
@@ -83,8 +81,8 @@ test("positions the Agents panel relative to its trigger action and keeps it ope
     /if \(activeTopPanel === "agents" \|\| activeTopPanel === "session" \|\| \(!isMobile && activeTopPanel === "branches"\)\)[\s\S]*?Math\.min\(wantedWidth[\s\S]*?anchor\.getBoundingClientRect\(\)/,
   );
   assert.match(source, /<AgentSessionPanel[\s\S]*?onSelectSession=\{handleSelectFamilySession\}/);
-  assert.match(source, /onOpenInSplit=\{canSplitChat \? handleOpenInSplit : undefined\}/);
-  assert.match(source, /const handleSwitchFamilySession = useCallback\(\(session: SessionInfo\) => \{\s*handleSelectSession\(session\);/);
+  assert.match(source, /onOpenInNewTab=\{handlePinSession\}/);
+  assert.match(source, /handleSelectSession\(session, false, undefined, undefined, false, true\)/);
   // Side chats get the same way back as subagents.
   assert.match(source, /session\?\.relation\?\.kind === "subagent" \|\| session\?\.relation\?\.kind === "side"\) && \(/);
   assert.match(source, /agentSwitcher\.backToMain/);
@@ -138,15 +136,17 @@ test("keeps mobile toolbar free of session titles and overflow layers", () => {
   assert.doesNotMatch(source, /\{mobile && renderLanguageButton\(true\)\}/);
 });
 
-test("each desktop pane has a plain title bar; phones keep their own title", () => {
-  assert.match(source, /: selectedSession \? getSessionDisplayTitle\(selectedSession\) : translate\("i18n\.newSession"\)/);
+test("keeps the collapsed session title desktop-only without mobile overlay logic", () => {
+  assert.match(source, /selectedSession\s*\n\s*\? getSessionDisplayTitle\(selectedSession\)/);
+  assert.match(source, /translate\("i18n\.newSession"\)/);
   const desktop = source.slice(source.indexOf("{!isMobile && ("));
-  assert.match(desktop, /\{showChat && renderPaneTitleBar\(primaryItem \?\? null, null\)\}/);
-  const bar = functionSource("renderPaneTitleBar", "const renderMainFileToggle");
-  assert.match(bar, /<span className="pane-title" data-pane-title=\{pane \?\? "single"\} data-unfocused=\{\(pane && activeChatPane !== pane\) \|\| undefined\} title=\{title\}>\{title\}<\/span>[\s\S]*?renderTopBarContext\(session\)[\s\S]*?renderDesktopHeaderActions/);
-  // The title is text: the session panel opens from the composer pill.
-  assert.doesNotMatch(bar, /toggleTopPanel|mobileToolbarMoreOpen/);
-  assert.doesNotMatch(source, /renderCollapsedSessionTitle/);
+  assert.match(desktop, /renderCollapsedSessionTitle\(\)/);
+  assert.equal((source.match(/\{renderCollapsedSessionTitle\(\)\}/g) ?? []).length, 1);
+  const title = functionSource("renderCollapsedSessionTitle", "const renderMainFileToggle");
+  assert.match(title, /if \(sidebarOpen \|\| !showChat\) return null;/);
+  assert.match(title, /onClick=\{\(\) => toggleTopPanel\("session"\)\}/);
+  assert.match(title, /overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"/);
+  assert.doesNotMatch(title, /covered|mobileToolbarMoreOpen|aria-hidden|tabIndex/);
 });
 
 test("desktop titlebar shows session tools whenever chat is showing; spend is in the composer", () => {
@@ -162,10 +162,10 @@ test("desktop header keeps tabs left and actions right without theme or language
     /data-desktop-header-actions="true"[\s\S]*?marginLeft: "auto"[\s\S]*?renderProjectTrustWarning\(false, !options\?\.inert\)[\s\S]*?renderChatToolbarActions\(false, \{ sessionTools: showChat, interactive: !options\?\.inert, session: options\?\.session \}\)/,
   );
   // The tools sit in the focused group's header segment when split, after the tabs otherwise.
-  assert.match(desktop, /\{!showChat && renderDesktopHeaderActions\(\)\}/);
+  assert.match(desktop, /renderDesktopHeaderActions\(\)/);
   assert.doesNotMatch(desktop, /renderThemeButton\(false\)/);
   assert.doesNotMatch(desktop, /renderLanguageButton\(false\)/);
-
+  assert.match(desktop, /renderCollapsedSessionTitle\(\)[\s\S]*?renderDesktopHeaderActions\(\)/);
 });
 
 test("desktop chat toolbar actions are icon-only", () => {
@@ -244,9 +244,8 @@ test("top-bar panels are cards that animate a wrapper, not the content nodes", a
 });
 
 test("split header keeps an inert, pane-specific copy of the tools on the unfocused group", () => {
-  assert.match(source, /renderPaneTitleBar\(primaryItem, "primary"\)/);
-  assert.match(source, /renderPaneTitleBar\(secondaryItem, "secondary"\)/);
-  assert.match(source, /renderDesktopHeaderActions\(pane \? \{ inert: activeChatPane !== pane, session \} : undefined\)/);
+  assert.match(source, /renderDesktopHeaderActions\(\{[\s\S]*?inert: activeChatPane !== "primary",[\s\S]*?session: primaryTab\?\.kind === "session" \? primaryTab\.session : null,[\s\S]*?\}\)/);
+  assert.match(source, /renderDesktopHeaderActions\(\{[\s\S]*?inert: activeChatPane !== "secondary",[\s\S]*?session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null,[\s\S]*?\}\)/);
   const actions = functionSource("renderDesktopHeaderActions", "return (\n    <>\n    <style>");
   assert.match(actions, /inert=\{options\?\.inert \|\| undefined\}/);
   assert.match(actions, /pointerEvents: options\?\.inert \? "none" : undefined/);

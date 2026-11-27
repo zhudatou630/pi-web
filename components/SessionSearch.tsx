@@ -9,7 +9,7 @@ import { workspaceKeyOf } from "@/lib/workspace-key";
 import { getFileName } from "@/lib/file-paths";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 
-export function SessionSearch({ open, query, refreshKey, children, projectNames, archivedSessionIds, selectedSessionId, onSelectSession, onResultIdsChange }: {
+export function SessionSearch({ open, query, refreshKey, children, projectNames, archivedSessionIds, selectedSessionId, onSelectSession }: {
   open: boolean;
   query: string;
   refreshKey: number | null;
@@ -18,8 +18,6 @@ export function SessionSearch({ open, query, refreshKey, children, projectNames,
   archivedSessionIds?: ReadonlySet<string>;
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, entryId?: string, blockIndex?: number) => void;
-  /** The shown results' session ids (null while none are shown), for Alt+↑/↓. */
-  onResultIdsChange?: (ids: string[] | null) => void;
 }) {
   const { t, locale } = useI18n();
   const [state, setState] = useState<{ query: string; response?: SessionSearchResponse; failed?: boolean }>({ query: "" });
@@ -47,27 +45,8 @@ export function SessionSearch({ open, query, refreshKey, children, projectNames,
     };
   }, [open, search, refreshKey]);
 
-  const shownResults = open && search ? response?.results : undefined;
-  useEffect(() => {
-    onResultIdsChange?.(shownResults ? shownResults.map((result) => result.session.id) : null);
-  }, [onResultIdsChange, shownResults]);
-
   return !open || !search ? children : (
-    <div
-      className="min-h-20 flex-1 overflow-y-auto"
-      aria-busy={!response && !failed}
-      // ↑/↓ move between results; ↑ on the first goes back to the search field.
-      onKeyDown={(event) => {
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-        const results = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-session-search-result]")];
-        const index = results.indexOf(document.activeElement as HTMLButtonElement);
-        if (index < 0) return;
-        event.preventDefault();
-        const next = results[index + (event.key === "ArrowDown" ? 1 : -1)];
-        if (next) next.focus();
-        else if (event.key === "ArrowUp") document.getElementById("session-search-input")?.focus();
-      }}
-    >
+    <div className="min-h-20 flex-1 overflow-y-auto" aria-busy={!response && !failed}>
       <div role="status" className="px-3 py-2 text-xs text-text-muted">
         {failed ? t("sidebar.sessionSearchFailed") : !response ? t("sidebar.sessionSearching")
           : response.results.length === 0 ? t("sidebar.sessionSearchEmpty")
@@ -80,7 +59,6 @@ export function SessionSearch({ open, query, refreshKey, children, projectNames,
         <button
           key={session.id}
           type="button"
-          data-session-search-result=""
           onClick={() => onSelectSession(session, entryId, blockIndex)}
           aria-current={session.id === selectedSessionId ? "true" : undefined}
           className={`block w-full cursor-pointer border-b border-border px-3 py-2 text-left hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-accent ${session.id === selectedSessionId ? "bg-bg-selected" : ""}`}
