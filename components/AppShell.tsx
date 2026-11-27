@@ -2180,60 +2180,90 @@ export function AppShell() {
     }
   }, [handleUpdatePinnedCwds]);
 
-  const handleToggleSplit = useCallback(() => {
-    if (splitChatTabId) {
-      const retainedTab = activeChatPane === "secondary" ? secondaryTab : primaryTab;
-      setChatTabs((tabs) => mergeChatTabPanes(tabs, retainedTab?.id ?? null));
-      setSplitChatTabId(null);
-      setActiveChatPane("primary");
-      if (retainedTab) {
-        setActiveChatTabId(retainedTab.id);
-        focusChatTab(retainedTab, "primary");
-      }
-    } else if (canSplitChat) {
-      // Split the adjacent tab to the right (fall back to the left neighbour).
-      const activeIndex = chatTabs.findIndex((t) => t.id === activeChatTabId);
-      const otherTab = chatTabs[activeIndex + 1] ?? chatTabs[activeIndex - 1];
-      if (otherTab) {
-        setChatTabs((tabs) => tabs.map((tab) => tab.id === otherTab.id ? { ...tab, pane: "secondary" } : tab));
-        setSplitChatTabId(otherTab.id);
-        setActiveChatPane("secondary");
-        if (otherTab.kind === "session" && otherTab.session) {
-          setSelectedSession(otherTab.session);
-          setNewSessionCwd(null);
-          router.replace(`?session=${encodeURIComponent(otherTab.session.id)}`, { scroll: false });
-        } else if (otherTab.kind === "draft") {
-          setSelectedSession(null);
-          setNewSessionCwd(otherTab.newSessionCwd);
-          router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-        }
-      } else {
-        const draftId = typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-        const effectiveCwd = activeCwd;
-        const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
-        rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
-        activeNewSessionDraftKeyRef.current = draftKey;
-        newComposerFocusKeyRef.current = draftKey;
-        setNewSessionDraftId(draftId);
+  // Split right (VS Code's Split & Move): the current tab moves into a new right pane and the left
+  // pane shows its neighbour. A lone tab stays and the right pane opens a new session instead.
+  // Ending the split is closing or moving the right pane's tabs; there is no merge button.
+  const handleSplitRight = useCallback(() => {
+    if (isSplitActive || !canSplitChat || !activeChatTabId) return;
+    if (chatTabs.length > 1) {
+      handleMoveChatTab(activeChatTabId, "secondary", null);
+    } else {
+      const draftId = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      const effectiveCwd = activeCwd;
+      const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
+      rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
+      activeNewSessionDraftKeyRef.current = draftKey;
+      newComposerFocusKeyRef.current = draftKey;
+      setNewSessionDraftId(draftId);
 
-        const { tabs: nextTabs, tabId } = openDraftInTabs(
-          chatTabs,
-          effectiveCwd,
-          draftKey,
-          translate("i18n.newSession"),
-          "secondary",
-        );
-        setChatTabs(nextTabs);
-        setSplitChatTabId(tabId);
-        setActiveChatPane("secondary");
-        setSelectedSession(null);
-        setNewSessionCwd(effectiveCwd);
-        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-      }
+      const { tabs: nextTabs, tabId } = openDraftInTabs(
+        chatTabs,
+        effectiveCwd,
+        draftKey,
+        translate("i18n.newSession"),
+        "secondary",
+      );
+      setChatTabs(nextTabs);
+      setSplitChatTabId(tabId);
+      setActiveChatPane("secondary");
+      setSelectedSession(null);
+      setNewSessionCwd(effectiveCwd);
+      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
     }
-  }, [activeChatPane, activeChatTabId, activeCwd, canSplitChat, chatTabs, focusChatTab, primaryTab, router, secondaryTab, splitChatTabId, translate]);
+  }, [activeChatTabId, activeCwd, canSplitChat, chatTabs, handleMoveChatTab, isSplitActive, router, translate]);
+
+  /** Sidebar row dropped on the right half: open (or move) that session into the right pane. */
+  const handleOpenSessionInSplit = useCallback((session: SessionInfo) => {
+    setMainView("chat");
+    const existing = chatTabsRef.current.find((tab) => tab.id === session.id);
+    if (existing) {
+      if (chatTabPane(existing) === "secondary" && splitChatTabId) handleSelectSecondaryTab(existing.id);
+      else handleMoveChatTab(existing.id, "secondary", null);
+      return;
+    }
+    activeNewSessionDraftKeyRef.current = null;
+    setChatTabs((prev) => openSessionInNewTab(prev, session, "secondary").tabs);
+    setSplitChatTabId(session.id);
+    setActiveChatPane("secondary");
+    setSessionKey((k) => k + 1);
+    setNewSessionCwd(null);
+    setSelectedSession(session);
+    router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
+  }, [handleMoveChatTab, handleSelectSecondaryTab, router, splitChatTabId]);
+
+  // What is being dragged toward the chat area's split drop zone: a chat tab or a sidebar row.
+  const [chatDrag, setChatDrag] = useState<{ tabId: string } | { session: SessionInfo } | null>(null);
+  const [splitDropHover, setSplitDropHover] = useState(false);
+  const handleTabDragChange = useCallback((tabId: string | null) => {
+    setChatDrag(tabId ? { tabId } : null);
+    setSplitDropHover(false);
+  }, []);
+  const handleSessionDragChange = useCallback((session: SessionInfo | null) => {
+    setChatDrag(session ? { session } : null);
+    setSplitDropHover(false);
+  }, []);
+  // The zone covers the half the dragged item would move to; none when that changes nothing.
+  const draggedTab = chatDrag && "tabId" in chatDrag ? chatTabs.find((tab) => tab.id === chatDrag.tabId) : undefined;
+  const splitDropSide: "left" | "right" | null = !chatDrag || !canSplitChat || mainView !== "chat"
+    ? null
+    : "session" in chatDrag
+      ? "right"
+      : !draggedTab
+        ? null
+        : isSplitActive && chatTabPane(draggedTab) === "secondary"
+          ? "left"
+          : chatTabs.length > 1 ? "right" : null;
+  const handleSplitDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    const drag = chatDrag;
+    setChatDrag(null);
+    setSplitDropHover(false);
+    if (!drag || !splitDropSide) return;
+    if ("session" in drag) handleOpenSessionInSplit(drag.session);
+    else handleMoveChatTab(drag.tabId, splitDropSide === "left" ? "primary" : "secondary", null);
+  }, [chatDrag, handleMoveChatTab, handleOpenSessionInSplit, splitDropSide]);
 
   // A transition starts from the current frame's timestamp, so a heavy commit in the same task
   // (new viewer/terminal mount) swallows the start of the open animation. Mount first, open
@@ -2762,6 +2792,7 @@ export function AppShell() {
           ? [primaryTab?.session?.id ?? selectedSession?.id, isSplitActive ? secondaryTab?.session?.id : null].filter((id): id is string => Boolean(id)) : []}
         onSelectSession={handleSelectSession}
         onOpenSessionInNewTab={handlePinSession}
+        onSessionDragChange={isMobile ? undefined : handleSessionDragChange}
         onForkSession={handleSidebarFork}
         forking={sessionForking}
         onNewSession={handleNewSession}
@@ -3204,6 +3235,29 @@ export function AppShell() {
           : null;
       })()}
       {renderProjectTrustWarning(false, !options?.inert)}
+      {/* VS Code's Split Editor Right: only unsplit (two panes at most), right before the session tools. */}
+      {!options && showChat && chatTabs.length > 0 && canSplitChat && (
+        <button
+          type="button"
+          onClick={handleSplitRight}
+          className="workspace-header-action"
+          title={translate(chatTabs.length > 1 ? "chatTabs.splitViewHint" : "chatTabs.splitViewNewHint")}
+          aria-label={translate("chatTabs.splitView")}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
+            background: "none", border: "none",
+            color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
+          }}
+          onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
+          onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="12" y1="3" x2="12" y2="21" />
+          </svg>
+        </button>
+      )}
       {renderChatToolbarActions(false, { sessionTools: showChat, interactive: !options?.inert, session: options?.session })}
     </div>
   );
@@ -3287,7 +3341,17 @@ export function AppShell() {
         {/* Top bar with sidebar toggle */}
         <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
         {/* No bottom rule: the bar's --bg-panel against the chat's --bg is the edge (docs/ui.md, Borders). */}
-        <div className="workspace-header" style={{ position: "relative", boxShadow: "none" }}>
+        <div
+          className="workspace-header"
+          style={{ position: "relative", boxShadow: "none" }}
+          onDoubleClick={(event) => {
+            // VS Code: double-click on empty tab-bar space opens a new tab (in that pane while split).
+            if (isMobile || !showChat || mainView !== "chat") return;
+            const target = event.target as Element;
+            if (target.closest("button, a, input, [role='tab'], [role='menu'], #workspace-top-panel")) return;
+            handleNewChatTab(target.closest<HTMLElement>("[data-header-segment]")?.dataset.headerSegment === "secondary" ? "secondary" : "primary");
+          }}
+        >
           {mainView === "routines" ? (
             <>
               {sidebarToggleButton}
@@ -3362,10 +3426,9 @@ export function AppShell() {
                     onPinTab={promotePreviewSession}
                     onRevealTabCwd={setActiveCwd}
                     onNewTab={() => handleNewChatTab("primary")}
-                    onToggleSplit={handleToggleSplit}
                     onMoveTab={handleMoveChatTab}
+                    onTabDragChange={handleTabDragChange}
                     canMoveToOtherPane
-                    canSplit={canSplitChat}
                     unifiedHeader={true}
                   />
                 </div>
@@ -3398,9 +3461,9 @@ export function AppShell() {
                     onRevealTabCwd={setActiveCwd}
                     onNewTab={() => handleNewChatTab("secondary")}
                     onMoveTab={handleMoveChatTab}
+                    onTabDragChange={handleTabDragChange}
                     pane="secondary"
                     canMoveToOtherPane
-                    isSecondaryPane={true}
                     unifiedHeader={true}
                   />
                 </div>
@@ -3431,10 +3494,9 @@ export function AppShell() {
                     onPinTab={promotePreviewSession}
                     onRevealTabCwd={setActiveCwd}
                     onNewTab={handleNewChatTab}
-                    onToggleSplit={handleToggleSplit}
                     onMoveTab={handleMoveChatTab}
+                    onTabDragChange={handleTabDragChange}
                     canMoveToOtherPane={canSplitChat && chatTabs.length > 1}
-                    canSplit={canSplitChat}
                     unifiedHeader={true}
                   />
                 </div>
@@ -3819,7 +3881,6 @@ export function AppShell() {
               onPinTab={promotePreviewSession}
                     onRevealTabCwd={setActiveCwd}
               onNewTab={handleNewChatTab}
-              canSplit={false}
               isMobile={true}
             />
           </div>
@@ -3882,6 +3943,25 @@ export function AppShell() {
                 }) : (
                   <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, undefined, true)}
+                  </div>
+                )}
+
+                {splitDropSide && (
+                  <div
+                    className="split-drop-zone"
+                    data-side={splitDropSide}
+                    data-hover={splitDropHover || undefined}
+                    // Split: exactly the target pane; unsplit: the half that becomes the right pane.
+                    style={isSplitActive ? { width: `${(splitDropSide === "left" ? chatSplitRatio : 1 - chatSplitRatio) * 100}%` } : undefined}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDragEnter={() => setSplitDropHover(true)}
+                    onDragLeave={() => setSplitDropHover(false)}
+                    onDrop={handleSplitDrop}
+                  >
+                    {translate(splitDropSide === "left" ? "chatTabs.moveLeft" : isSplitActive ? "chatTabs.moveRight" : "chatTabs.splitTabRight")}
                   </div>
                 )}
 

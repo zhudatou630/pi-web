@@ -179,6 +179,8 @@ interface Props {
   visibleSessionIds?: readonly string[];
   onSelectSession: (session: SessionInfo, isRestore?: boolean, entryId?: string, blockIndex?: number) => void;
   onOpenSessionInNewTab?: (session: SessionInfo) => void;
+  /** A row drag started (its session) or ended (null): the chat area offers a split drop zone. */
+  onSessionDragChange?: (session: SessionInfo | null) => void;
   onForkSession?: (session: SessionInfo) => void;
   forking?: boolean;
   onNewSession?: (sessionId: string, cwd: string) => void;
@@ -377,7 +379,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -1714,6 +1716,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           onClick={() => handleSelectSessionFromList(family.root)}
           onRenamed={loadSessions}
           onOpenInNewTab={onOpenSessionInNewTab ? () => onOpenSessionInNewTab(family.root) : undefined}
+          onDragChange={onSessionDragChange ? (dragging) => onSessionDragChange(dragging ? family.root : null) : undefined}
           onFork={onForkSession ? () => onForkSession(family.root) : undefined}
           forking={forking}
           isPinned={pinned}
@@ -2453,6 +2456,7 @@ export function SessionItem({
   onClick,
   onRenamed,
   onOpenInNewTab,
+  onDragChange,
   onFork,
   forking = false,
   isPinned = false,
@@ -2491,6 +2495,8 @@ export function SessionItem({
   onClick: () => void;
   onRenamed?: () => void;
   onOpenInNewTab?: () => void;
+  /** Drag the row onto the chat area's right half to open it in a split. */
+  onDragChange?: (dragging: boolean) => void;
   onFork?: () => void;
   forking?: boolean;
   isPinned?: boolean;
@@ -2661,6 +2667,13 @@ export function SessionItem({
           onOpenInNewTab();
         }
       }}
+      draggable={Boolean(onDragChange) && !selection && !renaming && !session.transient}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/x-pi-session", session.id);
+        e.dataTransfer.effectAllowed = "move";
+        onDragChange?.(true);
+      }}
+      onDragEnd={() => onDragChange?.(false)}
       onContextMenu={selection ? (event) => event.preventDefault() : renaming ? undefined : handleContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); }}

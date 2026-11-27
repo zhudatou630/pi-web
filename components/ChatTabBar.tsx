@@ -45,14 +45,13 @@ interface Props {
   /** Context menu: point the sidebar project and explorer at this tab's cwd. */
   onRevealTabCwd?: (cwd: string) => void;
   onNewTab: () => void;
-  onToggleSplit?: () => void;
   /** Drag-reorder, cross-group drag and the context menu's move item. Absent = tabs stay put. */
   onMoveTab?: (tabId: string, targetPane: ChatPane, beforeTabId: string | null) => void;
+  /** A tab drag started (its id) or ended (null): the chat area shows its split drop zone meanwhile. */
+  onTabDragChange?: (tabId: string | null) => void;
   /** Which group this strip shows. */
   pane?: ChatPane;
   canMoveToOtherPane?: boolean;
-  canSplit?: boolean;
-  isSecondaryPane?: boolean;
   unifiedHeader?: boolean;
   isMobile?: boolean;
 }
@@ -70,12 +69,10 @@ export function ChatTabBar({
   onPinTab,
   onRevealTabCwd,
   onNewTab,
-  onToggleSplit,
   onMoveTab,
+  onTabDragChange,
   pane = "primary",
   canMoveToOtherPane = false,
-  canSplit = true,
-  isSecondaryPane = false,
   unifiedHeader = false,
   isMobile = false,
 }: Props) {
@@ -223,9 +220,6 @@ export function ChatTabBar({
     !hiddenStatus && hiddenDraft && t("chatTabs.unsentDraft"),
   ].filter(Boolean).join(", ");
 
-  const effectiveCanSplit = canSplit && !isMobile;
-  const isSplitActive = Boolean(splitTabId && !isMobile);
-
   const focusChatSurface = (tabId?: string) => {
     const exactTab = tabId
       ? Array.from(document.querySelectorAll<HTMLElement>("[data-chat-tab-id]"))
@@ -345,10 +339,12 @@ export function ChatTabBar({
                 draggedTabId = tab.id;
                 e.dataTransfer.effectAllowed = "move";
                 e.dataTransfer.setData(TAB_DRAG_MIME, tab.id);
+                onTabDragChange?.(tab.id);
               }}
               onDragEnd={() => {
                 draggedTabId = null;
                 setDropIndex(null);
+                onTabDragChange?.(null);
               }}
               onContextMenu={(e) => {
                 if (isMobile) return;
@@ -373,6 +369,8 @@ export function ChatTabBar({
                   });
                 }
               }}
+              className="chat-tab"
+              data-shown={isVisible ? "true" : "false"}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -400,11 +398,13 @@ export function ChatTabBar({
                 position: "relative",
                 transition: "background var(--motion-fast), color var(--motion-fast)",
                 // Visible tabs drop the bottom rule to join their pane (the unified header has
-                // none at all); the focused pane's tab also carries the top accent bar.
+                // none at all). As in VS Code, the focused pane's tab carries a 1px accent top
+                // line and the other pane's shown tab a neutral one.
                 // In the unified header the first tab sits next to header icons, so a
                 // visible first tab also takes a left rule.
                 boxShadow: [
-                  isCurrentPane && "inset 0 2px 0 var(--accent)",
+                  isCurrentPane && "inset 0 1px 0 var(--accent)",
+                  isVisible && !isCurrentPane && "inset 0 1px 0 var(--text-dim)",
                   isVisible && index === 0 && unifiedHeader && pane !== "secondary" && "inset 1px 0 0 var(--border)",
                   !isVisible && !unifiedHeader && "inset 0 -1px 0 var(--border)",
                 ].filter(Boolean).join(", ") || undefined,
@@ -462,20 +462,15 @@ export function ChatTabBar({
                 {tab.title}
               </span>
 
-              {tab.kind === "draft" && tab.dirty && (
-                <span
-                  title={t("chatTabs.unsentDraft")}
-                  aria-hidden="true"
-                  style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }}
-                />
-              )}
-
-              {/* Close Button: On mobile, only render close button for visible/active tab to prevent accidental closure while scrolling/switching */}
+              {/* Close slot (VS Code): the shown tab keeps its ×, others show it on hover; the slot
+                  never collapses, so widths do not jump. An unsent draft shows a dot there until
+                  the button itself is hovered. Phones render it on the shown tab only. */}
               {(!isMobile || isVisible) && (
                 <button
                   type="button"
                   tabIndex={-1}
-                  className="file-tab-close"
+                  className="file-tab-close chat-tab-close"
+                  data-dirty={tab.kind === "draft" && tab.dirty ? "true" : undefined}
                   onMouseDown={(e) => {
                     // Pointer press focuses the button; the UA ring then sticks until blur.
                     if (e.button === 0) e.preventDefault();
@@ -507,10 +502,11 @@ export function ChatTabBar({
                   title={t("chatTabs.closeTab", { defaultValue: "关闭标签" })}
                   aria-label={`${t("chatTabs.closeTab", { defaultValue: "关闭标签" })}: ${tab.title}`}
                 >
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+                  <svg className="chat-tab-close-x" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
                     <line x1="2" y1="2" x2="8" y2="8" />
                     <line x1="8" y1="2" x2="2" y2="8" />
                   </svg>
+                  {tab.kind === "draft" && tab.dirty && <span className="chat-tab-close-dot" aria-hidden="true" />}
                 </button>
               )}
             </div>
@@ -518,7 +514,8 @@ export function ChatTabBar({
         })}
       </div>
 
-      {/* Trailing Action Buttons: New Tab & Split View */}
+      {/* Trailing actions beside the last tab: all-tabs overflow and New tab. Split lives at the
+          right end of the header (AppShell), as VS Code's editor actions do. */}
       <div
         style={{
           display: "flex",
@@ -598,54 +595,6 @@ export function ChatTabBar({
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
-
-        {/* Split View Toggle Button (Primary Pane) */}
-        {!isSecondaryPane && effectiveCanSplit && onToggleSplit && (
-          <button
-            type="button"
-            onClick={onToggleSplit}
-            aria-pressed={isSplitActive}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 28,
-              height: "100%",
-              background: "transparent",
-              border: "none",
-              // Pressed = quiet: only the icon steps up to full-strength text. No accent and no
-              // selected background; both are reserved for the focused tab, so this control does
-              // not compete with it. aria-pressed and the title carry the state.
-              color: isSplitActive ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer",
-              padding: 0,
-              transition: "color var(--motion-fast), background var(--motion-fast)",
-            }}
-            title={
-              isSplitActive
-                ? t("chatTabs.closeSplit", { defaultValue: "关闭分屏" })
-                : t("chatTabs.splitView", { defaultValue: "向右分屏" })
-            }
-            aria-label={
-              isSplitActive
-                ? t("chatTabs.closeSplit", { defaultValue: "关闭分屏" })
-                : t("chatTabs.splitView", { defaultValue: "向右分屏" })
-            }
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--text)";
-              e.currentTarget.style.background = "var(--bg-hover)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = isSplitActive ? "var(--text)" : "var(--text-muted)";
-              e.currentTarget.style.background = "transparent";
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <line x1="12" y1="3" x2="12" y2="21" />
-            </svg>
-          </button>
-        )}
       </div>
       {contextMenu && (() => {
         const menuTab = tabs.find((tab) => tab.id === contextMenu.tabId);

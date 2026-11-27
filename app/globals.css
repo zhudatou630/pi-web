@@ -4001,6 +4001,43 @@ button.question-card-option:not(:disabled):hover {
   color: var(--text);
 }
 
+/* Chat tab close slot (VS Code): hidden but kept on tabs not shown, until hover or keyboard focus. */
+.chat-tab[data-shown="false"]:not(:hover):not(:focus-visible) .chat-tab-close:not([data-dirty]) {
+  opacity: 0;
+}
+.chat-tab-close-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.chat-tab-close[data-dirty]:not(:hover) .chat-tab-close-x,
+.chat-tab-close[data-dirty]:hover .chat-tab-close-dot {
+  display: none;
+}
+
+/* While a chat tab or sidebar row is dragged: drop on the chat area's other half to put it there. */
+.split-drop-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  /* Opaque enough to read the label over the transcript; the inner rule is where the split will be. */
+  background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+  transition: background var(--motion-fast), box-shadow var(--motion-fast);
+}
+.split-drop-zone[data-side="right"] { right: 0; box-shadow: inset 2px 0 0 var(--border); }
+.split-drop-zone[data-side="left"] { left: 0; box-shadow: inset -2px 0 0 var(--border); }
+.split-drop-zone[data-hover] { color: var(--text); }
+.split-drop-zone[data-side="right"][data-hover] { box-shadow: inset 2px 0 0 var(--text-dim); }
+.split-drop-zone[data-side="left"][data-hover] { box-shadow: inset -2px 0 0 var(--text-dim); }
+
 .file-viewer-icon-button {
   display: inline-flex;
   align-items: center;

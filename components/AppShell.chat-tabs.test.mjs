@@ -65,7 +65,31 @@ test("renders ChatTabBar when chat is active and tabs exist", () => {
   assert.match(source, /onSelectTab=\{handleSelectChatTab\}/);
   assert.match(source, /onCloseTab=\{handleCloseChatTab\}/);
   assert.match(source, /onNewTab=\{handleNewChatTab\}/);
-  assert.match(source, /onToggleSplit=\{handleToggleSplit\}/);
+  assert.match(source, /onTabDragChange=\{handleTabDragChange\}/);
+});
+
+test("split right (VS Code): a header action that moves the current tab right, never a merge toggle", () => {
+  const split = source.slice(source.indexOf("const handleSplitRight"), source.indexOf("const handleOpenSessionInSplit"));
+  assert.match(split, /if \(isSplitActive \|\| !canSplitChat \|\| !activeChatTabId\) return;/);
+  assert.match(split, /chatTabs\.length > 1\) \{\s*handleMoveChatTab\(activeChatTabId, "secondary", null\);/);
+  // A lone tab stays; the right pane gets a new-session draft.
+  assert.match(split, /openDraftInTabs\([\s\S]*?"secondary",\s*\)/);
+  assert.doesNotMatch(split, /mergeChatTabPanes/);
+  // The button sits in the header actions, only while unsplit, before the session tools.
+  const actions = source.slice(source.indexOf("const renderDesktopHeaderActions"), source.indexOf("return (\n    <>"));
+  assert.match(actions, /\{!options && showChat && chatTabs\.length > 0 && canSplitChat && \([\s\S]*?onClick=\{handleSplitRight\}[\s\S]*?\)\}\s*\{renderChatToolbarActions/);
+});
+
+test("dragging a tab or sidebar row offers the other half of the chat area as a drop zone", () => {
+  assert.match(source, /\? "left"\s*: chatTabs\.length > 1 \? "right" : null;/);
+  assert.match(source, /if \("session" in drag\) handleOpenSessionInSplit\(drag\.session\);\s*else handleMoveChatTab\(drag\.tabId, splitDropSide === "left" \? "primary" : "secondary", null\);/);
+  assert.match(source, /className="split-drop-zone"\s*data-side=\{splitDropSide\}/);
+  assert.match(source, /onSessionDragChange=\{isMobile \? undefined : handleSessionDragChange\}/);
+});
+
+test("double-click on empty header space opens a new tab in that pane", () => {
+  assert.match(source, /if \(target\.closest\("button, a, input, \[role='tab'\], \[role='menu'\], #workspace-top-panel"\)\) return;/);
+  assert.match(source, /handleNewChatTab\(target\.closest<HTMLElement>\("\[data-header-segment\]"\)\?\.dataset\.headerSegment === "secondary" \? "secondary" : "primary"\)/);
 });
 
 test("supports split view with resizer and secondary pane", () => {
@@ -302,7 +326,6 @@ test("supports mobile tab bar when multiple tabs are open", () => {
   assert.match(source, /isMobile && showChat && chatTabs\.length > 1/);
   assert.match(source, /data-mobile-chat-tabs="true"/);
   assert.match(source, /isMobile=\{true\}/);
-  assert.match(source, /canSplit=\{false\}/);
 });
 
 test("renews liveness leases for every mounted session tab", () => {

@@ -27,8 +27,6 @@ function render(tabs, activeTabId = tabs[0]?.id, splitTabId = null, sessionMarke
       onSelectTab() {},
       onCloseTab() {},
       onNewTab() {},
-      onToggleSplit() {},
-      canSplit: true,
     }),
   ));
 }
@@ -123,13 +121,27 @@ test("marks selected tab and split tab appropriately", () => {
   assert.match(renderedTabs[1], /aria-selected="true"/);
 });
 
-test("renders new tab and split toggle buttons", () => {
+test("renders the new tab button and no split button (split lives in the header)", () => {
   const tabs = [
     { id: "s1", kind: "session", title: "Task 1", session: { id: "s1" }, newSessionCwd: null, newSessionDraftKey: null },
   ];
   const html = render(tabs, "s1");
   assert.match(html, /aria-label="New chat tab"/);
-  assert.match(html, /aria-label="Split right"/);
+  assert.doesNotMatch(html, /aria-label="Split right"/);
+});
+
+test("close slot (VS Code): every desktop tab keeps it, CSS hides it on tabs not shown", async () => {
+  const tabs = [
+    { id: "s1", kind: "session", title: "Shown", session: { id: "s1" } },
+    { id: "s2", kind: "session", title: "Hidden", session: { id: "s2" } },
+  ];
+  const [shown, hidden] = tabNodes(render(tabs, "s1"));
+  assert.match(shown, /data-shown="true"/);
+  assert.match(hidden, /data-shown="false"/);
+  assert.match(hidden, /Close tab: Hidden/, "slot stays so widths never jump");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.chat-tab\[data-shown="false"\]:not\(:hover\):not\(:focus-visible\) \.chat-tab-close:not\(\[data-dirty\]\) \{\s*opacity: 0;/);
+  assert.match(css, /\.chat-tab-close\[data-dirty\]:not\(:hover\) \.chat-tab-close-x,\s*\.chat-tab-close\[data-dirty\]:hover \.chat-tab-close-dot \{\s*display: none;/);
 });
 
 test("marks drafts with unsent content", () => {
@@ -143,7 +155,8 @@ test("marks drafts with unsent content", () => {
     newSessionDraftKey: "d1",
   }]);
   assert.match(html, /aria-label="Investigate cache, Unsent draft"/);
-  assert.match(html, /title="Unsent draft"/);
+  // The unsent dot sits in the close slot, like VS Code's unsaved dot.
+  assert.match(html, /class="file-tab-close chat-tab-close" data-dirty="true"[^>]*>[\s\S]*?<span class="chat-tab-close-dot"/);
 });
 
 test("keeps close controls out of the tab order and supports Delete on the tab", async () => {
@@ -152,7 +165,7 @@ test("keeps close controls out of the tab order and supports Delete on the tab",
   assert.match(source, /data-chat-tab="true"/);
   assert.match(source, /exactTab \?\? activeTab \?\? composer/);
   assert.match(source, /<button\s*type="button"\s*tabIndex=\{-1\}/);
-  assert.match(source, /className="file-tab-close"/);
+  assert.match(source, /className="file-tab-close chat-tab-close"/);
   assert.match(source, /if \(e\.button === 0\) e\.preventDefault\(\);/);
 });
 
@@ -193,7 +206,6 @@ test("mobile mode hides split toggle and only shows close button on active tab",
       onSelectTab() {},
       onCloseTab() {},
       onNewTab() {},
-      canSplit: true,
       isMobile: true,
     }),
   ));
@@ -275,9 +287,14 @@ test("overflow button reports how many tabs are hidden; the context menu can bat
   assert.match(source, /const rightIds = tabs\.slice\(tabs\.indexOf\(menuTab\) \+ 1\)/);
 });
 
-test("the pressed split toggle stays quiet: no accent color and no selected background", async () => {
-  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
-  assert.match(source, /color: isSplitActive \? "var\(--text\)" : "var\(--text-muted\)"/);
-  assert.doesNotMatch(source, /isSplitActive \? "var\(--accent\)"/);
-  assert.doesNotMatch(source, /background: isSplitActive \?/); // no selected background either
+test("top line (VS Code): 1px accent on the focused pane's tab, neutral on the other pane's", () => {
+  const tabs = [
+    { id: "s1", kind: "session", title: "One", session: { id: "s1" } },
+    { id: "s2", kind: "session", title: "Two", session: { id: "s2" } },
+  ];
+  const nodes = (activePane) => tabNodes(renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatTabBar, { tabs, activeTabId: "s1", activePane, onSelectTab() {}, onCloseTab() {}, onNewTab() {} }))));
+  assert.match(nodes("primary")[0], /inset 0 1px 0 var\(--accent\)/);
+  assert.match(nodes("secondary")[0], /inset 0 1px 0 var\(--text-dim\)/);
+  assert.doesNotMatch(nodes("primary")[1], /inset 0 1px 0/);
 });
