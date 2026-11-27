@@ -38,7 +38,8 @@ import { RoutinesView } from "./RoutinesView";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
-import { SessionComposerContext } from "./TopBarContext";
+import { AgentsDockButton, SessionBranchControl } from "./TopBarContext";
+import type { ComposerDock } from "./ChatInput";
 import { hasBlockedSession } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView } from "./PanelViews";
 import type { FileExplorerHandle } from "./FileExplorer";
@@ -975,11 +976,6 @@ export function AppShell() {
           // A trigger in the lower half (the composer pill) opens upward from the pill itself (a tall draft must
           // not push it to the top), right-aligned to the composer box and never wider than it.
           if (rect.top > window.innerHeight / 2) {
-            // "Agents N" above the composer opens upward, left-aligned to itself like its neighbours' menus.
-            if (anchor.closest(".composer-context")) {
-              setTopPanelPos({ bottom: window.innerHeight - rect.top + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - panelWidth - 8)), width: panelWidth });
-              return;
-            }
             const box = (anchor.closest(".chat-input-composer") ?? anchor).getBoundingClientRect();
             const width = Math.min(panelWidth, box.width);
             setTopPanelPos({ bottom: window.innerHeight - rect.top + 4, left: box.right - width, width });
@@ -2517,7 +2513,7 @@ export function AppShell() {
       <ChatWindow
         key={tabKey ?? sessionKey}
         session={tabSession}
-        composerContext={renderComposerContext(tabSession)}
+        composerDock={renderComposerDock(tabSession)}
         searchTarget={isFocusedPane && searchTarget?.sessionId === tabSession?.id ? searchTarget : null}
         onSearchTargetHandled={handleSearchTargetHandled}
         initialScrollPosition={tabSession ? sessionScrollPositionsRef.current.get(tabSession.id) ?? null : null}
@@ -3237,36 +3233,38 @@ export function AppShell() {
     );
   };
 
-  // Above each pane's composer (docs/ui.md, Composer context): where it runs, then "Changes N".
-  const renderComposerContext = (session: SessionInfo | null | undefined) => {
-    if (!session || session.transient) return null;
+  // Each pane's composer dock (docs/ui.md, Composer): where it runs (with Changes in its menu),
+  // running subagents beside the context ring, idle ones in the ⋮ menu.
+  const renderComposerDock = (session: SessionInfo | null | undefined): ComposerDock | undefined => {
+    if (!session || session.transient) return undefined;
     const projectRoot = session.projectRoot ?? session.cwd;
-    return (
-      <SessionComposerContext
-        project={projectNameByRoot.get(projectRoot) ?? getFileName(projectRoot)}
-        branch={session.branch}
-        isWorktree={session.isWorktree}
-        cwd={session.cwd}
-        changeCount={gitChangeCounts[session.cwd] ?? 0}
-        onOpenChanges={() => handleRevealCwdInFiles(session.cwd, true)}
-        agents={(() => {
-          const family = getSessionFamily(sessionsWithSelection, session.id);
-          if (!family?.subagents.length) return undefined;
-          return {
-            count: family.subagents.length,
-            running: family.subagents.filter((subagent) => runningSessionIds.has(subagent.id)).length,
-            open: activeTopPanel === "agents" && selectedSession?.id === session.id,
-            onToggle: (anchor: HTMLElement) => {
-              agentsAnchorRef.current = anchor;
-              toggleTopPanel("agents");
-            },
-          };
-        })()}
-        onOpenTerminal={() => handleOpenTerminal(session.cwd)}
-        onRevealInFiles={() => handleRevealCwdInFiles(session.cwd)}
-        onCopyPath={() => { void copyText(session.cwd).catch(() => {}); }}
-      />
-    );
+    const family = getSessionFamily(sessionsWithSelection, session.id);
+    const count = family?.subagents.length ?? 0;
+    const running = family?.subagents.filter((subagent) => runningSessionIds.has(subagent.id)).length ?? 0;
+    const openAgents = (anchor: HTMLElement | null) => {
+      agentsAnchorRef.current = anchor;
+      toggleTopPanel("agents");
+    };
+    return {
+      context: (
+        <SessionBranchControl
+          project={projectNameByRoot.get(projectRoot) ?? getFileName(projectRoot)}
+          branch={session.branch}
+          cwd={session.cwd}
+          changeCount={gitChangeCounts[session.cwd] ?? 0}
+          onOpenChanges={() => handleRevealCwdInFiles(session.cwd, true)}
+          onOpenTerminal={() => handleOpenTerminal(session.cwd)}
+          onRevealInFiles={() => handleRevealCwdInFiles(session.cwd)}
+          onCopyPath={() => { void copyText(session.cwd).catch(() => {}); }}
+        />
+      ),
+      status: running > 0
+        ? <AgentsDockButton count={count} running={running} open={activeTopPanel === "agents" && selectedSession?.id === session.id} onToggle={openAgents} />
+        : null,
+      menuItems: count > 0 && running === 0
+        ? [{ label: translate("agentSwitcher.title"), note: String(count), topPanelTrigger: "agents", onSelect: openAgents }]
+        : [],
+    };
   };
 
   const renderDesktopHeaderActions = (options?: { inert?: boolean; session?: SessionInfo | null }) => (

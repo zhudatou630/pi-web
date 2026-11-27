@@ -11,9 +11,9 @@ test("phone top bar holds the menu button, title, the outline button and the ses
   const title = toolbar.indexOf('className="mobile-top-bar-title"');
   const actions = toolbar.indexOf("{renderChatToolbarActions(true)}");
   assert.ok(title >= 0 && title < actions);
-  // Changes N sits above the composer on phones too (docs/ui.md, Composer context).
-  assert.doesNotMatch(source, /ChangesButton|renderTopBarContext/);
-  assert.match(source, /composerContext=\{renderComposerContext\(tabSession\)\}/);
+  // Changes N lives in the composer's branch control on phones too (docs/ui.md, Composer).
+  assert.doesNotMatch(source, /ChangesButton|renderTopBarContext|renderComposerContext/);
+  assert.match(source, /composerDock=\{renderComposerDock\(tabSession\)\}/);
   assert.doesNotMatch(toolbar, /renderMainFileToggle/);
   // Changes N is fetched on phones too, on the same triggers as desktop.
   assert.match(source, /const gitChangeCwdKey = \[\.\.\.new Set\(\[/);
@@ -69,14 +69,14 @@ test("uses a single inline mobile toolbar", () => {
   }
 });
 
-test("Agents N sits above each pane's composer for that pane's session family, not in the top bar", () => {
+test("Agents: in the composer dock while any runs, in its ⋮ menu otherwise; never in the top bar", () => {
   assert.match(source, /const hasSubagentSessionsForSession = Boolean\(sessionFamily\?\.subagents\.length\)/);
-  const context = functionSource("renderComposerContext", "const renderDesktopHeaderActions");
-  assert.match(context, /const family = getSessionFamily\(sessionsWithSelection, session\.id\);\s*if \(!family\?\.subagents\.length\) return undefined;/);
-  assert.match(context, /agentsAnchorRef\.current = anchor;\s*toggleTopPanel\("agents"\);/);
+  const dock = functionSource("renderComposerDock", "const renderDesktopHeaderActions");
+  assert.match(dock, /const family = getSessionFamily\(sessionsWithSelection, session\.id\);/);
+  assert.match(dock, /agentsAnchorRef\.current = anchor;\s*toggleTopPanel\("agents"\);/);
+  assert.match(dock, /status: running > 0\s*\? <AgentsDockButton/);
+  assert.match(dock, /menuItems: count > 0 && running === 0/);
   assert.doesNotMatch(functionSource("renderChatToolbarActions", "const collapsedSessionTitle"), /toggleTopPanel\("agents"\)/);
-  // It opens upward, left-aligned to itself.
-  assert.match(source, /if \(anchor\.closest\("\.composer-context"\)\) \{/);
   assert.match(source, /session: primaryTab\?\.kind === "session" \? primaryTab\.session : null/);
   assert.match(source, /session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null/);
   assert.match(source, /activeTopPanel === "agents" && activeSessionFamily && selectedSession/);
@@ -133,7 +133,8 @@ test("keeps the file control directly interactive on mobile", () => {
 test("spend and context have one entry on every platform: the composer pill", () => {
   // No top-bar stats button; phones keep the pill's ring and context reading; cache rate and cost live in the panel.
   assert.doesNotMatch(source, /renderSessionStatsButton|mobile-session-stat-cost|mobile-session-stats/);
-  assert.match(cssSource, /\.chat-input-context-cache \{\s*display: none;/);
+  // One dock on every width: the ring alone at rest, readings in its tooltip and the panel.
+  assert.doesNotMatch(cssSource, /chat-input-context-cache/);
 });
 
 test("keeps mobile toolbar free of session titles and overflow layers", () => {
@@ -218,7 +219,7 @@ test("places trust warnings below the mobile toolbar and the file toggle in tool
 test("mobile toolbar packs its whole group at the right end, fixed tools last", () => {
   const toolbar = mobileToolbarSource();
   assert.match(toolbar, /justifyContent: "flex-end"/);
-  const fileToggle = functionSource("renderMainFileToggle", "const renderComposerContext");
+  const fileToggle = functionSource("renderMainFileToggle", "const renderComposerDock");
   assert.doesNotMatch(fileToggle, /marginLeft/);
   // Conditional tools (back, agents, branches) come first and grow leftwards; the menu never moves.
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");

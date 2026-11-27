@@ -398,19 +398,6 @@ html.dark {
   color: var(--text-dim) !important;
 }
 
-/* Composer context (docs/ui.md): "project · branch ⌄" and "Changes N" above the composer, on the
-   new-session picks' style; its menu opens upward, away from the composer. */
-.composer-context-menu {
-  top: auto;
-  bottom: calc(100% + 4px);
-  left: 0;
-}
-.composer-context-count {
-  margin-left: 2px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
 /* One tab look everywhere (docs/ui.md, Tabs and top bars): chat tabs, the file panel's
    Changes / Files and its content tabs are Cursor's quiet chips, no lines or rules. The
    current tab is filled; a chat tab shown in the other split pane is tinted. */
@@ -6045,20 +6032,45 @@ span.token.table {
   max-width: 240px;
 }
 
+/* The dock's session controls (docs/ui.md, Composer): a bare context ring, "⑂ branch" with a dot
+   for uncommitted changes, and "● Agents N" while subagents run. Narrow docks keep glyphs and
+   counts; the words go first. */
 .chat-input-context {
   gap: 4px;
+  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-/* Later readings, set off by space alone: 4px gap + 6px = the ~10px between status-line
-   labels; icon and value stay 4px apart. Cache hit uses a cylinder mark, not the word. */
-.chat-input-context-cache {
-  display: inline-flex;
-  align-items: center;
+.composer-branch {
   gap: 4px;
-  margin-left: 6px;
-  /* The warning color belongs to context pressure, not to the cache reading. */
-  color: var(--text-muted);
+  color: var(--text-dim);
+}
+
+.composer-branch .composer-dock-label {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.composer-branch-dirty {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.composer-agents {
+  color: var(--text-dim);
+}
+
+.composer-dock-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-input-dock.is-narrow .composer-dock-label {
+  display: none;
 }
 
 .chat-input-context.is-warning {
@@ -6764,11 +6776,6 @@ span.token.table {
   /* Wide enough that the 32px touch rings of neighbouring run controls do not overlap. */
   .chat-input-actions.is-queueing .composer-btn.is-icon.chat-input-queue-action {
     margin-inline-end: 8px;
-  }
-
-  /* Phones show the ring and the context reading only; cache rate and cost are in the panel. */
-  .chat-input-context-cache {
-    display: none;
   }
 
   /* Phones keep the reply footer to model, duration and time; TTFT / TPS stays in the session panel.

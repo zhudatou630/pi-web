@@ -363,7 +363,7 @@ test("keeps the main composer compact in idle and streaming states", () => {
   }
 });
 
-test("shows context as an always-visible ring readout that only colors past 70%", () => {
+test("shows context as a bare ring that gains its percentage and color past 70% (readings in the tooltip)", () => {
   const render = (percent, tokens) => renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
@@ -381,7 +381,8 @@ test("shows context as an always-visible ring readout that only colors past 70%"
   assert.match(low, /class="composer-btn chat-input-context"/);
   assert.match(low, /viewBox="0 0 16 16"/);
   assert.match(low, /stroke-dasharray="17 100"/);
-  assert.match(low, /<ellipse cx="8" cy="3.5" rx="5" ry="1.8"><\/ellipse><path d="M3 3.5v9a5 1.8 0 0 0 10 0v-9"><\/path><path d="M3 8a5 1.8 0 0 0 10 0"><\/path><\/svg>98%/);
+  // At rest only the ring: no tokens, cache, timing or cost in the dock (docs/ui.md, Composer).
+  assert.doesNotMatch(low, /<span>|<ellipse|chat-input-context-cache/);
   assert.match(low, /title="Context usage: 150k \/ 872k \(17\.0%\)[^"]*Avg cache hit rate: 98\.0%"/);
   const withCost = renderToStaticMarkup(React.createElement(
     I18nProvider,
@@ -396,13 +397,12 @@ test("shows context as an always-visible ring readout that only colors past 70%"
       onOpenSessionStats() {},
     }),
   )).match(/<button[^>]*data-top-panel-trigger="session"[\s\S]*?<\/button>/)?.[0];
-  assert.match(withCost, /98%<\/span><span class="chat-input-context-cache">\$0\.49<\/span>/);
-  assert.doesNotMatch(withCost, />cache /);
+  assert.doesNotMatch(withCost, /\$0\.49<\/span>/);
   assert.match(withCost, /Cost: \$0\.49/);
   assert.match(low, /aria-controls="workspace-top-panel"/);
   assert.doesNotMatch(low, /Compact context/);
 
-  assert.match(render(72, 628000), /class="composer-btn chat-input-context is-warning"/);
+  assert.match(render(72, 628000), /class="composer-btn chat-input-context is-warning"[\s\S]*?<span>72%<\/span>/);
   assert.match(render(90, 785000), /class="composer-btn chat-input-context is-high"/);
 });
 
@@ -1317,4 +1317,28 @@ test("keeps queued prompts as a quiet row inside the composer card", () => {
   assert.match(css, /\.chat-input-queue \{[^}]*max-height: min\(180px,[^}]*overflow-y: auto;/);
   assert.match(css, /\.chat-input-queue-header \{[^}]*position: sticky;/);
   assert.match(two, />follow-up<\/span>/);
+});
+
+test("the dock hosts the session's controls: where it runs left, live state right, a near-full line above", () => {
+  const dock = {
+    context: React.createElement("span", { className: "test-branch" }, "branch"),
+    status: React.createElement("span", { className: "test-agents" }, "agents"),
+    menuItems: [{ label: "Agents", note: "2", onSelect() {} }],
+  };
+  const render = (percent) => renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatInput, {
+      onSend() {}, onAbort() {}, isStreaming: false, dock, onCompact() {},
+      contextUsage: { percent, contextWindow: 1000000, tokens: percent * 10000 },
+      onOpenSessionStats() {},
+    })));
+  const html = render(40);
+  const dockHtml = html.slice(html.indexOf('class="chat-input-dock'));
+  // Branch after the model/thinking group, before the spacer; running agents right before the ring.
+  assert.ok(dockHtml.indexOf("test-branch") < dockHtml.indexOf("chat-input-dock-spacer"));
+  assert.ok(dockHtml.indexOf("chat-input-dock-spacer") < dockHtml.indexOf("test-agents"));
+  assert.ok(dockHtml.indexOf("test-agents") < dockHtml.indexOf("chat-input-context"));
+  assert.doesNotMatch(html, /run-error-tray/);
+  // Near full (85%+): one line above the composer with a Compact action.
+  const full = render(90);
+  assert.match(full, /class="composer-attention run-error-tray"[\s\S]*?90%[\s\S]*?Compact/);
 });

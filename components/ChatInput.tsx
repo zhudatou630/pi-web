@@ -98,6 +98,8 @@ interface Props {
   extensionUiOpen?: boolean;
   /** What needs you, docked above the composer at its width: extension dialogs, the run error. */
   attention?: React.ReactNode;
+  /** The session's own controls in the dock (docs/ui.md, Composer). */
+  dock?: ComposerDock;
   inputHistory?: string[];
   onRecallQueue?: () => void;
   slashCommands?: SlashCommandInfo[];
@@ -112,6 +114,22 @@ interface Props {
   cwd?: string | null;
   /** Files picked with the attach button, handled like files dropped onto the chat. */
   onAttachFiles?: (files: File[]) => void;
+}
+
+export interface ComposerDockMenuItem {
+  label: string;
+  note?: string;
+  /** Marks the item as the trigger of a shared top panel, so opening it is not an outside click. */
+  topPanelTrigger?: string;
+  /** The ⋮ button is the anchor: the item itself is gone once the menu closes. */
+  onSelect: (anchor: HTMLElement | null) => void;
+}
+
+/** Session controls the dock hosts: where it runs (left), live state (right), extra ⋮ items. */
+export interface ComposerDock {
+  context: React.ReactNode;
+  status: React.ReactNode;
+  menuItems: ComposerDockMenuItem[];
 }
 
 export interface ChatInputHandle {
@@ -672,7 +690,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
-  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, extensionUiOpen = false, attention,
+  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, extensionUiOpen = false, attention, dock,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
   onAudioUnlock,
@@ -747,7 +765,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
-  const [dockFitsTtft, setDockFitsTtft] = useState(true);
+  const [dockNarrow, setDockNarrow] = useState(false);
+  const controlsButtonRef = useRef<HTMLButtonElement>(null);
+  // The near-full reminder above the composer, dismissed per session until it drops below the line.
+  const [contextTrayDismissed, setContextTrayDismissed] = useState(false);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
   const imageMenuRef = useRef<HTMLDivElement>(null);
   const controlsMenuRef = useRef<HTMLDivElement>(null);
@@ -1158,12 +1179,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     return () => observer.disconnect();
   }, [resizeTextarea]);
 
-  // Narrow docks (split panes) keep TPS only. Not a CSS container query: containment makes the
-  // dock the containing block of the model picker's position:fixed panel in Safari/Firefox.
+  // Narrow docks (split panes, phones) keep the dock's glyphs and counts, not their words. Not a CSS
+  // container query: containment makes the dock the containing block of the model picker's
+  // position:fixed panel in Safari/Firefox.
   useEffect(() => {
     const dock = dockRef.current;
     if (!dock) return;
-    const observer = new ResizeObserver(([entry]) => setDockFitsTtft(entry.contentRect.width > 600));
+    const observer = new ResizeObserver(([entry]) => setDockNarrow(entry.contentRect.width < 460));
     observer.observe(dock);
     return () => observer.disconnect();
   }, [compact]);
@@ -1846,7 +1868,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const rawToolPresetLabel = Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? CONFIGURED_TOOL_PRESET))?.[0] ?? "configured";
   const toolPresetLabel = rawToolPresetLabel === "chat-only" ? t("chat.chatOnly") : rawToolPresetLabel;
   const toolPresetOffDefault = rawToolPresetLabel !== "configured";
-  const showSessionMenu = Boolean(onToolPresetChange || onCompact);
+  const showSessionMenu = Boolean(onToolPresetChange || onCompact || dock?.menuItems.length);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -1884,6 +1906,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const contextPercent = contextUsage && contextUsage.contextWindow > 0
     ? contextUsage.percent ?? (contextUsage.tokens !== null ? (contextUsage.tokens / contextUsage.contextWindow) * 100 : null)
     : null;
+
+  const contextNearFull = contextPercent !== null && contextPercent >= 85;
+  // A dismissed reminder comes back after the context drops below the line (a compaction) and refills.
+  useEffect(() => {
+    if (!contextNearFull) setContextTrayDismissed(false);
+  }, [contextNearFull]);
 
   // Context usage is a readout: it opens the usage panel, never compacts. Color only past 70%.
   const renderContextUsageWidget = () => {
@@ -1925,30 +1953,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" opacity="0.3" />
           <circle cx="8" cy="8" r="6" pathLength="100" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeDasharray={`${Math.min(100, Math.round(percent))} 100`} />
         </svg>
-        <span>{tokens !== null ? formatTokensK(tokens) : "?"}/{formatTokensK(windowTokens)}</span>
-        {cacheHitRate !== null && cacheHitRate !== undefined && (
-          <span className="chat-input-context-cache">
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
-              <ellipse cx="8" cy="3.5" rx="5" ry="1.8" />
-              <path d="M3 3.5v9a5 1.8 0 0 0 10 0v-9" />
-              <path d="M3 8a5 1.8 0 0 0 10 0" />
-            </svg>
-            {cacheHitRate.toFixed(0)}%
-          </span>
-        )}
-        {timing && (
-          <span className="chat-input-context-cache">
-            {/* Lucide "gauge" drawn 2 units higher so its flat bottom sits on the digit baseline. */}
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m12 12 4-4" />
-              <path d="M3.34 17a10 10 0 1 1 17.32 0" />
-            </svg>
-            {dockFitsTtft || !timing.tps ? `TTFT ${timing.text}` : timing.tps}
-          </span>
-        )}
-        {costLabel && (
-          <span className="chat-input-context-cache">{costLabel}</span>
-        )}
+        {/* A bare ring at rest; the percentage appears with the warning color (docs/ui.md, Composer). */}
+        {(isWarning || isHigh) && <span>{Math.round(percent)}%</span>}
       </button>
     );
   };
@@ -2144,6 +2150,17 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
       />}
       <div className={compact ? undefined : "chat-input-column"} style={{ maxWidth: "var(--chat-content-max-width, 820px)", margin: "0 auto" }}>
         {attention}
+        {/* Near the limit, what the bare ring cannot say gets one line where what needs you sits. */}
+        {contextNearFull && onCompact && !contextTrayDismissed && !isCompacting && (
+          <div role="status" className="composer-attention run-error-tray">
+            <span className="run-error-tag">{Math.round(contextPercent ?? 0)}%</span>
+            <span className="run-error-reason">{t("chat.contextHighWarning")}</span>
+            <ConfigButton variant="ghost" size="small" disabled={isStreaming} onClick={onCompact}>{t("chat.compactNow")}</ConfigButton>
+            <button type="button" className="ghost-icon-button" onClick={() => setContextTrayDismissed(true)} title={t("i18n.close")} aria-label={t("i18n.close")}>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" /></svg>
+            </button>
+          </div>
+        )}
         {missingCwd
           ? <ModelNoticeBanner tone="error" title={t("chat.folderMissing")} body={t("chat.folderMissingDetail", { cwd: missingCwd })}
               action={onForkMissingCwd && <ConfigButton variant="ghost" size="small" style={{ marginTop: 4 }} onClick={onForkMissingCwd}>{t("chat.forkMissingFolder")}</ConfigButton>} />
@@ -2738,7 +2755,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
 
           {!compact && (
-            <div ref={dockRef} className="chat-input-dock">
+            <div ref={dockRef} className={`chat-input-dock${dockNarrow ? " is-narrow" : ""}`}>
               <div ref={imageMenuRef} className="chat-input-popover-anchor">
                 <button
                   type="button"
@@ -2827,11 +2844,14 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   )}
                 </div>
               )}
+              {dock?.context}
               <div className="chat-input-dock-spacer" />
+              {dock?.status}
               {renderContextUsageWidget()}
               {showSessionMenu && (
                 <div ref={controlsMenuRef} className="chat-input-popover-anchor">
                   <button
+                    ref={controlsButtonRef}
                     type="button"
                     className={`composer-btn${toolPresetOffDefault && onToolPresetChange ? " is-flagged" : " is-icon"}`}
                     aria-label={t("chat.moreControls")}
@@ -2845,10 +2865,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                       setControlsMenuOpen((open) => !open);
                     }}
                   >
+                    {/* ⋮, the sidebar's lightest mark for "more"; sliders read heavy. */}
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
-                      <circle cx="15" cy="7" r="2" />
-                      <circle cx="9" cy="17" r="2" />
+                      <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
                     </svg>
                     {toolPresetOffDefault && onToolPresetChange && <span className="composer-tools-label">{rawToolPresetLabel}</span>}
                   </button>
@@ -2922,6 +2941,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                               <span>compact</span>
                               {contextPercent !== null && <span className="chat-input-menu-note">{Math.round(contextPercent)}%</span>}
                               {menuChevron}
+                            </button>
+                          ))}
+                          {dock?.menuItems.map((item) => (
+                            <button
+                              key={item.label}
+                              type="button"
+                              role="menuitem"
+                              data-top-panel-trigger={item.topPanelTrigger}
+                              onClick={() => {
+                                setControlsMenuOpen(false);
+                                item.onSelect(controlsButtonRef.current);
+                              }}
+                            >
+                              <span>{item.label}</span>
+                              {item.note && <span className="chat-input-menu-note">{item.note}</span>}
                             </button>
                           ))}
                         </>

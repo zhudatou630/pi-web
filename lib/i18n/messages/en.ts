@@ -1053,6 +1053,7 @@ export const enLocale: LocalePlugin = {
     "chat.contextUsage": "Context usage",
     "chat.contextRemaining": "Remaining",
     "chat.contextHighWarning": "Context near limit, compaction recommended",
+    "chat.compactNow": "Compact",
     "chat.stopAgent": "Stop agent",
     "chat.stop": "Stop",
     "chat.locateNotFound": "Could not locate this message.",

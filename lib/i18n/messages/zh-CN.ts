@@ -1053,6 +1053,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.contextUsage": "上下文占用",
     "chat.contextRemaining": "剩余可用",
     "chat.contextHighWarning": "上下文接近上限，建议压缩",
+    "chat.compactNow": "压缩",
     "chat.stopAgent": "停止 Agent",
     "chat.stop": "停止",
     "chat.locateNotFound": "无法定位到这条消息。",
