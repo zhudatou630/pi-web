@@ -140,8 +140,8 @@ Global shortcuts, handled once in `AppShell`:
   Meta prefix), or a modal dialog is open (Settings › Models uses Alt+↑/↓ to
   reorder). Letters match `event.code` (`KeyK`), so layouts and Option-produced
   characters do not change the key.
-- Discoverability: native `title` hints on the search button (Alt+K) and in the
-  row menu; no shortcut sheet.
+- Discoverability: the search button's native `title` lists all three shortcuts;
+  no shortcut sheet.
 
 ### Conflicts checked
 

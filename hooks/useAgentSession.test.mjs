@@ -463,7 +463,7 @@ test("stale fresh-session completion cannot replace the active composer", () => 
   );
 });
 
-test("closed drafts are discarded by the tab owner while remounts preserve them", () => {
+test("drafts survive remounts and are parked, never discarded, when they leave the view", () => {
   const restoreSource = source.slice(
     source.indexOf("  const restoreSubmission = useCallback"),
     source.indexOf("  const sessionStats = useMemo"),
@@ -472,14 +472,15 @@ test("closed drafts are discarded by the tab owner while remounts preserve them"
     source.indexOf("  // Load session on mount"),
     source.indexOf("  useEffect(() => {\n    onSystemPromptChange"),
   );
-  const closeTabSource = appShellSource.slice(
-    appShellSource.indexOf("  const handleCloseChatTab = useCallback"),
-    appShellSource.indexOf("  const handleNewChatTab = useCallback"),
+  const commitSource = appShellSource.slice(
+    appShellSource.indexOf("  const commitChatView = useCallback"),
+    appShellSource.indexOf("  // Tab-era unsent drafts"),
   );
 
   assert.match(restoreSource, /!sessionHookMountedRef\.current[\s\S]*?!newSessionPromotedRef\.current/);
   assert.doesNotMatch(mountSource, /clearDraft/);
-  assert.match(closeTabSource, /closingTab\?\.kind === "draft"[\s\S]*?clearDraft\(closingTab\.newSessionDraftKey\)/);
+  assert.match(commitSource, /item\.kind === "draft" && item\.newSessionDraftKey\) rekeyDraft\(item\.newSessionDraftKey, parkedNewSessionDraftKey/);
+  assert.doesNotMatch(appShellSource, /clearDraft\(/);
 });
 
 test("streaming submissions cannot be stranded in an idle direct queue", () => {
