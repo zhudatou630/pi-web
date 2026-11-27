@@ -2031,8 +2031,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       <div className="sidebar-nav-row">
         <button type="button" className="sidebar-nav-item" aria-current={newSessionOpen ? "page" : undefined} onClick={startNewSession}>
           <span className="sidebar-section-gutter">
-            {/* Cursor's New Chat glyph: a paper plane seen nose-on. */}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 4h19L11 21.5l-2-8z" /><path d="M21.5 4 9 13.5" /></svg>
+            {/* Cursor's New Chat glyph: a paper plane seen nose-on. Its heavy top edge is drawn low so the ink's
+                centre of mass meets the label's (measured: within 0.2px), not the box's centre. */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8h17L11.5 22.5l-2-6.5z" /><path d="M20.5 8 9.5 16" /></svg>
           </span>
           <span>{t("sidebar.newSession")}</span>
         </button>
@@ -2041,8 +2042,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         <div className="sidebar-nav-row">
           <button type="button" className="sidebar-nav-item" aria-pressed={routinesOpen} onClick={onToggleRoutines}>
             <span className="sidebar-section-gutter">
-              {/* Cursor's Automations glyph: a small robot. */}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="8" width="17" height="13" rx="2.5" /><path d="M12 8V3.5" /><path d="M9 13v3M15 13v3" /></svg>
+              {/* Cursor's Automations glyph: a small robot, its body raised so the ink's centre meets the label's. */}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="17" height="13" rx="2.5" /><path d="M12 7V2.5" /><path d="M9 12v3M15 12v3" /></svg>
             </span>
             <span>{t("routines.title")}</span>
           </button>
@@ -2878,8 +2879,7 @@ export function SessionItem({
           <div className="session-row-meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 1, minWidth: 0, color: "var(--text-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
             {!needsYou && projectLabel && <span className="session-row-project">{projectLabel}</span>}
             {/* A worktree is the branch glyph right before the time, as Cursor places it (branch in the
-                tooltip), standing in for the project separator. The time and the waiting/error word share
-                one fixed-width column, so the glyphs line up whatever the row says. */}
+                tooltip), standing in for the project separator, close to the time. */}
             {worktree ?? (!needsYou && projectLabel && "\u00a0·\u00a0")}
             <span className="session-row-time" title={needsYou ? undefined : session.modified}>
               {needsYou ? <SessionStatusWord status={needsYou} /> : formatCompactRelativeTime(session.modified, locale)}

@@ -6,7 +6,7 @@ const source = await readFile(new URL("./AgentSessionPanel.tsx", import.meta.url
 
 test("keeps the main session first and makes every agent session selectable", () => {
   const mainRow = source.indexOf("session={rootSession}");
-  const subagentRows = source.indexOf("visibleSubagents.map");
+  const subagentRows = source.indexOf("sortedSubagents.map");
   assert.ok(mainRow > 0);
   assert.ok(subagentRows > mainRow);
   assert.match(source, /onSelect=\{\(\) => onSelectSession\(rootSession\)\}/);
@@ -14,12 +14,17 @@ test("keeps the main session first and makes every agent session selectable", ()
   assert.match(source, /aria-selected=\{selected\}/);
 });
 
-test("sorts active subagents first and enables search only for larger families", () => {
+test("sorts active subagents first; no search and no total in the head (the rows show it)", () => {
   assert.match(source, /const rank = statusPriority\(sessionStatus\(a,/);
   assert.match(source, /if \(rank !== 0\) return rank/);
-  assert.match(source, /subagents\.length > 8/);
-  assert.match(source, /relation\?\.description, relation\?\.profile, session\.name, session\.firstMessage/);
+  assert.doesNotMatch(source, /type="search"|agentSwitcher\.(search|noMatches|count)/);
   assert.match(source, /maxHeight: "min\(58dvh, 480px\)"/);
+});
+
+test("no head row; with side chats every row ends in one check slot that Delete overlays", () => {
+  assert.doesNotMatch(source, /minHeight: 40|agentSwitcher\.runningCount/);
+  assert.match(source, /\{!actionSlot && <MenuCheck checked=\{selected\} \/>\}/);
+  assert.match(source, /<span className="menu-check-slot">\s*<MenuCheck checked=\{selected\} \/>\s*\{onDelete && \(/);
 });
 
 test("renders as a floating popover card without a centered inner width", () => {
@@ -48,5 +53,6 @@ test("subagent rows keep model and effective thinking in the existing metadata l
 
 test("running reads as the sidebar's gray breathing dot, never the unread blue", () => {
   assert.doesNotMatch(source, /var\(--accent\)/);
-  assert.match(source, /color: "var\(--text-dim\)", fontSize: 11 \}\}>\s*<LivePulseBeacon size=\{12\} \/>\s*\{t\("agentSwitcher\.runningCount"/);
+  assert.match(source, /return <LivePulseBeacon size=\{13\} \/>/);
+  assert.match(source, /return "var\(--text-dim\)";/);
 });

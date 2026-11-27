@@ -38,7 +38,7 @@ import { RoutinesView } from "./RoutinesView";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
-import { AgentsDockButton, SessionBranchControl } from "./TopBarContext";
+import { AgentsDockButton } from "./TopBarContext";
 import type { ComposerDock } from "./ChatInput";
 import { hasBlockedSession } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView, type PanelWorktreeInfo } from "./PanelViews";
@@ -2568,7 +2568,6 @@ export function AppShell() {
         onAgentEnd={handleAgentEnd}
         onToolEnd={handleToolEnd}
         onFilesChanged={requestExplorerRefresh}
-        filePanelOpen={rightPanelOpen}
         onReviewTurnChanges={paneEntries[pane].reviewTurnChanges}
         onOpenDiff={handleOpenDiff}
         onTurnFilesChange={isFocusedPane ? handleTurnFilesChange : undefined}
@@ -3257,11 +3256,9 @@ export function AppShell() {
     );
   };
 
-  // Each pane's composer dock (docs/ui.md, Composer): where it runs,
-  // running subagents beside the context ring, idle ones in the ⋮ menu.
+  // Each pane's composer dock (docs/ui.md, Composer): the Agents entry beside the context ring.
   const renderComposerDock = (session: SessionInfo | null | undefined, pane: ChatPane): ComposerDock | undefined => {
     if (!session || session.transient) return undefined;
-    const projectRoot = session.projectRoot ?? session.cwd;
     const family = sessionFamilies.get(session.id);
     const count = family?.subagents.length ?? 0;
     const running = family?.subagents.filter((subagent) => runningSessionIds.has(subagent.id)).length ?? 0;
@@ -3272,22 +3269,10 @@ export function AppShell() {
       toggleTopPanel("agents");
     };
     return {
-      context: (
-        <SessionBranchControl
-          project={projectNameByRoot.get(projectRoot) ?? getFileName(projectRoot)}
-          branch={session.branch}
-          cwd={session.cwd}
-          onOpenTerminal={() => handleOpenTerminal(session.cwd)}
-          onRevealInFiles={() => handleRevealCwdInFiles(session.cwd)}
-          onCopyPath={() => { void copyText(session.cwd).catch(() => {}); }}
-        />
-      ),
-      status: running > 0
+      // Always in the same place while the family has children: side chats and finished subagents are reachable only here.
+      status: count > 0
         ? <AgentsDockButton count={count} running={running} open={activeTopPanel === "agents" && agentsSessionId === session.id} onToggle={openAgents} />
         : null,
-      menuItems: count > 0 && running === 0
-        ? [{ label: translate("agentSwitcher.title"), note: String(count), topPanelTrigger: "agents", onSelect: openAgents }]
-        : [],
     };
   };
 

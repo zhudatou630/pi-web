@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
@@ -226,6 +227,16 @@ test("both pickers are named popovers of plain buttons: no listbox around action
   assert.equal((control.match(/aria-haspopup="dialog"/g) ?? []).length, 2);
 });
 
+test("branch menu is one flat list whose checks and remove actions share one trailing slot", () => {
+  const menu = control.slice(control.indexOf("{branchMenuOpen &&"), control.indexOf("{pickerOpen &&"));
+  assert.match(menu, /\[\.\.\.\(mainWorktree \? \[mainWorktree\] : \[\]\), \.\.\.linkedWorktrees\]\.map/);
+  assert.match(menu, /<span className="menu-check-slot">\s*<MenuCheck checked=\{isCurrent\} \/>[\s\S]*?\{!wt\.isMain && \(\s*<button[\s\S]*?menu-surface-row-action is-danger/);
+  assert.equal((menu.match(/menu-surface-divider/g) ?? []).length, 1);
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.menu-check-slot > \.menu-surface-row-action \{\s*position: absolute;\s*inset: 0;/);
+  assert.match(css, /\.menu-surface-row:has\(\[aria-current\], \[aria-selected="true"\]\) \.menu-check-slot > \.menu-surface-row-action \{\s*display: none;/);
+});
+
 test("branch menu offers New worktree, created from the project root and then selected", () => {
   const menu = control.slice(control.indexOf("{branchMenuOpen &&"), control.indexOf("{pickerOpen &&"));
   assert.match(menu, /t\("sidebar\.newWorktree"\)/);
@@ -241,8 +252,9 @@ test("the new-session page: text menus for project and where it runs sit above t
   assert.doesNotMatch(hero, /NewSessionCwdControl/);
   assert.match(hero, /<svg[^>]*aria-label="Pi Web"/);
   assert.match(hero, /<AppUpdateNotice \/>/);
-  // Project directory · branch for the main checkout, the branch glyph for a linked one.
-  assert.match(control, /currentWorktree\?\.isMain \? \(\s*<span className="new-session-pick-label">\{t\("chat\.projectDirectory"\)\} · \{currentBranch\}<\/span>/);
+  // Every checkout reads "⑂ <branch>": no "Project folder" wording, no section label.
+  assert.match(control, /<\/svg>\s*<span className="new-session-pick-label">\{currentBranch\}<\/span>/);
+  assert.doesNotMatch(control, /chat\.projectDirectory|chat\.existingWorktrees/);
   // "From <branch>" only inside the New worktree form.
   const form = control.slice(control.indexOf("{newBranch === null ? ("), control.lastIndexOf("{menuError && "));
   assert.match(form, /t\("chat\.worktreeBase", \{ branch: mainBranch \}\)/);

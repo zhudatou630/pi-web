@@ -116,20 +116,9 @@ interface Props {
   onAttachFiles?: (files: File[]) => void;
 }
 
-export interface ComposerDockMenuItem {
-  label: string;
-  note?: string;
-  /** Marks the item as the trigger of a shared top panel, so opening it is not an outside click. */
-  topPanelTrigger?: string;
-  /** The ⋮ button is the anchor: the item itself is gone once the menu closes. */
-  onSelect: (anchor: HTMLElement | null) => void;
-}
-
-/** Session controls the dock hosts: where it runs (left), live state (right), extra ⋮ items. */
+/** What the dock shows for the session beside the context ring (the Agents entry). */
 export interface ComposerDock {
-  context: React.ReactNode;
   status: React.ReactNode;
-  menuItems: ComposerDockMenuItem[];
 }
 
 export interface ChatInputHandle {
@@ -774,7 +763,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dockRef = useRef<HTMLDivElement>(null);
   const [dockNarrow, setDockNarrow] = useState(false);
-  const controlsButtonRef = useRef<HTMLButtonElement>(null);
   // The near-full reminder above the composer, dismissed per session until it drops below the line.
   const [contextTrayDismissed, setContextTrayDismissed] = useState(false);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
@@ -1877,7 +1865,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const rawToolPresetLabel = (Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? CONFIGURED_TOOL_PRESET))?.[0] ?? "configured") as ToolPresetLabel;
   const toolPresetLabel = t(TOOL_PRESET_NAME_KEYS[rawToolPresetLabel]);
   const toolPresetOffDefault = rawToolPresetLabel !== "configured";
-  const showSessionMenu = Boolean(onToolPresetChange || onCompact || dock?.menuItems.length);
+  const showSessionMenu = Boolean(onToolPresetChange || onCompact);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -2853,14 +2841,12 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   )}
                 </div>
               )}
-              {dock?.context}
               <div className="chat-input-dock-spacer" />
               {dock?.status}
               {renderContextUsageWidget()}
               {showSessionMenu && (
                 <div ref={controlsMenuRef} className="chat-input-popover-anchor">
                   <button
-                    ref={controlsButtonRef}
                     type="button"
                     className={`composer-btn chat-input-controls${toolPresetOffDefault && onToolPresetChange ? " is-flagged" : " is-icon"}`}
                     aria-label={t("chat.moreControls")}
@@ -2950,21 +2936,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                               <span>{t("chat.compact")}</span>
                               {contextPercent !== null && <span className="chat-input-menu-note">{Math.round(contextPercent)}%</span>}
                               {menuChevron}
-                            </button>
-                          ))}
-                          {dock?.menuItems.map((item) => (
-                            <button
-                              key={item.label}
-                              type="button"
-                              role="menuitem"
-                              data-top-panel-trigger={item.topPanelTrigger}
-                              onClick={() => {
-                                setControlsMenuOpen(false);
-                                item.onSelect(controlsButtonRef.current);
-                              }}
-                            >
-                              <span>{item.label}</span>
-                              {item.note && <span className="chat-input-menu-note">{item.note}</span>}
                             </button>
                           ))}
                         </>

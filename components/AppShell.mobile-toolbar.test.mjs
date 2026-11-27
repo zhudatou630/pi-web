@@ -71,7 +71,7 @@ test("uses a single inline mobile toolbar", () => {
   }
 });
 
-test("Agents: in the composer dock while any runs, in its ⋮ menu otherwise; never in the top bar", () => {
+test("Agents: in the composer dock whenever the family has children; never in the top bar or a menu", () => {
   assert.match(source, /const hasSubagentSessionsForSession = Boolean\(sessionFamily\?\.subagents\.length\)/);
   const dock = functionSource("renderComposerDock", "const renderDesktopHeaderActions");
   // One family index for the top bar and every dock, not a rebuild per call.
@@ -81,8 +81,8 @@ test("Agents: in the composer dock while any runs, in its ⋮ menu otherwise; ne
   // Split: each dock opens the panel for its own session (keyboard Enter included), and focuses its pane.
   assert.match(dock, /agentsAnchorRef\.current = anchor;\s*focusPaneRef\.current\(pane\);\s*setAgentsSessionId\(session\.id\);\s*toggleTopPanel\("agents"\);/);
   assert.match(dock, /open=\{activeTopPanel === "agents" && agentsSessionId === session\.id\}/);
-  assert.match(dock, /status: running > 0\s*\? <AgentsDockButton/);
-  assert.match(dock, /menuItems: count > 0 && running === 0/);
+  assert.match(dock, /status: count > 0\s*\? <AgentsDockButton/);
+  assert.doesNotMatch(dock, /menuItems|SessionBranchControl/);
   assert.doesNotMatch(functionSource("renderChatToolbarActions", "const collapsedSessionTitle"), /toggleTopPanel\("agents"\)/);
   assert.match(source, /session: primaryTab\?\.kind === "session" \? primaryTab\.session : null/);
   assert.match(source, /session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null/);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { unnamedSideChatNumbers } from "@/lib/session-family";
 import { useI18n } from "@/hooks/useI18n";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
@@ -165,8 +165,8 @@ function AgentRow({
             <span>{t(`agentSwitcher.status.${status}`)}</span>
           </span>
         )}
-        {/* Rows without Delete put the check in the trailing column, so checks and Delete line up. */}
-        {(!actionSlot || onDelete) && <MenuCheck checked={selected} />}
+        {/* With side chats the check moves to the row's trailing slot, shared with Delete. */}
+        {!actionSlot && <MenuCheck checked={selected} />}
       </span>
     </button>
   );
@@ -174,27 +174,25 @@ function AgentRow({
   return (
     <div className="menu-surface-row agent-row-with-action">
       {row}
-      {onDelete ? (
-        <button
-          type="button"
-          className="menu-surface-row-action is-danger"
-          onClick={onDelete}
-          title={t("agentSwitcher.deleteSideChat")}
-          aria-label={`${t("agentSwitcher.deleteSideChat")}: ${primary}`}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(13)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            <path d="M10 11v6M14 11v6" />
-            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-          </svg>
-        </button>
-      ) : (
-        // Not .menu-surface-row-action: that one hides until hover, the check must not.
-        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", flexShrink: 0, width: "var(--ui-row-height)" }}>
-          <MenuCheck checked={selected} />
-        </span>
-      )}
+      <span className="menu-check-slot">
+        <MenuCheck checked={selected} />
+        {onDelete && (
+          <button
+            type="button"
+            className="menu-surface-row-action is-danger"
+            onClick={onDelete}
+            title={t("agentSwitcher.deleteSideChat")}
+            aria-label={`${t("agentSwitcher.deleteSideChat")}: ${primary}`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(13)} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+          </button>
+        )}
+      </span>
     </div>
   );
 }
@@ -209,7 +207,6 @@ export function AgentSessionPanel({
   onDeleteSideChat,
 }: Props) {
   const { t } = useI18n();
-  const [query, setQuery] = useState("");
   const sideNumbers = useMemo(() => unnamedSideChatNumbers(subagents), [subagents]);
   const sortedSubagents = useMemo(() => [...subagents].sort((a, b) => {
     const rank = statusPriority(sessionStatus(a, runningSessionIds.has(a.id)))
@@ -217,15 +214,6 @@ export function AgentSessionPanel({
     if (rank !== 0) return rank;
     return b.modified.localeCompare(a.modified);
   }), [runningSessionIds, subagents]);
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleSubagents = normalizedQuery
-    ? sortedSubagents.filter((session) => {
-        const relation = session.relation?.kind === "subagent" ? session.relation : null;
-        return [relation?.description, relation?.profile, session.name, session.firstMessage]
-          .some((value) => value?.toLowerCase().includes(normalizedQuery));
-      })
-    : sortedSubagents;
-  const runningCount = subagents.filter((session) => runningSessionIds.has(session.id)).length;
   const actionSlot = Boolean(onDeleteSideChat) && subagents.some((session) => session.relation?.kind === "side");
 
   return (
@@ -236,35 +224,6 @@ export function AgentSessionPanel({
       style={{ overflow: "hidden" }}
     >
       <div>
-        <div style={{ minHeight: 40, display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderBottom: "1px solid var(--border)" }}>
-          <strong style={{ fontSize: 12, fontWeight: 600 }}>{t("agentSwitcher.title")}</strong>
-          <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
-            {t("agentSwitcher.count", { count: subagents.length })}
-          </span>
-          {runningCount > 0 && (
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, color: "var(--text-dim)", fontSize: 11 }}>
-              <LivePulseBeacon size={12} />
-              {t("agentSwitcher.runningCount", { count: runningCount })}
-            </span>
-          )}
-        </div>
-        {subagents.length > 8 && (
-          <div style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>
-            <input
-              type="search"
-              className="agent-switcher-search-input"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("agentSwitcher.search")}
-              aria-label={t("agentSwitcher.search")}
-              style={{
-                width: "100%", height: "var(--ui-row-height)", padding: "0 10px",
-                border: "none", borderRadius: 6,
-                background: "var(--ui-field-bg)", boxShadow: "var(--ui-field-edge)", color: "var(--text)", fontSize: 12, outline: "none",
-              }}
-            />
-          </div>
-        )}
         <div style={{ maxHeight: "min(58dvh, 480px)", overflowY: "auto", padding: 4 }}>
           <AgentRow
             session={rootSession}
@@ -275,7 +234,7 @@ export function AgentSessionPanel({
             onOpenInNewTab={onOpenInNewTab ? () => onOpenInNewTab(rootSession) : undefined}
             actionSlot={actionSlot}
           />
-          {visibleSubagents.map((session) => (
+          {sortedSubagents.map((session) => (
             <AgentRow
               key={session.id}
               session={session}
@@ -288,11 +247,6 @@ export function AgentSessionPanel({
               onDelete={onDeleteSideChat && session.relation?.kind === "side" ? () => onDeleteSideChat(session) : undefined}
             />
           ))}
-          {visibleSubagents.length === 0 && (
-            <div style={{ padding: "22px 12px", color: "var(--text-dim)", fontSize: 12, textAlign: "center" }}>
-              {t("agentSwitcher.noMatches")}
-            </div>
-          )}
         </div>
       </div>
     </div>

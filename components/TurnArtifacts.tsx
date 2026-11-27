@@ -9,8 +9,8 @@ const CHIP_BACKGROUND = "color-mix(in srgb, var(--bg-subtle) 65%, var(--bg))";
 
 /** One thing a turn produced (a written file, a created routine), as a small button under the answer. */
 export function TurnArtifactChip({ icon, label, title, ariaLabel, onClick }: {
-  icon: ReactNode;
-  label: string;
+  icon?: ReactNode;
+  label: ReactNode;
   title?: string;
   ariaLabel: string;
   onClick: () => void;
@@ -25,6 +25,8 @@ export function TurnArtifactChip({ icon, label, title, ariaLabel, onClick }: {
         display: "inline-flex",
         alignItems: "center",
         gap: 5,
+        maxWidth: "100%",
+        minWidth: 0,
         padding: "2.5px 7px",
         minHeight: 22,
         fontSize: 11,
@@ -46,8 +48,8 @@ export function TurnArtifactChip({ icon, label, title, ariaLabel, onClick }: {
         e.currentTarget.style.color = "var(--text-muted)";
       }}
     >
-      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</span>
-      <span>{label}</span>
+      {icon && <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</span>}
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
     </button>
   );
 }

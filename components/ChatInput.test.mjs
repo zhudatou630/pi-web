@@ -1319,12 +1319,8 @@ test("keeps queued prompts as a quiet row inside the composer card", () => {
   assert.match(two, />follow-up<\/span>/);
 });
 
-test("the dock hosts the session's controls: where it runs left, live state right, a near-full line above", () => {
-  const dock = {
-    context: React.createElement("span", { className: "test-branch" }, "branch"),
-    status: React.createElement("span", { className: "test-agents" }, "agents"),
-    menuItems: [{ label: "Agents", note: "2", onSelect() {} }],
-  };
+test("the dock hosts the Agents entry right before the ring, a near-full line above", () => {
+  const dock = { status: React.createElement("span", { className: "test-agents" }, "agents") };
   const render = (percent) => renderToStaticMarkup(React.createElement(I18nProvider, null,
     React.createElement(ChatInput, {
       onSend() {}, onAbort() {}, isStreaming: false, dock, onCompact() {},
@@ -1333,8 +1329,7 @@ test("the dock hosts the session's controls: where it runs left, live state righ
     })));
   const html = render(40);
   const dockHtml = html.slice(html.indexOf('class="chat-input-dock'));
-  // Branch after the model/thinking group, before the spacer; running agents right before the ring.
-  assert.ok(dockHtml.indexOf("test-branch") < dockHtml.indexOf("chat-input-dock-spacer"));
+  // The left side holds only choices (+, model, thinking); the branch lives in the top bar's ⋯.
   assert.ok(dockHtml.indexOf("chat-input-dock-spacer") < dockHtml.indexOf("test-agents"));
   assert.ok(dockHtml.indexOf("test-agents") < dockHtml.indexOf("chat-input-context"));
   assert.doesNotMatch(html, /run-error-tray/);

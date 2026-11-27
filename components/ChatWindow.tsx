@@ -100,8 +100,6 @@ interface Props {
   onAgentEnd?: (session?: SessionInfo | null, end?: AgentEndInfo) => void;
   onToolEnd?: (toolName: string) => void;
   onFilesChanged?: () => void;
-  /** The file panel is open: turn file cards fold to their title row. */
-  filePanelOpen?: boolean;
   /** A turn card's Review: the panel's Changes view on this turn's files, at the session cwd. */
   onReviewTurnChanges?: (cwd: string) => void;
   onOpenDiff?: (filePath: string, cwd: string | undefined, sourceSessionId: string | null) => void;
@@ -497,16 +495,10 @@ export function NewSessionCwdControl({
               setConfirmRemove(null);
             }}
           >
-            {currentWorktree?.isMain ? (
-              <span className="new-session-pick-label">{t("chat.projectDirectory")} · {currentBranch}</span>
-            ) : (
-              <>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M6 3v12" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
-                </svg>
-                <span className="new-session-pick-label">{currentBranch}</span>
-              </>
-            )}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 3v12" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
+            </svg>
+            <span className="new-session-pick-label">{currentBranch}</span>
             {chevron}
           </button>
           {branchMenuOpen && worktrees.length > 0 && (
@@ -517,59 +509,41 @@ export function NewSessionCwdControl({
               className="menu-surface new-session-pick-menu"
               style={menuPosition}
             >
-              {mainWorktree && (
-                <div className="menu-surface-row">
-                  <button
-                    type="button"
-                    className="menu-surface-item"
-                    aria-current={mainWorktree.path === currentWorktree?.path || undefined}
-                    disabled={busy}
-                    onClick={() => choose(mainWorktree.path)}
-                    title={mainWorktree.path}
-                    style={{ flex: 1 }}
-                  >
-                    <span style={{ flex: 1 }}>{t("chat.projectDirectory")}</span>
-                    <span className="new-session-pick-meta">{mainBranch}</span>
-                    <MenuCheck checked={mainWorktree.path === currentWorktree?.path} />
-                  </button>
-                  {/* The main checkout cannot be removed; the empty slot keeps the checks in one column. */}
-                  {linkedWorktrees.length > 0 && <span className="menu-surface-row-action" aria-hidden="true" />}
-                </div>
-              )}
-              {linkedWorktrees.length > 0 && (
-                <>
-                  <div role="separator" className="menu-surface-divider" />
-                  <div className="menu-surface-label">{t("chat.existingWorktrees")}</div>
-                  <div style={{ maxHeight: 240, overflowY: "auto", scrollbarWidth: "none" }}>
-                    {linkedWorktrees.map((wt) => {
-                      const isCurrent = wt.path === currentWorktree?.path;
-                      if (confirmRemove === wt.path) {
-                        return (
-                          <div key={wt.path} className="wt-confirm-row">
-                            <span>{t("sidebar.forceRemoveCheckout")}</span>
-                            <div className="project-confirm-actions">
-                              <button type="button" onClick={() => setConfirmRemove(null)}>{t("sidebar.cancel")}</button>
-                              <button type="button" className="is-danger" disabled={busy} onClick={() => removeWorktree(wt.path, true)}>{t("sidebar.force")}</button>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div key={wt.path} className="menu-surface-row">
-                          <button
-                            type="button"
-                            className="menu-surface-item"
-                            aria-current={isCurrent || undefined}
-                            disabled={busy}
-                            onClick={() => choose(wt.path)}
-                            title={wt.path}
-                            style={{ flex: 1 }}
-                          >
-                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {wt.branch ?? wt.path}
-                            </span>
-                            <MenuCheck checked={isCurrent} />
-                          </button>
+              {/* One flat list of checkouts by branch. Every row ends in the same slot: the check, or the
+                  remove action over it on hover (always on touch, except the current row). */}
+              <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
+                {[...(mainWorktree ? [mainWorktree] : []), ...linkedWorktrees].map((wt) => {
+                  const isCurrent = wt.path === currentWorktree?.path;
+                  if (confirmRemove === wt.path) {
+                    return (
+                      <div key={wt.path} className="wt-confirm-row">
+                        <span>{t("sidebar.forceRemoveCheckout")}</span>
+                        <div className="project-confirm-actions">
+                          <button type="button" onClick={() => setConfirmRemove(null)}>{t("sidebar.cancel")}</button>
+                          <button type="button" className="is-danger" disabled={busy} onClick={() => removeWorktree(wt.path, true)}>{t("sidebar.force")}</button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={wt.path} className="menu-surface-row">
+                      <button
+                        type="button"
+                        className="menu-surface-item"
+                        aria-current={isCurrent || undefined}
+                        disabled={busy}
+                        onClick={() => choose(wt.path)}
+                        title={wt.path}
+                        style={{ flex: 1 }}
+                      >
+                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {wt.branch ?? getFileName(wt.path)}
+                        </span>
+                      </button>
+                      <span className="menu-check-slot">
+                        <MenuCheck checked={isCurrent} />
+                        {/* The main checkout cannot be removed. */}
+                        {!wt.isMain && (
                           <button
                             type="button"
                             className="menu-surface-row-action is-danger"
@@ -585,12 +559,12 @@ export function NewSessionCwdControl({
                               <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                             </svg>
                           </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
               <div role="separator" className="menu-surface-divider" />
               {newBranch === null ? (
                 <button
@@ -998,7 +972,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, composerDock, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, onWorktreesChanged, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, filePanelOpen = false, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
+export function ChatWindow({ session, composerDock, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, onWorktreesChanged, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -1702,10 +1676,9 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
 
   const messageCwd = session?.cwd ?? newSessionCwd ?? undefined;
   const turnFilesContext = useMemo(() => ({
-    panelOpen: filePanelOpen,
     onOpenDiff: onOpenDiff ? (filePath: string) => onOpenDiff(filePath, messageCwd, session?.id ?? null) : undefined,
     onReview: onReviewTurnChanges && messageCwd ? () => onReviewTurnChanges(messageCwd) : undefined,
-  }), [filePanelOpen, messageCwd, onOpenDiff, onReviewTurnChanges, session?.id]);
+  }), [messageCwd, onOpenDiff, onReviewTurnChanges, session?.id]);
   const openGroupTail = agentRunning || streamState.isStreaming;
   const groupBoundaries = useMemo(
     () => getMessageGroupBoundaries(messages, { openTail: openGroupTail }),
