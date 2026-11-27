@@ -652,6 +652,20 @@ html.dark {
 .turn-files-name {
   flex-shrink: 1;
 }
+.changes-row-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+.changes-row-name[data-deleted] {
+  text-decoration: line-through;
+}
+/* Status letter last, in its own fixed column (VS Code / Cursor source control). */
+.changes-row-status {
+  width: 12px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+}
 .changes-row-dir,
 .turn-files-dir {
   flex: 1;
@@ -2541,23 +2555,6 @@ button.question-card-option:not(:disabled):hover {
   width: 14px;
   height: 14px;
 }
-/* Steps are plain text (action, object, time): the slot holds only the executing step's
-   running dot. The action reads one tier above its object; the live step's action is --text. */
-[data-step-card] .step-icon {
-  width: 8px;
-  height: 8px;
-}
-/* A minimum action width lines the objects up in one column (Thinking, bash, read). */
-[data-step-card] .step-label {
-  min-width: 56px;
-  color: var(--text-muted);
-}
-[data-step-card]:has(> .step-head .step-icon > .session-status-dot) .step-label {
-  color: var(--text);
-}
-[data-step-card] .step-preview {
-  color: var(--text-dim);
-}
 .step-label {
   min-width: 0;
   overflow: hidden;
@@ -3229,7 +3226,8 @@ button.question-card-option:not(:disabled):hover {
 /* Sarasa UI inks 11px digits and CJK ~0.9px above the centre of their line box
    (measured against a flex-centred 12px icon), so icons in those metadata rows
    rise by that much to centre on the ink of the text, not its box. */
-.message-action-button svg {
+.message-action-button svg,
+.meta-row-icon {
   position: relative;
   top: -0.875px;
 }

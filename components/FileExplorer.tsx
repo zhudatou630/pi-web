@@ -104,7 +104,7 @@ async function fetchGitStatus(cwd: string, signal: AbortSignal): Promise<GitStat
   return res.json() as Promise<GitStatusResponse>;
 }
 
-const GIT_STATUS_KEYS: Record<GitFileStatusKind, string> = {
+export const GIT_STATUS_KEYS: Record<GitFileStatusKind, string> = {
   modified: "files.modified",
   added: "files.added",
   deleted: "files.deleted",

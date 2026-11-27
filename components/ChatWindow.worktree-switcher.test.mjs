@@ -193,12 +193,13 @@ test("branch menu offers New worktree, created from the project root and then se
   assert.match(control, /await onChange\(data\.path\);/);
 });
 
-test("the new-session page: text menus for project and where it runs sit above the composer, no brand", () => {
+test("the new-session page: text menus for project and where it runs sit above the composer, under the Pi Web wordmark", () => {
   const attention = source.slice(source.indexOf("attention={("), source.indexOf("const composerStack"));
   assert.match(attention, /\{isEmptyNew && newSessionCwd && onNewSessionCwdChange && \(\s*<NewSessionCwdControl/);
   const heroStart = source.indexOf('className="empty-hero-anchor');
   const hero = source.slice(heroStart, source.indexOf("{composerStack}", heroStart));
-  assert.doesNotMatch(hero, /<svg|NewSessionCwdControl/);
+  assert.doesNotMatch(hero, /NewSessionCwdControl/);
+  assert.match(hero, /<svg[^>]*aria-label="Pi Web"/);
   assert.match(hero, /<AppUpdateNotice \/>/);
   // Project directory · branch for the main checkout, the branch glyph for a linked one.
   assert.match(control, /currentWorktree\?\.isMain \? \(\s*<span className="new-session-pick-label">\{t\("chat\.projectDirectory"\)\} · \{currentBranch\}<\/span>/);

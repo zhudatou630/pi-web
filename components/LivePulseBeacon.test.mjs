@@ -20,12 +20,12 @@ test("session state is one 8px dot: running breathes in the dim gray, still unde
   assert.doesNotMatch(globalCss, /live-pulse-beacon-(halo|core)|@keyframes live-pulse/);
 });
 
-test("every running mark is the same dot: sidebar, chat tabs, process steps, live rows", async () => {
+test("every running mark is the same dot: sidebar, chat tabs, live rows (steps keep their tool icons)", async () => {
   const panelSource = await readFile(new URL("./AgentSessionPanel.tsx", import.meta.url), "utf8");
   assert.match(beaconSource, /<span className="session-status-dot" data-status="running" aria-hidden="true" \/>/);
   assert.match(sidebarSource, /<SessionStatusDot status=\{status\} \/>/);
   assert.match(tabSource, /<SessionStatusDot status=\{state\} \/>/);
-  assert.match(messageSource, /function StepSlot[\s\S]*?data-status="running"/);
+  assert.doesNotMatch(messageSource, /function StepSlot/);
   assert.match(chatWindowSource, /\{isStreaming \? \([\s\S]*?<LivePulseBeacon/);
   // An idle manual compaction gets the live process row by itself; a run already labels it.
   assert.match(chatWindowSource, /function CompactionActivity[\s\S]*?<LivePulseBeacon size=\{12\} \/>[\s\S]*?<ProcessLiveDuration/);

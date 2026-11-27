@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObjec
 import { useI18n } from "@/hooks/useI18n";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
 import { getFileName, getRelativeFilePath } from "@/lib/file-paths";
-import type { GitFileStatus, GitStatusResponse } from "@/lib/git-types";
+import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/git-types";
 import { turnScopedChanges } from "@/lib/turn-changes";
-import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
+import { FileExplorer, GIT_STATUS_KEYS, type FileExplorerHandle } from "./FileExplorer";
+import { getFileIcon } from "./FileIcons";
 import { MenuCheck } from "./MenuCheck";
 
 /** The file panel's two fixed views (docs/ui.md, File panel). They follow the active session's cwd. */
@@ -57,10 +58,21 @@ function LineCounts({ additions = 0, deletions = 0 }: { additions?: number; dele
   );
 }
 
+// Status letter colors as in VS Code / Cursor source control (docs/ui.md, File panel › Changes).
+const STATUS_COLORS: Record<GitFileStatusKind, string> = {
+  modified: "var(--warning)",
+  added: "var(--success)",
+  untracked: "var(--success)",
+  renamed: "var(--accent)",
+  deleted: "var(--danger)",
+  conflict: "var(--danger)",
+};
+
 const sum = (files: readonly GitFileStatus[], key: "additions" | "deletions") => files.reduce((total, file) => total + (file[key] ?? 0), 0);
 
 /**
- * Uncommitted changes of `cwd`: one row per file (name, folder, +N −M), no status letters. The
+ * Uncommitted changes of `cwd`: one row per file (file icon, name, folder, +N −M, status letter), as
+ * in VS Code / Cursor source control; a deleted file's name is struck through. The
  * "turn" scope keeps only the files the focused session's last turn wrote; numbers stay uncommitted.
  */
 export function ChangesView({ cwd, refreshKey, active, scope, onScopeChange, turnFiles, onOpenDiff }: {
@@ -108,9 +120,11 @@ export function ChangesView({ cwd, refreshKey, active, scope, onScopeChange, tur
           const slash = relative.lastIndexOf("/");
           return (
             <button key={`${file.status}:${file.filePath}`} type="button" className="changes-row" title={file.filePath} onClick={() => onOpenDiff(file.filePath)}>
-              <span className="changes-row-name">{getFileName(file.filePath)}</span>
+              <span className="changes-row-icon">{getFileIcon(getFileName(file.filePath), 13)}</span>
+              <span className="changes-row-name" data-deleted={file.status === "deleted" || undefined}>{getFileName(file.filePath)}</span>
               <span className="changes-row-dir">{slash > 0 ? relative.slice(0, slash) : ""}</span>
               <LineCounts additions={file.additions} deletions={file.deletions} />
+              <span className="changes-row-status" title={t(GIT_STATUS_KEYS[file.status])} style={{ color: STATUS_COLORS[file.status] }}>{file.code}</span>
             </button>
           );
         })}
