@@ -2801,11 +2801,23 @@ export function AppShell() {
   const activeTabIsDiff = (activeFileTab?.viewerState?.displayMode ?? activeFileTab?.initialDisplayMode) === "diff";
   const panelDockAvailable = !isMobile && Boolean(panelCwd && activeFileTab?.filePath);
   const panelDock: PanelView | null = panelDockAvailable && panelDockOpen ? (activeTabIsDiff ? "changes" : "files") : null;
+  // Showing the dock on a narrow panel widens the panel by the dock instead of squeezing the viewer;
+  // hiding it again gives that width back.
+  const panelDockWidenedFromRef = useRef<number | null>(null);
+  const setRightPanelWidth = rightPanelResizer.setWidth;
   const togglePanelDock = useCallback(() => {
     const next = !panelDockOpen;
+    const width = rightPanelWidthRef.current ?? rightPanelResizer.width;
+    if (next && width < PANEL_DOCK_MIN_WIDTH) {
+      panelDockWidenedFromRef.current = width;
+      setRightPanelWidth(width + PANEL_DOCK_WIDTH);
+    } else if (!next && panelDockWidenedFromRef.current !== null) {
+      setRightPanelWidth(panelDockWidenedFromRef.current);
+      panelDockWidenedFromRef.current = null;
+    }
     setPanelDockPref(next);
     try { window.localStorage.setItem(PANEL_DOCK_KEY, String(next)); } catch { /* private mode */ }
-  }, [panelDockOpen]);
+  }, [panelDockOpen, rightPanelResizer.width, setRightPanelWidth]);
   useEffect(() => {
     if (panelDock === "files") setFilesViewMounted(true);
   }, [panelDock]);
@@ -4231,7 +4243,7 @@ export function AppShell() {
                 key={`${tab.id}:${tab.viewerRevision ?? 0}`}
                 aria-hidden={active ? undefined : true}
                 inert={active ? undefined : true}
-                style={{ position: "absolute", inset: 0, right: panelDock ? PANEL_DOCK_WIDTH : 0, ...(active ? null : { visibility: "hidden", contentVisibility: "hidden" }) }}
+                style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: panelDock ? PANEL_DOCK_WIDTH : 0, ...(active ? null : { visibility: "hidden", contentVisibility: "hidden" }) }}
               >
                 <FileViewer
                   filePath={tab.filePath}
@@ -4259,7 +4271,10 @@ export function AppShell() {
           {/* One Changes and one Files instance, full size as a view or docked beside a file: moving
               between the two keeps the tree's expansion and scroll. */}
           {panelCwd && ((showPanelView && panelView === "changes") || panelDock === "changes") && (
-            <div style={panelDock === "changes" ? panelDockStyle : { position: "absolute", inset: 0 }}>
+            <div
+              style={panelDock === "changes" ? panelDockStyle : { position: "absolute", inset: 0 }}
+              {...(panelDock === "changes" ? { role: "complementary", "aria-label": translate("panel.changes") } : {})}
+            >
               <ChangesView
                 cwd={panelCwd}
                 refreshKey={explorerRefreshKey}
@@ -4273,7 +4288,11 @@ export function AppShell() {
             </div>
           )}
           {panelCwd && filesViewMounted && (
-            <div hidden={!((showPanelView && panelView === "files") || panelDock === "files")} style={panelDock === "files" ? panelDockStyle : { position: "absolute", inset: 0 }}>
+            <div
+              hidden={!((showPanelView && panelView === "files") || panelDock === "files")}
+              style={panelDock === "files" ? panelDockStyle : { position: "absolute", inset: 0 }}
+              {...(panelDock === "files" ? { role: "complementary", "aria-label": translate("panel.files") } : {})}
+            >
               <FilesView
                 cwd={panelCwd}
                 refreshKey={explorerRefreshKey}

@@ -203,7 +203,7 @@ function TreeNode({
   deleteMark: { path: string; phase: "pending" | "deleting" } | null;
   /** Last "Reveal in explorer" target; the nonce re-scrolls a repeated request. */
   revealed: { path: string; nonce: number } | null;
-  /** The file the panel shows beside this tree (docked): marked like a reveal, without scrolling. */
+  /** The file the panel shows beside this tree (docked): marked like a reveal and kept in view. */
   activePath?: string;
   t: Translate;
 }) {
@@ -213,6 +213,10 @@ function TreeNode({
   useEffect(() => {
     if (revealed?.path === node.fullPath) rowRef.current?.scrollIntoView({ block: "nearest" });
   }, [revealed, node.fullPath]);
+  // The docked tree keeps the shown file's row in view (also when its folder opens).
+  useEffect(() => {
+    if (activePath === node.fullPath) rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activePath, node.fullPath]);
   // Long press opens the file menu on touch (iOS fires no contextmenu); same 400ms/10px as project rows.
   const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
   const longPressedRef = useRef(false);
@@ -859,6 +863,23 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     return () => { cancelled = true; };
   }, [cwd, refreshKey, treeRefreshKey]);
 
+  // Docked beside an open file: open the folders down to it, once per file (a later collapse sticks).
+  useEffect(() => {
+    if (!activePath) return;
+    const root = normalizeFilePathSlashes(cwd).replace(/\/$/, "");
+    const path = normalizeFilePathSlashes(activePath);
+    if (!path.startsWith(`${root}/`)) return;
+    setExpandedPaths((previous) => {
+      const next = new Set(previous);
+      for (let parent = getFileDirectory(path); parent.startsWith(`${root}/`) && parent.length > root.length + 1; parent = getFileDirectory(parent)) {
+        next.add(parent);
+      }
+      if (next.size === previous.size) return previous;
+      rememberExpandedPaths(cwd, [...next]);
+      return next;
+    });
+  }, [cwd, activePath]);
+
   // Waits for the sidebar to switch to the reveal's cwd; expanding a folder loads its children.
   // Declared after the cwd-change reset so a reveal arriving with a new cwd survives it.
   useEffect(() => {
@@ -1153,6 +1174,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
                     onFileMenu={openFileMenu}
                     deleteMark={deleteMark}
                     revealed={null}
+                    activePath={activePath}
                     t={t}
                   />
                 ))}

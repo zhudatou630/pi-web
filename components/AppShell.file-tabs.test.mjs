@@ -42,9 +42,14 @@ test("an open file docks the project tree, a diff the changes list; one instance
   // The same FilesView / ChangesView element moves between full size and the dock (no remount).
   assert.equal(source.match(/<FilesView\b/g)?.length, 1);
   assert.equal(source.match(/<ChangesView\b/g)?.length, 1);
-  assert.match(source, /hidden=\{!\(\(showPanelView && panelView === "files"\) \|\| panelDock === "files"\)\} style=\{panelDock === "files" \? panelDockStyle/);
+  assert.match(source, /hidden=\{!\(\(showPanelView && panelView === "files"\) \|\| panelDock === "files"\)\}\s*style=\{panelDock === "files" \? panelDockStyle/);
   assert.match(source, /activePath=\{panelDock === "changes" \? activeFileTab\?\.filePath : undefined\}/);
   assert.match(source, /activePath=\{panelDock === "files" \? activeFileTab\?\.filePath : undefined\}/);
   assert.match(explorer, /const isRevealed = revealed\?\.path === node\.fullPath \|\| activePath === node\.fullPath;/);
   assert.match(source, /window\.localStorage\.setItem\(PANEL_DOCK_KEY, String\(next\)\)/);
+  // A narrow panel widens by the dock when it is shown and gives the width back when hidden.
+  assert.match(source, /if \(next && width < PANEL_DOCK_MIN_WIDTH\) \{\s*panelDockWidenedFromRef\.current = width;\s*setRightPanelWidth\(width \+ PANEL_DOCK_WIDTH\);/);
+  assert.match(source, /else if \(!next && panelDockWidenedFromRef\.current !== null\) \{\s*setRightPanelWidth\(panelDockWidenedFromRef\.current\);/);
+  // The docked tree opens the folders down to the shown file, once per file.
+  assert.match(explorer, /Docked beside an open file: open the folders down to it[\s\S]*?\}, \[cwd, activePath\]\);/);
 });

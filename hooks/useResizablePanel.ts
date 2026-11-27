@@ -305,6 +305,8 @@ export function useResizablePanel(options: UseResizablePanelOptions) {
     panelRef,
     reclampWidth,
     resetWidth,
+    /** Set (and persist) the width from code, clamped like a drag. */
+    setWidth: commitWidth,
     separatorProps: {
       "aria-label": ariaLabel,
       "aria-orientation": "vertical" as const,
