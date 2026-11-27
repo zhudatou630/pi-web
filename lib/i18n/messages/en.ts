@@ -584,8 +584,6 @@ export const enLocale: LocalePlugin = {
     "topBar.openInTerminal": "Open in terminal",
     "topBar.revealInFiles": "Show in Files",
     "topBar.copyPath": "Copy path",
-    "topBar.changes": "Changes",
-    "topBar.changesTitle": "Uncommitted changes: {count} files",
     "panel.views": "Changes and files",
     "panel.changes": "Changes",
     "panel.files": "Files",

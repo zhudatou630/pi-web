@@ -43,7 +43,6 @@ import type { ComposerDock } from "./ChatInput";
 import { hasBlockedSession } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView } from "./PanelViews";
 import type { FileExplorerHandle } from "./FileExplorer";
-import type { GitStatusResponse } from "@/lib/git-types";
 import { InfoDialog } from "./InfoDialog";
 import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
 import { SystemPromptPanel } from "./SystemPromptPanel";
@@ -1857,27 +1856,6 @@ export function AppShell() {
   const canSplitChat = !isMobile && chatPanesWide;
   const isSplitActive = Boolean(canSplitChat && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
 
-  // "Changes N" in the top bar: uncommitted files per shown session cwd, also with the file panel
-  // closed. Refreshed on the explorer's existing triggers (run end, writes, focus), never polled.
-  const [gitChangeCounts, setGitChangeCounts] = useState<Record<string, number>>({});
-  const gitChangeCwdKey = [...new Set([
-    selectedSession?.transient ? null : selectedSession?.cwd,
-    ...(isSplitActive ? [primaryTab, secondaryTab] : []).map((tab) => tab?.kind === "session" && !tab.session?.transient ? tab.session?.cwd : null),
-  ].filter((cwd): cwd is string => Boolean(cwd)))].join("\n");
-  useEffect(() => {
-    if (!gitChangeCwdKey) return;
-    const controller = new AbortController();
-    for (const cwd of gitChangeCwdKey.split("\n")) {
-      fetch(`/api/git/status?${new URLSearchParams({ cwd, lines: "0" })}`, { signal: controller.signal, cache: "no-store" })
-        .then((response) => response.ok ? response.json() as Promise<GitStatusResponse> : null)
-        .then((status) => {
-          const count = status?.isGitRepository ? status.files.length : 0;
-          setGitChangeCounts((current) => current[cwd] === count ? current : { ...current, [cwd]: count });
-        })
-        .catch(() => {});
-    }
-    return () => controller.abort();
-  }, [gitChangeCwdKey, explorerRefreshKey]);
   isSplitActiveRef.current = isSplitActive;
   canSplitChatRef.current = canSplitChat;
   const primaryPaneHasFocus = !isSplitActive || activeChatPane === "primary";
@@ -3233,7 +3211,7 @@ export function AppShell() {
     );
   };
 
-  // Each pane's composer dock (docs/ui.md, Composer): where it runs (with Changes in its menu),
+  // Each pane's composer dock (docs/ui.md, Composer): where it runs,
   // running subagents beside the context ring, idle ones in the ⋮ menu.
   const renderComposerDock = (session: SessionInfo | null | undefined): ComposerDock | undefined => {
     if (!session || session.transient) return undefined;
@@ -3251,8 +3229,6 @@ export function AppShell() {
           project={projectNameByRoot.get(projectRoot) ?? getFileName(projectRoot)}
           branch={session.branch}
           cwd={session.cwd}
-          changeCount={gitChangeCounts[session.cwd] ?? 0}
-          onOpenChanges={() => handleRevealCwdInFiles(session.cwd, true)}
           onOpenTerminal={() => handleOpenTerminal(session.cwd)}
           onRevealInFiles={() => handleRevealCwdInFiles(session.cwd)}
           onCopyPath={() => { void copyText(session.cwd).catch(() => {}); }}

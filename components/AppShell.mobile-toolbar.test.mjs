@@ -11,13 +11,10 @@ test("phone top bar holds the menu button, title, the outline button and the ses
   const title = toolbar.indexOf('className="mobile-top-bar-title"');
   const actions = toolbar.indexOf("{renderChatToolbarActions(true)}");
   assert.ok(title >= 0 && title < actions);
-  // Changes N lives in the composer's branch control on phones too (docs/ui.md, Composer).
-  assert.doesNotMatch(source, /ChangesButton|renderTopBarContext|renderComposerContext/);
+  // No uncommitted-changes count anywhere around the composer: Changes is the file panel's view.
+  assert.doesNotMatch(source, /ChangesButton|renderTopBarContext|renderComposerContext|gitChangeCounts/);
   assert.match(source, /composerDock=\{renderComposerDock\(tabSession\)\}/);
   assert.doesNotMatch(toolbar, /renderMainFileToggle/);
-  // Changes N is fetched on phones too, on the same triggers as desktop.
-  assert.match(source, /const gitChangeCwdKey = \[\.\.\.new Set\(\[/);
-  assert.doesNotMatch(source, /const gitChangeCwdKey = isMobile/);
   assert.match(source, /onOpenFiles=\{mobile && filesCwd \? \(\) => handleRevealCwdInFiles\(filesCwd\) : undefined\}/);
   // The outline (desktop's minimap) is one tap away, its own button beside ⋯, not a menu item.
   assert.doesNotMatch(menuSource, /onOpenOutline|labels\.outline/);

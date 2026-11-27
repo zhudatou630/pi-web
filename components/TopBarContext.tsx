@@ -5,17 +5,13 @@ import { useI18n } from "@/hooks/useI18n";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
 
 /**
- * Inside the composer's dock (docs/ui.md, Composer): "⑂ branch", with a dot while the cwd has
- * uncommitted changes. Its menu names the project and offers Changes N, terminal, Files and the
- * path. Narrow docks keep the glyph and dot only.
+ * Inside the composer's dock (docs/ui.md, Composer): "⑂ branch". Its menu names the project and
+ * offers terminal, Files and the path. Narrow docks keep the glyph only.
  */
-export function SessionBranchControl({ project, branch, cwd, changeCount, onOpenChanges, onOpenTerminal, onRevealInFiles, onCopyPath }: {
+export function SessionBranchControl({ project, branch, cwd, onOpenTerminal, onRevealInFiles, onCopyPath }: {
   project: string;
   branch?: string;
   cwd: string;
-  /** Uncommitted files in the cwd; the dot and the menu's Changes item show above 0. */
-  changeCount: number;
-  onOpenChanges: () => void;
   onOpenTerminal: () => void;
   onRevealInFiles: () => void;
   onCopyPath: () => void;
@@ -26,7 +22,7 @@ export function SessionBranchControl({ project, branch, cwd, changeCount, onOpen
   useMenuDismiss(open, rootRef, useCallback(() => setOpen(false), []));
   const item = (action: () => void) => () => { setOpen(false); action(); };
   const label = branch ?? project;
-  const title = [`${project}${branch ? ` · ${branch}` : ""}`, cwd, changeCount > 0 ? t("topBar.changesTitle", { count: changeCount }) : null].filter(Boolean).join("\n");
+  const title = `${project}${branch ? ` · ${branch}` : ""}\n${cwd}`;
   return (
     <div ref={rootRef} className="chat-input-popover-anchor">
       <button
@@ -42,20 +38,10 @@ export function SessionBranchControl({ project, branch, cwd, changeCount, onOpen
           <path d="M6 3v12" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
         </svg>
         <span className="composer-dock-label">{label}</span>
-        {changeCount > 0 && <span className="composer-branch-dirty" aria-hidden="true" />}
       </button>
       {open && (
         <div role="menu" aria-label={t("topBar.context")} className="chat-input-menu menu-surface" style={{ left: 0, minWidth: 200 }}>
           <div className="menu-surface-label" title={cwd}>{project}</div>
-          {changeCount > 0 && (
-            <>
-              <button type="button" role="menuitem" onClick={item(onOpenChanges)}>
-                <span>{t("topBar.changes")}</span>
-                <span className="chat-input-menu-note">{changeCount}</span>
-              </button>
-              <div role="separator" className="menu-surface-divider" />
-            </>
-          )}
           <button type="button" role="menuitem" onClick={item(onOpenTerminal)}>{t("topBar.openInTerminal")}</button>
           <button type="button" role="menuitem" onClick={item(onRevealInFiles)}>{t("topBar.revealInFiles")}</button>
           <button type="button" role="menuitem" onClick={item(onCopyPath)}>{t("topBar.copyPath")}</button>

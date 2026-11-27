@@ -584,8 +584,6 @@ export const zhCNLocale: LocalePlugin = {
     "topBar.openInTerminal": "在终端打开",
     "topBar.revealInFiles": "在「文件」里查看",
     "topBar.copyPath": "复制路径",
-    "topBar.changes": "改动",
-    "topBar.changesTitle": "未提交的改动：{count} 个文件",
     "panel.views": "改动与文件",
     "panel.changes": "改动",
     "panel.files": "文件",
