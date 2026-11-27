@@ -100,9 +100,9 @@ async function readStatusEntries(repositoryRoot: string, pathspec?: string): Pro
   return parseGitPorcelainV1(output);
 }
 
-type LineStats = { additions: number; deletions: number };
+type LineStats = { additions: number; deletions: number; paired?: boolean };
 
-/** Tracked +/− per repo-relative path (a detected rename counts on its new path only). */
+/** Tracked +/− per repo-relative path (a numstat-paired rename counts on its new path only, `paired`). */
 async function readTrackedLineStats(repositoryRoot: string, cwd: string): Promise<Map<string, LineStats>> {
   const relativeCwd = toGitPath(path.relative(repositoryRoot, cwd));
   const pathspec = relativeCwd || ".";
@@ -124,13 +124,15 @@ async function readTrackedLineStats(repositoryRoot: string, cwd: string): Promis
       const [added, deleted, ...name] = fields[i].split("\t");
       if (deleted === undefined) continue;
       let gitPath = name.join("\t");
+      let paired = false;
       if (!gitPath) {
         gitPath = fields[i + 2] ?? "";
         i += 2;
+        paired = true;
       }
       if (!gitPath) continue;
       // Binary files report "-": they have no line counts.
-      stats.set(gitPath, { additions: Number(added) || 0, deletions: Number(deleted) || 0 });
+      stats.set(gitPath, { additions: Number(added) || 0, deletions: Number(deleted) || 0, ...(paired && { paired }) });
     }
   } catch {
     // No HEAD yet, or git failed: no line counts.
@@ -212,9 +214,21 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
     const filePath = mapCwdGitPath(cwd, realCwd, realRoot, gitPath);
     if (filePath) lineStatsByPath.set(filePath, stats);
   }
-  const statsFor = (filePath?: string): Partial<LineStats> => lines
-    ? { ...(filePath ? lineStatsByPath.get(filePath) : undefined) ?? { additions: 0, deletions: 0 } }
-    : {};
+  const statsFor = (filePath?: string): Partial<LineStats> => {
+    if (!lines) return {};
+    const { additions, deletions } = (filePath ? lineStatsByPath.get(filePath) : undefined) ?? { additions: 0, deletions: 0 };
+    return { additions, deletions };
+  };
+  // A staged rename whose content was then rewritten no longer pairs in `diff HEAD`: numstat lists the
+  // old path as D and the new one as A. Give the rename row the old path's deletions unless a row of its own has them.
+  const ownPaths = new Set(entries.map((entry) => mapCwdGitPath(cwd, realCwd, realRoot, entry.path)));
+  const renameStats = (filePath: string, originalPath?: string): Partial<LineStats> => {
+    const own = statsFor(filePath);
+    if (!lines || !originalPath || lineStatsByPath.get(filePath)?.paired) return own;
+    const oldPath = mapCwdGitPath(cwd, realCwd, realRoot, originalPath);
+    const old = oldPath && !ownPaths.has(oldPath) ? lineStatsByPath.get(oldPath) : undefined;
+    return old ? { additions: own.additions, deletions: (own.deletions ?? 0) + old.deletions } : own;
+  };
   const files: GitFileStatus[] = [];
   for (let index = 0; index < entries.length; index++) {
     if (index % 1000 === 0) {
@@ -245,7 +259,7 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
       indexStatus: entry.indexStatus,
       worktreeStatus: entry.worktreeStatus,
       // `git rm --cached` lists a path twice (D and ??): numstat belongs to the tracked entry only.
-      ...(classified.status === "untracked" ? statsFor() : statsFor(filePath)),
+      ...(classified.status === "untracked" ? statsFor() : renameStats(filePath, entry.originalPath)),
     });
   }
   if (lines) await countUntrackedLines(files, signal);

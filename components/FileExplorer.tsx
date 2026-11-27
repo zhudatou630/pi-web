@@ -492,8 +492,17 @@ function TreeNode({
 
 type OpenFileOptions = { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string; preview?: boolean };
 
+/**
+ * What the explorer shows: the requested `{ cwd, refreshKey }` while active; hidden (kept mounted
+ * for its expansion) it keeps the last shown one, so project switches and run-time refreshes request
+ * nothing, and showing it again loads the latest once. Returns `shown` itself when nothing changes.
+ */
+export function shownExplorerTarget<T extends { cwd: string; refreshKey?: number }>(shown: T, requested: T, active: boolean): T {
+  return active && (shown.cwd !== requested.cwd || shown.refreshKey !== requested.refreshKey) ? requested : shown;
+}
+
 export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileExplorer({
-  cwd,
+  cwd: requestedCwd,
   onOpenFile,
   refreshKey: requestedRefreshKey,
   active = true,
@@ -506,9 +515,11 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   activePath,
 }, ref) {
   const { t } = useI18n();
-  // Hidden, a run-time refresh only marks the tree stale; showing it again reloads once.
-  const [refreshKey, setRefreshKey] = useState(requestedRefreshKey);
-  if (active && refreshKey !== requestedRefreshKey) setRefreshKey(requestedRefreshKey);
+  // Hidden, a cwd switch or run-time refresh waits; showing it again loads the latest once.
+  const [shown, setShown] = useState({ cwd: requestedCwd, refreshKey: requestedRefreshKey });
+  const nextShown = shownExplorerTarget(shown, { cwd: requestedCwd, refreshKey: requestedRefreshKey }, active);
+  if (nextShown !== shown) setShown(nextShown);
+  const { cwd, refreshKey } = nextShown;
   const [roots, setRoots] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -650,14 +661,17 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     const onPointerDown = (event: PointerEvent) => {
       if (!(event.target as HTMLElement | null)?.closest(".file-context-menu")) setFileMenu(null);
     };
+    // Captured and prevented: the menu, not the file panel around it, takes the Escape.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFileMenu(null);
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setFileMenu(null);
     };
     window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [fileMenu]);
 
@@ -1127,6 +1141,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape" && searchQuery) {
+                event.preventDefault();
                 event.stopPropagation();
                 setSearchQuery("");
               }

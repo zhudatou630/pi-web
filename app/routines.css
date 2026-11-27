@@ -154,10 +154,6 @@
   font-size: 12px;
 }
 
-.routines-empty.is-quiet {
-  padding: 48px 24px;
-}
-
 .routines-empty p {
   margin: 0;
 }

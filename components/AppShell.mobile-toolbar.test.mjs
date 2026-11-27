@@ -286,6 +286,15 @@ test("Android Back closes the phone drawer and the full-screen file panel first,
   assert.doesNotThrow(() => new Function("window", js)({})(() => {})());
   // Wired into the drawer's and the overlay panel's open effects; the URL state is left alone.
   assert.match(source, /const stopWatching = watchCloseRequest\(dismissMobileSidebar\);/);
-  assert.match(source, /const stopWatching = isMobile \|\| window\.innerWidth < 960 \? watchCloseRequest\(\(\) => closeRightPanel\(true\)\) : \(\) => \{\};/);
+  assert.match(source, /watchCloseRequest\(\(\) => closeRightPanel\(true\)\)/);
   assert.doesNotMatch(source, /history\.pushState|addEventListener\("popstate"/);
+});
+
+test("the file panel takes Back and Escape exactly where the CSS makes it cover the chat", () => {
+  // Followed live (matchMedia), so crossing the breakpoint with the panel open adds or drops the watcher.
+  const query = /const PANEL_OVERLAY_QUERY = "\(max-width: (\d+)px\)";/.exec(source)?.[1];
+  const overlay = /@media \(min-width: 641px\) and \(max-width: (\d+)px\) \{\s*\.right-panel-resize-handle/.exec(cssSource)?.[1];
+  assert.ok(query && overlay);
+  assert.equal(query, overlay);
+  assert.match(cssSource, new RegExp(`@media \\(min-width: ${Number(query) + 1}px\\) \\{`));
 });

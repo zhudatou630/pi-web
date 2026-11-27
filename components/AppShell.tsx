@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, Fragment } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useSyncExternalStore, Fragment } from "react";
 import { isImeComposing } from "@/lib/ime";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -41,7 +41,7 @@ import { SessionMenu } from "./SessionMenu";
 import { AgentsDockButton, SessionBranchControl } from "./TopBarContext";
 import type { ComposerDock } from "./ChatInput";
 import { hasBlockedSession } from "@/lib/session-status";
-import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView } from "./PanelViews";
+import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView, type PanelWorktreeInfo } from "./PanelViews";
 import type { FileExplorerHandle } from "./FileExplorer";
 import { InfoDialog } from "./InfoDialog";
 import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
@@ -119,7 +119,7 @@ import { formatModelTiming } from "@/lib/model-timing";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import { PRESET_READ_ONLY, type ToolEntry } from "@/lib/tool-presets";
 import { indexSessionFamilies, unnamedSideChatNumbers } from "@/lib/session-family";
-import { panelDockFor, panelDockToggleWidth, panelViewCwd } from "@/lib/panel-dock";
+import { panelChangesScope, panelDockFor, panelDockToggleWidth, panelViewCwd, panelWorktreeInfo } from "@/lib/panel-dock";
 import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
 import { prefetchSettings } from "@/lib/settings-cache";
@@ -170,6 +170,17 @@ function watchCloseRequest(onClose: () => void): () => void {
   return () => watcher.destroy();
 }
 
+// Below the inline breakpoint of app/globals.css the file panel covers the chat: full screen on
+// phones (max-width: 640px), an overlay with a scrim at 641–959px. Back and Escape close it there.
+const PANEL_OVERLAY_QUERY = "(max-width: 959px)";
+const subscribePanelOverlay = (onChange: () => void) => {
+  const query = window.matchMedia(PANEL_OVERLAY_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const getPanelOverlay = () => window.matchMedia(PANEL_OVERLAY_QUERY).matches;
+const getServerPanelOverlay = () => false;
+
 const AGENT_PANEL_WIDTH = 420;
 // pi's built-in tools that never change a file; any other tool may (#1144).
 const READ_ONLY_TOOL_NAMES = new Set(PRESET_READ_ONLY);
@@ -203,6 +214,7 @@ export function AppShell() {
   const { locale, t: translate } = useI18n();
   const confirm = useConfirm();
   const isMobile = useIsMobile();
+  const panelIsOverlay = useSyncExternalStore(subscribePanelOverlay, getPanelOverlay, getServerPanelOverlay);
   useViewportHeight();
   // Keep browser/PWA theme-color aligned with the workspace header even when
   // Settings is closed and no other useTheme subscriber is mounted.
@@ -911,17 +923,18 @@ export function AppShell() {
       const panel = sidebarResizer.panelRef.current;
       panel?.querySelector<HTMLElement>('[aria-current="page"], button:not(:disabled)')?.focus();
     });
+    // Bubbling on window, the last stop: a menu inside the drawer takes its Escape first.
     const handleKeyDown = (event: KeyboardEvent) => {
       // An input method takes its Escape to close the candidate list.
-      if (event.key !== "Escape" || isImeComposing(event) || isModalDialogOpen()) return;
+      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event) || isModalDialogOpen()) return;
       event.preventDefault();
       dismissMobileSidebar();
     };
-    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
     const stopWatching = watchCloseRequest(dismissMobileSidebar);
     return () => {
       cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown);
       stopWatching();
     };
   }, [dismissMobileSidebar, isMobile, mobileSidebarReady, sidebarOpen, sidebarResizer.panelRef]);
@@ -940,30 +953,31 @@ export function AppShell() {
     if (restoreFocus) requestAnimationFrame(() => (filePanelToggleRef.current ?? document.querySelector<HTMLElement>("[data-session-menu-trigger]"))?.focus());
   }, []);
 
+  // Full screen (phones) or an overlay (641–959px), followed across the breakpoint: focus moves in,
+  // and Escape and Back close it before they leave the app. Escape bubbles to window last, so a
+  // menu, find bar or field inside the panel takes it first (preventDefault).
+  const filePanelCoversChat = rightPanelOpen && panelIsOverlay;
   useEffect(() => {
-    if (!rightPanelOpen) return;
+    if (!filePanelCoversChat) return;
 
     const focusFrame = requestAnimationFrame(() => {
-      if (!isMobile && window.innerWidth >= 960) return;
       rightPanelResizer.panelRef.current
         ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
         ?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || isImeComposing(event) || (!isMobile && window.innerWidth >= 960) || isModalDialogOpen()) return;
+      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event) || isModalDialogOpen()) return;
       event.preventDefault();
-      event.stopPropagation();
       closeRightPanel(true);
     };
-    document.addEventListener("keydown", handleKeyDown, true);
-    // Full screen (phones) or an overlay (641–959px): Back closes it before it leaves the app.
-    const stopWatching = isMobile || window.innerWidth < 960 ? watchCloseRequest(() => closeRightPanel(true)) : () => {};
+    window.addEventListener("keydown", handleKeyDown);
+    const stopWatching = watchCloseRequest(() => closeRightPanel(true));
     return () => {
       cancelAnimationFrame(focusFrame);
-      document.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
       stopWatching();
     };
-  }, [closeRightPanel, isMobile, rightPanelOpen, rightPanelResizer.panelRef]);
+  }, [closeRightPanel, filePanelCoversChat, rightPanelResizer.panelRef]);
 
   useEffect(() => {
     setHistoryMenuOpen(false);
@@ -2373,6 +2387,7 @@ export function AppShell() {
       if (event.key !== "Escape" || event.defaultPrevented || isModalDialogOpen()) return;
       // Esc belongs to the shell (vim, less) and to text fields.
       if (event.target instanceof Element && event.target.closest(".xterm, input, textarea, select, [contenteditable]")) return;
+      event.preventDefault(); // restoring is this Escape; the 641–959px overlay stays open
       setPanelMaximized(false);
     };
     document.addEventListener("keydown", restore);
@@ -2815,6 +2830,25 @@ export function AppShell() {
   const changesViewCwd = panelViewCwd("changes", panelDockOn, panelCwd);
   const filesViewCwd = panelViewCwd("files", panelDockOn, panelCwd);
   const filesViewShown = (showPanelView && panelView === "files") || panelDock === "files";
+  const changesViewScope = changesViewCwd ? panelChangesScope(changesViewCwd, panelCwd, changesScope, turnFiles) : null;
+  // The sidebar loads the worktrees of the session's cwd; a tree docked for another project's tab
+  // reads that project's once, when shown (same /api/worktrees answer, no polling).
+  const [dockWorktreeInfo, setDockWorktreeInfo] = useState<PanelWorktreeInfo & { forCwd: string } | null>(null);
+  const filesViewWorktreeInfo = filesViewCwd ? panelWorktreeInfo(filesViewCwd, [worktreeInfo, dockWorktreeInfo]) : null;
+  const dockWorktreeCwd = rightPanelOpen && filesViewShown && filesViewCwd && filesViewCwd !== panelCwd && !filesViewWorktreeInfo ? filesViewCwd : null;
+  useEffect(() => {
+    if (!dockWorktreeCwd) return;
+    const controller = new AbortController();
+    fetch(`/api/worktrees?cwd=${encodeURIComponent(dockWorktreeCwd)}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<{ isGit?: boolean; currentWorktreePath?: string | null; worktrees?: PanelWorktreeInfo["worktrees"] }> : null)
+      .then((data) => setDockWorktreeInfo({
+        forCwd: dockWorktreeCwd,
+        currentWorktreePath: data?.currentWorktreePath ?? null,
+        worktrees: data?.isGit ? data.worktrees ?? [] : [],
+      }))
+      .catch(() => { /* aborted, or no switcher for this column */ });
+    return () => controller.abort();
+  }, [dockWorktreeCwd]);
   const panelDockWidenedFromRef = useRef<number | null>(null);
   const setRightPanelWidth = rightPanelResizer.setWidth;
   const togglePanelDock = useCallback(() => {
@@ -4196,9 +4230,9 @@ export function AppShell() {
                 refreshKey={explorerRefreshKey}
                 active={rightPanelOpen}
                 activePath={panelDock === "changes" ? activeFileTab?.filePath : undefined}
-                scope={changesScope}
+                scope={changesViewScope?.scope ?? changesScope}
                 onScopeChange={setChangesScope}
-                turnFiles={turnFiles}
+                turnFiles={changesViewScope?.turnFiles ?? null}
                 onOpenDiff={(filePath) => handleOpenDiff(filePath, changesViewCwd)}
               />
               </div>
@@ -4222,7 +4256,7 @@ export function AppShell() {
                 onAtMention={handleAtMention}
                 onAtMentions={handleAtMentions}
                 reveal={explorerReveal}
-                worktreeInfo={worktreeInfo?.forCwd === filesViewCwd ? worktreeInfo : null}
+                worktreeInfo={filesViewWorktreeInfo}
                 onSelectWorktree={(path) => showInPanel(path, "files")}
                 activePath={panelDock === "files" ? activeFileTab?.filePath : undefined}
                 dockTitle={panelDock === "files" ? renderPanelDockTitle() : undefined}

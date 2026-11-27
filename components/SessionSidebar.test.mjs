@@ -34,7 +34,7 @@ test("a folded group shows only its most urgent state as one dot, without counts
 
 test("unread storage updates replace dated markers without echoing writes", () => {
   const start = source.indexOf("  useEffect(() => {\n    if (sameUnreadMarks(storedUnreadMarksRef");
-  const end = source.indexOf("  useEffect(() => {\n    const syncAttended", start);
+  const end = source.indexOf("  useEffect(() => {\n    let expiry", start);
   const localStorage = {};
   const listeners = new Map();
   const writes = [];

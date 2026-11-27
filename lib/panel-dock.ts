@@ -28,6 +28,25 @@ export function panelViewCwd(view: PanelDockView, dock: { view: PanelDockView; c
 }
 
 /**
+ * The Changes list's scope and the turn's files for `cwd`. The turn scope is the focused chat's last
+ * turn, written into the session's project (`panelCwd`); a column docked for another project's tab
+ * has no turn of its own there, so it shows that project's uncommitted changes (turnFiles null: no
+ * turn scope to offer) and leaves the full-size view's remembered scope alone.
+ */
+export function panelChangesScope(cwd: string, panelCwd: string | null, scope: "uncommitted" | "turn", turnFiles: readonly string[]): { scope: "uncommitted" | "turn"; turnFiles: readonly string[] | null } {
+  return cwd === panelCwd ? { scope, turnFiles } : { scope: "uncommitted", turnFiles: null };
+}
+
+/**
+ * The worktree info for the Files view's `cwd`: whichever known one (the sidebar's, for the
+ * session's cwd, or the one fetched for a docked column of another project) is for that cwd.
+ * Null: not in hand yet.
+ */
+export function panelWorktreeInfo<T extends { forCwd: string }>(cwd: string, known: readonly (T | null)[]): T | null {
+  return known.find((info) => info?.forCwd === cwd) ?? null;
+}
+
+/**
  * Showing the column on a panel narrower than `minWidth` widens the panel by the column instead
  * of squeezing the viewer; hiding it gives that width back. Returns the width to set (null: keep)
  * and the width to restore on the next hide.

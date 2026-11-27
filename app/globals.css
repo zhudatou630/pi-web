@@ -6103,8 +6103,9 @@ span.token.table {
   cursor: default;
 }
 
-/* Touch screens wider than a phone (tablets) keep the dense 24px drawing; an invisible
-   ring grows the hit box to 32px tall, 1px sideways so neighbours in the 2px gap never overlap. */
+/* Touch base ring for composer buttons (the composer card's own rings are in the final
+   pointer: coarse block, "Composer"): an invisible ring grows the hit box to 32px tall,
+   1px sideways so neighbours in the 2px gap never overlap. */
 @media (pointer: coarse) {
   .composer-btn,
   .composer-send {
@@ -6902,23 +6903,11 @@ span.token.table {
   }
 
   /* The run controls beside the text are drawn at 24px, as on desktop, to sit with one line
-     of 14px text; an invisible 4px ring keeps the touch target at 32px. */
+     of 14px text; the touch ring (pointer: coarse block below, `.chat-input` rings) keeps the target at 32px. */
   .chat-input-actions .composer-btn.is-icon {
     width: 24px;
     height: 24px;
     padding: 0;
-  }
-
-  .chat-input-actions .composer-btn,
-  .composer-send {
-    position: relative;
-  }
-
-  .chat-input-actions .composer-btn::before,
-  .composer-send::before {
-    content: "";
-    position: absolute;
-    inset: -4px;
   }
 
   .composer-send {
@@ -7102,7 +7091,7 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
   overflow-wrap: anywhere;
 }
 
-/* Phone top bar: ☰, title, "Changes N", ⋯ (docs/ui.md, Top bar and composer panels). */
+/* Phone top bar: ☰, title, Changes, ⋯ (docs/ui.md, Top bar and composer panels). */
 .mobile-top-bar-title {
   flex: 1;
   min-width: 0;
@@ -7177,11 +7166,11 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
   .sidebar-top-icon::after {
     inset: -7px;
   }
-  .sidebar-top-icon:has(+ .sidebar-top-icon)::after {
+  .sidebar-filter > .sidebar-top-icon::after {
     inset: -7px -1px -7px -7px;
   }
-  .sidebar-top-icon + .sidebar-top-icon::after {
-    inset: -7px -7px -7px -1px;
+  .sidebar-filter + .sidebar-top-icon::after {
+    inset: -7px -7px -7px 0;
   }
   /* Project rows are 32px tall and sit against the project name on the left. */
   .workspace-new-session::after {

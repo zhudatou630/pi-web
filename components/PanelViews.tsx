@@ -75,6 +75,7 @@ const sum = (files: readonly GitFileStatus[], key: "additions" | "deletions") =>
  * Uncommitted changes of `cwd`: one row per file (file icon, name, folder, +N −M, status letter), as
  * in VS Code / Cursor source control; a deleted file's name is struck through. The
  * "turn" scope keeps only the files the focused session's last turn wrote; numbers stay uncommitted.
+ * `turnFiles` null: no turn scope here (a column docked for another project's tab), only uncommitted.
  */
 export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScopeChange, turnFiles, onOpenDiff }: {
   cwd: string;
@@ -84,7 +85,7 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
   active: boolean;
   scope: ChangesScope;
   onScopeChange: (scope: ChangesScope) => void;
-  turnFiles: readonly string[];
+  turnFiles: readonly string[] | null;
   onOpenDiff: (filePath: string) => void;
 }) {
   const { t } = useI18n();
@@ -105,7 +106,7 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
 
   const data = status?.cwd === cwd ? status.data : null;
   const all = data?.isGitRepository ? data.files : [];
-  const turn = turnScopedChanges(all, turnFiles, cwd);
+  const turn = turnScopedChanges(all, turnFiles ?? [], cwd);
   const files = scope === "turn" ? turn.files : all;
   const headLabel = t(`${scope === "turn" ? "changes.headerTurn" : "changes.headerAll"}${files.length === 1 ? "One" : ""}`, { count: files.length });
 
@@ -113,7 +114,7 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
   if (failed) body = <div role="alert" className="panel-view-empty is-error">{t("files.gitStatusFailed")}</div>;
   else if (!data) body = <div className="panel-view-empty">{t("chat.loadingFiles")}</div>;
   else if (!data.isGitRepository) body = <div className="panel-view-empty">{t("changes.notGit")}</div>;
-  else if (scope === "turn" && turnFiles.length === 0) body = <div className="panel-view-empty">{t("changes.noneTurn")}</div>;
+  else if (scope === "turn" && !turnFiles?.length) body = <div className="panel-view-empty">{t("changes.noneTurn")}</div>;
   else if (files.length === 0 && scope === "uncommitted") body = <div className="panel-view-empty">{t("changes.none")}</div>;
   else {
     body = (
@@ -142,7 +143,7 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
     <div className="panel-view">
       <div className="changes-head">
         <TextMenu label={headLabel}>
-          {(close) => (["uncommitted", "turn"] as const).map((value) => (
+          {(close) => (turnFiles ? ["uncommitted", "turn"] as const : ["uncommitted"] as const).map((value) => (
             <button key={value} type="button" role="menuitemradio" aria-checked={scope === value} onClick={() => { close(); onScopeChange(value); }}>
               {t(value === "turn" ? "changes.scopeTurn" : "changes.scopeAll")}
               <span className="panel-menu-meta">{value === "turn" ? turn.files.length : all.length}</span>

@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from "react";
 import { isImeComposing } from "@/lib/ime";
-import { hasRecentAttention, parseUnreadMarks, sameUnreadMarks, withoutReadMarks, UNREAD_SESSIONS_STORAGE_KEY, type UnreadMarks } from "@/lib/unread-state";
+import { attentionExpiresIn, hasRecentAttention, parseUnreadMarks, sameUnreadMarks, withoutReadMarks, UNREAD_SESSIONS_STORAGE_KEY, type UnreadMarks } from "@/lib/unread-state";
 import type { SessionInfo } from "@/lib/types";
 import { selectionFamilies, reconcileSessionSelection, toggleSessionSelection, sessionSelectionSummary } from "@/lib/session-selection";
 import { familyParentId, listSessionFamilies, isFamilyArchived, familyHasMemberIn, familiesToArchive, previewSessionFamilies, markSessionFamilyRead, type SessionFamily } from "@/lib/session-family";
@@ -808,7 +808,18 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   }, []);
 
   useEffect(() => {
-    const syncAttended = () => setAttended(hasRecentAttention(lastInputAtRef.current, performance.now(), document.visibilityState === "visible", document.hasFocus()));
+    let expiry: ReturnType<typeof setTimeout> | null = null;
+    // One-shot timer at the end of the input window, re-armed by input and cleared when attention ends.
+    const syncAttended = () => {
+      if (expiry) clearTimeout(expiry);
+      expiry = null;
+      const now = performance.now();
+      const visible = document.visibilityState === "visible";
+      const focused = document.hasFocus();
+      setAttended(hasRecentAttention(lastInputAtRef.current, now, visible, focused));
+      const remaining = attentionExpiresIn(lastInputAtRef.current, now, visible, focused);
+      if (remaining !== null) expiry = setTimeout(syncAttended, remaining + 1);
+    };
     const noteInput = () => { lastInputAtRef.current = performance.now(); syncAttended(); };
     const events = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
     for (const name of events) window.addEventListener(name, noteInput, { capture: true, passive: true });
@@ -816,12 +827,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     const syncEvents = ["focus", "blur"] as const;
     for (const name of syncEvents) window.addEventListener(name, syncAttended);
     document.addEventListener("visibilitychange", syncAttended);
-    const timer = setInterval(syncAttended, 5000);
     return () => {
+      if (expiry) clearTimeout(expiry);
       for (const name of events) window.removeEventListener(name, noteInput, { capture: true });
       for (const name of syncEvents) window.removeEventListener(name, syncAttended);
       document.removeEventListener("visibilitychange", syncAttended);
-      clearInterval(timer);
     };
   }, []);
 

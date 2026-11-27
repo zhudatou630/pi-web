@@ -19,6 +19,13 @@ export function sameUnreadMarks(a: UnreadMarks, b: UnreadMarks): boolean {
   return a.size === b.size && [...a].every(([id, at]) => b.get(id) === at);
 }
 
+export const ATTENTION_WINDOW_MS = 120_000;
+
 export function hasRecentAttention(lastInput: number | null, now: number, visible: boolean, focused: boolean): boolean {
-  return visible && focused && lastInput !== null && now - lastInput < 120_000;
+  return visible && focused && lastInput !== null && now - lastInput < ATTENTION_WINDOW_MS;
+}
+
+/** Ms until the input window ends (attention is lost at exactly this delay), or null when not attended now. */
+export function attentionExpiresIn(lastInput: number | null, now: number, visible: boolean, focused: boolean): number | null {
+  return hasRecentAttention(lastInput, now, visible, focused) ? lastInput! + ATTENTION_WINDOW_MS - now : null;
 }

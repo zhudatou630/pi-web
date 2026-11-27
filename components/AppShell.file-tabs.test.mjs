@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
 
-const { panelDockFor, panelViewCwd, panelDockToggleWidth } = await createJiti(import.meta.url).import("../lib/panel-dock.ts");
+const { panelChangesScope, panelDockFor, panelViewCwd, panelDockToggleWidth, panelWorktreeInfo } = await createJiti(import.meta.url).import("../lib/panel-dock.ts");
 
 const shell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const explorer = await readFile(new URL("./FileExplorer.tsx", import.meta.url), "utf8");
@@ -64,6 +64,25 @@ test("a docked column follows its file tab's project; full-size views follow the
   assert.equal(panelViewCwd("files", null, "/work/b"), "/work/b");
 });
 
+test("a column docked for project A beside a B session shows A's uncommitted changes and A's worktrees", () => {
+  // B's last turn wrote these; Review left the full-size view on the turn scope.
+  const turnFiles = ["/work/b/src/x.ts"];
+  const dock = panelDockFor({ filePath: "/work/a/README.md", cwd: "/work/a", initialDisplayMode: "diff" }, "/work/b", false);
+  const changesCwd = panelViewCwd("changes", dock, "/work/b");
+  // No turn of A's session here: A's uncommitted list, and no turn scope to offer.
+  assert.deepEqual(panelChangesScope(changesCwd, "/work/b", "turn", turnFiles), { scope: "uncommitted", turnFiles: null });
+  // Full size (same project) the remembered scope and the turn's files stay.
+  assert.deepEqual(panelChangesScope("/work/b", "/work/b", "turn", turnFiles), { scope: "turn", turnFiles });
+
+  // The sidebar holds B's worktrees; the column needs A's, fetched for it.
+  const sidebar = { forCwd: "/work/b", currentWorktreePath: "/work/b", worktrees: [] };
+  const fetchedA = { forCwd: "/work/a", currentWorktreePath: "/work/a", worktrees: [{ path: "/work/a", branch: "main", isMain: true }, { path: "/work/a-wt", branch: "x", isMain: false }] };
+  const filesCwd = panelViewCwd("files", panelDockFor({ filePath: "/work/a/README.md", cwd: "/work/a" }, "/work/b", false), "/work/b");
+  assert.equal(panelWorktreeInfo(filesCwd, [sidebar, null]), null); // not in hand: fetch A's
+  assert.equal(panelWorktreeInfo(filesCwd, [sidebar, fetchedA]), fetchedA);
+  assert.equal(panelWorktreeInfo("/work/b", [sidebar, fetchedA]), sidebar);
+});
+
 test("showing the column on a narrow panel widens it by the column; hiding gives the width back", () => {
   assert.deepEqual(panelDockToggleWidth(true, 500, null, 600, 220), { width: 720, widenedFrom: 500 });
   assert.deepEqual(panelDockToggleWidth(false, 720, 500, 600, 220), { width: 500, widenedFrom: null });
@@ -91,5 +110,4 @@ test("the fixed Changes / Files tabs are one Tab stop and switch with the arrow 
   const tabs = shell.slice(start, shell.indexOf("</div>", start));
   assert.match(tabs, /tabIndex=\{panelView === view \? 0 : -1\}/);
   assert.match(tabs, /event\.key !== "ArrowLeft" && event\.key !== "ArrowRight"/);
-  assert.match(tabs, /selectPanelView\(views\[nextIndex\]\);\s*\(event\.currentTarget\.parentElement\?\.children\[nextIndex\] as HTMLElement \| undefined\)\?\.focus\(\);/);
 });

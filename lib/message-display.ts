@@ -170,7 +170,9 @@ export function getAssistantErrorMessage(
  */
 export function isAbortedAssistantError(message: Pick<AssistantMessage, "stopReason" | "errorMessage">): boolean {
   return message.stopReason === "error"
-    && /^(?:(?:This|The) operation was aborted|Request was aborted)\.?$/.test(message.errorMessage?.trim() ?? "");
+    // The scanner passes raw JSON: anything but a string is a real failure, never a throw.
+    && typeof message.errorMessage === "string"
+    && /^(?:(?:This|The) operation was aborted|Request was aborted)\.?$/.test(message.errorMessage.trim());
 }
 
 export function isAssistantAborted(message: AssistantMessage, options: DisplayOptions = {}): boolean {

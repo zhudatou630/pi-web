@@ -70,8 +70,9 @@ test("mobile composer keeps 32px touch targets without enlarging the icons", () 
   assert.equal(decls(".composer-btn,\n  .composer-send").height, "32px");
   assert.equal(decls(".composer-send").width, "24px");
   assert.equal(decls(".chat-input-actions .composer-btn.is-icon").width, "24px");
-  // Drawn at 24px, touched at 32px.
-  assert.equal(decls(".chat-input-actions .composer-btn::before,\n  .composer-send::before").inset, "-4px");
+  // Drawn at 24px; the touch ring lives in the pointer: coarse block, not in this width query.
+  const coarse = css.nodes.filter((node) => node.type === "atrule" && node.name === "media" && node.params === "(pointer: coarse)");
+  assert.ok(coarse.some((node) => node.toString().includes(".chat-input .composer-send::before")));
   assert.doesNotMatch(mobile.toString(), /\.composer-(btn|send) svg/);
 });
 

@@ -377,7 +377,7 @@ export function ChatTabBar({
                 }
               }}
               // One tab look (docs/ui.md, Tabs and top bars): a quiet chip, no lines. The focused
-              // pane's shown tab is filled, the other pane's shown tab tinted.
+              // pane's shown tab is filled; the other pane's shown tab keeps --text, no fill.
               className="chat-tab"
               data-shown={isVisible ? "true" : "false"}
               data-current={isCurrentPane ? "true" : undefined}

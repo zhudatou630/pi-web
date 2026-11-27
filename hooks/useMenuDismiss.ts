@@ -1,5 +1,6 @@
 import { useEffect, type RefObject } from "react";
 import { isModalDialogOpen } from "@/components/ModalDialog";
+import { isImeComposing } from "@/lib/ime";
 
 /**
  * Where Escape returns focus: the menu's trigger (the root's first `[aria-expanded]` element),
@@ -12,7 +13,8 @@ export function menuEscapeFocusTarget(root: HTMLElement | null, focus: Element |
 
 /**
  * Closes a small anchored menu on a press outside `rootRef` or on Escape (unless a modal owns it);
- * Escape gives focus back to its trigger.
+ * Escape gives focus back to its trigger. The menu is the innermost layer: it takes the Escape
+ * (preventDefault), so a panel or drawer it opened in stays open (they skip a prevented Escape).
  */
 export function useMenuDismiss(open: boolean, rootRef: RefObject<HTMLElement | null>, close: () => void) {
   useEffect(() => {
@@ -21,7 +23,8 @@ export function useMenuDismiss(open: boolean, rootRef: RefObject<HTMLElement | n
       if (!rootRef.current?.contains(event.target as Node)) close();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || isModalDialogOpen()) return;
+      if (event.key !== "Escape" || isImeComposing(event) || isModalDialogOpen()) return;
+      event.preventDefault();
       const trigger = menuEscapeFocusTarget(rootRef.current, document.activeElement, document.body);
       close();
       trigger?.focus();

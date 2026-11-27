@@ -37,6 +37,7 @@ import { getModelDisplayName, hasAssistantAnswer, MessageNoticeContext, MessageV
 import { MarkdownBody, MarkdownSessionContext } from "./MarkdownBody";
 import { ChatInput, getUserMessageDraftImages, getUserMessageText, type ChatInputHandle, type ComposerDock } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { isModalDialogOpen } from "./ModalDialog";
 import { MenuCheck } from "./MenuCheck";
 import { iconStroke } from "./iconStroke";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -270,16 +271,45 @@ export function NewSessionCwdControl({
   const candidateWorktree = refreshedWorktree?.forCwd === cwd ? refreshedWorktree : worktreeInfo;
   const activeWorktree = coversCwd(candidateWorktree) ? candidateWorktree : null;
 
+  // Two non-modal pickers, each with its own trigger: opened from the keyboard, focus goes to the
+  // current row (or the first); Escape closes the open one and puts focus back on its trigger,
+  // unless a field inside took the Escape first (the branch name cancels its edit).
+  const projectTriggerRef = useRef<HTMLButtonElement>(null);
+  const branchTriggerRef = useRef<HTMLButtonElement>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
+  const branchMenuRef = useRef<HTMLDivElement>(null);
+  const focusMenuOnOpenRef = useRef(false);
   useEffect(() => {
     if (!menuOpen && !branchMenuOpen) return;
+    if (focusMenuOnOpenRef.current) {
+      focusMenuOnOpenRef.current = false;
+      const menu = (menuOpen ? projectMenuRef : branchMenuRef).current;
+      (menu?.querySelector<HTMLElement>("button[aria-current]:not(:disabled)") ?? menu?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus();
+    }
+    const trigger = (menuOpen ? projectTriggerRef : branchTriggerRef).current;
     const onDocument = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
         setMenuOpen(false);
         setBranchMenuOpen(false);
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event) || isModalDialogOpen()) return;
+      event.preventDefault();
+      const focus = document.activeElement;
+      setMenuOpen(false);
+      setBranchMenuOpen(false);
+      setNewBranch(null);
+      setMenuError(null);
+      setConfirmRemove(null);
+      if (!focus || focus === document.body || rootRef.current?.contains(focus)) trigger?.focus();
+    };
     document.addEventListener("mousedown", onDocument);
-    return () => document.removeEventListener("mousedown", onDocument);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocument);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [menuOpen, branchMenuOpen]);
 
   const worktrees = activeWorktree?.worktrees ?? [];
@@ -386,7 +416,9 @@ export function NewSessionCwdControl({
           aria-label={`${t("chat.changeWorkingDirectory")}: ${displayProject}`}
           aria-haspopup="dialog"
           aria-expanded={menuOpen}
-          onClick={() => {
+          ref={projectTriggerRef}
+          onClick={(event) => {
+            focusMenuOnOpenRef.current = !menuOpen && event.detail === 0; // opened from the keyboard
             setMenuOpen((open) => !open);
             setBranchMenuOpen(false);
             setMenuError(null);
@@ -399,6 +431,7 @@ export function NewSessionCwdControl({
           <div
             role="dialog"
             aria-label={t("chat.changeWorkingDirectory")}
+            ref={projectMenuRef}
             className="menu-surface new-session-pick-menu"
             style={menuPosition}
           >
@@ -448,7 +481,9 @@ export function NewSessionCwdControl({
             aria-label={`${t("sidebar.switchWorktree")}: ${currentBranch}`}
             aria-haspopup="dialog"
             aria-expanded={branchMenuOpen}
-            onClick={() => {
+            ref={branchTriggerRef}
+            onClick={(event) => {
+              focusMenuOnOpenRef.current = !branchMenuOpen && event.detail === 0; // opened from the keyboard
               setBranchMenuOpen((open) => !open);
               setMenuOpen(false);
               setNewBranch(null);
@@ -472,6 +507,7 @@ export function NewSessionCwdControl({
             <div
               role="dialog"
               aria-label={t("sidebar.switchWorktree")}
+              ref={branchMenuRef}
               className="menu-surface new-session-pick-menu"
               style={menuPosition}
             >
@@ -565,7 +601,7 @@ export function NewSessionCwdControl({
                       onKeyDown={(event) => {
                         if (isImeComposing(event)) return;
                         if (event.key === "Enter") { event.preventDefault(); createWorktree(); }
-                        if (event.key === "Escape") { setNewBranch(null); setMenuError(null); }
+                        if (event.key === "Escape") { event.preventDefault(); setNewBranch(null); setMenuError(null); }
                       }}
                       placeholder={t("sidebar.branchName")}
                       aria-label={t("sidebar.branchName")}
