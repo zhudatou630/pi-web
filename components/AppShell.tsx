@@ -2841,7 +2841,9 @@ export function AppShell() {
   // reads that project's when shown (same /api/worktrees answer, no polling). Only a success is kept,
   // until worktrees change in the app or a manual refresh (`dockWorktreeEpoch`).
   const [dockWorktreeInfo, setDockWorktreeInfo] = useState<PanelWorktreeInfo & { forCwd: string; epoch: number } | null>(null);
-  const filesViewWorktreeInfo = filesViewCwd ? panelWorktreeInfo(filesViewCwd, [worktreeInfo, dockWorktreeInfo]) : null;
+  // A stale answer is never shown: a removed checkout must not stay clickable until the refetch lands.
+  const currentDockWorktreeInfo = dockWorktreeInfo?.epoch === dockWorktreeEpoch ? dockWorktreeInfo : null;
+  const filesViewWorktreeInfo = filesViewCwd ? panelWorktreeInfo(filesViewCwd, [worktreeInfo, currentDockWorktreeInfo]) : null;
   const dockWorktreeCwd = rightPanelOpen && filesViewShown && filesViewCwd && filesViewCwd !== panelCwd
     ? panelWorktreeFetchCwd(filesViewCwd, worktreeInfo, dockWorktreeInfo, dockWorktreeEpoch)
     : null;

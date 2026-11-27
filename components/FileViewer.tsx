@@ -1410,6 +1410,7 @@ function TextFileViewer({
   const contentRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [findOpen, setFindOpen] = useState(false);
+  const findButtonRef = useRef<HTMLButtonElement>(null);
   const autoDiffAppliedRef = useRef(false);
   const scrollRestorePendingRef = useRef(true);
   const viewerStateRef = useRef<FileViewerState>({
@@ -2129,6 +2130,7 @@ function TextFileViewer({
           <div className="file-viewer-actions">
             <button
               type="button"
+              ref={findButtonRef}
               onClick={() => setFindOpen(true)}
               title={`${t("files.find")} (${FIND_SHORTCUT_LABEL})`}
               aria-label={t("files.find")}
@@ -2208,7 +2210,11 @@ function TextFileViewer({
               : undefined}
             partial={Boolean(data?.truncated)}
             canGoToLine={effectiveDisplayMode === "source"}
-            onClose={() => setFindOpen(false)}
+            onClose={() => {
+              setFindOpen(false);
+              // The focused control unmounts with the bar: hand focus back to the toolbar's Find.
+              findButtonRef.current?.focus();
+            }}
           />
         </div>
       )}

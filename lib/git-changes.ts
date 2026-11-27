@@ -225,11 +225,11 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
   const ownPaths = new Set(entries.flatMap((entry) =>
     entry.indexStatus === "?" ? [] : [mapCwdGitPath(cwd, realCwd, realRoot, entry.path)]));
   const consumedOldPaths = new Set<string>();
+  // Copies keep the source file: it is not deleted.
+  const isCopy = (entry: GitPorcelainEntry) => `${entry.indexStatus}${entry.worktreeStatus}`.includes("C");
   const renameStats = (filePath: string, entry: GitPorcelainEntry): Partial<LineStats> => {
     const own = statsFor(filePath);
-    // Copies keep the source file: it is not deleted.
-    if (!lines || !entry.originalPath || `${entry.indexStatus}${entry.worktreeStatus}`.includes("C")
-      || lineStatsByPath.get(filePath)?.paired) return own;
+    if (!lines || !entry.originalPath || isCopy(entry) || lineStatsByPath.get(filePath)?.paired) return own;
     const oldPath = mapCwdGitPath(cwd, realCwd, realRoot, entry.originalPath);
     if (!oldPath || ownPaths.has(oldPath) || consumedOldPaths.has(oldPath)) return own;
     const old = lineStatsByPath.get(oldPath);
@@ -245,7 +245,8 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
     const entry = entries[index];
     let filePath = mapCwdGitPath(cwd, realCwd, realRoot, entry.path);
     const classified = classifyGitStatus(entry);
-    if (!filePath && entry.originalPath) {
+    // Renamed out of the cwd: the source left it. A copy out of it changed nothing here.
+    if (!filePath && entry.originalPath && !isCopy(entry)) {
       filePath = mapCwdGitPath(cwd, realCwd, realRoot, entry.originalPath);
       if (filePath) {
         files.push({
