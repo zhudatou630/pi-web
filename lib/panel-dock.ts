@@ -29,12 +29,13 @@ export function panelViewCwd(view: PanelDockView, dock: { view: PanelDockView; c
 
 /**
  * The Changes list's scope and the turn's files for `cwd`. The turn scope is the focused chat's last
- * turn, written into the session's project (`panelCwd`); a column docked for another project's tab
- * has no turn of its own there, so it shows that project's uncommitted changes (turnFiles null: no
- * turn scope to offer) and leaves the full-size view's remembered scope alone.
+ * turn, offered only for the cwd of the session that produced it (`turn.cwd`), not for the sidebar's
+ * browsed cwd: with chat tabs open the sidebar may browse A while the focused chat is B. Elsewhere
+ * (A browsed, or a column docked for another project's tab) the list is that cwd's uncommitted
+ * changes (turnFiles null: no turn scope to offer) and the remembered scope is left alone.
  */
-export function panelChangesScope(cwd: string, panelCwd: string | null, scope: "uncommitted" | "turn", turnFiles: readonly string[]): { scope: "uncommitted" | "turn"; turnFiles: readonly string[] | null } {
-  return cwd === panelCwd ? { scope, turnFiles } : { scope: "uncommitted", turnFiles: null };
+export function panelChangesScope(cwd: string, turn: { cwd: string | null; files: readonly string[] }, scope: "uncommitted" | "turn"): { scope: "uncommitted" | "turn"; turnFiles: readonly string[] | null } {
+  return turn.cwd !== null && cwd === turn.cwd ? { scope, turnFiles: turn.files } : { scope: "uncommitted", turnFiles: null };
 }
 
 /**
@@ -44,6 +45,17 @@ export function panelChangesScope(cwd: string, panelCwd: string | null, scope: "
  */
 export function panelWorktreeInfo<T extends { forCwd: string }>(cwd: string, known: readonly (T | null)[]): T | null {
   return known.find((info) => info?.forCwd === cwd) ?? null;
+}
+
+/**
+ * The cwd whose worktrees the Files view must fetch, or null. The sidebar's info covers the
+ * session's cwd; another project's column keeps only a successful answer (`cached`), valid until
+ * worktrees change in the app or the user refreshes (`epoch`). A failure is never cached, so the
+ * next time the column shows it asks again.
+ */
+export function panelWorktreeFetchCwd(cwd: string, sidebar: { forCwd: string } | null, cached: { forCwd: string; epoch: number } | null, epoch: number): string | null {
+  if (sidebar?.forCwd === cwd) return null;
+  return cached?.forCwd === cwd && cached.epoch === epoch ? null : cwd;
 }
 
 /**

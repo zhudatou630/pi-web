@@ -194,7 +194,17 @@ export function FileFindBar({ scrollerRef, contentKey, unsupportedMessage, parti
   }
 
   return (
-    <div className="file-find-bar" role="search">
+    // Escape closes the bar from any of its controls (field or buttons), taken here so the overlay
+    // file panel around it stays open; Enter belongs to the field.
+    <div
+      className="file-find-bar"
+      role="search"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event)) return;
+        event.preventDefault();
+        onClose();
+      }}
+    >
       <input
         ref={inputRef}
         type="text"
@@ -205,10 +215,7 @@ export function FileFindBar({ scrollerRef, contentKey, unsupportedMessage, parti
         }}
         onKeyDown={(event) => {
           if (isImeComposing(event)) return;
-          if (event.key === "Escape") {
-            event.preventDefault();
-            onClose();
-          } else if (event.key === "Enter") {
+          if (event.key === "Enter") {
             event.preventDefault();
             if (lineMatch) {
               if (canGoToLine) goToLine(Number(lineMatch[1]));

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
 
-const { panelChangesScope, panelDockFor, panelViewCwd, panelDockToggleWidth, panelWorktreeInfo } = await createJiti(import.meta.url).import("../lib/panel-dock.ts");
+const { panelChangesScope, panelDockFor, panelViewCwd, panelDockToggleWidth, panelWorktreeFetchCwd, panelWorktreeInfo } = await createJiti(import.meta.url).import("../lib/panel-dock.ts");
 
 const shell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const explorer = await readFile(new URL("./FileExplorer.tsx", import.meta.url), "utf8");
@@ -66,21 +66,53 @@ test("a docked column follows its file tab's project; full-size views follow the
 
 test("a column docked for project A beside a B session shows A's uncommitted changes and A's worktrees", () => {
   // B's last turn wrote these; Review left the full-size view on the turn scope.
-  const turnFiles = ["/work/b/src/x.ts"];
+  const turn = { cwd: "/work/b", files: ["/work/b/src/x.ts"] };
   const dock = panelDockFor({ filePath: "/work/a/README.md", cwd: "/work/a", initialDisplayMode: "diff" }, "/work/b", false);
   const changesCwd = panelViewCwd("changes", dock, "/work/b");
   // No turn of A's session here: A's uncommitted list, and no turn scope to offer.
-  assert.deepEqual(panelChangesScope(changesCwd, "/work/b", "turn", turnFiles), { scope: "uncommitted", turnFiles: null });
+  assert.deepEqual(panelChangesScope(changesCwd, turn, "turn"), { scope: "uncommitted", turnFiles: null });
   // Full size (same project) the remembered scope and the turn's files stay.
-  assert.deepEqual(panelChangesScope("/work/b", "/work/b", "turn", turnFiles), { scope: "turn", turnFiles });
+  assert.deepEqual(panelChangesScope("/work/b", turn, "turn"), { scope: "turn", turnFiles: turn.files });
 
   // The sidebar holds B's worktrees; the column needs A's, fetched for it.
   const sidebar = { forCwd: "/work/b", currentWorktreePath: "/work/b", worktrees: [] };
-  const fetchedA = { forCwd: "/work/a", currentWorktreePath: "/work/a", worktrees: [{ path: "/work/a", branch: "main", isMain: true }, { path: "/work/a-wt", branch: "x", isMain: false }] };
+  const fetchedA = { forCwd: "/work/a", epoch: 0, currentWorktreePath: "/work/a", worktrees: [{ path: "/work/a", branch: "main", isMain: true }, { path: "/work/a-wt", branch: "x", isMain: false }] };
   const filesCwd = panelViewCwd("files", panelDockFor({ filePath: "/work/a/README.md", cwd: "/work/a" }, "/work/b", false), "/work/b");
   assert.equal(panelWorktreeInfo(filesCwd, [sidebar, null]), null); // not in hand: fetch A's
   assert.equal(panelWorktreeInfo(filesCwd, [sidebar, fetchedA]), fetchedA);
   assert.equal(panelWorktreeInfo("/work/b", [sidebar, fetchedA]), sidebar);
+});
+
+test("the sidebar browsing A while the focused chat is B: A's docked diff lists A's changes, not B's turn", () => {
+  // Chat tabs open: browsing A in the sidebar keeps the B chat, so the panel's cwd is A and the
+  // turn (from the B chat) is still B's.
+  const panelCwd = "/work/a";
+  const turn = { cwd: "/work/b", files: ["/work/b/src/x.ts"] };
+  const dock = panelDockFor({ filePath: "/work/a/README.md", cwd: "/work/a", initialDisplayMode: "diff" }, panelCwd, false);
+  const changesCwd = panelViewCwd("changes", dock, panelCwd);
+  assert.equal(changesCwd, "/work/a");
+  // Not filtered to B's turn (which would empty A's list), and no menu that could write the scope.
+  assert.deepEqual(panelChangesScope(changesCwd, turn, "turn"), { scope: "uncommitted", turnFiles: null });
+  // The full-size view at A is the same: B's turn is not A's.
+  assert.deepEqual(panelChangesScope(panelCwd, turn, "turn"), { scope: "uncommitted", turnFiles: null });
+  // A chat at A (its own turn, even an empty one) offers the turn scope there.
+  assert.deepEqual(panelChangesScope("/work/a", { cwd: "/work/a", files: [] }, "turn"), { scope: "turn", turnFiles: [] });
+  // No chat focused yet: no turn anywhere.
+  assert.deepEqual(panelChangesScope("/work/a", { cwd: null, files: [] }, "turn"), { scope: "uncommitted", turnFiles: null });
+});
+
+test("another project's worktrees: only a success is kept, until worktrees change or a manual refresh", () => {
+  const sidebar = { forCwd: "/work/b" };
+  // The sidebar's own cwd is never fetched here.
+  assert.equal(panelWorktreeFetchCwd("/work/b", sidebar, null, 0), null);
+  // Nothing in hand (first show, or the last request failed and cached nothing): ask.
+  assert.equal(panelWorktreeFetchCwd("/work/a", sidebar, null, 0), "/work/a");
+  // A success for A in this epoch: no request on the next show.
+  assert.equal(panelWorktreeFetchCwd("/work/a", sidebar, { forCwd: "/work/a", epoch: 0 }, 0), null);
+  // A worktree created/removed in the app or a manual refresh bumps the epoch: ask again.
+  assert.equal(panelWorktreeFetchCwd("/work/a", sidebar, { forCwd: "/work/a", epoch: 0 }, 1), "/work/a");
+  // Another project's answer is not A's.
+  assert.equal(panelWorktreeFetchCwd("/work/a", sidebar, { forCwd: "/work/c", epoch: 1 }, 1), "/work/a");
 });
 
 test("showing the column on a narrow panel widens it by the column; hiding gives the width back", () => {

@@ -16,6 +16,8 @@ import type { GitFileStatus, GitFileStatusKind, GitStatusResponse } from "@/lib/
 import type { FileIndexEntry } from "@/lib/file-fuzzy";
 import { buildSearchTree, type SearchTreeNode } from "@/lib/search-tree";
 import { useI18n } from "@/hooks/useI18n";
+import { isImeComposing } from "@/lib/ime";
+import { isModalDialogOpen } from "./ModalDialog";
 import { droppedItems, uploadFiles, type UploadConflictStrategy, type UploadError, type UploadResponse } from "@/lib/file-upload-client";
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -661,9 +663,11 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     const onPointerDown = (event: PointerEvent) => {
       if (!(event.target as HTMLElement | null)?.closest(".file-context-menu")) setFileMenu(null);
     };
-    // Captured and prevented: the menu, not the file panel around it, takes the Escape.
+    // The menu takes the Escape (prevented) unless a layer above owns it: an open modal, an input
+    // method, or a field that already handled it. Captured, as useMenuDismiss: the maximized panel's
+    // restore also listens on document and may have registered first.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event) || isModalDialogOpen()) return;
       event.preventDefault();
       setFileMenu(null);
     };

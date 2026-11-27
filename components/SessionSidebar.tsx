@@ -22,6 +22,7 @@ import { SessionStatusDot, SessionStatusWord } from "./SessionStateBadge";
 import { sessionStatus, unseenErrorSessionIds } from "@/lib/session-status";
 import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { isModalDialogOpen } from "./ModalDialog";
 import { SessionSearchDialog } from "./SessionSearchDialog";
 import { MenuCheck } from "./MenuCheck";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
@@ -570,17 +571,20 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       setProjectMenu(null);
       setDeleteConfirm(null);
     };
+    // Bubbling on document, before the phone drawer's window listener: the menu takes the Escape
+    // (preventDefault), so one Escape closes it and leaves the drawer open (docs/ui.md, Menus).
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || e.defaultPrevented || isImeComposing(e) || isModalDialogOpen()) return;
+      e.preventDefault();
       setSessionMenu(null);
       setProjectMenu(null);
       setDeleteConfirm(null);
     };
     window.addEventListener("pointerdown", handleGlobalPointerDown, true);
-    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("pointerdown", handleGlobalPointerDown, true);
-      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown);
     };
   }, [sessionMenu, projectMenu, deleteConfirm]);
 
@@ -1440,14 +1444,19 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     setSelection((current) => current && ({ ...current, anchor: id,
       ids: toggleSessionSelection(current.ids, eligibleSelectionIds, id, current.anchor, range) }));
   };
+  // A menu or confirm open over the selection takes the first Escape (the listener above), the
+  // selection the next; consumed, so the phone drawer stays open.
+  const selectionLayerOpen = Boolean(sessionMenu || projectMenu || deleteConfirm);
   useEffect(() => {
-    if (!selection) return;
+    if (!selection || selectionLayerOpen) return;
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !selectionBusy) { setSelection(null); setDeleteConfirm(null); }
+      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event) || isModalDialogOpen()) return;
+      event.preventDefault();
+      if (!selectionBusy) setSelection(null);
     };
-    window.addEventListener("keydown", escape);
-    return () => window.removeEventListener("keydown", escape);
-  }, [selection, selectionBusy]);
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [selection, selectionBusy, selectionLayerOpen]);
   useEffect(() => {
     if (selection && (selection.archiveView !== archiveView || (singleProject && selectedProject?.key !== selection.projectKey))) {
       setSelection(null);
@@ -2473,7 +2482,7 @@ function ProjectNameInput({ open, initial, onCommit, onCancel }: {
         onKeyDown={(event) => {
           if (isImeComposing(event)) return;
           if (event.key === "Enter") finish(true);
-          if (event.key === "Escape") finish(false);
+          if (event.key === "Escape") { event.preventDefault(); finish(false); }
         }}
         autoFocus
         aria-label={t("sidebar.rename")}
@@ -2798,7 +2807,7 @@ export function SessionItem({
           onKeyDown={(e) => {
             if (isImeComposing(e)) return;
             if (e.key === "Enter") commitRename();
-            if (e.key === "Escape") setRenaming(false);
+            if (e.key === "Escape") { e.preventDefault(); setRenaming(false); }
           }}
           autoFocus
           className="session-rename-input"

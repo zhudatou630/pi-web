@@ -75,7 +75,8 @@ const sum = (files: readonly GitFileStatus[], key: "additions" | "deletions") =>
  * Uncommitted changes of `cwd`: one row per file (file icon, name, folder, +N −M, status letter), as
  * in VS Code / Cursor source control; a deleted file's name is struck through. The
  * "turn" scope keeps only the files the focused session's last turn wrote; numbers stay uncommitted.
- * `turnFiles` null: no turn scope here (a column docked for another project's tab), only uncommitted.
+ * `turnFiles` null: no turn scope here (another cwd than the focused chat's): only uncommitted, under
+ * a plain title, so nothing here writes the remembered scope.
  */
 export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScopeChange, turnFiles, onOpenDiff }: {
   cwd: string;
@@ -142,15 +143,15 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
   return (
     <div className="panel-view">
       <div className="changes-head">
-        <TextMenu label={headLabel}>
-          {(close) => (turnFiles ? ["uncommitted", "turn"] as const : ["uncommitted"] as const).map((value) => (
+        {turnFiles ? <TextMenu label={headLabel}>
+          {(close) => (["uncommitted", "turn"] as const).map((value) => (
             <button key={value} type="button" role="menuitemradio" aria-checked={scope === value} onClick={() => { close(); onScopeChange(value); }}>
               {t(value === "turn" ? "changes.scopeTurn" : "changes.scopeAll")}
               <span className="panel-menu-meta">{value === "turn" ? turn.files.length : all.length}</span>
               <MenuCheck checked={scope === value} />
             </button>
           ))}
-        </TextMenu>
+        </TextMenu> : <span className="changes-head-title">{headLabel}</span>}
         {files.length > 0 && (
           <span title={t("changes.countsTitle")}>
             <LineCounts additions={sum(files, "additions")} deletions={sum(files, "deletions")} />

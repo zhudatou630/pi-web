@@ -304,5 +304,6 @@ test("no worktree choice inside a repo subdirectory; creating or removing one re
   const sidebar = await readFile(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
   assert.match(sidebar, /isTopLevel: worktreeState\.isTopLevel,/);
   const appShell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
-  assert.match(appShell, /onWorktreesChanged=\{bumpSidebarRefresh\}/);
+  assert.match(appShell, /onWorktreesChanged=\{handleWorktreesChanged\}/);
+  assert.match(appShell, /const handleWorktreesChanged = useCallback\(\(\) => \{\s*bumpSidebarRefresh\(\);/);
 });

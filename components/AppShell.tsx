@@ -119,7 +119,7 @@ import { formatModelTiming } from "@/lib/model-timing";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import { PRESET_READ_ONLY, type ToolEntry } from "@/lib/tool-presets";
 import { indexSessionFamilies, unnamedSideChatNumbers } from "@/lib/session-family";
-import { panelChangesScope, panelDockFor, panelDockToggleWidth, panelViewCwd, panelWorktreeInfo } from "@/lib/panel-dock";
+import { panelChangesScope, panelDockFor, panelDockToggleWidth, panelViewCwd, panelWorktreeFetchCwd, panelWorktreeInfo } from "@/lib/panel-dock";
 import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
 import { prefetchSettings } from "@/lib/settings-cache";
@@ -1123,7 +1123,6 @@ export function AppShell() {
       })();
       if (view?.view === "files" || view?.view === "changes") {
         setPanelView(view.view);
-        setFilesViewMounted(view.view === "files");
       }
       if (active.activeId) {
         setActiveFileTabId(active.activeId);
@@ -1658,9 +1657,16 @@ export function AppShell() {
   }, [handleSessionRenamed]);
   handleAutoNameRef.current = handleAutoName;
 
+  // A manual refresh also re-reads a docked column's worktrees; run-time refreshes do not.
+  const [dockWorktreeEpoch, setDockWorktreeEpoch] = useState(0);
   const handleExplorerRefresh = useCallback(() => {
     setExplorerRefreshKey((k) => k + 1);
+    setDockWorktreeEpoch((epoch) => epoch + 1);
   }, []);
+  const handleWorktreesChanged = useCallback(() => {
+    bumpSidebarRefresh();
+    setDockWorktreeEpoch((epoch) => epoch + 1);
+  }, [bumpSidebarRefresh]);
 
   // The tree reloads as a run writes and when the window regains focus (#1144):
   // at most one reload a second, shared by every chat pane. No watcher, no polling.
@@ -2432,7 +2438,6 @@ export function AppShell() {
 
   const selectPanelView = useCallback((view: PanelView) => {
     setPanelView(view);
-    if (view === "files") setFilesViewMounted(true);
     setActiveFileTabId(null);
   }, []);
   // One-shot request: the panel (and the sidebar's selected project) moves to `cwd`; the Files view
@@ -2459,9 +2464,10 @@ export function AppShell() {
     handleOpenFile(filePath, getFileName(filePath), { ...(inside ? { modeHint: "diff" as const } : {}), cwd, sourceSessionId });
   }, [handleOpenFile]);
   // Files the focused chat's last turn wrote: the Changes view's "this turn" scope.
-  const [turnFiles, setTurnFiles] = useState<readonly string[]>([]);
-  const handleTurnFilesChange = useCallback((files: readonly string[]) => {
-    setTurnFiles((current) => current.length === files.length && current.every((file, index) => file === files[index]) ? current : files);
+  // Kept with that chat's cwd: the sidebar may browse another project meanwhile (chat tabs stay).
+  const [turnFiles, setTurnFiles] = useState<{ cwd: string | null; files: readonly string[] }>({ cwd: null, files: [] });
+  const handleTurnFilesChange = useCallback((files: readonly string[], cwd: string | null) => {
+    setTurnFiles((current) => current.cwd === cwd && current.files.length === files.length && current.files.every((file, index) => file === files[index]) ? current : { cwd, files });
   }, []);
 
   const handleViewFullHistory = useCallback(() => {
@@ -2552,7 +2558,7 @@ export function AppShell() {
         onNewSessionCwdChange={!tabSession && effectiveCwd
           ? (cwd, opened) => handleDraftCwdChange(effectiveDraftKey, cwd, opened)
           : undefined}
-        onWorktreesChanged={bumpSidebarRefresh}
+        onWorktreesChanged={handleWorktreesChanged}
         projectPaths={projectPaths}
         projectNameByRoot={projectNameByRoot}
         worktreeInfo={worktreeInfo}
@@ -2830,25 +2836,33 @@ export function AppShell() {
   const changesViewCwd = panelViewCwd("changes", panelDockOn, panelCwd);
   const filesViewCwd = panelViewCwd("files", panelDockOn, panelCwd);
   const filesViewShown = (showPanelView && panelView === "files") || panelDock === "files";
-  const changesViewScope = changesViewCwd ? panelChangesScope(changesViewCwd, panelCwd, changesScope, turnFiles) : null;
+  const changesViewScope = changesViewCwd ? panelChangesScope(changesViewCwd, turnFiles, changesScope) : null;
   // The sidebar loads the worktrees of the session's cwd; a tree docked for another project's tab
-  // reads that project's once, when shown (same /api/worktrees answer, no polling).
-  const [dockWorktreeInfo, setDockWorktreeInfo] = useState<PanelWorktreeInfo & { forCwd: string } | null>(null);
+  // reads that project's when shown (same /api/worktrees answer, no polling). Only a success is kept,
+  // until worktrees change in the app or a manual refresh (`dockWorktreeEpoch`).
+  const [dockWorktreeInfo, setDockWorktreeInfo] = useState<PanelWorktreeInfo & { forCwd: string; epoch: number } | null>(null);
   const filesViewWorktreeInfo = filesViewCwd ? panelWorktreeInfo(filesViewCwd, [worktreeInfo, dockWorktreeInfo]) : null;
-  const dockWorktreeCwd = rightPanelOpen && filesViewShown && filesViewCwd && filesViewCwd !== panelCwd && !filesViewWorktreeInfo ? filesViewCwd : null;
+  const dockWorktreeCwd = rightPanelOpen && filesViewShown && filesViewCwd && filesViewCwd !== panelCwd
+    ? panelWorktreeFetchCwd(filesViewCwd, worktreeInfo, dockWorktreeInfo, dockWorktreeEpoch)
+    : null;
   useEffect(() => {
     if (!dockWorktreeCwd) return;
     const controller = new AbortController();
+    const epoch = dockWorktreeEpoch;
     fetch(`/api/worktrees?cwd=${encodeURIComponent(dockWorktreeCwd)}`, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() as Promise<{ isGit?: boolean; currentWorktreePath?: string | null; worktrees?: PanelWorktreeInfo["worktrees"] }> : null)
-      .then((data) => setDockWorktreeInfo({
-        forCwd: dockWorktreeCwd,
-        currentWorktreePath: data?.currentWorktreePath ?? null,
-        worktrees: data?.isGit ? data.worktrees ?? [] : [],
-      }))
-      .catch(() => { /* aborted, or no switcher for this column */ });
+      .then((response) => response.ok ? response.json() as Promise<{ isGit?: boolean; currentWorktreePath?: string | null; worktrees?: PanelWorktreeInfo["worktrees"] }> : Promise.reject(new Error(`HTTP ${response.status}`)))
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setDockWorktreeInfo({
+          forCwd: dockWorktreeCwd,
+          epoch,
+          currentWorktreePath: data.currentWorktreePath ?? null,
+          worktrees: data.isGit ? data.worktrees ?? [] : [],
+        });
+      })
+      .catch(() => { /* aborted, or failed: nothing cached, asked again when shown next */ });
     return () => controller.abort();
-  }, [dockWorktreeCwd]);
+  }, [dockWorktreeCwd, dockWorktreeEpoch]);
   const panelDockWidenedFromRef = useRef<number | null>(null);
   const setRightPanelWidth = rightPanelResizer.setWidth;
   const togglePanelDock = useCallback(() => {
@@ -2859,9 +2873,12 @@ export function AppShell() {
     setPanelDockPref(next);
     try { window.localStorage.setItem(PANEL_DOCK_KEY, String(next)); } catch { /* private mode */ }
   }, [panelDockOpen, rightPanelResizer.width, setRightPanelWidth]);
+  // Mounted when first shown (a restored Files view behind a closed panel requests nothing), then
+  // kept for its expansion; hidden, it freezes what it shows (FileExplorer's shownExplorerTarget).
+  const filesViewVisible = rightPanelOpen && filesViewShown;
   useEffect(() => {
-    if (panelDock === "files") setFilesViewMounted(true);
-  }, [panelDock]);
+    if (filesViewVisible) setFilesViewMounted(true);
+  }, [filesViewVisible]);
   // Collapsed, the column leaves a labeled strip on the panel's right edge that opens it again.
   const panelDockKind: PanelView = panelDockTarget?.view ?? "files";
   const panelDockStrip = Boolean(panelDockTarget) && !panelDockOpen;
@@ -4238,7 +4255,7 @@ export function AppShell() {
               </div>
             </div>
           )}
-          {filesViewCwd && filesViewMounted && (
+          {filesViewCwd && (filesViewMounted || filesViewVisible) && (
             <div
               hidden={!filesViewShown}
               className="panel-view-host"
@@ -4248,7 +4265,7 @@ export function AppShell() {
               <div className="panel-view-host-body">
               <FilesView
                 cwd={filesViewCwd}
-                active={rightPanelOpen && filesViewShown}
+                active={filesViewVisible}
                 refreshKey={explorerRefreshKey}
                 onRefresh={handleExplorerRefresh}
                 explorerRef={filesExplorerRef}

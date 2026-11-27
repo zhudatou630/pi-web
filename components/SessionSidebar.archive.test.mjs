@@ -283,11 +283,18 @@ test("entering a project starts an empty view-scoped selection, and Escape cance
   const escape = find(ast, (node) => ts.isVariableDeclaration(node) && node.name.getText(ast) === "escape");
   for (const selectionBusy of [false, true]) {
     let cancelled = false;
-    const handle = execute(escape.initializer, { selectionBusy, setSelection: () => { cancelled = true; }, setDeleteConfirm: noop });
-    handle({ key: "Enter" });
+    const handle = execute(escape.initializer, { selectionBusy, setSelection: () => { cancelled = true; }, isImeComposing: () => false, isModalDialogOpen: () => false });
+    const key = (name, defaultPrevented = false) => ({ key: name, defaultPrevented, preventDefault() { this.defaultPrevented = true; } });
+    handle(key("Enter"));
     assert.equal(cancelled, false);
-    handle({ key: "Escape" });
+    // An Escape a menu, field or confirm already took is not the selection's.
+    handle(key("Escape", true));
+    assert.equal(cancelled, false);
+    // Consumed either way, so the phone drawer around it stays open.
+    const escapeEvent = key("Escape");
+    handle(escapeEvent);
     assert.equal(cancelled, !selectionBusy);
+    assert.equal(escapeEvent.defaultPrevented, true);
   }
 });
 

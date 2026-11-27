@@ -105,8 +105,8 @@ interface Props {
   /** A turn card's Review: the panel's Changes view on this turn's files, at the session cwd. */
   onReviewTurnChanges?: (cwd: string) => void;
   onOpenDiff?: (filePath: string, cwd: string | undefined, sourceSessionId: string | null) => void;
-  /** The last turn's written files (focused pane only), for the Changes view's turn scope. */
-  onTurnFilesChange?: (files: readonly string[]) => void;
+  /** The last turn's written files (focused pane only) and this chat's cwd, for the Changes view's turn scope. */
+  onTurnFilesChange?: (files: readonly string[], cwd: string | null) => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest, session: SessionInfo | null) => void;
   onSessionCreated?: (session: SessionInfo, sourceDraftKey: string) => void;
   onSessionForked?: (newSessionId: string, sourceSessionId: string | null, session?: SessionInfo) => void;
@@ -279,6 +279,12 @@ export function NewSessionCwdControl({
   const projectMenuRef = useRef<HTMLDivElement>(null);
   const branchMenuRef = useRef<HTMLDivElement>(null);
   const focusMenuOnOpenRef = useRef(false);
+  const focusNewWorktreeRef = useRef(false);
+  const cancelNewBranch = () => {
+    focusNewWorktreeRef.current = true;
+    setNewBranch(null);
+    setMenuError(null);
+  };
   useEffect(() => {
     if (!menuOpen && !branchMenuOpen) return;
     if (focusMenuOnOpenRef.current) {
@@ -587,7 +593,14 @@ export function NewSessionCwdControl({
               )}
               <div role="separator" className="menu-surface-divider" />
               {newBranch === null ? (
-                <button type="button" className="menu-surface-item" title={t("sidebar.createWorktreeTitle")} onClick={() => { setNewBranch(""); setConfirmRemove(null); }}>
+                <button
+                  type="button"
+                  className="menu-surface-item"
+                  title={t("sidebar.createWorktreeTitle")}
+                  // Back from a cancelled branch name (Escape, Cancel): focus returns here, not to the page.
+                  ref={(button) => { if (button && focusNewWorktreeRef.current) { focusNewWorktreeRef.current = false; button.focus(); } }}
+                  onClick={() => { setNewBranch(""); setConfirmRemove(null); }}
+                >
                   {t("sidebar.newWorktree")}
                 </button>
               ) : (
@@ -601,7 +614,7 @@ export function NewSessionCwdControl({
                       onKeyDown={(event) => {
                         if (isImeComposing(event)) return;
                         if (event.key === "Enter") { event.preventDefault(); createWorktree(); }
-                        if (event.key === "Escape") { event.preventDefault(); setNewBranch(null); setMenuError(null); }
+                        if (event.key === "Escape") { event.preventDefault(); cancelNewBranch(); }
                       }}
                       placeholder={t("sidebar.branchName")}
                       aria-label={t("sidebar.branchName")}
@@ -610,7 +623,7 @@ export function NewSessionCwdControl({
                   <div className="project-confirm-actions" style={{ marginTop: 4 }}>
                     {/* A new branch starts from the main checkout's HEAD (docs/worktrees.md). */}
                     <span className="new-session-pick-meta" style={{ marginRight: "auto" }}>{t("chat.worktreeBase", { branch: mainBranch })}</span>
-                    <button type="button" disabled={busy} onClick={() => { setNewBranch(null); setMenuError(null); }}>{t("sidebar.cancel")}</button>
+                    <button type="button" disabled={busy} onClick={cancelNewBranch}>{t("sidebar.cancel")}</button>
                     <button type="button" onClick={createWorktree} disabled={busy || !newBranch.trim()}>
                       {busy ? t("sidebar.creating") : t("sidebar.create")}
                     </button>
@@ -1748,7 +1761,7 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
     const lastTurnFiles = [...filesByIndex].find(([index]) => index > lastBoundary)?.[1].map((file) => file.filePath) ?? [];
     return { writtenFilesByAssistantIndex: filesByIndex, routinesByAssistantIndex: routinesByIndex, turnActivityByAssistantIndex: activityByIndex, lastTurnFiles };
   }, [completedAssistantParts, groupBoundaries, messageCwd, messages, toolResultsMap]);
-  useEffect(() => { onTurnFilesChange?.(lastTurnFiles); }, [lastTurnFiles, onTurnFilesChange]);
+  useEffect(() => { onTurnFilesChange?.(lastTurnFiles, messageCwd ?? null); }, [lastTurnFiles, messageCwd, onTurnFilesChange]);
   const inputHistory = useMemo(() => {
     const seen = new Set<string>();
     const history: string[] = [];

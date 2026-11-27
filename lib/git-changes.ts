@@ -221,12 +221,19 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
   };
   // A staged rename whose content was then rewritten no longer pairs in `diff HEAD`: numstat lists the
   // old path as D and the new one as A. Give the rename row the old path's deletions unless a row of its own has them.
-  const ownPaths = new Set(entries.map((entry) => mapCwdGitPath(cwd, realCwd, realRoot, entry.path)));
-  const renameStats = (filePath: string, originalPath?: string): Partial<LineStats> => {
+  // Only tracked rows read numstat for their own path (`??` rows never do), and each old path is handed out once.
+  const ownPaths = new Set(entries.flatMap((entry) =>
+    entry.indexStatus === "?" ? [] : [mapCwdGitPath(cwd, realCwd, realRoot, entry.path)]));
+  const consumedOldPaths = new Set<string>();
+  const renameStats = (filePath: string, entry: GitPorcelainEntry): Partial<LineStats> => {
     const own = statsFor(filePath);
-    if (!lines || !originalPath || lineStatsByPath.get(filePath)?.paired) return own;
-    const oldPath = mapCwdGitPath(cwd, realCwd, realRoot, originalPath);
-    const old = oldPath && !ownPaths.has(oldPath) ? lineStatsByPath.get(oldPath) : undefined;
+    // Copies keep the source file: it is not deleted.
+    if (!lines || !entry.originalPath || `${entry.indexStatus}${entry.worktreeStatus}`.includes("C")
+      || lineStatsByPath.get(filePath)?.paired) return own;
+    const oldPath = mapCwdGitPath(cwd, realCwd, realRoot, entry.originalPath);
+    if (!oldPath || ownPaths.has(oldPath) || consumedOldPaths.has(oldPath)) return own;
+    const old = lineStatsByPath.get(oldPath);
+    consumedOldPaths.add(oldPath);
     return old ? { additions: own.additions, deletions: (own.deletions ?? 0) + old.deletions } : own;
   };
   const files: GitFileStatus[] = [];
@@ -259,7 +266,7 @@ export async function getGitStatus(cwd: string, signal?: AbortSignal, { lines = 
       indexStatus: entry.indexStatus,
       worktreeStatus: entry.worktreeStatus,
       // `git rm --cached` lists a path twice (D and ??): numstat belongs to the tracked entry only.
-      ...(classified.status === "untracked" ? statsFor() : renameStats(filePath, entry.originalPath)),
+      ...(classified.status === "untracked" ? statsFor() : renameStats(filePath, entry)),
     });
   }
   if (lines) await countUntrackedLines(files, signal);

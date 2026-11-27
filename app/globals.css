@@ -615,6 +615,16 @@ html.dark {
   flex-shrink: 0;
   padding: 4px 13px 4px 7px;
 }
+/* No turn scope to pick (another cwd than the focused chat's): the menu trigger's box, no menu. */
+.changes-head-title {
+  display: inline-flex;
+  align-items: center;
+  height: var(--ui-row-height);
+  padding: 0 6px;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+}
 .changes-row {
   display: flex;
   align-items: center;
@@ -6103,22 +6113,9 @@ span.token.table {
   cursor: default;
 }
 
-/* Touch base ring for composer buttons (the composer card's own rings are in the final
-   pointer: coarse block, "Composer"): an invisible ring grows the hit box to 32px tall,
-   1px sideways so neighbours in the 2px gap never overlap. */
-@media (pointer: coarse) {
-  .composer-btn,
-  .composer-send {
-    position: relative;
-  }
-
-  .composer-btn::before,
-  .composer-send::before {
-    content: "";
-    position: absolute;
-    inset: -4px -1px;
-  }
-}
+/* Composer hit areas live in one place each: the final pointer: coarse block ("Composer", and
+   the wider-than-phone rule for composer buttons outside `.chat-input`), plus the narrow-desktop
+   ring right before it. */
 
 .model-selector-trigger {
   flex-shrink: 1;
@@ -6890,11 +6887,6 @@ span.token.table {
     height: 32px;
   }
 
-  /* The wide-screen touch ring below is replaced by the 32px phone rows. */
-  .composer-btn::before {
-    content: none;
-  }
-
   .composer-btn,
   .composer-btn.is-icon,
   .chat-input-dock .composer-btn.chat-input-attach {
@@ -6903,7 +6895,7 @@ span.token.table {
   }
 
   /* The run controls beside the text are drawn at 24px, as on desktop, to sit with one line
-     of 14px text; the touch ring (pointer: coarse block below, `.chat-input` rings) keeps the target at 32px. */
+     of 14px text; the hit area (rings below: coarse block, narrow-desktop ring) keeps the target at 32px. */
   .chat-input-actions .composer-btn.is-icon {
     width: 24px;
     height: 24px;
@@ -7091,7 +7083,7 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
   overflow-wrap: anywhere;
 }
 
-/* Phone top bar: ☰, title, Changes, ⋯ (docs/ui.md, Top bar and composer panels). */
+/* Phone top bar: ☰, title, outline, ⋯ (docs/ui.md, Top bar and composer panels). */
 .mobile-top-bar-title {
   flex: 1;
   min-width: 0;
@@ -7129,6 +7121,33 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
   }
 }
 
+/* Composer buttons outside `.chat-input` (Routines form, top bar context, model selector in a
+   panel) on touch screens wider than a phone: an invisible ring grows the hit box to 32px tall,
+   1px sideways so neighbours in the 2px gap never overlap. Phones draw those rows at 32px. */
+@media (pointer: coarse) and (min-width: 641px) {
+  .composer-btn::before,
+  .composer-send::before {
+    content: "";
+    position: absolute;
+    inset: -4px -1px;
+  }
+}
+
+/* Narrow windows with a mouse: the 24px run controls keep a transparent 4px ring. */
+@media (max-width: 640px) and (pointer: fine) {
+  .chat-input-actions .composer-btn,
+  .composer-send {
+    position: relative;
+  }
+
+  .chat-input-actions .composer-btn::before,
+  .composer-send::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+  }
+}
+
 /* Touch (docs/ui.md, Heights): visible sizes and row heights stay as drawn; only the tap
    area grows, to >= 40px, with a transparent ::before/::after. Where neighbours sit closer
    than 40px the ring stops at half the gap so it never steals the next button's tap.
@@ -7144,6 +7163,8 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
     line-height: 21px !important;
   }
 
+  .composer-btn,
+  .composer-send,
   .sidebar-top-icon,
   .workspace-new-session,
   .ghost-icon-button,
