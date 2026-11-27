@@ -5,7 +5,7 @@ import { Script } from "node:vm";
 import ts from "typescript";
 import { createJiti } from "jiti";
 
-const { openSessionInNewTab, pinSessionTab, chatTabPane } = await createJiti(import.meta.url).import("../lib/chat-tab-state.ts");
+const { EMPTY_CHAT_VIEW, sessionItem, showInPane, paneOf } = await createJiti(import.meta.url).import("../lib/chat-view-state.ts");
 const shellText = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const source = ts.createSourceFile("AppShell.tsx", shellText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const component = source.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "AppShell");
@@ -25,25 +25,26 @@ function setup(selectedId = "source") {
   const events = [];
   const session = { id: "source", name: "Plan", cwd: "/fixture" };
   const forked = { ...session, id: "copy", name: "Fork: Plan · abcd", parentSessionId: "source" };
-  const chatTabsRef = { current: openSessionInNewTab([], session).tabs };
+  const keepMounted = () => false;
+  const chatViewRef = { current: showInPane(EMPTY_CHAT_VIEW, sessionItem(session), "primary", keepMounted).view };
   let resolveFetch;
   const response = new Promise((resolve) => { resolveFetch = resolve; });
   const bindings = {
     useCallback: (callback) => callback,
-    selectedSession: session, chatTabsRef, isSplitActiveRef: { current: false },
+    selectedSession: session, chatViewRef, canSplitChatRef: { current: true }, keepMounted,
     activeSessionIdRef: { current: selectedId }, activeNewSessionDraftKeyRef: { current: null },
     forkInFlightRef: { current: false }, branchActiveLeafId: "viewed-leaf",
-    openSessionInNewTab, pinSessionTab, chatTabPane,
+    sessionItem, showInPane, paneOf,
     getForkSessionName: () => forked.name,
     translate: (key, params) => params?.error ?? (key === "session.forkNamePrefix" ? "Fork: " : key),
-    setChatTabs: (update) => { chatTabsRef.current = update(chatTabsRef.current); },
+    commitChatView: ({ view }) => { chatViewRef.current = view; },
     hydrateSelectedSession: (id) => events.push(["hydrate", id]),
     router: { replace: (url) => events.push(["navigate", url]) },
     fetch: () => { events.push(["request"]); return response; },
     sendAgentCommand: () => { events.push(["rpc"]); return response; },
     confirm: (message) => { events.push(["error", message]); },
   };
-  for (const name of ["setRefreshKey", "setSessionKey", "setNewSessionCwd", "setSelectedSession", "setSplitChatTabId", "setActiveChatTabId", "setActiveChatPane", "setSessionForking", "setHistoryExportError", "setHistoryMenuOpen"]) {
+  for (const name of ["setRefreshKey", "setSessionKey", "setNewSessionCwd", "setSelectedSession", "setActiveCwd", "setSessionForking", "setHistoryExportError", "setHistoryMenuOpen"]) {
     bindings[name] = (value) => events.push([name, value]);
   }
   return {
@@ -66,7 +67,8 @@ test("sidebar fork prevents duplicate submissions and never steals focus after n
   await pending;
   assert.ok(s.events.some(([name]) => name === "setRefreshKey"));
   assert.equal(s.events.some(([name]) => name === "navigate" || name === "setSelectedSession"), false);
-  assert.deepEqual(Array.from(s.bindings.chatTabsRef.current, (tab) => tab.id), ["source", "copy"]);
+  // Focus moved on: the copy only shows up in the sidebar, the panes are untouched.
+  assert.deepEqual(Array.from(s.bindings.chatViewRef.current.items, (item) => item.id), ["source"]);
   assert.equal(s.bindings.forkInFlightRef.current, false);
 });
 
@@ -77,7 +79,9 @@ test("forking an unselected sidebar row opens the named copy if the user stayed 
   await pending;
   assert.equal(s.events.find(([name]) => name === "setSelectedSession")[1].name, s.forked.name);
   assert.ok(s.events.some(([name, value]) => name === "navigate" && value === "?session=copy"));
-  assert.equal(s.bindings.chatTabsRef.current[0].id, "source");
+  // The copy replaces its source in that pane; the source stays mounted in the cache.
+  assert.equal(s.bindings.chatViewRef.current.primaryId, "copy");
+  assert.deepEqual(Array.from(s.bindings.chatViewRef.current.items, (item) => item.id), ["source", "copy"]);
 });
 
 test("sidebar refusal is visible and releases the guard", async () => {
@@ -87,7 +91,7 @@ test("sidebar refusal is visible and releases the guard", async () => {
   await pending;
   assert.ok(s.events.some(([name, value]) => name === "error" && value === "Nothing to fork"));
   assert.equal(s.bindings.forkInFlightRef.current, false);
-  assert.equal(s.bindings.chatTabsRef.current.length, 1);
+  assert.equal(s.bindings.chatViewRef.current.items.length, 1);
 });
 
 test("row Fork follows Rename, precedes read status, and has no running guard", () => {

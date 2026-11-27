@@ -142,7 +142,7 @@ test("keeps process indicator active before answer and drops trailing pulse unde
 test("resets unmounted window and jumps to latest turn when sending a prompt", () => {
   assert.match(
     source,
-    /const handleChatSend = useCallback\(async[\s\S]*?setUnmountedNewerCount\(0\);[\s\S]*?setMountLimit\(MOUNTED_GROUP_LIMIT\);[\s\S]*?await handleSend\(message, images\);[\s\S]*?\}, \[handleSend, keepTabOpen\]\)/,
+    /const handleChatSend = useCallback\(async[\s\S]*?setUnmountedNewerCount\(0\);[\s\S]*?setMountLimit\(MOUNTED_GROUP_LIMIT\);[\s\S]*?await handleSend\(message, images\);[\s\S]*?\}, \[handleSend\]\)/,
   );
   assert.match(source, /<ChatInput[\s\S]*?onSend=\{handleChatSend\}/);
 });

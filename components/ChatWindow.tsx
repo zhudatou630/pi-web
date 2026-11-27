@@ -79,9 +79,6 @@ interface Props {
   sessionRunning?: boolean;
   newSessionCwd: string | null;
   newSessionDraftKey: string | null;
-  onDraftChange?: (draftKey: string, value: string, imageCount: number) => void;
-  /** Preserve the source tab when the user sends work or starts a fork. */
-  onKeepTabOpen?: (sessionId: string) => void;
   onNewSessionCwdChange?: (cwd: string, opened?: boolean) => Promise<void>;
   onWorktreesChanged?: () => void;
   projectPaths?: string[];
@@ -93,7 +90,6 @@ interface Props {
     currentWorktreePath: string | null;
     worktrees: { path: string; branch: string | null; isMain: boolean }[];
   } | null;
-  draftPersistenceWarning?: boolean;
   onAgentEnd?: (session?: SessionInfo | null, end?: AgentEndInfo) => void;
   onToolEnd?: (toolName: string) => void;
   onFilesChanged?: () => void;
@@ -943,7 +939,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, onWorktreesChanged, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, filePanelOpen = false, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onNewSessionCwdChange, onWorktreesChanged, projectPaths = [], projectNameByRoot, worktreeInfo = null, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, filePanelOpen = false, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -984,10 +980,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const openFileFromSession = useCallback((filePath: string, page?: number) => {
     onOpenFile?.(filePath, sessionRef.current?.id ?? null, page);
   }, [onOpenFile]);
-  const keepTabOpen = useCallback(() => {
-    const sessionId = sessionRef.current?.id;
-    if (sessionId) onKeepTabOpen?.(sessionId);
-  }, [onKeepTabOpen]);
 
   const initialScrollPositionRef = useRef(searchTarget ? null : initialScrollPosition ?? null);
   const [pendingScrollRestore, setPendingScrollRestore] = useState<Extract<ChatScrollPosition, { atBottom: false }> | null>(() => {
@@ -1093,7 +1085,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   }, [imageConfigRefreshKey, modelsRefreshKey, session?.cwd, newSessionCwd]);
 
   const submitDirectImage = useCallback(async (request: ImageGenerationRequest, sourceImages: Base64ImageAttachment[]) => {
-    keepTabOpen();
     let source: ImageGenerationResult | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
       const details = getImageGenerationResult((messages[i] as { details?: unknown }).details);
@@ -1123,7 +1114,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     } finally {
       setPendingImage(null);
     }
-  }, [addNotice, handleDirectImageGeneration, keepTabOpen, messages, newSessionCwd, session?.cwd]);
+  }, [addNotice, handleDirectImageGeneration, messages, newSessionCwd, session?.cwd]);
 
   const handleBuiltinCommandWithImageRefresh = useCallback(async (message: string): Promise<BuiltinSlashCommandResult> => {
     const side = message.trim().match(/^\/side(?:\s+([\s\S]*))?$/);
@@ -1161,9 +1152,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     if (!targetSessionId) return;
     initialPromptSentRef.current = true;
     onInitialPromptConsumed?.(targetSessionId);
-    keepTabOpen();
     void handleSend(initialPrompt);
-  }, [initialPrompt, loading, error, handleSend, onInitialPromptConsumed, keepTabOpen, session?.id, sessionIdRef]);
+  }, [initialPrompt, loading, error, handleSend, onInitialPromptConsumed, session?.id, sessionIdRef]);
 
   useEffect(() => {
     if (
@@ -1861,37 +1851,32 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     : null;
 
   const handleChatSend = useCallback(async (message: string, images?: AttachedImage[]) => {
-    keepTabOpen();
     outlineJumpControllerRef.current?.abort();
     setPendingOutlineJump(null);
     setPendingSearchScroll(null);
     setUnmountedNewerCount(0);
     setMountLimit(MOUNTED_GROUP_LIMIT);
     await handleSend(message, images);
-  }, [handleSend, keepTabOpen]);
+  }, [handleSend]);
 
   const handleChatFork = useCallback((entryId: string, message: UserMessage) => {
-    keepTabOpen();
     const source = sessionRef.current;
     return handleFork(entryId, source ? getForkSessionName(source, t("session.forkNamePrefix")) : undefined, async () => ({
       value: getUserMessageText(message),
       // Deferred media may fail independently of the fork; never lose the question's text.
       images: await getUserMessageDraftImages(message).catch(() => []),
     }), agentRunning || Boolean(sessionRunning) || isCompacting);
-  }, [agentRunning, handleFork, isCompacting, keepTabOpen, sessionRef, sessionRunning, t]);
+  }, [agentRunning, handleFork, isCompacting, sessionRef, sessionRunning, t]);
 
   const handleSteerWithSubmit = useCallback((message: string, images?: AttachedImage[]) => {
-    keepTabOpen();
     return handleSteer(message, images);
-  }, [handleSteer, keepTabOpen]);
+  }, [handleSteer]);
   const handleFollowUpWithSubmit = useCallback((message: string, images?: AttachedImage[]) => {
-    keepTabOpen();
     return handleFollowUp(message, images);
-  }, [handleFollowUp, keepTabOpen]);
+  }, [handleFollowUp]);
   const handlePromptWithStreamingBehaviorWithSubmit = useCallback((message: string, behavior: "steer" | "followUp", images?: AttachedImage[]) => {
-    keepTabOpen();
     return handlePromptWithStreamingBehavior(message, behavior, images);
-  }, [handlePromptWithStreamingBehavior, keepTabOpen]);
+  }, [handlePromptWithStreamingBehavior]);
 
   const [forkFolderOpen, setForkFolderOpen] = useState(false);
   const [forkFolderBusy, setForkFolderBusy] = useState(false);
@@ -1901,7 +1886,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const forkIntoFolder = async (cwd: string) => {
     if (!session || !onSessionForked || forkFolderBusy) return;
     const sourceId = session.id;
-    keepTabOpen();
     setForkFolderBusy(true);
     setForkFolderError(null);
     try {
@@ -2028,8 +2012,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       onBuiltinCommand={handleBuiltinCommandWithImageRefresh}
       onAudioUnlock={unlockAudio}
       draftKey={session?.id ?? newSessionDraftKey ?? undefined}
-      onDraftChange={onDraftChange}
-      draftPersistenceWarning={draftPersistenceWarning}
       cwd={session?.cwd ?? newSessionCwd}
       onAttachFiles={onAttachFiles}
       attention={(

@@ -6,7 +6,8 @@ import { createJiti } from "jiti";
 import ts from "typescript";
 
 const jiti = createJiti(import.meta.url, { tsconfigPaths: true });
-const tabState = await jiti.import("../lib/chat-tab-state.ts");
+const viewState = await jiti.import("../lib/chat-view-state.ts");
+const { EMPTY_CHAT_VIEW, sessionItem, showInPane } = viewState;
 const source = ts.createSourceFile("AppShell.tsx", await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function find(node, predicate) {
   if (predicate(node)) return node;
@@ -28,203 +29,162 @@ function boundAction(component, prop, scope) {
   return execute(attribute.initializer.expression, scope);
 }
 
-for (const [component, prop, split] of [
-  ["SessionSidebar", "onOpenSessionInNewTab"],
-  ["AgentSessionPanel", "onOpenInNewTab"],
-].flatMap(([component, prop]) => [false, true].map((split) => [component, prop, split]))) {
-  test(`${component}.${prop} pins through full selection cleanup (${split ? "desktop split" : "mobile"})`, () => {
-    const session = { id: "target", name: "Target", cwd: "/new-project", projectKey: "/new-project" };
-    const primary = { id: "primary", cwd: "/old-project", projectKey: "/old-project" };
-    let tabs = tabState.openSessionInNewTab([], primary).tabs;
-    tabs = tabState.openSessionPreview(tabs, session, split ? "secondary" : "primary").tabs;
-    const result = {};
-    const scope = {
-      ...tabState,
-      selectedSession: primary, activeCwd: "/old-project", newSessionCwd: null,
-      activeFileTabId: "file:/old-project/code.ts", isMobile: !split,
-      activeNewSessionDraftKeyRef: { current: null }, activeProjectKeyRef: { current: "/old-project" },
-      chatTabsRef: { current: tabs }, isSplitActiveRef: { current: split }, activeChatPaneRef: { current: "primary" },
-      branchLeafChangeFnRef: { current: null }, suppressCwdBumpRef: { current: false },
-      workspaceKeyOf: (session) => session.cwd,
-      setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
-      router: { replace(url) { result.url = url; } },
-      syncSessionMetadata(id) { result.metadata = id; },
-      rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
-    };
-    for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
-      scope[`set${setter}`] = (value) => { result[setter] = value; };
-    }
-    scope.handleSelectSession = callback("handleSelectSession", scope);
-    scope.handlePinSession = callback("handlePinSession", scope);
-    boundAction(component, prop, scope)(session);
+const never = () => false;
+const viewOf = (...sessions) => sessions.reduce((view, [session, pane = "primary"]) => showInPane(view, sessionItem(session), pane, never).view, EMPTY_CHAT_VIEW);
 
-    assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["primary", "target"]);
-    assert.equal(scope.chatTabsRef.current[1].preview, false);
-    assert.equal(scope.chatTabsRef.current[1].pane, split ? "secondary" : "primary");
-    assert.equal(result.ActiveChatTabId, split ? undefined : "target", "do not change the other group's selection");
-    assert.equal(result.SplitChatTabId, split ? "target" : undefined);
-    assert.equal(result.ActiveChatPane, split ? "secondary" : "primary");
-    assert.equal(result.SelectedSession, session);
-    assert.equal(result.SearchTarget, null);
-    assert.equal(result.FileTabs, undefined);
-    assert.equal(result.ActiveFileTabId, undefined);
-    assert.equal(result.RightPanelOpen, undefined);
-    assert.equal(result.SidebarOpen, split ? undefined : false);
-    assert.equal(result.metadata, "target");
-    assert.equal(result.url, "?session=target");
-    assert.equal(result.MainView, "chat", "opening a session leaves the Routines view");
-  });
-}
-
-function familySwitchScope(tabs, primary, result) {
+/** handleSelectSession and its family, run against a fake AppShell scope. */
+function shellScope({ view, selectedSession, split = false, isMobile = false, activeCwd = "/repo", activeProjectKey = "/repo", result }) {
   const scope = {
-    ...tabState,
-    selectedSession: primary, activeCwd: "/repo", newSessionCwd: null,
-    activeFileTabId: null, isMobile: false,
-    activeNewSessionDraftKeyRef: { current: null }, activeProjectKeyRef: { current: "/repo" },
-    chatTabsRef: { current: tabs }, isSplitActiveRef: { current: false }, activeChatPaneRef: { current: "primary" },
-    activeChatTabIdRef: { current: "primary" }, splitChatTabIdRef: { current: null },
+    ...viewState,
+    selectedSession, activeCwd, newSessionCwd: null, activeFileTabId: "file:/repo/code.ts", isMobile,
+    canSplitChat: !isMobile, mainView: "chat", fallbackDraftRef: { current: null },
+    activeNewSessionDraftKeyRef: { current: null }, activeProjectKeyRef: { current: activeProjectKey },
+    chatViewRef: { current: view }, isSplitActiveRef: { current: split }, canSplitChatRef: { current: !isMobile },
     branchLeafChangeFnRef: { current: null }, suppressCwdBumpRef: { current: false },
-    activeSessionIdRef: { current: primary.id },
+    activeSessionIdRef: { current: selectedSession?.id ?? null },
+    keepMounted: never,
+    commitChatView({ view: next }) { scope.chatViewRef.current = next; },
     handleSessionForked(...args) { result.besideArgs = args; },
     closeTopPanel(restoreFocus) { result.closedTopPanel = restoreFocus; },
-    workspaceKeyOf: (item) => item.projectKey ?? item.cwd,
-    setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
+    workspaceKeyOf: (item) => item.projectKey ?? item.projectRoot ?? item.cwd,
     router: { replace(url) { result.url = url; } },
     syncSessionMetadata(id) { result.metadata = id; },
-    rekeyDraft() { assert.fail("family switch must not rekey a draft"); },
+    rekeyDraft() { assert.fail("session selection must not rekey a draft"); },
+    parkedNewSessionDraftKey: (cwd) => `parked-new:${cwd}`,
   };
-  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
+  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView", "SessionStats", "ContextUsage"]) {
     scope[`set${setter}`] = (value) => { result[setter] = value; };
   }
+  scope.syncFocusedChatItem = callback("syncFocusedChatItem", scope);
   scope.handleSelectSession = callback("handleSelectSession", scope);
+  scope.handleOpenInSplit = callback("handleOpenInSplit", scope);
   scope.handleSwitchFamilySession = callback("handleSwitchFamilySession", scope);
   scope.handleSelectFamilySession = callback("handleSelectFamilySession", scope);
   return scope;
 }
 
-test("AgentSessionPanel.onSelectSession opens a side chat beside the current chat, or focuses its open tab", () => {
+for (const [component, prop] of [["SessionSidebar", "onOpenSessionInSplit"], ["AgentSessionPanel", "onOpenInSplit"]]) {
+  test(`${component}.${prop} opens the session in the right pane through full selection cleanup`, () => {
+    const session = { id: "target", name: "Target", cwd: "/new-project", projectKey: "/new-project" };
+    const primary = { id: "primary", cwd: "/old-project", projectKey: "/old-project" };
+    const result = {};
+    const scope = shellScope({ view: viewOf([primary]), selectedSession: primary, activeProjectKey: "/old-project", result });
+    boundAction(component, prop, scope)(session);
+
+    const view = scope.chatViewRef.current;
+    assert.deepEqual([view.primaryId, view.secondaryId, view.focusedPane], ["primary", "target", "secondary"]);
+    assert.equal(result.SelectedSession, session);
+    assert.equal(result.SearchTarget, null);
+    assert.equal(result.FileTabs, undefined);
+    assert.equal(result.RightPanelOpen, undefined);
+    assert.equal(result.SidebarOpen, undefined);
+    assert.equal(result.metadata, "target");
+    assert.equal(result.url, "?session=target");
+    assert.equal(result.MainView, "chat", "opening a session leaves the Routines view");
+    assert.equal(scope.activeProjectKeyRef.current, "/new-project");
+  });
+
+  test(`${component}.${prop} is absent where the chat cannot split`, () => {
+    const primary = { id: "primary", cwd: "/repo" };
+    const scope = shellScope({ view: viewOf([primary]), selectedSession: primary, isMobile: true, result: {} });
+    assert.equal(boundAction(component, prop, scope), undefined);
+  });
+}
+
+test("a sidebar pick replaces the focused pane, keeps the other pane and caches the replaced session", () => {
+  const session = { id: "target", name: "Target", cwd: "/repo", projectKey: "/repo" };
+  const left = { id: "left", cwd: "/repo", projectKey: "/repo" };
+  const right = { id: "right", cwd: "/repo", projectKey: "/repo" };
+  const result = {};
+  const scope = shellScope({ view: viewOf([left], [right, "secondary"]), selectedSession: right, split: true, result });
+  boundAction("SessionSidebar", "onSelectSession", scope)(session);
+  const view = scope.chatViewRef.current;
+  assert.deepEqual([view.primaryId, view.secondaryId, view.focusedPane], ["left", "target", "secondary"]);
+  assert.deepEqual(view.items.map((item) => item.id), ["left", "right", "target"]);
+  assert.equal(result.url, "?session=target");
+});
+
+test("picking the session the other pane shows only moves focus there", () => {
+  const left = { id: "left", cwd: "/repo", projectKey: "/repo" };
+  const right = { id: "right", cwd: "/repo", projectKey: "/repo" };
+  const result = {};
+  const scope = shellScope({ view: viewOf([left], [right, "secondary"]), selectedSession: right, split: true, result });
+  scope.handleSelectSession(left);
+  const view = scope.chatViewRef.current;
+  assert.deepEqual([view.primaryId, view.secondaryId, view.focusedPane], ["left", "right", "primary"]);
+  assert.equal(result.SelectedSession, left);
+  assert.equal(result.SessionKey, undefined, "no reload of an on-screen session");
+  assert.equal(result.url, "?session=left");
+});
+
+test("AgentSessionPanel.onSelectSession opens a side chat beside the current chat, or focuses the pane showing it", () => {
   const side = { id: "side", name: "Side: why", cwd: "/repo", projectKey: "/repo", relation: { kind: "side", parentSessionId: "primary" } };
   const primary = { id: "primary", name: "Main", cwd: "/repo", projectKey: "/repo" };
   const result = {};
-  const scope = familySwitchScope(tabState.openSessionInNewTab([], primary).tabs, primary, result);
+  const scope = shellScope({ view: viewOf([primary]), selectedSession: primary, result });
   boundAction("AgentSessionPanel", "onSelectSession", scope)(side);
   assert.deepEqual(result.besideArgs, ["side", "primary", side, "primary", true]);
   assert.equal(result.closedTopPanel, true, "a pick closes the panel and returns focus to its trigger");
-  assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["primary"], "the main chat keeps its tab");
 
   const open = {};
-  const openScope = familySwitchScope(tabState.openSessionInNewTab(tabState.openSessionInNewTab([], primary).tabs, side).tabs, primary, open);
+  const openScope = shellScope({ view: viewOf([primary], [side, "secondary"]), selectedSession: primary, split: true, result: open });
   boundAction("AgentSessionPanel", "onSelectSession", openScope)(side);
   assert.equal(open.besideArgs, undefined);
-  assert.equal(open.ActiveChatTabId, "side");
+  assert.equal(openScope.chatViewRef.current.focusedPane, "secondary");
 });
 
-test("AgentSessionPanel.onSelectSession replaces the current tab in place", () => {
+test("AgentSessionPanel.onSelectSession replaces the current pane in place", () => {
   const session = { id: "child", name: "Child", cwd: "/repo", projectKey: "/repo" };
   const primary = { id: "primary", name: "Main", cwd: "/repo", projectKey: "/repo" };
-  const tabs = tabState.openSessionInNewTab([], primary).tabs;
   const result = {};
-  const scope = familySwitchScope(tabs, primary, result);
+  const scope = shellScope({ view: viewOf([primary]), selectedSession: primary, result });
   boundAction("AgentSessionPanel", "onSelectSession", scope)(session);
-
-  assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["child"]);
-  assert.equal(scope.chatTabsRef.current[0].title, "Child");
+  assert.equal(scope.chatViewRef.current.primaryId, "child");
   assert.equal(result.closedTopPanel, true);
-  assert.equal(scope.chatTabsRef.current[0].preview, undefined);
-  assert.equal(result.ActiveChatTabId, "child");
   assert.equal(result.SelectedSession, session);
   assert.equal(result.FileTabs, undefined);
   assert.equal(result.metadata, "child");
   assert.equal(result.url, "?session=child");
 });
 
-test("AgentSessionPanel.onSelectSession focuses an already-open tab without pinning it", () => {
-  const session = { id: "child", name: "Child", cwd: "/repo", projectKey: "/repo" };
-  const primary = { id: "primary", name: "Main", cwd: "/repo", projectKey: "/repo" };
-  let tabs = tabState.openSessionInNewTab([], primary).tabs;
-  tabs = tabState.openSessionPreview(tabs, session).tabs;
-  const result = {};
-  const scope = familySwitchScope(tabs, primary, result);
-  boundAction("AgentSessionPanel", "onSelectSession", scope)(session);
-
-  assert.deepEqual(scope.chatTabsRef.current.map((tab) => tab.id), ["primary", "child"]);
-  assert.equal(scope.chatTabsRef.current[1].preview, true);
-  assert.equal(result.ActiveChatTabId, "child");
-  assert.equal(result.SelectedSession, session);
-});
-
 test("does not close the file reader while a session identity is still unresolved", () => {
   const session = { id: "target", name: "Target", cwd: "/repo/subdir", projectKey: "/repo" };
   const primary = { id: "primary", cwd: "/repo/subdir", transient: true };
   const result = {};
-  const tabs = tabState.openSessionInNewTab([], primary).tabs;
-  const scope = {
-    ...tabState,
-    selectedSession: primary,
-    activeCwd: "/repo/subdir",
-    newSessionCwd: null,
-    activeFileTabId: "file:/repo/README.md",
-    isMobile: false,
-    activeNewSessionDraftKeyRef: { current: null },
-    activeProjectKeyRef: { current: null },
-    chatTabsRef: { current: tabs },
-    isSplitActiveRef: { current: false },
-    activeChatPaneRef: { current: "primary" },
-    branchLeafChangeFnRef: { current: null },
-    suppressCwdBumpRef: { current: false },
-    workspaceKeyOf: (item) => item.projectKey ?? item.projectRoot ?? item.cwd,
-    setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
-    router: { replace(url) { result.url = url; } },
-    syncSessionMetadata() {},
-    rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
-  };
-  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
-    scope[`set${setter}`] = (value) => { result[setter] = value; };
-  }
-  scope.handleSelectSession = callback("handleSelectSession", scope);
-  scope.handlePinSession = callback("handlePinSession", scope);
-  scope.handlePinSession(session);
-
+  const scope = shellScope({ view: viewOf([primary]), selectedSession: primary, activeCwd: "/repo/subdir", activeProjectKey: null, result });
+  scope.handleSelectSession(session);
   assert.equal(result.FileTabs, undefined);
   assert.equal(result.ActiveFileTabId, undefined);
   assert.equal(result.RightPanelOpen, undefined);
   assert.equal(scope.activeProjectKeyRef.current, "/repo");
 });
 
-test("uses the focused session project instead of the sidebar project in split view", () => {
-  const session = { id: "target", name: "Target", cwd: "/repo/secondary", projectKey: "/repo/secondary" };
-  const primary = { id: "primary", cwd: "/repo/secondary", projectKey: "/repo/secondary" };
+test("the view-less first composer parks its draft when replaced, and stays left when a session opens on the right", () => {
+  const session = { id: "target", cwd: "/repo", projectKey: "/repo" };
   const result = {};
-  const tabs = tabState.openSessionInNewTab([], primary).tabs;
-  const scope = {
-    ...tabState,
-    selectedSession: primary,
-    activeCwd: "/repo/primary",
-    newSessionCwd: null,
-    activeFileTabId: "file:/repo/secondary/README.md",
-    isMobile: false,
-    activeNewSessionDraftKeyRef: { current: null },
-    activeProjectKeyRef: { current: "/repo/primary" },
-    chatTabsRef: { current: tabs },
-    isSplitActiveRef: { current: true },
-    activeChatPaneRef: { current: "secondary" },
-    branchLeafChangeFnRef: { current: null },
-    suppressCwdBumpRef: { current: false },
-    workspaceKeyOf: (item) => item.projectKey ?? item.projectRoot ?? item.cwd,
-    setChatTabs(update) { scope.chatTabsRef.current = update(scope.chatTabsRef.current); },
-    router: { replace(url) { result.url = url; } },
-    syncSessionMetadata() {},
-    rekeyDraft() { assert.fail("historical session selection must not rekey a draft"); },
-  };
-  for (const setter of ["SearchTarget", "FileTabs", "ActiveFileTabId", "RightPanelOpen", "ActiveTopPanel", "NewSessionCwd", "SelectedSession", "ActiveChatTabId", "SplitChatTabId", "ActiveChatPane", "SessionKey", "BranchTree", "BranchActiveLeafId", "SystemPrompt", "SystemTools", "SystemInfoLoading", "SidebarOpen", "MainView"]) {
-    scope[`set${setter}`] = (value) => { result[setter] = value; };
-  }
+  const scope = shellScope({ view: EMPTY_CHAT_VIEW, selectedSession: null, result });
+  scope.fallbackDraftRef.current = { key: "new:initial:/repo", cwd: "/repo" };
+  const parked = [];
+  scope.rekeyDraft = (from, to) => parked.push([from, to]);
   scope.handleSelectSession = callback("handleSelectSession", scope);
-  scope.handlePinSession = callback("handlePinSession", scope);
-  scope.handlePinSession(session);
+  scope.handleSelectSession(session);
+  assert.deepEqual(parked, [["new:initial:/repo", "parked-new:/repo"]]);
 
-  assert.equal(result.FileTabs, undefined);
-  assert.equal(result.RightPanelOpen, undefined);
-  assert.equal(scope.activeProjectKeyRef.current, "/repo/secondary");
+  const split = shellScope({ view: EMPTY_CHAT_VIEW, selectedSession: null, result: {} });
+  split.fallbackDraftRef.current = { key: "new:initial:/repo", cwd: "/repo" };
+  split.handleOpenInSplit(session);
+  const view = split.chatViewRef.current;
+  assert.deepEqual([view.primaryId, view.secondaryId], ["draft:new:initial:/repo", "target"]);
+});
+
+test("back from Routines, re-picking the session on screen names it in the address again", () => {
+  const primary = { id: "primary", cwd: "/repo", projectKey: "/repo" };
+  const result = {};
+  const scope = shellScope({ view: viewOf([primary]), selectedSession: primary, result });
+  scope.mainView = "routines";
+  scope.handleSelectSession = callback("handleSelectSession", scope);
+  scope.handleSelectSession(primary);
+  assert.equal(result.url, "?session=primary");
+  assert.equal(result.MainView, "chat");
+  assert.equal(result.SessionKey, undefined);
 });

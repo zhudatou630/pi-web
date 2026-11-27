@@ -38,6 +38,6 @@ test("keeps chat scroll positions in page memory by session id", () => {
 test("parking an unsent draft is independent of historical session restoration", () => {
   const selectSession = callbackBody("handleSelectSession", "handleNewSession");
   const newSession = callbackBody("handleNewSession", "hydrateSelectedSession");
-  assert.match(selectSession, /rekeyDraft\(activeDraftKey, parkedNewSessionDraftKey\(activeDraftCwd\)\)/);
+  assert.match(selectSession, /else rekeyDraft\(fallback\.key, parkedNewSessionDraftKey\(fallback\.cwd\)\);/);
   assert.match(newSession, /rekeyDraft\(parkedNewSessionDraftKey\(cwd\), draftKey\)/);
 });

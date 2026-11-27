@@ -6,28 +6,36 @@ import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { deleteRefusalText, SessionSidebar } from "./SessionSidebar";
 import { ChatWindow } from "./ChatWindow";
-import { ChatTabBar, type SessionMarkers } from "./ChatTabBar";
 import {
-  openSessionInNewTab,
-  openSessionPreview,
-  pinSessionTab,
-  revealSessionPane,
-  switchSessionInPlace,
-  chatTabPane,
-  chatTabsInPane,
-  mergeChatTabPanes,
-  openDraftInTabs,
-  closeChatTab,
-  closeChatTabs,
-  moveChatTab,
-  getDraftTabTitle,
-  chatTabMountKey,
-  chatTabCwd,
-  promoteDraftToSession,
+  CHAT_VIEW_STORAGE_KEY,
+  EMPTY_CHAT_VIEW,
+  LEGACY_CHAT_WORKSPACE_KEY,
+  LEGACY_DRAFT_TABS_KEY,
+  adjacentSessionId,
+  chatItemCwd,
+  chatItemMountKey,
+  closePane,
+  draftItem,
+  focusPane,
+  legacyDraftsToPark,
+  matchSessionShortcut,
   mergeCatalogRow,
+  nextNeedsYouId,
+  paneOf,
+  paneShowingDraft,
+  promoteDraft,
+  removeChatSession,
+  SESSION_DRAG_MIME,
+  restoreChatView,
+  serializeChatView,
+  sessionItem,
+  showInPane,
+  shownItem,
+  updateChatSession,
   type ChatPane,
-  type ChatTabItem,
-} from "@/lib/chat-tab-state";
+  type ChatView,
+  type ChatViewItem,
+} from "@/lib/chat-view-state";
 import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import type { ContextBreakdown } from "@/lib/context-breakdown";
 import { FileViewer, type FileReveal, type FileSelectionAttachment } from "./FileViewer";
@@ -40,7 +48,7 @@ import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
 import { ChangesButton, SessionContextButton } from "./TopBarContext";
-import { hasBlockedSession } from "@/lib/session-status";
+import { hasBlockedSession, type SessionMarkers } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView } from "./PanelViews";
 import type { FileExplorerHandle } from "./FileExplorer";
 import type { GitStatusResponse } from "@/lib/git-types";
@@ -69,7 +77,6 @@ import { copyText } from "@/lib/clipboard";
 import { sendAgentCommand as postAgentCommand } from "@/lib/agent-client";
 import type { CacheKeepaliveStatus } from "@/lib/cache-keepalive";
 import { getFileName, getRelativeFilePath, joinFilePath, normalizeFilePathSlashes } from "@/lib/file-paths";
-import { CHAT_WORKSPACE_STORAGE_KEY, restoreChatWorkspace, serializeChatWorkspace } from "@/lib/chat-workspace-state";
 import { getForkSessionName, getSessionDisplayTitle } from "@/lib/session-display-title";
 import { getSideChatName } from "@/lib/side-chat";
 import { countFaviconUnread, syncFaviconBadge } from "@/lib/favicon-badge";
@@ -92,7 +99,7 @@ function pathForChatMention(path: string, sourceCwd?: string, targetCwd?: string
   return joinFilePath(sourceCwd, path);
 }
 import { getInitialNavigation } from "@/lib/initial-navigation";
-import { clearDraft, discardSessionDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
+import { discardSessionDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { PINNED_CWDS_STORAGE_KEY, loadPinnedCwds, savePinnedCwds } from "@/lib/pinned-cwds";
 import {
@@ -147,8 +154,8 @@ function restoreBrowserTab(raw: string | null): { url: string; active: boolean; 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 
 const TOP_BAR_ICON_BUTTON_SIZE = 30;
-// A right/middle press (or ctrl-click) on a tab strip acts on that tab (context menu, close);
-// only a primary press moves focus to the group.
+// Only a primary press on a pane's title bar moves focus to that pane (a right or middle press
+// opens a menu or acts on the press target instead).
 const isPrimaryPointerPress = (event: React.PointerEvent) => event.button === 0 && !event.ctrlKey;
 
 const AGENT_PANEL_WIDTH = 420;
@@ -158,7 +165,6 @@ const EXPLORER_REFRESH_MS = 1000;
 const MOUNTED_FILE_VIEWERS = 3;
 const BRANCH_PANEL_WIDTH = 520;
 const SESSION_PANEL_WIDTH = 400;
-const DRAFT_TABS_STORAGE_KEY = "pi-chat-draft-tabs";
 
 function filenameFromContentDisposition(header: string | null): string | null {
   if (!header) return null;
@@ -218,11 +224,11 @@ export function AppShell() {
   const handleBackgroundTaskDone = useCallback((completedSessionIds: string[], since: number) => {
     if (!soundEnabledRef.current) return;
     const openTabSessionIds = new Set(
-      chatTabsRef.current
-        .filter((tab) => tab.kind === "session" && tab.session)
-        .map((tab) => tab.session!.id),
+      chatViewRef.current.items
+        .filter((item) => item.kind === "session")
+        .map((item) => item.id),
     );
-    // An open tab's ChatWindow chimes for its own session.
+    // A mounted ChatWindow chimes for its own session.
     const unmounted = completedSessionIds.filter((id) => !openTabSessionIds.has(id));
     if (unmounted.length > 0 && claimDoneChime(unmounted, since).length > 0) {
       playDoneSound();
@@ -322,13 +328,13 @@ export function AppShell() {
     sessionScrollPositionsRef.current.set(sessionId, position);
   }, []);
 
-  // Chat Tabs & Split View State
-  const [chatTabs, setChatTabs] = useState<ChatTabItem[]>([]);
-  const [draftTabsRestored, setDraftTabsRestored] = useState(false);
-  const [chatWorkspaceRestored, setChatWorkspaceRestored] = useState(false);
-  const [draftTabsPersistenceFailed, setDraftTabsPersistenceFailed] = useState(false);
-  const chatTabsRef = useRef<ChatTabItem[]>([]);
-  chatTabsRef.current = chatTabs;
+  // Chat view: two panes and a mount cache, no tabs (docs/adr/0005-sidebar-as-session-switcher.md).
+  const [chatView, setChatView] = useState<ChatView>(EMPTY_CHAT_VIEW);
+  const [chatViewRestored, setChatViewRestored] = useState(false);
+  const chatViewRef = useRef<ChatView>(EMPTY_CHAT_VIEW);
+  chatViewRef.current = chatView;
+  // The first composer before anything is in the view (set below, where its key is known).
+  const fallbackDraftRef = useRef<{ key: string; cwd: string } | null>(null);
   // The sidebar's list reload (after a run, fork, rename...) carries the selected
   // session's server row: projectKey for a client-built transient session, and
   // `transient: false` once its file exists. Merge it here instead of fetching
@@ -338,28 +344,8 @@ export function AppShell() {
     const full = selectedSessionId ? sessionCatalog.find((s) => s.id === selectedSessionId) : undefined;
     if (!full) return;
     setSelectedSession((prev) => prev?.id === full.id ? mergeCatalogRow(prev, full) : prev);
-    setChatTabs((prev) => {
-      let changed = false;
-      const next = prev.map((tab) => {
-        if (tab.id !== full.id || tab.kind !== "session") return tab;
-        const session = mergeCatalogRow(tab.session, full);
-        const title = getSessionDisplayTitle(full);
-        if (session === tab.session && title === tab.title) return tab;
-        changed = true;
-        return { ...tab, title, session };
-      });
-      return changed ? next : prev;
-    });
+    setChatView((view) => updateChatSession(view, full));
   }, [selectedSessionId, sessionCatalog]);
-  const [activeChatTabId, setActiveChatTabId] = useState<string | null>(null);
-  const activeChatTabIdRef = useRef<string | null>(null);
-  activeChatTabIdRef.current = activeChatTabId;
-  const [splitChatTabId, setSplitChatTabId] = useState<string | null>(null);
-  const splitChatTabIdRef = useRef<string | null>(null);
-  splitChatTabIdRef.current = splitChatTabId;
-  const [activeChatPane, setActiveChatPane] = useState<"primary" | "secondary">("primary");
-  const activeChatPaneRef = useRef<"primary" | "secondary">("primary");
-  activeChatPaneRef.current = activeChatPane;
   const isSplitActiveRef = useRef(false);
   const canSplitChatRef = useRef(false);
   const [chatSplitRatio, setChatSplitRatio] = useState<number>(0.5);
@@ -369,79 +355,43 @@ export function AppShell() {
   const chatPanesWidthRef = useRef(CHAT_SPLIT_MIN_WIDTH);
   const splitHandleRef = useRef<HTMLDivElement>(null);
   const [chatPanesWide, setChatPanesWide] = useState(true);
+  // Every mounted session keeps its runtime: an evicted one is the old "closed tab".
   const openSessionLeaseIds = useMemo(() => {
-    if (chatTabs.length === 0) return selectedSession?.id ? [selectedSession.id] : [];
-    return chatTabs.flatMap((tab) => (tab.kind === "session" && tab.session ? [tab.session.id] : []));
-  }, [chatTabs, selectedSession?.id]);
+    if (chatView.items.length === 0) return selectedSession?.id ? [selectedSession.id] : [];
+    return chatView.items.flatMap((item) => (item.kind === "session" ? [item.id] : []));
+  }, [chatView.items, selectedSession?.id]);
   useOpenSessionLeases(openSessionLeaseIds);
-  const handleDraftChange = useCallback((draftKey: string, value: string, imageCount: number) => {
-    const dirty = Boolean(value.trim() || imageCount > 0);
-    const title = getDraftTabTitle(value, translate("i18n.newSession"));
-    setChatTabs((tabs) => {
-      let changed = false;
-      const next = tabs.map((tab) => {
-        if (tab.kind !== "draft" || tab.newSessionDraftKey !== draftKey || (tab.dirty === dirty && tab.title === title)) return tab;
-        changed = true;
-        return { ...tab, dirty, title };
-      });
-      return changed ? next : tabs;
-    });
-  }, [translate]);
+  // Running sessions stay mounted so their page notifications still fire (ADR 0005).
+  const runningSessionIdsRef = useRef(runningSessionIds);
+  runningSessionIdsRef.current = runningSessionIds;
+  const sessionMarkersRef = useRef(sessionMarkers);
+  sessionMarkersRef.current = sessionMarkers;
+  const keepMounted = useCallback((id: string) => runningSessionIdsRef.current.has(id)
+    || sessionMarkersRef.current.awaitingInput.has(id)
+    || sessionMarkersRef.current.subagentsActive.has(id), []);
+  /** Commit a new view; drafts leaving the cache park their text under their cwd for the next New session there. */
+  const commitChatView = useCallback((result: { view: ChatView; evicted: ChatViewItem[] }) => {
+    for (const item of result.evicted) {
+      if (item.kind === "draft" && item.newSessionDraftKey) rekeyDraft(item.newSessionDraftKey, parkedNewSessionDraftKey(item.newSessionCwd ?? ""));
+    }
+    chatViewRef.current = result.view;
+    setChatView(result.view);
+  }, []);
 
+  // Tab-era unsent drafts: park the first per cwd so New session there brings it back (ADR 0005, Reload).
   useEffect(() => {
     try {
-      const raw = window.sessionStorage.getItem(DRAFT_TABS_STORAGE_KEY);
-      const stored = raw ? JSON.parse(raw) as Array<{ draftKey: string; cwd: string | null; title: string }> : [];
-      const restored = stored.flatMap((item): ChatTabItem[] => {
-        if (typeof item?.draftKey !== "string" || typeof item?.title !== "string") return [];
-        const draft = getDraft(item.draftKey);
-        if (!draft) return [];
-        return [{
-          id: `draft:${item.draftKey}`,
-          kind: "draft",
-          title: getDraftTabTitle(draft.value, item.title),
-          session: null,
-          newSessionCwd: typeof item.cwd === "string" ? item.cwd : null,
-          newSessionDraftKey: item.draftKey,
-          projectKey: typeof item.cwd === "string" ? item.cwd : null,
-          dirty: true,
-        }];
-      });
-      if (restored.length > 0) {
-        setChatTabs((tabs) => [...tabs, ...restored.filter((item) => !tabs.some((tab) => tab.id === item.id))]);
-        if (!initialNavigation.sessionId && !initialNavigation.requestedCwd) {
-          const first = restored[0];
-          setActiveChatTabId((current) => current ?? first.id);
-          setSelectedSession(null);
-          setNewSessionCwd(first.newSessionCwd);
-          activeNewSessionDraftKeyRef.current = first.newSessionDraftKey;
-        }
+      window.sessionStorage.removeItem(LEGACY_CHAT_WORKSPACE_KEY);
+      const raw = window.sessionStorage.getItem(LEGACY_DRAFT_TABS_KEY);
+      if (raw === null) return;
+      for (const { draftKey, cwd } of legacyDraftsToPark(raw)) {
+        if (getDraft(draftKey)) rekeyDraft(draftKey, parkedNewSessionDraftKey(cwd));
       }
+      window.sessionStorage.removeItem(LEGACY_DRAFT_TABS_KEY);
     } catch {
       // Session storage is best-effort.
     }
-    setDraftTabsRestored(true);
-  }, [initialNavigation.requestedCwd, initialNavigation.sessionId]);
-
-  useEffect(() => {
-    if (!draftTabsRestored) return;
-    const stored = chatTabs.flatMap((tab) => (
-      tab.kind === "draft" && tab.dirty && tab.newSessionDraftKey
-        ? [{ draftKey: tab.newSessionDraftKey, cwd: tab.newSessionCwd, title: tab.title }]
-        : []
-    ));
-    if (stored.length === 0) {
-      try { window.sessionStorage.removeItem(DRAFT_TABS_STORAGE_KEY); } catch { /* no drafts to recover */ }
-      setDraftTabsPersistenceFailed(false);
-      return;
-    }
-    try {
-      window.sessionStorage.setItem(DRAFT_TABS_STORAGE_KEY, JSON.stringify(stored));
-      setDraftTabsPersistenceFailed(false);
-    } catch {
-      setDraftTabsPersistenceFailed(true);
-    }
-  }, [chatTabs, draftTabsRestored]);
+  }, []);
   const [searchTarget, setSearchTarget] = useState<{ sessionId: string; entryId: string; blockIndex?: number } | null>(null);
   const handleSearchTargetHandled = useCallback((target: { sessionId: string; entryId: string }) => {
     setSearchTarget((current) => current === target ? null : current);
@@ -610,7 +560,7 @@ export function AppShell() {
   const previousBranchSessionIdsRef = useRef(new Set<string>());
   useEffect(() => {
     const openSessionIds = new Set(openSessionLeaseIds);
-    // Only evict removed sessions: a child can report new branches before chatTabs catches up.
+    // Only evict removed sessions: a child can report new branches before the view catches up.
     for (const sessionId of previousBranchSessionIdsRef.current) {
       if (!openSessionIds.has(sessionId)) branchDataCacheRef.current.delete(sessionId);
     }
@@ -891,6 +841,8 @@ export function AppShell() {
     if (!isMobile || !sidebarOpen || !mobileSidebarReady) return;
     const frame = requestAnimationFrame(() => {
       const panel = sidebarResizer.panelRef.current;
+      // Alt+K already put the caret in the search field.
+      if (panel?.contains(document.activeElement)) return;
       panel?.querySelector<HTMLElement>('[aria-current="page"], button:not(:disabled)')?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1176,12 +1128,8 @@ export function AppShell() {
 
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
   const getFocusedChatCwd = useCallback(() => {
-    const focusedTabId = isSplitActiveRef.current && activeChatPaneRef.current === "secondary"
-      ? splitChatTabIdRef.current
-      : activeChatTabIdRef.current;
-    const focusedTab = chatTabsRef.current.find((tab) => tab.id === focusedTabId);
-    if (focusedTab?.kind === "session") return focusedTab.session?.cwd ?? null;
-    if (focusedTab?.kind === "draft") return focusedTab.newSessionCwd;
+    const focused = shownItem(chatViewRef.current, chatViewRef.current.focusedPane);
+    if (focused) return chatItemCwd(focused);
     return selectedSession?.cwd ?? newSessionCwd ?? activeCwd;
   }, [activeCwd, newSessionCwd, selectedSession?.cwd]);
 
@@ -1283,10 +1231,9 @@ export function AppShell() {
     // The server may hydrate a normalized key after a custom cwd is already
     // active. Updating identity for the exact same cwd is not a user switch.
     if (currentFreshCwd === cwd && currentProject !== newProject) return;
-    // In multi-tab mode, changing directory in the sidebar only navigates the
-    // sidebar's browsing context (activeCwd) without hijacking or replacing
-    // the user's active conversation tabs.
-    if (typeof chatTabsRef !== "undefined" && chatTabsRef.current?.length > 0) return;
+    // Once something is shown, changing directory in the sidebar only navigates the
+    // sidebar's browsing context (activeCwd); it never replaces what the panes show.
+    if (chatViewRef.current.items.length > 0) return;
     // Existing sessions stay open when the worktree selector moves within the
     // same project. A fresh composer must remount when its effective cwd moves,
     // otherwise its already-created runtime would keep sending to the old cwd.
@@ -1324,58 +1271,79 @@ export function AppShell() {
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
   }, [activeCwd, newSessionCwd, router, selectedSession]);
 
-  const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, pinned = false, inPlace = false) => {
+  /** Point the focused-session mirrors (selection, draft, URL) at the focused pane's item. */
+  const syncFocusedChatItem = useCallback((item: ChatViewItem | null) => {
+    if (!item) return;
+    if (item.kind === "session" && item.session) {
+      activeNewSessionDraftKeyRef.current = null;
+      if (activeSessionIdRef.current !== item.id) {
+        syncSessionMetadata(item.id);
+        setSystemPrompt(null);
+        setSystemTools(null);
+        setSystemInfoLoading(false);
+        setActiveTopPanel(null);
+      }
+      setSelectedSession(item.session);
+      setNewSessionCwd(null);
+      router.replace(`?session=${encodeURIComponent(item.id)}`, { scroll: false });
+      return;
+    }
+    activeNewSessionDraftKeyRef.current = item.newSessionDraftKey;
+    setSelectedSession(null);
+    setNewSessionCwd(item.newSessionCwd);
+    setSessionStats(null);
+    setContextUsage(null);
+    setBranchTree([]);
+    setBranchActiveLeafId(null);
+    branchLeafChangeFnRef.current = null;
+    setSystemPrompt(null);
+    setSystemTools(null);
+    setSystemInfoLoading(false);
+    setActiveTopPanel(null);
+    router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
+  }, [router, syncSessionMetadata]);
+
+  /**
+   * Show a session in the focused pane (or `targetPane`: "secondary" opens the split) like a sidebar
+   * click. The session that was there stays mounted in the cache; one the other pane shows takes focus there.
+   */
+  const handleSelectSession = useCallback((session: SessionInfo, isRestore = false, entryId?: string, blockIndex?: number, targetPane?: ChatPane) => {
     setMainView("chat");
     setSearchTarget(entryId ? { sessionId: session.id, entryId, blockIndex } : null);
-    const activeDraftKey = activeNewSessionDraftKeyRef.current;
-    const activeDraftCwd = newSessionCwd ?? (selectedSession === null ? activeCwd : null);
-    // Park the draft only when no tab holds it (the tab-less fallback composer).
-    // Draft tabs survive sidebar clicks now and must keep their storage key.
-    if (
-      activeDraftKey && activeDraftCwd
-      && !chatTabsRef.current.some((tab) => tab.id === `draft:${activeDraftKey}`)
-    ) {
-      rekeyDraft(activeDraftKey, parkedNewSessionDraftKey(activeDraftCwd));
-    }
-    activeNewSessionDraftKeyRef.current = null;
-    // Chat tabs do not own the file reader. Opening another session must not
+    // Chat panes do not own the file reader. Opening another session must not
     // clear file tabs or collapse the right panel; project-scoped cleanup stays
     // in handleCwdChange when the sidebar actually switches workspace.
     if (session.projectKey) activeProjectKeyRef.current = session.projectKey;
-    // Re-clicking the already-open session must not remount the chat and
-    // re-run the full load/positioning cycle. Only skip when the effective
-    // cwd context already matches — otherwise a pending cwd move still needs
-    // the full re-select flow.
-    if (!isRestore && selectedSession) {
-      const sameProject =
-        workspaceKeyOf(selectedSession) === workspaceKeyOf(session);
-      if (selectedSession.id === session.id && sameProject) {
-        // Explicit pin of the active session only flips the tab flag — no remount.
-        if (pinned) setChatTabs((prev) => pinSessionTab(prev, session.id));
-        if (isMobile) setSidebarOpen(false);
-        return;
-      }
+    let view = chatViewRef.current;
+    // The view-less first composer: kept on the left when a session opens on the right,
+    // parked under its cwd when replaced (drafts in the view park when evicted).
+    const fallback = fallbackDraftRef.current;
+    if (view.items.length === 0 && fallback) {
+      if (targetPane === "secondary" && canSplitChatRef.current) view = showInPane(view, draftItem(fallback.key, fallback.cwd), "primary", keepMounted).view;
+      else rekeyDraft(fallback.key, parkedNewSessionDraftKey(fallback.cwd));
     }
+    const pane: ChatPane = targetPane === "secondary" && canSplitChatRef.current
+      ? "secondary"
+      : isSplitActiveRef.current ? view.focusedPane : "primary";
+    const result = showInPane(view, sessionItem(session), pane, keepMounted);
+    // Re-clicking the session already on screen must not re-run the full load/positioning cycle.
+    const shownPane = paneOf(view, session.id);
+    const shownSession = shownPane ? shownItem(view, shownPane)?.session : null;
+    if (!isRestore && shownSession && workspaceKeyOf(shownSession) === workspaceKeyOf(session)) {
+      commitChatView(result);
+      if (shownPane !== view.focusedPane) syncFocusedChatItem(sessionItem(session));
+      // Back from Routines: the address names the session again.
+      else if (mainView === "routines") router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
+      if (isMobile) setSidebarOpen(false);
+      return;
+    }
+    commitChatView(result);
+    activeNewSessionDraftKeyRef.current = null;
     setNewSessionCwd(null);
     if (typeof syncSessionMetadata === "function") {
       syncSessionMetadata(session.id);
     }
     setSelectedSession(session);
-    const pane = isSplitActiveRef.current ? activeChatPaneRef.current : "primary";
-    const reveal = revealSessionPane(chatTabsRef.current, session.id, pane);
-    setChatTabs((prev) => {
-      if (inPlace && !isRestore && !pinned) {
-        const currentTabId = pane === "secondary" ? splitChatTabIdRef.current : activeChatTabIdRef.current;
-        return switchSessionInPlace(prev, currentTabId, session, pane).tabs;
-      }
-      return (isRestore || pinned
-        ? openSessionInNewTab(prev, session, pane)
-        : openSessionPreview(prev, session, pane)
-      ).tabs;
-    });
-    if (reveal.activeChatTabId !== undefined) setActiveChatTabId(reveal.activeChatTabId);
-    if (reveal.splitChatTabId !== undefined) setSplitChatTabId(reveal.splitChatTabId);
-    setActiveChatPane(reveal.pane);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -1395,28 +1363,37 @@ export function AppShell() {
     if (!isRestore) {
       router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
     }
-  }, [activeCwd, router, isMobile, newSessionCwd, selectedSession, syncSessionMetadata]);
+  }, [commitChatView, keepMounted, router, isMobile, mainView, syncFocusedChatItem, syncSessionMetadata]);
 
+  /** Row menu, middle click, drag to the right edge, Agents panel: show in the right pane. */
+  const handleOpenInSplit = useCallback((session: SessionInfo) => {
+    if (!canSplitChatRef.current) return;
+    handleSelectSession(session, false, undefined, undefined, "secondary");
+  }, [handleSelectSession]);
+
+  /** The new-session page for `cwd` in the focused pane: one draft per cwd, parked while away. */
   const handleNewSession = useCallback((sessionId: string, cwd: string) => {
     setMainView("chat");
+    const fallback = fallbackDraftRef.current;
+    const view = chatViewRef.current.items.length === 0 && fallback
+      ? showInPane(chatViewRef.current, draftItem(fallback.key, fallback.cwd), "primary", keepMounted).view
+      : chatViewRef.current;
+    const showing = paneShowingDraft(view, cwd);
+    if (showing) {
+      // Already on screen: never two copies of one draft.
+      commitChatView({ view: focusPane(view, showing), evicted: [] });
+      syncFocusedChatItem(shownItem(view, showing));
+      if (isMobile) setSidebarOpen(false);
+      return;
+    }
     const draftKey = `new:${sessionId}:${cwd}`;
     newComposerFocusKeyRef.current = draftKey;
     rekeyDraft(parkedNewSessionDraftKey(cwd), draftKey);
+    commitChatView(showInPane(view, draftItem(draftKey, cwd), isSplitActiveRef.current ? view.focusedPane : "primary", keepMounted));
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
     setSelectedSession(null);
     setNewSessionCwd(cwd);
-    if (typeof openDraftInTabs === "function") {
-      const isSplit = isSplitActiveRef.current;
-      const isSecondary = isSplit && activeChatPaneRef.current === "secondary";
-      const draftId = `draft:${draftKey}`;
-      setChatTabs((prev) => openDraftInTabs(prev, cwd, draftKey, translate("i18n.newSession"), isSecondary ? "secondary" : "primary").tabs);
-      if (isSecondary) {
-        setSplitChatTabId(draftId);
-      } else {
-        setActiveChatTabId(draftId);
-      }
-    }
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -1426,7 +1403,7 @@ export function AppShell() {
     setActiveTopPanel(null);
     if (isMobile) setSidebarOpen(false);
     router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [router, isMobile, translate]);
+  }, [commitChatView, keepMounted, router, isMobile, syncFocusedChatItem]);
 
   // Client-built transient SessionInfo (new session / fork) lacks the
   // server-computed projectKey, which the same-project check in
@@ -1443,22 +1420,14 @@ export function AppShell() {
             ? { ...prev, ...full, transient: full.transient ?? false }
             : prev
         ));
-        setChatTabs((prev) => prev.map((t) => (t.id === sessionId && t.kind === "session" ? {
-          ...t,
-          title: getSessionDisplayTitle(full),
-          session: { ...t.session, ...full },
-        } : t)));
+        setChatView((view) => updateChatSession(view, full));
       })
       .catch(() => {});
   }, []);
 
-  // Every explicit open shares selection cleanup, pane routing and mobile navigation.
-  const handlePinSession = useCallback((session: SessionInfo) => {
-    handleSelectSession(session, false, undefined, undefined, true);
-  }, [handleSelectSession]);
-
+  // Family switches (Agents panel, sub-agent links) replace the focused pane like any pick.
   const handleSwitchFamilySession = useCallback((session: SessionInfo) => {
-    handleSelectSession(session, false, undefined, undefined, false, true);
+    handleSelectSession(session);
   }, [handleSelectSession]);
 
   /** Opens a session by id: in place within its family (sub-agent links), or as a normal pick (routine runs). */
@@ -1477,19 +1446,14 @@ export function AppShell() {
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo, sourceDraftKey: string) => {
     setRefreshKey((k) => k + 1);
-    setChatTabs((prev) => {
-      const { tabs: nextTabs, newTabId } = promoteDraftToSession(prev, `draft:${sourceDraftKey}`, session);
-      setActiveChatTabId((curr) => (curr === `draft:${sourceDraftKey}` ? newTabId : curr));
-      setSplitChatTabId((curr) => (curr === `draft:${sourceDraftKey}` ? newTabId : curr));
-      return nextTabs;
-    });
+    commitChatView({ view: promoteDraft(chatViewRef.current, `draft:${sourceDraftKey}`, session), evicted: [] });
     if (activeNewSessionDraftKeyRef.current !== sourceDraftKey) return;
     activeNewSessionDraftKeyRef.current = null;
     setNewSessionCwd(null);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
-  }, [router, hydrateSelectedSession]);
+  }, [commitChatView, router, hydrateSelectedSession]);
 
   const deliverSessionNotification = useCallback(({
     targetSession,
@@ -1512,19 +1476,18 @@ export function AppShell() {
       tag,
       onClick: () => {
         window.focus();
-        if (targetSession) handlePinSession(targetSession);
+        if (targetSession) handleSelectSession(targetSession);
       },
     });
-  }, [handlePinSession]);
+  }, [handleSelectSession]);
 
   const handleSessionRenamed = useCallback((sessionId: string, title: string) => {
     setRefreshKey((key) => key + 1);
     setSelectedSession((current) => current?.id === sessionId ? { ...current, name: title } : current);
-    setChatTabs((prev) => prev.map((tab) => (tab.id === sessionId && tab.kind === "session" ? {
-      ...tab,
-      title,
-      session: tab.session ? { ...tab.session, name: title } : tab.session,
-    } : tab)));
+    setChatView((view) => {
+      const held = view.items.find((item) => item.id === sessionId)?.session;
+      return held ? updateChatSession(view, { ...held, name: title }) : view;
+    });
     setSessionStats((current) => current?.sessionId === sessionId ? { ...current, sessionName: title } : current);
   }, []);
 
@@ -1638,12 +1601,14 @@ export function AppShell() {
   }, [requestExplorerRefresh]);
 
   const handleSessionForked = useCallback((newSessionId: string, sourceSessionId?: string | null, forkedInfo?: Partial<SessionInfo>, focusSessionId = sourceSessionId, besideSource = false) => {
-    const sourceTab = chatTabsRef.current.find((tab) => tab.id === (sourceSessionId ?? selectedSession?.id));
-    const sourceSession = sourceSessionId ? sourceTab?.session : selectedSession;
+    const view = chatViewRef.current;
+    const sourceId = sourceSessionId ?? selectedSession?.id ?? null;
+    const sourceSession = sourceSessionId ? view.items.find((item) => item.id === sourceSessionId)?.session : selectedSession;
     const shouldFocus = !sourceSessionId || activeSessionIdRef.current === focusSessionId;
-    const sourcePane = isSplitActiveRef.current && sourceTab ? chatTabPane(sourceTab) : "primary";
-    // A side chat opens in the other pane (splitting if needed), so the source stays in view.
-    const pane = besideSource && shouldFocus && sourceTab && canSplitChatRef.current
+    const sourcePane = (sourceId ? paneOf(view, sourceId) : null) ?? view.focusedPane;
+    // The fork replaces its source in that pane (the source stays cached); a side chat opens in the
+    // other pane, splitting if needed, so the source stays in view (ADR 0005).
+    const pane: ChatPane = besideSource && canSplitChatRef.current
       ? (sourcePane === "primary" ? "secondary" : "primary")
       : sourcePane;
     const forkedSession: SessionInfo = {
@@ -1654,9 +1619,10 @@ export function AppShell() {
     };
 
     setRefreshKey((k) => k + 1);
-    setChatTabs((prev) => openSessionInNewTab(prev, forkedSession, pane).tabs);
-    hydrateSelectedSession(newSessionId);
+    // Focus moved on while the fork was in flight: it only shows up in the sidebar.
     if (!shouldFocus) return;
+    commitChatView(showInPane(view, sessionItem(forkedSession), pane, keepMounted));
+    hydrateSelectedSession(newSessionId);
 
     activeNewSessionDraftKeyRef.current = null;
     setSessionKey((k) => k + 1);
@@ -1664,18 +1630,15 @@ export function AppShell() {
     // A copy into another folder moves the sidebar and explorer to that folder.
     if (forkedSession.cwd && sourceSession && forkedSession.cwd !== sourceSession.cwd) setActiveCwd(forkedSession.cwd);
     setSelectedSession(forkedSession);
-    if (pane === "secondary") setSplitChatTabId(newSessionId);
-    else setActiveChatTabId(newSessionId);
-    setActiveChatPane(pane);
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
-  }, [hydrateSelectedSession, router, selectedSession]);
+  }, [commitChatView, hydrateSelectedSession, keepMounted, router, selectedSession]);
 
-  /** Agents panel: a side chat not yet open opens beside the current chat (another pane, or a tab on phones). */
+  /** Agents panel: a side chat not on screen opens beside the current chat (the other pane; in place on phones). */
   const handleSelectFamilySession = useCallback((session: SessionInfo) => {
     // A pick is the panel's answer, like a menu's: close it.
     closeTopPanel(true);
     const besideId = activeSessionIdRef.current;
-    if (session.relation?.kind !== "side" || !besideId || chatTabsRef.current.some((tab) => tab.id === session.id)) {
+    if (session.relation?.kind !== "side" || !besideId || paneOf(chatViewRef.current, session.id)) {
       handleSwitchFamilySession(session);
       return;
     }
@@ -1688,7 +1651,6 @@ export function AppShell() {
     leafId: string | null,
   ) => {
     const name = getSideChatName(prompt, translate("session.sideNamePrefix"));
-    setChatTabs((tabs) => pinSessionTab(tabs, sourceSessionId));
     const result = await sendAgentCommand<{ newSessionId?: string }>(sourceSessionId, {
       type: "fork_branch",
       side: true,
@@ -1698,7 +1660,7 @@ export function AppShell() {
     if (!result?.newSessionId) throw new Error(translate("chat.quoteForkFailed"));
     setPendingQuotePrompt({ sessionId: result.newSessionId, text: prompt });
     // Known before the next list refresh, so the Agents panel shows it at once (a nested one keeps the main session).
-    const sourceRelation = chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session?.relation;
+    const sourceRelation = chatViewRef.current.items.find((item) => item.id === sourceSessionId)?.session?.relation;
     const relation = sourceRelation?.kind === "side" ? sourceRelation : { kind: "side" as const, parentSessionId: sourceSessionId };
     handleSessionForked(result.newSessionId, sourceSessionId, { name, parentSessionId: sourceSessionId, relation }, sourceSessionId, true);
   }, [handleSessionForked, translate, sendAgentCommand]);
@@ -1707,55 +1669,30 @@ export function AppShell() {
     discardSessionDraft(sessionId);
     setRefreshKey((k) => k + 1);
 
-    // Any open tab pointing to the deleted session is closed immediately
-    setChatTabs((prev) => {
-      const exists = prev.some((t) => t.id === sessionId);
-      if (!exists) return prev;
-      const { tabs: nextTabs, nextActiveTabId, nextSplitTabId } = closeChatTab(
-        prev,
-        sessionId,
-        activeChatTabIdRef.current ?? "",
-        splitChatTabIdRef.current,
-      );
-
-      if (nextTabs.length === 0) {
+    // A pane showing the deleted session closes (split) or shows the new-session page (single).
+    const view = chatViewRef.current;
+    const next = removeChatSession(view, sessionId);
+    if (next !== view) {
+      const focusedBefore = shownItem(view, view.focusedPane)?.id;
+      if (!next.primaryId) {
         const draftId = typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
           : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
         const effectiveCwd = activeCwd;
-        const fallbackDraftKey = effectiveCwd ? `new:${draftId}:${effectiveCwd}` : `draft:${draftId}`;
-        const draftRes = openDraftInTabs([], effectiveCwd ?? null, fallbackDraftKey, translate("i18n.newSession"));
-        setActiveChatTabId(draftRes.tabId);
-        setSplitChatTabId(null);
-        setActiveChatPane("primary");
+        const draftKey = effectiveCwd ? `new:${draftId}:${effectiveCwd}` : `draft:${draftId}`;
+        if (effectiveCwd) rekeyDraft(parkedNewSessionDraftKey(effectiveCwd), draftKey);
+        commitChatView(showInPane(next, draftItem(draftKey, effectiveCwd ?? null), "primary", keepMounted));
+        activeNewSessionDraftKeyRef.current = draftKey;
+        setNewSessionDraftId(draftId);
         setSelectedSession(null);
         setNewSessionCwd(effectiveCwd ?? null);
         router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-        return draftRes.tabs;
+      } else {
+        commitChatView({ view: next, evicted: [] });
+        const focused = shownItem(next, next.focusedPane);
+        if (focused && focused.id !== focusedBefore) syncFocusedChatItem(focused);
       }
-
-      setActiveChatTabId(nextActiveTabId);
-      setSplitChatTabId(nextSplitTabId);
-      if (!nextSplitTabId && activeChatPaneRef.current === "secondary") {
-        setActiveChatPane("primary");
-      }
-
-      const targetId = activeChatPaneRef.current === "secondary" && nextSplitTabId
-        ? nextSplitTabId
-        : nextActiveTabId;
-      const targetTab = nextTabs.find((t) => t.id === targetId);
-      if (targetTab?.kind === "session" && targetTab.session) {
-        setSelectedSession(targetTab.session);
-        setNewSessionCwd(null);
-        router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
-      } else if (targetTab?.kind === "draft") {
-        setSelectedSession(null);
-        setNewSessionCwd(targetTab.newSessionCwd);
-        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-      }
-
-      return nextTabs;
-    });
+    }
 
     if (activeSessionIdRef.current === sessionId) {
       setBranchTree([]);
@@ -1765,10 +1702,10 @@ export function AppShell() {
       setSystemInfoLoading(false);
       setActiveTopPanel(null);
     }
-  }, [activeCwd, router, translate]);
+  }, [activeCwd, commitChatView, keepMounted, router, syncFocusedChatItem]);
 
   // A side chat shown in place of its main session goes back to it, as the Main agent row does;
-  // one beside it (split or own tab) just closes.
+  // one beside it (split) just closes.
   const handleDeleteSideChat = useCallback(async (session: SessionInfo, root: SessionInfo) => {
     const title = session.name || session.firstMessage || session.id.slice(0, 12);
     if (!await confirm(translate("agentSwitcher.deleteSideChatConfirm", { title }), { danger: true, confirmLabel: translate("sidebar.delete") })) return;
@@ -1777,13 +1714,8 @@ export function AppShell() {
       const data = await response.json().catch(() => ({})) as { deletedSessionIds?: string[]; error?: string; code?: string };
       if (!response.ok) throw new Error(deleteRefusalText(translate, data));
       const deletedIds = data.deletedSessionIds ?? [session.id];
-      if (activeSessionIdRef.current === session.id && !chatTabsRef.current.some((tab) => tab.id === root.id)) {
-        for (const id of deletedIds) discardSessionDraft(id);
-        handleSwitchFamilySession(root);
-        setRefreshKey((key) => key + 1);
-      } else {
-        for (const id of deletedIds) handleSessionDeleted(id);
-      }
+      if (activeSessionIdRef.current === session.id && !paneOf(chatViewRef.current, root.id)) handleSwitchFamilySession(root);
+      for (const id of deletedIds) handleSessionDeleted(id);
     } catch (error) {
       void confirm(`${translate("sidebar.deleteFailed")}\n${error instanceof Error ? error.message : String(error)}`, { alert: true });
     }
@@ -1825,32 +1757,30 @@ export function AppShell() {
     }
   }, []);
 
-  const titledChatTabs = useMemo(() => {
-    const byId = new Map(chatTabs.flatMap((tab) => tab.session ? [[tab.session.id, tab.session] as const] : []));
+  const primaryItem = useMemo(() => shownItem(chatView, "primary"), [chatView]);
+  const secondaryItem = useMemo(() => shownItem(chatView, "secondary"), [chatView]);
+  // Unnamed side chats are numbered per family (docs/session-switching.md): the title bars follow.
+  const sideChatNumbers = useMemo(() => {
+    const byId = new Map(chatView.items.flatMap((item) => item.session ? [[item.id, item.session] as const] : []));
     for (const session of sessionCatalog) byId.set(session.id, session);
-    const numbers = unnamedSideChatNumbers([...byId.values()]);
-    return chatTabs.map((tab) => numbers.has(tab.id) ? { ...tab, title: translate("chat.unnamedSideChat", { number: numbers.get(tab.id)! }) } : tab);
-  }, [chatTabs, sessionCatalog, translate]);
-  const primaryTabs = useMemo(() => chatTabsInPane(titledChatTabs, "primary"), [titledChatTabs]);
-  const secondaryTabs = useMemo(() => chatTabsInPane(titledChatTabs, "secondary"), [titledChatTabs]);
-
-  const primaryTab = useMemo(() => {
-    return primaryTabs.find((t) => t.id === activeChatTabId) ?? primaryTabs[0] ?? null;
-  }, [primaryTabs, activeChatTabId]);
-
-  const secondaryTab = useMemo(() => {
-    return splitChatTabId ? chatTabs.find((t) => t.id === splitChatTabId) ?? null : null;
-  }, [chatTabs, splitChatTabId]);
+    return unnamedSideChatNumbers([...byId.values()]);
+  }, [chatView.items, sessionCatalog]);
+  const paneTitle = useCallback((item: ChatViewItem | null) => {
+    if (!item?.session) return translate("i18n.newSession");
+    const number = sideChatNumbers.get(item.id);
+    return number ? translate("chat.unnamedSideChat", { number }) : getSessionDisplayTitle(item.session);
+  }, [sideChatNumbers, translate]);
 
   const canSplitChat = !isMobile && chatPanesWide;
-  const isSplitActive = Boolean(canSplitChat && splitChatTabId && secondaryTab && activeChatTabId !== splitChatTabId);
+  const isSplitActive = Boolean(canSplitChat && primaryItem && secondaryItem);
+  const activeChatPane: ChatPane = isSplitActive ? chatView.focusedPane : "primary";
 
   // "Changes N" in the top bar: uncommitted files per shown session cwd, also with the file panel
   // closed. Refreshed on the explorer's existing triggers (run end, writes, focus), never polled.
   const [gitChangeCounts, setGitChangeCounts] = useState<Record<string, number>>({});
   const gitChangeCwdKey = [...new Set([
     selectedSession?.transient ? null : selectedSession?.cwd,
-    ...(isSplitActive ? [primaryTab, secondaryTab] : []).map((tab) => tab?.kind === "session" && !tab.session?.transient ? tab.session?.cwd : null),
+    ...(isSplitActive ? [primaryItem, secondaryItem] : []).map((item) => item?.kind === "session" && !item.session?.transient ? item.session?.cwd : null),
   ].filter((cwd): cwd is string => Boolean(cwd)))].join("\n");
   useEffect(() => {
     if (!gitChangeCwdKey) return;
@@ -1870,81 +1800,66 @@ export function AppShell() {
   canSplitChatRef.current = canSplitChat;
   const primaryPaneHasFocus = !isSplitActive || activeChatPane === "primary";
 
-  const focusChatTab = useCallback((tab: ChatTabItem, pane: "primary" | "secondary") => {
-    setActiveChatPane(pane);
-    if (tab.kind === "session" && tab.session) {
-      activeNewSessionDraftKeyRef.current = null;
-      if (activeSessionIdRef.current !== tab.session.id) {
-        syncSessionMetadata(tab.session.id);
-        setSystemPrompt(null);
-        setSystemTools(null);
-        setSystemInfoLoading(false);
-        setActiveTopPanel(null);
-      }
-      setSelectedSession(tab.session);
-      setNewSessionCwd(null);
-      router.replace(`?session=${encodeURIComponent(tab.session.id)}`, { scroll: false });
-      return;
-    }
-
-    activeNewSessionDraftKeyRef.current = tab.newSessionDraftKey;
-    setSelectedSession(null);
-    setNewSessionCwd(tab.newSessionCwd);
-    setSessionStats(null);
-    setContextUsage(null);
-    setBranchTree([]);
-    setBranchActiveLeafId(null);
-    branchLeafChangeFnRef.current = null;
-    setSystemPrompt(null);
-    setSystemTools(null);
-    setSystemInfoLoading(false);
-    setActiveTopPanel(null);
-    router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [router, syncSessionMetadata]);
-
+  // Reload: the panes come back from sessionStorage once the session list is known (ADR 0005, Reload).
   useEffect(() => {
-    if (chatWorkspaceRestored || !catalogLoaded || !draftTabsRestored) return;
+    if (chatViewRestored || !catalogLoaded) return;
     try {
-      if (!initialNavigation.requestedCwd) {
-        const restored = restoreChatWorkspace(window.sessionStorage.getItem(CHAT_WORKSPACE_STORAGE_KEY), sessionCatalog, initialNavigation.sessionId);
-        if (restored?.tabs.length) {
-          // Legacy draft metadata may predate workspace storage; never discard a recoverable draft.
-          const ids = new Set(restored.tabs.map((tab) => tab.id));
-          const drafts = chatTabsRef.current.filter((tab) => tab.kind === "draft" && tab.dirty && !ids.has(tab.id));
-          const tabs = [...restored.tabs, ...drafts];
-          setChatTabs(tabs);
-          setActiveChatTabId(restored.activeId);
-          setSplitChatTabId(restored.splitId);
-          setActiveChatPane(restored.focusedPane);
-          setChatSplitRatio(restored.splitRatio);
-          const focusedId = restored.focusedPane === "secondary" ? restored.splitId : restored.activeId;
-          const focused = tabs.find((tab) => tab.id === focusedId);
-          if (focused) {
-            suppressCwdBumpRef.current = true;
-            setSelectedSession(focused.session);
-            setNewSessionCwd(focused.newSessionCwd);
-            activeNewSessionDraftKeyRef.current = focused.newSessionDraftKey;
-            if (!initialNavigation.sessionId && initialNavigation.routines === null && focused.session) {
-              router.replace(`?session=${encodeURIComponent(focused.session.id)}`, { scroll: false });
-            }
+      const raw = window.sessionStorage.getItem(CHAT_VIEW_STORAGE_KEY);
+      const restored = initialNavigation.requestedCwd ? null : restoreChatView(raw, sessionCatalog, initialNavigation.sessionId);
+      // Stored drafts a link (or ?cwd=) puts off screen park under their cwd, as when they are left.
+      const stored = restoreChatView(raw, sessionCatalog, null);
+      for (const item of [stored?.primary, stored?.secondary]) {
+        if (item?.kind !== "draft" || !item.newSessionDraftKey || [restored?.primary?.id, restored?.secondary?.id].includes(item.id)) continue;
+        rekeyDraft(item.newSessionDraftKey, parkedNewSessionDraftKey(item.newSessionCwd ?? ""));
+      }
+      if (restored) {
+        // The sidebar may already show the linked session: build on the current view so it is not remounted.
+        let view = showInPane(chatViewRef.current, restored.primary!, "primary", keepMounted).view;
+        if (restored.secondary) view = showInPane(view, restored.secondary, "secondary", keepMounted).view;
+        view = focusPane(view, restored.focusedPane);
+        commitChatView({ view, evicted: [] });
+        setChatSplitRatio(restored.splitRatio);
+        const focused = shownItem(view, view.focusedPane);
+        if (focused) {
+          suppressCwdBumpRef.current = true;
+          setSelectedSession(focused.session);
+          setNewSessionCwd(focused.newSessionCwd);
+          activeNewSessionDraftKeyRef.current = focused.newSessionDraftKey;
+          // A valid link already names the focused session; otherwise (none, or a deleted one) name it.
+          if (initialNavigation.routines === null && focused.id !== initialNavigation.sessionId) {
+            router.replace(focused.session ? `?session=${encodeURIComponent(focused.session.id)}` : window.location.pathname, { scroll: false });
           }
         }
       }
     } catch { /* storage is optional */ }
-    setChatWorkspaceRestored(true);
-  }, [catalogLoaded, chatWorkspaceRestored, draftTabsRestored, initialNavigation, router, sessionCatalog]);
+    setChatViewRestored(true);
+  }, [catalogLoaded, chatViewRestored, commitChatView, initialNavigation, keepMounted, router, sessionCatalog]);
 
   useEffect(() => {
-    if (!chatWorkspaceRestored) return;
+    if (!chatViewRestored) return;
     try {
-      window.sessionStorage.setItem(CHAT_WORKSPACE_STORAGE_KEY, serializeChatWorkspace({ tabs: chatTabs, activeId: activeChatTabId, splitId: splitChatTabId, focusedPane: activeChatPane, splitRatio: chatSplitRatio }));
-    } catch { /* layout storage is best-effort; draft storage has its own warning */ }
-  }, [chatWorkspaceRestored, chatTabs, activeChatTabId, splitChatTabId, activeChatPane, chatSplitRatio]);
+      if (chatView.primaryId) window.sessionStorage.setItem(CHAT_VIEW_STORAGE_KEY, serializeChatView(chatView, chatSplitRatio));
+      else window.sessionStorage.removeItem(CHAT_VIEW_STORAGE_KEY);
+    } catch { /* layout storage is best-effort */ }
+  }, [chatViewRestored, chatView, chatSplitRatio]);
 
-  const handleFocusPane = useCallback((pane: "primary" | "secondary") => {
-    const targetTab = pane === "secondary" ? secondaryTab : primaryTab;
-    if (targetTab) focusChatTab(targetTab, pane);
-  }, [focusChatTab, primaryTab, secondaryTab]);
+  const handleFocusPane = useCallback((pane: ChatPane) => {
+    const view = chatViewRef.current;
+    if (view.focusedPane === pane || !view.secondaryId) return;
+    const next = focusPane(view, pane);
+    commitChatView({ view: next, evicted: [] });
+    syncFocusedChatItem(shownItem(next, pane));
+  }, [commitChatView, syncFocusedChatItem]);
+
+  /** × on a pane ends the split; the other pane stays mounted, becomes primary and takes focus. */
+  const handleClosePane = useCallback((pane: ChatPane) => {
+    const view = chatViewRef.current;
+    const result = closePane(view, pane, keepMounted);
+    if (result.view === view) return;
+    commitChatView(result);
+    const survivor = shownItem(result.view, "primary");
+    if (survivor && survivor.id !== shownItem(view, view.focusedPane)?.id) syncFocusedChatItem(survivor);
+  }, [commitChatView, keepMounted, syncFocusedChatItem]);
 
   useLayoutEffect(() => {
     const container = chatPanesContainerRef.current;
@@ -1971,184 +1886,11 @@ export function AppShell() {
     };
   }, []);
 
+  // Too narrow to split: merge, keeping the focused pane.
   useEffect(() => {
-    if (!splitChatTabId || canSplitChat) return;
-    const retainedTab = activeChatPane === "secondary" ? secondaryTab : primaryTab;
-    setChatTabs((tabs) => mergeChatTabPanes(tabs, retainedTab?.id ?? null));
-    setSplitChatTabId(null);
-    if (!retainedTab) {
-      setActiveChatPane("primary");
-      return;
-    }
-    setActiveChatTabId(retainedTab.id);
-    focusChatTab(retainedTab, "primary");
-  }, [activeChatPane, canSplitChat, focusChatTab, primaryTab, secondaryTab, splitChatTabId]);
-
-  const handleSelectPrimaryTab = useCallback((id: string) => {
-    const tab = chatTabs.find((candidate) => candidate.id === id);
-    if (!tab) return;
-    setActiveChatTabId(id);
-    focusChatTab(tab, "primary");
-  }, [chatTabs, focusChatTab]);
-
-  const handleSelectSecondaryTab = useCallback((id: string) => {
-    const tab = chatTabs.find((candidate) => candidate.id === id);
-    if (!tab) return;
-    setSplitChatTabId(id);
-    focusChatTab(tab, "secondary");
-  }, [chatTabs, focusChatTab]);
-
-  const handleSelectChatTab = useCallback((tabId: string) => {
-    setMainView("chat");
-    const tab = chatTabs.find((candidate) => candidate.id === tabId);
-    if (!tab) return;
-
-    const pane = isSplitActive ? chatTabPane(tab) : "primary";
-    if (pane === "secondary") setSplitChatTabId(tabId);
-    else setActiveChatTabId(tabId);
-    focusChatTab(tab, pane);
-  }, [chatTabs, focusChatTab, isSplitActive]);
-
-  const handleMoveChatTab = useCallback((tabId: string, targetPane: ChatPane, beforeTabId: string | null) => {
-    const prev = chatTabsRef.current;
-    const source = prev.find((tab) => tab.id === tabId);
-    const result = moveChatTab(prev, tabId, targetPane, beforeTabId, activeChatTabId, splitChatTabId);
-    if (!source || result.tabs === prev) return;
-    setChatTabs(result.tabs);
-    if (chatTabPane(source) === targetPane) return; // reorder: selection and focus stay put
-    setActiveChatTabId(result.nextActiveTabId);
-    setSplitChatTabId(result.nextSplitTabId);
-    const moved = result.tabs.find((tab) => tab.id === tabId);
-    if (moved) focusChatTab(moved, result.nextSplitTabId ? targetPane : "primary");
-  }, [activeChatTabId, focusChatTab, splitChatTabId]);
-
-  // Returns false when the tab stays open for now: an unsent draft asks first and closes on OK.
-  const handleCloseChatTab = useCallback(function closeTab(tabId: string, confirmed = false): boolean {
-    const closingTab = chatTabsRef.current.find((tab) => tab.id === tabId);
-    if (closingTab?.kind === "draft" && closingTab.newSessionDraftKey) {
-      const draft = getDraft(closingTab.newSessionDraftKey);
-      const hasContent = closingTab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
-      if (hasContent && !confirmed) {
-        void confirm(translate("chatTabs.discardDraft"), { danger: true, confirmLabel: translate("common.discard") }).then((ok) => { if (ok) closeTab(tabId, true); });
-        return false;
-      }
-      clearDraft(closingTab.newSessionDraftKey);
-    }
-    // From the committed tabs, not inside a setChatTabs updater: the router call and the setters
-    // below are side effects, and an updater may run during a later render (React warns there).
-    const { tabs: nextTabs, nextActiveTabId, nextSplitTabId } = closeChatTab(
-      chatTabsRef.current,
-      tabId,
-      activeChatTabId ?? "",
-      splitChatTabId,
-    );
-
-    if (nextTabs.length === 0) {
-      const draftId = typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-      const effectiveCwd = activeCwd;
-      const defaultDraftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
-      rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), defaultDraftKey);
-      activeNewSessionDraftKeyRef.current = defaultDraftKey;
-      setNewSessionDraftId(draftId);
-
-      const draftRes = openDraftInTabs([], effectiveCwd, defaultDraftKey, translate("i18n.newSession"));
-      setChatTabs(draftRes.tabs);
-      setActiveChatTabId(draftRes.tabId);
-      setSplitChatTabId(null);
-      setActiveChatPane("primary");
-      setSelectedSession(null);
-      setNewSessionCwd(effectiveCwd);
-      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-      return true;
-    }
-
-    setChatTabs(nextTabs);
-    setActiveChatTabId(nextActiveTabId);
-    setSplitChatTabId(nextSplitTabId);
-
-    if (!nextSplitTabId && activeChatPane === "secondary") {
-      setActiveChatPane("primary");
-    }
-
-    const targetId = (activeChatPane === "secondary" && nextSplitTabId) ? nextSplitTabId : nextActiveTabId;
-    const targetTab = nextTabs.find((t) => t.id === targetId) ?? nextTabs.find((t) => t.id === nextActiveTabId);
-    if (targetTab?.kind === "session" && targetTab.session) {
-      setSelectedSession(targetTab.session);
-      setNewSessionCwd(null);
-      router.replace(`?session=${encodeURIComponent(targetTab.session.id)}`, { scroll: false });
-    } else if (targetTab?.kind === "draft") {
-      setSelectedSession(null);
-      setNewSessionCwd(targetTab.newSessionCwd);
-      router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-    }
-    return true;
-  }, [activeChatPane, activeChatTabId, activeCwd, confirm, router, splitChatTabId, translate]);
-
-  // Batch close from a tab's context menu. The caller always leaves at least one tab in the group,
-  // so there is no empty-workspace fallback here; only the focused pane needs re-pointing.
-  const handleCloseChatTabs = useCallback(function closeTabs(tabIds: string[], confirmed = false): boolean {
-    const closing = chatTabsRef.current.filter((tab) => tabIds.includes(tab.id));
-    const unsent = closing.filter((tab) => {
-      if (tab.kind !== "draft" || !tab.newSessionDraftKey) return false;
-      const draft = getDraft(tab.newSessionDraftKey);
-      return tab.dirty || Boolean(draft && (draft.value.trim() || draft.images.length > 0));
-    });
-    if (unsent.length > 0 && !confirmed) {
-      void confirm(translate("chatTabs.discardDrafts", { count: unsent.length }), { danger: true, confirmLabel: translate("common.discard") }).then((ok) => { if (ok) closeTabs(tabIds, true); });
-      return false;
-    }
-    for (const tab of closing) {
-      if (tab.kind === "draft" && tab.newSessionDraftKey) clearDraft(tab.newSessionDraftKey);
-    }
-    const result = closeChatTabs(chatTabsRef.current, tabIds, activeChatTabId ?? "", splitChatTabId);
-    setChatTabs(result.tabs);
-    setActiveChatTabId(result.nextActiveTabId);
-    setSplitChatTabId(result.nextSplitTabId);
-    const focusedId = activeChatPane === "secondary" ? splitChatTabId : activeChatTabId;
-    if (focusedId && tabIds.includes(focusedId)) {
-      const pane = activeChatPane === "secondary" && result.nextSplitTabId ? "secondary" : "primary";
-      const target = result.tabs.find((tab) => tab.id === (pane === "secondary" ? result.nextSplitTabId : result.nextActiveTabId));
-      if (target) focusChatTab(target, pane);
-    }
-    return true;
-  }, [activeChatPane, activeChatTabId, confirm, focusChatTab, splitChatTabId, translate]);
-
-  const handleNewChatTab = useCallback((pane?: "primary" | "secondary") => {
-    setMainView("chat");
-    const openInSecondary = isSplitActive && (
-      pane === "secondary" || (pane !== "primary" && activeChatPane === "secondary")
-    );
-    const effectiveCwd = chatTabCwd(openInSecondary ? secondaryTab : primaryTab) ?? activeCwd;
-    const draftId = typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-    const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
-    newComposerFocusKeyRef.current = draftKey;
-    rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
-    activeNewSessionDraftKeyRef.current = draftKey;
-    setNewSessionDraftId(draftId);
-
-    const { tabs: nextTabs, tabId } = openDraftInTabs(
-      chatTabs,
-      effectiveCwd,
-      draftKey,
-      translate("i18n.newSession"),
-      openInSecondary ? "secondary" : "primary",
-    );
-    setChatTabs(nextTabs);
-    if (openInSecondary) {
-      setSplitChatTabId(tabId);
-      setActiveChatPane("secondary");
-    } else {
-      setActiveChatTabId(tabId);
-      setActiveChatPane("primary");
-    }
-    setSelectedSession(null);
-    setNewSessionCwd(effectiveCwd);
-    router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-  }, [activeChatPane, activeCwd, chatTabs, isSplitActive, primaryTab, router, secondaryTab, translate]);
+    if (!chatView.secondaryId || canSplitChat) return;
+    handleClosePane(chatView.focusedPane === "secondary" ? "primary" : "secondary");
+  }, [canSplitChat, chatView.focusedPane, chatView.secondaryId, handleClosePane]);
 
   // `opened` (Open folder… on the new-session page) also lists the folder as a project, like the
   // sidebar's former Add project: it stays as an empty project row until its first chat.
@@ -2161,79 +1903,29 @@ export function AppShell() {
     const data = await res.json() as { cwd?: string; projectKey?: string; projectRoot?: string; error?: string };
     if (!res.ok || !data.cwd) throw new Error(data.error ?? `HTTP ${res.status}`);
     const nextCwd = data.cwd;
-    const projectKey = data.projectKey ?? data.projectRoot ?? nextCwd;
     if (opened) {
       const root = data.projectRoot ?? nextCwd;
       handleUpdatePinnedCwds((paths) => paths.includes(root) ? paths : [...paths, root]);
     }
     if (draftKey) {
-      setChatTabs((tabs) => tabs.map((tab) => (
-        tab.kind === "draft" && tab.newSessionDraftKey === draftKey
-          ? { ...tab, newSessionCwd: nextCwd, projectKey }
-          : tab
-      )));
+      const view = chatViewRef.current;
+      // One draft per cwd: the other pane already has one there, so go to it and leave this one be.
+      const other = paneShowingDraft(view, nextCwd);
+      if (other && shownItem(view, other)?.newSessionDraftKey !== draftKey) {
+        commitChatView({ view: focusPane(view, other), evicted: [] });
+        syncFocusedChatItem(shownItem(view, other));
+        return;
+      }
+      commitChatView({ view: { ...view, items: view.items.map((item) => (
+        item.kind === "draft" && item.newSessionDraftKey === draftKey ? { ...item, newSessionCwd: nextCwd } : item
+      )) }, evicted: [] });
     }
     // A slow change (e.g. creating a worktree) may finish after the user left this draft.
     if (!draftKey || activeNewSessionDraftKeyRef.current === draftKey) {
       setNewSessionCwd(nextCwd);
       setActiveCwd(nextCwd);
     }
-  }, [handleUpdatePinnedCwds]);
-
-  const handleToggleSplit = useCallback(() => {
-    if (splitChatTabId) {
-      const retainedTab = activeChatPane === "secondary" ? secondaryTab : primaryTab;
-      setChatTabs((tabs) => mergeChatTabPanes(tabs, retainedTab?.id ?? null));
-      setSplitChatTabId(null);
-      setActiveChatPane("primary");
-      if (retainedTab) {
-        setActiveChatTabId(retainedTab.id);
-        focusChatTab(retainedTab, "primary");
-      }
-    } else if (canSplitChat) {
-      // Split the adjacent tab to the right (fall back to the left neighbour).
-      const activeIndex = chatTabs.findIndex((t) => t.id === activeChatTabId);
-      const otherTab = chatTabs[activeIndex + 1] ?? chatTabs[activeIndex - 1];
-      if (otherTab) {
-        setChatTabs((tabs) => tabs.map((tab) => tab.id === otherTab.id ? { ...tab, pane: "secondary" } : tab));
-        setSplitChatTabId(otherTab.id);
-        setActiveChatPane("secondary");
-        if (otherTab.kind === "session" && otherTab.session) {
-          setSelectedSession(otherTab.session);
-          setNewSessionCwd(null);
-          router.replace(`?session=${encodeURIComponent(otherTab.session.id)}`, { scroll: false });
-        } else if (otherTab.kind === "draft") {
-          setSelectedSession(null);
-          setNewSessionCwd(otherTab.newSessionCwd);
-          router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-        }
-      } else {
-        const draftId = typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-        const effectiveCwd = activeCwd;
-        const draftKey = `new:${draftId}:${effectiveCwd ?? ""}`;
-        rekeyDraft(parkedNewSessionDraftKey(effectiveCwd ?? ""), draftKey);
-        activeNewSessionDraftKeyRef.current = draftKey;
-        newComposerFocusKeyRef.current = draftKey;
-        setNewSessionDraftId(draftId);
-
-        const { tabs: nextTabs, tabId } = openDraftInTabs(
-          chatTabs,
-          effectiveCwd,
-          draftKey,
-          translate("i18n.newSession"),
-          "secondary",
-        );
-        setChatTabs(nextTabs);
-        setSplitChatTabId(tabId);
-        setActiveChatPane("secondary");
-        setSelectedSession(null);
-        setNewSessionCwd(effectiveCwd);
-        router.replace(typeof window !== "undefined" ? window.location.pathname : "/", { scroll: false });
-      }
-    }
-  }, [activeChatPane, activeChatTabId, activeCwd, canSplitChat, chatTabs, focusChatTab, primaryTab, router, secondaryTab, splitChatTabId, translate]);
+  }, [commitChatView, handleUpdatePinnedCwds, syncFocusedChatItem]);
 
   // A transition starts from the current frame's timestamp, so a heavy commit in the same task
   // (new viewer/terminal mount) swallows the start of the open animation. Mount first, open
@@ -2275,7 +1967,7 @@ export function AppShell() {
   const handleOpenLinkedFile = useCallback((filePath: string, sourceSessionId: string | null, page?: number, reveal?: FileReveal) => {
     setFileReveal(reveal ? { path: filePath, target: reveal } : null);
     const sourceCwd = sourceSessionId
-      ? chatTabsRef.current.find((tab) => tab.id === sourceSessionId)?.session?.cwd
+      ? chatViewRef.current.items.find((item) => item.id === sourceSessionId)?.session?.cwd
       : undefined;
     handleOpenFile(filePath, getFileName(filePath), {
       sourceSessionId,
@@ -2420,28 +2112,19 @@ export function AppShell() {
     );
   }, [selectedSession]);
 
+  // Paths that only set the selection (a `?cwd=` link, the sidebar's cwd switch while nothing is
+  // shown) still put it on screen: the focused pane shows it.
   useEffect(() => {
+    const view = chatViewRef.current;
     if (selectedSession) {
-      setChatTabs((prev) => {
-        if (prev.some((t) => t.id === selectedSession.id)) return prev;
-        return openSessionInNewTab(prev, selectedSession).tabs;
-      });
-      setActiveChatTabId((curr) => curr ?? selectedSession.id);
+      if (paneOf(view, selectedSession.id)) return;
+      commitChatView(showInPane(view, sessionItem(selectedSession), isSplitActiveRef.current ? view.focusedPane : "primary", keepMounted));
     } else if (newSessionCwd) {
-      const draftKey = activeNewSessionDraftKeyRef.current ?? newSessionDraftId;
-      setChatTabs((prev) => {
-        const draftId = `draft:${draftKey}`;
-        if (prev.some((t) => t.id === draftId)) return prev;
-        return openDraftInTabs(prev, newSessionCwd, draftKey, translate("i18n.newSession")).tabs;
-      });
-      setActiveChatTabId((curr) => curr ?? `draft:${activeNewSessionDraftKeyRef.current ?? newSessionDraftId}`);
+      const draftKey = activeNewSessionDraftKeyRef.current ?? `new:${newSessionDraftId}:${newSessionCwd}`;
+      if (paneOf(view, `draft:${draftKey}`)) return;
+      commitChatView(showInPane(view, draftItem(draftKey, newSessionCwd), isSplitActiveRef.current ? view.focusedPane : "primary", keepMounted));
     }
-  }, [newSessionCwd, newSessionDraftId, selectedSession, translate]);
-
-  // 发送即转正：在预览标签里干活时，它自动变成正式标签，不再被单击替换。
-  const promotePreviewSession = useCallback((sessionId: string) => {
-    setChatTabs((prev) => pinSessionTab(prev, sessionId));
-  }, []);
+  }, [commitChatView, keepMounted, newSessionCwd, newSessionDraftId, selectedSession]);
 
   const renderChatWindow = (
     tabSession: SessionInfo | null,
@@ -2466,8 +2149,6 @@ export function AppShell() {
         sessionRunning={isTabRunning}
         newSessionCwd={effectiveCwd}
         newSessionDraftKey={effectiveDraftKey}
-        onDraftChange={handleDraftChange}
-        onKeepTabOpen={promotePreviewSession}
         onNewSessionCwdChange={!tabSession && effectiveCwd
           ? (cwd, opened) => handleDraftCwdChange(effectiveDraftKey, cwd, opened)
           : undefined}
@@ -2475,7 +2156,6 @@ export function AppShell() {
         projectPaths={projectPaths}
         projectNameByRoot={projectNameByRoot}
         worktreeInfo={worktreeInfo}
-        draftPersistenceWarning={draftTabsPersistenceFailed}
         onAgentEnd={handleAgentEnd}
         onToolEnd={handleToolEnd}
         onFilesChanged={requestExplorerRefresh}
@@ -2578,7 +2258,6 @@ export function AppShell() {
       if (!response.ok || !result.sessionId || !result.session) {
         throw new Error(result.error || translate("session.forkFailed"));
       }
-      setChatTabs((tabs) => pinSessionTab(tabs, source.id));
       handleSessionForked(result.sessionId, source.id, result.session, focusSessionId);
     } catch (error) {
       void confirm(translate("sidebar.forkFailed", {
@@ -2617,7 +2296,6 @@ export function AppShell() {
         name: getForkSessionName(selectedSession, translate("session.forkNamePrefix")),
       });
       if (!result?.newSessionId) throw new Error(translate("session.forkFailed"));
-      setChatTabs((tabs) => pinSessionTab(tabs, sourceId));
       setHistoryMenuOpen(false);
       handleSessionForked(result.newSessionId, sourceId);
     } catch (error) {
@@ -2633,10 +2311,12 @@ export function AppShell() {
   const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd
     ? `new:${newSessionDraftId}:${effectiveNewSessionCwd}`
     : null;
-  const focusedTab = isSplitActive && activeChatPane === "secondary" ? secondaryTab : primaryTab;
-  const focusedDraftKey = focusedTab?.kind === "draft"
-    ? focusedTab.newSessionDraftKey
-    : (chatTabs.length === 0 ? newSessionDraftKey : null);
+  fallbackDraftRef.current = chatView.items.length === 0 && newSessionDraftKey && effectiveNewSessionCwd
+    ? { key: newSessionDraftKey, cwd: effectiveNewSessionCwd } : null;
+  const focusedChatItem = isSplitActive && activeChatPane === "secondary" ? secondaryItem : primaryItem;
+  const focusedDraftKey = focusedChatItem?.kind === "draft"
+    ? focusedChatItem.newSessionDraftKey
+    : (chatView.items.length === 0 ? newSessionDraftKey : null);
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = focusedDraftKey;
   }, [focusedDraftKey]);
@@ -2650,6 +2330,62 @@ export function AppShell() {
     return () => cancelAnimationFrame(frame);
   }, [focusedDraftKey, isMobile]);
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
+  const shownSessionIds = useMemo(() => [
+    primaryItem?.kind === "session" ? primaryItem.id : selectedSession?.id,
+    isSplitActive && secondaryItem?.kind === "session" ? secondaryItem.id : null,
+  ].filter((id): id is string => Boolean(id)), [isSplitActive, primaryItem, secondaryItem, selectedSession?.id]);
+
+  // A sidebar row is being dragged: the chat area offers its right half as a split drop zone.
+  const [sessionDragging, setSessionDragging] = useState(false);
+  const [splitDropHover, setSplitDropHover] = useState(false);
+  useEffect(() => { if (!sessionDragging) setSplitDropHover(false); }, [sessionDragging]);
+  const handleSplitDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setSessionDragging(false);
+    const id = event.dataTransfer.getData(SESSION_DRAG_MIME);
+    const session = sessionCatalog.find((candidate) => candidate.id === id);
+    if (session) handleOpenInSplit(session);
+  }, [handleOpenInSplit, sessionCatalog]);
+
+  // Keyboard switching (ADR 0005, Keyboard): the sidebar reports what it lists and selects for us.
+  const sessionOrderRef = useRef<{ displayed: string[]; needsYou: string[] }>({ displayed: [], needsYou: [] });
+  const handleSessionOrderChange = useCallback((order: { displayed: string[]; needsYou: string[] }) => {
+    sessionOrderRef.current = order;
+  }, []);
+  const sidebarSelectSessionRef = useRef<((sessionId: string) => void) | null>(null);
+  const [sessionSearchRequest, setSessionSearchRequest] = useState(0);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const shortcut = matchSessionShortcut({
+        key: event.key, code: event.code, altKey: event.altKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey,
+        isComposing: event.isComposing, inTerminal: Boolean(target?.closest(".xterm")), modalOpen: isModalDialogOpen(),
+      });
+      if (!shortcut) return;
+      event.preventDefault();
+      if (shortcut === "switcher") {
+        setSidebarOpen(true);
+        setSessionSearchRequest((request) => request + 1);
+        return;
+      }
+      const view = chatViewRef.current;
+      const focused = shownItem(view, view.focusedPane)?.session ?? null;
+      const other = view.secondaryId ? shownItem(view, view.focusedPane === "primary" ? "secondary" : "primary")?.id ?? null : null;
+      const { displayed, needsYou } = sessionOrderRef.current;
+      const order = shortcut === "next" || shortcut === "previous" ? displayed : needsYou;
+      // The lists hold family roots: a side chat or subagent on screen counts as its main session.
+      const currentId = focused && !order.includes(focused.id) && focused.relation && focused.relation.kind !== "fork"
+        ? focused.relation.parentSessionId
+        : focused?.id ?? null;
+      const direction = shortcut === "next" || shortcut === "nextNeedsYou" ? 1 : -1;
+      const nextId = order === displayed
+        ? adjacentSessionId(order, currentId, direction, other)
+        : nextNeedsYouId(order, currentId, direction, other);
+      if (nextId) sidebarSelectSessionRef.current?.(nextId);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
 
   // The new-session page shows no file panel: entering it folds an open panel, leaving it opens the
@@ -2759,9 +2495,15 @@ export function AppShell() {
       <SessionSidebar
         selectedSessionId={selectedSession?.id ?? null}
         visibleSessionIds={mainView === "chat" && !panelCoversPage && !settingsSection && !(isMobile && (sidebarOpen || rightPanelOpen))
-          ? [primaryTab?.session?.id ?? selectedSession?.id, isSplitActive ? secondaryTab?.session?.id : null].filter((id): id is string => Boolean(id)) : []}
+          ? shownSessionIds : []}
+        shownSessionIds={shownSessionIds}
         onSelectSession={handleSelectSession}
-        onOpenSessionInNewTab={handlePinSession}
+        onOpenSessionInSplit={canSplitChat ? handleOpenInSplit : undefined}
+        primarySessionId={primaryItem?.kind === "session" ? primaryItem.id : null}
+        onSessionDragChange={setSessionDragging}
+        onSessionOrderChange={handleSessionOrderChange}
+        selectSessionRef={sidebarSelectSessionRef}
+        searchFocusRequest={sessionSearchRequest}
         onForkSession={handleSidebarFork}
         forking={sessionForking}
         onNewSession={handleNewSession}
@@ -3056,45 +2798,36 @@ export function AppShell() {
     );
   };
 
-  const collapsedSessionTitle = selectedSession
-    ? getSessionDisplayTitle(selectedSession)
-    : translate("i18n.newSession");
+  const collapsedSessionTitle = focusedChatItem
+    ? paneTitle(focusedChatItem)
+    : selectedSession ? getSessionDisplayTitle(selectedSession) : translate("i18n.newSession");
 
-  const renderCollapsedSessionTitle = () => {
-    if (sidebarOpen || !showChat) return null;
-    if (chatTabs.length > 0) return null;
+  /**
+   * A pane's title bar (ADR 0005): title, "project · branch ⌄", then (right-aligned) Changes N,
+   * conditional tools, ⋯, and × while split. `pane` is null for the single pane.
+   */
+  const renderPaneTitleBar = (item: ChatViewItem | null, pane: ChatPane | null) => {
+    const session = item?.kind === "session" ? item.session : null;
+    const title = item ? paneTitle(item) : collapsedSessionTitle;
     return (
-      <button
-        type="button"
-        onClick={() => toggleTopPanel("session")}
-        title={collapsedSessionTitle}
-        aria-label={collapsedSessionTitle}
-        aria-pressed={activeTopPanel === "session"}
-        aria-expanded={activeTopPanel === "session"}
-        aria-controls="workspace-top-panel"
-        data-top-panel-trigger="session"
-        className="workspace-header-action"
-        data-collapsed-session-title="true"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          minWidth: 0,
-          flex: 1,
-          height: "100%",
-          padding: "0 12px",
-          border: "none",
-          borderRight: "1px solid var(--border)",
-          background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
-          color: "var(--text)",
-          cursor: "pointer",
-          fontSize: 12,
-          textAlign: "left",
-        }}
-      >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {collapsedSessionTitle}
-        </span>
-      </button>
+      <>
+        <span className="pane-title" data-pane-title={pane ?? "single"} data-unfocused={(pane && activeChatPane !== pane) || undefined} title={title}>{title}</span>
+        {renderTopBarContext(session)}
+        {renderDesktopHeaderActions(pane ? { inert: activeChatPane !== pane, session } : undefined)}
+        {pane && (
+          <button
+            type="button"
+            className="workspace-header-action pane-close"
+            onClick={() => handleClosePane(pane)}
+            title={translate("sessionView.closePane")}
+            aria-label={translate("sessionView.closePane")}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
+        )}
+      </>
     );
   };
 
@@ -3285,8 +3018,8 @@ export function AppShell() {
       {/* Center: chat */}
       <div inert={panelCoversPage || undefined} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg-panel)" }}>
-        {/* No bottom rule: the bar's --bg-panel against the chat's --bg is the edge (docs/ui.md, Borders). */}
+        <div ref={topBarRef} style={{ flexShrink: 0, background: isMobile ? "var(--bg-panel)" : "var(--bg)" }}>
+        {/* No bottom rule (docs/ui.md, Borders): on desktop the bar is the chat's own --bg; phones keep --bg-panel. */}
         <div className="workspace-header" style={{ position: "relative", boxShadow: "none" }}>
           {mainView === "routines" ? (
             <>
@@ -3338,110 +3071,29 @@ export function AppShell() {
           )}
           {!isMobile && (isSplitActive ? (
             <>
-              {/* Split: one header row carries both groups' strips, cut at the split line.
-                  Each group keeps its tool icons; the unfocused copy is inert. Spend lives in the composer. */}
+              {/* Split: each pane's title bar sits over it, cut at the split ratio (ADR 0005).
+                  Each keeps its tools; the unfocused copy is inert. Spend lives in the composer. */}
               <div
                 data-header-segment="primary"
+                onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}
                 style={{ display: "flex", alignItems: "stretch", width: `${chatSplitRatio * 100}%`, flexShrink: 0, minWidth: 0, height: "100%" }}
               >
                 {sidebarToggleButton}
-                <div
-                  onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}
-                  style={{ flex: 1, minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}
-                >
-                  <ChatTabBar
-                    tabs={primaryTabs}
-                    activeTabId={activeChatTabId ?? ""}
-                    splitTabId={splitChatTabId}
-                    activePane={activeChatPane === "primary" ? "primary" : "secondary"}
-                    runningSessionIds={runningSessionIds}
-                    sessionMarkers={sessionMarkers}
-                    onSelectTab={handleSelectPrimaryTab}
-                    onCloseTab={handleCloseChatTab}
-                    onCloseTabs={handleCloseChatTabs}
-                    onPinTab={promotePreviewSession}
-                    onRevealTabCwd={setActiveCwd}
-                    onNewTab={() => handleNewChatTab("primary")}
-                    onToggleSplit={handleToggleSplit}
-                    onMoveTab={handleMoveChatTab}
-                    canMoveToOtherPane
-                    canSplit={canSplitChat}
-                    unifiedHeader={true}
-                  />
-                </div>
-                {renderTopBarContext(primaryTab?.kind === "session" ? primaryTab.session : null)}
-                <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("primary"); }}>
-                  {renderDesktopHeaderActions({
-                    inert: activeChatPane !== "primary",
-                    session: primaryTab?.kind === "session" ? primaryTab.session : null,
-                  })}
-                </div>
+                {renderPaneTitleBar(primaryItem, "primary")}
               </div>
               <div
                 data-header-segment="secondary"
+                onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}
                 style={{ display: "flex", alignItems: "stretch", flex: 1, minWidth: 0, height: "100%", borderLeft: "1px solid var(--border)" }}
               >
-                <div
-                  onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}
-                  style={{ flex: 1, minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}
-                >
-                  <ChatTabBar
-                    tabs={secondaryTabs}
-                    activeTabId={splitChatTabId ?? ""}
-                    activePane={activeChatPane === "secondary" ? "primary" : "secondary"}
-                    runningSessionIds={runningSessionIds}
-                    sessionMarkers={sessionMarkers}
-                    onSelectTab={handleSelectSecondaryTab}
-                    onCloseTab={handleCloseChatTab}
-                    onCloseTabs={handleCloseChatTabs}
-                    onPinTab={promotePreviewSession}
-                    onRevealTabCwd={setActiveCwd}
-                    onNewTab={() => handleNewChatTab("secondary")}
-                    onMoveTab={handleMoveChatTab}
-                    pane="secondary"
-                    canMoveToOtherPane
-                    isSecondaryPane={true}
-                    unifiedHeader={true}
-                  />
-                </div>
-                {renderTopBarContext(secondaryTab?.kind === "session" ? secondaryTab.session : null)}
-                <div onPointerDownCapture={(event) => { if (isPrimaryPointerPress(event)) handleFocusPane("secondary"); }}>
-                  {renderDesktopHeaderActions({
-                    inert: activeChatPane !== "secondary",
-                    session: secondaryTab?.kind === "session" ? secondaryTab.session : null,
-                  })}
-                </div>
+                {renderPaneTitleBar(secondaryItem, "secondary")}
                 {renderMainFileToggle(false)}
               </div>
             </>
           ) : (
             <>
-              {/* Single-Row Unified Tabs (when NOT split) */}
-              {!isSplitActive && showChat && chatTabs.length > 0 && (
-                <div style={{ flex: "0 1 auto", minWidth: 0, height: "100%", overflow: "hidden", display: "flex", alignItems: "stretch" }}>
-                  <ChatTabBar
-                    tabs={titledChatTabs}
-                    activeTabId={activeChatTabId ?? ""}
-                    activePane="primary"
-                    runningSessionIds={runningSessionIds}
-                    sessionMarkers={sessionMarkers}
-                    onSelectTab={handleSelectChatTab}
-                    onCloseTab={handleCloseChatTab}
-                    onCloseTabs={handleCloseChatTabs}
-                    onPinTab={promotePreviewSession}
-                    onRevealTabCwd={setActiveCwd}
-                    onNewTab={handleNewChatTab}
-                    onToggleSplit={handleToggleSplit}
-                    onMoveTab={handleMoveChatTab}
-                    canMoveToOtherPane={canSplitChat && chatTabs.length > 1}
-                    canSplit={canSplitChat}
-                    unifiedHeader={true}
-                  />
-                </div>
-              )}
-              {renderCollapsedSessionTitle()}
-              {renderTopBarContext(selectedSession)}
-              {renderDesktopHeaderActions()}
+              {showChat && renderPaneTitleBar(primaryItem ?? null, null)}
+              {!showChat && renderDesktopHeaderActions()}
             </>
           ))}
           {!isMobile && !isSplitActive && renderMainFileToggle(false)}
@@ -3477,7 +3129,7 @@ export function AppShell() {
                   selectedSessionId={selectedSession.id}
                   runningSessionIds={runningSessionIds}
                   onSelectSession={handleSelectFamilySession}
-                  onOpenInNewTab={handlePinSession}
+                  onOpenInSplit={canSplitChat ? handleOpenInSplit : undefined}
                   onDeleteSideChat={(session) => void handleDeleteSideChat(session, activeSessionFamily.root)}
                 />
               )}
@@ -3792,38 +3444,6 @@ export function AppShell() {
           )}
 
         </div>
-        {isMobile && showChat && chatTabs.length > 1 && mainView === "chat" && (
-          <div
-            data-mobile-chat-tabs="true"
-            style={{
-              boxShadow: "inset 0 -1px 0 var(--border)",
-              background: "var(--bg-panel)",
-              height: "var(--workspace-header-height, 30px)",
-              minHeight: "var(--workspace-header-height, 30px)",
-              width: "100%",
-              maxWidth: "100%",
-              minWidth: 0,
-              overflow: "hidden",
-              display: "flex",
-              alignItems: "stretch",
-            }}
-          >
-            <ChatTabBar
-              tabs={titledChatTabs}
-              activeTabId={activeChatTabId ?? ""}
-              activePane="primary"
-              runningSessionIds={runningSessionIds}
-              sessionMarkers={sessionMarkers}
-              onSelectTab={handleSelectChatTab}
-              onCloseTab={handleCloseChatTab}
-              onPinTab={promotePreviewSession}
-                    onRevealTabCwd={setActiveCwd}
-              onNewTab={handleNewChatTab}
-              canSplit={false}
-              isMobile={true}
-            />
-          </div>
-        )}
         {isMobile && renderProjectTrustWarning(true)}
         </div>
 
@@ -3845,13 +3465,14 @@ export function AppShell() {
           >
             {showChat ? (
               <>
-                {/* Every ChatWindow stays under the same parent across split/merge.
-                    Group ownership changes grid placement, never component identity. */}
-                {chatTabs.length > 0 ? chatTabs.map((tab) => {
-                  const pane = isSplitActive ? chatTabPane(tab) : "primary";
-                  const isCurrent = tab.id === (pane === "secondary" ? splitChatTabId : activeChatTabId);
+                {/* Every mounted ChatWindow stays under the same parent across switch/split/merge
+                    (the mount cache, ADR 0005): the pane changes grid placement, never identity. */}
+                {chatView.items.length > 0 ? chatView.items.map((item) => {
+                  const shownIn = paneOf(chatView, item.id);
+                  const isCurrent = shownIn === "primary" || (shownIn === "secondary" && isSplitActive);
+                  const pane: ChatPane = isCurrent && shownIn === "secondary" ? "secondary" : "primary";
                   const isFocused = pane === "secondary" ? activeChatPane === "secondary" : primaryPaneHasFocus;
-                  const mountKey = chatTabMountKey(tab);
+                  const mountKey = chatItemMountKey(item);
                   return (
                     <div
                       key={mountKey}
@@ -3870,9 +3491,9 @@ export function AppShell() {
                       }}
                     >
                       {renderChatWindow(
-                        tab.kind === "session" ? tab.session : null,
-                        tab.kind === "draft" ? tab.newSessionCwd : null,
-                        tab.kind === "draft" ? tab.newSessionDraftKey : null,
+                        item.kind === "session" ? item.session : null,
+                        item.kind === "draft" ? item.newSessionCwd : null,
+                        item.kind === "draft" ? item.newSessionDraftKey : null,
                         isCurrent && isFocused,
                         mountKey,
                         isCurrent,
@@ -3882,6 +3503,24 @@ export function AppShell() {
                 }) : (
                   <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                     {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, undefined, true)}
+                  </div>
+                )}
+
+                {/* A dragged sidebar row opens in the right pane when dropped on the right half. */}
+                {sessionDragging && canSplitChat && (
+                  <div
+                    className="split-drop-zone"
+                    data-hover={splitDropHover || undefined}
+                    onDragOver={(event) => {
+                      if (!event.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDragEnter={() => setSplitDropHover(true)}
+                    onDragLeave={() => setSplitDropHover(false)}
+                    onDrop={handleSplitDrop}
+                  >
+                    {translate("sessionView.openInSplit")}
                   </div>
                 )}
 
@@ -3897,7 +3536,7 @@ export function AppShell() {
                     aria-valuemax={Math.round(getChatSplitRatioBounds(chatPanesWidthRef.current).max * 100)}
                     aria-valuenow={Math.round(chatSplitRatio * 100)}
                     tabIndex={0}
-                    title={translate("chatTabs.splitView", { defaultValue: "调整分屏大小" })}
+                    title={translate("sessionView.resizeSplit")}
                     onPointerDown={handleSplitResizeStart}
                     onPointerMove={handleSplitResizeMove}
                     onPointerUp={handleSplitResizeEnd}

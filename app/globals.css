@@ -4880,21 +4880,20 @@ span.token.table {
   pointer-events: auto !important;
 }
 
-/* Row actions (pin, open in new tab) fade in with the row's hover, rest at the row's
-   text tier, and answer their own hover with a neutral fill (no accent: it marks state). */
-.session-row-pin,
-.session-row-open {
+/* The row action (pin) fades in with the row's hover, rests at the row's
+   text tier, and answers its own hover with a neutral fill (no accent: it marks state). */
+.session-row-pin {
   background: transparent;
   color: var(--text-muted);
   transition: opacity var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
 }
 
-.session-list-row:is(:hover, :has([aria-current="page"])) :is(.session-row-pin, .session-row-open) {
+.session-list-row:is(:hover, :has([aria-current="page"])) .session-row-pin {
   color: var(--text);
 }
 
 @media (hover: hover) {
-  :is(.session-row-pin, .session-row-open):hover {
+  .session-row-pin:hover {
     background: color-mix(in srgb, var(--text) 8%, transparent);
   }
 }
@@ -5313,24 +5312,6 @@ span.token.table {
 }
 .session-status-word[data-status="awaiting"] { color: var(--warning); }
 .session-status-word[data-status="error"] { color: var(--danger); }
-
-/* The tab list button's corner mark: the hidden tabs' most urgent state (or an unsent draft). */
-.chat-tab-hidden-status {
-  position: absolute;
-  top: 5px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-dim);
-}
-.chat-tab-hidden-status[data-status="running"] { animation: session-status-breathe 1.6s ease-in-out infinite; }
-.chat-tab-hidden-status[data-status="unread"] { background: var(--accent); }
-.chat-tab-hidden-status[data-status="awaiting"] { background: var(--warning); }
-.chat-tab-hidden-status[data-status="error"] { background: var(--danger); }
-@media (prefers-reduced-motion: reduce) {
-  .chat-tab-hidden-status { animation: none !important; }
-}
 
 /* Box around the running dot where a row reserves a fixed icon slot. */
 .live-pulse-beacon {
@@ -6821,4 +6802,65 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
   .new-session-picks.is-below .new-session-pick-slot {
     position: static;
   }
+}
+
+/* A chat pane's title bar (docs/ui.md, Top bar context): the title, then the context menu. */
+.pane-title {
+  display: block;
+  align-self: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 8px 0 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pane-title:first-child {
+  padding-left: 16px;
+}
+/* Split: the pane without focus reads one tier lower, so it is clear where a sidebar pick goes. */
+.pane-title[data-unfocused] {
+  color: var(--text-muted);
+}
+.pane-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pane-close:hover {
+  color: var(--text);
+}
+
+/* While a sidebar row is dragged: drop on the chat area's right half to open it there. */
+.split-drop-zone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  /* Opaque enough to read the label over the transcript; the left rule is where the split will be. */
+  background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+  box-shadow: inset 2px 0 0 var(--border);
+  transition: background var(--motion-fast), box-shadow var(--motion-fast);
+}
+.split-drop-zone[data-hover] {
+  box-shadow: inset 2px 0 0 var(--text-dim);
+  color: var(--text);
 }

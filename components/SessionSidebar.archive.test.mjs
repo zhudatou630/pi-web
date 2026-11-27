@@ -24,7 +24,7 @@ const reactDom = createRequire(import.meta.url)("react-dom");
 function row(props) {
   return renderToStaticMarkup(React.createElement(I18nProvider, null, React.createElement(SessionItem, {
     session: { id: "root", modified: "2026-01-01T00:00:00.000Z", firstMessage: "Title" },
-    isSelected: false, menuAt: { x: 20, y: 20 }, onClick: noop, onOpenInNewTab: noop,
+    isSelected: false, menuAt: { x: 20, y: 20 }, onClick: noop, onOpenInSplit: noop,
     onTogglePin: noop, onToggleRead: noop, onToggleArchive: noop, onRequestDelete: noop, ...props,
   })));
 }
@@ -46,7 +46,7 @@ test("session menu orders normal archive and manual-read actions, toggles labels
   assert.equal(portal.mock.callCount(), 1);
   const items = [...html.matchAll(/<button[^>]*role="menuitem"[^>]*>([\s\S]*?)<\/button>/g)]
     .map((match) => match[1].replace(/<[^>]+>/g, "").trim());
-  assert.deepEqual(items, ["Open in new tab", "Pin session", "Rename", "Mark as unread", "Archive", "Delete"]);
+  assert.deepEqual(items, ["Open in split view", "Pin session", "Rename", "Mark as unread", "Archive", "Delete"]);
   assert.match(row({ isArchived: true, isUnread: true }), /Mark as read[\s\S]*Unarchive/);
   assert.match(row({ isRunning: true }), /role="menuitem" disabled=""[^>]*>[\s\S]*?Archive/);
   assert.doesNotMatch(html, /class="is-danger"[^>]*>[\s\S]*?Archive/);
@@ -123,7 +123,8 @@ test("archive entry, shared non-danger confirm, pane protection, and subtle sear
   assert.match(source, /archiveProjectConfirm/);
   assert.match(source, /olderCount === 0/);
   assert.match(source, /visibleSessionIds: new Set\(visibleSessionIds\)/);
-  assert.match(shellSource, /visibleSessionIds=\{mainView === "chat"[\s\S]*?\? \[primaryTab\?\.session\?\.id[\s\S]*?isSplitActive \? secondaryTab\?\.session\?\.id/);
+  assert.match(shellSource, /visibleSessionIds=\{mainView === "chat"[\s\S]*?\? shownSessionIds : \[\]\}/);
+  assert.match(shellSource, /const shownSessionIds = useMemo\(\(\) => \[[\s\S]*?isSplitActive && secondaryItem\?\.kind === "session" \? secondaryItem\.id : null/);
   assert.match(searchSource, /archivedSessionIds\?\.has\(session\.id\)[\s\S]*?text-\[10px\] text-text-dim/);
   assert.doesNotMatch(searchSource, /fontWeight|italic/);
 });

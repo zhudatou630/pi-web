@@ -8,7 +8,7 @@ const source = ts.createSourceFile("ChatWindow.tsx", readFileSync(new URL("./Cha
 const component = source.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "ChatWindow");
 assert.ok(component?.body);
 const callbackNames = [
-  "keepTabOpen", "handleChatFork", "handleChatSend", "handleSteerWithSubmit",
+  "handleChatFork", "handleChatSend", "handleSteerWithSubmit",
   "handleFollowUpWithSubmit", "handlePromptWithStreamingBehaviorWithSubmit",
 ];
 const declarations = callbackNames.map((name) => {
@@ -51,7 +51,6 @@ function bindingsFor(events, overrides = {}) {
     session: { id: "stale-render" },
     selectedSession: { id: "globally-selected-tab" },
     sessionIdRef: { current: "other-runtime-id" },
-    onKeepTabOpen: (id) => events.push(["keep", id]),
     handleFork() {}, handleSend() {}, handleSteer() {}, handleFollowUp() {},
     handlePromptWithStreamingBehavior() {}, agentRunning: false, sessionRunning: false, isCompacting: false,
     t: (key) => key,
@@ -64,47 +63,22 @@ function bindingsFor(events, overrides = {}) {
   };
 }
 
-test("keepTabOpen reads its own tab ref on every call, including identity replacement and draft transitions", () => {
-  const events = [];
-  const bindings = bindingsFor(events);
-  const { keepTabOpen } = callbackRenderer()(bindings);
-  keepTabOpen();
-  bindings.selectedSession = { id: "another-global-selection" };
-  keepTabOpen();
-  bindings.sessionRef.current = { id: "replacement-tab" };
-  keepTabOpen();
-  bindings.sessionRef.current = null;
-  keepTabOpen();
-  bindings.sessionRef.current = { id: "created-from-draft" };
-  keepTabOpen();
-  assert.deepEqual(events, [
-    ["keep", "own-tab"], ["keep", "own-tab"],
-    ["keep", "replacement-tab"], ["keep", "created-from-draft"],
-  ]);
-});
-
-for (const hasCallback of [true, false]) {
-  for (const session of [{ id: "own-tab" }, null]) {
-    test(`fork preserves entry and promise (callback=${hasCallback}, draft=${session === null})`, async () => {
-      const events = [];
-      const promise = Promise.resolve("forked-session");
-      const { handleChatFork } = callbackRenderer()(bindingsFor(events, {
-        sessionRef: { current: session },
-        onKeepTabOpen: hasCallback ? (id) => events.push(["keep", id]) : undefined,
-        handleFork(entryId, name) { events.push(["fork", entryId, name]); return promise; },
-      }));
-      const result = handleChatFork("original-entry-id");
-      assert.equal(result, promise);
-      assert.deepEqual(events, [
-        ...(hasCallback && session ? [["keep", "own-tab"]] : []),
-        ["fork", "original-entry-id", session ? "session.forkNamePrefixown-tab" : undefined],
-      ]);
-      assert.equal(await result, "forked-session");
-    });
-  }
+for (const session of [{ id: "own-tab" }, null]) {
+  test(`fork preserves entry and promise (draft=${session === null})`, async () => {
+    const events = [];
+    const promise = Promise.resolve("forked-session");
+    const { handleChatFork } = callbackRenderer()(bindingsFor(events, {
+      sessionRef: { current: session },
+      handleFork(entryId, name) { events.push(["fork", entryId, name]); return promise; },
+    }));
+    const result = handleChatFork("original-entry-id");
+    assert.equal(result, promise);
+    assert.deepEqual(events, [["fork", "original-entry-id", session ? "session.forkNamePrefixown-tab" : undefined]]);
+    assert.equal(await result, "forked-session");
+  });
 }
 
-test("fork forwards failure through the original promise after keeping the source tab", async () => {
+test("fork forwards failure through the original promise", async () => {
   const events = [];
   const error = new Error("fork failed");
   const promise = Promise.reject(error);
@@ -114,7 +88,7 @@ test("fork forwards failure through the original promise after keeping the sourc
   const result = handleChatFork("failed-entry");
   assert.equal(result, promise);
   await assert.rejects(result, (actual) => actual === error);
-  assert.deepEqual(events, [["keep", "own-tab"], ["fork", "failed-entry"]]);
+  assert.deepEqual(events, [["fork", "failed-entry"]]);
 });
 
 const images = [{ data: "aW1hZ2U=", mimeType: "image/png" }];
@@ -127,7 +101,7 @@ const entrances = [
   ["handlePromptWithStreamingBehaviorWithSubmit", "handlePromptWithStreamingBehavior", ["streaming follow-up", "followUp", images]],
 ];
 for (const [name, delegate, args, delegatedArgs = args] of entrances) {
-  test(`${name} ${args[0]} keeps first, forwards arguments, and follows callback dependency changes`, async () => {
+  test(`${name} ${args[0]} forwards arguments and follows callback dependency changes`, async () => {
     const events = [];
     const promise = Promise.resolve("accepted");
     const bindings = bindingsFor(events, {
@@ -149,21 +123,16 @@ for (const [name, delegate, args, delegatedArgs = args] of entrances) {
     const firstResult = first[name](...args);
     if (name !== "handleChatSend") assert.equal(firstResult, promise);
     await firstResult;
-    assert.deepEqual(events, [["keep", "own-tab"], ["work", delegate]]);
-
-    events.length = 0;
-    const updated = render({ ...bindings, onKeepTabOpen: (id) => events.push(["new-keep", id]) });
-    await updated[name](...args);
-    assert.deepEqual(events, [["new-keep", "own-tab"], ["work", delegate]]);
-
-    events.length = 0;
-    const withoutCallback = render({ ...bindings, onKeepTabOpen: undefined });
-    await withoutCallback[name](...args);
     assert.deepEqual(events, [["work", delegate]]);
+
+    events.length = 0;
+    const updated = render({ ...bindings, [delegate]: (...received) => { events.push(["new-work", delegate]); return bindings[delegate](...received); } });
+    await updated[name](...args);
+    assert.deepEqual(events, [["new-work", delegate], ["work", delegate]]);
   });
 }
 
-test("ordinary send keeps immediately and delegates without a second scroll", async () => {
+test("ordinary send delegates without a second scroll", async () => {
   const events = [];
   let finishSend;
   const pendingSend = new Promise((resolve) => { finishSend = resolve; });
@@ -178,12 +147,12 @@ test("ordinary send keeps immediately and delegates without a second scroll", as
     requestAnimationFrame(callback) { frames.push(callback); },
   });
   const result = callbackRenderer()(bindings).handleChatSend("send me", images);
-  assert.deepEqual(events, [["keep", "own-tab"], ["send"]]);
+  assert.deepEqual(events, [["send"]]);
   assert.equal(frames.length, 0);
   finishSend();
   await result;
   assert.equal(frames.length, 0);
-  assert.deepEqual(events, [["keep", "own-tab"], ["send"]]);
+  assert.deepEqual(events, [["send"]]);
 });
 
 // Locate the actual initial-prompt effect by its dependency, then execute it.
@@ -196,7 +165,7 @@ const initialPromptEffect = component.body.statements
 assert.ok(initialPromptEffect, "Missing initial prompt effect");
 const initialPromptScript = compile(`(${initialPromptEffect.arguments[0].getText(source)})`);
 
-test("initial prompt keeps the owning tab before automatic send, once and only when ready", () => {
+test("initial prompt sends automatically, once and only when ready", () => {
   const events = [];
   const bindings = bindingsFor(events, {
     initialPrompt: "quoted question", initialPromptSentRef: { current: false },
@@ -204,8 +173,7 @@ test("initial prompt keeps the owning tab before automatic send, once and only w
     onInitialPromptConsumed: (id) => events.push(["consumed", id]),
     handleSend: (message) => events.push(["send", message]),
   });
-  const { keepTabOpen } = callbackRenderer()(bindings);
-  const runEffect = (overrides = {}) => initialPromptScript.runInNewContext({ ...bindings, keepTabOpen, ...overrides })();
+  const runEffect = (overrides = {}) => initialPromptScript.runInNewContext({ ...bindings, ...overrides })();
   runEffect({ loading: true });
   runEffect({ error: "load failed" });
   runEffect({ initialPrompt: "" });
@@ -215,6 +183,6 @@ test("initial prompt keeps the owning tab before automatic send, once and only w
   runEffect();
   runEffect();
   assert.deepEqual(events, [
-    ["consumed", "other-runtime-id"], ["keep", "own-tab"], ["send", "quoted question"],
+    ["consumed", "other-runtime-id"], ["send", "quoted question"],
   ]);
 });

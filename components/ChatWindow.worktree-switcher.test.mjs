@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
+import { createJiti } from "jiti";
+const viewState = await createJiti(import.meta.url).import("../lib/chat-view-state.ts");
 
 const source = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
 const control = source.slice(
@@ -139,13 +141,14 @@ test("worktree menu refreshes on every open, retaining the last list on failure 
   cleanup();
 });
 
-test("draft cwd validation uses stable project identity without rekeying/remounting or changing sibling drafts", async () => {
+test("draft cwd validation moves only that draft, without rekeying or remounting", async () => {
   const text = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
   const parsed = ts.createSourceFile("AppShell.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const declaration = find(parsed, (node) => ts.isVariableDeclaration(node) && node.name.getText(parsed) === "handleDraftCwdChange");
-  const sameProject = { kind: "draft", id: "tab", newSessionDraftKey: "draft-key", newSessionCwd: "/old", projectKey: "/old" };
-  const sibling = { ...sameProject, id: "sibling", newSessionDraftKey: "sibling-key" };
-  let tabs = [sameProject, sibling];
+  const sameProject = { kind: "draft", id: "draft:draft-key", newSessionDraftKey: "draft-key", newSessionCwd: "/old" };
+  const sibling = { ...sameProject, id: "draft:sibling-key", newSessionDraftKey: "sibling-key" };
+  const chatViewRef = { current: { items: [sameProject, sibling], recent: [], primaryId: sameProject.id, secondaryId: sibling.id, focusedPane: "primary" } };
+  const items = () => chatViewRef.current.items;
   const writes = [];
   let validated = { cwd: "/root/worktree", projectKey: "stable-root-key", projectRoot: "/root" };
   const bindings = {
@@ -153,23 +156,29 @@ test("draft cwd validation uses stable project identity without rekeying/remount
       assert.deepEqual(JSON.parse(options.body), { cwd: "~/project" });
       return Response.json(validated);
     },
-    setChatTabs: (update) => { tabs = update(tabs); },
+    ...viewState, chatViewRef, commitChatView: ({ view }) => { chatViewRef.current = view; },
+    syncFocusedChatItem: (item) => writes.push(["focus", item.id]),
     activeNewSessionDraftKeyRef: { current: "draft-key" },
     setNewSessionCwd: (cwd) => writes.push(["draft", cwd]), setActiveCwd: (cwd) => writes.push(["active", cwd]),
   };
   const change = evaluate(declaration.initializer.arguments[0].getText(parsed), bindings);
   await change("draft-key", "~/project");
-  assert.deepEqual(tabs[0], { ...sameProject, newSessionCwd: "/root/worktree", projectKey: "stable-root-key" });
-  assert.equal(tabs[1], sibling);
+  assert.deepEqual(items()[0], { ...sameProject, newSessionCwd: "/root/worktree" });
+  assert.equal(items()[1], sibling);
   assert.deepEqual(writes, [["draft", "/root/worktree"], ["active", "/root/worktree"]]);
-  validated = { cwd: "/root/linked", projectRoot: "/root" }; // Root fallback for older replies.
-  await change("draft-key", "~/project");
-  assert.equal(tabs[0].projectKey, "/root");
-  const beforeFailure = tabs;
+  const beforeFailure = chatViewRef.current;
   bindings.fetch = async () => Response.json({ error: "invalid directory" }, { status: 400 });
   const rejectChange = evaluate(declaration.initializer.arguments[0].getText(parsed), bindings);
   await assert.rejects(rejectChange("draft-key", "~/project"), /invalid directory/);
-  assert.equal(tabs, beforeFailure);
+  assert.equal(chatViewRef.current, beforeFailure);
+  // One draft per cwd: moving onto the other pane's cwd goes to that draft and leaves this one.
+  bindings.fetch = async () => Response.json({ cwd: "/old" });
+  writes.length = 0;
+  const onto = evaluate(declaration.initializer.arguments[0].getText(parsed), bindings);
+  await onto("draft-key", "/old");
+  assert.deepEqual(writes, [["focus", "draft:sibling-key"]]);
+  assert.equal(chatViewRef.current.focusedPane, "secondary");
+  assert.equal(items()[0].newSessionCwd, "/root/worktree");
   assert.doesNotMatch(declaration.getText(parsed), /rekeyDraft|setSessionKey|setNewSessionDraftId/);
 });
 
@@ -218,7 +227,7 @@ test("Open folder… on the new-session page lists the folder as a project; othe
   let pinned = ["/existing"];
   const bindings = {
     fetch: async () => Response.json({ cwd: "/new/sub", projectKey: "k", projectRoot: "/new" }),
-    setChatTabs: () => {}, activeNewSessionDraftKeyRef: { current: "d" }, setNewSessionCwd: () => {}, setActiveCwd: () => {},
+    ...viewState, chatViewRef: { current: viewState.EMPTY_CHAT_VIEW }, commitChatView: () => {}, activeNewSessionDraftKeyRef: { current: "d" }, setNewSessionCwd: () => {}, setActiveCwd: () => {},
     handleUpdatePinnedCwds: (update) => { pinned = update(pinned); },
   };
   const change = evaluate(declaration.initializer.arguments[0].getText(parsed), bindings);
