@@ -100,8 +100,8 @@ export const EXPORT_SKIN_CSS = `
   --bg-selected: light-dark(#e8e8e8, #383838);
   --border: light-dark(#e0e0e0, #3a3a3a);
   --text: light-dark(#1a1a1a, #e4e4e4);
-  --text-muted: light-dark(#3b4452, #c6c6c6);
-  --text-dim: light-dark(#565e6b, #a0a0a0);
+  --text-muted: light-dark(#434343, #c6c6c6);
+  --text-dim: light-dark(#5d5d5d, #a0a0a0);
   --accent: light-dark(#2563eb, #60a5fa);
   --danger: light-dark(#dc2626, #f87171);
   --warning: light-dark(#b45309, #e0b040);

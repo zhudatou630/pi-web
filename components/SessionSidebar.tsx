@@ -24,21 +24,25 @@ import { SessionStatusDot, SessionStatusWord } from "./SessionStateBadge";
 import { sessionStatus, unseenErrorSessionIds } from "@/lib/session-status";
 import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
-import { SessionSearch } from "./SessionSearch";
+import { SessionSearchDialog } from "./SessionSearchDialog";
 import { SubagentIcon } from "./SubagentIcon";
 import { MenuCheck } from "./MenuCheck";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
-import { groupByStatus, parseSidebarGrouping, readAllTargets, SIDEBAR_GROUPING_STORAGE_KEY, type SidebarGrouping } from "@/lib/sidebar-grouping";
+import {
+  familyTime, groupByStatus, groupByTime, orderFamilies, parseSidebarGrouping, parseSidebarOrdering, readAllTargets,
+  SIDEBAR_GROUPING_STORAGE_KEY, SIDEBAR_ORDERING_STORAGE_KEY, TIME_BUCKETS, type SidebarGrouping, type SidebarOrdering, type TimeBucket,
+} from "@/lib/sidebar-grouping";
 
 // Fixed row height for the session list. SessionItem renders at exactly this
 // height, so the list can be windowed (only the visible slice is mounted).
-const SESSION_LIST_ITEM_HEIGHT = 26;
+const SESSION_LIST_ITEM_HEIGHT = 32;
 /** Menu rows, phones included: keep equal to `--ui-row-height` in app/globals.css. */
 const MENU_ROW_HEIGHT = 26;
 const WORKSPACE_SESSION_PREVIEW_LIMIT = 6;
 const WORKSPACE_SESSION_PAGE_SIZE = 20;
-/** Show-more window of the status grouping's RECENT section. */
-const RECENT_LIMIT_KEY = "status:recent";
+const TIME_BUCKET_TITLE: Record<TimeBucket, string> = {
+  today: "sidebar.groupToday", yesterday: "sidebar.groupYesterday", week: "sidebar.groupLast7Days", month: "sidebar.groupLast30Days", older: "sidebar.groupOlder",
+};
 
 export function sessionRevealScrollTop(index: number, scrollTop: number, viewportHeight: number): number {
   const top = index * SESSION_LIST_ITEM_HEIGHT;
@@ -150,7 +154,7 @@ function ToolbarIconButton({
 function ProjectFolderIcon({ open }: { open: boolean }) {
   return (
     <span className="sidebar-section-gutter workspace-folder-icon">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {open
           ? <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-1.94V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
           : <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />}
@@ -221,6 +225,11 @@ interface Props {
   } | null) => void;
   /** The file panel shows `cwd` (reveal, Changes N, worktree switch): the selected project follows. */
   explorerReveal?: { cwd: string; nonce: number } | null;
+  /** The new-session page shows: its nav row is current, like Cursor's New Chat. */
+  newSessionOpen?: boolean;
+  /** The Routines nav row under New session (Cursor's Automations); pressed while the page shows. */
+  routinesOpen?: boolean;
+  onToggleRoutines?: () => void;
 }
 
 interface WorktreeEntry {
@@ -296,9 +305,18 @@ function loadSidebarGrouping(): SidebarGrouping {
   }
 }
 
-function saveSidebarGrouping(grouping: SidebarGrouping): void {
+function loadSidebarOrdering(): SidebarOrdering {
+  if (typeof window === "undefined") return "updated";
   try {
-    window.localStorage.setItem(SIDEBAR_GROUPING_STORAGE_KEY, grouping);
+    return parseSidebarOrdering(window.localStorage.getItem(SIDEBAR_ORDERING_STORAGE_KEY));
+  } catch {
+    return "updated";
+  }
+}
+
+function saveSidebarChoice(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
   } catch {
     // Persistence is best-effort.
   }
@@ -379,7 +397,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -427,13 +445,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     });
   }, []);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
-  const [sessionSearchQuery, setSessionSearchQuery] = useState("");
-  const sessionSearchActive = sessionSearchOpen && Boolean(sessionSearchQuery.trim());
   // Server and first client render agree on "project"; the stored choice lands before paint.
   const [grouping, setGrouping] = useState<SidebarGrouping>("project");
   useLayoutEffect(() => setGrouping(loadSidebarGrouping()), []);
-  // The archive always lists by project.
-  const statusView = grouping === "status" && !archiveView;
+  const [ordering, setOrdering] = useState<SidebarOrdering>("updated");
+  useLayoutEffect(() => setOrdering(loadSidebarOrdering()), []);
+  // By status and by time list every project in titled sections; the archive always lists by project.
+  const flatView = grouping !== "project" && !archiveView;
   const [filterOpen, setFilterOpen] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement>(null);
   useMenuDismiss(filterOpen, filterMenuRef, useCallback(() => setFilterOpen(false), []));
@@ -505,8 +523,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     const update = () => {
       const gutter = probe.offsetWidth - probe.clientWidth;
       root.style.setProperty("--sidebar-scrollbar-gutter", `${gutter}px`);
-      // Overlay scrollbars (touch) reserve nothing; keep the fine-pointer 5px edge inset anyway.
-      root.style.setProperty("--sidebar-inset", `${Math.max(gutter, 5)}px`);
+      // Row highlights sit 8px from the sidebar edges (Cursor), whatever the scrollbar reserves.
+      root.style.setProperty("--sidebar-inset", `${Math.max(gutter, 8)}px`);
     };
     update();
     const pointer = window.matchMedia("(pointer: coarse)");
@@ -578,7 +596,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     setListViewportH(el.clientHeight);
     setListScrollTop(el.scrollTop);
     return () => ro.disconnect();
-  }, [sessionSearchActive, projectsOpen, statusView]);
+  }, [projectsOpen, flatView]);
 
   const loadSessions = useCallback(async (showLoading = false) => {
     const loadId = ++sessionLoadIdRef.current;
@@ -1307,7 +1325,19 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     if (expandedWorkspaceKeys !== null) saveExpandedWorkspaceKeys(expandedWorkspaceKeys);
   }, [expandedWorkspaceKeys]);
 
-  const allFamilies = useMemo(() => listSessionFamilies(listedSessions), [listedSessions]);
+  const familyStatus = useCallback((family: SessionFamily) => {
+    const members = [family.root, ...family.subagents];
+    return sessionStatus({
+      awaiting: members.some((session) => awaitingInputSessionIds.has(session.id)),
+      error: erroredSessionIds.has(family.root.id),
+      unread: members.some((session) => unreadSessionIds.has(session.id)),
+      running: members.some((session) => activeSessionIds.has(session.id)),
+    });
+  }, [awaitingInputSessionIds, erroredSessionIds, unreadSessionIds, activeSessionIds]);
+  const listedFamilies = useMemo(() => listSessionFamilies(listedSessions), [listedSessions]);
+  // Only the status ordering re-sorts on state changes.
+  const orderStatus = ordering === "status" ? familyStatus : null;
+  const allFamilies = useMemo(() => orderFamilies(listedFamilies, ordering, orderStatus), [listedFamilies, ordering, orderStatus]);
   const archivedFamilies = useMemo(
     () => allFamilies.filter((family) => isFamilyArchived(family, archivedSessionIds, runningSessionIds)),
     [allFamilies, archivedSessionIds, runningSessionIds],
@@ -1523,7 +1553,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     ? workspaceRows.flatMap((row) => row.kind === "workspace" ? [row.project.key] : [])
     : [];
 
-  const canCollapseAll = !statusView && !singleProject && (archiveView
+  const canCollapseAll = !flatView && !singleProject && (archiveView
     ? archiveProjectKeys.some((key) => expandedArchiveProjectKeys.has(key))
     : workspaceProjects.some((project) => (expandedWorkspaceKeys ?? defaultExpandedWorkspaceKeys).has(project.key)));
 
@@ -1538,7 +1568,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     return blocks;
   }, [workspaceRows]);
   const projectDrag = useProjectDrag({
-    enabled: !loading && projectsOpen && !sessionSearchActive && !statusView,
+    enabled: !loading && projectsOpen && !flatView,
     allowDrag: !archiveView && !singleProject && !selection,
     blocks: projectDragBlocks, scrollRef: listScrollRef, innerRef: listInnerRef,
     onMove: (key, anchor, position) => {
@@ -1573,7 +1603,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // One reveal per focused id; hidden search/archive views defer rather than change navigation.
   useLayoutEffect(() => {
     if (openRevealRef.current.id !== selectedSessionId) openRevealRef.current = { id: selectedSessionId, done: false };
-    if (!selectedSessionId || openRevealRef.current.done || loading || sessionListVersion === null || sessionSearchActive || selectionProjectKey) return;
+    if (!selectedSessionId || openRevealRef.current.done || loading || sessionListVersion === null || selectionProjectKey) return;
     const family = allFamilies.find((item) => item.root.id === selectedSessionId || item.subagents.some((session) => session.id === selectedSessionId));
     if (!family || archivedMemberIds.has(family.root.id) !== archiveView) return;
     const projectKey = workspaceKeyOf(family.root);
@@ -1583,7 +1613,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       if (!list || !list.clientHeight) return;
       const index = pinnedFamilies.findIndex((item) => item.root.id === family.root.id);
       list.scrollTop = sessionRevealScrollTop(index, list.scrollTop, list.clientHeight);
-    } else if (statusView) {
+    } else if (flatView) {
       const row = listScrollRef.current?.querySelector(`[data-family-id="${CSS.escape(family.root.id)}"]`);
       if (!row) return;
       row.scrollIntoView({ block: "nearest" });
@@ -1604,7 +1634,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       setListScrollTop(list.scrollTop);
     }
     openRevealRef.current.done = true;
-  }, [selectedSessionId, loading, sessionListVersion, sessionSearchActive, selectionProjectKey, allFamilies, archivedMemberIds, archiveView, pinnedFamilies, pinnedOpen, projectsOpen, singleProject, selectedProject, expandedArchiveProjectKeys, expandedWorkspaceKeys, defaultExpandedWorkspaceKeys, workspaceRows, listViewportH, statusView]);
+  }, [selectedSessionId, loading, sessionListVersion, selectionProjectKey, allFamilies, archivedMemberIds, archiveView, pinnedFamilies, pinnedOpen, projectsOpen, singleProject, selectedProject, expandedArchiveProjectKeys, expandedWorkspaceKeys, defaultExpandedWorkspaceKeys, workspaceRows, listViewportH, flatView]);
 
   const pinnedActivity = useMemo(() => [...getProjectActivity(
     pinnedFamilies.flatMap((family) => [family.root, ...family.subagents]),
@@ -1617,34 +1647,49 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     keepalive: total.keepalive + activity.keepalive,
   }), { running: 0, awaiting: 0, unread: 0, error: 0, keepalive: 0 }), [pinnedFamilies, activeSessionIds, unreadSessionIds, awaitingInputSessionIds, cacheKeepaliveSessionIds, erroredSessionIds]);
 
-  // Grouped by status: every project's unpinned, unarchived families (docs/ui.md, Sidebar top row).
-  const statusGroups = useMemo(() => {
-    if (!statusView) return null;
-    const familyStatus = (family: SessionFamily) => {
-      const members = [family.root, ...family.subagents];
-      return sessionStatus({
-        awaiting: members.some((session) => awaitingInputSessionIds.has(session.id)),
-        error: erroredSessionIds.has(family.root.id),
-        unread: members.some((session) => unreadSessionIds.has(session.id)),
-        running: members.some((session) => activeSessionIds.has(session.id)),
-      });
-    };
+  // By status or by time: every project's unpinned, unarchived families in titled sections
+  // (docs/ui.md, Sidebar top row). Paged sections show more like a project.
+  const flatGroups = useMemo(() => {
+    if (!flatView) return null;
     const families = allFamilies.filter((family) => !pinnedSessionIds.includes(family.root.id) && !archivedMemberIds.has(family.root.id));
-    const groups = groupByStatus(families, familyStatus, (family) => Date.parse(family.latestModified) || 0);
-    const limit = workspaceSessionLimits[RECENT_LIMIT_KEY] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
-    const recent = previewSessionFamilies(groups.recent, WORKSPACE_SESSION_PREVIEW_LIMIT, Math.max(0, limit - WORKSPACE_SESSION_PREVIEW_LIMIT),
-      new Set(selectedSessionId ? [selectedSessionId] : []), WORKSPACE_SESSION_PAGE_SIZE);
-    return {
-      sections: [
-        { key: "sidebar.groupNeedsYou", families: groups.needsYou, count: groups.needsYou.length },
-        { key: "sidebar.groupRunning", families: groups.running, count: groups.running.length },
-        { key: "sidebar.groupRecent", families: recent.visible, count: groups.recent.length },
-      ].filter((section) => section.count > 0),
-      recentRemaining: groups.recent.length - recent.visible.length,
-      recentRevealed: recent.revealed,
-      recentNextLimit: WORKSPACE_SESSION_PREVIEW_LIMIT + recent.nextShown,
-    };
-  }, [statusView, allFamilies, pinnedSessionIds, archivedMemberIds, awaitingInputSessionIds, erroredSessionIds, unreadSessionIds, activeSessionIds, workspaceSessionLimits, selectedSessionId]);
+    const timeOf = (family: SessionFamily) => familyTime(family, ordering);
+    let sections: { key: string; families: SessionFamily[]; paged: boolean }[];
+    // Rows that must stay visible in a paged section; by time also keeps what has a state, like a project.
+    const forcedIds = new Set(selectedSessionId ? [selectedSessionId] : []);
+    if (grouping === "status") {
+      const groups = groupByStatus(families, familyStatus, timeOf);
+      sections = [
+        { key: "sidebar.groupNeedsYou", families: groups.needsYou, paged: false },
+        { key: "sidebar.groupRunning", families: groups.running, paged: false },
+        { key: "sidebar.groupRecent", families: groups.recent, paged: true },
+      ];
+    } else {
+      const groups = groupByTime(families, timeOf, new Date());
+      sections = TIME_BUCKETS.map((bucket) => ({ key: TIME_BUCKET_TITLE[bucket], families: groups[bucket], paged: true }));
+      for (const id of [...activeSessionIds, ...unreadSessionIds, ...erroredSessionIds]) forcedIds.add(id);
+    }
+    return sections.filter((section) => section.families.length > 0).map(({ key, families: sectionFamilies, paged }) => {
+      const limitKey = `${grouping}:${key}`;
+      const limit = workspaceSessionLimits[limitKey] ?? WORKSPACE_SESSION_PREVIEW_LIMIT;
+      const preview = paged
+        ? previewSessionFamilies(sectionFamilies, WORKSPACE_SESSION_PREVIEW_LIMIT, Math.max(0, limit - WORKSPACE_SESSION_PREVIEW_LIMIT), forcedIds, WORKSPACE_SESSION_PAGE_SIZE)
+        : { visible: sectionFamilies, revealed: 0, nextShown: 0 };
+      return {
+        key, limitKey, families: preview.visible,
+        remaining: sectionFamilies.length - preview.visible.length,
+        revealed: preview.revealed,
+        nextLimit: WORKSPACE_SESSION_PREVIEW_LIMIT + preview.nextShown,
+      };
+    });
+  }, [flatView, grouping, ordering, allFamilies, pinnedSessionIds, archivedMemberIds, familyStatus, activeSessionIds, unreadSessionIds, erroredSessionIds, workspaceSessionLimits, selectedSessionId]);
+  // The search palette's list before typing: the latest unarchived families, newest activity first.
+  const recentSessions = useMemo(() => !sessionSearchOpen ? [] : listedFamilies
+    .filter((family) => !archivedMemberIds.has(family.root.id)).slice(0, 8)
+    .map((family) => ({
+      session: family.latestModified === family.root.modified ? family.root : { ...family.root, modified: family.latestModified },
+      status: familyStatus(family),
+      project: projectNames.get(workspaceKeyOf(family.root)) ?? getFileName(family.root.projectRoot ?? family.root.cwd),
+    })), [sessionSearchOpen, listedFamilies, archivedMemberIds, familyStatus, projectNames]);
   // Rows of another project name it before the time; the selected project's need not.
   const otherProjectLabel = (family: SessionFamily) => {
     const key = workspaceKeyOf(family.root);
@@ -1667,10 +1712,15 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     setFilterOpen(false);
     if (next === grouping) return;
     setGrouping(next);
-    saveSidebarGrouping(next);
-    // Selecting acts on one project's rows, which the status grouping does not show.
+    saveSidebarChoice(SIDEBAR_GROUPING_STORAGE_KEY, next);
+    // Selecting acts on one project's rows, which the status and time groupings do not show.
     setSelection(null);
     setDeleteConfirm(null);
+  };
+  const chooseOrdering = (next: SidebarOrdering) => {
+    setFilterOpen(false);
+    setOrdering(next);
+    saveSidebarChoice(SIDEBAR_ORDERING_STORAGE_KEY, next);
   };
   const startNewSession = () => {
     const cwd = selectedCwd ?? workspaceProjects[0]?.root;
@@ -1688,7 +1738,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
 
   const renderSessionFamily = (family: SessionFamily, showProject = false, projectLabel?: string) => {
     const familySessions = [family.root, ...family.subagents];
-    const displaySession = family.latestModified === family.root.modified ? family.root : { ...family.root, modified: family.latestModified };
+    // The row shows the time it is ordered by: creation, else the family's latest activity.
+    const shownTime = ordering === "created" ? family.root.created : family.latestModified;
+    const displaySession = shownTime === family.root.modified ? family.root : { ...family.root, modified: shownTime };
     const pinned = pinnedSessionIds.includes(family.root.id);
     return (
       <div onFocus={() => setFocusedSessionId(family.root.id)} onBlur={() => setFocusedSessionId(null)}>
@@ -1836,9 +1888,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
 
       {/* New session, then search and the grouping/filter menu (docs/ui.md, Sidebar top row). */}
       <div className="sidebar-top-row">
-        <button type="button" className="sidebar-new-session" onClick={startNewSession}>
+        <button type="button" className="sidebar-nav-item" aria-current={newSessionOpen ? "page" : undefined} onClick={startNewSession}>
           <span className="sidebar-section-gutter">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           </span>
           <span>{t("sidebar.newSession")}</span>
         </button>
@@ -1846,21 +1898,15 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           type="button"
           className="sidebar-top-icon"
           onClick={() => {
-            if (selectionBusy) return;
-            setSelection(null);
-            setDeleteConfirm(null);
-            setSessionSearchOpen((open) => {
-              const next = !open;
-              if (next) setProjectsOpen(true);
-              return next;
-            });
+            setSessionSearchOpen(true);
             setDropdownOpen(false);
           }}
           title={t("sidebar.toggleSessionSearch")}
           aria-label={t("sidebar.toggleSessionSearch")}
-          aria-pressed={sessionSearchOpen}
+          aria-haspopup="dialog"
+          aria-expanded={sessionSearchOpen}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
           </svg>
         </button>
@@ -1874,15 +1920,23 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             aria-haspopup="menu"
             aria-expanded={filterOpen}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
           </button>
           {filterOpen && (
             <div role="menu" aria-label={t("sidebar.filterMenu")} className="menu-surface sidebar-filter-menu">
               <div className="menu-surface-label">{t("sidebar.groupBy")}</div>
-              {(["project", "status"] as const).map((value) => (
+              {([["project", "sidebar.groupByProject"], ["status", "sidebar.groupByStatus"], ["time", "sidebar.groupByTime"]] as const).map(([value, label]) => (
                 <button key={value} type="button" role="menuitemradio" aria-checked={grouping === value} onClick={() => chooseGrouping(value)}>
-                  <span style={{ flex: 1 }}>{t(value === "project" ? "sidebar.groupByProject" : "sidebar.groupByStatus")}</span>
+                  <span style={{ flex: 1 }}>{t(label)}</span>
                   <MenuCheck checked={grouping === value} />
+                </button>
+              ))}
+              <div role="separator" className="menu-surface-divider" />
+              <div className="menu-surface-label">{t("sidebar.orderBy")}</div>
+              {([["updated", "sidebar.orderUpdated"], ["created", "sidebar.orderCreated"], ["status", "sidebar.orderStatus"]] as const).map(([value, label]) => (
+                <button key={value} type="button" role="menuitemradio" aria-checked={ordering === value} onClick={() => chooseOrdering(value)}>
+                  <span style={{ flex: 1 }}>{t(label)}</span>
+                  <MenuCheck checked={ordering === value} />
                 </button>
               ))}
               <div role="separator" className="menu-surface-divider" />
@@ -1903,7 +1957,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                 <MenuCheck checked={archiveView} />
               </button>
               <div role="separator" className="menu-surface-divider" />
-              {!statusView && <button
+              {!flatView && <button
                 type="button"
                 role="menuitem"
                 disabled={!canCollapseAll}
@@ -1932,6 +1986,16 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           )}
         </div>
       </div>
+      {onToggleRoutines && (
+        <div className="sidebar-nav-row">
+          <button type="button" className="sidebar-nav-item" aria-pressed={routinesOpen} onClick={onToggleRoutines}>
+            <span className="sidebar-section-gutter">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+            </span>
+            <span>{t("routines.title")}</span>
+          </button>
+        </div>
+      )}
 
       {/* Pinned sessions, across all projects */}
       {pinnedFamilies.length > 0 && !archiveView && (
@@ -1973,7 +2037,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
           </ToolbarIconButton>
         </div>
-      ) : statusView ? null : (
+      ) : flatView ? null : (
       <div ref={dropdownRef} className="sidebar-section-row" style={{ position: "relative" }}>
         <button
           type="button"
@@ -2053,49 +2117,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       </div>
       )}
 
-      {sessionSearchOpen && projectsOpen && (
-        <div className="sidebar-search-container">
-          <label className="sidebar-search-field" htmlFor="session-search-input">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
-            </svg>
-            <input
-              id="session-search-input"
-              type="text"
-              autoFocus
-              value={sessionSearchQuery}
-              maxLength={200}
-              aria-label={t("sidebar.searchSessions")}
-              placeholder={t("sidebar.searchSessions")}
-              onChange={(event) => setSessionSearchQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.stopPropagation();
-                  if (sessionSearchQuery) {
-                    setSessionSearchQuery("");
-                  } else {
-                    setSessionSearchOpen(false);
-                  }
-                }
-              }}
-            />
-            {sessionSearchQuery && (
-              <button
-                type="button"
-                className="sidebar-search-clear"
-                onClick={() => setSessionSearchQuery("")}
-                title={t("sidebar.clearSearch")}
-                aria-label={t("sidebar.clearSearch")}
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-                </svg>
-              </button>
-            )}
-          </label>
-        </div>
-      )}
-
       {deleteConfirm?.kind === "deleteFailed" && (
         <div
           className="project-context-menu menu-surface"
@@ -2165,36 +2186,33 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         );
       })()}
 
-      <SessionSearch projectNames={projectNames} archivedSessionIds={archivedMemberIds} open={sessionSearchOpen && projectsOpen} query={sessionSearchQuery} refreshKey={sessionListVersion} selectedSessionId={selectedSessionId} onSelectSession={handleSelectSessionFromList}>
-      {statusGroups ? (
-      // Few rows (activity plus a paged RECENT), so no windowing: section headers keep their own height.
+      {flatGroups ? (
+      // Few rows (every section is short or paged), so no windowing: section headers keep their own height.
       <div ref={listScrollRef} onScroll={handleListScroll} className="sidebar-list-scroll scroll-fade-block" style={{ flex: "1 1 auto", minHeight: 80 }}>
         {error && <div style={{ padding: "12px 8px", color: "var(--danger)", fontSize: 12 }}>{error}</div>}
-        {!loading && !error && statusGroups.sections.length === 0 && (
+        {!loading && !error && flatGroups.length === 0 && (
           <div style={{ padding: "16px 8px", color: "var(--text-muted)", fontSize: 12 }}>{t("sidebar.noSessions")}</div>
         )}
-        {statusGroups.sections.map((section) => (
+        {flatGroups.map((section) => (
           <section key={section.key} aria-label={t(section.key)}>
             <div className="sidebar-section-row">
               <div className="sidebar-section-label is-static" role="heading" aria-level={2}>
                 <span>{sectionTitle(section.key)}</span>
-                <span className="sidebar-section-count">{section.count}</span>
               </div>
             </div>
             {section.families.map((family) => (
               <div key={family.root.id} data-family-id={family.root.id}>{renderSessionFamily(family, false, otherProjectLabel(family))}</div>
             ))}
-            {section.key === "sidebar.groupRecent" && statusGroups.recentRemaining > 0 && (
+            {section.remaining > 0 && (
               <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: SESSION_LIST_ITEM_HEIGHT }}
-                aria-label={t("sidebar.showMoreSessionsLabel", { count: statusGroups.recentRemaining })}
-                onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [RECENT_LIMIT_KEY]: statusGroups.recentNextLimit }))}>
+                aria-label={t("sidebar.showMoreSessionsLabel", { count: section.remaining })}
+                onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [section.limitKey]: section.nextLimit }))}>
                 <span>{t("sidebar.showMoreSessions")}</span>
-                <span className="workspace-show-more-count">{statusGroups.recentRemaining}</span>
               </button>
             )}
-            {section.key === "sidebar.groupRecent" && statusGroups.recentRevealed > 0 && (
+            {section.revealed > 0 && (
               <button type="button" className="workspace-show-more-button" style={{ width: "100%", height: SESSION_LIST_ITEM_HEIGHT }}
-                onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [RECENT_LIMIT_KEY]: WORKSPACE_SESSION_PREVIEW_LIMIT }))}>
+                onClick={() => setWorkspaceSessionLimits((current) => ({ ...current, [section.limitKey]: WORKSPACE_SESSION_PREVIEW_LIMIT }))}>
                 {t("sidebar.showLessSessions")}
               </button>
             )}
@@ -2280,7 +2298,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                         });
                       }}
                       title={row.project.root}
-                      style={{ display: "flex", alignItems: "center", gap: 4, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 2px", border: "none", background: "none", color: "inherit", cursor: "pointer", textAlign: "left", fontSize: 12 }}
+                      style={{ display: "flex", alignItems: "center", gap: 7, flex: "1 1 auto", minWidth: 0, height: "100%", padding: "0 4px 0 5px", border: "none", background: "none", color: "inherit", cursor: "pointer", textAlign: "left", fontSize: 13 }}
                     >
                       <ProjectFolderIcon open={singleProject ? dropdownOpen : expanded} />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{projectNames.get(row.project.key) ?? getFileName(row.project.root)}</span>
@@ -2299,7 +2317,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                         className="workspace-new-session"
                         marginRight={6}
                       >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                       </ToolbarIconButton>
                     </span>
                   </div>
@@ -2320,7 +2338,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                     }}
                   >
                     <span>{t("sidebar.showMoreSessions")}</span>
-                    <span className="workspace-show-more-count">{row.remaining}</span>
                   </button>
                 );
               }
@@ -2344,7 +2361,21 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
         )}
       </div>
       )}
-      </SessionSearch>
+
+      {sessionSearchOpen && (
+        <SessionSearchDialog
+          recent={recentSessions}
+          projectNames={projectNames}
+          archivedSessionIds={archivedMemberIds}
+          selectedSessionId={selectedSessionId}
+          refreshKey={sessionListVersion}
+          onSelectSession={(session, entryId, blockIndex) => {
+            setSessionSearchOpen(false);
+            handleSelectSessionFromList(session, entryId, blockIndex);
+          }}
+          onClose={() => setSessionSearchOpen(false)}
+        />
+      )}
 
     </div>
   );
@@ -2353,7 +2384,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
 const RENAME_INPUT_STYLE: CSSProperties = {
   flex: 1,
   minWidth: 0,
-  fontSize: 12,
+  fontSize: 13,
   fontFamily: "inherit",
   lineHeight: 1.4,
   padding: "1px 6px",
@@ -2506,7 +2537,7 @@ export function SessionItem({
   onToggleArchive?: () => void;
   /** Shown under the title in the tooltip where the project isn't visible from context. */
   projectHint?: string;
-  /** Another project's name before the time (status grouping lists every project together). */
+  /** Another project's name before the time (status and time groupings list every project together). */
   projectLabel?: string;
   pendingDelete?: boolean;
   deleting?: boolean;
@@ -2682,7 +2713,7 @@ export function SessionItem({
         position: "relative",
         display: "flex",
         alignItems: "center",
-        paddingLeft: 12 + indent + depth * 14,
+        paddingLeft: 18 + indent + depth * 14,
         paddingRight: 6,
         cursor: renaming ? "default" : "pointer",
         background: pendingDelete
@@ -2726,9 +2757,10 @@ export function SessionItem({
             </span>
           )}
           {/* The state dot sits in the row's left indent so titles never shift. */}
-          {!selection && status && (
-            <span className="session-row-status" style={{ left: indent + depth * 14 - 10, top: (SESSION_LIST_ITEM_HEIGHT - 16) / 2 }}>
-              <SessionStatusDot status={status} />
+          {!selection && (status || depth === 0) && (
+            <span className="session-row-status" style={{ left: indent + depth * 14 - 9, top: (SESSION_LIST_ITEM_HEIGHT - 16) / 2 }}>
+              {/* Idle rows keep a faint dot (Cursor), so every title starts after the same mark. */}
+              {status ? <SessionStatusDot status={status} /> : <span className="session-status-dot" data-status="idle" aria-hidden="true" />}
             </span>
           )}
           {/* Subagent indicator for child sessions */}
@@ -2757,7 +2789,7 @@ export function SessionItem({
                 alignItems: "center",
                 gap: 5,
                 minWidth: 0,
-                fontSize: 12,
+                fontSize: 13,
                 lineHeight: 1.4,
                 color: isSelected || hovered ? "var(--text)" : "var(--text-muted)",
               }}

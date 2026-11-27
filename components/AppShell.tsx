@@ -2894,9 +2894,18 @@ export function AppShell() {
         onHomeDirChange={setHomeDir}
         onWorktreeInfoChange={setWorktreeInfo}
         explorerReveal={explorerReveal}
+        newSessionOpen={onNewSessionPage}
+        routinesOpen={mainView === "routines"}
+        onToggleRoutines={() => {
+          if (mainView === "routines") closeRoutines();
+          else {
+            setMainView("routines");
+            setRoutinesOpened(true);
+          }
+          if (isMobile) setSidebarOpen(false);
+        }}
       />
-      {/* Settings where a section title starts; Routines (when switched on) at the far end,
-          its label where the section headers' last icon ends. */}
+      {/* Settings where a section title starts (Routines is a nav row under New session). */}
       <div className="sidebar-footer">
         <button
           type="button"
@@ -2910,23 +2919,6 @@ export function AppShell() {
           {/* The brand face has Latin only, so the label stays English in every locale;
               the button's accessible name and tooltip are translated. */}
           <span className="sidebar-footer-label" aria-hidden="true">Settings</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (mainView === "routines") closeRoutines();
-            else {
-              setMainView("routines");
-              setRoutinesOpened(true);
-            }
-            if (isMobile) setSidebarOpen(false);
-          }}
-          title={translate("routines.title")}
-          aria-label={translate("routines.title")}
-          aria-pressed={mainView === "routines"}
-          className="sidebar-footer-item is-end"
-        >
-          <span className="sidebar-footer-label" aria-hidden="true">Routines</span>
         </button>
       </div>
     </>

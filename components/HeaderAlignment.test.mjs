@@ -49,20 +49,24 @@ test("sidebar starts with project sections sharing one chevron gutter and settin
   assert.equal(footer.height, "calc(var(--workspace-header-height, 30px) + 1px)");
   assert.equal(footer.padding, "2px var(--sidebar-inset, 5px)");
   assert.equal(declarations(".sidebar-footer-item").width, "100%");
-  assert.equal(label.padding, "0 4px 0 6px");
+  assert.equal(label.padding, "0 4px 0 9px");
   // PINNED, PROJECTS, and the status grouping's section rows.
   assert.equal((sidebar.match(/className="sidebar-section-row"/g) ?? []).length, 3);
-  // The top row (New session, search, filter) is as tall as a section header, like the chat's top bar.
+  // The top row (search, filter) is as tall as a section header, like the chat's top bar.
   assert.equal(declarations(".sidebar-top-row").height, "var(--workspace-header-height, 30px)");
   assert.ok(sidebar.indexOf('className="sidebar-top-row"') < sidebar.indexOf("{/* Pinned sessions, across all projects */}"));
   assert.doesNotMatch(sidebar, /className="sidebar-switcher"|Workspace context bar/);
   assert.match(shell, /className="sidebar-footer"/);
   assert.equal(footer.display, "flex");
-  // Settings, then Routines (when switched on) at the far end.
+  // Settings alone; Routines is a nav row under New session (Cursor's Automations).
   assert.equal((shell.match(/className="sidebar-footer-item"/g) ?? []).length, 1);
-  assert.equal((shell.match(/className="sidebar-footer-item is-end"/g) ?? []).length, 1);
-  assert.ok(shell.indexOf('className="sidebar-footer-item"') < shell.indexOf('className="sidebar-footer-item is-end"'), "Settings comes first");
-  assert.equal(declarations(".sidebar-footer-item.is-end")["justify-content"], "flex-end");
+  assert.doesNotMatch(shell, /sidebar-footer-item is-end/);
+  assert.match(shell, /routinesOpen=\{mainView === "routines"\}/);
+  // New session is the first nav row, current on the new-session page (Cursor's New Chat).
+  assert.match(shell, /newSessionOpen=\{onNewSessionPage\}/);
+  assert.ok(sidebar.indexOf('className="sidebar-top-row"') < sidebar.indexOf('className="sidebar-nav-item" aria-current'));
+  assert.match(sidebar, /<div className="sidebar-nav-row">/);
+  assert.equal(declarations(".sidebar-nav-row").height, "32px");
   assert.doesNotMatch(shell, /sidebar-section-label/);
   assert.doesNotMatch(shell, /toUpperCase\(\)/);
 });

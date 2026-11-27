@@ -9,13 +9,15 @@ const chatWindowSource = await readFile(new URL("./ChatWindow.tsx", import.meta.
 const messageSource = await readFile(new URL("./MessageView.tsx", import.meta.url), "utf8");
 const beaconSource = await readFile(new URL("./LivePulseBeacon.tsx", import.meta.url), "utf8");
 
-test("session state is one 8px dot: running breathes in the dim gray, still under reduced motion", () => {
-  assert.match(globalCss, /\.session-status-dot \{[^}]*width: 8px;[^}]*height: 8px;[^}]*border-radius: 50%;/);
+test("session state is one 6px dot: running breathes in the dim gray, still under reduced motion", () => {
+  assert.match(globalCss, /\.session-status-dot \{[^}]*width: 6px;[^}]*height: 6px;[^}]*border-radius: 50%;/);
   assert.match(globalCss, /\.session-status-dot\[data-status="running"\] \{\s*background: var\(--text-dim\);\s*animation: session-status-breathe 1\.6s ease-in-out infinite;/);
   assert.match(globalCss, /@keyframes session-status-breathe \{\s*0%, 100% \{ opacity: 1; \}\s*50% \{ opacity: 0\.35; \}/);
   assert.match(globalCss, /\.session-status-dot\[data-status="unread"\] \{ background: var\(--accent\); \}/);
   assert.match(globalCss, /\.session-status-dot\[data-status="awaiting"\] \{ background: var\(--warning\); \}/);
   assert.match(globalCss, /\.session-status-dot\[data-status="error"\] \{ background: var\(--danger\); \}/);
+  // Idle rows: a faint mark, not a state.
+  assert.match(globalCss, /\.session-status-dot\[data-status="idle"\] \{ background: color-mix\(in srgb, var\(--text-dim\) 30%, transparent\); \}/);
   assert.match(globalCss, /@media \(prefers-reduced-motion: reduce\) \{\s*\.session-status-dot\[data-status="running"\] \{\s*animation: none;/);
   assert.doesNotMatch(globalCss, /live-pulse-beacon-(halo|core)|@keyframes live-pulse/);
 });

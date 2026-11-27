@@ -139,7 +139,9 @@ test("session rows use one compact line without message counts", async () => {
     isSelected: true,
     onClick() {},
   })));
-  assert.match(html, /height:26px/);
+  // 32px rows (Cursor's pitch); idle rows carry the faint dot.
+  assert.match(html, /height:32px/);
+  assert.match(html, /<span class="session-status-dot" data-status="idle" aria-hidden="true"><\/span>/);
   assert.doesNotMatch(html, /min-width:60px/);
   assert.match(html, /text-overflow:ellipsis;white-space:nowrap/);
   assert.ok(html.includes(`title="${title}"`));
@@ -158,24 +160,24 @@ test("session rows use one compact line without message counts", async () => {
 test("scrolling keeps the focused session and the viewport mounted without expanding the whole window", () => {
   for (const [scrollTop, focusedIndex] of [[0, 1999], [10000, 0]]) {
     const indices = getSessionListIndices(2000, scrollTop, 335, focusedIndex);
-    const firstVisible = Math.floor(scrollTop / 26);
-    const lastVisible = Math.ceil((scrollTop + 335) / 26) - 1;
+    const firstVisible = Math.floor(scrollTop / 32);
+    const lastVisible = Math.ceil((scrollTop + 335) / 32) - 1;
     for (let index = firstVisible; index <= lastVisible; index++) assert.ok(indices.includes(index));
     assert.ok(indices.includes(focusedIndex));
-    assert.equal(indices.length, 30);
+    assert.equal(indices.length, 28);
     assert.equal(new Set(indices).size, indices.length);
     assert.deepEqual(indices, [...indices].sort((a, b) => a - b));
   }
-  assert.equal(getSessionListIndices(2000, 0, 335, 3).length, 29);
+  assert.equal(getSessionListIndices(2000, 0, 335, 3).length, 27);
   const blurred = getSessionListIndices(2000, 10000, 335);
-  assert.equal(blurred.length, 29);
+  assert.equal(blurred.length, 27);
   assert.ok(!blurred.includes(0));
 });
 
 test("session windows stay valid after a project shrinks and before the viewport is measured", () => {
   assert.deepEqual(getSessionListIndices(5, 80000, 335, 1999), [0, 1, 2, 3, 4]);
   assert.deepEqual(getSessionListIndices(0, 80000, 335, 1999), []);
-  assert.equal(getSessionListIndices(2000, 0, 0).length, 40);
+  assert.equal(getSessionListIndices(2000, 0, 0).length, 35);
 });
 
 test("uses a native main action without row-level deletion shortcuts", () => {
@@ -369,27 +371,30 @@ test("collapse all lives in the filter menu, enabled while a listed project is e
   const menu = source.slice(source.indexOf('className="menu-surface sidebar-filter-menu"'), source.indexOf("{/* Pinned sessions, across all projects */}"));
   assert.match(menu, /sidebar\.collapseAll/);
   assert.match(menu, /disabled=\{!canCollapseAll\}/);
-  assert.match(source, /const canCollapseAll = !statusView && !singleProject && \(archiveView\s*\? archiveProjectKeys\.some\(\(key\) => expandedArchiveProjectKeys\.has\(key\)\)\s*: workspaceProjects\.some\(\(project\) => \(expandedWorkspaceKeys \?\? defaultExpandedWorkspaceKeys\)\.has\(project\.key\)\)\)/);
+  assert.match(source, /const canCollapseAll = !flatView && !singleProject && \(archiveView\s*\? archiveProjectKeys\.some\(\(key\) => expandedArchiveProjectKeys\.has\(key\)\)\s*: workspaceProjects\.some\(\(project\) => \(expandedWorkspaceKeys \?\? defaultExpandedWorkspaceKeys\)\.has\(project\.key\)\)\)/);
   assert.match(source, /setExpandedWorkspaceKeys\(new Set\(\)\)/);
 });
 
-test("the filter menu groups by project or status, shows the archive, and marks all as read", () => {
+test("the filter menu groups by project, status or time, orders rows, shows the archive, and marks all as read", () => {
   const menu = source.slice(source.indexOf('className="menu-surface sidebar-filter-menu"'), source.indexOf("{/* Pinned sessions, across all projects */}"));
-  const order = ["sidebar.groupBy", "sidebar.groupByProject", "sidebar.showArchived", "sidebar.collapseAll", "sidebar.markAllRead"].map((key) => menu.indexOf(key));
+  const order = ["sidebar.groupBy", "sidebar.groupByProject", "sidebar.groupByStatus", "sidebar.groupByTime", "sidebar.orderBy", "sidebar.orderUpdated", "sidebar.orderCreated", "sidebar.orderStatus", "sidebar.showArchived", "sidebar.collapseAll", "sidebar.markAllRead"].map((key) => menu.indexOf(key));
   assert.ok(order.every((index) => index >= 0));
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   assert.match(menu, /role="menuitemradio" aria-checked=\{grouping === value\} onClick=\{\(\) => chooseGrouping\(value\)\}/);
+  assert.match(menu, /role="menuitemradio" aria-checked=\{ordering === value\} onClick=\{\(\) => chooseOrdering\(value\)\}/);
   assert.match(menu, /role="menuitemcheckbox"\s*aria-checked=\{archiveView\}\s*disabled=\{!archiveView && archivedCount === 0\}/);
   assert.match(menu, /disabled=\{unreadSessionIds\.size === 0 && erroredSessionIds\.size === 0\}/);
   // The choice is remembered per device; the archive always lists by project.
   // Server and first client render agree; the stored choice lands in a layout effect (no hydration mismatch).
   assert.match(source, /useState<SidebarGrouping>\("project"\);\s*useLayoutEffect\(\(\) => setGrouping\(loadSidebarGrouping\(\)\), \[\]\);/);
-  assert.match(menu, /\{!statusView && <button/);
-  assert.match(source, /saveSidebarGrouping\(next\)/);
-  assert.match(source, /const statusView = grouping === "status" && !archiveView;/);
-  // The top row: New session, search, filter; the old PROJECTS header buttons are gone.
+  assert.match(source, /useState<SidebarOrdering>\("updated"\);\s*useLayoutEffect\(\(\) => setOrdering\(loadSidebarOrdering\(\)\), \[\]\);/);
+  assert.match(menu, /\{!flatView && <button/);
+  assert.match(source, /saveSidebarChoice\(SIDEBAR_GROUPING_STORAGE_KEY, next\)/);
+  assert.match(source, /saveSidebarChoice\(SIDEBAR_ORDERING_STORAGE_KEY, next\)/);
+  assert.match(source, /const flatView = grouping !== "project" && !archiveView;/);
+  // The top row: search, filter; New session is the first nav row; the old PROJECTS header buttons are gone.
   assert.doesNotMatch(source, /sidebar\.(addProject|switchProject|viewArchive)\b/);
-  assert.match(source, /className="sidebar-new-session" onClick=\{startNewSession\}/);
+  assert.match(source, /className="sidebar-nav-item" aria-current=\{newSessionOpen \? "page" : undefined\} onClick=\{startNewSession\}/);
 });
 
 test("mark all as read takes each row's read path: manual reads for the shared readAt, errors hidden at once", () => {
@@ -400,17 +405,22 @@ test("mark all as read takes each row's read path: manual reads for the shared r
   assert.match(body, /setUnreadMarks\(/);
 });
 
-test("status grouping: pinned first, then non-empty NEEDS YOU, RUNNING, RECENT with show more", () => {
-  const groups = source.slice(source.indexOf("const statusGroups = useMemo"), source.indexOf("const otherProjectLabel"));
+test("status and time groupings: pinned first, then non-empty titled sections with show more", () => {
+  const groups = source.slice(source.indexOf("const flatGroups = useMemo"), source.indexOf("const otherProjectLabel"));
   assert.match(groups, /!pinnedSessionIds\.includes\(family\.root\.id\) && !archivedMemberIds\.has\(family\.root\.id\)/);
-  assert.match(groups, /groupByStatus\(families, familyStatus/);
-  assert.match(groups, /\.filter\(\(section\) => section\.count > 0\)/);
-  assert.match(groups, /previewSessionFamilies\(groups\.recent, WORKSPACE_SESSION_PREVIEW_LIMIT/);
+  assert.match(groups, /groupByStatus\(families, familyStatus, timeOf\)/);
+  assert.match(groups, /\{ key: "sidebar\.groupRecent", families: groups\.recent, paged: true \}/);
+  assert.match(groups, /groupByTime\(families, timeOf, new Date\(\)\)/);
+  assert.match(groups, /\.filter\(\(section\) => section\.families\.length > 0\)/);
+  assert.match(groups, /previewSessionFamilies\(sectionFamilies, WORKSPACE_SESSION_PREVIEW_LIMIT/);
+  // Rows sort by the ordering everywhere (projects, pinned, sections) and show its time.
+  assert.match(source, /const allFamilies = useMemo\(\(\) => orderFamilies\(listedFamilies, ordering, orderStatus\)/);
+  assert.match(source, /const shownTime = ordering === "created" \? family\.root\.created : family\.latestModified;/);
   assert.match(source, /renderSessionFamily\(family, false, otherProjectLabel\(family\)\)/);
   assert.match(source, /\{projectLabel && <><span className="session-row-project">\{projectLabel\}<\/span>/);
   // Only in by-project mode: the PROJECTS header and the project drag.
-  assert.match(source, /\) : statusView \? null : \(\s*<div ref=\{dropdownRef\} className="sidebar-section-row"/);
-  assert.match(source, /enabled: !loading && projectsOpen && !sessionSearchActive && !statusView/);
+  assert.match(source, /\) : flatView \? null : \(\s*<div ref=\{dropdownRef\} className="sidebar-section-row"/);
+  assert.match(source, /enabled: !loading && projectsOpen && !flatView/);
 });
 
 test("projects have no pin toggle", () => {
@@ -431,7 +441,8 @@ test("limits recent sessions per project and loads more without marking them as 
   assert.match(source, /const WORKSPACE_SESSION_PREVIEW_LIMIT = 6/);
   assert.match(source, /const WORKSPACE_SESSION_PAGE_SIZE = 20/);
   assert.match(source, /sidebar\.showMoreSessions/);
-  assert.match(source, /workspace-show-more-count/);
+  // No counts on the right: section titles and show more carry the number only in their accessible name.
+  assert.doesNotMatch(source, /workspace-show-more-count|sidebar-section-count/);
   assert.match(source, /indent=\{14\}/);
   assert.doesNotMatch(source, /depth=\{1\}/);
 });
