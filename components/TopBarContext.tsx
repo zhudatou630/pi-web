@@ -5,8 +5,8 @@ import { useI18n } from "@/hooks/useI18n";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
 
 /**
- * Inside the composer's dock (docs/ui.md, Composer): "⑂ branch". Its menu names the project and
- * offers terminal, Files and the path. Narrow docks keep the glyph only.
+ * Inside the composer's dock (docs/ui.md, Composer): "⑂ branch". Its menu names the current branch
+ * and the project and offers terminal, Files and the path. Narrow docks keep the glyph only.
  */
 export function SessionBranchControl({ project, branch, cwd, onOpenTerminal, onRevealInFiles, onCopyPath }: {
   project: string;
@@ -41,6 +41,13 @@ export function SessionBranchControl({ project, branch, cwd, onOpenTerminal, onR
       </button>
       {open && (
         <div role="menu" aria-label={t("topBar.context")} className="chat-input-menu menu-surface" style={{ left: 0, minWidth: 200 }}>
+          {/* Narrow docks show only ⑂: the branch leads the menu, marked current, then the project. */}
+          {branch && (
+            <div className="menu-surface-head composer-branch-current" title={cwd}>
+              <span className="menu-surface-head-title">{branch}</span>
+              <span>{t("topBar.currentBranch")}</span>
+            </div>
+          )}
           <div className="menu-surface-label" title={cwd}>{project}</div>
           <button type="button" role="menuitem" onClick={item(onOpenTerminal)}>{t("topBar.openInTerminal")}</button>
           <button type="button" role="menuitem" onClick={item(onRevealInFiles)}>{t("topBar.revealInFiles")}</button>

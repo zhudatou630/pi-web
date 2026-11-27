@@ -8,7 +8,8 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel);
+  /* The chat's surface, like the top bar above it (docs/ui.md, Tabs and top bars). */
+  background: var(--bg);
 }
 
 .routines-view {
@@ -146,18 +147,11 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  /* Text only (docs/routines.md): a line and the regular primary button, no illustration. */
+  gap: 12px;
   padding: 72px 24px;
   color: var(--text-dim);
-  font-size: 13px;
-}
-
-.routines-empty-icon {
-  color: var(--text);
-}
-
-.routines-empty-icon-face {
-  fill: color-mix(in srgb, var(--text) 9%, transparent);
+  font-size: 12px;
 }
 
 .routines-empty.is-quiet {
@@ -308,12 +302,6 @@
   min-width: 0;
 }
 
-/* Every text button on these pages is the app's --ui-row-height control (New, Cancel/Save), like the
-   overview's actions: an empty page is no reason for a bigger one. */
-.routines-button {
-  padding: 0 12px;
-  font-size: 13px;
-}
 
 .routines-detail-actions {
   display: flex;

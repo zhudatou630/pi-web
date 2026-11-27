@@ -76,15 +76,22 @@ export function listSessionFamilies(sessions: readonly SessionInfo[]): SessionFa
   return [...families.values()].sort((a, b) => b.latestModified.localeCompare(a.latestModified));
 }
 
+/** Every member id (root, subagents, side chats) → its family: build once, look up per pane. */
+export function indexSessionFamilies(sessions: readonly SessionInfo[]): Map<string, SessionFamily> {
+  const index = new Map<string, SessionFamily>();
+  for (const family of listSessionFamilies(sessions)) {
+    index.set(family.root.id, family);
+    for (const session of family.subagents) index.set(session.id, family);
+  }
+  return index;
+}
+
 export function getSessionFamily(
   sessions: readonly SessionInfo[],
   sessionId: string | null | undefined,
 ): SessionFamily | null {
   if (!sessionId) return null;
-  return listSessionFamilies(sessions).find((family) => (
-    family.root.id === sessionId
-    || family.subagents.some((session) => session.id === sessionId)
-  )) ?? null;
+  return indexSessionFamilies(sessions).get(sessionId) ?? null;
 }
 
 /** A side chat's name as created when its question was empty: app text, not the user's. */

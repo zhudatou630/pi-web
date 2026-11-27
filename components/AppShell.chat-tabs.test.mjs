@@ -221,7 +221,7 @@ test("keeps ChatWindow mounted when a draft is promoted to a session", () => {
   assert.match(source, /const mountKey = chatTabMountKey\(tab\);/);
   assert.match(source, /key=\{mountKey\}/);
   assert.match(source, /const primaryPaneHasFocus = !isSplitActive \|\| activeChatPane === "primary";/);
-  assert.match(source, /isCurrent && isFocused,\s*mountKey,\s*isCurrent,/);
+  assert.match(source, /isCurrent && isFocused,\s*pane,\s*mountKey,\s*isCurrent,/);
   assert.match(source, /isVisiblePane=\{isVisiblePane\}/);
 });
 
@@ -229,7 +229,7 @@ test("unsplit current chat keeps stats callbacks even if the leftover pane is se
   assert.match(source, /const primaryPaneHasFocus = !isSplitActive \|\| activeChatPane === "primary";/);
   assert.match(
     source,
-    /renderChatWindow\(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, undefined, true\)/,
+    /renderChatWindow\(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, "primary", undefined, true\)/,
   );
   assert.match(source, /onContextUsageChange=\{isFocusedPane \? handleContextUsageChange : undefined\}/);
   assert.match(source, /onSessionStatsChange=\{isFocusedPane \? handleSessionStatsChange : undefined\}/);

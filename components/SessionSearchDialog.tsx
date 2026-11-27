@@ -3,6 +3,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { formatCompactRelativeTime } from "@/lib/i18n/format";
+import { isImeComposing } from "@/lib/ime";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import type { SessionStatus } from "@/lib/session-status";
 import type { SessionInfo } from "@/lib/types";
@@ -37,8 +38,10 @@ export function SessionSearchDialog({ recent, projectNames, archivedSessionIds, 
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const onKeyDown = (event: KeyboardEvent) => {
+    // Candidate selection belongs to the input method: never move focus or open a row.
+    if (isImeComposing(event)) return;
     const rows = [...(bodyRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-    if (event.key === "Enter" && event.target === inputRef.current && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && event.target === inputRef.current) {
       event.preventDefault();
       rows[0]?.click();
       return;
@@ -70,7 +73,7 @@ export function SessionSearchDialog({ recent, projectNames, archivedSessionIds, 
           />
         </label>
         <div ref={bodyRef} className="session-search-body">
-          <SessionSearch open query={query} refreshKey={refreshKey} projectNames={projectNames} archivedSessionIds={archivedSessionIds}
+          <SessionSearch query={query} refreshKey={refreshKey} projectNames={projectNames} archivedSessionIds={archivedSessionIds}
             selectedSessionId={selectedSessionId} onSelectSession={onSelectSession}>
             {recent.length > 0 && (
               <>

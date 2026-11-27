@@ -7,8 +7,9 @@ const appShell = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf
 
 test("session menu is one icon button opening a dropdown of info and history actions", () => {
   assert.match(source, /onMenuOpenChange\(!menuOpen\);/);
-  assert.match(source, /data-active=\{menuOpen \|\| undefined\}/);
-  assert.match(source, /width: ICON_BUTTON_SIZE,/);
+  // The open state is the shared top-bar pressed block (aria-expanded), no inline colors.
+  assert.match(source, /aria-expanded=\{menuOpen\}\s*className="workspace-header-action"/);
+  assert.doesNotMatch(source, /data-active|onMouseEnter|ICON_BUTTON_SIZE/);
   assert.match(source, /data-mobile-toolbar-action=\{mobile \? "session-menu" : undefined\}/);
 });
 
@@ -19,10 +20,12 @@ test("menu lists (phones: files, a divider) tools, system prompt, a divider, the
   assert.ok(indices.every((index) => index >= 0));
 });
 
-test("info items and history items are enabled independently", () => {
+test("without a saved session the menu holds only Files (new-session page)", () => {
   assert.match(source, /disabled=\{infoDisabled \|\| infoPending !== null\}/);
-  assert.match(source, /disabled=\{historyDisabled\}/);
-  assert.match(source, /const disabled = infoDisabled && historyDisabled/);
+  assert.match(source, /\{!historyDisabled && \(<>\s*\{onOpenFiles && <div role="separator"[\s\S]*?labels\.exportMarkdown[\s\S]*?<\/>\)\}/);
+  assert.match(source, /const disabled = historyDisabled && !onOpenFiles/);
+  // Desktop has no Files row, so ⋯ is not rendered there without a session.
+  assert.match(appShell, /\{sessionTools && \(mobile \|\| session\) && <SessionMenu/);
 });
 
 test("info dialogs open only after their data is loaded, so nothing swaps while they animate in", () => {

@@ -454,7 +454,7 @@ test("keeps effort visible but locked while streaming", () => {
     }),
   ));
   assert.match(html, /aria-label="Change reasoning level"/);
-  assert.match(html, />High<\/span>/);
+  assert.match(html, />high<\/span>/, "the toolbar shows the lowercase id (docs/ui.md)");
   assert.doesNotMatch(html, /Change tool preset/);
   assert.doesNotMatch(html, /Compact context/);
 });
@@ -654,7 +654,7 @@ test("renders the read-only tool preset as the active selection", () => {
     ),
   );
 
-  assert.match(html, /title="Change tool preset: read-only"/);
+  assert.match(html, /title="Change tool preset: Read only"/);
   assert.match(html, />read-only<\/span>/);
 });
 

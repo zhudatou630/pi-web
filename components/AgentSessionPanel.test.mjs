@@ -45,3 +45,8 @@ test("subagent rows keep model and effective thinking in the existing metadata l
   assert.match(source, /formatCompactRelativeTime\(session\.modified, locale\)/);
   assert.match(source, /title=\{secondaryTitle\}/);
 });
+
+test("running reads as the sidebar's gray breathing dot, never the unread blue", () => {
+  assert.doesNotMatch(source, /var\(--accent\)/);
+  assert.match(source, /color: "var\(--text-dim\)", fontSize: 11 \}\}>\s*<LivePulseBeacon size=\{12\} \/>\s*\{t\("agentSwitcher\.runningCount"/);
+});

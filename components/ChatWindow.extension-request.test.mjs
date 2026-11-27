@@ -28,7 +28,6 @@ test("the run error tray names the reason and only offers View output", () => {
   assert.match(tray, /chat\.errorTag/);
   assert.match(tray, /chat\.viewOutput/);
   assert.doesNotMatch(tray, /retry|continue/i);
-  assert.match(source, /lastMessage\.stopReason === "error" && !isAbortedAssistantError\(lastMessage\)/);
   assert.match(source, /session\.lastError\.at >= \(lastMessage\.timestamp \?\? 0\) \? session\.lastError\.message/);
 });
 

@@ -14,6 +14,8 @@ import { getSessionFirstMessagePreview, SESSION_FIRST_MESSAGE_PREVIEW_MAX_LENGTH
 import { IMAGE_RESULT_TYPE } from "./image-generation";
 import { foldRoutineMarks, routineMarksInfo, type RoutineMarks } from "./routine-run-entry";
 import { truncateStatusReason, type SessionLastError } from "./session-status";
+import { isAbortedAssistantError } from "./message-display";
+import type { AssistantMessage } from "./types";
 
 export interface ScannedSessionInfo {
 	path: string;
@@ -81,7 +83,7 @@ function isRecord(value: unknown): value is RawEntry {
 // Bump when counting/preview rules change: resumed totals keep the old rules.
 // The file name carries the version: the npm-installed service shares the agent dir, and an older
 // build writing the same file would drop fields a newer one reads (and the reverse forces cold rebuilds).
-const INDEX_FORMAT_VERSION = 8;
+const INDEX_FORMAT_VERSION = 9;
 const RESUME_SAMPLE_BYTES = 1024;
 const INDEX_PERSIST_DELAY_MS = 5_000;
 
@@ -174,11 +176,11 @@ function foldLine(state: ScanState, bytes: Buffer): boolean {
 	if (typeof activityTime === "number") state.lastActivityTime = Math.max(state.lastActivityTime ?? 0, activityTime);
 	const message = entry.message as RawEntry | undefined;
 	// pi persists every failed attempt; a later retry, prompt or result appends another message.
-	// Aborted replies are "aborted", not "error", so a Stop never reads as a failure here. The time is
-	// when the failure was written (the message's own timestamp is when its request started), so a
-	// read during the request never covers it.
+	// A Stop is "aborted", or an "error" carrying only the abort text (isAbortedAssistantError, the
+	// chat's own test): neither is a failure here. The time is when the failure was written (the
+	// message's own timestamp is when its request started), so a read during the request never covers it.
 	const failedAt = new Date(entry.timestamp as string).getTime();
-	if (message?.role === "assistant" && message.stopReason === "error" && Number.isFinite(failedAt)) {
+	if (message?.role === "assistant" && message.stopReason === "error" && !isAbortedAssistantError(message as Pick<AssistantMessage, "stopReason" | "errorMessage">) && Number.isFinite(failedAt)) {
 		state.lastError = {
 			at: failedAt,
 			message: truncateStatusReason(typeof message.errorMessage === "string" ? message.errorMessage : ""),

@@ -2,15 +2,14 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
-import { formatRelativeTime } from "@/lib/i18n/format";
+import { formatCompactRelativeTime } from "@/lib/i18n/format";
 import type { SessionInfo } from "@/lib/types";
 import type { SessionSearchResponse } from "@/lib/session-search";
 import { workspaceKeyOf } from "@/lib/workspace-key";
 import { getFileName } from "@/lib/file-paths";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 
-export function SessionSearch({ open, query, refreshKey, children, projectNames, archivedSessionIds, selectedSessionId, onSelectSession }: {
-  open: boolean;
+export function SessionSearch({ query, refreshKey, children, projectNames, archivedSessionIds, selectedSessionId, onSelectSession }: {
   query: string;
   refreshKey: number | null;
   children: ReactNode;
@@ -26,7 +25,7 @@ export function SessionSearch({ open, query, refreshKey, children, projectNames,
   const failed = state.query === search && state.failed;
 
   useEffect(() => {
-    if (!open || !search) return;
+    if (!search) return;
     const controller = new AbortController();
     setState({ query: search });
     const timer = setTimeout(async () => {
@@ -43,16 +42,16 @@ export function SessionSearch({ open, query, refreshKey, children, projectNames,
       clearTimeout(timer);
       controller.abort();
     };
-  }, [open, search, refreshKey]);
+  }, [search, refreshKey]);
 
-  return !open || !search ? children : (
+  return !search ? children : (
     <div className="min-h-20" aria-busy={!response && !failed}>
       <div role="status" className="px-2.5 py-2 text-[11px] text-text-dim">
         {failed ? t("sidebar.sessionSearchFailed") : !response ? t("sidebar.sessionSearching")
-          : response.results.length === 0 ? t("sidebar.sessionSearchEmpty")
+          : response.results.length === 0 ? t(response.truncated ? "sidebar.sessionSearchEmptyPartial" : "sidebar.sessionSearchEmpty")
           : t("sidebar.sessionSearchCount", { count: response.results.length })}
       </div>
-      {response?.truncated && (
+      {response?.truncated && response.results.length > 0 && (
         <div role="status" className="px-2.5 pb-2 text-[11px] text-text-dim">{t("sidebar.sessionSearchPartial")}</div>
       )}
       {response?.results.map(({ session, entryId, blockIndex, titleOnly, before, match, after }) => (
@@ -74,7 +73,7 @@ export function SessionSearch({ open, query, refreshKey, children, projectNames,
               {projectNames.get(workspaceKeyOf(session)) ?? getFileName(session.projectRoot ?? session.cwd)}
               {session.cwd !== (session.projectRoot ?? session.cwd) && ` · ${session.cwd}`}
             </span>
-            <span className="shrink-0">{formatRelativeTime(session.modified, locale)}</span>
+            <span className="shrink-0">{formatCompactRelativeTime(session.modified, locale)}</span>
           </span>
           {!titleOnly && <span className="mt-1 block text-xs leading-relaxed wrap-anywhere text-text-muted">
             {before}<mark className="rounded-sm bg-accent/20 text-text">{match}</mark>{after}

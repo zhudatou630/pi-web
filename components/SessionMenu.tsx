@@ -1,17 +1,16 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { isModalDialogOpen } from "./ModalDialog";
 import { MenuCheck } from "./MenuCheck";
 import type { CacheKeepaliveStatus } from "@/lib/cache-keepalive";
 
-const ICON_BUTTON_SIZE = 30;
 
 type Props = {
   mobile: boolean;
   /** Tools and system prompt need a loaded chat. */
   infoDisabled: boolean;
-  /** Full history and export need a saved session. */
+  /** No saved session (the new-session page): the menu holds only Files. */
   historyDisabled: boolean;
   /** Fork needs a saved, idle session. */
   forkDisabled: boolean;
@@ -28,7 +27,6 @@ type Props = {
     tools: string;
     system: string;
     full: string;
-    unsaved: string;
     menu: string;
     /** Phones only: the file panel lives in this menu. */
     files?: string;
@@ -110,12 +108,8 @@ export function SessionMenu({
     };
   }, [menuOpen, onMenuOpenChange]);
 
-  const disabled = infoDisabled && historyDisabled;
-  const color = disabled ? "var(--text-dim)" : "var(--text-muted)";
-  const hover = (event: MouseEvent<HTMLButtonElement>, on: boolean) => {
-    if (disabled) return;
-    event.currentTarget.style.color = on || menuOpen ? "var(--text)" : "var(--text-muted)";
-  };
+  // Nothing to list: no session and no Files row.
+  const disabled = historyDisabled && !onOpenFiles;
 
   return (
     <div ref={rootRef} style={{ display: "flex", alignItems: "stretch", height: "100%", position: "relative" }}>
@@ -130,40 +124,11 @@ export function SessionMenu({
         aria-label={labels.menu}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        data-active={menuOpen || undefined}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: ICON_BUTTON_SIZE,
-          height: "100%",
-          padding: 0,
-          background: menuOpen ? "var(--bg-selected)" : "none",
-          border: "none",
-          color: menuOpen ? "var(--text)" : color,
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.45 : 1,
-          flexShrink: 0,
-          transition: "color var(--motion-fast), background var(--motion-fast), opacity var(--motion-fast), box-shadow var(--motion-fast)",
-        }}
-        onMouseEnter={(event) => hover(event, true)}
-        onMouseLeave={(event) => hover(event, false)}
         className="workspace-header-action"
         data-mobile-toolbar-action={mobile ? "session-menu" : undefined}
         data-session-menu-trigger
       >
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ flexShrink: 0 }}
-          aria-hidden="true"
-        >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <circle cx="5" cy="12" r="1" />
           <circle cx="12" cy="12" r="1" />
           <circle cx="19" cy="12" r="1" />
@@ -188,6 +153,8 @@ export function SessionMenu({
               {labels.files}
             </button>
           )}
+          {/* Without a saved session (the new-session page) only Files applies. */}
+          {!historyDisabled && (<>
           {onOpenFiles && <div role="separator" className="menu-surface-divider" />}
           <button
             type="button"
@@ -226,7 +193,7 @@ export function SessionMenu({
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={cacheKeepalive.enabled}
-                disabled={historyDisabled || cacheKeepalivePending}
+                disabled={cacheKeepalivePending}
                 title={next ? `${labels.cacheKeepaliveTitle}\n${labels.cacheKeepaliveNext(next)}` : labels.cacheKeepaliveTitle}
                 onClick={onToggleCacheKeepalive}
               >
@@ -255,8 +222,6 @@ export function SessionMenu({
           <button
             type="button"
             role="menuitem"
-            disabled={historyDisabled}
-            title={historyDisabled ? labels.unsaved : undefined}
             onClick={() => {
               onMenuOpenChange(false);
               onViewFullHistory();
@@ -269,8 +234,8 @@ export function SessionMenu({
           <button
             type="button"
             role="menuitem"
-            title={historyDisabled ? labels.unsaved : labels.exportMarkdownTitle}
-            disabled={historyDisabled || exporting}
+            title={labels.exportMarkdownTitle}
+            disabled={exporting}
             onClick={() => {
               onExportMarkdown();
             }}
@@ -285,6 +250,7 @@ export function SessionMenu({
               </svg>
             )}
           </button>
+          </>)}
           {error && (
             <div style={{ padding: "6px 8px", fontSize: 11, color: "var(--danger)", lineHeight: 1.35 }}>
               {error}

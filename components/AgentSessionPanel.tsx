@@ -28,8 +28,8 @@ function sessionTitle(session: SessionInfo): string {
 /** Most subagents use the default profile; naming it on every row only crowds out the model. */
 const DEFAULT_SUBAGENT_PROFILE = "general-purpose";
 
+// Running is the sidebar's gray breathing dot with a dim word: blue means unread (docs/ui.md, Session state).
 function statusColor(status: SubagentSessionStatus): string {
-  if (status === "running" || status === "starting") return "var(--accent)";
   if (status === "failed") return "var(--danger)";
   if (status === "aborted") return "var(--warning)";
   return "var(--text-dim)";
@@ -242,7 +242,8 @@ export function AgentSessionPanel({
             {t("agentSwitcher.count", { count: subagents.length })}
           </span>
           {runningCount > 0 && (
-            <span style={{ marginLeft: "auto", color: "var(--accent)", fontSize: 11 }}>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, color: "var(--text-dim)", fontSize: 11 }}>
+              <LivePulseBeacon size={12} />
               {t("agentSwitcher.runningCount", { count: runningCount })}
             </span>
           )}

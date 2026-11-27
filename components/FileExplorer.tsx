@@ -39,6 +39,8 @@ interface Props {
   cwd: string;
   onOpenFile: (filePath: string, fileName: string, options?: OpenFileOptions) => void;
   refreshKey?: number;
+  /** False while hidden (kept mounted for its expansion): refreshKey bumps wait, then apply once. */
+  active?: boolean;
   onAtMention?: (relativePath: string, isDir: boolean, sourceCwd?: string) => void;
   onAtMentions?: (relativePaths: string[], sourceCwd?: string) => void;
   onUploadBusyChange?: (busy: boolean) => void;
@@ -493,7 +495,8 @@ type OpenFileOptions = { sourceSessionId?: string | null; modeHint?: "diff"; cwd
 export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileExplorer({
   cwd,
   onOpenFile,
-  refreshKey,
+  refreshKey: requestedRefreshKey,
+  active = true,
   onAtMention,
   onAtMentions,
   onUploadBusyChange,
@@ -503,6 +506,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   activePath,
 }, ref) {
   const { t } = useI18n();
+  // Hidden, a run-time refresh only marks the tree stale; showing it again reloads once.
+  const [refreshKey, setRefreshKey] = useState(requestedRefreshKey);
+  if (active && refreshKey !== requestedRefreshKey) setRefreshKey(requestedRefreshKey);
   const [roots, setRoots] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

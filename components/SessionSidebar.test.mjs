@@ -34,7 +34,7 @@ test("a folded group shows only its most urgent state as one dot, without counts
 
 test("unread storage updates replace dated markers without echoing writes", () => {
   const start = source.indexOf("  useEffect(() => {\n    if (sameUnreadMarks(storedUnreadMarksRef");
-  const end = source.indexOf("  useEffect(() => {\n    const noteInput", start);
+  const end = source.indexOf("  useEffect(() => {\n    const syncAttended", start);
   const localStorage = {};
   const listeners = new Map();
   const writes = [];
@@ -418,9 +418,9 @@ test("status and time groupings: pinned first, then non-empty titled sections wi
   assert.match(source, /const allFamilies = useMemo\(\(\) => orderFamilies\(listedFamilies, ordering, orderStatus\)/);
   assert.match(source, /const shownTime = ordering === "created" \? family\.root\.created : family\.latestModified;/);
   assert.match(source, /renderSessionFamily\(family, false, otherProjectLabel\(family\)\)/);
-  assert.match(source, /\{projectLabel && <span className="session-row-project">\{projectLabel\}<\/span>\}/);
+  assert.match(source, /\{!needsYou && projectLabel && <span className="session-row-project">\{projectLabel\}<\/span>\}/);
   // The worktree glyph sits right before the fixed-width time (one column), standing in for the separator.
-  assert.match(source, /\{worktree \?\? \(projectLabel && "\\u00a0·\\u00a0"\)\}\s*<span className="session-row-time"/);
+  assert.match(source, /\{worktree \?\? \(!needsYou && projectLabel && "\\u00a0·\\u00a0"\)\}\s*<span className="session-row-time"/);
   // Only in by-project mode: the PROJECTS header and the project drag.
   assert.match(source, /\) : flatView \? null : \(\s*<div ref=\{dropdownRef\} className="sidebar-section-row"/);
   assert.match(source, /enabled: !loading && projectsOpen && !flatView/);

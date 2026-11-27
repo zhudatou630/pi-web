@@ -193,7 +193,7 @@ export function BranchNavigator({ tree, open, onToggle, hasSession, compact, dis
   const isEffectiveDisabled = disabled || !hasContent;
 
   const branchIcon = (
-    <svg width={compact ? 13 : 12} height={compact ? 13 : 12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(compact ? 13 : 12)} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }}>
+    <svg width={compact ? 16 : 12} height={compact ? 16 : 12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={iconStroke(compact ? 16 : 12)} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }}>
       <line x1="6" y1="3" x2="6" y2="15" />
       <circle cx="18" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
@@ -209,33 +209,8 @@ export function BranchNavigator({ tree, open, onToggle, hasSession, compact, dis
         onClick={() => {
           if (!isEffectiveDisabled) onToggle();
         }}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: compact ? "center" : undefined,
-          gap: compact ? 0 : 6,
-          height: "100%",
-          width: compact ? 30 : undefined,
-          padding: compact ? 0 : "0 12px",
-          background: open ? "var(--bg-selected)" : "none",
-          border: "none",
-          cursor: isEffectiveDisabled ? "not-allowed" : "pointer",
-          color: isEffectiveDisabled ? "var(--text-dim)" : open ? "var(--text)" : "var(--text-muted)",
-          opacity: isEffectiveDisabled ? 0.45 : 1,
-          fontSize: 11,
-          whiteSpace: "nowrap",
-          transition: "color var(--motion-fast), background var(--motion-fast), opacity var(--motion-fast)",
-        }}
-        onMouseEnter={(e) => {
-          if (isEffectiveDisabled) return;
-          e.currentTarget.style.color = "var(--text)";
-          e.currentTarget.style.background = "var(--bg-hover)";
-        }}
-        onMouseLeave={(e) => {
-          if (isEffectiveDisabled) return;
-          e.currentTarget.style.color = open ? "var(--text)" : "var(--text-muted)";
-          e.currentTarget.style.background = open ? "var(--bg-selected)" : "none";
-        }}
+        // Colors and the pressed block come from .workspace-header-action (docs/ui.md, Tabs and top bars).
+        style={compact ? undefined : { gap: 6, width: "auto", padding: "0 12px", fontSize: 11, whiteSpace: "nowrap" }}
         title={isEffectiveDisabled ? t("i18n.noBranches", { defaultValue: "没有分支" }) : t("i18n.branches")}
         aria-label={t("i18n.branches")}
         aria-pressed={open}

@@ -130,7 +130,7 @@ test("preview tabs are marked for the quieter title (no underline) and show the 
 
 test("keeps the active tab visible and restores focus after closing", () => {
   assert.doesNotMatch(source, /scrollIntoView/);
-  assert.match(source, /setHoveredClose\(null\);\s+focusAfterCloseRef\.current = true;\s+onCloseTab\(tab\.id\)/);
+  assert.match(source, /e\.stopPropagation\(\);\s+focusAfterCloseRef\.current = true;\s+onCloseTab\(tab\.id\)/);
   assert.match(source, /focusAfterCloseRef\.current = true/);
   assert.match(source, /activeTabRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
 });

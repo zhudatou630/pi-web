@@ -44,7 +44,6 @@ const TAB_DRAG_MIME = "application/x-pi-panel-tab";
 
 export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, onCloseTabs, onMoveTab, onRevealInExplorer, isMobile = false }: Props) {
   const { t } = useI18n();
-  const [hoveredClose, setHoveredClose] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
   const focusAfterCloseRef = useRef(false);
@@ -255,23 +254,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
               disabled={tab.closing}
               onClick={(e) => {
                 e.stopPropagation();
-                setHoveredClose(null);
                 focusAfterCloseRef.current = true;
                 onCloseTab(tab.id);
-              }}
-              onMouseEnter={() => setHoveredClose(tab.id)}
-              onMouseLeave={() => setHoveredClose(null)}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 20, height: 20,
-                background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
-                border: "none",
-                borderRadius: 4,
-                color: hoveredClose === tab.id ? "var(--text)" : "var(--text-muted)",
-                cursor: "pointer",
-                padding: 0,
-                flexShrink: 0,
-                transition: "background var(--motion-fast), color var(--motion-fast)",
               }}
                title={t(tab.kind === "terminal" ? "terminal.close" : tab.kind === "browser" ? "browser.close" : "i18n.close")}
                aria-label={`${t(tab.kind === "terminal" ? "terminal.close" : tab.kind === "browser" ? "browser.close" : "i18n.close")} ${displayLabel}`}

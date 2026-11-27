@@ -118,7 +118,8 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import { formatModelTiming } from "@/lib/model-timing";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import { PRESET_READ_ONLY, type ToolEntry } from "@/lib/tool-presets";
-import { getSessionFamily, unnamedSideChatNumbers } from "@/lib/session-family";
+import { indexSessionFamilies, unnamedSideChatNumbers } from "@/lib/session-family";
+import { panelDockFor, panelDockToggleWidth, panelViewCwd } from "@/lib/panel-dock";
 import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
 import { prefetchSettings } from "@/lib/settings-cache";
@@ -145,7 +146,6 @@ function restoreBrowserTab(raw: string | null): { url: string; active: boolean; 
 
 type SessionCopyField = "file" | "id" | "projectDir" | "gitBranch" | "gitWorktree";
 
-const TOP_BAR_ICON_BUTTON_SIZE = 30;
 const PANEL_DOCK_KEY = "pi-web:panel-dock";
 const PANEL_DOCK_WIDTH = 220;
 const PANEL_DOCK_STRIP_WIDTH = 20;
@@ -154,6 +154,21 @@ const PANEL_DOCK_MIN_WIDTH = 600;
 // A right/middle press (or ctrl-click) on a tab strip acts on that tab (context menu, close);
 // only a primary press moves focus to the group.
 const isPrimaryPointerPress = (event: React.PointerEvent) => event.button === 0 && !event.ctrlKey;
+
+/**
+ * Android's system Back as a close request for a non-dialog overlay (the phone drawer, the
+ * full-screen file panel), through Chromium's CloseWatcher, the mechanism <dialog> already gets
+ * (docs/ui.md, Modal dialogs). It adds no history entries, so the URL (session, split) and
+ * forward/back stay as they are; without CloseWatcher (Firefox) Back still navigates. Returns the
+ * cleanup.
+ */
+function watchCloseRequest(onClose: () => void): () => void {
+  const Watcher = (window as unknown as { CloseWatcher?: new () => { onclose: (() => void) | null; destroy: () => void } }).CloseWatcher;
+  if (!Watcher) return () => {};
+  const watcher = new Watcher();
+  watcher.onclose = onClose;
+  return () => watcher.destroy();
+}
 
 const AGENT_PANEL_WIDTH = 420;
 // pi's built-in tools that never change a file; any other tool may (#1144).
@@ -271,11 +286,9 @@ export function AppShell() {
       selectedSession,
     ];
   }, [selectedSession, sessionCatalog]);
-  const activeSessionFamily = useMemo(
-    () => getSessionFamily(sessionsWithSelection, selectedSession?.id),
-    [selectedSession?.id, sessionsWithSelection],
-  );
-  const hasSubagentSessions = Boolean(activeSessionFamily?.subagents.length);
+  // One family pass per session list, shared by the top bar, every pane's dock and the Agents panel.
+  const sessionFamilies = useMemo(() => indexSessionFamilies(sessionsWithSelection), [sessionsWithSelection]);
+  const activeSessionFamily = selectedSession ? sessionFamilies.get(selectedSession.id) ?? null : null;
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
   const handleRunningSessionIdsChange = useCallback((ids: Set<string>) => {
     setRunningSessionIds((previous) => {
@@ -741,7 +754,11 @@ export function AppShell() {
   }, [selectedSession, syncSessionMetadata]);
 
   // Single active panel — only one dropdown open at a time
-  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "session" | "language" | "outline" | null>(null);
+  const [activeTopPanel, setActiveTopPanel] = useState<"agents" | "branches" | "session" | "outline" | null>(null);
+  // Each pane's dock has its own Agents button: the panel lists the family of the session that
+  // opened it, not whichever pane happens to be focused (a keyboard Enter does not move focus).
+  const [agentsSessionId, setAgentsSessionId] = useState<string | null>(null);
+  const agentsFamily = agentsSessionId ? sessionFamilies.get(agentsSessionId) ?? null : null;
   const [infoDialog, setInfoDialog] = useState<"system" | "tools" | null>(null);
   // Subagent totals shown beside, never folded into, the parent's own usage.
   const [subagentUsage, setSubagentUsage] = useState<{ sessionId: string; count: number; tokens: number; cost: number } | null>(null);
@@ -813,17 +830,17 @@ export function AppShell() {
   }, [sessionHasBranches]);
 
   useEffect(() => {
-    if (!hasSubagentSessions) {
+    if (!agentsFamily?.subagents.length) {
       setActiveTopPanel((panel) => panel === "agents" ? null : panel);
     }
-  }, [hasSubagentSessions]);
+  }, [agentsFamily?.subagents.length]);
 
   const handleOutlineViewChange = useCallback((view: MobileOutlineView | null) => {
     setOutlineView(view);
     if (!view) setActiveTopPanel((panel) => panel === "outline" ? null : panel);
   }, []);
 
-  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "session" | "language" | "outline") => {
+  const toggleTopPanel = useCallback((panel: "agents" | "branches" | "session" | "outline") => {
     if (isMobile) setSidebarOpen(false);
     setActiveTopPanel((cur) => cur === panel ? null : panel);
   }, [isMobile]);
@@ -901,9 +918,11 @@ export function AppShell() {
       dismissMobileSidebar();
     };
     document.addEventListener("keydown", handleKeyDown);
+    const stopWatching = watchCloseRequest(dismissMobileSidebar);
     return () => {
       cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
+      stopWatching();
     };
   }, [dismissMobileSidebar, isMobile, mobileSidebarReady, sidebarOpen, sidebarResizer.panelRef]);
 
@@ -937,9 +956,12 @@ export function AppShell() {
       closeRightPanel(true);
     };
     document.addEventListener("keydown", handleKeyDown, true);
+    // Full screen (phones) or an overlay (641–959px): Back closes it before it leaves the app.
+    const stopWatching = isMobile || window.innerWidth < 960 ? watchCloseRequest(() => closeRightPanel(true)) : () => {};
     return () => {
       cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleKeyDown, true);
+      stopWatching();
     };
   }, [closeRightPanel, isMobile, rightPanelOpen, rightPanelResizer.panelRef]);
 
@@ -1004,7 +1026,7 @@ export function AppShell() {
   }, [activeTopPanel, isMobile]);
 
   useEffect(() => {
-    if (!activeTopPanel || activeTopPanel === "language") return;
+    if (!activeTopPanel) return;
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
@@ -2407,10 +2429,7 @@ export function AppShell() {
     setRightPanelOpen(true);
     if (isMobile) setSidebarOpen(false);
   }, [isMobile, selectPanelView]);
-  const handleRevealCwdInFiles = useCallback((cwd: string, changes = false) => {
-    if (changes) setChangesScope("uncommitted");
-    showInPanel(cwd, changes ? "changes" : "files");
-  }, [showInPanel]);
+  const handleRevealCwdInFiles = useCallback((cwd: string) => showInPanel(cwd, "files"), [showInPanel]);
   const handleReviewTurnChanges = useCallback((cwd: string) => {
     setChangesScope("turn");
     showInPanel(cwd, "changes");
@@ -2475,11 +2494,25 @@ export function AppShell() {
     setChatTabs((prev) => pinSessionTab(prev, sessionId));
   }, []);
 
+  // Keyboard activation skips a pane's pointerdown focus (Tab into the other pane, Enter): a pane's
+  // own Review, context ring and Agents entries focus that pane first, so the panel they open reads
+  // that pane's turn files, stats and session.
+  const focusPaneRef = useRef<(pane: ChatPane) => void>(() => {});
+  focusPaneRef.current = (pane) => { if (isSplitActive && activeChatPane !== pane) handleFocusPane(pane); };
+  const paneEntries = useMemo(() => {
+    const entries = (pane: ChatPane) => ({
+      reviewTurnChanges: (cwd: string) => { focusPaneRef.current(pane); handleReviewTurnChanges(cwd); },
+      openSessionStats: () => { focusPaneRef.current(pane); openSessionStatsPanel(); },
+    });
+    return { primary: entries("primary"), secondary: entries("secondary") };
+  }, [handleReviewTurnChanges, openSessionStatsPanel]);
+
   const renderChatWindow = (
     tabSession: SessionInfo | null,
     effectiveCwd: string | null,
     effectiveDraftKey: string | null,
     isFocusedPane: boolean,
+    pane: ChatPane,
     tabKey?: string,
     isVisiblePane?: boolean,
   ) => {
@@ -2491,7 +2524,7 @@ export function AppShell() {
       <ChatWindow
         key={tabKey ?? sessionKey}
         session={tabSession}
-        composerDock={renderComposerDock(tabSession)}
+        composerDock={renderComposerDock(tabSession, pane)}
         searchTarget={isFocusedPane && searchTarget?.sessionId === tabSession?.id ? searchTarget : null}
         onSearchTargetHandled={handleSearchTargetHandled}
         initialScrollPosition={tabSession ? sessionScrollPositionsRef.current.get(tabSession.id) ?? null : null}
@@ -2513,7 +2546,7 @@ export function AppShell() {
         onToolEnd={handleToolEnd}
         onFilesChanged={requestExplorerRefresh}
         filePanelOpen={rightPanelOpen}
-        onReviewTurnChanges={handleReviewTurnChanges}
+        onReviewTurnChanges={paneEntries[pane].reviewTurnChanges}
         onOpenDiff={handleOpenDiff}
         onTurnFilesChange={isFocusedPane ? handleTurnFilesChange : undefined}
         onAttentionNeeded={handleAttentionNeeded}
@@ -2529,7 +2562,7 @@ export function AppShell() {
         onSystemInfoLoaderChange={isFocusedPane ? handleSystemInfoLoaderChange : undefined}
         onOutlineViewChange={isFocusedPane ? handleOutlineViewChange : undefined}
         onSessionStatsChange={isFocusedPane ? handleSessionStatsChange : undefined}
-        onSessionStatsPanelOpen={openSessionStatsPanel}
+        onSessionStatsPanelOpen={paneEntries[pane].openSessionStats}
         sessionStatsOpen={isFocusedPane && activeTopPanel === "session"}
         onContextUsageChange={isFocusedPane ? handleContextUsageChange : undefined}
         onOpenFile={handleOpenLinkedFile}
@@ -2775,24 +2808,20 @@ export function AppShell() {
   // Beside an open file the panel docks the project tree on its right, beside a diff the changes
   // list (docs/ui.md, File panel). Narrow panels start without it; the header toggle is remembered.
   const panelDockOpen = panelDockPref ?? rightPanelResizer.width >= PANEL_DOCK_MIN_WIDTH;
-  // How the tab was opened, not its current Source/Diff mode: the column never swaps mid-tab.
-  const activeTabIsDiff = activeFileTab?.initialDisplayMode === "diff";
-  const panelDockAvailable = !isMobile && Boolean(panelCwd && activeFileTab?.filePath);
-  const panelDock: PanelView | null = panelDockAvailable && panelDockOpen ? (activeTabIsDiff ? "changes" : "files") : null;
-  // Showing the dock on a narrow panel widens the panel by the dock instead of squeezing the viewer;
-  // hiding it again gives that width back.
+  // The column follows the tab's own project (tabs are window-wide), the full views the session's.
+  const panelDockTarget = panelDockFor(activeFileTab, panelCwd, isMobile);
+  const panelDockOn = panelDockTarget && panelDockOpen ? panelDockTarget : null;
+  const panelDock: PanelView | null = panelDockOn?.view ?? null;
+  const changesViewCwd = panelViewCwd("changes", panelDockOn, panelCwd);
+  const filesViewCwd = panelViewCwd("files", panelDockOn, panelCwd);
+  const filesViewShown = (showPanelView && panelView === "files") || panelDock === "files";
   const panelDockWidenedFromRef = useRef<number | null>(null);
   const setRightPanelWidth = rightPanelResizer.setWidth;
   const togglePanelDock = useCallback(() => {
     const next = !panelDockOpen;
-    const width = rightPanelWidthRef.current ?? rightPanelResizer.width;
-    if (next && width < PANEL_DOCK_MIN_WIDTH) {
-      panelDockWidenedFromRef.current = width;
-      setRightPanelWidth(width + PANEL_DOCK_WIDTH);
-    } else if (!next && panelDockWidenedFromRef.current !== null) {
-      setRightPanelWidth(panelDockWidenedFromRef.current);
-      panelDockWidenedFromRef.current = null;
-    }
+    const resize = panelDockToggleWidth(next, rightPanelWidthRef.current ?? rightPanelResizer.width, panelDockWidenedFromRef.current, PANEL_DOCK_MIN_WIDTH, PANEL_DOCK_WIDTH);
+    panelDockWidenedFromRef.current = resize.widenedFrom;
+    if (resize.width !== null) setRightPanelWidth(resize.width);
     setPanelDockPref(next);
     try { window.localStorage.setItem(PANEL_DOCK_KEY, String(next)); } catch { /* private mode */ }
   }, [panelDockOpen, rightPanelResizer.width, setRightPanelWidth]);
@@ -2800,17 +2829,18 @@ export function AppShell() {
     if (panelDock === "files") setFilesViewMounted(true);
   }, [panelDock]);
   // Collapsed, the column leaves a labeled strip on the panel's right edge that opens it again.
-  const panelDockKind: PanelView = activeTabIsDiff ? "changes" : "files";
-  const panelDockStrip = panelDockAvailable && !panelDockOpen;
+  const panelDockKind: PanelView = panelDockTarget?.view ?? "files";
+  const panelDockStrip = Boolean(panelDockTarget) && !panelDockOpen;
   const panelDockLabel = translate(panelDockKind === "files" ? "panel.dockTree" : "panel.dockChanges");
   const panelViewerRight = panelDock ? PANEL_DOCK_WIDTH : panelDockStrip ? PANEL_DOCK_STRIP_WIDTH : 0;
   const panelDockStyle: React.CSSProperties = {
     position: "absolute", top: 0, bottom: 0, right: 0, width: PANEL_DOCK_WIDTH,
     borderLeft: "1px solid var(--border)", background: "var(--bg)",
   };
-  const renderPanelDockHead = () => (
-    <div className="panel-dock-head">
-      <span className="panel-dock-title">{panelDockLabel}</span>
+  // The docked tree puts its name and » on its worktree/actions line (one head row, FilesView);
+  // the Changes column keeps this title row.
+  const renderPanelDockTitle = () => <span className="panel-dock-title">{panelDockLabel}</span>;
+  const renderPanelDockCollapse = () => (
       <button
         type="button"
         className="ghost-icon-button"
@@ -2823,6 +2853,11 @@ export function AppShell() {
           <path d="m6 17 5-5-5-5M13 17l5-5-5-5" />
         </svg>
       </button>
+  );
+  const renderPanelDockHead = () => (
+    <div className="panel-dock-head">
+      {renderPanelDockTitle()}
+      {renderPanelDockCollapse()}
     </div>
   );
 
@@ -2849,27 +2884,22 @@ export function AppShell() {
       <button
         ref={sidebarToggleRef}
         data-dialog-focus-fallback="true"
-        className="workspace-header-action"
+        className="workspace-header-action workspace-panel-toggle"
         onClick={handleSidebarToggle}
          title={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
          aria-label={sidebarOpen ? translate("sidebar.hide") : menuNeedsYou ? `${translate("sidebar.show")} · ${translate("sidebar.sessionsNeedYou")}` : translate("sidebar.show")}
-        style={{
-          position: "relative",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-          background: "none", border: "none",
-          color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+        aria-controls="session-sidebar"
+        aria-expanded={sidebarOpen}
       >
-        {sidebarOpen ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="2.5" y="5" width="19" height="14" rx="2.5" /><line x1="9" y1="5" x2="9" y2="19" />
+        {/* One glyph in both places, never swapped (docs/ui.md, Tabs and top bars): the left panel,
+            mirrored by the file panel toggle. Phones keep ☰ for the drawer. */}
+        {isMobile ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
+            <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
           </svg>
         ) : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2.5" y="5" width="19" height="14" rx="2.5" /><line x1="9" y1="5" x2="9" y2="19" />
           </svg>
         )}
         {menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" />}
@@ -2962,7 +2992,6 @@ export function AppShell() {
           lineHeight: mobileBanner ? 1.35 : undefined,
           textAlign: "left",
         }}
-        className={mobileBanner ? undefined : "workspace-header-action"}
         data-mobile-trust-banner={mobileBanner ? "true" : undefined}
       >
         <svg
@@ -2990,7 +3019,7 @@ export function AppShell() {
     const interactive = options?.interactive ?? true;
     const sessionTools = options?.sessionTools ?? true;
     const session = options?.session === undefined ? selectedSession : options.session;
-    const sessionFamily = getSessionFamily(sessionsWithSelection, session?.id);
+    const sessionFamily = session ? sessionFamilies.get(session.id) ?? null : null;
     const hasSubagentSessionsForSession = Boolean(sessionFamily?.subagents.length);
     const branchData = getBranchDataForSession(session);
     const sessionHasBranchesForSession = Boolean(branchData && hasSessionBranches(branchData.tree));
@@ -3006,18 +3035,9 @@ export function AppShell() {
             onClick={() => sessionFamily && handleSwitchFamilySession(sessionFamily.root)}
             title={translate("agentSwitcher.backToMain")}
             aria-label={translate("agentSwitcher.backToMain")}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE,
-              height: "100%", padding: 0,
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-            }}
             className="workspace-header-action"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
             </svg>
           </button>
@@ -3030,20 +3050,11 @@ export function AppShell() {
             aria-label={translate("i18n.branches")}
             aria-pressed={interactive && activeTopPanel === "branches"}
             data-top-panel-trigger={interactive ? "branches" : undefined}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: activeTopPanel === "branches" ? "var(--bg-selected)" : "none",
-              border: "none",
-              color: activeTopPanel === "branches" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-              transition: "color var(--motion-fast), background var(--motion-fast)",
-            }}
             className="workspace-header-action"
             data-mobile-toolbar-action="branches"
             disabled={!branchData?.onLeafChange}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="6" y1="3" x2="6" y2="15" />
               <circle cx="18" cy="6" r="3" />
               <circle cx="6" cy="18" r="3" />
@@ -3060,8 +3071,9 @@ export function AppShell() {
             disabled={!branchData?.onLeafChange}
           />
         ))}
-        {/* Phones: the outline (desktop's minimap) keeps its own button beside ⋯, one tap away. */}
-        {sessionTools && mobile && (
+        {/* Phones: the outline (desktop's minimap) keeps its own button beside ⋯, one tap away.
+            A new session has nothing to outline. */}
+        {sessionTools && mobile && session && (
           <button
             type="button"
             onClick={() => toggleTopPanel("outline")}
@@ -3073,21 +3085,14 @@ export function AppShell() {
             data-top-panel-trigger="outline"
             className="workspace-header-action"
             data-mobile-toolbar-action="outline"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-              background: activeTopPanel === "outline" ? "var(--bg-selected)" : "none",
-              border: "none",
-              color: activeTopPanel === "outline" ? "var(--text)" : "var(--text-muted)",
-              cursor: "pointer", flexShrink: 0,
-            }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M9 4v16M15 4v16M4 9h16M4 15h16" />
             </svg>
           </button>
         )}
-        {sessionTools && <SessionMenu
+        {/* Without a session only phones keep ⋯, for Files. */}
+        {sessionTools && (mobile || session) && <SessionMenu
           mobile={mobile}
           infoDisabled={toolsUnavailable}
           historyDisabled={!session}
@@ -3103,7 +3108,6 @@ export function AppShell() {
             tools: translate("tools.title"),
             system: translate("system.prompt"),
             full: translate("history.full"),
-            unsaved: translate("history.unsaved"),
             menu: translate("session.moreActions"),
             files: translate("panel.files"),
             exportMarkdown: translate(historyShareReady ? "history.exportMarkdownShare" : "history.exportMarkdown"),
@@ -3136,6 +3140,8 @@ export function AppShell() {
   const collapsedSessionTitle = selectedSession
     ? getSessionDisplayTitle(selectedSession)
     : translate("i18n.newSession");
+  // Phones: the tab strip (two or more tabs) names the session in its shown tab.
+  const showMobileTitle = showChat && chatTabs.length < 2;
 
   const renderCollapsedSessionTitle = () => {
     if (sidebarOpen || !showChat) return null;
@@ -3150,7 +3156,6 @@ export function AppShell() {
         aria-expanded={activeTopPanel === "session"}
         aria-controls="workspace-top-panel"
         data-top-panel-trigger="session"
-        className="workspace-header-action"
         data-collapsed-session-title="true"
         style={{
           display: "flex",
@@ -3185,42 +3190,29 @@ export function AppShell() {
         aria-expanded={rightPanelOpen}
         title={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
         aria-label={rightPanelOpen ? translate("files.hidePanel") : translate("files.showPanel")}
-        className="workspace-header-action"
+        className="workspace-header-action workspace-panel-toggle"
         data-mobile-toolbar-file={mobile ? "true" : undefined}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
-        }}
-        onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-        onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
       >
-        {rightPanelOpen ? (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
-          </svg>
-        ) : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        )}
+        {/* The sidebar toggle's glyph mirrored; the glyph never changes. */}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="2.5" y="5" width="19" height="14" rx="2.5" /><line x1="15" y1="5" x2="15" y2="19" />
+        </svg>
       </button>
     );
   };
 
   // Each pane's composer dock (docs/ui.md, Composer): where it runs,
   // running subagents beside the context ring, idle ones in the ⋮ menu.
-  const renderComposerDock = (session: SessionInfo | null | undefined): ComposerDock | undefined => {
+  const renderComposerDock = (session: SessionInfo | null | undefined, pane: ChatPane): ComposerDock | undefined => {
     if (!session || session.transient) return undefined;
     const projectRoot = session.projectRoot ?? session.cwd;
-    const family = getSessionFamily(sessionsWithSelection, session.id);
+    const family = sessionFamilies.get(session.id);
     const count = family?.subagents.length ?? 0;
     const running = family?.subagents.filter((subagent) => runningSessionIds.has(subagent.id)).length ?? 0;
     const openAgents = (anchor: HTMLElement | null) => {
       agentsAnchorRef.current = anchor;
+      focusPaneRef.current(pane);
+      setAgentsSessionId(session.id);
       toggleTopPanel("agents");
     };
     return {
@@ -3235,7 +3227,7 @@ export function AppShell() {
         />
       ),
       status: running > 0
-        ? <AgentsDockButton count={count} running={running} open={activeTopPanel === "agents" && selectedSession?.id === session.id} onToggle={openAgents} />
+        ? <AgentsDockButton count={count} running={running} open={activeTopPanel === "agents" && agentsSessionId === session.id} onToggle={openAgents} />
         : null,
       menuItems: count > 0 && running === 0
         ? [{ label: translate("agentSwitcher.title"), note: String(count), topPanelTrigger: "agents", onSelect: openAgents }]
@@ -3361,22 +3353,15 @@ export function AppShell() {
                 onClick={closeRoutines}
                 title={translate("routines.backToChat")}
                 aria-label={translate("routines.backToChat")}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-                  background: "none", border: "none",
-                  color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
-                }}
-                onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
                 </svg>
               </button>
               {/* RoutinesView portals its breadcrumb here, where the chat tabs would be. */}
               <div ref={setRoutinesHeaderSlot} className="routines-header-slot" />
-              {renderMainFileToggle(isMobile)}
+              {/* Phones reach Files from a chat's ⋯; the page has no panel toggle there. */}
+              {!isMobile && renderMainFileToggle(false)}
             </>
           ) : (<>
           {!isSplitActive && sidebarToggleInHeader && sidebarToggleButton}
@@ -3392,8 +3377,9 @@ export function AppShell() {
                 height: "100%",
               }}
             >
-              {/* Phones: ☰, title, ⋯ (outline and Files live in ⋯); conditional tools before ⋯. */}
-              <span className="mobile-top-bar-title" title={showChat ? collapsedSessionTitle : undefined}>{showChat ? collapsedSessionTitle : null}</span>
+              {/* Phones: ☰, title, outline, ⋯ (Files lives in ⋯); conditional tools before the outline.
+                  With the tab strip below, the shown tab already names the session: no title. */}
+              <span className="mobile-top-bar-title" title={showMobileTitle ? collapsedSessionTitle : undefined}>{showMobileTitle ? collapsedSessionTitle : null}</span>
               {renderChatToolbarActions(true)}
             </div>
           )}
@@ -3530,15 +3516,15 @@ export function AppShell() {
                 zIndex: 520,
               }}
             >
-              {activeTopPanel === "agents" && activeSessionFamily && selectedSession && (
+              {activeTopPanel === "agents" && agentsFamily && agentsSessionId && (
                 <AgentSessionPanel
-                  rootSession={activeSessionFamily.root}
-                  subagents={activeSessionFamily.subagents}
-                  selectedSessionId={selectedSession.id}
+                  rootSession={agentsFamily.root}
+                  subagents={agentsFamily.subagents}
+                  selectedSessionId={agentsSessionId}
                   runningSessionIds={runningSessionIds}
                   onSelectSession={handleSelectFamilySession}
                   onOpenInNewTab={handlePinSession}
-                  onDeleteSideChat={(session) => void handleDeleteSideChat(session, activeSessionFamily.root)}
+                  onDeleteSideChat={(session) => void handleDeleteSideChat(session, agentsFamily.root)}
                 />
               )}
               {activeTopPanel === "branches" && !isMobile && (
@@ -3856,8 +3842,8 @@ export function AppShell() {
           <div
             data-mobile-chat-tabs="true"
             style={{
-              boxShadow: "inset 0 -1px 0 var(--border)",
-              background: "var(--bg-panel)",
+              // One surface with the top bar and the chat, no rule (docs/ui.md, Tabs and top bars).
+              background: "var(--bg)",
               height: "var(--workspace-header-height, 40px)",
               minHeight: "var(--workspace-header-height, 40px)",
               width: "100%",
@@ -3933,6 +3919,7 @@ export function AppShell() {
                         tab.kind === "draft" ? tab.newSessionCwd : null,
                         tab.kind === "draft" ? tab.newSessionDraftKey : null,
                         isCurrent && isFocused,
+                        pane,
                         mountKey,
                         isCurrent,
                       )}
@@ -3940,7 +3927,7 @@ export function AppShell() {
                   );
                 }) : (
                   <div style={{ gridColumn: 1, gridRow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                    {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, undefined, true)}
+                    {renderChatWindow(selectedSession, effectiveNewSessionCwd, newSessionDraftKey, primaryPaneHasFocus, "primary", undefined, true)}
                   </div>
                 )}
 
@@ -3959,7 +3946,7 @@ export function AppShell() {
                     onDragLeave={() => setSplitDropHover(false)}
                     onDrop={handleSplitDrop}
                   >
-                    {translate(splitDropSide === "left" ? "chatTabs.moveLeft" : isSplitActive ? "chatTabs.moveRight" : "chatTabs.splitTabRight")}
+                    {translate(splitDropSide === "left" ? "chatTabs.moveLeft" : isSplitActive ? "chatTabs.moveRight" : "chatTabs.splitView")}
                   </div>
                 )}
 
@@ -3975,7 +3962,7 @@ export function AppShell() {
                     aria-valuemax={Math.round(getChatSplitRatioBounds(chatPanesWidthRef.current).max * 100)}
                     aria-valuenow={Math.round(chatSplitRatio * 100)}
                     tabIndex={0}
-                    title={translate("chatTabs.splitView", { defaultValue: "调整分屏大小" })}
+                    title={translate("chatTabs.resizeSplit")}
                     onPointerDown={handleSplitResizeStart}
                     onPointerMove={handleSplitResizeMove}
                     onPointerUp={handleSplitResizeEnd}
@@ -4078,14 +4065,23 @@ export function AppShell() {
             </button>
           )}
           <div role="tablist" aria-label={translate("panel.views")} className="panel-view-tabs">
-            {(["changes", "files"] as const).map((view) => (
+            {/* A tablist as the chat tabs: one Tab stop, ←/→ move to and show the other view. */}
+            {(["changes", "files"] as const).map((view, index, views) => (
               <button
                 key={view}
                 type="button"
                 role="tab"
                 aria-selected={showPanelView && panelView === view}
+                tabIndex={panelView === view ? 0 : -1}
                 className="panel-view-tab"
                 onClick={() => selectPanelView(view)}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                  event.preventDefault();
+                  const nextIndex = (index + (event.key === "ArrowRight" ? 1 : -1) + views.length) % views.length;
+                  selectPanelView(views[nextIndex]);
+                  (event.currentTarget.parentElement?.children[nextIndex] as HTMLElement | undefined)?.focus();
+                }}
               >
                 {translate(view === "changes" ? "panel.changes" : "panel.files")}
               </button>
@@ -4125,7 +4121,7 @@ export function AppShell() {
               title={translate(panelCoversPage ? "files.restorePanel" : "files.maximizePanel")}
               aria-label={translate(panelCoversPage ? "files.restorePanel" : "files.maximizePanel")}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 {panelCoversPage
                   ? <path d="M8 3v5H3M16 3v5h5M8 21v-5H3M16 21v-5h5" />
                   : <path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5" />}
@@ -4140,16 +4136,8 @@ export function AppShell() {
               aria-controls="file-panel"
               title={translate("files.hidePanel")}
               aria-label={translate("files.hidePanel")}
-              style={{
-                alignItems: "center", justifyContent: "center",
-                width: TOP_BAR_ICON_BUTTON_SIZE, height: "100%", padding: 0,
-                background: "none", border: "none",
-                color: "var(--text-muted)", cursor: "pointer", flexShrink: 0, transition: "color var(--motion-fast)",
-              }}
-              onMouseEnter={(event) => { event.currentTarget.style.color = "var(--text)"; }}
-              onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M18 6 6 18M6 6l12 12" />
               </svg>
             </button>
@@ -4195,7 +4183,7 @@ export function AppShell() {
           {/* One Changes and one Files instance, full size as a view or docked beside a file: moving
               between the two keeps the tree's expansion and scroll. */}
           {/* Docked, a title row names the column and holds its collapse control (docs/ui.md). */}
-          {panelCwd && ((showPanelView && panelView === "changes") || panelDock === "changes") && (
+          {changesViewCwd && ((showPanelView && panelView === "changes") || panelDock === "changes") && (
             <div
               className="panel-view-host"
               style={panelDock === "changes" ? panelDockStyle : { position: "absolute", inset: 0 }}
@@ -4204,29 +4192,29 @@ export function AppShell() {
               {panelDock === "changes" && renderPanelDockHead()}
               <div className="panel-view-host-body">
               <ChangesView
-                cwd={panelCwd}
+                cwd={changesViewCwd}
                 refreshKey={explorerRefreshKey}
                 active={rightPanelOpen}
                 activePath={panelDock === "changes" ? activeFileTab?.filePath : undefined}
                 scope={changesScope}
                 onScopeChange={setChangesScope}
                 turnFiles={turnFiles}
-                onOpenDiff={(filePath) => handleOpenDiff(filePath, panelCwd)}
+                onOpenDiff={(filePath) => handleOpenDiff(filePath, changesViewCwd)}
               />
               </div>
             </div>
           )}
-          {panelCwd && filesViewMounted && (
+          {filesViewCwd && filesViewMounted && (
             <div
-              hidden={!((showPanelView && panelView === "files") || panelDock === "files")}
+              hidden={!filesViewShown}
               className="panel-view-host"
               style={panelDock === "files" ? panelDockStyle : { position: "absolute", inset: 0 }}
               {...(panelDock === "files" ? { role: "complementary", "aria-label": panelDockLabel } : {})}
             >
-              {panelDock === "files" && renderPanelDockHead()}
               <div className="panel-view-host-body">
               <FilesView
-                cwd={panelCwd}
+                cwd={filesViewCwd}
+                active={rightPanelOpen && filesViewShown}
                 refreshKey={explorerRefreshKey}
                 onRefresh={handleExplorerRefresh}
                 explorerRef={filesExplorerRef}
@@ -4234,9 +4222,11 @@ export function AppShell() {
                 onAtMention={handleAtMention}
                 onAtMentions={handleAtMentions}
                 reveal={explorerReveal}
-                worktreeInfo={worktreeInfo?.forCwd === panelCwd ? worktreeInfo : null}
+                worktreeInfo={worktreeInfo?.forCwd === filesViewCwd ? worktreeInfo : null}
                 onSelectWorktree={(path) => showInPanel(path, "files")}
                 activePath={panelDock === "files" ? activeFileTab?.filePath : undefined}
+                dockTitle={panelDock === "files" ? renderPanelDockTitle() : undefined}
+                dockAction={panelDock === "files" ? renderPanelDockCollapse() : undefined}
               />
               </div>
             </div>

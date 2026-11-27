@@ -36,7 +36,7 @@ function maxBodySize(): SizeLimit {
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: configDir,
-  // Dev only: the badge's default bottom-left corner covers the sidebar footer (Settings).
+  // Dev only: the badge's default bottom-left corner covers the sidebar's session list.
   devIndicators: { position: "bottom-right" },
   images: {
     // Next's image pipeline is only used for the static login logo, so the whole

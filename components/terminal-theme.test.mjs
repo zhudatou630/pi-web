@@ -163,8 +163,9 @@ test("terminal actions live in the workspace header; the panel has no toolbar of
   assert.match(source, /\{status !== "ready" && \(/, "a healthy terminal shows no status dot");
   assert.match(shell, /<div ref=\{setTerminalActionsSlot\} className="terminal-header-actions" \/>/);
   assert.match(shell, /actionsSlot=\{tab.id === activeFileTabId \? terminalActionsSlot : null\}/);
-  // Header buttons use app tokens, not the terminal's own palette.
-  assert.match(css, /\.terminal-header-action \{[^}]*border: none;[^}]*color: var\(--text-muted\)/);
+  // Header buttons are the shared top-bar buttons (app tokens, not the terminal's own palette).
+  assert.equal((source.match(/className="workspace-header-action"/g) ?? []).length, 3);
+  assert.doesNotMatch(css + source, /terminal-header-action\b/);
   assert.match(css, /\.terminal-status-dot \{[^}]*background: var\(--warning\)/);
   assert.match(css, /\.terminal-status-dot\.is-error \{ background: var\(--danger\)/);
 });

@@ -152,6 +152,14 @@ export interface ChatInputHandle {
 // "configured" sends no override, so the session follows settings.json defaultTools.
 const TOOL_PRESETS = ["configured", "chat-only", "read-only", "default", "full"] as const;
 type ToolPresetLabel = typeof TOOL_PRESETS[number];
+// The ids above stay as the toolbar's lowercase state label (docs/ui.md); menu rows show these.
+const TOOL_PRESET_NAME_KEYS: Record<ToolPresetLabel, string> = {
+  configured: "chat.toolPresetConfigured",
+  "chat-only": "chat.chatOnly",
+  "read-only": "chat.toolPresetReadOnly",
+  default: "chat.toolPresetDefault",
+  full: "chat.toolPresetFull",
+};
 const TOOL_PRESET_MAP: Record<ToolPresetLabel, ToolPreset> = {
   configured: CONFIGURED_TOOL_PRESET,
   "chat-only": "none",
@@ -1861,12 +1869,13 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     ? `${compactResult.reason && compactResult.reason !== "manual" ? `${compactResult.reason[0].toUpperCase()}${compactResult.reason.slice(1)} ` : t("chat.compacted")} ${formatTokenCount(compactResult.tokensBefore)} -> ${formatTokenCount(compactResult.estimatedTokensAfter)} tokens (${t("chat.tokensSaved", { saved: formatTokenCount(compactSavedTokens) })})`
     : null;
   const thinkingDisplayLabel = (() => {
-    // Unknown until models/session state load; never guess a level.
+    // Unknown until models/session state load; never guess a level. The toolbar shows the
+    // lowercase id (docs/ui.md); the menu lists the labels.
     if (!thinkingLevel) return "…";
-    return THINKING_LEVEL_LABELS[thinkingLevel];
+    return thinkingLevel;
   })();
-  const rawToolPresetLabel = Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? CONFIGURED_TOOL_PRESET))?.[0] ?? "configured";
-  const toolPresetLabel = rawToolPresetLabel === "chat-only" ? t("chat.chatOnly") : rawToolPresetLabel;
+  const rawToolPresetLabel = (Object.entries(TOOL_PRESET_MAP).find(([, v]) => v === (toolPreset ?? CONFIGURED_TOOL_PRESET))?.[0] ?? "configured") as ToolPresetLabel;
+  const toolPresetLabel = t(TOOL_PRESET_NAME_KEYS[rawToolPresetLabel]);
   const toolPresetOffDefault = rawToolPresetLabel !== "configured";
   const showSessionMenu = Boolean(onToolPresetChange || onCompact || dock?.menuItems.length);
 
@@ -2803,7 +2812,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 <div ref={thinkingDropdownRef} className="chat-input-popover-anchor">
                   <button
                     type="button"
-                    className="composer-btn"
+                    className="composer-btn chat-input-thinking"
                     onClick={() => {
                       setControlsMenuOpen(false);
                       setImageMenuOpen(false);
@@ -2853,7 +2862,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   <button
                     ref={controlsButtonRef}
                     type="button"
-                    className={`composer-btn${toolPresetOffDefault && onToolPresetChange ? " is-flagged" : " is-icon"}`}
+                    className={`composer-btn chat-input-controls${toolPresetOffDefault && onToolPresetChange ? " is-flagged" : " is-icon"}`}
                     aria-label={t("chat.moreControls")}
                     aria-haspopup="menu"
                     aria-expanded={controlsMenuOpen}
@@ -2879,7 +2888,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                               <path d="M6 2.5 3.5 5 6 7.5" />
                             </svg>
-                            <span>{controlsView}</span>
+                            <span>{t(controlsView === "tools" ? "chat.tools" : "chat.compact")}</span>
                           </button>
                           <div role="separator" className="menu-surface-divider" />
                           {controlsView === "tools" && onToolPresetChange && TOOL_PRESETS.map((lvl) => {
@@ -2896,7 +2905,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                                   if (!isActive) onToolPresetChange(preset);
                                 }}
                               >
-                                <span>{lvl}</span>
+                                <span>{t(TOOL_PRESET_NAME_KEYS[lvl])}</span>
                                 <MenuCheck checked={isActive} />
                               </button>
                             );
@@ -2920,8 +2929,8 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                         <>
                           {onToolPresetChange && (
                             <button type="button" role="menuitem" aria-haspopup="menu" disabled={isStreaming} onClick={() => setControlsView("tools")}>
-                              <span>tools</span>
-                              <span className="chat-input-menu-note">{rawToolPresetLabel}</span>
+                              <span>{t("chat.tools")}</span>
+                              <span className="chat-input-menu-note">{toolPresetLabel}</span>
                               {menuChevron}
                             </button>
                           )}
@@ -2938,7 +2947,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                             </button>
                           ) : (
                             <button type="button" role="menuitem" aria-haspopup="menu" disabled={isStreaming} onClick={() => setControlsView("compact")}>
-                              <span>compact</span>
+                              <span>{t("chat.compact")}</span>
                               {contextPercent !== null && <span className="chat-input-menu-note">{Math.round(contextPercent)}%</span>}
                               {menuChevron}
                             </button>

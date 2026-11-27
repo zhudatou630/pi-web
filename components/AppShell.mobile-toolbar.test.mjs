@@ -13,12 +13,16 @@ test("phone top bar holds the menu button, title, the outline button and the ses
   assert.ok(title >= 0 && title < actions);
   // No uncommitted-changes count anywhere around the composer: Changes is the file panel's view.
   assert.doesNotMatch(source, /ChangesButton|renderTopBarContext|renderComposerContext|gitChangeCounts/);
-  assert.match(source, /composerDock=\{renderComposerDock\(tabSession\)\}/);
+  assert.match(source, /composerDock=\{renderComposerDock\(tabSession, pane\)\}/);
   assert.doesNotMatch(toolbar, /renderMainFileToggle/);
   assert.match(source, /onOpenFiles=\{mobile && filesCwd \? \(\) => handleRevealCwdInFiles\(filesCwd\) : undefined\}/);
   // The outline (desktop's minimap) is one tap away, its own button beside ⋯, not a menu item.
   assert.doesNotMatch(menuSource, /onOpenOutline|labels\.outline/);
-  assert.match(source, /\{sessionTools && mobile && \(\s*<button[\s\S]*?onClick=\{\(\) => toggleTopPanel\("outline"\)\}[\s\S]*?data-mobile-toolbar-action="outline"/);
+  // Only a session has an outline; a new session's ⋯ keeps only Files (SessionMenu).
+  assert.match(source, /\{sessionTools && mobile && session && \(\s*<button[\s\S]*?onClick=\{\(\) => toggleTopPanel\("outline"\)\}[\s\S]*?data-mobile-toolbar-action="outline"/);
+  // With the tab strip below (two or more tabs), the shown tab names the session: no title.
+  assert.match(source, /const showMobileTitle = showChat && chatTabs\.length < 2;/);
+  assert.match(toolbar, /\{showMobileTitle \? collapsedSessionTitle : null\}/);
   // The closed drawer's menu button carries a dot while a session waits or failed.
   assert.match(source, /const menuNeedsYou = isMobile && !sidebarOpen && hasBlockedSession\(sessionMarkers\)/);
   assert.match(source, /\{menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" \/>\}/);
@@ -45,7 +49,8 @@ test("removes the closed mobile sidebar from the accessibility tree", () => {
 });
 
 test("closes shared top panels consistently and restores their trigger on Escape", () => {
-  assert.match(source, /if \(!activeTopPanel \|\| activeTopPanel === "language"\) return/);
+  assert.match(source, /if \(!activeTopPanel\) return;/);
+  assert.doesNotMatch(source, /"language"/);
   assert.match(source, /topPanelRef\.current\?\.contains\(target\)/);
   assert.match(source, /target\.closest\("\[data-top-panel-trigger\]"\)/);
   assert.match(source, /find\(\(candidate\) => !candidate\.closest\("\[inert\]"\)\)/);
@@ -69,14 +74,22 @@ test("uses a single inline mobile toolbar", () => {
 test("Agents: in the composer dock while any runs, in its ⋮ menu otherwise; never in the top bar", () => {
   assert.match(source, /const hasSubagentSessionsForSession = Boolean\(sessionFamily\?\.subagents\.length\)/);
   const dock = functionSource("renderComposerDock", "const renderDesktopHeaderActions");
-  assert.match(dock, /const family = getSessionFamily\(sessionsWithSelection, session\.id\);/);
-  assert.match(dock, /agentsAnchorRef\.current = anchor;\s*toggleTopPanel\("agents"\);/);
+  // One family index for the top bar and every dock, not a rebuild per call.
+  assert.match(source, /const sessionFamilies = useMemo\(\(\) => indexSessionFamilies\(sessionsWithSelection\), \[sessionsWithSelection\]\);/);
+  assert.doesNotMatch(source, /getSessionFamily\(/);
+  assert.match(dock, /const family = sessionFamilies\.get\(session\.id\);/);
+  // Split: each dock opens the panel for its own session (keyboard Enter included), and focuses its pane.
+  assert.match(dock, /agentsAnchorRef\.current = anchor;\s*focusPaneRef\.current\(pane\);\s*setAgentsSessionId\(session\.id\);\s*toggleTopPanel\("agents"\);/);
+  assert.match(dock, /open=\{activeTopPanel === "agents" && agentsSessionId === session\.id\}/);
   assert.match(dock, /status: running > 0\s*\? <AgentsDockButton/);
   assert.match(dock, /menuItems: count > 0 && running === 0/);
   assert.doesNotMatch(functionSource("renderChatToolbarActions", "const collapsedSessionTitle"), /toggleTopPanel\("agents"\)/);
   assert.match(source, /session: primaryTab\?\.kind === "session" \? primaryTab\.session : null/);
   assert.match(source, /session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null/);
-  assert.match(source, /activeTopPanel === "agents" && activeSessionFamily && selectedSession/);
+  assert.match(source, /activeTopPanel === "agents" && agentsFamily && agentsSessionId && \(\s*<AgentSessionPanel\s*rootSession=\{agentsFamily\.root\}\s*subagents=\{agentsFamily\.subagents\}\s*selectedSessionId=\{agentsSessionId\}/);
+  // A pane's Review and context ring focus that pane first, so the panel reads its turn files and stats.
+  assert.match(source, /onReviewTurnChanges=\{paneEntries\[pane\]\.reviewTurnChanges\}/);
+  assert.match(source, /onSessionStatsPanelOpen=\{paneEntries\[pane\]\.openSessionStats\}/);
 });
 
 test("positions the Agents panel relative to its trigger action and keeps it open while switching sessions", () => {
@@ -177,7 +190,8 @@ test("desktop header keeps tabs left and actions right without theme or language
 test("desktop chat toolbar actions are icon-only", () => {
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   assert.doesNotMatch(actions, /\{!mobile && <span>/);
-  assert.match(actions, /width: TOP_BAR_ICON_BUTTON_SIZE/);
+  // Size, colors and the pressed block come from .workspace-header-action, never inline.
+  assert.doesNotMatch(actions, /TOP_BAR_ICON_BUTTON_SIZE|color: "var\(--text|background: activeTopPanel/);
   assert.match(actions, /<BranchNavigator[\s\S]*?compact\s+open=\{interactive && activeTopPanel === "branches"\}/);
 });
 
@@ -196,7 +210,7 @@ test("toolbar actions use spacing rather than per-button dividers, preserving re
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   assert.doesNotMatch(actions, /borderRight:/);
   assert.doesNotMatch(actions, /borderTop:/);
-  assert.match(cssSource, /\.workspace-header-action\[aria-pressed="true"\][\s\S]*?box-shadow: inset 0 2px 0 var\(--accent\)/);
+  assert.doesNotMatch(cssSource, /inset 0 2px 0 var\(--accent\)/);
   const branchNavigator = await readFile(new URL("./BranchNavigator.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(branchNavigator, /borderRight:/);
   // The chat bar drops the shared bottom rule: color layers it against the chat.
@@ -252,4 +266,26 @@ test("split header keeps an inert, pane-specific copy of the tools on the unfocu
   const actions = functionSource("renderDesktopHeaderActions", "return (\n    <>\n    <style>");
   assert.match(actions, /inert=\{options\?\.inert \|\| undefined\}/);
   assert.match(actions, /pointerEvents: options\?\.inert \? "none" : undefined/);
+});
+
+test("Android Back closes the phone drawer and the full-screen file panel first, without history entries", async () => {
+  const { default: ts } = await import("typescript");
+  const start = source.indexOf("function watchCloseRequest(");
+  const code = source.slice(start, source.indexOf("\n}\n", start) + 2);
+  const js = ts.transpileModule(`${code}\nreturn watchCloseRequest;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const watchers = [];
+  class CloseWatcher { constructor() { this.onclose = null; this.destroyed = false; watchers.push(this); } destroy() { this.destroyed = true; } }
+  let closed = 0;
+  const watch = new Function("window", js)({ CloseWatcher });
+  const stop = watch(() => { closed++; });
+  watchers[0].onclose();
+  assert.equal(closed, 1);
+  stop();
+  assert.equal(watchers[0].destroyed, true);
+  // Browsers without CloseWatcher keep Back as navigation.
+  assert.doesNotThrow(() => new Function("window", js)({})(() => {})());
+  // Wired into the drawer's and the overlay panel's open effects; the URL state is left alone.
+  assert.match(source, /const stopWatching = watchCloseRequest\(dismissMobileSidebar\);/);
+  assert.match(source, /const stopWatching = isMobile \|\| window\.innerWidth < 960 \? watchCloseRequest\(\(\) => closeRightPanel\(true\)\) : \(\) => \{\};/);
+  assert.doesNotMatch(source, /history\.pushState|addEventListener\("popstate"/);
 });

@@ -171,21 +171,6 @@ function formatStamp(value: string | Date, locale: string, timeZone: string): st
 
 type Page = { kind: "list" } | { kind: "detail"; id: string | null };
 
-// Empty-state illustration: Claude's hand-drawn stopwatch, vectorized from its screenshot
-// (potrace) rather than redrawn, so the wobbly outline and sketched hands stay as drawn.
-// FACE is the dial's fill (the crown and its neck stay the page color); INK is every stroke.
-const STOPWATCH_FACE = "M247 529C246 529 241 529 234 529C207 529 184 525 164 516C161 515 155 513 152 511C112 496 66 457 58 434C57 428 55 423 50 414C48 410 46 404 45 401C42 393 40 387 38 382C36 377 31 359 31 356C31 354 30 350 29 345C21 315 30 241 46 217C47 215 50 209 52 205C54 201 57 196 58 194C60 191 62 188 63 186C66 181 82 162 93 151C99 146 113 135 123 129C140 119 187 102 200 102C204 102 206 98 206 91C205 80 206 80 181 80L160 80L157 76L154 73L154 53L154 32L157 29L160 25L186 24C218 23 326 24 331 25C338 27 338 30 339 52C339 83 339 83 311 83C292 83 291 83 292 91C293 97 295 98 304 101C309 102 315 104 318 105C321 107 326 108 328 109C341 112 368 127 386 141C402 153 430 185 430 190C430 190 432 193 434 196C445 212 458 244 462 266C462 268 463 271 464 274C468 287 469 329 464 347C463 351 462 358 461 363C459 376 454 392 445 407C445 408 443 412 441 416C437 424 434 429 431 434C423 446 413 457 407 463C404 466 398 471 396 473C388 481 378 488 361 499C347 508 326 517 304 522C298 523 290 525 286 526C283 526 278 527 276 527C273 527 266 528 262 528C252 530 248 530 247 529ZM234 96C240 95 252 95 260 94C278 94 277 95 277 85C277 77 277 76 280 73L283 70L303 70C328 70 326 71 326 54C326 43 326 39 325 38C324 38 296 37 246 36L169 36L168 38C167 40 167 64 168 66C168 67 174 67 190 67C217 68 217 68 218 86C218 100 216 99 234 96Z";
-const STOPWATCH_INK = "M247 529C246 529 241 529 234 529C207 529 184 525 164 516C161 515 155 513 152 511C138 506 116 494 106 487C86 471 62 445 58 434C57 428 55 423 50 414C48 410 46 404 45 401C42 393 40 387 38 382C36 377 31 359 31 356C31 354 30 350 29 345C25 333 25 289 29 271C34 245 39 226 46 217C47 215 50 209 52 205C54 201 57 196 58 194C60 191 62 188 63 186C66 181 82 162 93 151C99 146 113 135 123 129C140 119 187 102 200 102C204 102 206 98 206 91C205 80 206 80 181 80L160 80L157 76L154 73L154 53L154 32L157 29L160 25L186 24C218 23 326 24 331 25C338 27 338 30 339 52C339 83 339 83 311 83C292 83 291 83 292 91C293 97 295 98 304 101C309 102 315 104 318 105C321 107 326 108 328 109C335 111 362 124 371 130C391 144 410 161 422 178C427 184 430 189 430 190C430 190 432 193 434 196C445 212 458 244 462 266C462 268 463 271 464 274C468 287 469 329 464 347C463 351 462 358 461 363C459 376 454 392 445 407C445 408 443 412 441 416C437 424 434 429 431 434C423 446 413 457 407 463C404 466 398 471 396 473C388 481 378 488 361 499C347 508 326 517 304 522C298 523 290 525 286 526C283 526 278 527 276 527C273 527 266 528 262 528C252 530 248 530 247 529ZM254 515C267 515 285 513 294 510C299 508 306 506 310 505C314 504 320 502 325 500C329 498 336 495 340 493C348 490 352 488 363 480C368 476 375 471 379 469C394 459 414 435 425 414C426 412 428 409 429 406C435 398 439 389 439 388C439 387 440 385 440 384C443 378 446 368 448 361C448 357 450 351 450 348C453 338 454 310 452 293C445 235 431 206 391 166C377 152 375 151 363 143C344 132 334 127 326 124C322 123 316 120 313 119C291 109 260 107 228 113C223 113 215 115 210 116C202 117 187 120 176 124C173 124 169 125 167 126C165 126 163 127 162 128C160 128 159 129 158 129C155 129 137 138 130 144C126 146 119 151 114 154C99 164 79 185 73 198C72 200 70 203 68 205C64 210 54 231 50 241C40 271 37 319 43 346C44 349 45 354 46 357C47 363 50 372 54 384C56 389 58 394 59 396C59 399 62 404 64 409C66 413 68 418 68 418C68 420 73 431 76 436C88 454 102 468 115 475C119 477 125 481 128 484C139 491 154 498 186 508C200 512 231 516 244 515C248 515 252 515 254 515ZM248 342C246 341 243 339 242 338L240 335L239 249C239 160 239 157 243 155C247 153 248 154 251 159C252 162 252 166 253 245C253 320 253 327 254 329C256 330 257 330 272 321C291 310 301 304 312 297C317 294 326 290 330 287C335 284 340 281 341 280C342 280 345 278 349 277L355 274L358 277C364 282 361 288 347 294C342 296 334 301 328 304C323 307 314 312 308 315C301 319 294 323 292 324C266 342 254 346 248 342ZM234 96C240 95 252 95 260 94C268 94 275 94 276 94C277 93 277 90 277 85C277 77 277 76 280 73L283 70L303 70C314 70 324 69 325 69C326 68 326 64 326 54C326 43 326 39 325 38C324 38 296 37 246 36L169 36L168 38C167 40 167 64 168 66C168 67 174 67 190 67C217 68 217 68 218 86C218 100 216 99 234 96Z";
-
-function RoutinesIcon() {
-  return (
-    <svg className="routines-empty-icon" width="84" height="96" viewBox="22 19 450 515" fillRule="evenodd" aria-hidden="true">
-      <path className="routines-empty-icon-face" d={STOPWATCH_FACE} />
-      <path fill="currentColor" d={STOPWATCH_INK} />
-    </svg>
-  );
-}
-
 function InfoIcon() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>;
 }
@@ -352,7 +337,7 @@ export function RoutinesView({ active, cwd, projectPaths, projectNameByRoot, wor
                 <h1 className="routines-title">{t("routines.title")}</h1>
               </header>
               {routines.length > 0 && (
-                <ConfigButton variant="primary" size="small" className="routines-button" onClick={() => setPage({ kind: "detail", id: null })}>{t("routines.new")}</ConfigButton>
+                <ConfigButton variant="primary" size="small" onClick={() => setPage({ kind: "detail", id: null })}>{t("routines.new")}</ConfigButton>
               )}
             </div>
             {data && !data.schedulerEnabled && (
@@ -365,9 +350,9 @@ export function RoutinesView({ active, cwd, projectPaths, projectNameByRoot, wor
             {!data ? (
               <SettingsLoading label={t("i18n.loading")} />
             ) : routines.length === 0 ? (
-              <div className="routines-empty" role="status" aria-label={t("routines.empty")}>
-                <RoutinesIcon />
-                <ConfigButton variant="primary" size="small" className="routines-button" onClick={() => setPage({ kind: "detail", id: null })}>{t("routines.new")}</ConfigButton>
+              <div className="routines-empty" role="status">
+                <p>{t("routines.empty")}</p>
+                <ConfigButton variant="primary" size="small" onClick={() => setPage({ kind: "detail", id: null })}>{t("routines.new")}</ConfigButton>
               </div>
             ) : (
               <section aria-label={t("routines.title")} className="routine-cards">
@@ -789,8 +774,8 @@ function RoutineDetail({ routine, timeZone, defaultCwd, projectPaths, projectNam
           </label>
 
           <div className="routines-form-actions">
-            <ConfigButton size="small" className="routines-button" onClick={() => void cancelEdit()}>{t("routines.cancel")}</ConfigButton>
-            <ConfigButton variant="primary" size="small" className="routines-button" disabled={!canSave} onClick={() => void save()}>
+            <ConfigButton size="small" onClick={() => void cancelEdit()}>{t("routines.cancel")}</ConfigButton>
+            <ConfigButton variant="primary" size="small" disabled={!canSave} onClick={() => void save()}>
               {saving ? t("agents.saving") : routine ? t("routines.save") : t("routines.create")}
             </ConfigButton>
           </div>

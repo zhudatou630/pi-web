@@ -349,15 +349,7 @@ function MediaToolbar({ filePath, cwd, sourceSessionId, meta, watching, onAtMent
     >
       <span className="file-viewer-path" title={filePath}>{getRelativeFilePath(filePath, cwd)}</span>
       <span className="file-viewer-meta" title={metadata}>{metadata}</span>
-      <span
-        title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-        aria-label={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-        className="file-viewer-live-indicator"
-        style={{
-          background: watching ? "var(--success)" : "var(--border)",
-          boxShadow: watching ? "0 0 4px var(--success)" : "none",
-        }}
-      />
+      {!watching && <span title={t("i18n.notWatching")} aria-label={t("i18n.notWatching")} className="file-viewer-live-indicator" />}
       <div className="file-viewer-controls">
         {onAtMention && (
           <div className="file-viewer-actions">
@@ -2109,16 +2101,8 @@ function TextFileViewer({
         </span>
 
         <span className="file-viewer-meta" title={metadata}>{metadata}</span>
-        {data && !isDeletedDiff && (
-          <span
-            title={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-            aria-label={watching ? t("i18n.liveSync") : t("i18n.notWatching")}
-            className="file-viewer-live-indicator"
-            style={{
-              background: watching ? "var(--success)" : "var(--border)",
-              boxShadow: watching ? "0 0 4px var(--success)" : "none",
-            }}
-          />
+        {data && !isDeletedDiff && !watching && (
+          <span title={t("i18n.notWatching")} aria-label={t("i18n.notWatching")} className="file-viewer-live-indicator" />
         )}
 
         <div className="file-viewer-controls">
@@ -2134,10 +2118,6 @@ function TextFileViewer({
                     title={mode === "diff" ? t("i18n.compareHead") : undefined}
                     aria-pressed={active}
                     className="file-viewer-mode-button"
-                    style={{
-                      background: active ? "var(--bg-selected)" : "transparent",
-                      color: active ? "var(--text)" : "var(--text-muted)",
-                    }}
                   >
                     {mode === "source" ? t("i18n.source") : mode === "preview" ? t("i18n.preview") : t("i18n.diff")}
                   </button>

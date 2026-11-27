@@ -166,8 +166,9 @@ export function getAssistantErrorMessage(
  * A user Stop can be saved as `stopReason: "error"` carrying the fetch AbortError text
  * instead of `"aborted"` (seen with an openai-completions provider after Stop during a tool).
  * Only the exact abort messages count: a timeout ("...aborted due to timeout") is a real failure.
+ * Shared by the chat (no Continue / error line) and the session scanner (no sidebar error state).
  */
-export function isAbortedAssistantError(message: AssistantMessage): boolean {
+export function isAbortedAssistantError(message: Pick<AssistantMessage, "stopReason" | "errorMessage">): boolean {
   return message.stopReason === "error"
     && /^(?:(?:This|The) operation was aborted|Request was aborted)\.?$/.test(message.errorMessage?.trim() ?? "");
 }

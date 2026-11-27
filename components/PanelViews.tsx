@@ -10,7 +10,8 @@ import { FileExplorer, GIT_STATUS_KEYS, type FileExplorerHandle } from "./FileEx
 import { getFileIcon } from "./FileIcons";
 import { MenuCheck } from "./MenuCheck";
 
-/** The file panel's two fixed views (docs/ui.md, File panel). They follow the active session's cwd. */
+/** The file panel's two fixed views (docs/ui.md, File panel). Full size they follow the active
+ * session's cwd; docked beside a file tab, that tab's (lib/panel-dock.ts). */
 export type PanelView = "changes" | "files";
 export type ChangesScope = "uncommitted" | "turn";
 
@@ -169,8 +170,10 @@ function IconButton({ title, onClick, disabled, children }: { title: string; onC
 }
 
 /** The project tree of `cwd` with search, worktree switch, collapse, upload and refresh. */
-export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, reveal, worktreeInfo, onSelectWorktree, activePath }: {
+export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, reveal, worktreeInfo, onSelectWorktree, activePath, dockTitle, dockAction }: {
   cwd: string;
+  /** Shown (full size or docked) in an open panel; hidden, refreshes wait until it is shown. */
+  active: boolean;
   /** Docked beside an open file: that file's row stays marked. */
   activePath?: string;
   refreshKey: number;
@@ -182,6 +185,9 @@ export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile,
   reveal: { cwd: string; path: string; nonce: number } | null;
   worktreeInfo: PanelWorktreeInfo | null;
   onSelectWorktree: (path: string) => void;
+  /** Docked: the column's name and its collapse button share the worktree/actions line. */
+  dockTitle?: ReactNode;
+  dockAction?: ReactNode;
 }) {
   const { t } = useI18n();
   const [uploadBusy, setUploadBusy] = useState(false);
@@ -190,6 +196,7 @@ export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile,
   const current = worktrees?.find((worktree) => worktree.path === worktreeInfo?.currentWorktreePath);
   const toolbar = (
     <>
+      {dockTitle}
       {worktrees && (
         <TextMenu
           className="files-worktree-menu"
@@ -216,6 +223,7 @@ export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile,
       <IconButton title={t("sidebar.refreshExplorer")} onClick={onRefresh}>
         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
       </IconButton>
+      {dockAction}
     </>
   );
   return (
@@ -225,6 +233,7 @@ export function FilesView({ cwd, refreshKey, onRefresh, explorerRef, onOpenFile,
           ref={explorerRef}
           cwd={cwd}
           onOpenFile={onOpenFile}
+          active={active}
           refreshKey={refreshKey}
           onAtMention={onAtMention}
           onAtMentions={onAtMentions}
@@ -259,8 +268,8 @@ export function PanelAddMenu({ onOpenTerminal, onOpenBrowser, onOpenFile }: {
   };
   return (
     <div ref={rootRef} className="panel-add-menu">
-      <button type="button" className="ghost-icon-button" title={t("panel.open")} aria-label={t("panel.open")} aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <button type="button" className="workspace-header-action" title={t("panel.open")} aria-label={t("panel.open")} aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>

@@ -243,7 +243,7 @@ export function NewSessionCwdControl({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newBranch, setNewBranch] = useState<string | null>(null);
-  const [newError, setNewError] = useState<string | null>(null);
+  const [menuError, setMenuError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [refreshedWorktree, setRefreshedWorktree] = useState<typeof worktreeInfo>(null);
   const coversCwd = (info: typeof worktreeInfo) => !!info && (info.forCwd === cwd
@@ -304,14 +304,14 @@ export function NewSessionCwdControl({
     setMenuOpen(false);
     setBranchMenuOpen(false);
     setNewBranch(null);
-    setNewError(null);
+    setMenuError(null);
     setConfirmRemove(null);
   };
   const createWorktree = () => {
     const branch = newBranch?.trim();
     if (!branch || busy || !activeWorktree) return;
     setBusy(true);
-    setNewError(null);
+    setMenuError(null);
     void fetch("/api/worktrees", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -324,7 +324,7 @@ export function NewSessionCwdControl({
         onWorktreesChanged?.();
         closeMenus();
       })
-      .catch((cause: unknown) => setNewError(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => setMenuError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setBusy(false));
   };
   // Removes the checkout directory only (docs/worktrees.md); git refuses a dirty one until forced.
@@ -332,7 +332,7 @@ export function NewSessionCwdControl({
     if (busy || !activeWorktree) return;
     const info = activeWorktree;
     setBusy(true);
-    setNewError(null);
+    setMenuError(null);
     void fetch("/api/worktrees", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -354,7 +354,7 @@ export function NewSessionCwdControl({
         if (nextCwd !== cwd) await onChange(nextCwd);
         onWorktreesChanged?.();
       })
-      .catch((cause: unknown) => setNewError(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => setMenuError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setBusy(false));
   };
   const choose = (path: string) => {
@@ -363,7 +363,12 @@ export function NewSessionCwdControl({
       return;
     }
     setBusy(true);
-    void onChange(path).then(closeMenus).finally(() => setBusy(false));
+    setMenuError(null);
+    // A refused folder (validation) keeps the menu open on the old cwd with the reason: pick again to retry.
+    void onChange(path).then(
+      closeMenus,
+      (cause: unknown) => setMenuError(cause instanceof Error ? cause.message : String(cause)),
+    ).finally(() => setBusy(false));
   };
   const chevron = (
     <svg className="new-session-pick-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -379,11 +384,12 @@ export function NewSessionCwdControl({
           className="new-session-pick"
           title={displayProject}
           aria-label={`${t("chat.changeWorkingDirectory")}: ${displayProject}`}
-          aria-haspopup="listbox"
+          aria-haspopup="dialog"
           aria-expanded={menuOpen}
           onClick={() => {
             setMenuOpen((open) => !open);
             setBranchMenuOpen(false);
+            setMenuError(null);
           }}
         >
           <span className="new-session-pick-label">{projectLabel}</span>
@@ -391,7 +397,7 @@ export function NewSessionCwdControl({
         </button>
         {menuOpen && (
           <div
-            role="listbox"
+            role="dialog"
             aria-label={t("chat.changeWorkingDirectory")}
             className="menu-surface new-session-pick-menu"
             style={menuPosition}
@@ -403,8 +409,8 @@ export function NewSessionCwdControl({
                   <button
                     key={path}
                     type="button"
-                    role="option"
-                    aria-selected={isSelected}
+                    className="menu-surface-item"
+                    aria-current={isSelected || undefined}
                     disabled={busy}
                     onClick={() => choose(path)}
                     title={path}
@@ -420,8 +426,7 @@ export function NewSessionCwdControl({
             <div role="separator" className="menu-surface-divider" />
             <button
               type="button"
-              role="option"
-              aria-selected={false}
+              className="menu-surface-item"
               onClick={() => {
                 setMenuOpen(false);
                 setPickerOpen(true);
@@ -430,6 +435,7 @@ export function NewSessionCwdControl({
             >
               {t("chat.openFolder")}
             </button>
+            {menuError && <div className="new-session-pick-error" role="alert">{menuError}</div>}
           </div>
         )}
       </div>
@@ -440,13 +446,13 @@ export function NewSessionCwdControl({
             className="new-session-pick is-secondary"
             title={currentWorktree?.path}
             aria-label={`${t("sidebar.switchWorktree")}: ${currentBranch}`}
-            aria-haspopup="listbox"
+            aria-haspopup="dialog"
             aria-expanded={branchMenuOpen}
             onClick={() => {
               setBranchMenuOpen((open) => !open);
               setMenuOpen(false);
               setNewBranch(null);
-              setNewError(null);
+              setMenuError(null);
               setConfirmRemove(null);
             }}
           >
@@ -464,7 +470,7 @@ export function NewSessionCwdControl({
           </button>
           {branchMenuOpen && worktrees.length > 0 && (
             <div
-              role="listbox"
+              role="dialog"
               aria-label={t("sidebar.switchWorktree")}
               className="menu-surface new-session-pick-menu"
               style={menuPosition}
@@ -473,8 +479,8 @@ export function NewSessionCwdControl({
                 <div className="menu-surface-row">
                   <button
                     type="button"
-                    role="option"
-                    aria-selected={mainWorktree.path === currentWorktree?.path}
+                    className="menu-surface-item"
+                    aria-current={mainWorktree.path === currentWorktree?.path || undefined}
                     disabled={busy}
                     onClick={() => choose(mainWorktree.path)}
                     title={mainWorktree.path}
@@ -510,8 +516,8 @@ export function NewSessionCwdControl({
                         <div key={wt.path} className="menu-surface-row">
                           <button
                             type="button"
-                            role="option"
-                            aria-selected={isCurrent}
+                            className="menu-surface-item"
+                            aria-current={isCurrent || undefined}
                             disabled={busy}
                             onClick={() => choose(wt.path)}
                             title={wt.path}
@@ -545,7 +551,7 @@ export function NewSessionCwdControl({
               )}
               <div role="separator" className="menu-surface-divider" />
               {newBranch === null ? (
-                <button type="button" role="option" aria-selected={false} title={t("sidebar.createWorktreeTitle")} onClick={() => { setNewBranch(""); setConfirmRemove(null); }}>
+                <button type="button" className="menu-surface-item" title={t("sidebar.createWorktreeTitle")} onClick={() => { setNewBranch(""); setConfirmRemove(null); }}>
                   {t("sidebar.newWorktree")}
                 </button>
               ) : (
@@ -555,11 +561,11 @@ export function NewSessionCwdControl({
                       autoFocus
                       disabled={busy}
                       value={newBranch}
-                      onChange={(event) => { setNewBranch(event.target.value); setNewError(null); }}
+                      onChange={(event) => { setNewBranch(event.target.value); setMenuError(null); }}
                       onKeyDown={(event) => {
                         if (isImeComposing(event)) return;
                         if (event.key === "Enter") { event.preventDefault(); createWorktree(); }
-                        if (event.key === "Escape") { setNewBranch(null); setNewError(null); }
+                        if (event.key === "Escape") { setNewBranch(null); setMenuError(null); }
                       }}
                       placeholder={t("sidebar.branchName")}
                       aria-label={t("sidebar.branchName")}
@@ -568,16 +574,14 @@ export function NewSessionCwdControl({
                   <div className="project-confirm-actions" style={{ marginTop: 4 }}>
                     {/* A new branch starts from the main checkout's HEAD (docs/worktrees.md). */}
                     <span className="new-session-pick-meta" style={{ marginRight: "auto" }}>{t("chat.worktreeBase", { branch: mainBranch })}</span>
-                    <button type="button" disabled={busy} onClick={() => { setNewBranch(null); setNewError(null); }}>{t("sidebar.cancel")}</button>
+                    <button type="button" disabled={busy} onClick={() => { setNewBranch(null); setMenuError(null); }}>{t("sidebar.cancel")}</button>
                     <button type="button" onClick={createWorktree} disabled={busy || !newBranch.trim()}>
                       {busy ? t("sidebar.creating") : t("sidebar.create")}
                     </button>
                   </div>
                 </div>
               )}
-              {newError && (
-                <div style={{ padding: "5px 10px 8px", color: "var(--danger)", fontSize: 11, lineHeight: 1.35, overflowWrap: "anywhere" }}>{newError}</div>
-              )}
+              {menuError && <div className="new-session-pick-error" role="alert">{menuError}</div>}
             </div>
           )}
         </div>

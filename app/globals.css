@@ -388,19 +388,67 @@ html.dark {
   box-shadow: inset 0 -1px 0 var(--border);
 }
 
+/* Top-bar icon buttons (docs/ui.md, Tabs and top bars): the chat top bar, the file panel header,
+   the sidebar toggle and the tab strips' +. 16px icons resting at --text-dim, so nothing there
+   holds the eye. The click area fills the bar; the visible state is a 26px rounded block behind
+   the icon, as on the sidebar toolbar: hover --bg-hover, pressed or open --bg-selected. One
+   selected look, no accent lines; components set no colors of their own. */
+.workspace-header-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color var(--motion-fast);
+  /* The block below sits under the icon without positioning the children. */
+  isolation: isolate;
+}
+.workspace-header-action::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--ui-radius-md);
+  transform: translate(-50%, -50%);
+  transition: background var(--motion-fast);
+}
 .workspace-header-action > svg {
   display: block;
 }
-
-/* Chat and file panel top bars hold only icons; they rest one tier down so nothing there holds
-   the eye (docs/ui.md, Tabs and top bars). Their inline colors set hover; !important wins rest. */
-.workspace-header .workspace-header-action:not(:hover):not([aria-pressed="true"]):not([aria-expanded="true"]) {
-  color: var(--text-dim) !important;
+/* The panel toggles take no pressed block: the open panel beside them is the state (Cursor). */
+.workspace-header-action:not(.workspace-panel-toggle):is([aria-pressed="true"], [aria-expanded="true"]) {
+  color: var(--text);
+}
+.workspace-header-action:not(.workspace-panel-toggle):is([aria-pressed="true"], [aria-expanded="true"])::before {
+  background: var(--bg-selected);
+}
+@media (hover: hover) {
+  .workspace-header-action:hover:not(:disabled) {
+    color: var(--text);
+  }
+  .workspace-header-action:hover:not(:disabled, :not(.workspace-panel-toggle):is([aria-pressed="true"], [aria-expanded="true"]))::before {
+    background: var(--bg-hover);
+  }
+}
+.workspace-header-action:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 /* One tab look everywhere (docs/ui.md, Tabs and top bars): chat tabs, the file panel's
    Changes / Files and its content tabs are Cursor's quiet chips, no lines or rules. The
-   current tab is filled; a chat tab shown in the other split pane is tinted. */
+   current tab is filled; a chat tab shown in the other split pane only takes --text, so the
+   focused pane's tab is the one fill in the bar (#e8e8e8 next to a #eee tint read as two). */
 .chat-tab,
 .panel-view-tab,
 .panel-file-tab {
@@ -412,8 +460,7 @@ html.dark {
 }
 .chat-tab:hover,
 .panel-view-tab:hover,
-.panel-file-tab:hover,
-.chat-tab[data-shown="true"] {
+.panel-file-tab:hover {
   background: var(--bg-hover);
   color: var(--text);
 }
@@ -428,6 +475,10 @@ html.dark {
 .chat-tab[data-preview="true"]:not(:hover),
 .panel-file-tab[data-preview="true"]:not(:hover) {
   color: var(--text-muted);
+}
+/* The other split pane's shown tab has no fill, so its --text alone marks it, preview or not. */
+.chat-tab[data-shown="true"]:not([data-current="true"]) {
+  color: var(--text);
 }
 
 /* File panel (docs/ui.md, File panel): tabs "Changes · Files | content tabs … +", chips above. */
@@ -466,7 +517,9 @@ html.dark {
   align-items: center;
   flex-shrink: 0;
 }
+/* The + is a top-bar button: full bar height, its block 4px after the last tab like the tabs' gap. */
 .panel-add-menu {
+  height: 100%;
   margin-left: 2px;
 }
 .panel-text-menu-list {
@@ -553,14 +606,14 @@ html.dark {
   font-size: 11px;
   line-height: 1.4;
 }
+/* 34px: the 26px scope menu plus 4px above and below; the 11px total sits on the label's baseline. */
 .changes-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px;
   flex-shrink: 0;
-  height: 34px;
-  padding: 0 13px 0 7px;
+  padding: 4px 13px 4px 7px;
 }
 .changes-row {
   display: flex;
@@ -652,6 +705,16 @@ html.dark {
   min-width: 0;
   margin-right: 4px;
 }
+/* The Files search is a quiet tint, not a framed field: the panel's only bordered input read
+   heavy (docs/ui.md, File panel). The focus ring stays. */
+.file-search-row .sidebar-search-field,
+.file-search-row .sidebar-search-field:hover {
+  background: var(--bg-hover);
+  box-shadow: none;
+}
+.file-search-row .sidebar-search-field:focus-within {
+  box-shadow: var(--ui-field-ring);
+}
 /* The Changes / Files view host: full size as a view, or the docked column beside a file with a
    title row (name + collapse) on top. */
 .panel-view-host {
@@ -708,8 +771,8 @@ html.dark {
   writing-mode: vertical-rl;
   letter-spacing: 0.1em;
 }
-/* Docked beside a file (220px) the search row cannot hold the field and every action: actions
-   (worktree left, icons right) take the first line, search the second. */
+/* Docked beside a file (220px) the search row cannot hold the field and every action: one head
+   line (the column's name, the worktree menu, then the icons and ») and the search below. */
 .panel-view {
   container-type: inline-size;
 }
@@ -724,9 +787,18 @@ html.dark {
     flex-basis: 100%;
     margin-right: 0;
   }
+  /* Basis 0: the menu takes what the icons leave and ellipsizes, so the head stays one line. */
   .file-search-bar > .files-worktree-menu {
-    margin-right: auto;
+    flex: 1 1 0;
     min-width: 0;
+  }
+  .file-search-bar > .panel-dock-title {
+    flex-shrink: 0;
+    margin-right: auto;
+    padding: 0 2px 0 5px;
+  }
+  .file-search-bar > .panel-dock-title:has(+ .files-worktree-menu) {
+    margin-right: 0;
   }
   /* The tree scrolls and clips sideways: open the menu rightwards, no wider than the column. */
   .files-worktree-menu .panel-text-menu-list {
@@ -827,22 +899,18 @@ button.turn-files-head:hover {
   white-space: nowrap;
   line-height: 1.3;
 }
+/* Phones: the reason may take a second line instead of losing its cause to the ellipsis. */
+@media (max-width: 640px) {
+  .run-error-reason {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
 
-.workspace-header-action[aria-pressed="true"] {
-  box-shadow: inset 0 2px 0 var(--accent);
-}
-/* The file panel header's maximize button rests muted and hovers to text (docs/ui.md, icons). */
-.right-panel-maximize {
-  color: var(--text-muted);
-  transition: color var(--motion-fast);
-}
-.right-panel-maximize:hover {
-  color: var(--text);
-}
-
-.workspace-header-action[data-active] {
-  box-shadow: inset 0 2px 0 var(--accent);
-}
 
 /* Sidebar lists (Pinned, Projects, Explorer) reserve the scrollbar gutter on
    both edges, so row highlights keep equal side gaps whether or not a list
@@ -992,10 +1060,6 @@ button.turn-files-head:hover {
 .sidebar-nav-item[aria-pressed="true"] .sidebar-section-gutter {
   color: inherit;
 }
-/* The sidebar toggle is AppShell's button (inline colors set hover); rest it like the icons beside it. */
-.sidebar-top-row .workspace-header-action:not(:hover) {
-  color: var(--text-dim) !important;
-}
 
 /* Nav rows under the top row (Cursor's New Chat / Automations block): as tall as a session row. */
 .sidebar-nav-row {
@@ -1051,14 +1115,19 @@ button.turn-files-head:hover {
   padding-inline: 0;
 }
 
-/* The relative time takes a fixed width, right-aligned, so what stands before it (the worktree
-   glyph) lines up across rows whatever the number: "23h" in English, "59分钟" in Chinese. */
+/* The time and the waiting/error word share one fixed-width, right-aligned column, so what stands
+   before it (the worktree glyph) lines up across rows: wide enough for "23h" / "Waiting" in English
+   and "59分钟" in Chinese; anything longer is clipped, never widens the column. */
 .session-row-time {
-  min-width: 24px;
+  flex: none;
+  width: 42px;
+  overflow: hidden;
   text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 :lang(zh) .session-row-time {
-  min-width: 38px;
+  width: 38px;
 }
 .session-row-worktree {
   display: flex;
@@ -1070,6 +1139,7 @@ button.turn-files-head:hover {
 
 /* Another project's name before a row's time: it gives way before the title does. */
 .session-row-project {
+  flex: 0 1 auto;
   max-width: 96px;
   min-width: 0;
   overflow: hidden;
@@ -1945,7 +2015,7 @@ html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
   height: 100%;
 }
 
-.terminal-header-action,
+/* The actions themselves are .workspace-header-action; the status box takes the same slot. */
 .terminal-header-status {
   display: flex;
   align-items: center;
@@ -1954,17 +2024,6 @@ html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
   height: 100%;
   padding: 0;
 }
-
-.terminal-header-action {
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color var(--motion-fast);
-}
-
-.terminal-header-action:hover { color: var(--text); }
-.terminal-header-action:disabled { cursor: default; }
 
 /* Shown only while not ready: a healthy terminal needs no indicator. */
 .terminal-status-dot {
@@ -3951,6 +4010,19 @@ button.question-card-option:not(:disabled):hover {
   z-index: 1;
   min-width: 0;
   min-height: 35px;
+  container-type: inline-size;
+}
+
+/* The tab already names the file: a toolbar narrower than this keeps only its controls. */
+@container (max-width: 420px) {
+  .file-viewer-path,
+  .file-viewer-meta {
+    display: none;
+  }
+
+  .file-viewer-controls {
+    margin-left: auto;
+  }
 }
 
 .file-viewer-path {
@@ -3969,11 +4041,18 @@ button.question-card-option:not(:disabled):hover {
   white-space: nowrap;
 }
 
+/* Shown only when live sync is lost; a healthy watch shows nothing. */
 .file-viewer-live-indicator {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   flex: 0 0 7px;
+  background: var(--warning);
+  animation: file-viewer-status-in var(--motion-base) 1.5s backwards;
+}
+
+@keyframes file-viewer-status-in {
+  from { opacity: 0; }
 }
 
 .file-viewer-controls {
@@ -3994,17 +4073,16 @@ button.question-card-option:not(:disabled):hover {
 
 .file-viewer-mode-switch {
   display: flex;
-  height: 24px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-md);
+  gap: 2px;
 }
 
 .file-viewer-mode-button {
-  height: 22px;
+  height: var(--ui-row-height);
   padding: 0 8px;
   border: 0;
-  border-left: 1px solid var(--border);
+  border-radius: var(--ui-radius-md);
+  background: transparent;
+  color: var(--text-muted);
   font: inherit;
   font-size: 11px;
   letter-spacing: 0;
@@ -4012,12 +4090,14 @@ button.question-card-option:not(:disabled):hover {
   white-space: nowrap;
 }
 
-.file-viewer-mode-button:first-child {
-  border-left: 0;
+.file-viewer-mode-button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
-.file-viewer-mode-button:hover {
-  filter: brightness(1.08);
+.file-viewer-mode-button[aria-pressed="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
 }
 
 .file-viewer-load-more {
@@ -4155,12 +4235,27 @@ button.question-card-option:not(:disabled):hover {
 }
 .file-table .file-table-spacer td { padding: 0; border: 0; }
 
+/* A tab's × (chat and file tabs): a micro glyph resting at --text-dim like the top-bar icons. */
 .file-tab-close {
   appearance: none;
   -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  background: none;
   box-shadow: none;
   outline: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
 }
+.file-tab-close:hover,
 .file-tab-close:focus-visible {
   background: var(--bg-hover);
   color: var(--text);
@@ -4215,7 +4310,7 @@ button.question-card-option:not(:disabled):hover {
   padding: 0;
   box-sizing: border-box;
   flex: 0 0 24px;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--ui-radius-md);
   background: transparent;
   color: var(--text-muted);
@@ -4225,6 +4320,11 @@ button.question-card-option:not(:disabled):hover {
 
 .file-viewer-icon-button:hover {
   background: var(--bg-hover) !important;
+  color: var(--text);
+}
+
+.file-viewer-icon-button[aria-pressed="true"] {
+  background: var(--bg-selected);
   color: var(--text);
 }
 
@@ -4711,10 +4811,6 @@ button.file-outline-fold:hover {
 }
 
 @media (max-width: 640px) {
-  .file-viewer-meta {
-    display: none;
-  }
-
   /* Anchor to the toolbar, not the 24px button — otherwise the 240px menu clips off the left edge. */
   .file-outline {
     position: static;
@@ -5115,6 +5211,16 @@ span.token.table {
   opacity: 0 !important;
 }
 
+/* Keyboard focus rings the whole row, inset, like the nav and project rows (whose button is the row);
+   the session's own button only covers the title. */
+.session-list-row > button:focus-visible {
+  outline: none;
+}
+.session-list-row:has(> button:focus-visible) {
+  outline: auto;
+  outline-offset: -2px;
+}
+
 /* Touch has no hover: row actions (pin included) live in the long-press menu. */
 @media (hover: none) {
   .session-list-row:hover .session-row-actions {
@@ -5337,6 +5443,7 @@ span.token.table {
   position: fixed;
   z-index: 1000;
   min-width: 148px;
+  max-width: calc(100vw - 16px);
 }
 
 .project-confirm {
@@ -5500,7 +5607,7 @@ span.token.table {
 .session-status-dot[data-status="awaiting"] { background: var(--warning); }
 .session-status-dot[data-status="error"] { background: var(--danger); }
 /* Not a state: the faint mark idle rows carry (Cursor's read rows). */
-.session-status-dot[data-status="idle"] { background: color-mix(in srgb, var(--text-dim) 30%, transparent); }
+.session-status-dot[data-status="idle"] { background: color-mix(in srgb, var(--text-dim) 20%, transparent); }
 
 @keyframes session-status-breathe {
   0%, 100% { opacity: 1; }
@@ -5738,23 +5845,8 @@ span.token.table {
   min-width: 0 !important;
 }
 .right-panel-maximize {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 30px;
-  height: 100%;
   /* Icon centre 20px from the edge, in line with toolbar buttons below (8px padding + 24px / 2). */
   margin-right: 5px;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: color var(--motion-fast);
-}
-.right-panel-maximize:hover {
-  color: var(--text);
 }
 
 /* Composer: the field and its status line share one box. The status line keeps the tool's
@@ -6235,7 +6327,9 @@ span.token.table {
   padding: 4px;
 }
 
-.menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]) {
+/* `.menu-surface-item`: a plain button row in a named popover (role="dialog") that mixes
+   choices with actions and fields, where option/menuitem roles would be wrong. */
+.menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], .menu-surface-item) {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -6324,7 +6418,7 @@ span.token.table {
 }
 
 @media (hover: hover) {
-  .menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"]):hover:not(:disabled) {
+  .menu-surface :is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="option"], .menu-surface-item):hover:not(:disabled) {
     background: var(--bg-hover);
   }
 }
@@ -6423,6 +6517,20 @@ span.token.table {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The composer's ⑂ menu: "<branch>  Current" on one row, the label's dim word after the name. */
+.composer-branch-current {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+}
+.composer-branch-current > .menu-surface-head-title {
+  min-width: 0;
+}
+.composer-branch-current > span:last-child {
+  flex-shrink: 0;
 }
 
 .chat-input-menu {
@@ -6852,8 +6960,7 @@ span.token.table {
     top: 0;
     left: env(safe-area-inset-left);
     bottom: 0;
-    width: 280px;
-    max-width: 85vw;
+    width: min(86vw, 320px);
     height: var(--app-viewport-height, 100dvh);
     transition: transform var(--motion-base), box-shadow var(--motion-base);
   }
@@ -6986,6 +7093,15 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
   white-space: nowrap;
 }
 
+/* A refused pick or worktree action: the reason stays in the menu, which stays open to retry. */
+.new-session-pick-error {
+  padding: 5px 10px 8px;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 /* Phone top bar: ☰, title, "Changes N", ⋯ (docs/ui.md, Top bar and composer panels). */
 .mobile-top-bar-title {
   flex: 1;
@@ -7003,8 +7119,9 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
 /* A session waits or failed: one 6px dot on the closed drawer's ☰. */
 .mobile-menu-dot {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  /* At the 16px glyph's top right corner. */
+  top: 10px;
+  right: 5px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -7020,5 +7137,98 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
 
   .new-session-picks.is-below .new-session-pick-slot {
     position: static;
+  }
+}
+
+/* Touch (docs/ui.md, Heights): visible sizes and row heights stay as drawn; only the tap
+   area grows, to >= 40px, with a transparent ::before/::after. Where neighbours sit closer
+   than 40px the ring stops at half the gap so it never steals the next button's tap.
+   Text inputs are 16px: iOS Safari zooms the page on focus below that. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="color"], [type="button"], [type="submit"], [type="hidden"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+  /* 21px line (14px x 1.5 before), so the composer row keeps its height. */
+  .chat-input-textarea {
+    line-height: 21px !important;
+  }
+
+  .sidebar-top-icon,
+  .workspace-new-session,
+  .ghost-icon-button,
+  .file-tab-close:not(.chat-tab-close) {
+    position: relative;
+  }
+  /* The row action hides overflow to animate its width; the ring needs to escape it. */
+  .workspace-row-action > .workspace-new-session {
+    overflow: visible !important;
+  }
+  .sidebar-top-icon::after,
+  .workspace-new-session::after,
+  .ghost-icon-button::after,
+  .file-tab-close:not(.chat-tab-close)::after {
+    content: "";
+    position: absolute;
+    inset: -7px -1px;
+  }
+  /* Sidebar header: search has free space both sides, filter and settings are 2px apart. */
+  .sidebar-top-icon::after {
+    inset: -7px;
+  }
+  .sidebar-top-icon:has(+ .sidebar-top-icon)::after {
+    inset: -7px -1px -7px -7px;
+  }
+  .sidebar-top-icon + .sidebar-top-icon::after {
+    inset: -7px -7px -7px -1px;
+  }
+  /* Project rows are 32px tall and sit against the project name on the left. */
+  .workspace-new-session::after {
+    inset: -3px -7px -3px -1px;
+  }
+  /* 20px close: the tab label is on its left, the next header button 6px to its right. */
+  .file-tab-close:not(.chat-tab-close)::after {
+    inset: -10px -3px -10px -4px;
+  }
+
+  /* Composer: dock rows (32px) grow 8px downward only; above them Send's ring takes over.
+     Horizontally the dock's 1px gaps leave no room, so rings use the free sides (card edge,
+     spacer) and half a gap between neighbours. */
+  .chat-input .composer-btn::before,
+  .chat-input .composer-send::before {
+    content: "";
+    position: absolute;
+    inset: 0 -0.5px -8px;
+  }
+  .chat-input .chat-input-dock .chat-input-attach::before {
+    inset: 0 -0.5px -8px -15px;
+  }
+  .chat-input .chat-input-thinking::before {
+    inset: 0 -8px -8px -0.5px;
+  }
+  /* The ring and the more button get a real gap (the one layout change). */
+  .chat-input .chat-input-controls {
+    margin-inline-start: 5px;
+  }
+  .chat-input .chat-input-context::before {
+    inset: 0 -3px -8px -0.5px;
+  }
+  .chat-input .chat-input-controls::before {
+    inset: 0 -16px -8px -3px;
+  }
+  /* Send: 32px drawn; the margins cancel the growth so the row is unchanged. Its glyph sits
+     level with the text line, so the ring reaches up to make 40px. */
+  .chat-input .composer-send {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    margin: -4px;
+  }
+  .chat-input .composer-send::before {
+    inset: -12px -4px 0;
+  }
+  .chat-input .chat-input-actions .composer-btn.is-icon::before {
+    inset: -12px 0 0;
   }
 }

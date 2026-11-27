@@ -6,7 +6,7 @@ import { hasRecentAttention, parseUnreadMarks, sameUnreadMarks, withoutReadMarks
 import type { SessionInfo } from "@/lib/types";
 import { selectionFamilies, reconcileSessionSelection, toggleSessionSelection, sessionSelectionSummary } from "@/lib/session-selection";
 import { familyParentId, listSessionFamilies, isFamilyArchived, familyHasMemberIn, familiesToArchive, previewSessionFamilies, markSessionFamilyRead, type SessionFamily } from "@/lib/session-family";
-import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
+import { dispatchSessionRowContextMenu, placeContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getSessionDisplayTitle } from "@/lib/session-display-title";
 import { CacheKeepaliveIcon } from "./CacheKeepaliveIcon";
@@ -23,7 +23,6 @@ import { sessionStatus, unseenErrorSessionIds } from "@/lib/session-status";
 import { getFileName } from "@/lib/file-paths";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { SessionSearchDialog } from "./SessionSearchDialog";
-import { SubagentIcon } from "./SubagentIcon";
 import { MenuCheck } from "./MenuCheck";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
 import {
@@ -487,6 +486,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   const unreadSessionIds = useMemo(() => new Set(unreadMarks.keys()), [unreadMarks]);
   const storedUnreadMarksRef = useRef(unreadMarks);
   const lastInputAtRef = useRef<number | null>(null);
+  /** The user is looking at the page right now (same test as read writes and completion marks). */
+  const [attended, setAttended] = useState(false);
   const manualReadIdsRef = useRef(new Map<string, number>());
   const visibleReadIdsRef = useRef<string[]>([]);
   visibleReadIdsRef.current = [...new Set((visibleSessionIds ?? [selectedSessionId]).filter((id): id is string => Boolean(id)))];
@@ -807,10 +808,21 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   }, []);
 
   useEffect(() => {
-    const noteInput = () => { lastInputAtRef.current = performance.now(); };
+    const syncAttended = () => setAttended(hasRecentAttention(lastInputAtRef.current, performance.now(), document.visibilityState === "visible", document.hasFocus()));
+    const noteInput = () => { lastInputAtRef.current = performance.now(); syncAttended(); };
     const events = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
     for (const name of events) window.addEventListener(name, noteInput, { capture: true, passive: true });
-    return () => { for (const name of events) window.removeEventListener(name, noteInput, { capture: true }); };
+    // Hiding the tab, losing focus and the 2-minute input window running out all end attention.
+    const syncEvents = ["focus", "blur"] as const;
+    for (const name of syncEvents) window.addEventListener(name, syncAttended);
+    document.addEventListener("visibilitychange", syncAttended);
+    const timer = setInterval(syncAttended, 5000);
+    return () => {
+      for (const name of events) window.removeEventListener(name, noteInput, { capture: true });
+      for (const name of syncEvents) window.removeEventListener(name, syncAttended);
+      document.removeEventListener("visibilitychange", syncAttended);
+      clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -930,8 +942,9 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // A main session whose subagents still run is active too: same dot as running.
   const activeSessionIds = useMemo(() => new Set([...runningSessionIds, ...subagentsActiveSessionIds]), [runningSessionIds, subagentsActiveSessionIds]);
   const erroredSessionIds = useMemo(
-    () => sharedReadAt ? unseenErrorSessionIds(allSessions, sharedReadAt, activeSessionIds, new Set(visibleSessionKey.split("\n"))) : new Set<string>(),
-    [allSessions, sharedReadAt, activeSessionIds, visibleSessionKey],
+    // On-screen sessions only count as seen while the user is attending, like completions.
+    () => sharedReadAt ? unseenErrorSessionIds(allSessions, sharedReadAt, activeSessionIds, new Set(attended ? visibleSessionKey.split("\n") : [])) : new Set<string>(),
+    [allSessions, sharedReadAt, activeSessionIds, visibleSessionKey, attended],
   );
 
   useEffect(() => {
@@ -1305,18 +1318,18 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   }, [archiveView, projectOrder, updateProjectOrder, workspaceProjects]);
   const defaultExpandedWorkspaceKeys = useMemo(
     () => {
-      let key: string | undefined;
-      if (selectedSessionId) key = selectedProject?.key;
-      else if (workspaceProjects.length === 1) key = workspaceProjects[0]?.key;
+      // First visit: the current project (the open session's, or the new-session page's) is open.
+      const key = selectedProject?.key ?? (workspaceProjects.length === 1 ? workspaceProjects[0]?.key : undefined);
       return new Set(key ? [key] : []);
     },
-    [selectedProject?.key, selectedSessionId, workspaceProjects],
+    [selectedProject?.key, workspaceProjects],
   );
 
   useEffect(() => {
-    if (expandedWorkspaceKeys !== null || workspaceProjects.length === 0) return;
+    // Wait for the current project to resolve; a stored choice (even all collapsed) is never replaced.
+    if (expandedWorkspaceKeys !== null || workspaceProjects.length === 0 || !selectedProject) return;
     setExpandedWorkspaceKeys(defaultExpandedWorkspaceKeys);
-  }, [defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, workspaceProjects.length]);
+  }, [defaultExpandedWorkspaceKeys, expandedWorkspaceKeys, selectedProject, workspaceProjects.length]);
 
   useEffect(() => {
     if (expandedWorkspaceKeys !== null) saveExpandedWorkspaceKeys(expandedWorkspaceKeys);
@@ -1749,7 +1762,8 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           } : undefined}
           session={displaySession}
           indent={14}
-          isSelected={familySessions.some((session) => session.id === selectedSessionId)}
+          // The Routines page is the current row while it shows: one selection in the list.
+          isSelected={!routinesOpen && familySessions.some((session) => session.id === selectedSessionId)}
           isRunning={familySessions.some((session) => activeSessionIds.has(session.id))}
           isAwaiting={familySessions.some((session) => awaitingInputSessionIds.has(session.id))}
           isUnread={familySessions.some((session) => unreadSessionIds.has(session.id))}
@@ -1876,7 +1890,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                 setDeleteConfirm({ kind: "archiveProject", key: projectMenu.key, x: projectMenu.x, y: projectMenu.y });
                 setProjectMenu(null);
               }}>
-                {t("sidebar.archiveOlderThanWeek", { count: olderCount })}
+                {t("sidebar.archiveOlderThanWeek")}
               </button>
             )}
           </div>
@@ -2521,10 +2535,6 @@ export function SessionItem({
   deleting = false,
   onRequestDelete,
   indent = 0,
-  depth = 0,
-  hasChildren = false,
-  collapsed = false,
-  onToggleCollapse,
 }: {
   selection?: { checked: boolean; disabled: boolean; onToggle: (range: boolean) => void };
   session: SessionInfo;
@@ -2563,10 +2573,6 @@ export function SessionItem({
   deleting?: boolean;
   onRequestDelete?: (x: number, y: number) => void;
   indent?: number;
-  depth?: number;
-  hasChildren?: boolean;
-  collapsed?: boolean;
-  onToggleCollapse?: () => void;
 }) {
   const { locale, t } = useI18n();
   const worktree = session.isWorktree && session.branch ? (
@@ -2583,6 +2589,21 @@ export function SessionItem({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isLongPressRef = useRef(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Measured before paint: a long-press menu clears the pressed row, every menu stays on screen.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menuAt || !menu) return;
+    const row = isLongPressRef.current ? rowRef.current?.getBoundingClientRect() : null;
+    const { left, top } = placeContextMenu({
+      x: menuAt.x, y: menuAt.y, width: menu.offsetWidth, height: menu.offsetHeight,
+      viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, avoid: row,
+    });
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }, [menuAt]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (selection || renaming || session.transient) return;
@@ -2691,6 +2712,7 @@ export function SessionItem({
   return (
     <>
     <div
+      ref={rowRef}
       className="session-list-row"
       data-pending-delete={pendingDelete ? "true" : undefined}
       onClick={(e) => {
@@ -2740,7 +2762,7 @@ export function SessionItem({
         position: "relative",
         display: "flex",
         alignItems: "center",
-        paddingLeft: 18 + indent + depth * 14,
+        paddingLeft: 18 + indent,
         paddingRight: 6,
         cursor: renaming ? "default" : "pointer",
         background: pendingDelete
@@ -2784,23 +2806,20 @@ export function SessionItem({
             </span>
           )}
           {/* The state dot sits in the row's left indent so titles never shift. */}
-          {!selection && (status || depth === 0) && (
-            <span className="session-row-status" style={{ left: indent + depth * 14 - 9, top: (SESSION_LIST_ITEM_HEIGHT - 16) / 2 }}>
+          {!selection && (
+            <span className="session-row-status" style={{ left: indent - 9, top: (SESSION_LIST_ITEM_HEIGHT - 16) / 2 }}>
               {/* Idle rows keep a faint dot (Cursor), so every title starts after the same mark. */}
               {status ? <SessionStatusDot status={status} /> : <span className="session-status-dot" data-status="idle" aria-hidden="true" />}
             </span>
-          )}
-          {/* Subagent indicator for child sessions */}
-          {depth > 0 && (
-            <SubagentIcon size={13} style={{ color: "var(--text-dim)" }} />
           )}
           <button
             type="button"
             aria-current={isSelected && !selection ? "page" : undefined}
             tabIndex={selection ? -1 : undefined}
             style={{
-              flex: 1,
-              minWidth: 0,
+              // Titles first: the project name gives way before the title drops under a readable length.
+              flex: "1 1 0",
+              minWidth: 88,
               padding: 0,
               border: "none",
               background: "none",
@@ -2837,37 +2856,15 @@ export function SessionItem({
             </div>
           </button>
 
-          {/* Collapse toggle — always visible when has children */}
-          {hasChildren && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleCollapse?.(); }}
-              title={t(collapsed ? "sidebar.expandSubagents" : "sidebar.collapseSubagents")}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 20, height: 20, padding: 0, flexShrink: 0,
-                background: "none", border: "none",
-                color: "var(--text-dim)", cursor: "pointer",
-                transform: collapsed ? "rotate(-90deg)" : "none",
-                transition: "transform var(--motion-fast)",
-              }}
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="2 3.5 5 6.5 8 3.5" />
-              </svg>
-            </button>
-          )}
-
-          <div className="session-row-meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0, color: "var(--text-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
-            {needsYou ? <>{worktree}<SessionStatusWord status={needsYou} /></> : (
-              <>
-                {projectLabel && <span className="session-row-project">{projectLabel}</span>}
-                {/* A worktree is the branch glyph right before the time, as Cursor places it (branch in the
-                    tooltip), standing in for the project separator; the fixed-width time keeps
-                    the glyphs in one column. */}
-                {worktree ?? (projectLabel && "\u00a0·\u00a0")}
-                <span className="session-row-time" title={session.modified}>{formatCompactRelativeTime(session.modified, locale)}</span>
-              </>
-            )}
+          <div className="session-row-meta" style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 1, minWidth: 0, color: "var(--text-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
+            {!needsYou && projectLabel && <span className="session-row-project">{projectLabel}</span>}
+            {/* A worktree is the branch glyph right before the time, as Cursor places it (branch in the
+                tooltip), standing in for the project separator. The time and the waiting/error word share
+                one fixed-width column, so the glyphs line up whatever the row says. */}
+            {worktree ?? (!needsYou && projectLabel && "\u00a0·\u00a0")}
+            <span className="session-row-time" title={needsYou ? undefined : session.modified}>
+              {needsYou ? <SessionStatusWord status={needsYou} /> : formatCompactRelativeTime(session.modified, locale)}
+            </span>
           </div>
 
           {/* Action buttons — shown on hover or keyboard focus */}
@@ -2929,21 +2926,14 @@ export function SessionItem({
     {menuAt && !selection && createPortal(
       <div
         role="menu"
+        ref={menuRef}
         className="project-context-menu menu-surface"
-        style={{
-          left: Math.min(menuAt.x + 2, window.innerWidth - 168),
-          top: Math.min(menuAt.y + 2, window.innerHeight - 240),
-        }}
       >
-        {reasonLine && (
-          <>
-            <div className="menu-surface-head">
-              <div className="menu-surface-head-title">{title}</div>
-              <SessionStatusWord status={needsYou!} /> · {statusReason}
-            </div>
-            <div role="separator" className="menu-surface-divider" />
-          </>
-        )}
+        <div className="menu-surface-head">
+          <div className="menu-surface-head-title">{title}</div>
+          {reasonLine && <><SessionStatusWord status={needsYou!} /> · {statusReason}</>}
+        </div>
+        <div role="separator" className="menu-surface-divider" />
         {onOpenInNewTab && (
           <button type="button" role="menuitem" onClick={menuItem(onOpenInNewTab)}>
             {t("chatTabs.openInNewTab")}
@@ -2970,9 +2960,12 @@ export function SessionItem({
         )}
         <div role="separator" className="menu-surface-divider" />
         {onToggleArchive && !session.transient && (
-          <button type="button" role="menuitem" disabled={isRunning} onClick={menuItem(onToggleArchive)}>
-            {t(isArchived ? "sidebar.unarchive" : "sidebar.archive")}
-          </button>
+          <>
+            <button type="button" role="menuitem" disabled={isRunning} onClick={menuItem(onToggleArchive)}>
+              {t(isArchived ? "sidebar.unarchive" : "sidebar.archive")}
+            </button>
+            <div role="separator" className="menu-surface-divider" />
+          </>
         )}
         <button type="button" role="menuitem" className="is-danger" onClick={menuItem(() => { if (menuAt) onRequestDelete?.(menuAt.x, menuAt.y); })}>
           {t("sidebar.delete")}

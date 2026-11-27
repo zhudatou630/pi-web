@@ -186,6 +186,46 @@ test("draft chip prefers its own checkout over the sidebar's server-resolved one
   assert.equal(evaluate(pick("currentBranch"), { currentWorktree: det, getFileName: (p) => p.split("/").pop() }), "det");
 });
 
+test("a refused folder keeps the menu open on the old cwd with the reason, and picking again retries", async () => {
+  const parsed = ts.createSourceFile("ChatWindow.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const choose = find(parsed, (node) => ts.isVariableDeclaration(node) && node.name.getText(parsed) === "choose").initializer.getText(parsed);
+  const log = [];
+  let reply = () => Promise.reject(new Error("Directory does not exist"));
+  const bindings = {
+    cwd: "/old",
+    onChange: (path) => { log.push(["change", path]); return reply(); },
+    closeMenus: () => log.push(["close"]),
+    setBusy: (value) => log.push(["busy", value]),
+    setMenuError: (value) => log.push(["error", value]),
+  };
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    evaluate(choose, bindings)("/gone");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(log, [["busy", true], ["error", null], ["change", "/gone"], ["error", "Directory does not exist"], ["busy", false]]);
+    log.length = 0;
+    reply = () => Promise.resolve();
+    evaluate(choose, bindings)("/gone");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(log, [["busy", true], ["error", null], ["change", "/gone"], ["close"], ["busy", false]]);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+  // The reason renders inside whichever menu the pick came from.
+  const pathMenu = control.slice(control.indexOf("{menuOpen &&"), control.indexOf("{branchMenuOpen &&"));
+  const branchMenu = control.slice(control.indexOf("{branchMenuOpen &&"), control.indexOf("{pickerOpen &&"));
+  for (const menu of [pathMenu, branchMenu]) assert.match(menu, /\{menuError && <div className="new-session-pick-error" role="alert">\{menuError\}<\/div>\}/);
+});
+
+test("both pickers are named popovers of plain buttons: no listbox around actions and fields", () => {
+  assert.doesNotMatch(control, /role="listbox"|role="option"|aria-selected/);
+  assert.equal((control.match(/role="dialog"/g) ?? []).length, 2);
+  assert.equal((control.match(/aria-haspopup="dialog"/g) ?? []).length, 2);
+});
+
 test("branch menu offers New worktree, created from the project root and then selected", () => {
   const menu = control.slice(control.indexOf("{branchMenuOpen &&"), control.indexOf("{pickerOpen &&"));
   assert.match(menu, /t\("sidebar\.newWorktree"\)/);
@@ -204,7 +244,7 @@ test("the new-session page: text menus for project and where it runs sit above t
   // Project directory · branch for the main checkout, the branch glyph for a linked one.
   assert.match(control, /currentWorktree\?\.isMain \? \(\s*<span className="new-session-pick-label">\{t\("chat\.projectDirectory"\)\} · \{currentBranch\}<\/span>/);
   // "From <branch>" only inside the New worktree form.
-  const form = control.slice(control.indexOf("{newBranch === null ? ("), control.indexOf("{newError && ("));
+  const form = control.slice(control.indexOf("{newBranch === null ? ("), control.lastIndexOf("{menuError && "));
   assert.match(form, /t\("chat\.worktreeBase", \{ branch: mainBranch \}\)/);
   assert.equal((control.match(/chat\.worktreeBase/g) ?? []).length, 1);
   // Open folder… tells the page it was opened, so AppShell lists it as a project.

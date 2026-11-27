@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
@@ -229,6 +230,30 @@ test("mobile mode hides split toggle and only shows close button on active tab",
 });
 
 
+test("phones: an unsent draft that is not shown keeps a bare 6px dot, not a close button", () => {
+  const tabs = [
+    { id: "s1", kind: "session", title: "Shown", session: { id: "s1" } },
+    { id: "draft:d1", kind: "draft", title: "Unsent", session: null, newSessionCwd: "/t", newSessionDraftKey: "d1", dirty: true },
+    { id: "draft:d2", kind: "draft", title: "Empty", session: null, newSessionCwd: "/t", newSessionDraftKey: "d2" },
+  ];
+  const nodes = (activeTabId) => tabNodes(renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ChatTabBar, { tabs, activeTabId, isMobile: true, onSelectTab() {}, onCloseTab() {}, onNewTab() {} }))));
+  const [, unsent, empty] = nodes("s1");
+  assert.doesNotMatch(unsent, /Close tab/);
+  assert.match(unsent, /<span class="chat-tab-close-dot" data-chat-tab-draft-dot="true" aria-hidden="true"/);
+  assert.doesNotMatch(empty, /chat-tab-close-dot/);
+  // Shown, the draft's dot stays inside its close button as on desktop.
+  const shown = nodes("draft:d1")[1];
+  assert.match(shown, /data-dirty="true"[^>]*>[\s\S]*?<span class="chat-tab-close-dot" aria-hidden="true"/);
+  assert.doesNotMatch(shown, /data-chat-tab-draft-dot/);
+});
+
+test("the tab menu says Split right whether it moves a tab or opens a new session", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /chatTabs\.splitTabRight/);
+  assert.equal((source.match(/t\("chatTabs\.splitView"\)/g) ?? []).length, 2);
+});
+
 test("tabs are chips without rules (docs/ui.md, Tabs and top bars)", () => {
   const tabs = [
     { id: "s1", kind: "session", title: "First", session: { id: "s1" }, newSessionCwd: null, newSessionDraftKey: null },
@@ -269,7 +294,7 @@ test("desktop tabs compress evenly before the strip scrolls, whatever is selecte
   const desktop = nodes({});
   assert.match(desktop[0], /flex-shrink:1;/);
   assert.match(desktop[1], /flex-shrink:1;/);
-  assert.match(desktop[0], /min-width:96px/);
+  assert.match(desktop[0], /min-width:120px/);
   assert.match(nodes({ isMobile: true })[1], /flex-shrink:0;/);
 });
 
@@ -294,6 +319,11 @@ test("the focused pane's shown tab is current (filled chip); the other pane's is
   assert.doesNotMatch(nodes("secondary")[0], /data-current/);
   assert.match(nodes("primary")[1], /data-shown="false"/);
   assert.doesNotMatch(nodes("primary")[1], /data-current/);
+  // The other pane's shown tab takes --text even as a preview tab, after the preview rule.
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const preview = css.indexOf('.chat-tab[data-preview="true"]:not(:hover)');
+  const shown = css.search(/\.chat-tab\[data-shown="true"\]:not\(\[data-current="true"\]\) \{\s*color: var\(--text\);/);
+  assert.ok(preview >= 0 && shown > preview);
 });
 
 test("split: the context menu offers Merge panes; drafts carry no left icon", async () => {

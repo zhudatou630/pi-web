@@ -83,7 +83,6 @@ export function ChatTabBar({
   isMobile = false,
 }: Props) {
   const { t } = useI18n();
-  const [hoveredClose, setHoveredClose] = useState<string | null>(null);
   const [tabsOverflow, setTabsOverflow] = useState(false);
   const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
   const [tabsMenuPosition, setTabsMenuPosition] = useState({ top: 0, left: 0, width: 320 });
@@ -394,7 +393,9 @@ export function ChatTabBar({
                 fontSize: 12,
                 whiteSpace: "nowrap",
                 maxWidth: isMobile ? 130 : 200,
-                minWidth: isMobile ? 70 : 96,
+                // 120px keeps a few words of a long title; narrower, the strip overflows into
+                // the all-tabs menu instead of fading every title to its first word.
+                minWidth: isMobile ? 70 : 120,
                 // Desktop tabs compress before the strip scrolls. Selection never changes a tab's
                 // width, so clicking does not shift the strip under the pointer.
                 // The mobile strip swipes at natural width.
@@ -435,7 +436,8 @@ export function ChatTabBar({
 
               {/* Close slot (VS Code): the shown tab keeps its ×, others show it on hover; the slot
                   never collapses, so widths do not jump. An unsent draft shows a dot there until
-                  the button itself is hovered. Phones render it on the shown tab only. */}
+                  the button itself is hovered. Phones render it on the shown tab only; other
+                  unsent drafts keep the bare dot (no ×). */}
               {(!isMobile || isVisible) && (
                 <button
                   type="button"
@@ -448,28 +450,10 @@ export function ChatTabBar({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setHoveredClose(null);
                     onCloseTab(tab.id);
                   }}
                   onDoubleClick={(e) => e.stopPropagation()}
-                  onMouseEnter={() => setHoveredClose(tab.id)}
-                  onMouseLeave={() => setHoveredClose(null)}
-                  onBlur={() => setHoveredClose(null)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: isMobile ? 22 : 20,
-                    height: isMobile ? 22 : 20,
-                    background: hoveredClose === tab.id ? "var(--bg-hover)" : "transparent",
-                    border: "none",
-                    borderRadius: "var(--ui-radius-sm)",
-                    color: hoveredClose === tab.id ? "var(--text)" : "var(--text-muted)",
-                    cursor: "pointer",
-                    padding: 0,
-                    flexShrink: 0,
-                    transition: "background var(--motion-fast), color var(--motion-fast)",
-                  }}
+                  style={isMobile ? { width: 22, height: 22 } : undefined}
                   title={t("chatTabs.closeTab", { defaultValue: "关闭标签" })}
                   aria-label={`${t("chatTabs.closeTab", { defaultValue: "关闭标签" })}: ${tab.title}`}
                 >
@@ -479,6 +463,9 @@ export function ChatTabBar({
                   </svg>
                   {tab.kind === "draft" && tab.dirty && <span className="chat-tab-close-dot" aria-hidden="true" />}
                 </button>
+              )}
+              {isMobile && !isVisible && tab.kind === "draft" && tab.dirty && (
+                <span className="chat-tab-close-dot" data-chat-tab-draft-dot="true" aria-hidden="true" style={{ flexShrink: 0 }} />
               )}
             </div>
           );
@@ -504,23 +491,8 @@ export function ChatTabBar({
             aria-expanded={tabsMenuOpen}
             title={allTabsLabel}
             aria-label={allTabsLabel}
-            style={{
-              position: "relative",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 32,
-              height: 26,
-              padding: 0,
-              border: "none",
-              borderRadius: "var(--ui-radius-md)",
-              fontSize: 11,
-              lineHeight: 1,
-              fontVariantNumeric: "tabular-nums",
-              background: tabsMenuOpen ? "var(--bg-selected)" : "transparent",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-            }}
+            className="workspace-header-action"
+            style={{ width: 32, fontSize: 11, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}
           >
             {(hiddenStatus || hiddenDraft) && (
               <span aria-hidden="true" className="chat-tab-hidden-status" data-status={hiddenStatus ?? "draft"} />
@@ -528,7 +500,7 @@ export function ChatTabBar({
             {hiddenTabs.length > 0 ? (
               <span aria-hidden="true">+{hiddenTabs.length}</span>
             ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
                 <path d="M8 6h13M8 12h13M8 18h13" />
                 <path d="M3 6h.01M3 12h.01M3 18h.01" />
               </svg>
@@ -539,33 +511,13 @@ export function ChatTabBar({
         <button
           type="button"
           onClick={onNewTab}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 26,
-            height: 26,
-            marginLeft: 4,
-            borderRadius: "var(--ui-radius-md)",
-            background: "transparent",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            padding: 0,
-            transition: "color var(--motion-fast), background var(--motion-fast)",
-          }}
+          className="workspace-header-action"
+          // The visible block sits 4px after the last tab, the tabs' own gap.
+          style={{ marginLeft: 2 }}
           title={t("chatTabs.newTab", { defaultValue: "新建对话标签" })}
           aria-label={t("chatTabs.newTab", { defaultValue: "新建对话标签" })}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--text)";
-            e.currentTarget.style.background = "var(--bg-hover)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--text-muted)";
-            e.currentTarget.style.background = "transparent";
-          }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
@@ -582,7 +534,7 @@ export function ChatTabBar({
         // Unsplit, the only strip is the primary one and has no splitTabId.
         const moveLabel = pane === "secondary"
           ? t("chatTabs.moveLeft")
-          : splitTabId ? t("chatTabs.moveRight") : t("chatTabs.splitTabRight");
+          : splitTabId ? t("chatTabs.moveRight") : t("chatTabs.splitView");
         return createPortal(
           <div
             ref={contextMenuRef}

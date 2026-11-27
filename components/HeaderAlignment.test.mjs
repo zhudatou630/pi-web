@@ -32,7 +32,9 @@ test("conversation and file headers keep the aligned 40px row (Cursor)", () => {
   assert.equal(header["padding-top"], "env(safe-area-inset-top)");
   assert.equal(header["box-shadow"], "inset 0 -1px 0 var(--border)");
   assert.equal((shell.match(/className="workspace-header"/g) ?? []).length, 2);
-  assert.match(shell, /const TOP_BAR_ICON_BUTTON_SIZE = 30/);
+  const action = declarations(".workspace-header-action");
+  assert.equal(action.width, "30px");
+  assert.equal(action.height, "100%");
   // Section headers are session-row tall with 12px of air above (Cursor's grouping).
   assert.equal(declarations(".sidebar-section-row").height, "32px");
   assert.equal(declarations(".sidebar-section-row")["margin-top"], "12px");
@@ -78,25 +80,41 @@ test("sidebar starts with a toolbar row (Settings last), nav rows, then sections
   assert.doesNotMatch(shell, /toUpperCase\(\)/);
 });
 
-test("selection marks and svg baselines do not shift original icon sizes", () => {
+test("top-bar buttons: one selected look, a 26px rounded block, no accent line (docs/ui.md)", () => {
   const icon = declarations(".workspace-header-action > svg");
-  const selected = declarations('.workspace-header-action[aria-pressed="true"]');
   assert.equal(icon.display, "block");
   assert.equal(icon.width, undefined);
-  assert.equal(icon.height, undefined);
-  assert.equal(selected["box-shadow"], "inset 0 2px 0 var(--accent)");
-  assert.equal(selected["border-top"], undefined);
-  assert.doesNotMatch(shell, /borderTop: activeTopPanel|height: TOP_BAR_ICON_BUTTON_SIZE/);
+  const action = declarations(".workspace-header-action");
+  assert.equal(action.color, "var(--text-dim)");
+  const block = declarations(".workspace-header-action::before");
+  assert.equal(block.width, "26px");
+  assert.equal(block.height, "26px");
+  assert.equal(block["border-radius"], "var(--ui-radius-md)");
+  // Menu triggers show open as the pressed block; the two panel toggles never rest pressed.
+  const pressed = '.workspace-header-action:not(.workspace-panel-toggle):is([aria-pressed="true"], [aria-expanded="true"])';
+  assert.equal(declarations(pressed).color, "var(--text)");
+  assert.equal(declarations(`${pressed}::before`).background, "var(--bg-selected)");
+  assert.equal(shell.match(/className="workspace-header-action workspace-panel-toggle"/g)?.length, 2);
+  // Colors live in the class only: no inline colors, mouse handlers or !important overrides.
+  assert.doesNotMatch(css.toString(), /inset 0 2px 0 var\(--accent\)|workspace-header-action[^{]*\{[^}]*!important/);
+  for (const name of ["AppShell.tsx", "SessionMenu.tsx", "BranchNavigator.tsx", "ChatTabBar.tsx"]) {
+    const text = readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
+    assert.doesNotMatch(text, /onMouseEnter=\{\(e(vent)?\) => \{\s*(if [^;]+;\s*)?e(vent)?\.currentTarget\.style\.color/, name);
+  }
+  // Both ends of the bar are panel glyphs (left: the sidebar, right: the file panel); the glyph never swaps.
+  assert.match(shell, /aria-controls="session-sidebar"\s*aria-expanded=\{sidebarOpen\}/);
+  assert.match(shell, /<rect x="2\.5" y="5" width="19" height="14" rx="2\.5" \/><line x1="15" y1="5" x2="15" y2="19" \/>/);
+  const fileToggle = shell.slice(shell.indexOf("const renderMainFileToggle"), shell.indexOf("const renderComposerDock"));
+  assert.doesNotMatch(fileToggle, /rightPanelOpen \? \(/);
 });
 
 test("inline branch controls keep identical geometry when their panel opens", () => {
   for (const open of [false, true]) {
-    const html = render(BranchNavigator, { tree: [], open, onToggle() {}, hasSession: true });
+    const html = render(BranchNavigator, { tree: [], open, onToggle() {}, hasSession: true, compact: true });
     const button = html.match(/<button\b[^>]*>/)?.[0];
     assert.ok(button);
     assert.match(button, /class="workspace-header-action"/);
-    assert.match(button, /height:100%/);
-    assert.doesNotMatch(button, /border-top:|transform:/);
+    assert.doesNotMatch(button, /style=|border-top:|transform:/);
     assert.ok(button.includes(`aria-pressed="${open}"`));
   }
 });
