@@ -49,6 +49,8 @@ interface Props {
   onMoveTab?: (tabId: string, targetPane: ChatPane, beforeTabId: string | null) => void;
   /** A tab drag started (its id) or ended (null): the chat area shows its split drop zone meanwhile. */
   onTabDragChange?: (tabId: string | null) => void;
+  /** Split only: the context menu's Merge panes (the one way to end a split besides closing tabs). */
+  onMergePanes?: () => void;
   /** Which group this strip shows. */
   pane?: ChatPane;
   canMoveToOtherPane?: boolean;
@@ -71,6 +73,7 @@ export function ChatTabBar({
   onNewTab,
   onMoveTab,
   onTabDragChange,
+  onMergePanes,
   pane = "primary",
   canMoveToOtherPane = false,
   unifiedHeader = false,
@@ -425,24 +428,11 @@ export function ChatTabBar({
                   }}
                 />
               )}
-              {/* Tab Icon: session state badge or draft indicator */}
-              {(state || tab.kind === "draft") && (
-                <span
-                  style={{
-                    flexShrink: 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: isVisible ? "var(--text)" : "var(--text-dim)",
-                  }}
-                >
-                  {state ? (
-                    <SessionStatusDot status={state} />
-                  ) : (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                  )}
+              {/* Session state dot, as on the sidebar row. Drafts carry no icon: a "+" there read as
+                  the New tab button, and their unsent dot sits in the close slot. */}
+              {state && (
+                <span style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <SessionStatusDot status={state} />
                 </span>
               )}
 
@@ -634,6 +624,11 @@ export function ChatTabBar({
                 onClick={run(() => onMoveTab(menuTab.id, pane === "primary" ? "secondary" : "primary", null))}
               >
                 {moveLabel}
+              </button>
+            )}
+            {onMergePanes && (
+              <button type="button" role="menuitem" onClick={run(onMergePanes)}>
+                {t("chatTabs.mergePanes")}
               </button>
             )}
             {onRevealTabCwd && chatTabCwd(menuTab) && (

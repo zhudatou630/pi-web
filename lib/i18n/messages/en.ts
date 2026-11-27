@@ -973,6 +973,7 @@ export const enLocale: LocalePlugin = {
     "chatTabs.hiddenUnread": "Hidden tab finished",
     "chatTabs.closeOthers": "Close other tabs",
     "chatTabs.closeRight": "Close tabs to the right",
+    "chatTabs.mergePanes": "Merge panes",
     "chatTabs.revealCwd": "Show project in sidebar",
     "chatTabs.discardDrafts": "Discard {count} unsent drafts?",
     "chatTabs.hiddenCount": "{count} hidden",

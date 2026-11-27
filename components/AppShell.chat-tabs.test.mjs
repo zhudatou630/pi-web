@@ -69,12 +69,14 @@ test("renders ChatTabBar when chat is active and tabs exist", () => {
 });
 
 test("split right (VS Code): a header action that moves the current tab right, never a merge toggle", () => {
-  const split = source.slice(source.indexOf("const handleSplitRight"), source.indexOf("const handleOpenSessionInSplit"));
+  const split = source.slice(source.indexOf("const handleSplitRight"), source.indexOf("const handleMergePanes"));
   assert.match(split, /if \(isSplitActive \|\| !canSplitChat \|\| !activeChatTabId\) return;/);
   assert.match(split, /chatTabs\.length > 1\) \{\s*handleMoveChatTab\(activeChatTabId, "secondary", null\);/);
   // A lone tab stays; the right pane gets a new-session draft.
   assert.match(split, /openDraftInTabs\([\s\S]*?"secondary",\s*\)/);
   assert.doesNotMatch(split, /mergeChatTabPanes/);
+  // Ending a split: the tab context menu's Merge panes, on both strips.
+  assert.equal(source.match(/onMergePanes=\{handleMergePanes\}/g)?.length, 2);
   // The button sits in the header actions, only while unsplit, before the session tools.
   const actions = source.slice(source.indexOf("const renderDesktopHeaderActions"), source.indexOf("return (\n    <>"));
   assert.match(actions, /\{!options && showChat && chatTabs\.length > 0 && canSplitChat && \([\s\S]*?onClick=\{handleSplitRight\}[\s\S]*?\)\}\s*\{renderChatToolbarActions/);

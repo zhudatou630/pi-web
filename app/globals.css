@@ -4034,7 +4034,10 @@ button.question-card-option:not(:disabled):hover {
 }
 .split-drop-zone[data-side="right"] { right: 0; box-shadow: inset 2px 0 0 var(--border); }
 .split-drop-zone[data-side="left"] { left: 0; box-shadow: inset -2px 0 0 var(--border); }
-.split-drop-zone[data-hover] { color: var(--text); }
+.split-drop-zone[data-hover] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-selected) 90%, transparent);
+}
 .split-drop-zone[data-side="right"][data-hover] { box-shadow: inset 2px 0 0 var(--text-dim); }
 .split-drop-zone[data-side="left"][data-hover] { box-shadow: inset -2px 0 0 var(--text-dim); }
 

@@ -298,3 +298,10 @@ test("top line (VS Code): 1px accent on the focused pane's tab, neutral on the o
   assert.match(nodes("secondary")[0], /inset 0 1px 0 var\(--text-dim\)/);
   assert.doesNotMatch(nodes("primary")[1], /inset 0 1px 0/);
 });
+
+test("split: the context menu offers Merge panes; drafts carry no left icon", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /\{onMergePanes && \(\s*<button type="button" role="menuitem" onClick=\{run\(onMergePanes\)\}>/);
+  const [draft] = tabNodes(render([{ id: "draft:d1", kind: "draft", title: "Draft", session: null, newSessionCwd: "/t", newSessionDraftKey: "d1" }]));
+  assert.doesNotMatch(draft.slice(0, draft.indexOf("Draft</span>")), /<svg/);
+});

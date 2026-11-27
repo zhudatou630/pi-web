@@ -2214,6 +2214,18 @@ export function AppShell() {
     }
   }, [activeChatTabId, activeCwd, canSplitChat, chatTabs, handleMoveChatTab, isSplitActive, router, translate]);
 
+  /** Tab context menu, split only: every tab returns to one pane; the focused pane's tab stays shown. */
+  const handleMergePanes = useCallback(() => {
+    const retainedTab = activeChatPane === "secondary" ? secondaryTab : primaryTab;
+    setChatTabs((tabs) => mergeChatTabPanes(tabs, retainedTab?.id ?? null));
+    setSplitChatTabId(null);
+    setActiveChatPane("primary");
+    if (retainedTab) {
+      setActiveChatTabId(retainedTab.id);
+      focusChatTab(retainedTab, "primary");
+    }
+  }, [activeChatPane, focusChatTab, primaryTab, secondaryTab]);
+
   /** Sidebar row dropped on the right half: open (or move) that session into the right pane. */
   const handleOpenSessionInSplit = useCallback((session: SessionInfo) => {
     setMainView("chat");
@@ -3253,8 +3265,9 @@ export function AppShell() {
           onMouseLeave={(event) => { event.currentTarget.style.color = "var(--text-muted)"; }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <line x1="12" y1="3" x2="12" y2="21" />
+            {/* Two separate panes: unlike the sidebar and file panel toggles (one frame, one rule). */}
+            <rect x="3" y="4" width="7.5" height="16" rx="1.5" />
+            <rect x="13.5" y="4" width="7.5" height="16" rx="1.5" />
           </svg>
         </button>
       )}
@@ -3428,6 +3441,7 @@ export function AppShell() {
                     onNewTab={() => handleNewChatTab("primary")}
                     onMoveTab={handleMoveChatTab}
                     onTabDragChange={handleTabDragChange}
+                    onMergePanes={handleMergePanes}
                     canMoveToOtherPane
                     unifiedHeader={true}
                   />
@@ -3462,6 +3476,7 @@ export function AppShell() {
                     onNewTab={() => handleNewChatTab("secondary")}
                     onMoveTab={handleMoveChatTab}
                     onTabDragChange={handleTabDragChange}
+                    onMergePanes={handleMergePanes}
                     pane="secondary"
                     canMoveToOtherPane
                     unifiedHeader={true}
