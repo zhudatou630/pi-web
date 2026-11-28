@@ -127,6 +127,8 @@ test("showing the column on a narrow panel widens it by the column; hiding gives
   // Wide enough already: no resize, and hiding then keeps the user's width.
   assert.deepEqual(panelDockToggleWidth(true, 700, null, 600, 220), { width: null, widenedFrom: null });
   assert.deepEqual(panelDockToggleWidth(false, 700, null, 600, 220), { width: null, widenedFrom: null });
+  // Resized by hand while widened: hiding keeps the user's width.
+  assert.deepEqual(panelDockToggleWidth(false, 800, 500, 600, 220), { width: null, widenedFrom: null });
 });
 
 test("one Changes and one Files instance move between full size and the dock", () => {

@@ -60,11 +60,12 @@ export function panelWorktreeFetchCwd(cwd: string, sidebar: { forCwd: string } |
 
 /**
  * Showing the column on a panel narrower than `minWidth` widens the panel by the column instead
- * of squeezing the viewer; hiding it gives that width back. Returns the width to set (null: keep)
- * and the width to restore on the next hide.
+ * of squeezing the viewer; hiding it gives that width back, unless the user resized the panel
+ * meanwhile (their width stays). Returns the width to set (null: keep) and the width to restore
+ * on the next hide.
  */
 export function panelDockToggleWidth(show: boolean, width: number, widenedFrom: number | null, minWidth: number, dockWidth: number): { width: number | null; widenedFrom: number | null } {
   if (show && width < minWidth) return { width: width + dockWidth, widenedFrom: width };
-  if (!show && widenedFrom !== null) return { width: widenedFrom, widenedFrom: null };
+  if (!show && widenedFrom !== null) return { width: width === widenedFrom + dockWidth ? widenedFrom : null, widenedFrom: null };
   return { width: null, widenedFrom };
 }

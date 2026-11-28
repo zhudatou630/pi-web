@@ -2955,12 +2955,22 @@ export function AppShell() {
   const setRightPanelWidth = rightPanelResizer.setWidth;
   const togglePanelDock = useCallback(() => {
     const next = !panelDockOpen;
-    const resize = panelDockToggleWidth(next, rightPanelWidthRef.current ?? rightPanelResizer.width, panelDockWidenedFromRef.current, PANEL_DOCK_MIN_WIDTH, PANEL_DOCK_WIDTH);
-    panelDockWidenedFromRef.current = resize.widenedFrom;
-    if (resize.width !== null) setRightPanelWidth(resize.width);
     setPanelDockPref(next);
     try { window.localStorage.setItem(PANEL_DOCK_KEY, String(next)); } catch { /* private mode */ }
-  }, [panelDockOpen, rightPanelResizer.width, setRightPanelWidth]);
+  }, [panelDockOpen]);
+  // Whenever the column appears (its toggle, or opening a file from the full-size views with it on)
+  // a narrow panel widens by the column instead of squeezing the viewer; when it goes (toggle, back
+  // to the full-size views) that width is given back. Closing or opening the panel is neither: the
+  // panel keeps its width, and a hand-resized width is never undone.
+  const panelDockShown = panelDock !== null;
+  const panelDockShownRef = useRef(panelDockShown);
+  useEffect(() => {
+    if (panelDockShownRef.current === panelDockShown) return;
+    panelDockShownRef.current = panelDockShown;
+    const resize = panelDockToggleWidth(panelDockShown, rightPanelWidthRef.current ?? rightPanelResizer.width, panelDockWidenedFromRef.current, PANEL_DOCK_MIN_WIDTH, PANEL_DOCK_WIDTH);
+    panelDockWidenedFromRef.current = resize.widenedFrom;
+    if (resize.width !== null) setRightPanelWidth(resize.width);
+  }, [panelDockShown, rightPanelResizer.width, setRightPanelWidth]);
   // Mounted when first shown (a restored Files view behind a closed panel requests nothing), then
   // kept for its expansion; hidden, it freezes what it shows (FileExplorer's shownExplorerTarget).
   const filesViewVisible = rightPanelOpen && filesViewShown;
