@@ -250,6 +250,15 @@ export function createSubagentExtension(
       if (profiles.length === 0) return;
       const profileNames = profiles.map((profile) => profile.name);
       const availableTypes = profileNames.length > 0 ? profileNames.join(", ") : "none";
+      // Read the profiles again: Settings may switch general-purpose off after this description was built.
+      const newSubagentProfile = (requested: string | undefined) => {
+        if (requested) return requested;
+        const names = getProfiles().filter((profile) => profile.enabled).map((profile) => profile.name);
+        // Profile names resolve case-insensitively (`resolveSubagentProfile`).
+        const fallback = names.find((name) => name.toLowerCase() === "general-purpose");
+        if (fallback) return fallback;
+        throw new Error(`subagent_type is required: general-purpose is disabled. Available types: ${names.join(", ") || "none"}.`);
+      };
       const notFound = (ctx: ExtensionContext, sessionId: string) =>
         new Error(subagentNotFoundMessage(ctx.sessionManager.getEntries() as unknown as SessionEntry[], sessionId));
       // A failed subagent run is returned with its details (so the card still links
@@ -274,7 +283,7 @@ export function createSubagentExtension(
         promptSnippet: "Delegate a focused task to an inspectable subagent session; see <delegation> for when",
         executionMode: "parallel",
         parameters: Type.Object({
-          subagent_type: Type.Optional(Type.String({ description: `Configured agent profile. Available types: ${availableTypes}. ${profileNames.includes("general-purpose") ? "Default: general-purpose." : "Required: general-purpose is disabled."}` })),
+          subagent_type: Type.Optional(Type.String({ description: `Configured agent profile. Available types: ${availableTypes}. ${profileNames.some((name) => name.toLowerCase() === "general-purpose") ? "Default: general-purpose." : "Required: general-purpose is disabled."}` })),
           prompt: Type.String({ description: "The complete task for the subagent." }),
           resume: Type.Optional(Type.String({ description: "Existing subagent session ID to continue. Keeps its model, thinking, tools, context, isolation and turn limit; omit create-only options." })),
           input_files: Type.Optional(Type.Array(Type.String(), {
@@ -319,7 +328,7 @@ export function createSubagentExtension(
             : await runtime.start({
             parentContext: ctx,
             parentToolCallId: toolCallId,
-            profile: params.subagent_type ?? "general-purpose",
+            profile: newSubagentProfile(params.subagent_type),
             task: params.prompt,
             ...(params.input_files ? { inputFiles: params.input_files } : {}),
             description: params.description,
