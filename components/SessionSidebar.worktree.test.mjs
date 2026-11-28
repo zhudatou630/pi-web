@@ -16,10 +16,11 @@ test("the sidebar has no worktree switcher: switching, creating and removing liv
   assert.doesNotMatch(source, /sidebar-switcher|Workspace context bar|workspace-worktree-switcher|worktreeSwitcher|handleCreateWorktree|handleRemoveWorktree/);
   const chat = await readFile(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
   const control = chat.slice(chat.indexOf("function NewSessionCwdControl"), chat.indexOf("function hasSameTranscriptIdentity"));
-  assert.match(control, /removeWorktree\(wt\.path, false\)/);
-  assert.match(control, /removeWorktree\(wt\.path, true\)/);
-  assert.match(control, /confirmRemove === wt\.path/);
-  assert.match(control, /if \(data\.dirty && !force\) \{\s*setConfirmRemove\(path\);/);
+  // The trash button only asks; the row's confirm removes, and a dirty checkout asks again to force.
+  assert.match(control, /onClick=\{\(\) => setConfirmRemove\(\{ path: wt\.path, dirty: false \}\)\}/);
+  assert.match(control, /removeWorktree\(wt\.path, dirty\)/);
+  assert.match(control, /confirmRemove\?\.path === wt\.path/);
+  assert.match(control, /if \(data\.dirty && !force\) \{\s*setConfirmRemove\(\{ path, dirty: true \}\);/);
   // Removing the checkout in use moves the draft to the project's main checkout.
   assert.match(control, /const nextCwd = path === currentWorktree\?\.path \? info\.projectRoot : cwd;/);
 });

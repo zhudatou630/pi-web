@@ -54,7 +54,7 @@ agent 或其他客户端用 `git worktree add` 新建的 checkout，会在打开
 
 ## 删除 Worktree
 
-新建会话页「运行位置 ⌄」的「已有 worktree」里，每行右侧有删除按钮。删掉草稿正在用的 checkout 后，草稿回到 main checkout；在 Pi Web 外删掉当前选中的 checkout 后，侧栏也会回到 main checkout。它删除的是这个 checkout 目录。
+新建会话页「运行位置 ⌄」的「已有 worktree」里，每行右侧有删除按钮，点击后该行先变成确认（取消 / 移除）。删掉草稿正在用的 checkout 后，草稿回到 main checkout；在 Pi Web 外删掉当前选中的 checkout 后，侧栏也会回到 main checkout。它删除的是这个 checkout 目录。
 
 删除 worktree 不会删除：
 
@@ -62,7 +62,7 @@ agent 或其他客户端用 `git worktree add` 新建的 checkout，会在打开
 - Pi Web 的历史会话。
 - main checkout。
 
-如果 worktree 里有未提交或未跟踪文件，Git 会拒绝删除。Pi Web 会再显示 force remove。force remove 会丢弃这个 checkout 里的未提交文件，只在确定不需要这些改动时使用。
+如果 worktree 里有未提交或未跟踪文件，Git 会拒绝删除。确认行会变成 force remove。force remove 会丢弃这个 checkout 里的未提交文件，只在确定不需要这些改动时使用。
 
 ## 会话和 Worktree 的关系
 

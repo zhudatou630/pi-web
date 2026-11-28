@@ -243,7 +243,8 @@ export function NewSessionCwdControl({
   const [error, setError] = useState<string | null>(null);
   const [newBranch, setNewBranch] = useState<string | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  // The row asking before a remove; `dirty` once git refused it and only a force remove is left.
+  const [confirmRemove, setConfirmRemove] = useState<{ path: string; dirty: boolean } | null>(null);
   const [refreshedWorktree, setRefreshedWorktree] = useState<typeof worktreeInfo>(null);
   const coversCwd = (info: typeof worktreeInfo) => !!info && (info.forCwd === cwd
     || info.projectRoot === cwd
@@ -376,7 +377,7 @@ export function NewSessionCwdControl({
         const data = await response.json().catch(() => ({})) as { error?: string; dirty?: boolean };
         if (!response.ok) {
           if (data.dirty && !force) {
-            setConfirmRemove(path);
+            setConfirmRemove({ path, dirty: true });
             return;
           }
           throw new Error(data.error ?? `HTTP ${response.status}`);
@@ -514,13 +515,14 @@ export function NewSessionCwdControl({
               <div style={{ maxHeight: 280, overflowY: "auto", scrollbarWidth: "none" }}>
                 {[...(mainWorktree ? [mainWorktree] : []), ...linkedWorktrees].map((wt) => {
                   const isCurrent = wt.path === currentWorktree?.path;
-                  if (confirmRemove === wt.path) {
+                  if (confirmRemove?.path === wt.path) {
+                    const { dirty } = confirmRemove;
                     return (
-                      <div key={wt.path} className="wt-confirm-row">
-                        <span>{t("sidebar.forceRemoveCheckout")}</span>
+                      <div key={wt.path} role="alertdialog" aria-label={t("sidebar.removeWorktreeTitle", { path: wt.path })} className="wt-confirm-row">
+                        <span>{t(dirty ? "sidebar.forceRemoveCheckout" : "sidebar.removeCheckoutConfirm")}</span>
                         <div className="project-confirm-actions">
-                          <button type="button" onClick={() => setConfirmRemove(null)}>{t("sidebar.cancel")}</button>
-                          <button type="button" className="is-danger" disabled={busy} onClick={() => removeWorktree(wt.path, true)}>{t("sidebar.force")}</button>
+                          <button type="button" autoFocus onClick={() => setConfirmRemove(null)}>{t("sidebar.cancel")}</button>
+                          <button type="button" className="is-danger" disabled={busy} onClick={() => removeWorktree(wt.path, dirty)}>{t(dirty ? "sidebar.force" : "i18n.remove")}</button>
                         </div>
                       </div>
                     );
@@ -548,7 +550,7 @@ export function NewSessionCwdControl({
                             type="button"
                             className="menu-surface-row-action is-danger"
                             disabled={busy}
-                            onClick={() => removeWorktree(wt.path, false)}
+                            onClick={() => setConfirmRemove({ path: wt.path, dirty: false })}
                             title={t("sidebar.removeWorktreeTitle", { path: wt.path })}
                             aria-label={t("sidebar.removeWorktreeTitle", { path: wt.path })}
                           >

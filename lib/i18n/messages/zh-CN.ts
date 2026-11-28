@@ -670,6 +670,7 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.switchWorktreeTitle": "切换 worktree：{path}",
     "sidebar.main": "主分支",
     "sidebar.forceRemoveCheckout": "存在未提交的更改。强制移除 checkout？",
+    "sidebar.removeCheckoutConfirm": "移除 checkout？分支会保留。",
     "sidebar.force": "强制移除",
     "sidebar.createWorktreeTitle": "为分支创建 worktree checkout",
     "sidebar.newWorktree": "新建 worktree…",
