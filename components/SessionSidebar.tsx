@@ -1706,9 +1706,11 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       project: projectNames.get(workspaceKeyOf(family.root)) ?? getFileName(family.root.projectRoot ?? family.root.cwd),
     })), [sessionSearchOpen, listedFamilies, archivedMemberIds, familyStatus, projectNames]);
   // Rows of another project name it before the time; the selected project's need not.
-  const otherProjectLabel = (family: SessionFamily) => {
+  // By status / by time every row names its project, the selected one's included: a row's place
+  // there says nothing about its project (only the by-project view groups them).
+  const familyProjectLabel = (family: SessionFamily) => {
     const key = workspaceKeyOf(family.root);
-    return key === selectedProject?.key ? undefined : projectNames.get(key) ?? getFileName(family.root.projectRoot ?? family.root.cwd);
+    return projectNames.get(key) ?? getFileName(family.root.projectRoot ?? family.root.cwd);
   };
 
   // Same as each row's Mark as read: the next polls write the shared readAt, errors included.
@@ -2241,7 +2243,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
               </div>
             </div>
             {section.families.map((family) => (
-              <div key={family.root.id} data-family-id={family.root.id}>{renderSessionFamily(family, false, otherProjectLabel(family))}</div>
+              <div key={family.root.id} data-family-id={family.root.id}>{renderSessionFamily(family, false, familyProjectLabel(family))}</div>
             ))}
             {/* Paging rows stay short here so the next section's title keeps Cursor's spacing. */}
             {section.remaining > 0 && (

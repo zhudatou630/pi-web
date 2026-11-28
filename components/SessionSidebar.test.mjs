@@ -409,7 +409,7 @@ test("mark all as read takes each row's read path: manual reads for the shared r
 });
 
 test("status and time groupings: pinned first, then non-empty titled sections with show more", () => {
-  const groups = source.slice(source.indexOf("const flatGroups = useMemo"), source.indexOf("const otherProjectLabel"));
+  const groups = source.slice(source.indexOf("const flatGroups = useMemo"), source.indexOf("const familyProjectLabel"));
   assert.match(groups, /!pinnedSessionIds\.includes\(family\.root\.id\) && !archivedMemberIds\.has\(family\.root\.id\)/);
   assert.match(groups, /groupByStatus\(families, familyStatus, timeOf\)/);
   assert.match(groups, /\{ key: "sidebar\.groupRecent", families: groups\.recent, paged: true \}/);
@@ -419,7 +419,7 @@ test("status and time groupings: pinned first, then non-empty titled sections wi
   // Rows sort by the ordering everywhere (projects, pinned, sections) and show its time.
   assert.match(source, /const allFamilies = useMemo\(\(\) => orderFamilies\(listedFamilies, ordering, orderStatus\)/);
   assert.match(source, /const shownTime = ordering === "created" \? family\.root\.created : family\.latestModified;/);
-  assert.match(source, /renderSessionFamily\(family, false, otherProjectLabel\(family\)\)/);
+  assert.match(source, /renderSessionFamily\(family, false, familyProjectLabel\(family\)\)/);
   assert.match(source, /\{!needsYou && projectLabel && <span className="session-row-project">\{projectLabel\}<\/span>\}/);
   // The worktree glyph sits right before the fixed-width time (one column), standing in for the separator.
   assert.match(source, /\{worktree \?\? \(!needsYou && projectLabel && "\\u00a0·\\u00a0"\)\}\s*<span className="session-row-time"/);
