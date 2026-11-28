@@ -41,7 +41,9 @@ Design notes moved out of AGENTS.md.
 - Results use the sidebar's custom project name Map keyed by `workspaceKeyOf()`, falling back to the project-root basename. Worktree hits retain their cwd; labels stay regular weight. Picking a result keeps search open for visiting other hits.
 
 ## Sidebar reveal
-- The focused session id owns one reveal, independent of how it was opened. Wait for the catalog, expand its family root's project/pinned section, then scroll by fixed row index (visible rows stay still, clipped rows move to the nearest edge). Polls and later manual folding/scrolling never repeat it. Search and the opposite archive view defer the reveal; archive navigation is never changed implicitly. Single-project mode selects the family's project, including cross-directory hidden members.
+- Only on request: a chat tab's "Show in sidebar" (session tabs) unfolds the session's project or Pinned, then scrolls by fixed row index (visible rows stay still, clipped rows move to the nearest edge); by status/time it scrolls the row into view without unfolding. Once per request; the opposite archive view defers it. Single-project mode selects the family's project.
+- Switching tabs or opening a session never expands, scrolls or re-selects anything (it used to unfold the focused session's project, which undid Collapse all), and a click in Pinned or a status/time list no longer unfolds the session's project either. The file panel follows the session instead (`AppShell` `shownKey`).
+- Passive cue instead: a folded project row holding the shown session takes that row's selected fill (`data-holds-selected`); a chat tab's tooltip names its project.
 
 ## Shared session reads
 - Unread dots remain browser-local, dated by server-observed completion snapshots; `readAt` is shared in the existing locked, atomic `pi-web/sidebar-state.json`. The ordinary `/api/agent/running` poll returns both, so completion > latest shared read is the only unread comparison. Legacy localStorage id arrays migrate to undated marks; deletion cleans shared reads too. Reads do not invalidate the session catalog.

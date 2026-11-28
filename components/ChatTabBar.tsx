@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { chatTabCwd, type ChatPane, type ChatTabItem } from "@/lib/chat-tab-state";
+import { type ChatPane, type ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
 import { MenuCheck } from "./MenuCheck";
 import { isModalDialogOpen } from "./ModalDialog";
@@ -47,7 +47,7 @@ interface Props {
   getSessionPinned?: (tab: ChatTabItem) => boolean | null;
   onToggleSessionPin?: (tab: ChatTabItem, pinned: boolean) => void;
   /** Context menu: point the sidebar project and explorer at this tab's cwd. */
-  onRevealTabCwd?: (cwd: string) => void;
+  onRevealInSidebar?: (sessionId: string) => void;
   onNewTab: () => void;
   /** Drag-reorder, cross-group drag and the context menu's move item. Absent = tabs stay put. */
   onMoveTab?: (tabId: string, targetPane: ChatPane, beforeTabId: string | null) => void;
@@ -77,7 +77,7 @@ export function ChatTabBar({
   onPinTab,
   getSessionPinned,
   onToggleSessionPin,
-  onRevealTabCwd,
+  onRevealInSidebar,
   onNewTab,
   onMoveTab,
   onTabDragChange,
@@ -411,7 +411,7 @@ export function ChatTabBar({
                 touchAction: "pan-x",
                 position: "relative",
               }}
-              title={tab.preview ? `${tab.title} · ${t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })}` : tab.title}
+              title={[tab.title, tab.projectName, tab.preview && t("chatTabs.previewTabHint", { defaultValue: "预览标签，双击固定" })].filter(Boolean).join(" · ")}
             >
               {dropIndex !== null && (dropIndex === index || (dropIndex === tabs.length && index === tabs.length - 1)) && (
                 <span
@@ -584,9 +584,9 @@ export function ChatTabBar({
                 {t("chatTabs.mergePanes")}
               </button>
             )}
-            {onRevealTabCwd && chatTabCwd(menuTab) && (
-              <button type="button" role="menuitem" onClick={run(() => onRevealTabCwd(chatTabCwd(menuTab)!))}>
-                {t("chatTabs.revealCwd")}
+            {onRevealInSidebar && menuTab.session && (
+              <button type="button" role="menuitem" onClick={run(() => onRevealInSidebar(menuTab.session!.id))}>
+                {t("chatTabs.revealInSidebar")}
               </button>
             )}
             <button type="button" role="menuitem" onClick={run(() => { onCloseTab(menuTab.id); })}>

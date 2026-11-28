@@ -5286,6 +5286,12 @@ span.token.table {
 .workspace-list-row[data-active="true"] {
   color: var(--text);
 }
+/* Folded over the shown session: the row takes that session row's selected fill. */
+.workspace-list-row[data-holds-selected="true"],
+.workspace-list-row[data-holds-selected="true"]:hover {
+  background: var(--bg-selected);
+  color: var(--text);
+}
 
 /* Project state lives on the folder glyph, not a side rail or a tinted row. At rest the glyph
    sits a tier under the name, like Cursor's folders and the nav icons; hover brings it up. */
@@ -5379,7 +5385,7 @@ span.token.table {
 }
 
 @media (hover: none) {
-  .workspace-list-row:hover {
+  .workspace-list-row:not([data-holds-selected="true"]):hover {
     background: transparent !important;
   }
 

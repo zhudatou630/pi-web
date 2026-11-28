@@ -1913,8 +1913,15 @@ export function AppShell() {
     const byId = new Map(chatTabs.flatMap((tab) => tab.session ? [[tab.session.id, tab.session] as const] : []));
     for (const session of sessionCatalog) byId.set(session.id, session);
     const numbers = unnamedSideChatNumbers([...byId.values()]);
-    return chatTabs.map((tab) => numbers.has(tab.id) ? { ...tab, title: translate("chat.unnamedSideChat", { number: numbers.get(tab.id)! }) } : tab);
-  }, [chatTabs, sessionCatalog, translate]);
+    return chatTabs.map((tab) => {
+      const root = tab.session ? tab.session.projectRoot ?? tab.session.cwd : tab.newSessionCwd;
+      return {
+        ...tab,
+        ...(numbers.has(tab.id) && { title: translate("chat.unnamedSideChat", { number: numbers.get(tab.id)! }) }),
+        ...(root && { projectName: projectNameByRoot.get(root) ?? getFileName(root) }),
+      };
+    });
+  }, [chatTabs, projectNameByRoot, sessionCatalog, translate]);
   const primaryTabs = useMemo(() => chatTabsInPane(titledChatTabs, "primary"), [titledChatTabs]);
   const secondaryTabs = useMemo(() => chatTabsInPane(titledChatTabs, "secondary"), [titledChatTabs]);
 
@@ -2480,6 +2487,12 @@ export function AppShell() {
     setRightPanelOpen(true);
     if (isMobile) setSidebarOpen(false);
   }, [isMobile, selectPanelView]);
+  // A chat tab's "Show in sidebar": the only path that unfolds or scrolls the sidebar for a session.
+  const [sidebarReveal, setSidebarReveal] = useState<{ sessionId: string; nonce: number } | null>(null);
+  const handleRevealInSidebar = useCallback((sessionId: string) => {
+    setSidebarReveal((previous) => ({ sessionId, nonce: (previous?.nonce ?? 0) + 1 }));
+    setSidebarOpen(true);
+  }, []);
   const handleRevealCwdInFiles = useCallback((cwd: string) => showInPanel(cwd, "files"), [showInPanel]);
   const handleReviewTurnChanges = useCallback((cwd: string) => {
     setChangesScope("turn");
@@ -3054,6 +3067,7 @@ export function AppShell() {
         onHomeDirChange={setHomeDir}
         onWorktreeInfoChange={setWorktreeInfo}
         explorerReveal={explorerReveal}
+        revealRequest={sidebarReveal}
         newSessionOpen={onNewSessionPage}
         routinesOpen={mainView === "routines"}
         onToggleRoutines={() => {
@@ -3508,7 +3522,7 @@ export function AppShell() {
                     onPinTab={promotePreviewSession}
                     getSessionPinned={getSessionPinned}
                     onToggleSessionPin={toggleSessionPin}
-                    onRevealTabCwd={setActiveCwd}
+                    onRevealInSidebar={handleRevealInSidebar}
                     onNewTab={() => handleNewChatTab("primary")}
                     onMoveTab={handleMoveChatTab}
                     onTabDragChange={handleTabDragChange}
@@ -3544,7 +3558,7 @@ export function AppShell() {
                     onPinTab={promotePreviewSession}
                     getSessionPinned={getSessionPinned}
                     onToggleSessionPin={toggleSessionPin}
-                    onRevealTabCwd={setActiveCwd}
+                    onRevealInSidebar={handleRevealInSidebar}
                     onNewTab={() => handleNewChatTab("secondary")}
                     onMoveTab={handleMoveChatTab}
                     onTabDragChange={handleTabDragChange}
@@ -3580,7 +3594,7 @@ export function AppShell() {
                     onPinTab={promotePreviewSession}
                     getSessionPinned={getSessionPinned}
                     onToggleSessionPin={toggleSessionPin}
-                    onRevealTabCwd={setActiveCwd}
+                    onRevealInSidebar={handleRevealInSidebar}
                     onNewTab={handleNewChatTab}
                     onMoveTab={handleMoveChatTab}
                     onTabDragChange={handleTabDragChange}
@@ -3972,7 +3986,7 @@ export function AppShell() {
               onPinTab={promotePreviewSession}
               getSessionPinned={getSessionPinned}
               onToggleSessionPin={toggleSessionPin}
-                    onRevealTabCwd={setActiveCwd}
+                    onRevealInSidebar={handleRevealInSidebar}
               onNewTab={handleNewChatTab}
               isMobile={true}
             />

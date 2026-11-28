@@ -219,6 +219,8 @@ interface Props {
   } | null) => void;
   /** The file panel shows `cwd` (reveal, Changes N, worktree switch): the selected project follows. */
   explorerReveal?: { cwd: string; nonce: number } | null;
+  /** A chat tab's "Show in sidebar": unfold and scroll to that session once per nonce. */
+  revealRequest?: { sessionId: string; nonce: number } | null;
   /** Settings, the last icon of the top row; prefetch on hover or focus. */
   onOpenSettings?: () => void;
   onPrefetchSettings?: () => void;
@@ -369,7 +371,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onPinnedSessionIdsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, onOpenSettings, onPrefetchSettings, sidebarToggle = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onPinnedSessionIdsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, revealRequest = null, onOpenSettings, onPrefetchSettings, sidebarToggle = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -481,7 +483,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // Virtualized session list: only the visible window of rows is mounted.
   const listScrollRef = useRef<HTMLDivElement>(null);
   const pinnedListRef = useRef<HTMLDivElement>(null);
-  const openRevealRef = useRef<{ id: string | null; done: boolean }>({ id: null, done: false });
+  const openRevealRef = useRef<{ nonce: number | null; done: boolean }>({ nonce: null, done: false });
   const listInnerRef = useRef<HTMLDivElement>(null);
   const projectDropdownScrollRef = useRef<HTMLDivElement>(null);
   const projectDropdownInnerRef = useRef<HTMLDivElement>(null);
@@ -1214,11 +1216,6 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // session's checkout because the live paths differ.
   const handleSelectSessionFromList = useCallback((s: SessionInfo, entryId?: string, blockIndex?: number) => {
     setAllSessions((current) => current.some((session) => session.id === s.id) ? current : [s, ...current]);
-    setExpandedWorkspaceKeys((current) => {
-      const next = new Set(current ?? []);
-      next.add(workspaceKeyOf(s));
-      return next;
-    });
     const selectedProjectKey = projectFor(selectedCwd)?.key;
     if (shouldAdoptSessionCwd({
       sessionCwd: s.cwd,
@@ -1608,11 +1605,22 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     [allFamilies, archivedMemberIds, pinnedSessionIds, selectionProjectKey],
   );
 
-  // One reveal per focused id; hidden search/archive views defer rather than change navigation.
-  useLayoutEffect(() => {
-    if (openRevealRef.current.id !== selectedSessionId) openRevealRef.current = { id: selectedSessionId, done: false };
-    if (!selectedSessionId || openRevealRef.current.done || loading || sessionListVersion === null || selectionProjectKey) return;
+  // A folded project row stands in for the shown session it hides (VS Code's collapsed selection):
+  // the tab's project is visible without unfolding anything.
+  const selectedFamilyProjectKey = useMemo(() => {
+    if (!selectedSessionId || routinesOpen) return null;
     const family = allFamilies.find((item) => item.root.id === selectedSessionId || item.subagents.some((session) => session.id === selectedSessionId));
+    if (!family || pinnedFamilies.some((item) => item.root.id === family.root.id)) return null;
+    return archivedMemberIds.has(family.root.id) === archiveView ? workspaceKeyOf(family.root) : null;
+  }, [allFamilies, archiveView, archivedMemberIds, pinnedFamilies, routinesOpen, selectedSessionId]);
+
+  // "Show in sidebar" (a chat tab's menu): one reveal per request, never on a mere tab switch or
+  // session open (docs/settings.md, Sidebar reveal). The opposite archive view defers it.
+  useLayoutEffect(() => {
+    const revealSessionId = revealRequest?.sessionId ?? null;
+    if (openRevealRef.current.nonce !== (revealRequest?.nonce ?? null)) openRevealRef.current = { nonce: revealRequest?.nonce ?? null, done: false };
+    if (!revealSessionId || openRevealRef.current.done || loading || sessionListVersion === null || selectionProjectKey) return;
+    const family = allFamilies.find((item) => item.root.id === revealSessionId || item.subagents.some((session) => session.id === revealSessionId));
     if (!family || archivedMemberIds.has(family.root.id) !== archiveView) return;
     const projectKey = workspaceKeyOf(family.root);
     if (!archiveView && pinnedFamilies.some((item) => item.root.id === family.root.id)) {
@@ -1642,7 +1650,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
       setListScrollTop(list.scrollTop);
     }
     openRevealRef.current.done = true;
-  }, [selectedSessionId, loading, sessionListVersion, selectionProjectKey, allFamilies, archivedMemberIds, archiveView, pinnedFamilies, pinnedOpen, projectsOpen, singleProject, selectedProject, expandedArchiveProjectKeys, expandedWorkspaceKeys, defaultExpandedWorkspaceKeys, workspaceRows, listViewportH, flatView]);
+  }, [revealRequest, loading, sessionListVersion, selectionProjectKey, allFamilies, archivedMemberIds, archiveView, pinnedFamilies, pinnedOpen, projectsOpen, singleProject, selectedProject, expandedArchiveProjectKeys, expandedWorkspaceKeys, defaultExpandedWorkspaceKeys, workspaceRows, listViewportH, flatView]);
 
   const pinnedActivity = useMemo(() => [...getProjectActivity(
     pinnedFamilies.flatMap((family) => [family.root, ...family.subagents]),
@@ -2284,6 +2292,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
                     key={`workspace:${row.project.key}`}
                     data-active={active ? "true" : "false"}
                     data-expanded={!singleProject && expanded ? "true" : undefined}
+                    data-holds-selected={!singleProject && !expanded && row.project.key === selectedFamilyProjectKey ? "true" : undefined}
                     onPointerDown={(event) => projectDrag.onPointerDown(event, row.project.key)}
                     onContextMenu={(event) => {
                       event.preventDefault();

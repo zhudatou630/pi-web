@@ -6,12 +6,12 @@ import ts from "typescript";
 import { createJiti } from "jiti";
 const { sessionRevealScrollTop } = await createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true }).import("./SessionSidebar.tsx");
 const source = readFileSync(new URL("./SessionSidebar.tsx", import.meta.url), "utf8");
-const code = source.slice(source.indexOf("  // One reveal per focused id;"), source.indexOf("  const pinnedActivity ="));
+const code = source.slice(source.indexOf("  // \"Show in sidebar\" (a chat tab's menu)"), source.indexOf("  const pinnedActivity ="));
 const script = new Script(ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText);
 const family = { root: { id: "root", cwd: "/project" }, subagents: [{ id: "side" }] };
 function fixture(overrides = {}) {
   const scope = {
-    Set, selectedSessionId: "side", openRevealRef: { current: { id: null, done: false } },
+    Set, revealRequest: { sessionId: "side", nonce: 1 }, openRevealRef: { current: { nonce: null, done: false } },
     loading: false, sessionListVersion: 1, selectionProjectKey: null,
     allFamilies: [family], archivedMemberIds: new Set(), archiveView: false, pinnedFamilies: [], pinnedOpen: false,
     projectsOpen: true, singleProject: false, selectedProject: { key: "/project" }, expandedArchiveProjectKeys: new Set(),
@@ -22,7 +22,7 @@ function fixture(overrides = {}) {
   for (const [setter, key] of [["setPinnedOpen", "pinnedOpen"], ["setProjectsOpen", "projectsOpen"], ["setExpandedWorkspaceKeys", "expandedWorkspaceKeys"], ["setExpandedArchiveProjectKeys", "expandedArchiveProjectKeys"], ["setSelectedCwd", "cwd"]]) scope[setter] = (v) => { scope[key] = v; };
   return { scope, render: () => script.runInNewContext(scope) };
 }
-test("reveal waits for the list (search is a dialog over it), expands the family root and scrolls only once", () => {
+test("Show in sidebar waits for the list (search is a dialog over it), expands the family root and scrolls only once", () => {
   const f = fixture({ loading: true });
   f.render();
   assert.equal(f.scope.expandedWorkspaceKeys.size, 0);
@@ -56,10 +56,20 @@ test("the status grouping reveals the family's row in place, without unfolding p
   assert.equal(f.scope.projectsOpen, false);
   assert.equal(f.scope.expandedWorkspaceKeys.size, 0);
   f.render();
-  assert.equal(scrolled.length, 1, "once per selection");
+  assert.equal(scrolled.length, 1, "once per request");
+  f.scope.revealRequest = { sessionId: "side", nonce: 2 };
+  f.render();
+  assert.equal(scrolled.length, 2, "a new request reveals again");
 });
 test("reveal leaves fully visible rows and uses nearest edges for clipped rows", () => {
   assert.equal(sessionRevealScrollTop(1, 0, 104), 0);
   assert.equal(sessionRevealScrollTop(1, 40, 104), 32);
   assert.equal(sessionRevealScrollTop(3, 0, 100), 28);
+});
+
+test("no request, no reveal: switching sessions leaves the sidebar alone", () => {
+  const f = fixture({ revealRequest: null });
+  f.render();
+  assert.equal(f.scope.expandedWorkspaceKeys.size, 0);
+  assert.equal(f.scope.pinnedOpen, false);
 });

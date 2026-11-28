@@ -28,6 +28,8 @@ export interface ChatTabItem {
   /** Preview tabs are transient: sidebar single-clicks swap their content; every other
    *  tab-creation path produces non-preview (pinned) tabs. */
   preview?: boolean;
+  /** Display only (tooltip), derived from the sidebar's project names; never persisted. */
+  projectName?: string;
   /** Stable ChatWindow identity. Frozen when a draft is promoted so the in-flight session is not remounted. */
   mountKey?: string;
 }
