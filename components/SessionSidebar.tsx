@@ -1059,14 +1059,13 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   // Sync the worktree switcher to the selected session's cwd. Sessions of all
   // worktrees in a project share one list, so clicking a session from another
   // worktree should move the effective cwd there. Only fires when the prop
-  // value changes, so a manual switcher change is not snapped back.
-  const lastSyncedCwdPropRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (selectedCwdProp && selectedCwdProp !== lastSyncedCwdPropRef.current) {
-      lastSyncedCwdPropRef.current = selectedCwdProp;
-      setSelectedCwd(selectedCwdProp);
-    }
-  }, [selectedCwdProp]);
+  // value changes, so a manual switcher change is not snapped back. Adjusted during render, so the
+  // selected project changes in the same commit as the session row (an effect lagged a commit).
+  const [lastSyncedCwdProp, setLastSyncedCwdProp] = useState<string | null>(null);
+  if (selectedCwdProp && selectedCwdProp !== lastSyncedCwdProp) {
+    setLastSyncedCwdProp(selectedCwdProp);
+    setSelectedCwd(selectedCwdProp);
+  }
 
   // Load worktrees for the current effective cwd
   const worktreeStateRef = useRef(worktreeState);

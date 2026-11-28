@@ -81,5 +81,8 @@ test("useAgentSession reports each finished tool call with its name", () => {
 
 test("the file panel follows the shown session on every path, not only sidebar clicks", () => {
   assert.match(appShell, /const shownKey = selectedSession \? `session:\$\{selectedSession\.id\}`/);
-  assert.match(appShell, /followedShownKeyRef\.current = shownKey;[\s\S]{0,400}shouldAdoptSessionCwd\(/);
+  // During render, in the switch's own commit.
+  assert.match(appShell, /if \(shownKey && shownCwd && followedShownKey !== shownKey\) \{\s*setFollowedShownKey\(shownKey\);[\s\S]{0,400}shouldAdoptSessionCwd\(/);
+  // A cwd change must not hand every chat a new onOpenFile (it re-rendered all their Markdown).
+  assert.match(appShell, /const handleOpenFile = useCallback\([\s\S]*?\}, \[isMobile, openRightPanelAfterRender\]\);/);
 });

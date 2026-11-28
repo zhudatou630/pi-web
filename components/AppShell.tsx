@@ -1233,6 +1233,10 @@ export function AppShell() {
   }, []);
 
   const [activeCwd, setActiveCwd] = useState<string | null>(null);
+  // Read by handleOpenFile at call time: a cwd dependency gave every chat a new onOpenFile on each
+  // project follow and re-rendered all their Markdown (most of a tab switch's follow cost).
+  const activeCwdRef = useRef(activeCwd);
+  activeCwdRef.current = activeCwd;
   const getFocusedChatCwd = useCallback(() => {
     const focusedTabId = isSplitActiveRef.current && activeChatPaneRef.current === "secondary"
       ? splitChatTabIdRef.current
@@ -1325,10 +1329,12 @@ export function AppShell() {
   // new session's project by now.
   const shownCwd = selectedSession?.cwd ?? newSessionCwd;
   const shownKey = selectedSession ? `session:${selectedSession.id}` : newSessionCwd ? `draft:${newSessionCwd}` : null;
-  const followedShownKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!shownKey || !shownCwd || followedShownKeyRef.current === shownKey) return;
-    followedShownKeyRef.current = shownKey;
+  // Adjusted during render: the sidebar's project and the Files view switch in the tab switch's own
+  // commit (a passive effect landed ~0.7 s later in a headless check, the old project showing
+  // meanwhile). Cheap since handleOpenFile no longer depends on activeCwd (see activeCwdRef).
+  const [followedShownKey, setFollowedShownKey] = useState<string | null>(null);
+  if (shownKey && shownCwd && followedShownKey !== shownKey) {
+    setFollowedShownKey(shownKey);
     const shownWorktrees = worktreeInfo?.forCwd === activeCwd ? worktreeInfo : null;
     if (selectedSession ? shouldAdoptSessionCwd({
       sessionCwd: shownCwd,
@@ -1337,7 +1343,7 @@ export function AppShell() {
       selectedProjectKey: shownWorktrees?.projectRoot,
       worktrees: shownWorktrees?.worktrees,
     }) : shownCwd !== activeCwd) setActiveCwd(shownCwd);
-  }, [activeCwd, selectedSession, shownCwd, shownKey, worktreeInfo]);
+  }
 
   const handleCwdChange = useCallback((
     cwd: string | null,
@@ -2366,6 +2372,8 @@ export function AppShell() {
     const sourceSessionId = options?.sourceSessionId;
     const modeHint = options?.modeHint;
     const tabId = `file:${filePath}`;
+    // Resolved now, not inside the queued updater, which may run after a later cwd change.
+    const cwd = options?.cwd ?? activeCwdRef.current ?? undefined;
     const currentTabs = filePersistenceRef.current.tabs;
     const replacedPreviewId = options?.preview && !currentTabs.some((tab) => tab.id === tabId)
       ? currentTabs.find((tab) => tab.preview)?.id : undefined;
@@ -2373,7 +2381,7 @@ export function AppShell() {
     setFileTabs((prev) => openFileTab(prev, {
       fileName,
       filePath,
-      cwd: options?.cwd ?? activeCwd ?? undefined,
+      cwd,
       modeHint,
       sourceSessionId,
       preview: options?.preview,
@@ -2384,7 +2392,7 @@ export function AppShell() {
     openRightPanelAfterRender();
     // On mobile the file panel is full-screen; close the drawer so it shows.
     if (isMobile) setSidebarOpen(false);
-  }, [activeCwd, isMobile, openRightPanelAfterRender]);
+  }, [isMobile, openRightPanelAfterRender]);
 
   // One-shot request for the viewer of `path` to scroll to and mark lines (quote chips).
   const [fileReveal, setFileReveal] = useState<{ path: string; target: FileReveal } | null>(null);
