@@ -3250,6 +3250,7 @@ export function AppShell() {
     : translate("i18n.newSession");
   // Phones: the tab strip (two or more tabs) names the session in its shown tab.
   const showMobileTitle = showChat && chatTabs.length < 2;
+  const showMobileChatTabs = isMobile && showChat && chatTabs.length > 1 && mainView === "chat";
 
   const renderCollapsedSessionTitle = () => {
     if (sidebarOpen || !showChat) return null;
@@ -3405,7 +3406,8 @@ export function AppShell() {
       {/* Center: chat */}
       <div inert={panelCoversPage || undefined} style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {/* Top bar with sidebar toggle */}
-        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg)" }}>
+        {/* Phones with the tab strip: two stacked bars, so the top bar gives up 4px and the strip sits close under it. */}
+        <div ref={topBarRef} style={{ flexShrink: 0, background: "var(--bg)", ...(showMobileChatTabs && { "--workspace-header-height": "36px" }) } as React.CSSProperties}>
         {/* One surface with the chat, no rule (Cursor; docs/ui.md, Tabs and top bars). */}
         <div
           className="workspace-header"
@@ -3918,10 +3920,12 @@ export function AppShell() {
           )}
 
         </div>
-        {isMobile && showChat && chatTabs.length > 1 && mainView === "chat" && (
+        {showMobileChatTabs && (
           <div
             data-mobile-chat-tabs="true"
             style={{
+              // A second bar under the top bar: 2px around the 26px chips, not another 40px bar.
+              "--workspace-header-height": "30px",
               // One surface with the top bar and the chat, no rule (docs/ui.md, Tabs and top bars).
               background: "var(--bg)",
               height: "var(--workspace-header-height, 40px)",
@@ -3932,7 +3936,7 @@ export function AppShell() {
               overflow: "hidden",
               display: "flex",
               alignItems: "stretch",
-            }}
+            } as React.CSSProperties}
           >
             <ChatTabBar
               tabs={titledChatTabs}

@@ -418,8 +418,8 @@ html.dark {
 .agents-badge {
   --badge-fill: color-mix(in srgb, var(--text) 10%, var(--bg));
   position: absolute;
-  top: calc(50% - 12px);
-  right: 3px;
+  top: calc(50% - 11px);
+  right: 4px;
   min-width: 11px;
   height: 11px;
   padding: 0 2px;
@@ -7125,18 +7125,8 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
 /* Touch (docs/ui.md, Heights): visible sizes and row heights stay as drawn; only the tap
    area grows, to >= 40px, with a transparent ::before/::after. Where neighbours sit closer
    than 40px the ring stops at half the gap so it never steals the next button's tap.
-   Text inputs are 16px: iOS Safari zooms the page on focus below that. */
+   Inputs keep their designed sizes: iOS focus zoom is stopped by maximum-scale (useViewportHeight). */
 @media (pointer: coarse) {
-  input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="color"], [type="button"], [type="submit"], [type="hidden"]),
-  textarea,
-  select {
-    font-size: 16px !important;
-  }
-  /* 21px line (14px x 1.5 before), so the composer row keeps its height. */
-  .chat-input-textarea {
-    line-height: 21px !important;
-  }
-
   .composer-btn,
   .composer-send,
   .sidebar-top-icon,

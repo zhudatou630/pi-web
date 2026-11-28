@@ -35,7 +35,8 @@ export function AgentsTopBarButton({ count, running, failed, open, onToggle }: {
       data-top-panel-trigger="agents"
       onClick={(event) => onToggle(event.currentTarget)}
     >
-      <SubagentIcon size={16} />
+      {/* 14px, not the bar's 16: with the badge on its corner the pair reads as one 16px icon. */}
+      <SubagentIcon size={14} />
       {count > 0 && (
         <span
           className="agents-badge"

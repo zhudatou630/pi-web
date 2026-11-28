@@ -175,3 +175,9 @@ test("clipped text never inherits a line-height under 1.3", async () => {
   if (Number(entry.match(/line-height:\s*([\d.]+)/)?.[1]) < 1.3) violations.push("directory-picker-entry");
   assert.deepEqual(violations, []);
 });
+
+// Reintroduced once after 1f85d01b5 removed it: inflated every touch input (file search, rename).
+test("touch inputs keep their designed font size (iOS zoom is stopped by maximum-scale)", async () => {
+  const css = await readFile(join(root, "app/globals.css"), "utf8");
+  assert.doesNotMatch(css, /\binput[^{}]*\{\s*font-size:\s*16px\s*!important/);
+});
