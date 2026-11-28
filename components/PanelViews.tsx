@@ -11,9 +11,9 @@ import { FileExplorer, GIT_STATUS_KEYS, type FileExplorerHandle } from "./FileEx
 import { getFileIcon } from "./FileIcons";
 import { MenuCheck } from "./MenuCheck";
 
-/** The file panel's two fixed views (docs/ui.md, File panel). Full size they follow the active
- * session's cwd; docked beside a file tab, that tab's (lib/panel-dock.ts). */
-export type PanelView = "changes" | "files";
+/** The file panel's fixed views (docs/ui.md, File panel). Changes and Files follow the active
+ * session's cwd (docked beside a file tab, that tab's: lib/panel-dock.ts); Notes are global. */
+export type PanelView = "changes" | "files" | "notes";
 export type ChangesScope = "uncommitted" | "turn";
 
 export interface PanelWorktreeInfo {
@@ -30,7 +30,7 @@ function Chevron() {
 }
 
 /** A text trigger with an anchored menu; the menu closes after a pick. */
-function TextMenu({ label, title, className, icon, children }: {
+export function TextMenu({ label, title, className, icon, children }: {
   label?: ReactNode;
   icon?: (open: boolean, toggle: () => void) => ReactNode;
   title?: string;
@@ -172,7 +172,7 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
   );
 }
 
-function IconButton({ title, onClick, disabled, pressed, expanded, style, children }: { title: string; onClick: () => void; disabled?: boolean; pressed?: boolean; expanded?: boolean; style?: CSSProperties; children: ReactNode }) {
+export function IconButton({ title, onClick, disabled, pressed, expanded, style, children }: { title: string; onClick: () => void; disabled?: boolean; pressed?: boolean; expanded?: boolean; style?: CSSProperties; children: ReactNode }) {
   return (
     <button type="button" className="ghost-icon-button" title={title} aria-label={title} aria-pressed={pressed} aria-expanded={expanded} aria-haspopup={expanded !== undefined ? "menu" : undefined} onClick={onClick} disabled={disabled} style={style}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>

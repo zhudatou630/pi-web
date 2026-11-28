@@ -772,6 +772,239 @@ html.dark {
 .file-search-row .sidebar-search-field:focus-within {
   box-shadow: var(--ui-field-ring);
 }
+/* Notes view (docs/notes.md): a kind switch and New on one row; rows and group heads are unframed. */
+.notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 8px;
+}
+.notes-kinds {
+  display: flex;
+  gap: 4px;
+}
+.notes-new {
+  color: var(--text-muted);
+}
+.notes-new:hover {
+  color: var(--text);
+}
+.notes-group {
+  display: flex;
+  align-items: center;
+  height: var(--ui-row-height);
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+div:first-child > .notes-group {
+  margin-top: 0;
+}
+.notes-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px 0 4px;
+  border: none;
+  border-radius: var(--ui-radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.notes-group-toggle:hover {
+  color: var(--text-muted);
+}
+.notes-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+.notes-group-count {
+  font-variant-numeric: tabular-nums;
+}
+.notes-group-rename,
+.notes-tag-search {
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--ui-radius-sm);
+  outline: none;
+  background: var(--bg-hover);
+  box-shadow: var(--ui-field-ring);
+  color: var(--text);
+  font: inherit;
+}
+.notes-group-rename {
+  flex: 1;
+  margin: 0 4px;
+  font-size: 11px;
+}
+.notes-tag-search {
+  width: calc(100% - 8px);
+  margin: 2px 4px 4px;
+  box-shadow: none;
+  font-size: 12px;
+}
+.notes-tag-search:focus {
+  box-shadow: var(--ui-field-ring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .notes-group:not(:hover):not(:focus-within) .notes-group-menu {
+    visibility: hidden;
+  }
+}
+.notes-tag-menu .panel-text-menu-trigger {
+  max-width: 160px;
+  color: var(--text-muted);
+}
+/* Actions sit on the first line, beside the time: centred on a two-line row they fell between lines. */
+.notes-row {
+  display: flex;
+  align-items: flex-start;
+  border-radius: var(--ui-radius-md);
+  color: var(--text-muted);
+}
+.notes-row:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.notes-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 0 5px 8px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.notes-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.notes-row-title {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.notes-row-time {
+  flex-shrink: 0;
+  min-width: 3ch;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.notes-row-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.notes-row > .ghost-icon-button {
+  margin-left: 2px;
+}
+.notes-row[data-menu-open] {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.notes-row-more {
+  display: flex;
+  margin-right: 2px;
+}
+/* Fine pointers show the row's actions on hover; touch keeps the main one and long-presses for the menu. */
+@media (hover: hover) and (pointer: fine) {
+  .notes-row:not(:hover):not(:focus-within):not([data-menu-open]) .ghost-icon-button {
+    visibility: hidden;
+  }
+}
+@media not ((hover: hover) and (pointer: fine)) {
+  .notes-row-more {
+    display: none;
+  }
+}
+.notes-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 8px 0 5px;
+}
+.notes-editor-time {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.notes-more-menu .panel-text-menu-list {
+  left: auto;
+  right: 0;
+}
+.notes-editor-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  flex-shrink: 0;
+  padding: 4px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.notes-editor-notice.is-error {
+  color: var(--danger);
+}
+.notes-editor-notice button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.notes-editor-body {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 14px 20px;
+  color: var(--text);
+  font-family: var(--font-chat);
+  /* The panel's reading tier, as the file viewer's Markdown preview (docs/ui.md, Typography). */
+  font-size: 13px;
+  line-height: 1.6;
+}
+.notes-editor-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  background: none;
+}
+.notes-editor-read {
+  overflow-y: auto;
+}
+/* Read keeps Edit's size, so switching does not jump. */
+.notes-editor-read .markdown-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.notes-editor-read .task-list-item > input[type="checkbox"] {
+  cursor: pointer;
+}
 /* The Changes / Files view host: full size as a view, or the docked column beside a file with a
    title row (name + collapse) on top. */
 .panel-view-host {
@@ -2404,17 +2637,20 @@ pre, code {
 .markdown-body .task-list-item > input[type="checkbox"],
 .markdown-body .task-list-item > p:first-child > input[type="checkbox"]:first-child {
   appearance: none;
-  position: absolute;
-  left: 0;
-  top: 0.3em;
+  /* In the line, hung into the padding, and placed from the baseline: CJK ink is centred
+     0.385em above it in every face (Sarasa, WenKai measured), while the baseline's distance from
+     the line top differs per face, so a top offset matched one font and missed the next. The box
+     has no line boxes (the check is absolute), so its baseline is its bottom edge. The right
+     margin leaves room for the space that follows it. */
+  display: inline-block;
+  position: relative;
+  vertical-align: calc(0.385em - 6.5px);
   width: 13px;
   height: 13px;
-  margin: 0;
+  margin: 0 calc(9px - 0.3em) 0 -22px;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-sm);
   background: var(--bg);
-  display: inline-grid;
-  place-content: center;
 }
 .markdown-body .task-list-item > input[type="checkbox"]:checked,
 .markdown-body .task-list-item > p:first-child > input[type="checkbox"]:first-child:checked {
@@ -2424,6 +2660,9 @@ pre, code {
 .markdown-body .task-list-item > input[type="checkbox"]:checked::before,
 .markdown-body .task-list-item > p:first-child > input[type="checkbox"]:first-child:checked::before {
   content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
   width: 3.5px;
   height: 7px;
   border: solid var(--accent);
@@ -5513,7 +5752,8 @@ span.token.table {
 }
 
 #delete-project-title,
-#delete-file-title {
+#delete-file-title,
+#delete-note-title {
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
@@ -5521,7 +5761,8 @@ span.token.table {
 }
 
 #delete-project-detail,
-#delete-file-detail {
+#delete-file-detail,
+#delete-note-detail {
   margin-top: -2px;
   color: var(--text-dim);
   font-size: 11px;
@@ -6595,6 +6836,20 @@ span.token.table {
 
 .menu-surface .chat-input-menu-back {
   color: var(--text-dim);
+}
+
+/* The + menu's snippets (docs/notes.md): titles only, the list scrolls past a few dozen. */
+.chat-input-menu-scroll {
+  max-height: min(50vh, 320px);
+  overflow-y: auto;
+}
+.chat-input-menu-label {
+  min-width: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
 }
 
 /* Composer feedback shares one quiet treatment; the tone comes from semantic tokens. */

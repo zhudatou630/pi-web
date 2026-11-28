@@ -41,6 +41,7 @@ import { SessionMenu } from "./SessionMenu";
 import { AgentsTopBarButton } from "./TopBarContext";
 import { hasBlockedSession } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView, type PanelWorktreeInfo } from "./PanelViews";
+import { NotesView } from "./NotesView";
 import type { FileExplorerHandle } from "./FileExplorer";
 import { InfoDialog } from "./InfoDialog";
 import { MobileOutlineList, type MobileOutlineView } from "./MobileChatNav";
@@ -1133,7 +1134,7 @@ export function AppShell() {
       const view = (() => {
         try { return JSON.parse(window.sessionStorage.getItem(PANEL_VIEW_KEY) ?? "null") as { view?: unknown; open?: unknown } | null; } catch { return null; }
       })();
-      if (view?.view === "files" || view?.view === "changes") {
+      if (view?.view === "files" || view?.view === "changes" || view?.view === "notes") {
         setPanelView(view.view);
       }
       if (active.activeId) {
@@ -1265,6 +1266,14 @@ export function AppShell() {
     setPanelMaximized(false);
     if (isMobile) { setRightPanelOpen(false); setSidebarOpen(false); }
   }, [getFocusedChatCwd, isMobile]);
+
+  // A note into the focused composer; a panel covering the chat steps aside so the text shows.
+  const handleInsertNote = useCallback((text: string) => {
+    chatInputRef.current?.insertText(text);
+    setPanelMaximized(false);
+    if (panelIsOverlay) setRightPanelOpen(false);
+    if (isMobile) setSidebarOpen(false);
+  }, [isMobile, panelIsOverlay]);
 
   const handleFileAttach = useCallback((attachment: FileSelectionAttachment) => {
     const { relativePath, text, startLine, endLine, sourceCwd } = attachment;
@@ -3306,6 +3315,7 @@ export function AppShell() {
             menu: translate("session.moreActions"),
             changes: translate("panel.changes"),
             files: translate("panel.files"),
+            notes: translate("panel.notes"),
             terminal: translate("panel.terminal"),
             browser: translate("panel.browser"),
             exportMarkdown: translate(historyShareReady ? "history.exportMarkdownShare" : "history.exportMarkdown"),
@@ -3322,6 +3332,7 @@ export function AppShell() {
           onOpenPanel={filesCwd ? (target) => {
             if (target === "terminal") handleOpenTerminal(filesCwd);
             else if (target === "browser") handleOpenBrowser();
+            else if (target === "notes") { selectPanelView("notes"); setRightPanelOpen(true); }
             else showInPanel(filesCwd, target);
           } : undefined}
           infoPending={infoPending}
@@ -4252,7 +4263,7 @@ export function AppShell() {
           )}
           <div role="tablist" aria-label={translate("panel.views")} className="panel-view-tabs">
             {/* A tablist as the chat tabs: one Tab stop, ←/→ move to and show the other view. */}
-            {(["changes", "files"] as const).map((view, index, views) => (
+            {(["changes", "files", "notes"] as const).map((view, index, views) => (
               <button
                 key={view}
                 type="button"
@@ -4269,7 +4280,7 @@ export function AppShell() {
                   (event.currentTarget.parentElement?.children[nextIndex] as HTMLElement | undefined)?.focus();
                 }}
               >
-                {translate(view === "changes" ? "panel.changes" : "panel.files")}
+                {translate(`panel.${view}`)}
               </button>
             ))}
           </div>
@@ -4431,7 +4442,15 @@ export function AppShell() {
               <span>{panelDockLabel}</span>
             </button>
           )}
-          {!panelCwd && showPanelView && (
+          {/* Notes are global: no cwd needed (docs/notes.md). */}
+          {showPanelView && panelView === "notes" && (
+            <div className="panel-view-host" style={{ position: "absolute", inset: 0 }}>
+              <div className="panel-view-host-body">
+                <NotesView onInsert={handleInsertNote} />
+              </div>
+            </div>
+          )}
+          {!panelCwd && showPanelView && panelView !== "notes" && (
             <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 12 }}>
                {translate("files.noneOpen")}
             </div>

@@ -14,7 +14,7 @@ test("session menu is one icon button opening a dropdown of info and history act
 });
 
 test("menu lists the panel shortcuts, a divider, tools, system prompt, a divider, then history and export", () => {
-  assert.match(source, /\(\["changes", "files", "terminal", "browser"\] as const\)\.map/);
+  assert.match(source, /\(\["changes", "files", "notes", "terminal", "browser"\] as const\)\.map/);
   const order = ["labels[target]", 'role="separator"', "labels.tools", "labels.system", 'role="separator"', "labels.fork", "labels.full", "labels.exportMarkdown"];
   let from = source.indexOf('role="menu"');
   const indices = order.map((needle) => (from = source.indexOf(needle, from + 1)));

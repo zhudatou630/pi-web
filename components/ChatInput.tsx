@@ -37,6 +37,8 @@ import { ImageMentionChip } from "./GeneratedImageResult";
 import { ImageAttachmentStrip } from "./ImageAttachmentStrip";
 import { FolderIcon, getFileIcon } from "./FileIcons";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useNotes } from "@/hooks/useNotes";
+import { groupNotesByTag, noteTitle } from "@/lib/note-text";
 import { useI18n } from "@/hooks/useI18n";
 import { useChatAppearance } from "@/hooks/useChatAppearance";
 import { CONFIGURED_TOOL_PRESET, type ToolPreset } from "@/lib/tool-presets";
@@ -743,6 +745,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   const [controlsView, setControlsView] = useState<"root" | "tools" | "compact">("root");
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false);
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const [attachView, setAttachView] = useState<"root" | "snippets">("root");
+  const snippetGroups = groupNotesByTag((useNotes() ?? []).filter((note) => note.kind === "phrase"));
+  const hasAttachMenu = Boolean(onOpenImageGeneration) || snippetGroups.length > 0;
   const [controlsMenuOpen, setControlsMenuOpen] = useState(false);
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [mentionedImages, setMentionedImages] = useState<string[]>([]);
@@ -2878,9 +2883,10 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   className="composer-btn is-icon chat-input-attach"
                   disabled={disabled}
                   onClick={() => {
-                    if (onOpenImageGeneration) {
+                    if (hasAttachMenu) {
                       setControlsMenuOpen(false);
                       setThinkingDropdownOpen(false);
+                      setAttachView("root");
                       setImageMenuOpen((prev) => !prev);
                     } else {
                       fileInputRef.current?.click();
@@ -2888,17 +2894,60 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                   }}
                   title={onOpenImageGeneration ? `${t("chat.attachFiles")} / ${t("image.title")}` : t("chat.attachFiles")}
                   aria-label={onOpenImageGeneration ? `${t("chat.attachFiles")} / ${t("image.title")}` : t("chat.attachFiles")}
-                  aria-expanded={onOpenImageGeneration ? imageMenuOpen : undefined}
-                  aria-haspopup={onOpenImageGeneration ? "menu" : undefined}
+                  aria-expanded={hasAttachMenu ? imageMenuOpen : undefined}
+                  aria-haspopup={hasAttachMenu ? "menu" : undefined}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M12 5v14M5 12h14" />
                   </svg>
                 </button>
-                {imageMenuOpen && onOpenImageGeneration && (
+                {imageMenuOpen && hasAttachMenu && (
                   <div role="menu" className="chat-input-menu menu-surface" style={{ left: 0 }} onKeyDown={closeMenuOnEscape}>
-                    <button type="button" role="menuitem" onClick={() => { setImageMenuOpen(false); fileInputRef.current?.click(); }}>{t("chat.attachFiles")}</button>
-                    <button type="button" role="menuitem" onClick={() => { setImageMenuOpen(false); onOpenImageGeneration(attachedImagesRef.current.map(imageToDraftImage)); }}>{t("image.title")}</button>
+                    {attachView === "snippets" ? (
+                      <>
+                        <button type="button" role="menuitem" className="chat-input-menu-back" onClick={() => setAttachView("root")}>
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M6 2.5 3.5 5 6 7.5" />
+                          </svg>
+                          <span>{t("notes.phrases")}</span>
+                        </button>
+                        <div role="separator" className="menu-surface-divider" />
+                        <div className="chat-input-menu-scroll">
+                          {snippetGroups.map((group, index) => (
+                            <React.Fragment key={group.tag ?? ""}>
+                            {index > 0 && <div role="separator" className="menu-surface-divider" />}
+                            {snippetGroups.some((item) => item.tag !== null) && <div className="menu-surface-label">{group.tag ?? t("notes.untagged")}</div>}
+                            {group.notes.map((note) => (
+                            <button key={note.id} type="button" role="menuitem" title={note.text.slice(0, 500)} onClick={() => {
+                              setImageMenuOpen(false);
+                              const ta = textareaRef.current;
+                              if (!ta) return;
+                              // At the caret, replacing a selection, as a paste does.
+                              replaceTextareaRange(ta, ta.selectionStart, ta.selectionEnd, note.text);
+                              valueRef.current = ta.value;
+                              setValue(ta.value);
+                              setCursorPosition(ta.selectionStart);
+                              ta.focus();
+                            }}>
+                              <span className="chat-input-menu-label">{noteTitle(note.text) || t("notes.untitled")}</span>
+                            </button>
+                            ))}
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" role="menuitem" onClick={() => { setImageMenuOpen(false); fileInputRef.current?.click(); }}>{t("chat.attachFiles")}</button>
+                        {onOpenImageGeneration && <button type="button" role="menuitem" onClick={() => { setImageMenuOpen(false); onOpenImageGeneration(attachedImagesRef.current.map(imageToDraftImage)); }}>{t("image.title")}</button>}
+                        {snippetGroups.length > 0 && (
+                          <button type="button" role="menuitem" aria-haspopup="menu" onClick={() => setAttachView("snippets")}>
+                            <span>{t("notes.phrases")}</span>
+                            {menuChevron}
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
                 )}
               </div>

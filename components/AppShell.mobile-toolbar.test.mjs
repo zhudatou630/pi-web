@@ -17,7 +17,7 @@ test("phone top bar holds the sidebar toggle, title, the outline button, the ses
   // No uncommitted-changes count anywhere around the composer: Changes is the file panel's view.
   assert.doesNotMatch(source, /ChangesButton|renderTopBarContext|renderComposerContext|gitChangeCounts/);
   // ⋯ opens the file panel straight on a view or tab, on every platform.
-  assert.match(source, /onOpenPanel=\{filesCwd \? \(target\) => \{\s*if \(target === "terminal"\) handleOpenTerminal\(filesCwd\);\s*else if \(target === "browser"\) handleOpenBrowser\(\);\s*else showInPanel\(filesCwd, target\);/);
+  assert.match(source, /onOpenPanel=\{filesCwd \? \(target\) => \{\s*if \(target === "terminal"\) handleOpenTerminal\(filesCwd\);\s*else if \(target === "browser"\) handleOpenBrowser\(\);\s*else if \(target === "notes"\) \{ selectPanelView\("notes"\); setRightPanelOpen\(true\); \}\s*else showInPanel\(filesCwd, target\);/);
   // The outline (desktop's minimap) is one tap away, its own button beside ⋯, not a menu item.
   assert.doesNotMatch(menuSource, /onOpenOutline|labels\.outline/);
   // Only a session has an outline; a new session's ⋯ keeps only the panel shortcuts (SessionMenu).

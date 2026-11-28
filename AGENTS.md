@@ -2,7 +2,7 @@
 
 **What belongs here:** commands, environment, safety rules, and traps a reader of the code would get wrong. Feature specs, UX details, and design rationale go to `docs/*.md` or `docs/adr/`; rules already enforced by a test get one line pointing at the test. Keep entries short.
 
-Design docs: `docs/subagents.md`, `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/html-preview.md` (file viewer HTML preview, token-served), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/routines.md` (scheduled routines; scheduler on in production builds, off under `next dev` unless `PI_WEB_SCHEDULER=1`), `docs/adr/`.
+Design docs: `docs/subagents.md`, `docs/settings.md` (MCP, plugins, skills, project overrides, usage), `docs/ui.md` (typography, modals, panels, images), `docs/image-generation.md`, `docs/worktrees.md`, `docs/terminal.md`, `docs/preview.md` (browser tab / local-service proxy), `docs/html-preview.md` (file viewer HTML preview, token-served), `docs/chat-tabs.md`, `docs/i18n.md`, `docs/notes.md` (global notes/snippets with tags in the file panel), `docs/routines.md` (scheduled routines; scheduler on in production builds, off under `next dev` unless `PI_WEB_SCHEDULER=1`), `docs/adr/`.
 
 ## Quick Start
 

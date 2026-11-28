@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode } from "react";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { iconStroke } from "./iconStroke";
@@ -28,6 +28,11 @@ interface MarkdownBodyProps {
   isStreaming?: boolean;
   cwd?: string;
   onOpenFile?: (filePath: string, page?: number, reveal?: { start: number; end: number }) => void;
+  /**
+   * Makes task checkboxes clickable. `offset` is where the item starts in `children`, which is
+   * then rendered unnormalized so the offset holds.
+   */
+  onToggleTask?: (offset: number) => void;
 }
 
 function MathDisplay({ source, children }: { source: string; children: ReactNode }) {
@@ -64,13 +69,15 @@ const MarkdownBlock = memo(function MarkdownBlock({ markdown, streaming, remarkP
   );
 });
 
-export const MarkdownBody = memo(function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile }: MarkdownBodyProps) {
+export const MarkdownBody = memo(function MarkdownBody({ children, className, isStreaming, cwd, onOpenFile, onToggleTask }: MarkdownBodyProps) {
   const sessionId = useContext(MarkdownSessionContext);
   const classNames = className?.split(/\s+/) ?? [];
+  const rawSource = Boolean(onToggleTask);
   const normalizedMarkdown = useMemo(() => {
+    if (rawSource) return children;
     const markdown = normalizeDisplayMath(children);
     return isStreaming ? markdown : normalizeLocalFileLinks(markdown);
-  }, [children, isStreaming]);
+  }, [children, isStreaming, rawSource]);
   // A streaming reply grows by a few characters per chunk; parsing all of it each
   // time made a long reply quadratic. Its finished blocks keep their parse and only
   // the last is parsed again. A finished message is one block, so node offsets
@@ -185,7 +192,21 @@ export const MarkdownBody = memo(function MarkdownBody({ children, className, is
         </MarkdownTableBlock>
       );
     },
-  }), [cwd, isStreaming, onOpenFile, sessionId]);
+    input({ node, ...props }) {
+      void node;
+      if (props.type !== "checkbox" || !onToggleTask) return <input {...props} />;
+      return <input {...props} disabled={false} onChange={(event) => {
+        const offset = Number(event.currentTarget.closest<HTMLElement>("li[data-task-offset]")?.dataset.taskOffset);
+        if (Number.isFinite(offset)) onToggleTask(offset);
+      }} />;
+    },
+    // The item's source offset, read by its checkbox (above).
+    ...(onToggleTask ? {
+      li({ node, ...props }: { node?: { position?: { start: { offset?: number } } } } & ComponentProps<"li">) {
+        return <li {...props} data-task-offset={node?.position?.start.offset} />;
+      },
+    } : {}),
+  }), [cwd, isStreaming, onOpenFile, onToggleTask, sessionId]);
 
   return (
     <div className={["markdown-body", className].filter(Boolean).join(" ")}>

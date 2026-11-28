@@ -33,6 +33,7 @@ type Props = {
     menu: string;
     changes: string;
     files: string;
+    notes: string;
     terminal: string;
     browser: string;
     exportMarkdown: string;
@@ -53,7 +54,7 @@ type Props = {
   onExportMarkdown: () => void;
   onMenuOpenChange: (open: boolean) => void;
   /** File panel shortcuts (docs/ui.md, Tabs and top bars): open the panel straight on that view or tab. */
-  onOpenPanel?: (target: "changes" | "files" | "terminal" | "browser") => void;
+  onOpenPanel?: (target: "changes" | "files" | "notes" | "terminal" | "browser") => void;
 };
 
 export function SessionMenu({
@@ -161,7 +162,7 @@ export function SessionMenu({
             zIndex: 520,
           }}
         >
-          {onOpenPanel && (["changes", "files", "terminal", "browser"] as const).map((target) => (
+          {onOpenPanel && (["changes", "files", "notes", "terminal", "browser"] as const).map((target) => (
             <button key={target} type="button" role="menuitem" onClick={() => { onMenuOpenChange(false); onOpenPanel(target); }}>
               {labels[target]}
             </button>
