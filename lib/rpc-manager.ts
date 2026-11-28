@@ -2256,8 +2256,8 @@ export class AgentSessionWrapper {
     this.emit(notice, true);
   }
 
-  reportExtensionIssues(diagnostics?: Parameters<typeof collectExtensionIssues>[0]["diagnostics"]): void {
-    const issues = collectExtensionIssues({ diagnostics, extensions: this.inner.resourceLoader?.getExtensions?.() });
+  reportExtensionIssues(diagnostics?: Parameters<typeof collectExtensionIssues>[0]["diagnostics"], modelsJsonError?: string): void {
+    const issues = collectExtensionIssues({ diagnostics, modelsJsonError, extensions: this.inner.resourceLoader?.getExtensions?.() });
     for (const issue of issues) this.reportExtensionIssue(issue);
   }
 
@@ -3252,7 +3252,7 @@ export async function startRpcSession(
             controller.abort();
           }
         }
-        wrapper.reportExtensionIssues(services.diagnostics);
+        wrapper.reportExtensionIssues(services.diagnostics, services.modelRuntime.getError());
         // The SDK decided fallback before session_start and our model recovery.
         // Only report it if the saved/requested choice still was not recovered.
         const desired = savedModel ?? (defaultProvider && defaultModelId ? { provider: defaultProvider, modelId: defaultModelId } : undefined);
