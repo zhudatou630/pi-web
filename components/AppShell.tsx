@@ -4261,6 +4261,8 @@ export function AppShell() {
               </svg>
             </button>
           )}
+          {/* Phones: the fixed views scroll with the content tabs as one strip, or the tabs got only a sliver beside them. */}
+          <div className="panel-tabs-row" data-tab-scroller={isMobile ? "true" : undefined}>
           <div role="tablist" aria-label={translate("panel.views")} className="panel-view-tabs">
             {/* A tablist as the chat tabs: one Tab stop, ←/→ move to and show the other view. */}
             {(["changes", "files", "notes"] as const).map((view, index, views) => (
@@ -4297,6 +4299,7 @@ export function AppShell() {
               onRevealInExplorer={handleRevealInExplorer}
               isMobile={isMobile}
             />
+          </div>
           </div>
           <PanelAddMenu
             onOpenTerminal={panelCwd ? () => handleOpenTerminal(panelCwd) : undefined}

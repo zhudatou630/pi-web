@@ -518,6 +518,26 @@ html.dark {
   height: 100%;
   overflow: hidden;
 }
+/* Desktop: no box. Phones: fixed views and content tabs scroll together as one strip. */
+.panel-tabs-row {
+  display: contents;
+}
+.panel-tabs-row[data-tab-scroller] {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.panel-tabs-row[data-tab-scroller]::-webkit-scrollbar {
+  display: none;
+}
+.panel-tabs-row[data-tab-scroller] .panel-content-tabs {
+  flex-shrink: 0;
+  overflow: visible;
+}
 .panel-add-menu,
 .panel-text-menu {
   position: relative;

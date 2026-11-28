@@ -71,12 +71,13 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onPinTab, onCloseTab, o
   useEffect(() => {
     const list = listRef.current;
     const tab = activeTabRef.current;
-    // Move only this strip, never its ancestors or the document.
-    if (list && tab) {
-      const strip = list.getBoundingClientRect();
+    // Move only this strip (or the row it scrolls with, data-tab-scroller), never the document.
+    const scroller = list?.closest<HTMLElement>("[data-tab-scroller]") ?? list;
+    if (scroller && tab) {
+      const strip = scroller.getBoundingClientRect();
       const { left, right } = tab.getBoundingClientRect();
-      if (left < strip.left) list.scrollLeft -= strip.left - left;
-      else if (right > strip.right) list.scrollLeft += right - strip.right;
+      if (left < strip.left) scroller.scrollLeft -= strip.left - left;
+      else if (right > strip.right) scroller.scrollLeft += right - strip.right;
     }
     if (!focusAfterCloseRef.current) return;
     focusAfterCloseRef.current = false;
