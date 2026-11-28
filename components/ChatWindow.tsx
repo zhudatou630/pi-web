@@ -950,7 +950,7 @@ function ProcessDetailsGroup({
         <div
           ref={scrollBoxRef}
           onScroll={handleBoxScroll}
-          className="process-details-list"
+          className="process-details-list scroll-fade-block"
           style={{
             display: "flex",
             flexDirection: "column",

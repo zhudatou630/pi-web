@@ -10,13 +10,22 @@ function readable(value: unknown, separator = ", "): string | null {
   return null;
 }
 
+/** A leading `cd <cwd> &&` (or `;`) repeats the session cwd on every row; any other `cd` is kept. */
+function stripCwdPrefix(command: string, cwd?: string): string {
+  const root = cwd?.replace(/[\\/]+$/, "");
+  if (!root) return command;
+  const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`^\\s*cd\\s+(["']?)${escaped}[\\\\/]?\\1\\s*(?:&&|;)\\s*`).exec(command);
+  return match && match[0].length < command.length ? command.slice(match[0].length) : command;
+}
+
 /** Header text, not serialization: bounded traversal also tolerates cyclic extension arguments. */
-export function getToolPreview(block: ToolCallContent): { text: string; path?: string } {
+export function getToolPreview(block: ToolCallContent, cwd?: string): { text: string; path?: string } {
   const input = block.input;
   if (!input || typeof input !== "object") return { text: "" };
   for (const key of ["command", "pattern", "query"]) {
     const text = readable(input[key], key === "command" ? " " : ", ");
-    if (text) return { text: truncateText(text, 120) };
+    if (text) return { text: truncateText(key === "command" ? stripCwdPrefix(text, cwd) : text, 120) };
   }
   for (const key of ["path", "file_path"]) {
     const path = input[key];

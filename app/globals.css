@@ -2220,6 +2220,7 @@ pre, code {
     @media (pointer: fine) {
       .markdown-code-block pre,
       .markdown-table-wrap { --scroll-fade-gutter: 5px; }
+      .process-details-list.scroll-fade-block { --scroll-fade-gutter: 5px; }
     }
   }
 }
@@ -2910,8 +2911,34 @@ button.question-card-option:not(:disabled):hover {
   border-top: none;
   background: transparent;
 }
+/* The action word recedes so the object (command, file) carries the row; a shared width
+   lines the previews up on one edge. */
+:is(.process-details-list, .step-flat) .step-label {
+  min-width: 8ch; /* the built-in tool names, codemode included; longer names push their preview */
+  color: var(--text-dim);
+}
+/* The name says the tool, so rows carry no type icon. Only an error keeps its red mark,
+   inside the label's width so its preview stays on the shared edge (14px icon + 6px gap). */
+:is(.process-details-list, .step-flat) [data-step-card]:not(.is-error) [data-step-trigger] > .step-icon {
+  display: none;
+}
+:is(.process-details-list, .step-flat) .is-error .step-label {
+  min-width: calc(8ch - 20px);
+}
+/* Previews fade out like titles (.fade-clip); paths keep their ellipsis. */
+@supports (animation-timeline: scroll(self inline)) {
+  :is(.process-details-list, .step-flat) .step-preview {
+    text-overflow: clip;
+    animation-name: title-fade;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self inline);
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--title-fade)), transparent);
+  }
+}
 .process-details-list [data-message-text] {
-  padding: 3px 8px 3px 28px;
+  padding: 3px 8px;
   margin: 1px -8px;
   border-radius: var(--ui-radius-sm);
   transition: background var(--motion-fast);

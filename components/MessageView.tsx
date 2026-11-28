@@ -1315,7 +1315,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ block, duration, star
           </div>
           <span className="step-label">{t("i18n.thinking")}</span>
           {!expanded && (
-            <span className="step-preview">
+            <span className="step-preview" style={{ color: "var(--text-dim)" }}>
               {preview ? <ReactMarkdown allowedElements={[]} unwrapDisallowed skipHtml>{preview}</ReactMarkdown> : "..."}
             </span>
           )}
@@ -1438,7 +1438,7 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
   const resultIsEmpty = resultText === null ? false : (resultText.trim() === "(no output)" || resultText.trim() === "");
   const isError = result?.isError ?? false;
   const subagent = isSubagentToolDetails(result?.details) ? result.details : null;
-  const preview = getToolPreview(block);
+  const preview = getToolPreview(block, cwd);
   const previewPath = preview.path;
   const opensFile = presentation.as.toLowerCase() === "read" || isEditTool || isWriteToolName(block.toolName);
   const openablePath = previewPath && opensFile && !isError ? resolveLocalFilePath(previewPath, cwd) : null;
@@ -1523,14 +1523,14 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
           : <pre
           className="step-body"
           style={{
-            margin: 0,
+            marginBlock: 0,
             padding: shellCommand === undefined ? "8px 10px" : "6px 10px 0",
             color: shellCommand === undefined && codemodeCode === undefined ? "var(--text-muted)" : "var(--text)",
             fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
             whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
+            overflowWrap: "anywhere",
           }}
         >
           {codemodeCode ?? (shellCommand === undefined ? inputStr : (<><span style={{ color: "var(--text-dim)", userSelect: "none" }}>$ </span>{shellCommand}</>))}
@@ -1548,14 +1548,14 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
         <pre
           className="step-body"
           style={{
-            margin: 0,
+            marginBlock: 0,
             padding: "8px 10px",
             color: "var(--text-muted)",
             fontSize: "calc(12px + var(--chat-font-size-offset, 0px))",
             lineHeight: 1.5,
             overflow: "auto",
             whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
+            overflowWrap: "anywhere",
           }}
         >
           {t("chat.generatingToolInput")}
@@ -1603,7 +1603,7 @@ export function ToolCallBlock({ block, result, notRun, duration, startTime, live
 function ToolArguments({ input, fallback }: { input: unknown; fallback: string }) {
   const fields = input && typeof input === "object" && !Array.isArray(input) ? Object.entries(input) : [];
   const flat = fields.length > 0 && fields.every(([, value]) => value === null || typeof value !== "object");
-  const style = { margin: 0, fontSize: "calc(12px + var(--chat-font-size-offset, 0px))", lineHeight: 1.5 };
+  const style = { marginBlock: 0, fontSize: "calc(12px + var(--chat-font-size-offset, 0px))", lineHeight: 1.5 };
   if (!flat) return <pre className="step-body" style={{ ...style, padding: "8px 10px", color: "var(--text-muted)", overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{fallback}</pre>;
   // Keys share the values' mono face: Sarasa UI's Latin (Inter) sits visibly larger than Sarasa Term's (Iosevka) at the same px.
   return (
@@ -1637,13 +1637,11 @@ function NestedCallList({ nested, cwd }: { nested: NestedToolCalls; cwd?: string
       </div>
       {nested.calls.map((call) => {
         const failed = call.status === "error";
-        const preview = call.arguments ? getToolPreview({ type: "toolCall", toolCallId: call.id, toolName: call.name, input: call.arguments }) : { text: "" };
+        const preview = call.arguments ? getToolPreview({ type: "toolCall", toolCallId: call.id, toolName: call.name, input: call.arguments }, cwd) : { text: "" };
         return (
           <div key={call.id} title={call.error} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 20, minWidth: 0, color: failed ? "var(--danger)" : undefined }}>
-            <span style={{ display: "flex", width: 14, justifyContent: "center", flexShrink: 0 }}>
-              <ToolIcon toolName={call.name} isError={failed} size={12} />
-            </span>
-            <span style={{ color: failed ? "var(--danger)" : "var(--text)", flexShrink: 0 }}>{displayToolName(call.name)}</span>
+            {failed && <ToolIcon toolName={call.name} isError size={12} />}
+            <span style={{ color: failed ? "var(--danger)" : "var(--text-dim)", flexShrink: 0 }}>{displayToolName(call.name)}</span>
             {preview.path ? <ToolPathPreview path={preview.path} cwd={cwd} /> : (
               <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {failed && call.error ? call.error : preview.text}
@@ -1995,7 +1993,7 @@ function PairedResult({ text, images, isEmpty, isError }: {
             maxHeight: 400,
             background: "var(--bg)",
             whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
+            overflowWrap: "anywhere",
           }}
         >
           {isEmpty ? t("i18n.noOutput") : renderFullBlocks(text)}
@@ -2098,7 +2096,7 @@ function SubagentNotificationView({ message, cwd, onOpenFile }: {
         <span className="step-icon">
           <SubagentIcon size={12} />
         </span>
-        <span className="step-preview" style={{ color: "var(--text)" }}>{label}</span>
+        <span className="step-preview" style={{ color: "var(--text-muted)" }}>{label}</span>
         <svg data-step-chevron="" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--text-dim)" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="2 3.5 5 6.5 8 3.5" />
         </svg>
@@ -2174,7 +2172,7 @@ function CustomMessageView({ message, cwd, onOpenFile, isProcess }: { message: C
         )}
       </div>
       {expanded && (
-        <div className="step-body" style={{ padding: "6px 10px 8px 20px" }}>
+        <div className="step-body" style={{ padding: "6px 10px 8px" }}>
           <ImageThumbs images={thumbs} style={{ marginBottom: text ? 8 : 0 }} />
           {text
             ? <MarkdownBody className="markdown-custom-message" cwd={cwd} onOpenFile={onOpenFile}>{text}</MarkdownBody>
@@ -2211,7 +2209,7 @@ function CustomMessageView({ message, cwd, onOpenFile, isProcess }: { message: C
       {expanded && <StepCollapseRail onCollapse={() => setExpanded(false)} />}
       {/* Images stay visible while folded, as on tool rows (#826). */}
       {!expanded && thumbs.length > 0 && (
-        <div className="step-body" style={{ padding: "6px 10px 8px 20px" }}>
+        <div className="step-body" style={{ padding: "6px 10px 8px" }}>
           <ImageThumbs images={thumbs} />
         </div>
       )}
@@ -2364,7 +2362,7 @@ function BashExecutionView({ message, sessionId, expanded, live = false }: { mes
     </>
   );
   const footer = message.truncated ? (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, padding: "0 10px 6px", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, padding: "0 10px 6px 20px", background: "var(--bg)", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.35 }}>
       <span role="status">{!message.fullOutputPath && message.fullOutputError
         ? t("chat.bashFullNotSaved", { reason: message.fullOutputError })
         : t(fullError ?? (fullOutput !== null ? "chat.bashFullShown" : "chat.bashTruncated"))}</span>
