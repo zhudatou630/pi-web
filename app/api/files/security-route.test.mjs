@@ -23,7 +23,7 @@ test.after(() => {
 });
 
 const jiti = createJiti(import.meta.url, { alias: { "@": process.cwd() }, moduleCache: false });
-const { GET: files, POST: upload } = await jiti.import("./[...path]/route.ts");
+const { GET: files, POST: upload, DELETE: remove } = await jiti.import("./[...path]/route.ts");
 const { GET: diff } = await jiti.import("../git/diff/route.ts");
 const { GET: index } = await jiti.import("../file-index/route.ts");
 const { GET: status } = await jiti.import("../git/status/route.ts");
@@ -48,7 +48,7 @@ function request(handler, pathname, query) {
 test("uploads accept files above 25 MiB and reject aggregate oversize before any write", async (t) => {
   const root = fixture();
   let selected = [new File([Buffer.alloc(26 * 1024 * 1024, 0x61)], "large.txt")];
-  t.mock.method(Response.prototype, "formData", async () => ({ getAll: () => selected }));
+  t.mock.method(Response.prototype, "formData", async () => ({ getAll: (key) => key === "files" ? selected : selected.map((file) => file.name) }));
   const post = (headers = {}) => upload(new NextRequest("http://localhost/api/files/target?type=upload", {
     method: "POST", body: "multipart fixture", headers: { host: "localhost", ...headers },
   }), { params: Promise.resolve({ path: [root.replace(/^\/+/, "")] }) });
@@ -74,8 +74,11 @@ test("upload preflight and writes authorize nested directories and reject traver
   const existingFile = path.join(root, "file.txt");
   fs.writeFileSync(existingFile, "original");
   async function post(directory, type, fileName = "uploaded.txt") {
-    const body = type === "upload-check" ? JSON.stringify({ fileNames: [fileName] }) : new FormData();
-    if (body instanceof FormData) body.append("files", new File(["uploaded"], fileName));
+    const body = type === "upload-check" ? JSON.stringify({ paths: [fileName] }) : new FormData();
+    if (body instanceof FormData) {
+      body.append("files", new File(["uploaded"], "payload"));
+      body.append("paths", fileName);
+    }
     return upload(new NextRequest(`http://localhost/api/files/target?type=${type}`, {
       method: "POST", body,
       headers: { host: "localhost", ...(type === "upload-check" ? { "Content-Type": "application/json" } : {}) },
@@ -99,6 +102,61 @@ test("upload preflight and writes authorize nested directories and reject traver
   assert.deepEqual((await (await post(nested, "upload-check")).json()).conflicts, ["uploaded.txt"]);
   assert.equal((await post(path.join(root, "inside"), "upload", "via-link.txt")).status, 200);
   assert.equal(fs.readFileSync(path.join(nested, "via-link.txt"), "utf8"), "uploaded");
+});
+
+test("nested upload refuses linked or non-directory segments and hides EEXIST filesystem paths", async (t) => {
+  const root = fixture();
+  const outside = fs.mkdtempSync(path.join(base, "blocked-upload-"));
+  link(outside, path.join(root, "linked"));
+  fs.writeFileSync(path.join(root, "plain"), "keep");
+  async function send(paths) {
+    const body = new FormData();
+    for (const relative of paths) {
+      body.append("files", new File(["new"], "payload"));
+      body.append("paths", relative);
+    }
+    return upload(new NextRequest("http://localhost/api/files/target?type=upload", {
+      method: "POST", body, headers: { host: "localhost" },
+    }), { params: Promise.resolve({ path: [root.replace(/^\/+/, "")] }) });
+  }
+  const open = fs.openSync;
+  t.mock.method(fs, "openSync", (target, flag, mode) => {
+    if (flag === "wx" && target === path.join(root, "batch", "taken")) fs.closeSync(open(target, "wx"));
+    return open(target, flag, mode);
+  });
+  const response = await send(["linked/no", "plain/no", "batch/taken", "batch/deep/yes"]);
+  assert.equal(response.status, 207);
+  const result = await response.json();
+  assert.deepEqual(result.uploaded, ["batch/deep/yes"]);
+  assert.deepEqual(result.errors.map(({ name }) => name), ["linked/no", "plain/no", "batch/taken"]);
+  assert.equal(result.errors.at(-1).error, "Already exists");
+  assert.equal(fs.statSync(path.join(root, "batch", "taken")).size, 0);
+  assert.deepEqual(fs.readdirSync(outside), []);
+  assert.equal((await send([".GIT/HEAD"])).status, 400);
+});
+
+test("file mutation routes require same origin and protect Git paths before lookup", async () => {
+  const root = fixture();
+  const at = (...segments) => path.join(root, ...segments);
+  const call = (method, target, type, body, crossSite = false) => (method === "DELETE" ? remove : upload)(
+    new NextRequest(`http://localhost/api/files/target?type=${type}`, {
+      method, body: body && JSON.stringify(body),
+      headers: { host: "localhost", "sec-fetch-site": crossSite ? "cross-site" : "same-origin" },
+    }), { params: Promise.resolve({ path: [target.replace(/^\/+/, "")] }) },
+  );
+  assert.equal((await call("POST", root, "mkdir", { name: "docs" }, true)).status, 403);
+  assert.equal((await call("POST", root, "mkdir", { name: "docs" })).status, 200);
+  fs.writeFileSync(at("docs", "test.txt"), "saved");
+  assert.equal((await call("DELETE", at(".GIT", "HEAD"), "delete")).status, 403);
+  assert.equal((await call("POST", at("docs"), "move", { directory: at(".GIT", "missing") })).status, 403);
+  assert.equal((await call("DELETE", root, "delete")).status, 403);
+  assert.equal((await call("POST", at("docs"), "rename", { name: "renamed" })).status, 200);
+  assert.equal((await call("DELETE", at("renamed"), "delete", undefined, true)).status, 403);
+  // A folder needs the explicit recursive confirmation; a file-delete request leaves it intact.
+  assert.equal((await call("DELETE", at("renamed"), "delete")).status, 409);
+  assert.equal(fs.readFileSync(at("renamed", "test.txt"), "utf8"), "saved");
+  assert.equal((await call("DELETE", at("renamed"), "delete&recursive=1")).status, 200);
+  assert.equal(fs.existsSync(at("renamed")), false);
 });
 
 const diffRequest = (cwd, filePath) => request(diff, "/api/git/diff", { cwd, path: filePath });

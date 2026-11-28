@@ -32,7 +32,7 @@ import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import type { ContextBreakdown } from "@/lib/context-breakdown";
 import { FileViewer, type FileReveal, type FileSelectionAttachment } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
-import { FILE_TABS_KEY, getAdjacentTabId, mergeFileViewerStates, movePanelTab, openFileTab, orderPanelTabs, PANEL_TAB_ORDER_KEY, pinFileTab, replacePanelTabId, restoreFileTabs, restorePanelTabOrder, serializeFileTabs, saveFileViewerState } from "./file-tab-state";
+import { FILE_TABS_KEY, fileTabChanges, getAdjacentTabId, mergeFileViewerStates, movePanelTab, openFileTab, orderPanelTabs, PANEL_TAB_ORDER_KEY, pinFileTab, replacePanelTabId, restoreFileTabs, restorePanelTabOrder, serializeFileTabs, saveFileViewerState } from "./file-tab-state";
 import { SettingsPanel } from "./SettingsPanel";
 import { RoutinesView } from "./RoutinesView";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
@@ -2482,6 +2482,30 @@ export function AppShell() {
     setActiveFileTabId((current) => current && closing.has(current) ? keepId : current);
   }, []);
 
+  const handleFileMutation = useCallback((from: string, to?: string) => {
+    const tabs = mergeFileViewerStates(filePersistenceRef.current.tabs, latestFileViewerStatesRef.current);
+    const changes = fileTabChanges(tabs, from, to);
+    if (!changes.size) return;
+    const destinations = new Set([...changes.values()].flatMap((tab) => tab ? [tab.id] : []));
+    setFileTabs((current) => {
+      const seen = new Set<string>();
+      return current.flatMap((tab) => {
+        const next = changes.has(tab.id) ? changes.get(tab.id) : destinations.has(tab.id) ? null : tab;
+        if (!next || seen.has(next.id)) return [];
+        seen.add(next.id);
+        return [next];
+      });
+    });
+    setPanelTabOrder((order) => [...new Set(order.flatMap((id) => {
+      const next = changes.has(id) ? changes.get(id)?.id : id;
+      return next ? [next] : [];
+    }))]);
+    setActiveFileTabId((current) => {
+      if (!current || !changes.has(current)) return current;
+      return changes.get(current)?.id ?? getAdjacentTabId(panelTabs.filter((tab) => tab.id === current || changes.get(tab.id) !== null), current);
+    });
+  }, [panelTabs]);
+
   const handleMoveFileTab = useCallback((tabId: string, beforeId: string | null) => {
     setPanelTabOrder(movePanelTab(panelTabs.map((tab) => tab.id), tabId, beforeId));
   }, [panelTabs]);
@@ -4383,6 +4407,7 @@ export function AppShell() {
                 onOpenFile={handleOpenFile}
                 onAtMention={handleAtMention}
                 onAtMentions={handleAtMentions}
+                onFileMutation={handleFileMutation}
                 reveal={explorerReveal}
                 worktreeInfo={filesViewWorktreeInfo}
                 projects={panelDock === "files" ? null : filesProjects}

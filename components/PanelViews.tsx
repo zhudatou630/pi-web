@@ -30,8 +30,9 @@ function Chevron() {
 }
 
 /** A text trigger with an anchored menu; the menu closes after a pick. */
-function TextMenu({ label, title, className, children }: {
-  label: ReactNode;
+function TextMenu({ label, title, className, icon, children }: {
+  label?: ReactNode;
+  icon?: (open: boolean, toggle: () => void) => ReactNode;
   title?: string;
   className?: string;
   children: (close: () => void) => ReactNode;
@@ -42,10 +43,12 @@ function TextMenu({ label, title, className, children }: {
   useMenuDismiss(open, rootRef, close);
   return (
     <div ref={rootRef} className={`panel-text-menu${className ? ` ${className}` : ""}`}>
-      <button type="button" className="panel-text-menu-trigger" title={title} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        {label}
-        <Chevron />
-      </button>
+      {icon ? icon(open, () => setOpen((value) => !value)) : (
+        <button type="button" className="panel-text-menu-trigger" title={title} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          {label}
+          <Chevron />
+        </button>
+      )}
       {open && <div role="menu" className="menu-surface panel-text-menu-list">{children(close)}</div>}
     </div>
   );
@@ -169,16 +172,16 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
   );
 }
 
-function IconButton({ title, onClick, disabled, pressed, style, children }: { title: string; onClick: () => void; disabled?: boolean; pressed?: boolean; style?: CSSProperties; children: ReactNode }) {
+function IconButton({ title, onClick, disabled, pressed, expanded, style, children }: { title: string; onClick: () => void; disabled?: boolean; pressed?: boolean; expanded?: boolean; style?: CSSProperties; children: ReactNode }) {
   return (
-    <button type="button" className="ghost-icon-button" title={title} aria-label={title} aria-pressed={pressed} onClick={onClick} disabled={disabled} style={style}>
+    <button type="button" className="ghost-icon-button" title={title} aria-label={title} aria-pressed={pressed} aria-expanded={expanded} aria-haspopup={expanded !== undefined ? "menu" : undefined} onClick={onClick} disabled={disabled} style={style}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
     </button>
   );
 }
 
 /** The project tree of `cwd` with search, project/worktree switch, collapse, upload and refresh. */
-export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, reveal, worktreeInfo, projects, projectRoot, homeCwd, onShowFolder, activePath, dockAction }: {
+export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, onFileMutation, reveal, worktreeInfo, projects, projectRoot, homeCwd, onShowFolder, activePath, dockAction }: {
   cwd: string;
   /** Shown (full size or docked) in an open panel; hidden, refreshes wait until it is shown. */
   active: boolean;
@@ -190,6 +193,7 @@ export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onO
   onOpenFile: (filePath: string, fileName: string, options?: { modeHint?: "diff"; cwd?: string; preview?: boolean }) => void;
   onAtMention?: (relativePath: string, isDir: boolean, sourceCwd?: string) => void;
   onAtMentions?: (relativePaths: string[], sourceCwd?: string) => void;
+  onFileMutation?: (from: string, to?: string) => void;
   reveal: { cwd: string; path: string; nonce: number } | null;
   worktreeInfo: PanelWorktreeInfo | null;
   /** The sidebar's projects; null hides the project menu (a docked column follows its tab). */
@@ -255,9 +259,22 @@ export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onO
           <polyline points="7 20 12 15 17 20" /><polyline points="7 4 12 9 17 4" />
         </IconButton>
       )}
-      <IconButton title={t("sidebar.uploadFilesTitle")} disabled={uploadBusy} onClick={() => explorerRef.current?.openUploadPicker()}>
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" />
-      </IconButton>
+      <TextMenu className="files-upload-menu" icon={(open, toggle) => (
+        <IconButton title={t("files.uploadFiles")} disabled={uploadBusy} expanded={open} onClick={toggle}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m17 8-5-5-5 5" /><path d="M12 3v12" />
+        </IconButton>
+      )}>
+        {(close) => <>
+          <button type="button" role="menuitem" onClick={() => { close(); explorerRef.current?.openUploadPicker(); }}>{t("files.uploadFiles")}</button>
+          <button type="button" role="menuitem" onClick={() => { close(); explorerRef.current?.openUploadPicker(true); }}>{t("files.uploadFolder")}</button>
+          <div role="separator" className="menu-surface-divider" />
+          <button type="button" role="menuitem" onClick={(event) => {
+            const anchor = event.currentTarget.closest(".panel-text-menu")?.querySelector<HTMLElement>("[aria-expanded]");
+            close();
+            if (anchor) explorerRef.current?.openNewFolder(anchor);
+          }}>{t("files.newFolder")}</button>
+        </>}
+      </TextMenu>
       <IconButton title={t("sidebar.refreshExplorer")} onClick={onRefresh}>
         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
       </IconButton>
@@ -275,6 +292,7 @@ export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onO
           refreshKey={refreshKey}
           onAtMention={onAtMention}
           onAtMentions={onAtMentions}
+          onFileMutation={onFileMutation}
           onUploadBusyChange={setUploadBusy}
           onCanCollapseChange={setCanCollapse}
           onSearchOpenChange={setSearchOpen}

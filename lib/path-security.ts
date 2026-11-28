@@ -2,6 +2,16 @@ import { lstatSync, realpathSync } from "fs";
 import path from "path";
 import { isWindowsAbsolutePath } from "./paths";
 
+export function isGitPath(target: string): boolean {
+  const separator = process.platform === "win32" || isWindowsAbsolutePath(target) ? /[\\/]/ : "/";
+  return target.split(separator).some((segment) => segment.replace(/[. ]+$/, "").toLowerCase() === ".git");
+}
+
+export function isFileEntryName(name: string): boolean {
+  if (!name || name === "." || name === ".." || /[/\\\0]/.test(name) || /^[a-z]:/i.test(name)) return false;
+  return process.platform !== "win32" || !(/[<>:"|?*\x00-\x1f]|[. ]$|^(?:con|prn|aux|nul|(?:com|lpt)[0-9¹²³])(?:\.|$)/i.test(name));
+}
+
 /** Refuse traversal before path normalization can hide it (including through links). */
 export function hasParentDirectorySegment(target: string): boolean {
   const separator = process.platform === "win32" || isWindowsAbsolutePath(target) ? /[\\/]/ : "/";

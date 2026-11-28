@@ -1,6 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
+import { promisify } from "node:util";
+import { FileMutationError, lstatIfPresent } from "./file-manage";
+import { isFileEntryName, isGitPath } from "./path-security";
 
 export const UPLOAD_CONFLICT_STRATEGIES = ["error", "overwrite", "skip"] as const;
 export type UploadConflictStrategy = typeof UPLOAD_CONFLICT_STRATEGIES[number];
@@ -10,6 +13,7 @@ const UPLOAD_CONFLICT_STRATEGY_SET = new Set<string>(UPLOAD_CONFLICT_STRATEGIES)
 export interface UploadTargetInspection {
   conflicts: string[];
   nonReplaceable: string[];
+  errors: { name: string; error: string }[];
 }
 
 export function parseUploadConflictStrategy(value: string | null): UploadConflictStrategy | null {
@@ -19,78 +23,105 @@ export function parseUploadConflictStrategy(value: string | null): UploadConflic
     : null;
 }
 
-export function validateUploadFileNames(fileNames: string[]): string | null {
-  if (fileNames.length === 0) return "No files selected";
-
+export function validateUploadPaths(paths: string[]): string | null {
+  if (paths.length === 0) return "No files selected";
   const seen = new Set<string>();
-  for (const fileName of fileNames) {
-    if (!fileName || fileName === "." || fileName === ".." || fileName.includes("\0")) {
-      return `Invalid file name: ${fileName || "(empty)"}`;
+  for (const relative of paths) {
+    if (relative.length > 32_767 || !relative.split("/").every(isFileEntryName) || isGitPath(relative)) {
+      return "Invalid upload path";
     }
-    if (fileName.includes("/") || fileName.includes("\\") || path.basename(fileName) !== fileName) {
-      return `File names must not contain a path: ${fileName}`;
-    }
-    if (seen.has(fileName)) return `Duplicate file name in upload: ${fileName}`;
-    seen.add(fileName);
+    const key = (process.platform === "win32" ? relative.toLowerCase() : relative) + "/";
+    if (seen.has(key)) return `Duplicate upload path: ${relative}`;
+    seen.add(key);
   }
-
+  // With the trailing slash, descendants sort immediately after their parent.
+  const sorted = [...seen].sort();
+  if (sorted.some((key, index) => index > 0 && key.startsWith(sorted[index - 1]))) {
+    return "An upload path is also a folder";
+  }
   return null;
 }
 
-export function inspectUploadTargets(directory: string, fileNames: string[]): UploadTargetInspection {
+function checkWindowsGitAlias(destination: string): void {
+  if (process.platform === "win32" && isGitPath(fs.realpathSync(destination))) {
+    throw new FileMutationError("Git metadata is protected", 403);
+  }
+}
+
+/** The base was authorized and canonicalized by the route. Do not follow child links. */
+export function uploadDestination(directory: string, relative: string, create: boolean): string | undefined {
+  const parts = relative.split("/");
+  const name = parts.pop()!;
+  for (const part of parts) {
+    directory = path.join(directory, part);
+    let stat = lstatIfPresent(directory);
+    if (!stat) {
+      if (!create) return;
+      fs.mkdirSync(directory);
+      stat = fs.lstatSync(directory);
+    }
+    if (!stat.isDirectory()) throw new FileMutationError("Upload parent is not a directory or is a symbolic link", 400);
+    checkWindowsGitAlias(directory);
+  }
+  return path.join(directory, name);
+}
+
+export function inspectUploadTargets(directory: string, paths: string[]): UploadTargetInspection {
   const conflicts: string[] = [];
   const nonReplaceable: string[] = [];
+  const errors: UploadTargetInspection["errors"] = [];
 
-  for (const fileName of fileNames) {
-    const destination = path.join(directory, fileName);
-    let stat: fs.Stats;
+  for (const name of paths) {
     try {
-      stat = fs.lstatSync(destination);
+      const destination = uploadDestination(directory, name, false);
+      const stat = destination && lstatIfPresent(destination);
+      if (!stat) continue;
+      if (stat.isFile()) checkWindowsGitAlias(destination);
+      conflicts.push(name);
+      if (!stat.isFile()) nonReplaceable.push(name);
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT") continue;
-      throw error;
+      if (!(error instanceof FileMutationError)) throw error;
+      errors.push({ name, error: error.message });
     }
-
-    conflicts.push(fileName);
-    if (!stat.isFile() || stat.isSymbolicLink()) nonReplaceable.push(fileName);
   }
 
-  return { conflicts, nonReplaceable };
+  return { conflicts, nonReplaceable, errors };
 }
 
 function replaceableUploadStat(destination: string): fs.Stats {
   const stat = fs.lstatSync(destination);
   if (!stat.isFile() || stat.isSymbolicLink()) {
-    throw new Error("Cannot replace a directory or symbolic link");
+    throw new FileMutationError("Cannot replace a non-regular file", 409);
   }
+  checkWindowsGitAlias(destination);
   return stat;
 }
 
-export async function writeUploadFile(destination: string, bytes: Buffer, overwrite: boolean): Promise<void> {
-  if (!overwrite) {
-    await fs.promises.writeFile(destination, bytes, { flag: "wx" });
-    return;
-  }
+const writeFile = promisify(fs.writeFile);
 
-  const mode = replaceableUploadStat(destination).mode & 0o7777;
-  const temporaryPath = path.join(
-    path.dirname(destination),
-    `.${path.basename(destination)}.pi-upload-${randomUUID()}`,
-  );
-  let temporaryFile;
+export async function writeUploadFile(destination: string, bytes: Buffer, overwrite: boolean, recheck?: () => void): Promise<void> {
+  const mode = overwrite ? replaceableUploadStat(destination).mode & 0o7777 : undefined;
+  const output = overwrite ? path.join(path.dirname(destination), `.pi-upload-${randomUUID()}`) : destination;
+  // Open before yielding so another handler cannot swap a parent between validation and open.
+  const fd = fs.openSync(output, "wx", mode);
   try {
-    temporaryFile = await fs.promises.open(temporaryPath, "wx", mode);
     try {
-      await temporaryFile.writeFile(bytes);
+      await writeFile(fd, bytes);
     } finally {
-      await temporaryFile.close();
+      fs.closeSync(fd);
     }
-    // No await between revalidation and rename: an async write may have yielded to another mutation.
-    const currentMode = replaceableUploadStat(destination).mode & 0o7777;
-    fs.chmodSync(temporaryPath, currentMode);
-    fs.renameSync(temporaryPath, destination);
+    if (overwrite) {
+      recheck?.();
+      const currentMode = replaceableUploadStat(destination).mode & 0o7777;
+      fs.chmodSync(output, currentMode);
+      fs.renameSync(output, destination);
+    }
   } finally {
-    if (temporaryFile && fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    if (overwrite) {
+      // A moved or replaced parent is no longer safe to address by this path.
+      let safe = true;
+      try { recheck?.(); } catch { safe = false; }
+      if (safe && fs.existsSync(output)) fs.unlinkSync(output);
+    }
   }
 }

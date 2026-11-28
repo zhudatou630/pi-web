@@ -1,5 +1,6 @@
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import type { Tab } from "./TabBar";
+import { getFileName, normalizeFilePathSlashes } from "../lib/file-paths";
 
 interface OpenFileTabInput {
   cwd?: string;
@@ -98,6 +99,24 @@ export function saveFileViewerState(
 export function pinFileTab(tabs: Tab[], tabId: string): Tab[] {
   if (!tabs.some((tab) => tab.id === tabId && tab.preview)) return tabs;
   return tabs.map((tab) => tab.id === tabId ? { ...tab, preview: false } : tab);
+}
+
+export function fileTabChanges(tabs: Tab[], from: string, to?: string): Map<string, Tab | null> {
+  const changes = new Map<string, Tab | null>();
+  const source = normalizeFilePathSlashes(from);
+  const compare = /^[a-z]:\//i.test(source) || source.startsWith("//")
+    ? (value: string) => value.toLowerCase() : (value: string) => value;
+  const key = compare(source);
+  for (const tab of tabs) {
+    if (!tab.filePath) continue;
+    const path = normalizeFilePathSlashes(tab.filePath);
+    const candidate = compare(path);
+    if (candidate !== key && !candidate.startsWith(key + "/")) continue;
+    if (!to) { changes.set(tab.id, null); continue; }
+    const filePath = normalizeFilePathSlashes(to) + path.slice(source.length);
+    changes.set(tab.id, { ...tab, id: `file:${filePath}`, filePath, label: getFileName(filePath) });
+  }
+  return changes;
 }
 
 export const FILE_TABS_KEY = "pi-file-tabs";

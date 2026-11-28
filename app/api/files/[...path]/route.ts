@@ -24,7 +24,8 @@ import { isApiRequestAllowed } from "@/lib/request-security";
 import {
   inspectUploadTargets,
   parseUploadConflictStrategy,
-  validateUploadFileNames,
+  uploadDestination,
+  validateUploadPaths,
   writeUploadFile,
 } from "@/lib/file-upload";
 import { parseFormDataWithinLimit, RequestBodyTooLargeError } from "@/lib/bounded-form-data";
@@ -32,6 +33,7 @@ import { filePathFromApiSegments, samePath } from "@/lib/paths";
 import { hasParentDirectorySegment } from "@/lib/path-security";
 import { readTextPreviewChunk } from "@/lib/text-preview";
 import { streamFile } from "@/lib/file-stream";
+import { FileMutationError, fileMutationError, manageFile, resolveMutationDirectory } from "@/lib/file-manage";
 
 const IGNORED_NAMES = new Set([
   "node_modules", ".git", ".next", "dist", "build", "__pycache__",
@@ -56,46 +58,9 @@ function parseFileRequestType(value: string): FileRequestType | null {
   return FILE_REQUEST_TYPE_SET.has(value) ? (value as FileRequestType) : null;
 }
 
-async function getUploadDirectory(segments: string[]): Promise<
-  { directory: string } | { response: NextResponse }
-> {
-  const directory = filePathFromApiSegments(segments);
-  const allowedRoots = await getAllowedFileRoots();
-  if (!isFilePathAllowed(directory, allowedRoots)) {
-    return { response: NextResponse.json({ error: "Access denied" }, { status: 403 }) };
-  }
-
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(directory);
-  } catch {
-    return { response: NextResponse.json({ error: "Upload directory not found" }, { status: 404 }) };
-  }
-  if (!stat.isDirectory()) {
-    return { response: NextResponse.json({ error: "Upload target is not a directory" }, { status: 400 }) };
-  }
-
-  // A browsable directory can be a symlink. Resolve both sides before writes
-  // so a symlink inside an allowed root cannot redirect uploads outside it.
-  const realDirectory = fs.realpathSync(directory);
-  const realRoots = new Set<string>();
-  for (const root of allowedRoots) {
-    try {
-      realRoots.add(fs.realpathSync(root));
-    } catch {
-      // Ignore stale session roots that no longer exist.
-    }
-  }
-  if (!isFilePathAllowed(realDirectory, realRoots)) {
-    return { response: NextResponse.json({ error: "Access denied" }, { status: 403 }) };
-  }
-
-  return { directory: realDirectory };
-}
-
-function parseUploadFileNames(value: unknown): string[] | null {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) return null;
-  return value;
+function mutationResponse(error: unknown, fallback: string) {
+  const failure = fileMutationError(error, fallback);
+  return NextResponse.json({ error: failure.message }, { status: failure.status });
 }
 
 export async function POST(
@@ -107,27 +72,33 @@ export async function POST(
   }
 
   try {
-    const { path: segments } = await params;
-    const uploadDirectory = await getUploadDirectory(segments);
-    if ("response" in uploadDirectory) return uploadDirectory.response;
-    const { directory } = uploadDirectory;
+    const target = filePathFromApiSegments((await params).path);
     const type = request.nextUrl.searchParams.get("type") ?? "upload";
+    const roots = await getAllowedFileRoots();
+    if (type === "mkdir" || type === "rename" || type === "move") {
+      const body = await request.json().catch(() => null) as { name?: unknown; directory?: unknown } | null;
+      if (type === "move") {
+        if (typeof body?.directory !== "string") {
+          return NextResponse.json({ error: "Missing destination directory" }, { status: 400 });
+        }
+        return NextResponse.json({ path: await manageFile(target, { type, directory: body.directory }, roots) });
+      }
+      return NextResponse.json({ path: await manageFile(target, { type, name: body?.name }, roots) });
+    }
+    if (type !== "upload" && type !== "upload-check") {
+      return NextResponse.json({ error: "Invalid upload request type" }, { status: 400 });
+    }
+    const directory = resolveMutationDirectory(target, roots);
 
     if (type === "upload-check") {
-      const body = await request.json().catch(() => null) as { fileNames?: unknown } | null;
-      const fileNames = parseUploadFileNames(body?.fileNames);
-      if (!fileNames) {
-        return NextResponse.json({ error: "fileNames must be an array of strings" }, { status: 400 });
+      const body = await request.json().catch(() => null) as { paths?: unknown } | null;
+      const paths = body?.paths;
+      if (!Array.isArray(paths) || !paths.every((value) => typeof value === "string")) {
+        return NextResponse.json({ error: "paths must be an array of strings" }, { status: 400 });
       }
-      const validationError = validateUploadFileNames(fileNames);
-      if (validationError) {
-        return NextResponse.json({ error: validationError }, { status: 400 });
-      }
-      return NextResponse.json(inspectUploadTargets(directory, fileNames));
-    }
-
-    if (type !== "upload") {
-      return NextResponse.json({ error: "Invalid upload request type" }, { status: 400 });
+      const validationError = validateUploadPaths(paths);
+      if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+      return NextResponse.json(inspectUploadTargets(directory, paths));
     }
 
     const strategy = parseUploadConflictStrategy(request.nextUrl.searchParams.get("conflict"));
@@ -135,6 +106,7 @@ export async function POST(
       return NextResponse.json({ error: "Invalid conflict strategy" }, { status: 400 });
     }
 
+    const initialDirectory = fs.statSync(directory);
     let formData: FormData;
     try {
       formData = await parseFormDataWithinLimit(request, MAX_UPLOAD_REQUEST_BYTES);
@@ -148,13 +120,23 @@ export async function POST(
     if (files.reduce((total, file) => total + file.size, 0) > MAX_UPLOAD_TOTAL_BYTES) {
       return NextResponse.json({ error: "Uploads must total 100MB or less" }, { status: 413 });
     }
-    const fileNames = files.map((file) => file.name);
-    const validationError = validateUploadFileNames(fileNames);
+    const paths = formData.getAll("paths");
+    if (paths.length !== files.length || !paths.every((value) => typeof value === "string")) {
+      return NextResponse.json({ error: "Each file must have a relative path" }, { status: 400 });
+    }
+    const validationError = validateUploadPaths(paths);
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    const inspection = inspectUploadTargets(directory, fileNames);
+    const verifyDirectory = () => {
+      const current = fs.lstatSync(directory);
+      if (current.dev !== initialDirectory.dev || current.ino !== initialDirectory.ino || fs.realpathSync(directory) !== directory) {
+        throw new FileMutationError("Upload directory changed", 409);
+      }
+    };
+    verifyDirectory();
+    const inspection = inspectUploadTargets(directory, paths);
     if (strategy === "error" && inspection.conflicts.length > 0) {
       return NextResponse.json({
         error: "One or more files already exist",
@@ -167,32 +149,37 @@ export async function POST(
     const nonReplaceableSet = new Set(inspection.nonReplaceable);
     const uploaded: string[] = [];
     const skipped: string[] = [];
-    const errors: Array<{ name: string; error: string }> = [];
+    const errors = inspection.errors;
+    const blocked = new Set(errors.map(({ name }) => name));
 
-    for (const file of files) {
-      const destination = path.join(directory, file.name);
-      if (conflictSet.has(file.name) && strategy === "skip") {
-        skipped.push(file.name);
+    for (const [index, file] of files.entries()) {
+      const name = paths[index];
+      if (blocked.has(name)) continue;
+      if (conflictSet.has(name) && strategy === "skip") {
+        skipped.push(name);
         continue;
       }
-      if (conflictSet.has(file.name) && nonReplaceableSet.has(file.name)) {
-        errors.push({ name: file.name, error: "Cannot replace a directory or symbolic link" });
-        continue;
-      }
-
-      let bytes: Buffer;
-      try {
-        bytes = Buffer.from(await file.arrayBuffer());
-      } catch (error) {
-        errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+      if (nonReplaceableSet.has(name)) {
+        errors.push({ name, error: "Cannot replace a non-regular file" });
         continue;
       }
 
       try {
-        await writeUploadFile(destination, bytes, conflictSet.has(file.name));
-        uploaded.push(file.name);
+        const bytes = Buffer.from(await file.arrayBuffer());
+        verifyDirectory();
+        const destination = uploadDestination(directory, name, true)!;
+        const parent = path.dirname(destination);
+        const original = fs.statSync(parent);
+        const recheck = () => {
+          verifyDirectory();
+          if (!uploadDestination(directory, name, false)) throw new FileMutationError("Upload directory changed", 409);
+          const current = fs.statSync(parent);
+          if (current.dev !== original.dev || current.ino !== original.ino) throw new FileMutationError("Upload directory changed", 409);
+        };
+        await writeUploadFile(destination, bytes, conflictSet.has(name), recheck);
+        uploaded.push(name);
       } catch (error) {
-        errors.push({ name: file.name, error: error instanceof Error ? error.message : String(error) });
+        errors.push({ name, error: fileMutationError(error, "Could not write file").message });
       }
     }
 
@@ -201,41 +188,25 @@ export async function POST(
       { status: errors.length > 0 ? 207 : 200 },
     );
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return mutationResponse(error, "Upload failed");
   }
 }
 
-/** Deletes one file (or symlink). Directories are refused on purpose: recursive deletes stay with the terminal/agent. */
+/** Deletes the entry itself; real directories are removed recursively after protection checks. */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
   if (!isApiRequestAllowed(request)) {
     return NextResponse.json({ error: "Untrusted API request" }, { status: 403 });
   }
   try {
     const filePath = filePathFromApiSegments((await params).path);
-    const allowedRoots = await getAllowedFileRoots();
-    // unlink removes the entry itself, so the resolved parent is what must stay inside a root.
-    if (
-      !isFilePathAllowed(filePath, allowedRoots)
-      || !isExistingFilePathAllowed(path.dirname(filePath), allowedRoots)
-    ) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
-    let stat: fs.Stats;
-    try {
-      stat = fs.lstatSync(filePath);
-    } catch {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-    if (stat.isDirectory()) {
-      return NextResponse.json({ error: "Directories cannot be deleted here" }, { status: 400 });
-    }
-    fs.unlinkSync(filePath);
+    const recursive = request.nextUrl.searchParams.get("recursive") === "1";
+    await manageFile(filePath, { type: "delete", recursive }, await getAllowedFileRoots());
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return mutationResponse(error, "Delete failed");
   }
 }
 

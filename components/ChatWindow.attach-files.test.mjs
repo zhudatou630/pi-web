@@ -43,11 +43,10 @@ async function run(act, { cwd = "/project", response, upload } = {}) {
     splitDroppedItems,
     dropMentionText,
     uploadFiles: async (target, uploads, strategy) => {
-      calls.uploads.push([target, uploads.map((file) => file.name), strategy]);
+      calls.uploads.push([target, uploads.map((file) => file.path), strategy]);
       return upload ? await upload() : response;
     },
   };
-  scope.uploadDroppedFiles = chatWindowCallback("uploadDroppedFiles", scope);
   scope.onDrop = chatWindowCallback("onDrop", scope);
   scope.onAttachFiles = chatWindowCallback("onAttachFiles", scope);
   await act(scope);
@@ -93,10 +92,14 @@ test("a failed file is reported and left out of the mentions", async () => {
   ]);
 });
 
-test("folders are reported and never uploaded", async () => {
-  const calls = await run((scope) => scope.onDrop([{ kind: "folder", name: "src" }]));
-  assert.deepEqual(calls.uploads, []);
-  assert.deepEqual(calls.notices, [["warning", 'chat.dropFoldersUnsupported {"names":"src"}']]);
+test("folder contents upload and yield one folder mention", async () => {
+  const batch = [report, log].map((file) => ({ name: file.name, isFile: true, file: (ready) => ready(file) }));
+  const entry = { name: "src", createReader: () => ({ readEntries: (ready) => ready(batch.splice(0)) }) };
+  const calls = await run((scope) => scope.onDrop([{ kind: "folder", entry }]), {
+    response: { status: 200, data: { uploaded: ["src/report.pdf", "src/server.log"] } },
+  });
+  assert.deepEqual(calls.uploads, [["/project", ["src/report.pdf", "src/server.log"], "skip"]]);
+  assert.deepEqual(calls.mentions, ["@src/ "]);
 });
 
 for (const target of [
@@ -107,7 +110,8 @@ for (const target of [
   test(`delayed uploads do not mention files in a changed composer: ${JSON.stringify(target)}`, async () => {
     const delayed = Promise.withResolvers();
     const calls = await run(async (scope) => {
-      const uploading = scope.uploadDroppedFiles([report, log]);
+      const uploading = scope.onDrop([report, log].map((file) => ({ kind: "file", file })));
+      await new Promise((resolve) => setImmediate(resolve));
       scope.uploadTargetRef.current = target;
       delayed.resolve({ status: 207, data: { uploaded: ["report.pdf"], skipped: ["server.log"] } });
       await uploading;

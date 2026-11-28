@@ -7,7 +7,7 @@ import ts from "typescript";
 import React from "react";
 
 const jiti = createJiti(import.meta.url);
-const { droppedItems } = await jiti.import("../lib/file-upload-client.ts");
+const { checkUploadSize, droppedItems, splitDroppedItems, uploadTopEntries } = await jiti.import("../lib/file-upload-client.ts");
 const { encodeFilePathForApi, joinFilePath, getRelativeFilePath, getFileDirectory } = await jiti.import("../lib/file-paths.ts");
 const source = ts.createSourceFile("FileExplorer.tsx", readFileSync(new URL("./FileExplorer.tsx", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function callback(name, scope) {
@@ -37,7 +37,10 @@ function fixture({ preflight = {}, response = { status: 200, data: { uploaded: [
   const state = { expanded: new Set(), requests: [], uploads: [], mentions: [], refreshes: 0 };
   const scope = {
     cwd: "/project", prevCwdRef: { current: "/project" }, uploadBusy: false, pendingConflict: null, uploadLockRef: { current: false },
-    droppedItems, encodeFilePathForApi, joinFilePath, getRelativeFilePath, getFileDirectory,
+    checkUploadSize, droppedItems, splitDroppedItems, uploadTopEntries, encodeFilePathForApi, joinFilePath, getRelativeFilePath, getFileDirectory,
+    normalizeFilePathSlashes: (path) => path,
+    TREE_ROW_DRAG: "application/x-pi-web-file-row",
+    manage: (...args) => { state.moved = args; },
     fileDragDepthRef: { current: 0 },
     setUploadSummary: (value) => { state.summary = value; },
     setHighlightedPaths: (value) => { state.highlights = value; },
@@ -55,11 +58,11 @@ function fixture({ preflight = {}, response = { status: 200, data: { uploaded: [
       return { ok: true, json: async () => preflight };
     },
     uploadFiles: async (dir, files, strategy) => {
-      state.uploads.push([dir, Array.from(files, (file) => file.name), strategy]);
+      state.uploads.push([dir, Array.from(files, (file) => file.path), strategy]);
       return response;
     },
   };
-  for (const name of ["applyUploadResult", "performUpload", "prepareUpload", "handleExplorerDragEnter", "handleExplorerDragLeave", "handleExplorerDragOver", "handleExplorerDrop"]) scope[name] = callback(name, scope);
+  for (const name of ["expandToDirectory", "applyUploadResult", "performUpload", "prepareUpload", "handleExplorerDragEnter", "handleExplorerDragLeave", "handleExplorerDragOver", "handleExplorerDrop"]) scope[name] = callback(name, scope);
   return { state, scope };
 }
 function event(directory, types = ["Files"], items) {
@@ -69,6 +72,7 @@ function event(directory, types = ["Files"], items) {
     preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; },
   };
 }
+const loose = [{ file: new File(["a"], "a.txt"), path: "a.txt" }];
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 test("pending conflicts disable the upload button signal, picker and hidden input until resolved", () => {
@@ -141,7 +145,7 @@ test("both preflight and upload-time conflicts preserve the directory for skip/o
       preflight: preflightConflict ? { conflicts: ["a.txt"] } : {},
       response: { status: 409, data: { conflicts: ["a.txt"] } },
     });
-    await scope.prepareUpload([new File(["a"], "a.txt")], "/project/src/deep");
+    await scope.prepareUpload(loose, "/project/src/deep");
     assert.equal(state.conflict.directory, "/project/src/deep");
     for (const strategy of ["skip", "overwrite"]) {
       const pending = state.conflict;
@@ -174,8 +178,8 @@ test("delayed preflight/upload results do not leak into a different explorer cwd
     if (stage === "preflight") scope.fetch = async () => delayed.promise;
     else scope.uploadFiles = async () => delayed.promise;
     const pending = stage === "preflight"
-      ? scope.prepareUpload([new File(["a"], "a.txt")], "/project/src")
-      : scope.performUpload([new File(["a"], "a.txt")], "error", "/project/src");
+      ? scope.prepareUpload(loose, "/project/src")
+      : scope.performUpload(loose, "error", "/project/src");
     scope.prevCwdRef.current = "/other-project";
     delayed.resolve(stage === "preflight"
       ? { ok: true, json: async () => ({ conflicts: ["a.txt"] }) }
@@ -199,23 +203,32 @@ test("moving between row children does not flicker the folder highlight", () => 
   assert.equal(state.target, null);
 });
 
-test("a folder-only drop is refused without making an upload request", async () => {
-  const { scope, state } = fixture();
-  scope.handleExplorerDrop(event("/project/src", ["Files"], [
-    { kind: "file", webkitGetAsEntry: () => ({ isDirectory: true, name: "folder" }) },
-  ]));
+test("folder drops highlight and mention the top-level folder", async () => {
+  const { scope, state } = fixture({ response: { status: 200, data: { uploaded: ["folder/a.txt"] } } });
+  const batch = [{ name: "a.txt", isFile: true, file: (ready) => ready(loose[0].file) }];
+  scope.handleExplorerDrop(event("/project/src", ["Files"], [{ kind: "file", webkitGetAsEntry: () => ({
+    isDirectory: true, name: "folder", createReader: () => ({ readEntries: (ready) => ready(batch.splice(0)) }),
+  }) }]));
   await settle();
-  assert.equal(state.requests.length, 0);
-  assert.match(state.error, /chat.dropFoldersUnsupported/);
+  assert.deepEqual(state.uploads, [["/project/src", ["folder/a.txt"], "error"]]);
+  assert.deepEqual([...state.highlights], ["/project/src/folder"]);
+  scope.uploadSummary = state.summary;
+  callback("addUploadedFilesToChat", scope)();
+  assert.deepEqual(state.mentions, [[["src/folder/"], "/project"]]);
 });
 
-test("mixed folders and files leave folders out without hiding an upload failure", async () => {
-  const { scope, state } = fixture({ response: { status: 413, data: { error: "too large" } } });
-  scope.handleExplorerDrop(event("/project/src", ["Files"], [
-    { kind: "file", webkitGetAsEntry: () => ({ isDirectory: true, name: "folder" }) },
-    { kind: "file", getAsFile: () => new File(["a"], "a.txt") },
-  ]));
-  await settle();
-  assert.deepEqual(state.uploads, [["/project/src", ["a.txt"], "error"]]);
-  assert.match(state.error, /^too large\nchat.dropFoldersUnsupported/);
+test("tree drags move rather than upload and use the drop event's directory", () => {
+  const { scope, state } = fixture();
+  const drop = event("/project/target", [scope.TREE_ROW_DRAG]);
+  drop.dataTransfer.getData = () => "/project/source.txt";
+  scope.handleExplorerDragOver(drop);
+  assert.equal(drop.dataTransfer.dropEffect, "move");
+  // A row dragged in from another window is not this page's drag: nothing moves.
+  scope.draggedTreePath = null;
+  scope.handleExplorerDrop(drop);
+  assert.equal(state.moved, undefined);
+  scope.draggedTreePath = "/project/source.txt";
+  scope.handleExplorerDrop(drop);
+  assert.deepEqual(JSON.parse(JSON.stringify(state.moved)), ["/project/source.txt", "move", { directory: "/project/target" }]);
+  assert.equal(state.requests.length, 0);
 });

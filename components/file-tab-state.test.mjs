@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getAdjacentTabId, mergeFileViewerStates, movePanelTab, openFileTab, orderPanelTabs, replacePanelTabId, restorePanelTabOrder, pinFileTab, restoreFileTabs, serializeFileTabs, saveFileViewerState } from "./file-tab-state.ts";
+import { createJiti } from "jiti";
+
+const { fileTabChanges, getAdjacentTabId, mergeFileViewerStates, movePanelTab, openFileTab, orderPanelTabs, replacePanelTabId, restorePanelTabOrder, pinFileTab, restoreFileTabs, serializeFileTabs, saveFileViewerState } = await createJiti(import.meta.url).import("./file-tab-state.ts");
+
+test("file tabs follow a directory move and close on delete without matching sibling prefixes", () => {
+  const dir = "/repo/docs";
+  const tabs = ["/repo/docs/a.txt", "/repo/docs-bak/b.txt"].map((filePath) => ({ id: `file:${filePath}`, filePath }));
+  const moved = fileTabChanges(tabs, dir, "/repo/new");
+  assert.equal(moved.get(tabs[0].id).id, "file:/repo/new/a.txt");
+  assert.equal(moved.get(tabs[0].id).label, "a.txt");
+  assert.deepEqual([...fileTabChanges(tabs, dir)], [[tabs[0].id, null]]);
+});
 
 test("preview opens replace the previous preview in place without touching pinned tabs", () => {
   const tabs = [{ ...tabB, preview: true }, tabA];

@@ -1629,19 +1629,27 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // path, for phones that cannot drop files.
   const uploadTargetRef = useRef({ cwd: session?.cwd ?? newSessionCwd, draftKey: session?.id ?? newSessionDraftKey });
   uploadTargetRef.current = { cwd: session?.cwd ?? newSessionCwd, draftKey: session?.id ?? newSessionDraftKey };
-  const uploadDroppedFiles = useCallback(async (files: File[]) => {
+  const onDrop = useCallback(async (items: DroppedItem[]) => {
     const { cwd, draftKey } = uploadTargetRef.current;
-    if (!cwd) {
-      addNotice({ type: "error", message: t("chat.dropNeedsCwd") });
-      return;
-    }
+    const isCurrent = () => uploadTargetRef.current.cwd === cwd && uploadTargetRef.current.draftKey === draftKey;
     try {
+      const { images, files, failedFolders } = await splitDroppedItems(items);
+      if (images.length && isCurrent()) ownChatInputRef.current?.addImages(images);
+      if (failedFolders.length) addNotice({ type: "error", message: t("files.folderReadFailed", { names: failedFolders.join(", ") }) });
+      if (!files.length) {
+        if (!failedFolders.length && items.some((item) => item.kind === "folder")) addNotice({ type: "warning", message: t("files.noUploadableFiles") });
+        return;
+      }
+      if (!cwd) {
+        addNotice({ type: "error", message: t("chat.dropNeedsCwd") });
+        return;
+      }
       const { status, data } = await uploadFiles(cwd, files, "skip");
       if (status !== 200 && status !== 207) throw new Error(data.error ?? `HTTP ${status}`);
       const uploaded = data.uploaded ?? [];
       const skipped = data.skipped ?? [];
       const mentions = dropMentionText(files, [...uploaded, ...skipped]);
-      if (mentions && uploadTargetRef.current.cwd === cwd && uploadTargetRef.current.draftKey === draftKey) {
+      if (mentions && isCurrent()) {
         ownChatInputRef.current?.insertText(mentions);
       }
       if (uploaded.length > 0) {
@@ -1659,17 +1667,8 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     }
   }, [addNotice, onFilesChanged, t]);
 
-  const onDrop = useCallback((items: DroppedItem[]) => {
-    const { images, files, folders } = splitDroppedItems(items);
-    if (images.length > 0) ownChatInputRef.current?.addImages(images);
-    if (folders.length > 0) {
-      addNotice({ type: "warning", message: t("chat.dropFoldersUnsupported", { names: folders.join(", ") }) });
-    }
-    if (files.length > 0) void uploadDroppedFiles(files);
-  }, [addNotice, t, uploadDroppedFiles]);
-
   const onAttachFiles = useCallback((files: File[]) => {
-    onDrop(files.map((file) => ({ kind: "file", file })));
+    void onDrop(files.map((file) => ({ kind: "file", file })));
   }, [onDrop]);
 
   const { isDragOver, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useDragDrop(onDrop);

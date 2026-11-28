@@ -2,7 +2,17 @@
 
 ## Uploads
 
-Uploads have a 100 MiB combined file limit (101 MiB wire-body limit for multipart overhead), checked before any file is written; there is no separate per-file cap. Writes are asynchronous. Replacements retain the target's mode with an explicit chmod, use a same-directory exclusive temporary file, and synchronously recheck that the target is a regular file immediately before rename.
+Drop files or folders onto the tree root, a folder row, or chat. The Files toolbar also opens file and folder pickers. Folder uploads retain subfolders with files and skip dot-entries inside the selected folder; empty folders are not uploaded. Chat attaches loose images as before and inserts one mention per uploaded folder. The explorer highlights the uploaded top-level entries.
+
+The files route takes multipart `files` and parallel `paths` fields for `?type=upload`; `?type=upload-check` takes JSON `{ paths }`. Paths are relative to the requested directory, and intermediate symlinks are refused. Conflicts are handled per file.
+
+Uploads have a 100 MiB combined file limit (101 MiB wire-body limit for multipart overhead), checked in the browser before sending and on the server before any file is written; there is no separate per-file cap. Writes are asynchronous. Replacements retain the target's mode with an explicit chmod, use a same-directory exclusive temporary file, and synchronously recheck that the target is a regular file immediately before rename.
+
+## File tree changes
+
+Use the toolbar or a folder row menu to create a folder, or the row menu to rename or confirm deletion. Folder deletion includes its contents. Drag a row onto a folder or the tree root to move it. Open tabs follow moves and renames and close on deletion.
+
+Under `/api/files/<path>`, POST `?type=mkdir` takes `{ name }` at the parent; POST `?type=rename` takes `{ name }` at the entry; POST `?type=move` takes `{ directory }` at the entry. DELETE removes the entry itself; a real folder only with `?recursive=1`, which the client sends only after a folder was confirmed (otherwise 409), and asynchronously so a big tree does not stall other requests. Mutations are same-origin and confined to authorized roots. They refuse project/session roots and folders holding one, any `.git` path segment (any case, Windows trailing dots/spaces ignored), a folder that is or directly holds a checkout (own `.git`, e.g. `<repo>-worktrees/<branch>`), and a folder holding a linked worktree that `git worktree list` reports; links are operated on as links. Other nested repositories deeper inside a folder are not searched (a recursive walk would block the server on large trees). Cross-filesystem moves are refused.
 
 ## Git status
 
