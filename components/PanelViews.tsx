@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "@/hooks/useI18n";
 import { useMenuDismiss } from "@/hooks/useMenuDismiss";
 import { getFileName, getRelativeFilePath } from "@/lib/file-paths";
@@ -258,14 +259,19 @@ export function PanelAddMenu({ onOpenTerminal, onOpenBrowser, onOpenFile }: {
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  // Near the panel's right edge (many tabs), the menu opens leftwards instead of being clipped.
-  const [alignEnd, setAlignEnd] = useState(false);
+  // Portaled to <body>: the panel's `contain: paint` clips a menu that opens past its left edge
+  // (narrow panel). Near the right edge it opens leftwards.
+  const [position, setPosition] = useState<CSSProperties>({});
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
-  useMenuDismiss(open, rootRef, close);
+  useMenuDismiss(open, rootRef, close, menuRef);
   const item = (action: () => void) => () => { close(); action(); };
   const toggle = () => {
-    setAlignEnd((rootRef.current?.getBoundingClientRect().left ?? 0) + 200 > window.innerWidth);
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (rect) setPosition(rect.left + 200 > window.innerWidth
+      ? { position: "fixed", top: rect.bottom + 2, left: "auto", right: window.innerWidth - rect.right }
+      : { position: "fixed", top: rect.bottom + 2, left: rect.left });
     setOpen((value) => !value);
   };
   return (
@@ -275,12 +281,13 @@ export function PanelAddMenu({ onOpenTerminal, onOpenBrowser, onOpenFile }: {
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
-      {open && (
-        <div role="menu" className={`menu-surface panel-text-menu-list${alignEnd ? " is-end" : ""}`}>
+      {open && createPortal(
+        <div ref={menuRef} role="menu" className="menu-surface panel-text-menu-list" style={position}>
           {onOpenTerminal && <button type="button" role="menuitem" onClick={item(onOpenTerminal)}>{t("panel.terminal")}</button>}
           <button type="button" role="menuitem" onClick={item(onOpenBrowser)}>{t("panel.browser")}</button>
           {onOpenFile && <button type="button" role="menuitem" onClick={item(onOpenFile)}>{t("panel.openFile")}</button>}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

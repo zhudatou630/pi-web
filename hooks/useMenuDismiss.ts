@@ -16,16 +16,19 @@ export function menuEscapeFocusTarget(root: HTMLElement | null, focus: Element |
  * Escape gives focus back to its trigger. The menu is the innermost layer: it takes the Escape
  * (preventDefault), so a panel or drawer it opened in stays open (they skip a prevented Escape).
  */
-export function useMenuDismiss(open: boolean, rootRef: RefObject<HTMLElement | null>, close: () => void) {
+export function useMenuDismiss(open: boolean, rootRef: RefObject<HTMLElement | null>, close: () => void, portalRef?: RefObject<HTMLElement | null>) {
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) close();
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !portalRef?.current?.contains(target)) close();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || isImeComposing(event) || isModalDialogOpen()) return;
       event.preventDefault();
-      const trigger = menuEscapeFocusTarget(rootRef.current, document.activeElement, document.body);
+      // Focus inside a portaled menu counts as inside the root.
+      const focus = portalRef?.current?.contains(document.activeElement) ? null : document.activeElement;
+      const trigger = menuEscapeFocusTarget(rootRef.current, focus, document.body);
       close();
       trigger?.focus();
     };
@@ -35,5 +38,5 @@ export function useMenuDismiss(open: boolean, rootRef: RefObject<HTMLElement | n
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open, rootRef, close]);
+  }, [open, rootRef, close, portalRef]);
 }

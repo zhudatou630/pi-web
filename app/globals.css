@@ -537,7 +537,6 @@ html.dark {
   z-index: 520;
   min-width: 180px;
 }
-.panel-text-menu-list.is-end,
 .files-worktree-menu .panel-text-menu-list {
   left: auto;
   right: 0;
