@@ -1928,6 +1928,27 @@
   background: var(--bg-hover);
 }
 
+.models-list.is-selecting > .models-row {
+  min-height: var(--ui-row-height);
+  padding-block: 0;
+  user-select: none;
+}
+
+.models-list.is-selecting .models-row-button {
+  margin-block: 0;
+  padding-block: 0;
+}
+
+.models-list.is-selecting .models-row-text {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.models-list.is-selecting .models-row-button:disabled {
+  cursor: default;
+}
+
 label.models-row {
   cursor: pointer;
 }

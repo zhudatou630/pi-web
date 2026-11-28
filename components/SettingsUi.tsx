@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithRef, CSSProperties, HTMLAttributes, ReactNode } from "react";
 
 type ConfigButtonVariant = "primary" | "secondary" | "danger" | "destructive" | "ghost";
 type ConfigButtonSize = "small" | "default";
@@ -11,6 +11,7 @@ interface ConfigPanelShellProps {
   subtitle?: string;
   closeLabel?: string;
   onClose: () => void;
+  onKeyDown?: HTMLAttributes<HTMLDivElement>["onKeyDown"];
   children: ReactNode;
   width?: number;
   height?: string;
@@ -22,6 +23,7 @@ export function ConfigPanelShell({
   subtitle,
   closeLabel = "Close",
   onClose,
+  onKeyDown,
   children,
   width = 900,
   height = "78vh",
@@ -39,6 +41,7 @@ export function ConfigPanelShell({
       aria-modal={embedded ? undefined : "true"}
       aria-label={title}
       className={`config-panel-root ${embedded ? "is-embedded" : "is-modal"}`}
+      onKeyDown={onKeyDown}
       onClick={(event) => {
         if (!embedded && event.target === event.currentTarget) onClose();
       }}
@@ -281,7 +284,7 @@ export function ConfigButton({
   className,
   children,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ConfigButtonVariant; size?: ConfigButtonSize }) {
+}: ComponentPropsWithRef<"button"> & { variant?: ConfigButtonVariant; size?: ConfigButtonSize }) {
   return (
     <button
       type="button"

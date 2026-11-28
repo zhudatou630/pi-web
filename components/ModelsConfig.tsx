@@ -3,6 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { isImeComposing } from "@/lib/ime";
 import { getJson, peekJson, settingsUrls, type JsonReply } from "@/lib/settings-cache";
 import { InvalidProviderEntryError, validateProviderEntries } from "@/lib/model-config-validation";
 import { LLAMA_CPP_PROVIDER_ID, providerDisplayName } from "@/lib/provider-listing";
@@ -10,6 +11,8 @@ import type { DiscoveredModel } from "@/lib/model-discovery";
 import {
   modelDropIndex,
   moveModelEntry,
+  removeModelEntries,
+  selectModelEntry,
   sortModelEntries,
   assignRuntimeOverride,
   diffModelOverride,
@@ -47,6 +50,7 @@ import {
   SettingsRow,
 } from "./SettingsUi";
 import { ProviderIcon } from "./ProviderIcon";
+import { MenuCheck } from "./MenuCheck";
 import { ApiKeyDetail, OAuthDetail, StatusPill } from "./models/AuthDetail";
 import { AddProviderPicker, ModelPickerDialog } from "./models/dialogs";
 import { EndpointForm, ModelDiscovery } from "./models/EndpointSections";
@@ -112,6 +116,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   const nextModelKey = useRef(0);
   const draggedModel = useRef<{ provider: string; model: ModelEntry } | null>(null);
   const [modelDrop, setModelDrop] = useState<{ index: number; after: boolean } | null>(null);
+  const [modelSelection, setModelSelection] = useState<{ provider: string; indices: ReadonlySet<number>; anchor: number | null } | null>(null);
+  const selectModelsButton = useRef<HTMLButtonElement>(null);
+  const addModelButton = useRef<HTMLButtonElement>(null);
+  const selectionDoneButton = useRef<HTMLButtonElement>(null);
+  const restoreSelectionFocus = useRef(false);
   const [config, setConfig] = useState<ModelsJson>({ providers: {} });
   const [savedConfig, setSavedConfig] = useState<ModelsJson>({ providers: {} });
   const [loading, setLoading] = useState(true);
@@ -154,6 +163,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const normalized = d.providers ? d : { ...d, providers: {} };
     setConfig(normalized);
     setSavedConfig(normalized);
+    setModelSelection(null);
   }, []);
 
   const applyAuthProviders = useCallback((d: AuthProvidersReply) => {
@@ -253,8 +263,21 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
   }, [configDirty]);
 
   const openProvider = useCallback((provider: string | null, model?: ModelRef) => {
+    setModelSelection(null);
     setView({ provider, ...(model ? { model } : {}) });
   }, []);
+
+  const endModelSelection = () => {
+    restoreSelectionFocus.current = true;
+    setModelSelection(null);
+  };
+
+  useLayoutEffect(() => {
+    if (modelSelection || !restoreSelectionFocus.current) return;
+    restoreSelectionFocus.current = false;
+    const button = selectModelsButton.current;
+    (button && !button.disabled ? button : addModelButton.current)?.focus();
+  }, [modelSelection]);
 
   const addCustomProvider = useCallback((id: string) => {
     setConfig((prev) => ({ ...prev, providers: { ...(prev.providers ?? {}), [id]: { api: "openai-completions" } } }));
@@ -409,15 +432,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     setSavedOk(false);
   };
 
-  const removeModel = useCallback((providerName: string, index: number) => {
-    setConfig((prev) => {
-      const provider = prev.providers?.[providerName] ?? {};
-      const models = [...(provider.models ?? [])];
-      models.splice(index, 1);
-      return { ...prev, providers: { ...(prev.providers ?? {}), [providerName]: { ...provider, models: models.length ? models : undefined } } };
-    });
-    openProvider(providerName);
-  }, [openProvider]);
+  const removeModels = (providerName: string, indices: Iterable<number>) => {
+    setConfig((prev) => removeModelEntries(prev, providerName, indices));
+  };
 
   /** Server resolution without touching component state. */
   const fetchScopeDocument = useCallback(async (): Promise<EnabledModelsPanelState | null> => {
@@ -649,9 +666,9 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   // ── Shared pieces ───────────────────────────────────────────────────────────
 
-  /** A model row's main area: opens the model editor, with a chevron that says so. */
-  const rowButton = (title: string, sub: string | undefined, tags: ReactNode, onClick: () => void) => (
-    <button type="button" className="models-row-main models-row-button" title={t("models.editParams")} onClick={onClick}>
+  /** A model row opens its editor, or acts as a toggle in selection mode. */
+  const rowButton = (title: string, sub: string | undefined, tags: ReactNode, onClick: React.MouseEventHandler<HTMLButtonElement>, checked?: boolean, disabled = false) => (
+    <button type="button" className="models-row-main models-row-button" title={checked === undefined && !disabled ? t("models.editParams") : undefined} aria-pressed={checked} disabled={disabled} onClick={onClick}>
       <span className="models-row-text">
         <span className="models-row-title-line">
           <span className="models-row-title">{title}</span>
@@ -659,9 +676,11 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
         </span>
         {sub && <code className="models-row-sub">{sub}</code>}
       </span>
-      <svg className="models-row-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="m9 18 6-6-6-6" />
-      </svg>
+      {checked !== undefined ? <MenuCheck checked={checked} /> : !disabled && (
+        <svg className="models-row-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      )}
     </button>
   );
 
@@ -728,6 +747,8 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
     const builtIn = Boolean(row.oauth || row.apiKey);
     const showApiKey = row.apiKey && (!row.oauth || row.apiKey.configured || !row.oauth.loggedIn);
     const definitions = json?.models ?? [];
+    const canSelectModels = Boolean(json) && !builtIn && !row.ambient;
+    const selection = canSelectModels && modelSelection?.provider === row.id ? modelSelection : null;
     // Each model is matched on its effective API and URL, like the single-model Fill.
     const fillTargets = (models: readonly ModelEntry[]) => models.filter((model) => model.id.trim()).map((model) => ({
       id: model.id,
@@ -826,25 +847,25 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
             title={<CountedTitle label={t("models.sectionModelsTitle")} count={modelRows.length} />}
             actions={(json || builtIn) && (
               <>
-                <ConfigButton size="small" disabled={!json?.baseUrl?.trim()} title={json?.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
+                <ConfigButton size="small" disabled={Boolean(selection) || !json?.baseUrl?.trim()} title={json?.baseUrl?.trim() ? undefined : t("models.discoveryNeedsBaseUrl")} onClick={() => setDiscoveryFor(row.id)}>
                   {t("models.discoveryFetch")}
                 </ConfigButton>
                 {definitions.some((model) => model.id.trim()) && (
                   <ConfigButton
                     size="small"
                     title={t("models.catalogFillAction")}
-                    disabled={bulkFill?.phase === "loading"}
+                    disabled={Boolean(selection) || bulkFill?.phase === "loading"}
                     onClick={() => fillModels(row.id, fillTargets(definitions))}
                   >
                     {bulkFill?.phase === "loading" && bulkFill.provider === row.id ? t("models.catalogFilling") : t("models.bulkFill")}
                   </ConfigButton>
                 )}
                 {definitions.length > 1 && (
-                  <ConfigButton size="small" title={t("models.sortByName")} disabled={saving || Boolean(loadError)} onClick={() => applyModelOrder(row.id, sortModelEntries(definitions))}>
+                  <ConfigButton size="small" title={t("models.sortByName")} disabled={Boolean(selection) || saving || Boolean(loadError)} onClick={() => applyModelOrder(row.id, sortModelEntries(definitions))}>
                     {t("models.sortAZ")}
                   </ConfigButton>
                 )}
-                <ConfigButton size="small" onClick={() => addModel(row.id)}>{t("models.newModel")}</ConfigButton>
+                <ConfigButton ref={addModelButton} size="small" disabled={Boolean(selection)} onClick={() => addModel(row.id)}>{t("models.newModel")}</ConfigButton>
               </>
             )}
           />
@@ -862,7 +883,7 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           {bulkFill?.provider === row.id && bulkFill.phase !== "loading" && (
             <Notice
               tone={bulkFill.phase === "error" ? "danger" : "info"}
-              action={bulkFillUndoable && (
+              action={!selection && bulkFillUndoable && (
                 <ConfigButton size="small" variant="ghost" onClick={undoBulkFill}>{t("models.catalogUndo")}</ConfigButton>
               )}
             >
@@ -877,13 +898,13 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           {modelRows.length === 0 ? (
             <p className="models-empty">{row.id === LLAMA_CPP_PROVIDER_ID && row.apiKey?.configured ? t("models.llamaEmptyCatalog") : json ? t("models.noDefinitions") : t("models.connectToSeeModels")}</p>
           ) : (
-            <div className="models-list">
+            <div className={`models-list${selection ? " is-selecting" : ""}`}>
               {modelRows.map((model) => {
                 const ref = modelPickerRef(row.id, model.id);
                 const index = model.ref.kind === "definition" ? model.ref.index : -1;
                 const definition = definitions[index];
                 if (definition && !modelKeys.current.has(definition)) modelKeys.current.set(definition, ++nextModelKey.current);
-                const reorderable = Boolean(definition) && !saving && !loadError;
+                const reorderable = Boolean(definition) && !selection && !saving && !loadError;
                 const dropTarget = (event: React.DragEvent<HTMLDivElement>) => {
                   if (!reorderable || draggedModel.current?.provider !== row.id) return null;
                   const from = definitions.indexOf(draggedModel.current.model);
@@ -947,12 +968,52 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
                         {!model.usable && <span className="models-tag is-warning">{t("models.notUsable")}</span>}
                         {scopeDoc?.pins[ref] && <span className="models-tag">{t("models.thinkingPin", { level: scopeDoc.pins[ref] })}</span>}
                       </>,
-                      () => openProvider(row.id, model.ref),
+                      (event) => {
+                        if (!selection) openProvider(row.id, model.ref);
+                        else if (definition) {
+                          const extend = event.shiftKey;
+                          setModelSelection((current) => current?.provider === row.id
+                            ? { ...current, ...selectModelEntry(current, index, extend) }
+                            : current);
+                        }
+                      },
+                      selection && definition ? selection.indices.has(index) : undefined,
+                      Boolean(selection && !definition),
                     )}
-                    {model.id && chatSwitch(ref, model.usable)}
+                    {!selection && model.id && chatSwitch(ref, model.usable)}
                   </div>
                 );
               })}
+            </div>
+          )}
+          {selection ? (
+            <div key="selection-footer" className="settings-toolbar">
+              <ConfigButton autoFocus size="small" variant="ghost" disabled={!definitions.length} onClick={() => setModelSelection({ provider: row.id, indices: new Set(definitions.keys()), anchor: null })}>
+                {t("models.selectAll")}
+              </ConfigButton>
+              <ConfigButton size="small" variant="ghost" onClick={() => setModelSelection({ provider: row.id, indices: new Set(), anchor: null })}>
+                {t("models.clearSelection")}
+              </ConfigButton>
+              <ConfigButton size="small" variant="danger" disabled={!selection.indices.size || saving || Boolean(loadError)} onClick={() => {
+                removeModels(row.id, selection.indices);
+                setModelSelection({ provider: row.id, indices: new Set(), anchor: null });
+                selectionDoneButton.current?.focus({ preventScroll: true });
+              }}>
+                {t("models.deleteSelected", { count: selection.indices.size })}
+              </ConfigButton>
+              <ConfigButton ref={selectionDoneButton} size="small" variant="ghost" onClick={endModelSelection}>
+                {t("models.done")}
+              </ConfigButton>
+            </div>
+          ) : canSelectModels && definitions.length > 0 && (
+            <div key="model-list-footer" className="settings-toolbar">
+              <ConfigButton ref={selectModelsButton} size="small" variant="ghost" disabled={saving || Boolean(loadError) || bulkFill?.phase === "loading" || discoveryFor === row.id} onClick={() => {
+                draggedModel.current = null;
+                setModelDrop(null);
+                setModelSelection({ provider: row.id, indices: new Set(), anchor: null });
+              }}>
+                {t("models.select")}
+              </ConfigButton>
             </div>
           )}
         </section>
@@ -1016,7 +1077,10 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
           model={model}
           cwd={cwd}
           onChange={(m) => updateModel(row.id, ref.index, m)}
-          onDelete={() => removeModel(row.id, ref.index)}
+          onDelete={() => {
+            removeModels(row.id, [ref.index]);
+            openProvider(row.id);
+          }}
           shadowsBuiltIn={builtInRefs.has(`${row.id}/${model.id}`)}
         />
       </>
@@ -1093,7 +1157,12 @@ export function ModelsConfig({ onClose, embedded = false, cwd = null, onModelsCh
 
   return (
     <>
-    <ConfigPanelShell embedded={embedded} title={t("common.models")} closeLabel={t("i18n.close")} onClose={onClose}>
+    <ConfigPanelShell embedded={embedded} title={t("common.models")} closeLabel={t("i18n.close")} onClose={onClose} onKeyDown={(event) => {
+      if (!modelSelection || event.key !== "Escape" || event.defaultPrevented || isImeComposing(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      endModelSelection();
+    }}>
       <div className="models-body settings-scroll">
         <div key={loading ? "loading" : JSON.stringify(view)} className="settings-page">
           {loading ? <SettingsLoading label={t("i18n.loading")} /> : renderProvidersTab()}

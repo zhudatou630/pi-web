@@ -1,5 +1,6 @@
 import { isRecord } from "../lib/model-config-validation";
 import type { ModelCatalogPreset, ModelCatalogRecommendation } from "../lib/model-catalog";
+import type { ModelsJson } from "./models/types";
 export { findInvalidSamplingParams } from "../lib/model-config-validation";
 
 const MODEL_NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
@@ -19,6 +20,35 @@ export function moveModelEntry<T>(models: readonly T[], from: number, to: number
 export function modelDropIndex(from: number, target: number, after: boolean): number {
   const slot = target + Number(after);
   return slot > from ? slot - 1 : slot;
+}
+
+export function selectModelEntry(
+  selection: { indices: ReadonlySet<number>; anchor: number | null },
+  index: number,
+  extend: boolean,
+): { indices: Set<number>; anchor: number } {
+  const indices = new Set(selection.indices);
+  const anchor = selection.anchor;
+  if (extend && anchor !== null) {
+    for (let i = Math.min(anchor, index); i <= Math.max(anchor, index); i++) indices.add(i);
+    return { indices, anchor };
+  }
+  if (indices.has(index)) indices.delete(index);
+  else indices.add(index);
+  return { indices, anchor: index };
+}
+
+export function removeModelEntries(config: ModelsJson, providerName: string, indices: Iterable<number>): ModelsJson {
+  const providers = config.providers;
+  const provider = providers?.[providerName];
+  if (!provider?.models) return config;
+  const models = [...provider.models];
+  const removal = [...new Set(indices)]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < models.length)
+    .sort((a, b) => b - a);
+  if (!removal.length) return config;
+  for (const index of removal) models.splice(index, 1);
+  return { ...config, providers: { ...providers, [providerName]: { ...provider, models: models.length ? models : undefined } } };
 }
 
 export interface CompatEntry {

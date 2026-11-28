@@ -9,6 +9,8 @@ const {
   moveModelEntry,
   modelDropIndex,
   sortModelEntries,
+  removeModelEntries,
+  selectModelEntry,
   diffModelOverride,
   findInvalidSamplingParams,
   hasModelCostDraftValue,
@@ -51,6 +53,45 @@ test("model ordering preserves objects and drafts, accepts insertion slots, and 
   assert.equal(moveModelEntry(models, 0, 3), null);
   assert.equal(moveModelEntry(models, 1, 1), null);
   assert.equal(models[0].id, "ten", "the saved draft is not mutated");
+});
+
+test("model selection toggles rows and adds inclusive ranges without moving the Shift anchor", () => {
+  const empty = { indices: new Set(), anchor: null };
+  const first = selectModelEntry(empty, 4, true);
+  assert.deepEqual(first, { indices: new Set([4]), anchor: 4 });
+  const toggled = selectModelEntry(first, 0, false);
+  const anchored = selectModelEntry(toggled, 4, false);
+  assert.deepEqual(anchored, { indices: new Set([0]), anchor: 4 });
+  const backward = selectModelEntry(anchored, 2, true);
+  assert.deepEqual(backward, { indices: new Set([0, 2, 3, 4]), anchor: 4 });
+  assert.deepEqual(selectModelEntry(backward, 5, true), { indices: new Set([0, 2, 3, 4, 5]), anchor: 4 });
+  assert.deepEqual(toggled, { indices: new Set([4, 0]), anchor: 0 });
+  assert.deepEqual(empty.indices, new Set());
+});
+
+test("bulk removal matches descending single removals and keeps surviving slot identities", () => {
+  const first = { id: "duplicate" };
+  const middle = { id: "renamed", name: "Edited draft" };
+  const last = { id: "duplicate" };
+  const models = Object.freeze([first, middle, last, { id: "other" }]);
+  const modelOverrides = { runtime: { name: "Unrelated override" } };
+  const custom = Object.freeze({ models, modelOverrides, baseUrl: "https://api.example.com" });
+  const sibling = { models: [{ id: "sibling" }] };
+  const config = Object.freeze({ providers: Object.freeze({ custom, sibling }) });
+
+  const next = removeModelEntries(config, "custom", [0, 3, 0, -1, 5, 1.5]);
+  assert.deepEqual(next, removeModelEntries(removeModelEntries(config, "custom", [3]), "custom", [0]));
+  assert.equal(next.providers.custom.models[0], middle);
+  assert.equal(next.providers.custom.models[1], last);
+  assert.equal(next.providers.custom.modelOverrides, modelOverrides);
+  assert.equal(next.providers.sibling, sibling);
+  assert.deepEqual(config.providers.custom.models, [first, middle, last, { id: "other" }]);
+  const emptied = removeModelEntries(next, "custom", new Set([0, 1]));
+  assert.equal(emptied.providers.custom.models, undefined);
+  assert.equal(emptied.providers.custom.baseUrl, custom.baseUrl);
+  assert.equal(removeModelEntries(emptied, "custom", [0]), emptied);
+  assert.equal(removeModelEntries(config, "unknown", [0]), config);
+  assert.equal(removeModelEntries(config, "custom", [NaN, 4]), config);
 });
 
 test("model definition rows expose desktop drag, Alt arrows, stable keys and one-shot sort", () => {
@@ -111,7 +152,7 @@ test("every model definition is reachable from its provider, connected or not", 
   // is signed out or the model is not in chat.
   assert.match(source, /const definitions = json\?\.models \?\? \[\]/);
   assert.match(source, /\.\.\.definitions\.map\(\(model, index\)/);
-  assert.match(source, /\(\) => openProvider\(row\.id, model\.ref\),/);
+  assert.match(source, /if \(!selection\) openProvider\(row\.id, model\.ref\);/);
   // Every models.json provider gets a sidebar row, connected or not.
   assert.match(source, /Object\.keys\(config\.providers \?\? \{\}\)\.forEach\(addId\)/);
 });
