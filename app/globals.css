@@ -715,7 +715,7 @@ html.dark {
 }
 .file-search-bar > .sidebar-search-field {
   flex: 1;
-  min-width: 0;
+  min-width: 96px;
   margin-right: 4px;
 }
 /* The Files search is a quiet tint, not a framed field: the panel's only bordered input read
@@ -785,23 +785,28 @@ html.dark {
   letter-spacing: 0.1em;
 }
 /* Docked beside a file (220px) the search row cannot hold the field and every action: one head
-   line (the column's name, the worktree menu, then the icons and ») and the search below. */
+   line (the column's name, the worktree menu, then the icons and ») and the search below.
+   The full-size view keeps one line at any width: the worktree menu ellipsizes first. */
 .panel-view {
   container-type: inline-size;
 }
+.file-search-bar > .files-worktree-menu {
+  flex-shrink: 1;
+  min-width: 0;
+}
 @container (max-width: 320px) {
-  .file-search-bar {
+  .file-search-bar:has(> .panel-dock-title) {
     flex-wrap: wrap;
     justify-content: flex-end;
     row-gap: 4px;
   }
-  .file-search-bar > .sidebar-search-field {
+  .file-search-bar:has(> .panel-dock-title) > .sidebar-search-field {
     order: 1;
     flex-basis: 100%;
     margin-right: 0;
   }
   /* Basis 0: the menu takes what the icons leave and ellipsizes, so the head stays one line. */
-  .file-search-bar > .files-worktree-menu {
+  .file-search-bar:has(> .panel-dock-title) > .files-worktree-menu {
     flex: 1 1 0;
     min-width: 0;
   }
