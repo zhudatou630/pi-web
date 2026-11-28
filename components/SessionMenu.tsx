@@ -15,6 +15,9 @@ type Props = {
   /** Fork needs a saved, idle session. */
   forkDisabled: boolean;
   forking?: boolean;
+  /** The session's sidebar pin; null hides the row (desktop, drafts, subagents, side chats). */
+  sessionPinned?: boolean | null;
+  onToggleSessionPin?: () => void;
   /** The info item whose data is still loading: it shows a spinner and the menu stays open. */
   infoPending?: "tools" | "system" | null;
   menuOpen: boolean;
@@ -35,6 +38,8 @@ type Props = {
     exportMarkdown: string;
     exportMarkdownTitle: string;
     fork: string;
+    pin: string;
+    unpin: string;
     forkTitle: string;
     cacheKeepalive: string;
     cacheKeepaliveTitle: string;
@@ -57,6 +62,8 @@ export function SessionMenu({
   historyDisabled,
   forkDisabled,
   forking = false,
+  sessionPinned = null,
+  onToggleSessionPin,
   infoPending = null,
   menuOpen,
   cacheKeepalive = null,
@@ -210,6 +217,11 @@ export function SessionMenu({
             );
           })()}
           <div role="separator" className="menu-surface-divider" />
+          {sessionPinned !== null && onToggleSessionPin && (
+            <button type="button" role="menuitem" onClick={() => { onMenuOpenChange(false); onToggleSessionPin(); }}>
+              {sessionPinned ? labels.unpin : labels.pin}
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

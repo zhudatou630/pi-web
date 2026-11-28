@@ -332,3 +332,16 @@ test("split: the context menu offers Merge panes; drafts carry no left icon", as
   const [draft] = tabNodes(render([{ id: "draft:d1", kind: "draft", title: "Draft", session: null, newSessionCwd: "/t", newSessionDraftKey: "d1" }]));
   assert.doesNotMatch(draft.slice(0, draft.indexOf("Draft</span>")), /<svg/);
 });
+
+test("phones: a long press on a session tab opens only the session's own actions", async () => {
+  const source = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  // Phones get no contextmenu (iOS fires none): a 400 ms press that a swipe cancels.
+  assert.match(source, /onTouchStart=\{isMobile \?[\s\S]{0,600}setTimeout\([\s\S]{0,400}setContextMenu\(\{ tabId: tab\.id[\s\S]{0,120}avoid:/);
+  assert.match(source, /onTouchMove=\{isMobile \?[\s\S]{0,300}> 10\) cancelLongPress\(\)/);
+  // The release after the press does not also select the tab.
+  assert.match(source, /if \(longPressedRef\.current\) \{ longPressedRef\.current = false; return; \}\s*onSelectTab\(tab\.id\);/);
+  // The phone menu: title, then Pin, Fork, Mark as (un)read; no split or tab management.
+  const phoneMenu = source.slice(source.indexOf("{isMobile ? (() => {"), source.indexOf("})() : <>"));
+  for (const key of ['"sidebar.pinSession"', '"sidebar.fork"', '"sidebar.markUnread"']) assert.ok(phoneMenu.includes(key), key);
+  for (const key of ["chatTabs.splitView", "chatTabs.closeOthers", "chatTabs.revealInSidebar"]) assert.ok(!phoneMenu.includes(key), key);
+});

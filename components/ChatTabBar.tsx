@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { type ChatPane, type ChatTabItem } from "@/lib/chat-tab-state";
 import { useI18n } from "@/hooks/useI18n";
@@ -8,6 +8,7 @@ import { MenuCheck } from "./MenuCheck";
 import { isModalDialogOpen } from "./ModalDialog";
 import { SessionStatusDot } from "./SessionStateBadge";
 import { mostUrgentStatus, sessionStatus, type SessionStatus } from "@/lib/session-status";
+import { placeContextMenu } from "@/lib/session-row-context-menu";
 
 const HIDDEN_STATUS_KEYS: Record<SessionStatus, string> = {
   awaiting: "chatTabs.hiddenAwaiting",
@@ -46,6 +47,10 @@ interface Props {
   /** The tab's session pin in the sidebar: null hides the menu item (drafts, subagents, side chats). */
   getSessionPinned?: (tab: ChatTabItem) => boolean | null;
   onToggleSessionPin?: (tab: ChatTabItem, pinned: boolean) => void;
+  /** Phones' long-press menu (no right click there): the sidebar row's Fork and Mark as (un)read. */
+  onForkSession?: (tab: ChatTabItem) => void;
+  forking?: boolean;
+  onToggleSessionRead?: (tab: ChatTabItem) => void;
   /** Context menu: point the sidebar project and explorer at this tab's cwd. */
   onRevealInSidebar?: (sessionId: string) => void;
   onNewTab: () => void;
@@ -77,6 +82,9 @@ export function ChatTabBar({
   onPinTab,
   getSessionPinned,
   onToggleSessionPin,
+  onForkSession,
+  forking = false,
+  onToggleSessionRead,
   onRevealInSidebar,
   onNewTab,
   onMoveTab,
@@ -99,8 +107,27 @@ export function ChatTabBar({
   const tabsMenuRef = useRef<HTMLDivElement>(null);
   const [hiddenTabIds, setHiddenTabIds] = useState<ReadonlySet<string>>(new Set());
   const [dropIndex, setDropIndex] = useState<number | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
+  // `avoid`: a long press's tab, which the finger covers: the menu opens below it.
+  const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number; avoid?: { top: number; bottom: number } } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const longPressedRef = useRef(false);
+  const cancelLongPress = () => {
+    if (longPressRef.current) clearTimeout(longPressRef.current.timer);
+    longPressRef.current = null;
+  };
+
+  // Measured before paint, so every menu stays on screen.
+  useLayoutEffect(() => {
+    const menu = contextMenuRef.current;
+    if (!contextMenu || !menu) return;
+    const { left, top } = placeContextMenu({
+      x: contextMenu.x, y: contextMenu.y, width: menu.offsetWidth, height: menu.offsetHeight,
+      viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, avoid: contextMenu.avoid,
+    });
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }, [contextMenu]);
 
   // Auto-scroll active tab into view whenever selection changes
   useEffect(() => {
@@ -336,7 +363,38 @@ export function ChatTabBar({
               aria-label={tab.dirty ? `${tab.title}, ${t("chatTabs.unsentDraft")}` : tab.title}
               aria-selected={isVisible}
               tabIndex={isCurrentPane || (!activeTabId && index === 0) ? 0 : -1}
-              onClick={() => onSelectTab(tab.id)}
+              onClick={() => {
+                // The release after a long press must not also select the tab.
+                if (longPressedRef.current) { longPressedRef.current = false; return; }
+                onSelectTab(tab.id);
+              }}
+              onTouchStart={isMobile ? (e) => {
+                const touch = e.touches[0];
+                cancelLongPress();
+                longPressedRef.current = false;
+                // Drafts, side chats and subagents have none of the phone menu's actions.
+                if ((getSessionPinned?.(tab) ?? null) === null) return;
+                const element = e.currentTarget;
+                longPressRef.current = {
+                  x: touch.clientX,
+                  y: touch.clientY,
+                  timer: setTimeout(() => {
+                    longPressRef.current = null;
+                    longPressedRef.current = true;
+                    try { navigator.vibrate?.(15); } catch { /* unsupported */ }
+                    const rect = element.getBoundingClientRect();
+                    setContextMenu({ tabId: tab.id, x: touch.clientX, y: touch.clientY, avoid: { top: rect.top, bottom: rect.bottom } });
+                  }, 400),
+                };
+              } : undefined}
+              onTouchMove={isMobile ? (e) => {
+                const start = longPressRef.current;
+                const touch = e.touches[0];
+                // A swipe scrolls the strip instead.
+                if (start && Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 10) cancelLongPress();
+              } : undefined}
+              onTouchEnd={isMobile ? cancelLongPress : undefined}
+              onTouchCancel={isMobile ? cancelLongPress : undefined}
               onMouseDown={(e) => {
                 if (e.button === 1) e.preventDefault();
               }}
@@ -360,8 +418,9 @@ export function ChatTabBar({
                 onTabDragChange?.(null);
               }}
               onContextMenu={(e) => {
-                if (isMobile) return;
                 e.preventDefault();
+                // Phones open the menu on the long press (iOS fires no contextmenu event).
+                if (isMobile) return;
                 setContextMenu({ tabId: tab.id, x: e.clientX, y: e.clientY });
               }}
               onKeyDown={(e) => {
@@ -408,6 +467,7 @@ export function ChatTabBar({
                 flexShrink: isMobile ? 0 : 1,
                 userSelect: "none",
                 WebkitUserSelect: "none",
+                WebkitTouchCallout: "none",
                 touchAction: "pan-x",
                 position: "relative",
               }}
@@ -547,14 +607,32 @@ export function ChatTabBar({
             ref={contextMenuRef}
             role="menu"
             className="menu-surface"
-            style={{
-              position: "fixed",
-              left: Math.min(contextMenu.x + 2, window.innerWidth - 168),
-              top: Math.min(contextMenu.y + 2, window.innerHeight - 212),
-              minWidth: 160,
-              zIndex: 700,
-            }}
+            style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, minWidth: 160, zIndex: 700 }}
           >
+            {isMobile ? (() => {
+              // Phones: no split or tab management, only the session's own actions (the sidebar row's).
+              const id = menuTab.session?.id;
+              const read = Boolean(id && (sessionMarkers?.unread.has(id) || sessionMarkers?.error.has(id)));
+              return (
+                <>
+                  {sessionPinned !== null && onToggleSessionPin && (
+                    <button type="button" role="menuitem" onClick={run(() => onToggleSessionPin(menuTab, !sessionPinned))}>
+                      {t(sessionPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
+                    </button>
+                  )}
+                  {sessionPinned !== null && onForkSession && (
+                    <button type="button" role="menuitem" disabled={forking} onClick={run(() => onForkSession(menuTab))}>
+                      {t("sidebar.fork")}
+                    </button>
+                  )}
+                  {sessionPinned !== null && onToggleSessionRead && (
+                    <button type="button" role="menuitem" onClick={run(() => onToggleSessionRead(menuTab))}>
+                      {t(read ? "sidebar.markRead" : "sidebar.markUnread")}
+                    </button>
+                  )}
+                </>
+              );
+            })() : <>
             {menuTab.preview && onPinTab && (
               <button type="button" role="menuitem" onClick={run(() => onPinTab(menuTab.id))}>
                 {t("chatTabs.pinTab")}
@@ -602,6 +680,7 @@ export function ChatTabBar({
                 {t("chatTabs.closeRight")}
               </button>
             )}
+            </>}
           </div>,
           document.body,
         );

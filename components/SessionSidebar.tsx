@@ -219,6 +219,8 @@ interface Props {
   } | null) => void;
   /** The file panel shows `cwd` (reveal, Changes N, worktree switch): the selected project follows. */
   explorerReveal?: { cwd: string; nonce: number } | null;
+  /** A phone tab menu's Mark as (un)read for this session's family (one toggle per nonce). */
+  readToggleRequest?: { sessionId: string; nonce: number } | null;
   /** A chat tab's "Show in sidebar": unfold and scroll to that session once per nonce. */
   revealRequest?: { sessionId: string; nonce: number } | null;
   /** Settings, the last icon of the top row; prefetch on hover or focus. */
@@ -371,7 +373,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onPinnedSessionIdsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, revealRequest = null, onOpenSettings, onPrefetchSettings, sidebarToggle = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onPinnedSessionIdsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, readToggleRequest = null, revealRequest = null, onOpenSettings, onPrefetchSettings, sidebarToggle = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -1753,6 +1755,36 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
     workspaceRows.findIndex((row) => row.kind === "workspace" && row.project.key === renamingProjectKey),
   );
 
+  // A row's Mark as (un)read, also asked for by a phone's tab menu (`readToggleRequest`).
+  const toggleFamilyRead = (family: SessionFamily) => {
+    const familySessions = [family.root, ...family.subagents];
+    const errored = erroredSessionIds.has(family.root.id);
+    const read = familySessions.some((session) => unreadMarks.has(session.id)) || errored;
+    // A listed error may be newer than the last poll: the read must reach it.
+    const readUntil = Math.max(readSnapshotRef.current.serverNow, errored ? family.root.lastError?.at ?? 0 : 0);
+    if (read) manualReadIdsRef.current.set(family.root.id, readUntil);
+    else manualReadIdsRef.current.delete(family.root.id);
+    // The error mark has no local copy: hide it now, the next poll writes the shared read.
+    if (errored) setSharedReadAt((current) => current && ({ ...current, [family.root.id]: readUntil }));
+    setUnreadMarks((current) => {
+      const ids = markSessionFamilyRead(family, new Set(current.keys()), read);
+      const { serverNow, receivedAt, readAt } = readSnapshotRef.current;
+      const at = serverNow + Math.max(0, performance.now() - receivedAt);
+      return new Map([...ids].map((id) => [id, current.get(id) ?? Math.max(at, (readAt[id] ?? 0) + 1)]));
+    });
+  };
+  const toggleFamilyReadRef = useRef(toggleFamilyRead);
+  toggleFamilyReadRef.current = toggleFamilyRead;
+  const handledReadRequestRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!readToggleRequest || handledReadRequestRef.current === readToggleRequest.nonce) return;
+    const { sessionId } = readToggleRequest;
+    const family = allFamilies.find((item) => item.root.id === sessionId || item.subagents.some((session) => session.id === sessionId));
+    if (!family) return;
+    handledReadRequestRef.current = readToggleRequest.nonce;
+    toggleFamilyReadRef.current(family);
+  }, [readToggleRequest, allFamilies]);
+
   const renderSessionFamily = (family: SessionFamily, showProject = false, projectLabel?: string) => {
     const familySessions = [family.root, ...family.subagents];
     // The row shows the time it is ordered by: creation, else the family's latest activity.
@@ -1793,22 +1825,7 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
           projectHint={showProject ? displayCwd(family.root.projectRoot ?? family.root.cwd, homeDir) : undefined}
           projectLabel={projectLabel}
           onTogglePin={() => void toggleSessionPinned(family.root.id)}
-          onToggleRead={() => {
-            const errored = erroredSessionIds.has(family.root.id);
-            const read = familySessions.some((session) => unreadMarks.has(session.id)) || errored;
-            // A listed error may be newer than the last poll: the read must reach it.
-            const readUntil = Math.max(readSnapshotRef.current.serverNow, errored ? family.root.lastError?.at ?? 0 : 0);
-            if (read) manualReadIdsRef.current.set(family.root.id, readUntil);
-            else manualReadIdsRef.current.delete(family.root.id);
-            // The error mark has no local copy: hide it now, the next poll writes the shared read.
-            if (errored) setSharedReadAt((current) => current && ({ ...current, [family.root.id]: readUntil }));
-            setUnreadMarks((current) => {
-              const ids = markSessionFamilyRead(family, new Set(current.keys()), read);
-              const { serverNow, receivedAt, readAt } = readSnapshotRef.current;
-              const at = serverNow + Math.max(0, performance.now() - receivedAt);
-              return new Map([...ids].map((id) => [id, current.get(id) ?? Math.max(at, (readAt[id] ?? 0) + 1)]));
-            });
-          }}
+          onToggleRead={() => toggleFamilyRead(family)}
           isArchived={archivedMemberIds.has(family.root.id)}
           onToggleArchive={() => void updateSessionSidebarState(family.root.id, { archived: !archivedMemberIds.has(family.root.id) })}
           pendingDelete={deleteConfirm?.kind === "session" && deleteConfirm.id === family.root.id}

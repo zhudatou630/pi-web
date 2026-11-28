@@ -2580,6 +2580,13 @@ export function AppShell() {
     if (!id || sessionFamilies.get(id)?.root.id !== id) return null;
     return pinnedSessionIds.has(id);
   }, [pinnedSessionIds, sessionFamilies]);
+  // A phone tab's long-press menu: the sidebar row's Fork and Mark as (un)read (the read state lives
+  // in the sidebar, so it gets a one-shot request).
+  const [readToggleRequest, setReadToggleRequest] = useState<{ sessionId: string; nonce: number } | null>(null);
+  const handleTabToggleRead = useCallback((tab: ChatTabItem) => {
+    const sessionId = tab.session?.id;
+    if (sessionId) setReadToggleRequest((previous) => ({ sessionId, nonce: (previous?.nonce ?? 0) + 1 }));
+  }, []);
   const toggleSessionPin = useCallback(async (tab: ChatTabItem, pinned: boolean) => {
     const id = tab.session?.id;
     if (!id) return;
@@ -2760,6 +2767,10 @@ export function AppShell() {
       setSessionForking(false);
     }
   }, [confirm, handleSessionForked, translate]);
+
+  const handleTabFork = useCallback((tab: ChatTabItem) => {
+    if (tab.session) void handleSidebarFork(tab.session);
+  }, [handleSidebarFork]);
 
   // Copies the viewed branch through its leaf into a new session; the source runtime stays alive.
   const handleToggleCacheKeepalive = useCallback(async () => {
@@ -3076,6 +3087,7 @@ export function AppShell() {
         onWorktreeInfoChange={setWorktreeInfo}
         explorerReveal={explorerReveal}
         revealRequest={sidebarReveal}
+        readToggleRequest={readToggleRequest}
         newSessionOpen={onNewSessionPage}
         routinesOpen={mainView === "routines"}
         onToggleRoutines={() => {
@@ -3251,6 +3263,12 @@ export function AppShell() {
           historyDisabled={!session}
           forkDisabled={!session || Boolean(session.transient)}
           forking={sessionForking}
+          // Phones: the shown session's pin (desktop has it in the tab menu; a lone phone tab has no strip).
+          sessionPinned={mobile && session && sessionFamilies.get(session.id)?.root.id === session.id ? pinnedSessionIds.has(session.id) : null}
+          onToggleSessionPin={() => {
+            const tab = session ? chatTabs.find((item) => item.session?.id === session.id) : undefined;
+            if (tab) void toggleSessionPin(tab, !pinnedSessionIds.has(session!.id));
+          }}
           menuOpen={interactive && historyMenuOpen}
           cacheKeepalive={cacheKeepalive}
           cacheKeepalivePending={cacheKeepalivePending}
@@ -3269,6 +3287,8 @@ export function AppShell() {
             exportMarkdown: translate(historyShareReady ? "history.exportMarkdownShare" : "history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
             fork: translate("session.fork"),
+            pin: translate("sidebar.pinSession"),
+            unpin: translate("sidebar.unpinSession"),
             forkTitle: translate("session.forkTitle"),
             cacheKeepalive: translate("session.cacheKeepalive"),
             cacheKeepaliveTitle: translate("session.cacheKeepaliveTitle"),
@@ -4003,7 +4023,9 @@ export function AppShell() {
               onPinTab={promotePreviewSession}
               getSessionPinned={getSessionPinned}
               onToggleSessionPin={toggleSessionPin}
-                    onRevealInSidebar={handleRevealInSidebar}
+              onForkSession={handleTabFork}
+              forking={sessionForking}
+              onToggleSessionRead={handleTabToggleRead}
               onNewTab={handleNewChatTab}
               isMobile={true}
             />

@@ -17,7 +17,8 @@ function execute(code, scope) {
   return new Script(ts.transpileModule(`(${code})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText).runInNewContext(scope);
 }
 const manualRef = find(ast, (node) => ts.isVariableDeclaration(node) && node.name.getText(ast) === "manualReadIdsRef");
-const toggle = find(ast, (node) => ts.isJsxAttribute(node) && node.name.getText(ast) === "onToggleRead");
+// The row's Mark as read (also a phone tab menu's): `toggleFamilyRead(family)`.
+const toggle = find(ast, (node) => ts.isVariableDeclaration(node) && node.name.getText(ast) === "toggleFamilyRead");
 const effect = find(ast, (node) => ts.isCallExpression(node) && node.expression.getText(ast) === "useEffect" && node.arguments[0]?.getText(ast).includes("let stopped = false;"));
 
 for (const missedRunning of [false, true]) {
@@ -37,7 +38,7 @@ for (const missedRunning of [false, true]) {
       RUNNING_SESSIONS_POLL_MS: 2500, HIDDEN_RUNNING_SESSIONS_POLL_MS: 30000,
       setTimeout: (fn) => { timers.push(fn); return 1; }, clearTimeout() {}, loadSessions() {},
       withoutReadMarks: (marks) => marks, sameIdSet: (current) => current, sameTimes: (current) => current,
-      family: { root: { id: "root" } }, familySessions: [{ id: "root" }], unreadMarks: new Map([["root", 100]]), erroredSessionIds: new Set(),
+      family: { root: { id: "root" }, subagents: [] }, unreadMarks: new Map([["root", 100]]), erroredSessionIds: new Set(),
       markSessionFamilyRead: () => new Set(),
       fetch: async (_url, options) => {
         const body = options.body ? JSON.parse(options.body) : null;
@@ -51,7 +52,7 @@ for (const missedRunning of [false, true]) {
     };
     scope.manualReadIdsRef = execute(manualRef.initializer.getText(ast), scope);
     for (const name of ["UnreadMarks", "SubagentsActiveSessionIds", "RunningSessionIds", "AwaitingInputSessionIds", "AwaitingInputReasons", "SharedReadAt", "CacheKeepaliveSessions"]) scope[`set${name}`] = () => {};
-    execute(toggle.initializer.expression.getText(ast), scope)();
+    execute(toggle.initializer.getText(ast), scope)(scope.family);
     const cleanup = execute(effect.arguments[0].getText(ast), scope)();
     await setImmediate();
     for (let i = 0; i < 3; i++) { timers.shift()(); await setImmediate(); }
