@@ -410,25 +410,24 @@ html.dark {
   cursor: default;
   opacity: 0.45;
 }
-/* The Agents entry's count is the corner badge of the original top-bar button (docs/ui.md, Tabs and
-   top bars): the 13px glyph centred like every top-bar icon, the badge at the button's top right, over
-   the glyph's corner. Dim total at rest; while subagents run, how many still run on a solid badge that
-   breathes like the running dot; red while a failure is unseen. Color says what the number counts. */
+/* The Agents entry's count is a corner badge (docs/ui.md, Tabs and top bars): the glyph at the size of
+   every top-bar icon (a smaller one made the pair top-heavy), an 11px badge centred on the glyph's
+   top-right ink corner (8px above the bar's middle, 1.3px inside the box). Dim total at rest; while
+   subagents run, how many still run on a solid badge that breathes like the running dot; red while a
+   failure is unseen. Color says what the number counts. */
 .agents-badge {
   --badge-fill: color-mix(in srgb, var(--text) 10%, var(--bg));
   position: absolute;
-  /* The badge's centre on the glyph's top-right corner, as the original's `top: 2px` gave in a 30px
-     bar; from the middle, so it holds in the 40px bar. */
-  top: calc(50% - 13px);
-  right: 2px;
-  min-width: 13px;
-  height: 13px;
-  padding: 0 3px;
+  top: calc(50% - 12px);
+  right: 3px;
+  min-width: 11px;
+  height: 11px;
+  padding: 0 2px;
   border-radius: var(--ui-radius-sm);
   background: var(--badge-fill);
   color: var(--text-dim);
   font-size: 10px;
-  line-height: 13px;
+  line-height: 11px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
