@@ -48,7 +48,9 @@ interface Props {
   onUploadBusyChange?: (busy: boolean) => void;
   /** Whether the visible tree has an open folder, i.e. collapseAll() would change anything. */
   onCanCollapseChange?: (canCollapse: boolean) => void;
-  /** Actions shown at the end of the search row (worktree, upload, refresh). */
+  /** The search field is open (the toolbar's search icon shows pressed). */
+  onSearchOpenChange?: (open: boolean) => void;
+  /** The head row above the tree (project/worktree menus, search, upload, refresh); the search field opens below it. */
   toolbar?: React.ReactNode;
   /** Docked beside an open file: that file's row stays marked. */
   activePath?: string;
@@ -60,6 +62,8 @@ export interface FileExplorerHandle {
   openUploadPicker: () => void;
   collapseAll: () => void;
   focusSearch: () => void;
+  /** The search icon: opens the field, or closes and clears it. */
+  toggleSearch: () => void;
 }
 
 type UploadPhase = "idle" | "checking" | "uploading";
@@ -495,6 +499,15 @@ function TreeNode({
 type OpenFileOptions = { sourceSessionId?: string | null; modeHint?: "diff"; cwd?: string; preview?: boolean };
 
 /**
+ * The listing to keep on screen (inert) instead of "Loading": another cwd's tree until this cwd's
+ * arrives (from the first render after the switch, before the load effect runs), or this cwd's own
+ * while it reloads. Null on a failed load or with nothing to show.
+ */
+export function staleExplorerTree<T extends { cwd: string; roots: readonly unknown[] }>(tree: T | null, cwd: string, loading: boolean, error: string | null): T | null {
+  return tree && tree.roots.length > 0 && (tree.cwd !== cwd ? !error : loading) ? tree : null;
+}
+
+/**
  * What the explorer shows: the requested `{ cwd, refreshKey }` while active; hidden (kept mounted
  * for its expansion) it keeps the last shown one, so project switches and run-time refreshes request
  * nothing, and showing it again loads the latest once. Returns `shown` itself when nothing changes.
@@ -512,6 +525,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   onAtMentions,
   onUploadBusyChange,
   onCanCollapseChange,
+  onSearchOpenChange,
   toolbar,
   reveal = null,
   activePath,
@@ -522,7 +536,9 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const nextShown = shownExplorerTarget(shown, { cwd: requestedCwd, refreshKey: requestedRefreshKey }, active);
   if (nextShown !== shown) setShown(nextShown);
   const { cwd, refreshKey } = nextShown;
-  const [roots, setRoots] = useState<FileNode[]>([]);
+  // The listing and the cwd it belongs to. A cwd switch keeps the previous tree on screen (inert,
+  // with its own open folders) until the new listing arrives: no "Loading" blink between projects.
+  const [tree, setTree] = useState<{ cwd: string; roots: FileNode[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
@@ -552,6 +568,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // The search field opens and closes with the toolbar's search icon (toggleSearch); Esc and × close it too.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searchPaths, setSearchPaths] = useState<string[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
@@ -842,8 +860,15 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       rememberExpandedPaths(cwd, []);
     },
     focusSearch() {
+      // Closed: the field mounts with autoFocus.
+      if (!searchInputRef.current) setSearchOpen(true);
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
+    },
+    toggleSearch() {
+      if (!searchInputRef.current) { setSearchOpen(true); return; }
+      setSearchQuery("");
+      setSearchOpen(false);
     },
   }), [cwd, uploadBlocked]);
 
@@ -851,11 +876,18 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     onUploadBusyChange?.(uploadBlocked);
   }, [onUploadBusyChange, uploadBlocked]);
 
+  const roots = tree?.cwd === cwd ? tree.roots : [];
+  const staleTree = staleExplorerTree(tree, cwd, loading, error);
+  const staleCwd = staleTree?.cwd;
+  const staleExpanded = useMemo(() => staleCwd ? new Set(readExpandedPaths(staleCwd)) : null, [staleCwd]);
   const treeVisible = !hasSearchQuery;
   const canCollapse = treeVisible && expandedPaths.size > 0;
   useEffect(() => {
     onCanCollapseChange?.(canCollapse);
   }, [onCanCollapseChange, canCollapse]);
+  useEffect(() => {
+    onSearchOpenChange?.(searchOpen);
+  }, [onSearchOpenChange, searchOpen]);
 
   useEffect(() => () => onUploadBusyChange?.(false), [onUploadBusyChange]);
 
@@ -881,7 +913,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     setError(null);
     let cancelled = false;
     fetchEntries(cwd)
-      .then((entries) => { if (!cancelled) setRoots(entries); })
+      .then((entries) => { if (!cancelled) setTree({ cwd, roots: entries }); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -1133,6 +1165,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       )}
 
       <div className="sidebar-search-container file-search-row">
+        <div className="file-search-bar">{toolbar}</div>
+        {searchOpen && (
         <div className="file-search-bar">
         <label className="sidebar-search-field">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
@@ -1140,35 +1174,35 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
           </svg>
           <input
             ref={searchInputRef}
+            autoFocus
             className="file-search-input"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Escape" && searchQuery) {
+              if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();
                 setSearchQuery("");
+                setSearchOpen(false);
               }
             }}
             placeholder={t("sidebar.searchFilesPlaceholder")}
             aria-label={t("sidebar.searchFiles")}
           />
-          {searchQuery && (
-            <button
-              type="button"
-              className="sidebar-search-clear"
-              onClick={() => setSearchQuery("")}
-              title={t("sidebar.clearSearch")}
-              aria-label={t("sidebar.clearSearch")}
-            >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-              </svg>
-            </button>
-          )}
+          <button
+            type="button"
+            className="sidebar-search-clear"
+            onClick={() => { setSearchQuery(""); setSearchOpen(false); }}
+            title={t("sidebar.closeSearch")}
+            aria-label={t("sidebar.closeSearch")}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+            </svg>
+          </button>
         </label>
-        {toolbar}
         </div>
+        )}
         {hasSearchQuery && (
           <div style={{ paddingTop: 3 }}>
             {searchLoading && <div role="status" style={{ padding: "6px 2px", fontSize: 11, color: "var(--text-dim)" }}>{t("sidebar.searchingFiles")}</div>}
@@ -1280,20 +1314,22 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
 
       {treeVisible && (
         <div style={{ padding: "2px 0" }}>
-          {loading ? (
+          {loading && !staleTree ? (
             <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>{t("chat.loadingFiles")}</div>
           ) : error ? (
             <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--danger)" }}>{error}</div>
           ) : (
-            roots.map((node) => (
+            // Keyed by the listing's cwd: the old tree keeps its rows while stale, the new one fades in.
+            <div key={staleTree?.cwd ?? cwd} className="file-tree-roots" inert={staleTree ? true : undefined}>
+            {(staleTree?.roots ?? roots).map((node) => (
               <TreeNode
                 key={node.fullPath}
                 node={node}
                 depth={0}
-                cwd={cwd}
+                cwd={staleTree?.cwd ?? cwd}
                 onOpenFile={onOpenFile}
                 onAtMention={onAtMention}
-                expandedPaths={expandedPaths}
+                expandedPaths={staleExpanded ?? expandedPaths}
                 onToggleExpanded={handleToggleExpanded}
                 refreshToken={refreshToken}
                 highlightedPaths={highlightedPaths}
@@ -1306,9 +1342,10 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
                 activePath={activePath}
                 t={t}
               />
-            ))
+            ))}
+            </div>
           )}
-          {!loading && !error && roots.length === 0 && (
+          {!loading && !error && !staleTree && roots.length === 0 && (
             <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-dim)" }}>
               {t("files.noFiles")}
             </div>

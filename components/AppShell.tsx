@@ -2921,6 +2921,7 @@ export function AppShell() {
   const changesViewCwd = panelViewCwd("changes", panelDockOn, panelCwd);
   const filesViewCwd = panelViewCwd("files", panelDockOn, panelCwd);
   const filesViewShown = (showPanelView && panelView === "files") || panelDock === "files";
+  const filesProjects = useMemo(() => projectPaths.map((root) => ({ root, name: projectNameByRoot.get(root) ?? getFileName(root) })), [projectNameByRoot, projectPaths]);
   const changesViewScope = changesViewCwd ? panelChangesScope(changesViewCwd, turnFiles, changesScope) : null;
   // The sidebar loads the worktrees of the session's cwd; a tree docked for another project's tab
   // reads that project's when shown (same /api/worktrees answer, no polling). Only a success is kept,
@@ -2975,9 +2976,7 @@ export function AppShell() {
     position: "absolute", top: 0, bottom: 0, right: 0, width: PANEL_DOCK_WIDTH,
     borderLeft: "1px solid var(--border)", background: "var(--bg)",
   };
-  // The docked tree puts its name and » on its worktree/actions line (one head row, FilesView);
-  // the Changes column keeps this title row.
-  const renderPanelDockTitle = () => <span className="panel-dock-title">{panelDockLabel}</span>;
+  // Docked, » ends the view's own head line (FilesView, ChangesView); the strip carries the name.
   const renderPanelDockCollapse = () => (
       <button
         type="button"
@@ -2991,12 +2990,6 @@ export function AppShell() {
           <path d="m6 17 5-5-5-5M13 17l5-5-5-5" />
         </svg>
       </button>
-  );
-  const renderPanelDockHead = () => (
-    <div className="panel-dock-head">
-      {renderPanelDockTitle()}
-      {renderPanelDockCollapse()}
-    </div>
   );
 
   useEffect(() => {
@@ -4326,7 +4319,6 @@ export function AppShell() {
               style={panelDock === "changes" ? panelDockStyle : { position: "absolute", inset: 0 }}
               {...(panelDock === "changes" ? { role: "complementary", "aria-label": panelDockLabel } : {})}
             >
-              {panelDock === "changes" && renderPanelDockHead()}
               <div className="panel-view-host-body">
               <ChangesView
                 cwd={changesViewCwd}
@@ -4337,6 +4329,7 @@ export function AppShell() {
                 onScopeChange={setChangesScope}
                 turnFiles={changesViewScope?.turnFiles ?? null}
                 onOpenDiff={(filePath) => handleOpenDiff(filePath, changesViewCwd)}
+                dockAction={panelDock === "changes" ? renderPanelDockCollapse() : undefined}
               />
               </div>
             </div>
@@ -4360,9 +4353,11 @@ export function AppShell() {
                 onAtMentions={handleAtMentions}
                 reveal={explorerReveal}
                 worktreeInfo={filesViewWorktreeInfo}
-                onSelectWorktree={(path) => showInPanel(path, "files")}
+                projects={panelDock === "files" ? null : filesProjects}
+                projectRoot={worktreeInfo?.forCwd === filesViewCwd ? worktreeInfo.projectRoot : filesViewCwd}
+                homeCwd={panelDock === "files" ? null : shownCwd}
+                onShowFolder={(path) => showInPanel(path, "files")}
                 activePath={panelDock === "files" ? activeFileTab?.filePath : undefined}
-                dockTitle={panelDock === "files" ? renderPanelDockTitle() : undefined}
                 dockAction={panelDock === "files" ? renderPanelDockCollapse() : undefined}
               />
               </div>

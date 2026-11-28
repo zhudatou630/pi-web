@@ -537,9 +537,14 @@ html.dark {
   z-index: 520;
   min-width: 180px;
 }
+/* The Files head's menus drop from the head row's left edge (the sticky row is their containing
+   block), never wider than it: anchored to a trigger mid-row they ran off the narrow panel. */
+.file-search-bar > .panel-text-menu {
+  position: static;
+}
 .files-worktree-menu .panel-text-menu-list {
-  left: auto;
-  right: 0;
+  min-width: min(180px, 100%);
+  max-width: 100%;
   max-height: min(50vh, 320px);
   overflow-y: auto;
 }
@@ -622,11 +627,23 @@ html.dark {
   flex-shrink: 0;
   padding: 4px 13px 4px 7px;
 }
+.changes-head-end {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+}
+/* Docked (220px) the label ellipsizes so the counts and » stay in view. */
+.changes-head > .panel-text-menu {
+  flex-shrink: 1;
+  min-width: 0;
+}
 /* No turn scope to pick (another cwd than the focused chat's): the menu trigger's box, no menu. */
 .changes-head-title {
-  display: inline-flex;
-  align-items: center;
-  height: var(--ui-row-height);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: var(--ui-row-height);
   padding: 0 6px;
   color: var(--text);
   font-size: 12px;
@@ -713,10 +730,27 @@ html.dark {
   align-items: center;
   gap: 2px;
 }
+/* A project switch swaps the whole listing at once (FileExplorer keeps the old tree until the new
+   one arrives); the new tree fades in instead of snapping. */
+.file-tree-roots {
+  animation: viewer-fade-in var(--motion-fast) ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-tree-roots {
+    animation: none;
+  }
+}
+/* The search field opens on its own line below the head row (the head's search icon). */
+.file-search-bar + .file-search-bar {
+  margin-top: 4px;
+}
 .file-search-bar > .sidebar-search-field {
   flex: 1;
-  min-width: 96px;
-  margin-right: 4px;
+  min-width: 0;
+}
+/* Menus and ↶ sit left, the icons right. */
+.file-toolbar-spacer {
+  flex: 1;
 }
 /* The Files search is a quiet tint, not a framed field: the panel's only bordered input read
    heavy (docs/ui.md, File panel). The focus ring stays. */
@@ -741,20 +775,6 @@ html.dark {
   position: relative;
   flex: 1;
   min-height: 0;
-}
-.panel-dock-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-  height: var(--ui-row-height);
-  margin-top: 4px;
-  padding: 0 4px 0 10px;
-}
-.panel-dock-title {
-  font-size: 11px;
-  color: var(--text-muted);
-  line-height: 1.3;
 }
 /* The collapsed column: a narrow strip on the panel's right edge, its name written down it. */
 .panel-dock-strip {
@@ -784,47 +804,11 @@ html.dark {
   writing-mode: vertical-rl;
   letter-spacing: 0.1em;
 }
-/* Docked beside a file (220px) the search row cannot hold the field and every action: one head
-   line (the column's name, the worktree menu, then the icons and ») and the search below.
-   The full-size view keeps one line at any width: the worktree menu ellipsizes first. */
-.panel-view {
-  container-type: inline-size;
-}
+/* One head line at any width: the menus, then the icons (and » when docked); the menus ellipsize
+   first. */
 .file-search-bar > .files-worktree-menu {
   flex-shrink: 1;
   min-width: 0;
-}
-@container (max-width: 320px) {
-  .file-search-bar:has(> .panel-dock-title) {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    row-gap: 4px;
-  }
-  .file-search-bar:has(> .panel-dock-title) > .sidebar-search-field {
-    order: 1;
-    flex-basis: 100%;
-    margin-right: 0;
-  }
-  /* Basis 0: the menu takes what the icons leave and ellipsizes, so the head stays one line. */
-  .file-search-bar:has(> .panel-dock-title) > .files-worktree-menu {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-  .file-search-bar > .panel-dock-title {
-    flex-shrink: 0;
-    margin-right: auto;
-    padding: 0 2px 0 5px;
-  }
-  .file-search-bar > .panel-dock-title:has(+ .files-worktree-menu) {
-    margin-right: 0;
-  }
-  /* The tree scrolls and clips sideways: open the menu rightwards, no wider than the column. */
-  .files-worktree-menu .panel-text-menu-list {
-    left: 0;
-    right: auto;
-    min-width: 0;
-    max-width: calc(100cqw - 8px);
-  }
 }
 
 /* A turn's written files under the answer: file chips, then the last turn's "Review ›" link. */
@@ -4318,7 +4302,8 @@ html.dark ::highlight(file-find-current) {
   color: var(--text);
 }
 
-.file-viewer-icon-button[aria-pressed="true"] {
+.file-viewer-icon-button[aria-pressed="true"],
+.ghost-icon-button[aria-pressed="true"] {
   background: var(--bg-selected);
   color: var(--text);
 }
@@ -4803,6 +4788,20 @@ button.file-outline-fold:hover {
 
 .models-dialog-footer.directory-picker-footer {
   justify-content: flex-end;
+}
+
+/* A narrow viewer (a slim panel, or a phone): anchor to the toolbar, not the 24px button, otherwise
+   the 240px menu clips off the panel's left edge. */
+@container (max-width: 480px) {
+  .file-outline {
+    position: static;
+  }
+
+  .file-outline-menu {
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
 }
 
 @media (max-width: 640px) {

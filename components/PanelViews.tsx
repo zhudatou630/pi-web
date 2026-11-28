@@ -79,7 +79,7 @@ const sum = (files: readonly GitFileStatus[], key: "additions" | "deletions") =>
  * `turnFiles` null: no turn scope here (another cwd than the focused chat's): only uncommitted, under
  * a plain title, so nothing here writes the remembered scope.
  */
-export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScopeChange, turnFiles, onOpenDiff }: {
+export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScopeChange, turnFiles, onOpenDiff, dockAction }: {
   cwd: string;
   /** Docked beside a diff: the file it shows, marked in the list. */
   activePath?: string;
@@ -89,6 +89,8 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
   onScopeChange: (scope: ChangesScope) => void;
   turnFiles: readonly string[] | null;
   onOpenDiff: (filePath: string) => void;
+  /** Docked: the column's collapse button, at the end of the head line. */
+  dockAction?: ReactNode;
 }) {
   const { t } = useI18n();
   const [status, setStatus] = useState<{ cwd: string; data: GitStatusResponse } | null>(null);
@@ -144,7 +146,7 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
   return (
     <div className="panel-view">
       <div className="changes-head">
-        {turnFiles ? <TextMenu label={headLabel}>
+        {turnFiles ? <TextMenu label={<span className="panel-text-menu-label">{headLabel}</span>}>
           {(close) => (["uncommitted", "turn"] as const).map((value) => (
             <button key={value} type="button" role="menuitemradio" aria-checked={scope === value} onClick={() => { close(); onScopeChange(value); }}>
               {t(value === "turn" ? "changes.scopeTurn" : "changes.scopeAll")}
@@ -153,27 +155,30 @@ export function ChangesView({ cwd, refreshKey, active, activePath, scope, onScop
             </button>
           ))}
         </TextMenu> : <span className="changes-head-title">{headLabel}</span>}
-        {files.length > 0 && (
-          <span title={t("changes.countsTitle")}>
-            <LineCounts additions={sum(files, "additions")} deletions={sum(files, "deletions")} />
-          </span>
-        )}
+        <span className="changes-head-end">
+          {files.length > 0 && (
+            <span title={t("changes.countsTitle")}>
+              <LineCounts additions={sum(files, "additions")} deletions={sum(files, "deletions")} />
+            </span>
+          )}
+          {dockAction}
+        </span>
       </div>
       <div className="panel-view-scroll scroll-fade-block">{body}</div>
     </div>
   );
 }
 
-function IconButton({ title, onClick, disabled, children }: { title: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+function IconButton({ title, onClick, disabled, pressed, style, children }: { title: string; onClick: () => void; disabled?: boolean; pressed?: boolean; style?: CSSProperties; children: ReactNode }) {
   return (
-    <button type="button" className="ghost-icon-button" title={title} aria-label={title} onClick={onClick} disabled={disabled}>
+    <button type="button" className="ghost-icon-button" title={title} aria-label={title} aria-pressed={pressed} onClick={onClick} disabled={disabled} style={style}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
     </button>
   );
 }
 
-/** The project tree of `cwd` with search, worktree switch, collapse, upload and refresh. */
-export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, reveal, worktreeInfo, onSelectWorktree, activePath, dockTitle, dockAction }: {
+/** The project tree of `cwd` with search, project/worktree switch, collapse, upload and refresh. */
+export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onOpenFile, onAtMention, onAtMentions, reveal, worktreeInfo, projects, projectRoot, homeCwd, onShowFolder, activePath, dockAction }: {
   cwd: string;
   /** Shown (full size or docked) in an open panel; hidden, refreshes wait until it is shown. */
   active: boolean;
@@ -187,19 +192,40 @@ export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onO
   onAtMentions?: (relativePaths: string[], sourceCwd?: string) => void;
   reveal: { cwd: string; path: string; nonce: number } | null;
   worktreeInfo: PanelWorktreeInfo | null;
-  onSelectWorktree: (path: string) => void;
-  /** Docked: the column's name and its collapse button share the worktree/actions line. */
-  dockTitle?: ReactNode;
+  /** The sidebar's projects; null hides the project menu (a docked column follows its tab). */
+  projects?: { root: string; name: string }[] | null;
+  /** The project `cwd` belongs to, marked in the menu. */
+  projectRoot?: string | null;
+  /** The focused chat's cwd: while the tree shows another folder, one button goes back to it. */
+  homeCwd?: string | null;
+  onShowFolder: (path: string) => void;
+  /** Docked: the column's collapse button, at the end of the head line (no name: the strip has it). */
   dockAction?: ReactNode;
 }) {
   const { t } = useI18n();
   const [uploadBusy, setUploadBusy] = useState(false);
   const [canCollapse, setCanCollapse] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const worktrees = worktreeInfo && worktreeInfo.worktrees.length > 1 ? worktreeInfo.worktrees : null;
   const current = worktrees?.find((worktree) => worktree.path === worktreeInfo?.currentWorktreePath);
+  const currentProject = projects?.find((project) => project.root === projectRoot);
   const toolbar = (
     <>
-      {dockTitle}
+      {projects && (
+        <TextMenu
+          className="files-worktree-menu"
+          title={t("files.switchProjectTitle", { path: cwd })}
+          label={<span className="panel-text-menu-label">{currentProject?.name ?? getFileName(cwd)}</span>}
+        >
+          {(close) => projects.map((project) => (
+            <button key={project.root} type="button" role="menuitemradio" aria-checked={project === currentProject} title={project.root}
+              onClick={() => { close(); if (project !== currentProject) onShowFolder(project.root); }}>
+              <span className="panel-text-menu-label">{project.name}</span>
+              <MenuCheck checked={project === currentProject} />
+            </button>
+          ))}
+        </TextMenu>
+      )}
       {worktrees && (
         <TextMenu
           className="files-worktree-menu"
@@ -208,13 +234,22 @@ export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onO
         >
           {(close) => worktrees.map((worktree) => (
             <button key={worktree.path} type="button" role="menuitemradio" aria-checked={worktree === current} title={worktree.path}
-              onClick={() => { close(); if (worktree !== current) onSelectWorktree(worktree.path); }}>
+              onClick={() => { close(); if (worktree !== current) onShowFolder(worktree.path); }}>
               <span className="panel-text-menu-label">{worktree.branch ?? getFileName(worktree.path)}</span>
               <MenuCheck checked={worktree === current} />
             </button>
           ))}
         </TextMenu>
       )}
+      {homeCwd && homeCwd !== cwd && (
+        <IconButton title={t("files.backToChatFolder", { name: getFileName(homeCwd) })} onClick={() => onShowFolder(homeCwd)} style={{ color: "var(--accent)" }}>
+          <polyline points="9 14 4 9 9 4" /><path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+        </IconButton>
+      )}
+      <span className="file-toolbar-spacer" />
+      <IconButton title={t("sidebar.searchFiles")} pressed={searchOpen} onClick={() => explorerRef.current?.toggleSearch()}>
+        <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+      </IconButton>
       {canCollapse && (
         <IconButton title={t("sidebar.collapseAll")} onClick={() => explorerRef.current?.collapseAll()}>
           <polyline points="7 20 12 15 17 20" /><polyline points="7 4 12 9 17 4" />
@@ -242,6 +277,7 @@ export function FilesView({ cwd, active, refreshKey, onRefresh, explorerRef, onO
           onAtMentions={onAtMentions}
           onUploadBusyChange={setUploadBusy}
           onCanCollapseChange={setCanCollapse}
+          onSearchOpenChange={setSearchOpen}
           toolbar={toolbar}
           reveal={reveal}
           activePath={activePath}

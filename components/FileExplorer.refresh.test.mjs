@@ -25,3 +25,17 @@ test("a hidden Files view requests nothing for project switches or refreshes, th
   render({ cwd: "/c", refreshKey: 4 }, true);
   assert.deepEqual(requests.at(-1), { cwd: "/c", refreshKey: 4 });
 });
+
+test("a project switch keeps the old tree until the new listing arrives, never a Loading blink", async () => {
+  const { staleExplorerTree } = await createJiti(import.meta.url, { alias: { "@/": root }, jsx: true }).import("./FileExplorer.tsx");
+  const a = { cwd: "/a", roots: [{}] };
+  // First render after the switch (load effect not run yet), then while /b loads.
+  assert.equal(staleExplorerTree(a, "/b", false, null), a);
+  assert.equal(staleExplorerTree(a, "/b", true, null), a);
+  // A failed load shows its error, not the old tree; nothing to keep shows Loading.
+  assert.equal(staleExplorerTree(a, "/b", false, "boom"), null);
+  assert.equal(staleExplorerTree({ cwd: "/a", roots: [] }, "/b", true, null), null);
+  // The same cwd: kept only while it reloads.
+  assert.equal(staleExplorerTree(a, "/a", true, null), a);
+  assert.equal(staleExplorerTree(a, "/a", false, null), null);
+});
