@@ -6481,12 +6481,18 @@ span.token.table {
   min-width: 180px;
   height: var(--ui-row-height);
   padding: 0 6px;
-  border: 1px solid var(--ui-field-edge);
+  border: none;
   border-radius: var(--ui-radius-md);
-  background: var(--bg-elevated);
+  background: var(--ui-field-bg);
+  /* The field tokens are box-shadow rings: used as a border color they drew no edge at all. */
+  box-shadow: var(--ui-field-edge);
+  outline: none;
   color: var(--text);
   font-family: var(--font-ui);
   font-size: 12px;
+}
+.model-selector-filter:focus {
+  box-shadow: var(--ui-field-ring);
 }
 
 .menu-surface-label {
