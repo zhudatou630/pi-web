@@ -133,7 +133,7 @@ test("file tabs are chips centered in the header row, like chat tabs", () => {
   assert.equal(chip["border-radius"], "var(--ui-radius-md)");
   assert.equal(declarations(".chat-tab[data-current=\"true\"],\n.panel-view-tab[aria-selected=\"true\"],\n.panel-file-tab[aria-selected=\"true\"]").background, "var(--bg-selected)");
   // One surface: the chat top bar and the file panel header are the chat's --bg, unruled.
-  assert.match(shell, /<div ref=\{topBarRef\} style=\{\{ flexShrink: 0, background: "var\(--bg\)" \}\}>/);
+  assert.match(shell, /<div ref=\{topBarRef\} style=\{\{ flexShrink: 0, background: "var\(--bg\)",/);
   assert.match(shell, /className="workspace-header" style=\{\{ background: "var\(--bg\)", paddingLeft: 8, boxShadow: "none" \}\}/);
   // Preview tabs: a quieter title instead of italic or an underline.
   assert.equal(declarations(".chat-tab[data-preview=\"true\"]:not(:hover),\n.panel-file-tab[data-preview=\"true\"]:not(:hover)").color, "var(--text-muted)");
