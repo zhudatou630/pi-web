@@ -1086,7 +1086,8 @@ export function AppShell() {
   const [panelTabsRestored, setPanelTabsRestored] = useState(false);
   const [panelTabOrder, setPanelTabOrder] = useState<string[]>([]);
   // The fixed views show while no content tab is active (activeFileTabId null); see docs/ui.md, File panel.
-  const [panelView, setPanelView] = useState<PanelView>("changes");
+  // Files first: browsing the tree is the common reason to open the panel; Review links still open Changes.
+  const [panelView, setPanelView] = useState<PanelView>("files");
   const [filesViewMounted, setFilesViewMounted] = useState(false);
   // Docked list beside an open file (Cursor / VS Code Agents): null = follow the panel width.
   const [panelDockPref, setPanelDockPref] = useState<boolean | null>(() => {
