@@ -3154,13 +3154,9 @@ button.question-card-option:not(:disabled):hover {
   min-width: 8ch; /* the built-in tool names, codemode included; longer names push their preview */
   color: var(--text-dim);
 }
-/* The name says the tool, so rows carry no type icon. Only an error keeps its red mark,
-   inside the label's width so its preview stays on the shared edge (14px icon + 6px gap). */
-:is(.process-details-list, .step-flat) [data-step-card]:not(.is-error) [data-step-trigger] > .step-icon {
+/* The name says the tool, so rows carry no icon; an error says itself with its red label. */
+:is(.process-details-list, .step-flat) [data-step-card] [data-step-trigger] > .step-icon {
   display: none;
-}
-:is(.process-details-list, .step-flat) .is-error .step-label {
-  min-width: calc(8ch - 20px);
 }
 /* Previews fade out like titles (.fade-clip); paths keep their ellipsis. */
 @supports (animation-timeline: scroll(self inline)) {
@@ -3220,8 +3216,9 @@ button.question-card-option:not(:disabled):hover {
   }
 }
 
+/* A tier below the row's object, with the tool name: a muted icon read heavier than the text beside it. */
 [data-step-action] {
-  color: var(--text-muted);
+  color: var(--text-dim);
   transition: color var(--motion-fast), opacity var(--motion-fast);
 }
 [data-step-action]:hover,
