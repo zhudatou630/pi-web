@@ -338,6 +338,8 @@ export function AppShell() {
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
   const [newSessionDraftId, setNewSessionDraftId] = useState("initial");
   const activeNewSessionDraftKeyRef = useRef<string | null>(null);
+  /** The panel's open state when the new-session page folded it; null off that page. */
+  const panelBeforeNewPageRef = useRef<boolean | null>(null);
   const [initialCwdStatus, setInitialCwdStatus] = useState<"idle" | "validating" | "ready" | "error">(
     () => initialNavigation.requestedCwd ? "validating" : "idle",
   );
@@ -1562,6 +1564,8 @@ export function AppShell() {
     });
     if (activeNewSessionDraftKeyRef.current !== sourceDraftKey) return;
     activeNewSessionDraftKeyRef.current = null;
+    // The page became this session: keep the panel as the page left it, do not pop it open.
+    if (panelBeforeNewPageRef.current !== null) panelBeforeNewPageRef.current = false;
     setNewSessionCwd(null);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
@@ -2811,10 +2815,10 @@ export function AppShell() {
   const showChat = selectedSession !== null || effectiveNewSessionCwd !== null;
   const projectTrustCwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
 
-  // The new-session page shows no file panel: entering it folds an open panel, leaving it opens the
-  // panel again. Opening it on the page still works, and then leaving keeps it (docs/ui.md, File panel).
+  // The new-session page shows no file panel: entering it folds an open panel, leaving it for another
+  // session opens the panel again; sending its first prompt does not. Opening it on the page still
+  // works, and then leaving keeps it (docs/ui.md, New-session page).
   const onNewSessionPage = mainView === "chat" && selectedSession === null && effectiveNewSessionCwd !== null && !isSplitActive;
-  const panelBeforeNewPageRef = useRef<boolean | null>(null);
   useEffect(() => {
     if (onNewSessionPage) {
       if (panelBeforeNewPageRef.current !== null) return;

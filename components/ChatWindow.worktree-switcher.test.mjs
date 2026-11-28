@@ -306,6 +306,13 @@ test("the new-session page folds an open file panel and opens it again on leavin
   run(true);
   run(false);
   assert.equal(open, false, "a closed panel stays closed");
+  // Sending the first prompt turns the page into its session: the panel stays folded.
+  open = true;
+  run(true);
+  assert.match(text, /if \(panelBeforeNewPageRef\.current !== null\) panelBeforeNewPageRef\.current = false;\n    setNewSessionCwd\(null\);/);
+  scope.panelBeforeNewPageRef.current = false;
+  run(false);
+  assert.equal(open, false, "the first prompt does not reopen the panel");
 });
 
 test("no worktree choice inside a repo subdirectory; creating or removing one reloads the shared list", async () => {
