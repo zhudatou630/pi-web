@@ -361,3 +361,12 @@ test("batch close confirms once for unsent drafts, then re-points only the focus
   assert.match(source, /if \(focusedId && tabIds\.includes\(focusedId\)\)/);
   assert.equal((source.match(/onCloseTabs=\{handleCloseChatTabs\}/g) ?? []).length, 3);
 });
+
+test("the tab menu's Pin session is the sidebar pin, for sidebar rows only, and keeps a preview open", async () => {
+  // Drafts, subagents and side chats (not family roots) get no menu item.
+  assert.match(source, /if \(!id \|\| sessionFamilies\.get\(id\)\?\.root\.id !== id\) return null;/);
+  assert.match(source, /if \(pinned\) promotePreviewSession\(tab\.id\);\s*try \{\s*const response = await fetch\(`\/api\/sessions\/\$\{encodeURIComponent\(id\)\}`, \{\s*method: "PATCH"/);
+  assert.match(sidebarSource, /onPinnedSessionIdsChange\?\.\(pinnedSessionIds\)/);
+  const tabBar = await readFile(new URL("./ChatTabBar.tsx", import.meta.url), "utf8");
+  assert.match(tabBar, /t\(sessionPinned \? "sidebar\.unpinSession" : "sidebar\.pinSession"\)/);
+});

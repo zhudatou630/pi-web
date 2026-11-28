@@ -2517,6 +2517,35 @@ export function AppShell() {
     setChatTabs((prev) => pinSessionTab(prev, sessionId));
   }, []);
 
+  // The tab menu's Pin session is the sidebar's pin: only family roots are sidebar rows.
+  const [pinnedSessionIds, setPinnedSessionIds] = useState<ReadonlySet<string>>(() => new Set());
+  const handlePinnedSessionIdsChange = useCallback((ids: readonly string[]) => setPinnedSessionIds(new Set(ids)), []);
+  const getSessionPinned = useCallback((tab: ChatTabItem) => {
+    const id = tab.session?.id;
+    if (!id || sessionFamilies.get(id)?.root.id !== id) return null;
+    return pinnedSessionIds.has(id);
+  }, [pinnedSessionIds, sessionFamilies]);
+  const toggleSessionPin = useCallback(async (tab: ChatTabItem, pinned: boolean) => {
+    const id = tab.session?.id;
+    if (!id) return;
+    // Pinning marks the session important, so a preview tab stays open too.
+    if (pinned) promotePreviewSession(tab.id);
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      void confirm(`${translate("chatTabs.pinFailed")}\n${error instanceof Error ? error.message : String(error)}`, { alert: true });
+    }
+    bumpSidebarRefresh();
+  }, [bumpSidebarRefresh, confirm, promotePreviewSession, translate]);
+
   // Keyboard activation skips a pane's pointerdown focus (Tab into the other pane, Enter): a pane's
   // own Review, context ring and Agents entries focus that pane first, so the panel they open reads
   // that pane's turn files, stats and session.
@@ -2987,6 +3016,7 @@ export function AppShell() {
         onRunningSessionIdsChange={handleRunningSessionIdsChange}
         onSessionMarkersChange={handleSessionMarkersChange}
         onSessionsChange={handleSessionsChange}
+        onPinnedSessionIdsChange={handlePinnedSessionIdsChange}
         onProjectPathsChange={setProjectPaths}
         onProjectNamesChange={setProjectNameByRoot}
         pinnedCwds={pinnedCwds}
@@ -3448,6 +3478,8 @@ export function AppShell() {
                     onCloseTab={handleCloseChatTab}
                     onCloseTabs={handleCloseChatTabs}
                     onPinTab={promotePreviewSession}
+                    getSessionPinned={getSessionPinned}
+                    onToggleSessionPin={toggleSessionPin}
                     onRevealTabCwd={setActiveCwd}
                     onNewTab={() => handleNewChatTab("primary")}
                     onMoveTab={handleMoveChatTab}
@@ -3482,6 +3514,8 @@ export function AppShell() {
                     onCloseTab={handleCloseChatTab}
                     onCloseTabs={handleCloseChatTabs}
                     onPinTab={promotePreviewSession}
+                    getSessionPinned={getSessionPinned}
+                    onToggleSessionPin={toggleSessionPin}
                     onRevealTabCwd={setActiveCwd}
                     onNewTab={() => handleNewChatTab("secondary")}
                     onMoveTab={handleMoveChatTab}
@@ -3516,6 +3550,8 @@ export function AppShell() {
                     onCloseTab={handleCloseChatTab}
                     onCloseTabs={handleCloseChatTabs}
                     onPinTab={promotePreviewSession}
+                    getSessionPinned={getSessionPinned}
+                    onToggleSessionPin={toggleSessionPin}
                     onRevealTabCwd={setActiveCwd}
                     onNewTab={handleNewChatTab}
                     onMoveTab={handleMoveChatTab}
@@ -3904,6 +3940,8 @@ export function AppShell() {
               onSelectTab={handleSelectChatTab}
               onCloseTab={handleCloseChatTab}
               onPinTab={promotePreviewSession}
+              getSessionPinned={getSessionPinned}
+              onToggleSessionPin={toggleSessionPin}
                     onRevealTabCwd={setActiveCwd}
               onNewTab={handleNewChatTab}
               isMobile={true}

@@ -200,6 +200,8 @@ interface Props {
   /** Unread and awaiting-input markers, mirrored onto the chat tabs. */
   onSessionMarkersChange?: (markers: { unread: Set<string>; awaitingInput: Set<string>; error: Set<string>; subagentsActive: Set<string> }) => void;
   onSessionsChange?: (sessions: SessionInfo[]) => void;
+  /** Pinned session ids, for the chat tab menu's Pin session. */
+  onPinnedSessionIdsChange?: (ids: readonly string[]) => void;
   /** Display names keyed by project root, for the pickers outside the sidebar. */
   onProjectPathsChange?: (paths: string[]) => void;
   onProjectNamesChange?: (namesByRoot: ReadonlyMap<string, string>) => void;
@@ -367,7 +369,7 @@ function sameIdSet(current: Set<string>, ids: string[] | undefined): Set<string>
   return next.length === current.size && next.every((id) => current.has(id)) ? current : new Set(next);
 }
 
-export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, onOpenSettings, onPrefetchSettings, sidebarToggle = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
+export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectSession, onOpenSessionInNewTab, onSessionDragChange, onForkSession, forking = false, onNewSession, initialSessionId, skipInitialProjectSelection, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onShowFiles, onBackgroundTaskDone, onRunningSessionIdsChange, onSessionMarkersChange, onSessionsChange, onPinnedSessionIdsChange, onProjectPathsChange, onProjectNamesChange, pinnedCwds, onUpdatePinnedCwds, onHomeDirChange, onWorktreeInfoChange, explorerReveal = null, onOpenSettings, onPrefetchSettings, sidebarToggle = null, newSessionOpen = false, routinesOpen = false, onToggleRoutines }: Props) {
   const { t } = useI18n();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
@@ -941,6 +943,10 @@ export function SessionSidebar({ selectedSessionId, visibleSessionIds, onSelectS
   useEffect(() => {
     if (sessionListVersion !== null) onSessionsChange?.(allSessions);
   }, [allSessions, onSessionsChange, sessionListVersion]);
+
+  useEffect(() => {
+    onPinnedSessionIdsChange?.(pinnedSessionIds);
+  }, [onPinnedSessionIdsChange, pinnedSessionIds]);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;

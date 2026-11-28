@@ -41,7 +41,11 @@ interface Props {
   onCloseTab: (tabId: string) => boolean | void;
   /** Batch close for the context menu (close others / close to the right). */
   onCloseTabs?: (tabIds: string[]) => boolean | void;
+  /** Preview tab → kept-open tab (shown as Keep open; not the sidebar's session pin). */
   onPinTab?: (tabId: string) => void;
+  /** The tab's session pin in the sidebar: null hides the menu item (drafts, subagents, side chats). */
+  getSessionPinned?: (tab: ChatTabItem) => boolean | null;
+  onToggleSessionPin?: (tab: ChatTabItem, pinned: boolean) => void;
   /** Context menu: point the sidebar project and explorer at this tab's cwd. */
   onRevealTabCwd?: (cwd: string) => void;
   onNewTab: () => void;
@@ -71,6 +75,8 @@ export function ChatTabBar({
   onCloseTab,
   onCloseTabs,
   onPinTab,
+  getSessionPinned,
+  onToggleSessionPin,
   onRevealTabCwd,
   onNewTab,
   onMoveTab,
@@ -531,6 +537,7 @@ export function ChatTabBar({
         };
         const otherIds = tabs.filter((tab) => tab.id !== menuTab.id).map((tab) => tab.id);
         const rightIds = tabs.slice(tabs.indexOf(menuTab) + 1).map((tab) => tab.id);
+        const sessionPinned = getSessionPinned?.(menuTab) ?? null;
         // Unsplit, the only strip is the primary one and has no splitTabId.
         const moveLabel = pane === "secondary"
           ? t("chatTabs.moveLeft")
@@ -543,7 +550,7 @@ export function ChatTabBar({
             style={{
               position: "fixed",
               left: Math.min(contextMenu.x + 2, window.innerWidth - 168),
-              top: Math.min(contextMenu.y + 2, window.innerHeight - 186),
+              top: Math.min(contextMenu.y + 2, window.innerHeight - 212),
               minWidth: 160,
               zIndex: 700,
             }}
@@ -551,6 +558,11 @@ export function ChatTabBar({
             {menuTab.preview && onPinTab && (
               <button type="button" role="menuitem" onClick={run(() => onPinTab(menuTab.id))}>
                 {t("chatTabs.pinTab")}
+              </button>
+            )}
+            {sessionPinned !== null && onToggleSessionPin && (
+              <button type="button" role="menuitem" onClick={run(() => onToggleSessionPin(menuTab, !sessionPinned))}>
+                {t(sessionPinned ? "sidebar.unpinSession" : "sidebar.pinSession")}
               </button>
             )}
             {onMoveTab && canMoveToOtherPane && (
