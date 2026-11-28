@@ -226,7 +226,7 @@ test("diff splits at 720px and only unified diff and Source offer a wrap toggle"
 
 test("diff code tokens inherit the row box, wrap and syntax colors without painting over change backgrounds", () => {
   const line = source.slice(source.indexOf("const DiffLineCode"), source.indexOf("function DiffView"));
-  for (const rule of [/border: 0/, /backgroundColor: "transparent"/, /fontFamily: "inherit"/, /lineHeight: "inherit"/, /whiteSpace: "inherit"/, /wrapLongLines=\{wrapLines\}/, /isDark \? vscDarkPlus : vs/]) assert.match(line, rule);
+  for (const rule of [/border: 0/, /backgroundColor: "transparent"/, /fontFamily: "inherit"/, /lineHeight: "inherit"/, /whiteSpace: "inherit"/, /wrapLongLines=\{wrapLines\}/, /isDark \? vscDarkPlus : lightCodeTheme/]) assert.match(line, rule);
   assert.doesNotMatch(line, /\bbackground:/);
   assert.match(source, /const language = data\?\.language \?\? getFileLanguage\(filePath\)/);
   assert.match(source, /usePrismLanguages\(\(Boolean\(data\) \|\| hasGitDiff\)/);
@@ -304,8 +304,9 @@ test("highlighted and bounded diff gutters stay pinned with matching line boxes"
   assert.equal(pinned.position, "sticky");
   assert.equal(pinned.left, 0);
   assert.equal(pinned.zIndex, 1);
-  assert.equal(pinned.background, "var(--bg-panel)", "opaque surface follows both themes");
-  assert.equal(pinned.borderRight, "1px solid var(--border)");
+  // Same surface as the code (no tinted strip or rule), opaque in both themes while pinned.
+  assert.equal(pinned.background, "var(--bg)", "opaque surface follows both themes");
+  assert.equal(pinned.borderRight, undefined);
   assert.equal(gutter.position, undefined, "large plain fallback remains unpinned");
   assert.equal(diffGutter.boxSizing, "border-box", "40px offsets include padding and borders");
   // Font sizes differ intentionally, but their line boxes must not drift at any chat zoom.

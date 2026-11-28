@@ -6,8 +6,8 @@ import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
 import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
 // Direct theme imports: the styles/prism barrel pulls in all ~44 themes.
-import vs from "react-syntax-highlighter/dist/esm/styles/prism/vs";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
+import { lightCodeTheme } from "@/lib/code-theme";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { createPortal } from "react-dom";
 import { findQuoteInSegments, selectedTextWithTex } from "@/lib/quoted-selection";
@@ -124,11 +124,12 @@ const FILE_LINE_NUMBER_STYLE: CSSProperties = {
   boxSizing: "border-box",
   width: 48,
   minWidth: 48,
-  padding: "0 10px",
+  padding: "0 12px 0 8px",
   textAlign: "right",
   color: "var(--text-dim)",
-  background: "var(--bg-panel)",
-  borderRight: "1px solid var(--border)",
+  // No tinted strip or rule (like the chat code blocks, VS Code, Cursor): spacing sets it apart.
+  // Opaque, since it stays pinned over code scrolled under it.
+  background: "var(--bg)",
   fontFamily: "var(--font-mono)",
   fontSize: "calc(11px + var(--chat-font-size-offset, 0px))",
   fontStyle: "normal",
@@ -399,7 +400,7 @@ const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, wrapLi
   return (
     <SyntaxHighlighter
       language={language}
-      style={isDark ? vscDarkPlus : vs}
+      style={isDark ? vscDarkPlus : lightCodeTheme}
       PreTag="span"
       CodeTag="span"
       wrapLongLines={wrapLines}
@@ -1756,7 +1757,7 @@ function TextFileViewer({
       <SyntaxHighlighter
         className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
         language={language === "text" || !prismReady ? "plaintext" : language}
-        style={isDark ? vscDarkPlus : vs}
+        style={isDark ? vscDarkPlus : lightCodeTheme}
         showLineNumbers
         lineNumberStyle={FILE_PINNED_LINE_NUMBER_STYLE}
         customStyle={{

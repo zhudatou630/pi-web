@@ -2,8 +2,8 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 // Direct theme imports: the styles/prism barrel pulls in all ~44 themes.
-import vs from "react-syntax-highlighter/dist/esm/styles/prism/vs";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
+import { lightCodeTheme } from "@/lib/code-theme";
 import { useFontScheme } from "@/hooks/useFontScheme";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
@@ -440,7 +440,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
       ) : (
         <SyntaxHighlighter
           language={highlighted ? lang || "text" : "text"}
-          style={isDark ? vscDarkPlus : vs}
+          style={isDark ? vscDarkPlus : lightCodeTheme}
           showLineNumbers
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", paddingRight: "0.8em", userSelect: "none", flexShrink: 0 }}
           renderer={renderCodeLines}
