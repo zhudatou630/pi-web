@@ -2119,7 +2119,7 @@ function TextFileViewer({
             <button
               type="button"
               ref={findButtonRef}
-              onClick={() => setFindOpen(true)}
+              onClick={() => setFindOpen((open) => !open)}
               title={`${t("files.find")} (${FIND_SHORTCUT_LABEL})`}
               aria-label={t("files.find")}
               aria-pressed={findOpen}
