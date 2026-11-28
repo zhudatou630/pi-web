@@ -958,7 +958,7 @@ export function AppShell() {
 
   const closeRightPanel = useCallback((restoreFocus = false) => {
     setRightPanelOpen(false);
-    // Phones have no panel toggle in the chat bar: ⋯ (Files) is the way back.
+    // The toggle may be unmounted (the Routines page on phones): ⋯ is the fallback.
     if (restoreFocus) requestAnimationFrame(() => (filePanelToggleRef.current ?? document.querySelector<HTMLElement>("[data-session-menu-trigger]"))?.focus());
   }, []);
 
@@ -2493,7 +2493,6 @@ export function AppShell() {
     setSidebarReveal((previous) => ({ sessionId, nonce: (previous?.nonce ?? 0) + 1 }));
     setSidebarOpen(true);
   }, []);
-  const handleRevealCwdInFiles = useCallback((cwd: string) => showInPanel(cwd, "files"), [showInPanel]);
   const handleReviewTurnChanges = useCallback((cwd: string) => {
     setChangesScope("turn");
     showInPanel(cwd, "changes");
@@ -3018,17 +3017,11 @@ export function AppShell() {
         aria-controls="session-sidebar"
         aria-expanded={sidebarOpen}
       >
-        {/* One glyph in both places, never swapped (docs/ui.md, Tabs and top bars): the left panel,
-            mirrored by the file panel toggle. Phones keep ☰ for the drawer. */}
-        {isMobile ? (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
-            <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="2.5" y="5" width="19" height="14" rx="2.5" /><line x1="9" y1="5" x2="9" y2="19" />
-          </svg>
-        )}
+        {/* One glyph everywhere, phones included, never swapped (docs/ui.md, Tabs and top bars): the
+            left panel, mirrored by the file panel toggle. */}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="2.5" y="5" width="19" height="14" rx="2.5" /><line x1="9" y1="5" x2="9" y2="19" />
+        </svg>
         {menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" />}
       </button>
   );
@@ -3236,7 +3229,7 @@ export function AppShell() {
             </svg>
           </button>
         )}
-        {/* Without a session only phones keep ⋯, for Files. */}
+        {/* Without a session only phones keep ⋯, for the panel shortcuts. */}
         {sessionTools && (mobile || session) && <SessionMenu
           mobile={mobile}
           infoDisabled={toolsUnavailable}
@@ -3254,7 +3247,10 @@ export function AppShell() {
             system: translate("system.prompt"),
             full: translate("history.full"),
             menu: translate("session.moreActions"),
+            changes: translate("panel.changes"),
             files: translate("panel.files"),
+            terminal: translate("panel.terminal"),
+            browser: translate("panel.browser"),
             exportMarkdown: translate(historyShareReady ? "history.exportMarkdownShare" : "history.exportMarkdown"),
             exportMarkdownTitle: translate("history.exportMarkdownTitle"),
             fork: translate("session.fork"),
@@ -3264,7 +3260,11 @@ export function AppShell() {
             cacheKeepaliveNext: (time) => translate("session.cacheKeepaliveNext", { time }),
           }}
           onMenuOpenChange={handleHistoryMenuOpenChange}
-          onOpenFiles={mobile && filesCwd ? () => handleRevealCwdInFiles(filesCwd) : undefined}
+          onOpenPanel={filesCwd ? (target) => {
+            if (target === "terminal") handleOpenTerminal(filesCwd);
+            else if (target === "browser") handleOpenBrowser();
+            else showInPanel(filesCwd, target);
+          } : undefined}
           infoPending={infoPending}
           onOpenTools={() => void openInfoDialog("tools")}
           onOpenSystem={() => void openInfoDialog("system")}
@@ -3490,10 +3490,12 @@ export function AppShell() {
                 height: "100%",
               }}
             >
-              {/* Phones: ☰, title, outline, ⋯ (Files lives in ⋯); conditional tools before the outline.
-                  With the tab strip below, the shown tab already names the session: no title. */}
+              {/* Phones: sidebar toggle, title, outline, ⋯, file panel toggle (desktop's glyphs and order);
+                  conditional tools before the outline. With the tab strip below, the shown tab already
+                  names the session: no title. */}
               <span className="mobile-top-bar-title" title={showMobileTitle ? collapsedSessionTitle : undefined}>{showMobileTitle ? collapsedSessionTitle : null}</span>
               {renderChatToolbarActions(true)}
+              {renderMainFileToggle(true)}
             </div>
           )}
           {!isMobile && (isSplitActive ? (

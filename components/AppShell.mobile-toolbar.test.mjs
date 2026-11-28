@@ -6,18 +6,21 @@ const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8"
 const menuSource = await readFile(new URL("./SessionMenu.tsx", import.meta.url), "utf8");
 const cssSource = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
-test("phone top bar holds the menu button, title, the outline button and the session menu; Files is in the menu", async () => {
+test("phone top bar holds the sidebar toggle, title, the outline button, the session menu and the file panel toggle", async () => {
   const toolbar = mobileToolbarSource();
   const title = toolbar.indexOf('className="mobile-top-bar-title"');
   const actions = toolbar.indexOf("{renderChatToolbarActions(true)}");
-  assert.ok(title >= 0 && title < actions);
+  const fileToggle = toolbar.indexOf("{renderMainFileToggle(true)}");
+  assert.ok(title >= 0 && title < actions && actions < fileToggle);
+  // Desktop's glyphs on phones too: no ☰.
+  assert.doesNotMatch(source, /<line x1="4" y1="6" x2="20" y2="6" \/>/);
   // No uncommitted-changes count anywhere around the composer: Changes is the file panel's view.
   assert.doesNotMatch(source, /ChangesButton|renderTopBarContext|renderComposerContext|gitChangeCounts/);
-  assert.doesNotMatch(toolbar, /renderMainFileToggle/);
-  assert.match(source, /onOpenFiles=\{mobile && filesCwd \? \(\) => handleRevealCwdInFiles\(filesCwd\) : undefined\}/);
+  // ⋯ opens the file panel straight on a view or tab, on every platform.
+  assert.match(source, /onOpenPanel=\{filesCwd \? \(target\) => \{\s*if \(target === "terminal"\) handleOpenTerminal\(filesCwd\);\s*else if \(target === "browser"\) handleOpenBrowser\(\);\s*else showInPanel\(filesCwd, target\);/);
   // The outline (desktop's minimap) is one tap away, its own button beside ⋯, not a menu item.
   assert.doesNotMatch(menuSource, /onOpenOutline|labels\.outline/);
-  // Only a session has an outline; a new session's ⋯ keeps only Files (SessionMenu).
+  // Only a session has an outline; a new session's ⋯ keeps only the panel shortcuts (SessionMenu).
   assert.match(source, /\{sessionTools && mobile && session && \(\s*<button[\s\S]*?onClick=\{\(\) => toggleTopPanel\("outline"\)\}[\s\S]*?data-mobile-toolbar-action="outline"/);
   // With the tab strip below (two or more tabs), the shown tab names the session: no title.
   assert.match(source, /const showMobileTitle = showChat && chatTabs\.length < 2;/);

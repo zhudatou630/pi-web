@@ -10,7 +10,7 @@ type Props = {
   mobile: boolean;
   /** Tools and system prompt need a loaded chat. */
   infoDisabled: boolean;
-  /** No saved session (the new-session page): the menu holds only Files. */
+  /** No saved session (the new-session page): the menu holds only the panel shortcuts. */
   historyDisabled: boolean;
   /** Fork needs a saved, idle session. */
   forkDisabled: boolean;
@@ -28,8 +28,10 @@ type Props = {
     system: string;
     full: string;
     menu: string;
-    /** Phones only: the file panel lives in this menu. */
-    files?: string;
+    changes: string;
+    files: string;
+    terminal: string;
+    browser: string;
     exportMarkdown: string;
     exportMarkdownTitle: string;
     fork: string;
@@ -45,7 +47,8 @@ type Props = {
   onViewFullHistory: () => void;
   onExportMarkdown: () => void;
   onMenuOpenChange: (open: boolean) => void;
-  onOpenFiles?: () => void;
+  /** File panel shortcuts (docs/ui.md, Tabs and top bars): open the panel straight on that view or tab. */
+  onOpenPanel?: (target: "changes" | "files" | "terminal" | "browser") => void;
 };
 
 export function SessionMenu({
@@ -68,7 +71,7 @@ export function SessionMenu({
   onViewFullHistory,
   onExportMarkdown,
   onMenuOpenChange,
-  onOpenFiles,
+  onOpenPanel,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -108,8 +111,8 @@ export function SessionMenu({
     };
   }, [menuOpen, onMenuOpenChange]);
 
-  // Nothing to list: no session and no Files row.
-  const disabled = historyDisabled && !onOpenFiles;
+  // Nothing to list: no session and no panel shortcuts.
+  const disabled = historyDisabled && !onOpenPanel;
 
   return (
     <div ref={rootRef} style={{ display: "flex", alignItems: "stretch", height: "100%", position: "relative" }}>
@@ -143,19 +146,22 @@ export function SessionMenu({
           style={{
             position: "fixed",
             top: menuPos.top + 2,
+            // Ten rows can outgrow a landscape phone: scroll instead of hiding Export.
+            maxHeight: `calc(100dvh - ${menuPos.top + 10}px)`,
+            overflowY: "auto",
             left: Math.max(8, Math.min(menuPos.left, (typeof window !== "undefined" ? window.innerWidth : 800) - menuWidth - 8)),
             minWidth: 195,
             zIndex: 520,
           }}
         >
-          {onOpenFiles && (
-            <button type="button" role="menuitem" onClick={() => { onMenuOpenChange(false); onOpenFiles(); }}>
-              {labels.files}
+          {onOpenPanel && (["changes", "files", "terminal", "browser"] as const).map((target) => (
+            <button key={target} type="button" role="menuitem" onClick={() => { onMenuOpenChange(false); onOpenPanel(target); }}>
+              {labels[target]}
             </button>
-          )}
-          {/* Without a saved session (the new-session page) only Files applies. */}
+          ))}
+          {/* Without a saved session (the new-session page) only the panel shortcuts apply. */}
           {!historyDisabled && (<>
-          {onOpenFiles && <div role="separator" className="menu-surface-divider" />}
+          {onOpenPanel && <div role="separator" className="menu-surface-divider" />}
           <button
             type="button"
             role="menuitem"

@@ -13,18 +13,19 @@ test("session menu is one icon button opening a dropdown of info and history act
   assert.match(source, /data-mobile-toolbar-action=\{mobile \? "session-menu" : undefined\}/);
 });
 
-test("menu lists (phones: files, a divider) tools, system prompt, a divider, then history and export", () => {
-  const order = ["labels.files", 'role="separator"', "labels.tools", "labels.system", 'role="separator"', "labels.fork", "labels.full", "labels.exportMarkdown"];
+test("menu lists the panel shortcuts, a divider, tools, system prompt, a divider, then history and export", () => {
+  assert.match(source, /\(\["changes", "files", "terminal", "browser"\] as const\)\.map/);
+  const order = ["labels[target]", 'role="separator"', "labels.tools", "labels.system", 'role="separator"', "labels.fork", "labels.full", "labels.exportMarkdown"];
   let from = source.indexOf('role="menu"');
   const indices = order.map((needle) => (from = source.indexOf(needle, from + 1)));
   assert.ok(indices.every((index) => index >= 0));
 });
 
-test("without a saved session the menu holds only Files (new-session page)", () => {
+test("without a saved session the menu holds only the panel shortcuts (new-session page)", () => {
   assert.match(source, /disabled=\{infoDisabled \|\| infoPending !== null\}/);
-  assert.match(source, /\{!historyDisabled && \(<>\s*\{onOpenFiles && <div role="separator"[\s\S]*?labels\.exportMarkdown[\s\S]*?<\/>\)\}/);
-  assert.match(source, /const disabled = historyDisabled && !onOpenFiles/);
-  // Desktop has no Files row, so ⋯ is not rendered there without a session.
+  assert.match(source, /\{!historyDisabled && \(<>\s*\{onOpenPanel && <div role="separator"[\s\S]*?labels\.exportMarkdown[\s\S]*?<\/>\)\}/);
+  assert.match(source, /const disabled = historyDisabled && !onOpenPanel/);
+  // Desktop's new-session page has no file panel, so ⋯ is not rendered there without a session.
   assert.match(appShell, /\{sessionTools && \(mobile \|\| session\) && <SessionMenu/);
 });
 
