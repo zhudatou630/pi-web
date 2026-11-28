@@ -410,6 +410,49 @@ html.dark {
   cursor: default;
   opacity: 0.45;
 }
+/* The Agents entry's count is the corner badge of the original top-bar button (docs/ui.md, Tabs and
+   top bars): the 13px glyph centred like every top-bar icon, the badge at the button's top right, over
+   the glyph's corner. Dim total at rest; while subagents run, how many still run on a solid badge that
+   breathes like the running dot; red while a failure is unseen. Color says what the number counts. */
+.agents-badge {
+  --badge-fill: color-mix(in srgb, var(--text) 10%, var(--bg));
+  position: absolute;
+  /* The badge's centre on the glyph's top-right corner, as the original's `top: 2px` gave in a 30px
+     bar; from the middle, so it holds in the 40px bar. */
+  top: calc(50% - 13px);
+  right: 2px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: var(--ui-radius-sm);
+  background: var(--badge-fill);
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.agents-badge[data-state="running"] {
+  --badge-fill: var(--text);
+  color: var(--bg);
+}
+.agents-badge[data-state="failed"] {
+  --badge-fill: var(--danger);
+  color: var(--bg);
+}
+/* Breathes in fill, not opacity: the number stays as legible as the sidebar dot is visible. */
+.agents-badge[data-breathing] {
+  animation: agents-badge-breathe 1.6s ease-in-out infinite;
+}
+@keyframes agents-badge-breathe {
+  50% { background: color-mix(in srgb, var(--badge-fill) 50%, var(--bg)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agents-badge[data-breathing] {
+    animation: none;
+  }
+}
+
 
 /* One tab look everywhere (docs/ui.md, Tabs and top bars): chat tabs, the file panel's
    Changes / Files and its content tabs are Cursor's quiet chips, no lines or rules. The
@@ -6067,40 +6110,11 @@ span.token.table {
   max-width: 240px;
 }
 
-/* The dock's session controls (docs/ui.md, Composer): a bare context ring, "⑂ branch", and
-   "● Agents N" while subagents run. Narrow docks keep glyphs and
-   counts; the words go first. */
+/* The dock's context ring (docs/ui.md, Composer): bare at rest. */
 .chat-input-context {
   gap: 4px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
-}
-
-.composer-agents {
-  color: var(--text-dim);
-}
-/* Running: "2/6" with the running count at full tier, breathing like the sidebar's running dot
-   (a tier change alone is too faint to tell apart; motion is the running signal everywhere). */
-.composer-agents-running {
-  color: var(--text);
-  animation: session-status-breathe 1.6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .composer-agents-running {
-    animation: none;
-  }
-}
-
-.composer-dock-count {
-  font-variant-numeric: tabular-nums;
-}
-
-.chat-input-dock.is-narrow .composer-dock-label {
-  display: none;
-}
-/* A bare count would not say what it counts: narrow docks show the glyph the Agents panel uses. */
-.chat-input-dock:not(.is-narrow) .composer-agents-icon {
-  display: none;
 }
 
 .chat-input-context.is-warning {

@@ -115,6 +115,22 @@ export function unnamedSideChatNumbers(sessions: readonly SessionInfo[]): Map<st
   return numbers;
 }
 
+/** The top bar's Agents badge (docs/ui.md): subagents only, never side chats; a user's Stop (aborted) is no failure. */
+export function summarizeSubagents(
+  family: SessionFamily | null | undefined, runningIds: ReadonlySet<string>, seenIds: ReadonlySet<string>,
+): { count: number; running: number; unseenFailedIds: string[] } {
+  const subagents = family?.subagents.filter((session) => session.relation?.kind === "subagent") ?? [];
+  const failed = (session: SessionInfo) => session.relation?.kind === "subagent"
+    && (session.relation.status === "failed" || session.relation.status === "interrupted");
+  return {
+    count: subagents.length,
+    running: subagents.filter((session) => runningIds.has(session.id)).length,
+    unseenFailedIds: subagents
+      .filter((session) => failed(session) && !runningIds.has(session.id) && !session.failureSeen && !seenIds.has(session.id))
+      .map((session) => session.id),
+  };
+}
+
 export function familyHasMemberIn(family: SessionFamily, ids: ReadonlySet<string>): boolean {
   return ids.has(family.root.id) || family.subagents.some((session) => ids.has(session.id));
 }

@@ -98,8 +98,6 @@ interface Props {
   extensionUiOpen?: boolean;
   /** What needs you, docked above the composer at its width: extension dialogs, the run error. */
   attention?: React.ReactNode;
-  /** The session's own controls in the dock (docs/ui.md, Composer). */
-  dock?: ComposerDock;
   inputHistory?: string[];
   onRecallQueue?: () => void;
   slashCommands?: SlashCommandInfo[];
@@ -114,11 +112,6 @@ interface Props {
   cwd?: string | null;
   /** Files picked with the attach button, handled like files dropped onto the chat. */
   onAttachFiles?: (files: File[]) => void;
-}
-
-/** What the dock shows for the session beside the context ring (the Agents entry). */
-export interface ComposerDock {
-  status: React.ReactNode;
 }
 
 export interface ChatInputHandle {
@@ -687,7 +680,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
   onCompact, onAbortCompaction, isCompacting, compactError, onDismissCompactError, compactResult, toolPreset, onToolPresetChange,
   contextUsage, cacheHitRate, sessionCost, modelTiming, onOpenSessionStats, statsOpen,
   thinkingLevel, onThinkingLevelChange, availableThinkingLevels, thinkingLevelMap,
-  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, extensionUiOpen = false, attention, dock,
+  retryInfo, queuedMessages, inputHistory = [], onRecallQueue, extensionUiOpen = false, attention,
   slashCommands, slashCommandsLoading, onLoadSlashCommands,
   onBuiltinCommand,
   onAudioUnlock,
@@ -761,8 +754,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     : {};
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const dockRef = useRef<HTMLDivElement>(null);
-  const [dockNarrow, setDockNarrow] = useState(false);
   // The near-full reminder above the composer, dismissed per session until it drops below the line.
   const [contextTrayDismissed, setContextTrayDismissed] = useState(false);
   const thinkingDropdownRef = useRef<HTMLDivElement>(null);
@@ -1174,17 +1165,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     observer.observe(ta);
     return () => observer.disconnect();
   }, [resizeTextarea]);
-
-  // Narrow docks (split panes, phones) keep the dock's glyphs and counts, not their words. Not a CSS
-  // container query: containment makes the dock the containing block of the model picker's
-  // position:fixed panel in Safari/Firefox.
-  useEffect(() => {
-    const dock = dockRef.current;
-    if (!dock) return;
-    const observer = new ResizeObserver(([entry]) => setDockNarrow(entry.contentRect.width < 460));
-    observer.observe(dock);
-    return () => observer.disconnect();
-  }, [compact]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -2752,7 +2732,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           </div>
 
           {!compact && (
-            <div ref={dockRef} className={`chat-input-dock${dockNarrow ? " is-narrow" : ""}`}>
+            <div className="chat-input-dock">
               <div ref={imageMenuRef} className="chat-input-popover-anchor">
                 <button
                   type="button"
@@ -2842,7 +2822,6 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
                 </div>
               )}
               <div className="chat-input-dock-spacer" />
-              {dock?.status}
               {renderContextUsageWidget()}
               {showSessionMenu && (
                 <div ref={controlsMenuRef} className="chat-input-popover-anchor">

@@ -467,6 +467,7 @@ export const enLocale: LocalePlugin = {
     "agentSwitcher.subagent": "Sub-agent",
     "agentSwitcher.count": "{count} total",
     "agentSwitcher.runningCount": "{count} running",
+    "agentSwitcher.failedCount": "{count} failed",
     "agentSwitcher.deleteSideChat": "Delete side chat",
     "agentSwitcher.deleteSideChatConfirm": "Delete side chat “{title}”?\nCannot be undone. The main session and other side chats stay.",
     "agentSwitcher.status.starting": "Starting",

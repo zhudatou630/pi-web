@@ -14,6 +14,8 @@ export interface SidebarState {
   /** Project display names keyed by project key; an absent key means no name. */
   projectNames?: Record<string, string>;
   readAt?: Record<string, number>;
+  /** Failed or interrupted subagent ids whose failure was seen in the Agents panel. */
+  seenFailedAgents?: string[];
   [key: string]: unknown;
 }
 
@@ -54,6 +56,8 @@ function loadState(path: string): SidebarState {
     && (value.projectNames === undefined || isProjectNames(value.projectNames))
     && (value.readAt === undefined || (isRecord(value.readAt) && Object.entries(value.readAt).every(([id, at]) =>
       SESSION_ID_PATTERN.test(id) && typeof at === "number" && Number.isFinite(at) && at >= 0)))
+    && (value.seenFailedAgents === undefined || (Array.isArray(value.seenFailedAgents)
+      && value.seenFailedAgents.every((id) => typeof id === "string" && SESSION_ID_PATTERN.test(id))))
     && isRecord(value.archived) && Object.entries(value.archived).every(([id, time]) =>
       SESSION_ID_PATTERN.test(id) && typeof time === "string" && Number.isFinite(Date.parse(time)))) {
     return value as SidebarState;
@@ -172,17 +176,35 @@ export async function updateSidebarReadAt(ids: readonly string[], observedAt: nu
   }, path)).state;
 }
 
+const SEEN_FAILED_AGENTS_LIMIT = 1000;
+
+/** Shared across devices like readAt. A resumed subagent that fails again stays seen (rare). */
+export async function markFailedAgentsSeen(ids: readonly string[], path = getSidebarStatePath()): Promise<boolean> {
+  if (!ids.length || ids.length > 100 || ids.some((id) => id.length > 256 || !SESSION_ID_PATTERN.test(id))) throw new Error("Invalid subagent ids");
+  return (await mutateSidebarState((state) => {
+    const seen = state.seenFailedAgents ?? [];
+    const added = [...new Set(ids)].filter((id) => !seen.includes(id));
+    if (!added.length) return false;
+    // Oldest first out: by then the session is long read, and deletes prune their ids anyway.
+    state.seenFailedAgents = [...seen, ...added].slice(-SEEN_FAILED_AGENTS_LIMIT);
+    return true;
+  }, path)).changed;
+}
+
 export async function removeSidebarSessions(ids: readonly string[], path = getSidebarStatePath()): Promise<void> {
   const removed = new Set(ids);
   await mutateSidebarState((state) => {
     const pinned = state.pinned.filter((id) => !removed.has(id));
     const archived = Object.fromEntries(Object.entries(state.archived).filter(([id]) => !removed.has(id)));
     const readAt = Object.fromEntries(Object.entries(state.readAt ?? {}).filter(([id]) => !removed.has(id)));
+    const seenFailedAgents = (state.seenFailedAgents ?? []).filter((id) => !removed.has(id));
     if (pinned.length === state.pinned.length && Object.keys(archived).length === Object.keys(state.archived).length
-      && Object.keys(readAt).length === Object.keys(state.readAt ?? {}).length) return false;
+      && Object.keys(readAt).length === Object.keys(state.readAt ?? {}).length
+      && seenFailedAgents.length === (state.seenFailedAgents ?? []).length) return false;
     state.pinned = pinned;
     state.archived = archived;
     if (state.readAt) state.readAt = readAt;
+    if (state.seenFailedAgents) state.seenFailedAgents = seenFailedAgents;
     return true;
   }, path);
 }

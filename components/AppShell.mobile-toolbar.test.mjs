@@ -13,7 +13,6 @@ test("phone top bar holds the menu button, title, the outline button and the ses
   assert.ok(title >= 0 && title < actions);
   // No uncommitted-changes count anywhere around the composer: Changes is the file panel's view.
   assert.doesNotMatch(source, /ChangesButton|renderTopBarContext|renderComposerContext|gitChangeCounts/);
-  assert.match(source, /composerDock=\{renderComposerDock\(tabSession, pane\)\}/);
   assert.doesNotMatch(toolbar, /renderMainFileToggle/);
   assert.match(source, /onOpenFiles=\{mobile && filesCwd \? \(\) => handleRevealCwdInFiles\(filesCwd\) : undefined\}/);
   // The outline (desktop's minimap) is one tap away, its own button beside ⋯, not a menu item.
@@ -71,19 +70,19 @@ test("uses a single inline mobile toolbar", () => {
   }
 });
 
-test("Agents: in the composer dock whenever the family has children; never in the top bar or a menu", () => {
+test("Agents: in the top bar beside the way back, never in the composer dock or a menu", () => {
   assert.match(source, /const hasSubagentSessionsForSession = Boolean\(sessionFamily\?\.subagents\.length\)/);
-  const dock = functionSource("renderComposerDock", "const renderDesktopHeaderActions");
-  // One family index for the top bar and every dock, not a rebuild per call.
+  // One family index for the top bar and the Agents panel, not a rebuild per call.
   assert.match(source, /const sessionFamilies = useMemo\(\(\) => indexSessionFamilies\(sessionsWithSelection\), \[sessionsWithSelection\]\);/);
-  assert.doesNotMatch(source, /getSessionFamily\(/);
-  assert.match(dock, /const family = sessionFamilies\.get\(session\.id\);/);
-  // Split: each dock opens the panel for its own session (keyboard Enter included), and focuses its pane.
-  assert.match(dock, /agentsAnchorRef\.current = anchor;\s*focusPaneRef\.current\(pane\);\s*setAgentsSessionId\(session\.id\);\s*toggleTopPanel\("agents"\);/);
-  assert.match(dock, /open=\{activeTopPanel === "agents" && agentsSessionId === session\.id\}/);
-  assert.match(dock, /status: count > 0\s*\? <AgentsDockButton/);
-  assert.doesNotMatch(dock, /menuItems|SessionBranchControl/);
-  assert.doesNotMatch(functionSource("renderChatToolbarActions", "const collapsedSessionTitle"), /toggleTopPanel\("agents"\)/);
+  assert.doesNotMatch(source, /getSessionFamily\(|renderComposerDock|composerDock|AgentsDockButton/);
+  const toolbar = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
+  assert.ok(toolbar.indexOf("agentSwitcher.backToMain") < toolbar.indexOf("<AgentsTopBarButton"), "right after back to main");
+  assert.ok(toolbar.indexOf("<AgentsTopBarButton") < toolbar.indexOf("<SessionMenu"), "before ⋯");
+  assert.match(toolbar, /const agentsSummary = summarizeSubagents\(sessionFamily, runningSessionIds, seenFailedAgentIds\);/);
+  // Each pane's top bar opens the panel for its own session; opening it marks unseen failures seen.
+  assert.match(toolbar, /agentsAnchorRef\.current = anchor;\s*setAgentsSessionId\(session\.id\);\s*toggleTopPanel\("agents"\);\s*markFailedAgentsSeen\(agentsSummary\.unseenFailedIds\);/);
+  assert.match(toolbar, /open=\{interactive && activeTopPanel === "agents" && agentsSessionId === session\.id\}/);
+  assert.match(source, /body: JSON\.stringify\(\{ seenFailedAgents: ids\.slice\(0, 100\) \}\)/);
   assert.match(source, /session: primaryTab\?\.kind === "session" \? primaryTab\.session : null/);
   assert.match(source, /session: secondaryTab\?\.kind === "session" \? secondaryTab\.session : null/);
   assert.match(source, /activeTopPanel === "agents" && agentsFamily && agentsSessionId && \(\s*<AgentSessionPanel\s*rootSession=\{agentsFamily\.root\}\s*subagents=\{agentsFamily\.subagents\}\s*selectedSessionId=\{agentsSessionId\}/);
@@ -230,11 +229,12 @@ test("places trust warnings below the mobile toolbar and the file toggle in tool
 test("mobile toolbar packs its whole group at the right end, fixed tools last", () => {
   const toolbar = mobileToolbarSource();
   assert.match(toolbar, /justifyContent: "flex-end"/);
-  const fileToggle = functionSource("renderMainFileToggle", "const renderComposerDock");
+  const fileToggle = functionSource("renderMainFileToggle", "const renderDesktopHeaderActions");
   assert.doesNotMatch(fileToggle, /marginLeft/);
   // Conditional tools (back, agents, branches) come first and grow leftwards; the menu never moves.
   const actions = functionSource("renderChatToolbarActions", "const collapsedSessionTitle");
   const order = [
+    "<AgentsTopBarButton",
     'data-mobile-toolbar-action="branches"',
     'data-mobile-toolbar-action="outline"',
     "<SessionMenu",

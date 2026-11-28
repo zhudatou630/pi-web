@@ -15,14 +15,15 @@ import {
   getRpcSessionInfos,
   getRunningRpcSessionIds,
 } from "@/lib/rpc-manager";
-import { readSidebarState, updateSidebarState, updateProjectOrder, updateProjectName, SESSION_ID_PATTERN } from "@/lib/sidebar-state";
+import { markFailedAgentsSeen, readSidebarState, updateSidebarState, updateProjectOrder, updateProjectName, SESSION_ID_PATTERN } from "@/lib/sidebar-state";
 import { isProjectKey, isProjectOrderUpdate, projectDisplayName } from "@/lib/project-groups";
 import { getSessionIdsWithUnsettledSubagents } from "@/lib/subagent-runtime";
 import { listSessionFamilies, familyHasMemberIn } from "@/lib/session-family";
 
 export const dynamic = "force-dynamic";
 
-// PATCH /api/sessions: { projectKey, name } renames a project, bulk archive, addProjects, or { move, before|after, addProjects? }.
+// PATCH /api/sessions: { projectKey, name } renames a project, { seenFailedAgents } marks subagent failures seen,
+// bulk archive, addProjects, or { move, before|after, addProjects? }.
 // Project moves are relative; the locked state is never replaced with a client's whole list.
 export async function PATCH(req: Request) {
   try {
@@ -40,6 +41,16 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "Project names are full" }, { status: 409 });
       }
       invalidateSessionListCache();
+      return NextResponse.json({ ok: true });
+    }
+    if ("seenFailedAgents" in record) {
+      const ids = record.seenFailedAgents;
+      if (Object.keys(record).length !== 1 || !Array.isArray(ids) || !ids.length || ids.length > 100
+        || ids.some((id) => typeof id !== "string" || id.length > 256 || !SESSION_ID_PATTERN.test(id))) {
+        return NextResponse.json({ error: "Send 1–100 valid subagent ids" }, { status: 400 });
+      }
+      // Other devices pick the change up through the poll's sessionListVersion.
+      if (await markFailedAgentsSeen(ids)) invalidateSessionListCache();
       return NextResponse.json({ ok: true });
     }
     if (["addProjects", "move", "before", "after", "projectOrder"].some((key) => key in record)) {
@@ -113,8 +124,10 @@ export async function GET(req: Request) {
       persistedSessionsPromise,
       attachSessionProjectInfo(getRpcSessionInfos()),
     ]);
-    const sessions = mergeSessionLists(persistedSessions, runtimeSessions);
     const sidebarState = readSidebarState();
+    const seenFailed = new Set(sidebarState.seenFailedAgents ?? []);
+    const sessions = mergeSessionLists(persistedSessions, runtimeSessions)
+      .map((session) => seenFailed.has(session.id) ? { ...session, failureSeen: true as const } : session);
     return NextResponse.json(
       {
         sessions,

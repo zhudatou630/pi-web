@@ -35,7 +35,7 @@ import {
 } from "@/lib/chat-outline-jump";
 import { getModelDisplayName, hasAssistantAnswer, MessageNoticeContext, MessageView } from "./MessageView";
 import { MarkdownBody, MarkdownSessionContext } from "./MarkdownBody";
-import { ChatInput, getUserMessageDraftImages, getUserMessageText, type ChatInputHandle, type ComposerDock } from "./ChatInput";
+import { ChatInput, getUserMessageDraftImages, getUserMessageText, type ChatInputHandle } from "./ChatInput";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { isModalDialogOpen } from "./ModalDialog";
 import { MenuCheck } from "./MenuCheck";
@@ -73,8 +73,6 @@ import {
 
 interface Props {
   session: SessionInfo | null;
-  /** The session's controls in the composer dock: where it runs, running subagents, ⋮ items. */
-  composerDock?: ComposerDock;
   searchTarget?: { sessionId: string; entryId: string; blockIndex?: number } | null;
   onSearchTargetHandled?: (target: { sessionId: string; entryId: string }) => void;
   initialScrollPosition?: ChatScrollPosition | null;
@@ -974,7 +972,7 @@ function ProcessDetailsGroup({
   );
 }
 
-export function ChatWindow({ session, composerDock, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, onWorktreesChanged, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, onDraftChange, onKeepTabOpen, onNewSessionCwdChange, onWorktreesChanged, projectPaths = [], projectNameByRoot, worktreeInfo = null, draftPersistenceWarning = false, onAgentEnd, onToolEnd, onFilesChanged, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, isFocusedPane = false, isVisiblePane = isFocusedPane, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onOutlineViewChange, onSessionStatsChange, onSessionStatsPanelOpen, sessionStatsOpen, onContextUsageChange, onOpenFile, onOpenSession, onOpenMcpSettings, onAskInSideChat, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, playDoneSound = () => {}, unlockAudio, holdAudio, onReviewTurnChanges, onOpenDiff, onTurnFilesChange }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -2062,7 +2060,6 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
       draftPersistenceWarning={draftPersistenceWarning}
       cwd={session?.cwd ?? newSessionCwd}
       onAttachFiles={onAttachFiles}
-      dock={isEmptyNew ? undefined : composerDock}
       attention={(
         <>
           {extensionDialog && !routineApproval && (

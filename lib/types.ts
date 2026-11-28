@@ -398,6 +398,8 @@ export interface SessionInfo {
   routineRunOnly?: boolean;
   /** Last reply failed after its retries (lib/session-status.ts); the sidebar shows it until read. */
   lastError?: { at: number; message: string };
+  /** A failed subagent whose failure was seen in the Agents panel (sidebar state, set by GET /api/sessions). */
+  failureSeen?: true;
   parentSessionId?: string; // source session for a fork, or parent session for a subagent
   /** How this session relates to another session. Forks remain top-level in the
    *  UI; subagents and side chats live in their main session's family (lib/session-family.ts). */

@@ -38,8 +38,7 @@ import { RoutinesView } from "./RoutinesView";
 import { ProjectTrustDialog } from "./ProjectTrustDialog";
 import { BranchNavigator, BranchTreeList, hasSessionBranches } from "./BranchNavigator";
 import { SessionMenu } from "./SessionMenu";
-import { AgentsDockButton } from "./TopBarContext";
-import type { ComposerDock } from "./ChatInput";
+import { AgentsTopBarButton } from "./TopBarContext";
 import { hasBlockedSession } from "@/lib/session-status";
 import { ChangesView, FilesView, PanelAddMenu, type ChangesScope, type PanelView, type PanelWorktreeInfo } from "./PanelViews";
 import type { FileExplorerHandle } from "./FileExplorer";
@@ -118,7 +117,7 @@ import type { SessionStatsInfo } from "@/lib/pi-types";
 import { formatModelTiming } from "@/lib/model-timing";
 import type { FileViewerState } from "@/lib/file-viewer-state";
 import { PRESET_READ_ONLY, type ToolEntry } from "@/lib/tool-presets";
-import { indexSessionFamilies, unnamedSideChatNumbers } from "@/lib/session-family";
+import { indexSessionFamilies, summarizeSubagents, unnamedSideChatNumbers } from "@/lib/session-family";
 import { panelChangesScope, panelDockFor, panelDockToggleWidth, panelViewCwd, panelWorktreeFetchCwd, panelWorktreeInfo } from "@/lib/panel-dock";
 import { isAutoSessionTitleEnabled } from "@/lib/auto-session-title-preference";
 import { getLastSettingsSection, type SettingsSection } from "@/lib/settings-navigation";
@@ -771,6 +770,15 @@ export function AppShell() {
   // opened it, not whichever pane happens to be focused (a keyboard Enter does not move focus).
   const [agentsSessionId, setAgentsSessionId] = useState<string | null>(null);
   const agentsFamily = agentsSessionId ? sessionFamilies.get(agentsSessionId) ?? null : null;
+  // Seen here until the session list carries `failureSeen`; other devices get it from that list.
+  const [seenFailedAgentIds, setSeenFailedAgentIds] = useState<ReadonlySet<string>>(() => new Set());
+  const markFailedAgentsSeen = useCallback((ids: readonly string[]) => {
+    if (!ids.length) return;
+    setSeenFailedAgentIds((current) => new Set([...current, ...ids]));
+    void fetch("/api/sessions", {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seenFailedAgents: ids.slice(0, 100) }),
+    }).catch(() => {});
+  }, []);
   const [infoDialog, setInfoDialog] = useState<"system" | "tools" | null>(null);
   // Subagent totals shown beside, never folded into, the parent's own usage.
   const [subagentUsage, setSubagentUsage] = useState<{ sessionId: string; count: number; tokens: number; cost: number } | null>(null);
@@ -2576,7 +2584,6 @@ export function AppShell() {
       <ChatWindow
         key={tabKey ?? sessionKey}
         session={tabSession}
-        composerDock={renderComposerDock(tabSession, pane)}
         searchTarget={isFocusedPane && searchTarget?.sessionId === tabSession?.id ? searchTarget : null}
         onSearchTargetHandled={handleSearchTargetHandled}
         initialScrollPosition={tabSession ? sessionScrollPositionsRef.current.get(tabSession.id) ?? null : null}
@@ -3106,6 +3113,7 @@ export function AppShell() {
     const session = options?.session === undefined ? selectedSession : options.session;
     const sessionFamily = session ? sessionFamilies.get(session.id) ?? null : null;
     const hasSubagentSessionsForSession = Boolean(sessionFamily?.subagents.length);
+    const agentsSummary = summarizeSubagents(sessionFamily, runningSessionIds, seenFailedAgentIds);
     const branchData = getBranchDataForSession(session);
     const sessionHasBranchesForSession = Boolean(branchData && hasSessionBranches(branchData.tree));
     const toolsUnavailable = mobile && !showChat;
@@ -3126,6 +3134,21 @@ export function AppShell() {
               <path d="M19 12H5" /><path d="m12 19-7-7 7-7" />
             </svg>
           </button>
+        )}
+        {/* Beside the way back: switching and returning happen in one corner (docs/ui.md, Tabs and top bars). */}
+        {session && hasSubagentSessionsForSession && (
+          <AgentsTopBarButton
+            count={agentsSummary.count}
+            running={agentsSummary.running}
+            failed={agentsSummary.unseenFailedIds.length}
+            open={interactive && activeTopPanel === "agents" && agentsSessionId === session.id}
+            onToggle={(anchor) => {
+              agentsAnchorRef.current = anchor;
+              setAgentsSessionId(session.id);
+              toggleTopPanel("agents");
+              markFailedAgentsSeen(agentsSummary.unseenFailedIds);
+            }}
+          />
         )}
         {sessionTools && sessionHasBranchesForSession && (mobile ? (
           <button
@@ -3284,26 +3307,6 @@ export function AppShell() {
         </svg>
       </button>
     );
-  };
-
-  // Each pane's composer dock (docs/ui.md, Composer): the Agents entry beside the context ring.
-  const renderComposerDock = (session: SessionInfo | null | undefined, pane: ChatPane): ComposerDock | undefined => {
-    if (!session || session.transient) return undefined;
-    const family = sessionFamilies.get(session.id);
-    const count = family?.subagents.length ?? 0;
-    const running = family?.subagents.filter((subagent) => runningSessionIds.has(subagent.id)).length ?? 0;
-    const openAgents = (anchor: HTMLElement | null) => {
-      agentsAnchorRef.current = anchor;
-      focusPaneRef.current(pane);
-      setAgentsSessionId(session.id);
-      toggleTopPanel("agents");
-    };
-    return {
-      // Always in the same place while the family has children: side chats and finished subagents are reachable only here.
-      status: count > 0
-        ? <AgentsDockButton count={count} running={running} open={activeTopPanel === "agents" && agentsSessionId === session.id} onToggle={openAgents} />
-        : null,
-    };
   };
 
   const renderDesktopHeaderActions = (options?: { inert?: boolean; session?: SessionInfo | null }) => (

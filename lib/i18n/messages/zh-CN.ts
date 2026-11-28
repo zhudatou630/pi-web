@@ -467,6 +467,7 @@ export const zhCNLocale: LocalePlugin = {
     "agentSwitcher.subagent": "子代理",
     "agentSwitcher.count": "共 {count} 个",
     "agentSwitcher.runningCount": "{count} 个运行中",
+    "agentSwitcher.failedCount": "{count} 个失败",
     "agentSwitcher.deleteSideChat": "删除侧聊",
     "agentSwitcher.deleteSideChatConfirm": "删除侧聊「{title}」？\n无法撤销。主会话和其他侧聊保留。",
     "agentSwitcher.status.starting": "正在启动",

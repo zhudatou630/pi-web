@@ -1319,19 +1319,18 @@ test("keeps queued prompts as a quiet row inside the composer card", () => {
   assert.match(two, />follow-up<\/span>/);
 });
 
-test("the dock hosts the Agents entry right before the ring, a near-full line above", () => {
-  const dock = { status: React.createElement("span", { className: "test-agents" }, "agents") };
+test("the dock ends in the ring, a near-full line above", () => {
   const render = (percent) => renderToStaticMarkup(React.createElement(I18nProvider, null,
     React.createElement(ChatInput, {
-      onSend() {}, onAbort() {}, isStreaming: false, dock, onCompact() {},
+      onSend() {}, onAbort() {}, isStreaming: false, onCompact() {},
       contextUsage: { percent, contextWindow: 1000000, tokens: percent * 10000 },
       onOpenSessionStats() {},
     })));
   const html = render(40);
   const dockHtml = html.slice(html.indexOf('class="chat-input-dock'));
-  // The left side holds only choices (+, model, thinking); the branch lives in the top bar's ⋯.
-  assert.ok(dockHtml.indexOf("chat-input-dock-spacer") < dockHtml.indexOf("test-agents"));
-  assert.ok(dockHtml.indexOf("test-agents") < dockHtml.indexOf("chat-input-context"));
+  // The left side holds only choices (+, model, thinking); Agents live in the top bar.
+  assert.ok(dockHtml.indexOf("chat-input-dock-spacer") < dockHtml.indexOf("chat-input-context"));
+  assert.doesNotMatch(dockHtml, /Agents/);
   assert.doesNotMatch(html, /run-error-tray/);
   // Near full (85%+): one line above the composer with a Compact action.
   const full = render(90);

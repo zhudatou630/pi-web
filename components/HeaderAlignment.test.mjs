@@ -104,7 +104,7 @@ test("top-bar buttons: one selected look, a 26px rounded block, no accent line (
   // Both ends of the bar are panel glyphs (left: the sidebar, right: the file panel); the glyph never swaps.
   assert.match(shell, /aria-controls="session-sidebar"\s*aria-expanded=\{sidebarOpen\}/);
   assert.match(shell, /<rect x="2\.5" y="5" width="19" height="14" rx="2\.5" \/><line x1="15" y1="5" x2="15" y2="19" \/>/);
-  const fileToggle = shell.slice(shell.indexOf("const renderMainFileToggle"), shell.indexOf("const renderComposerDock"));
+  const fileToggle = shell.slice(shell.indexOf("const renderMainFileToggle"), shell.indexOf("const renderDesktopHeaderActions"));
   assert.doesNotMatch(fileToggle, /rightPanelOpen \? \(/);
 });
 

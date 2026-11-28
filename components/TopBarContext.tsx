@@ -4,40 +4,48 @@ import { useI18n } from "@/hooks/useI18n";
 import { SubagentIcon } from "./SubagentIcon";
 
 /**
- * In the dock whenever the session has subagents or side chats (docs/ui.md, Composer): "Agents N".
- * While some run it reads "Agents 2/6": the running count in `--text`, breathing like the sidebar's
- * running dot, over the dim total; no dot. The word stays English like the model and thinking ids
- * beside it; narrow docks swap it for the Agents panel glyph.
+ * The top bar's Agents entry (docs/ui.md, Tabs and top bars), beside "back to main agent": the
+ * Agents panel glyph with a count at its corner. While subagents run the count is how many still
+ * run, on a solid breathing badge; afterwards it is the total, dim. An unseen failure turns the
+ * badge red until the panel is opened. Side chats show the glyph alone (they are not counted).
  */
-export function AgentsDockButton({ count, running, open, onToggle }: {
+export function AgentsTopBarButton({ count, running, failed, open, onToggle }: {
   count: number;
   running: number;
+  failed: number;
   open: boolean;
   onToggle: (anchor: HTMLElement) => void;
 }) {
   const { t } = useI18n();
-  const summary = running > 0
-    ? `${t("agentSwitcher.title")} · ${t("agentSwitcher.runningCount", { count: running })} · ${t("agentSwitcher.count", { count })}`
-    : `${t("agentSwitcher.title")} · ${t("agentSwitcher.count", { count })}`;
+  const summary = [
+    t("agentSwitcher.title"),
+    running > 0 && t("agentSwitcher.runningCount", { count: running }),
+    failed > 0 && t("agentSwitcher.failedCount", { count: failed }),
+    count > 0 && t("agentSwitcher.count", { count }),
+  ].filter(Boolean).join(" · ");
   return (
     <button
       type="button"
-      className="composer-btn composer-agents"
-      data-running={running > 0 || undefined}
+      className="workspace-header-action agents-top-bar-action"
       title={summary}
-      // Named by its visible text (voice control says "Agents"); the localized counts are the tooltip/description.
-      aria-label={running > 0 ? `Agents ${running}/${count}` : `Agents ${count}`}
+      aria-label={summary}
       aria-haspopup="dialog"
       aria-expanded={open}
       aria-controls="workspace-top-panel"
       data-top-panel-trigger="agents"
       onClick={(event) => onToggle(event.currentTarget)}
     >
-      <SubagentIcon size={12} className="composer-agents-icon" />
-      <span className="composer-dock-label">Agents</span>
-      <span className="composer-dock-count">
-        {running > 0 ? <><span className="composer-agents-running">{running}</span>/{count}</> : count}
-      </span>
+      <SubagentIcon size={count > 0 ? 13 : 16} />
+      {count > 0 && (
+        <span
+          className="agents-badge"
+          data-state={failed > 0 ? "failed" : running > 0 ? "running" : undefined}
+          data-breathing={running > 0 || undefined}
+          aria-hidden="true"
+        >
+          {running > 0 ? running : count}
+        </span>
+      )}
     </button>
   );
 }
