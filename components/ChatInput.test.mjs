@@ -11,7 +11,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
-const { ChatInput, scrollTextareaCaretIntoView, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, readPromptImageFile, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
+const { ChatInput, scrollTextareaCaretIntoView, ModelErrorBanner, ModelScopeWarningBanner, canClearBuiltinCommandInput, canRestoreUserMessage, canRunBuiltinSlashCommandWhileStreaming, compressImageFile, filterSlashCommands, getSlashArgumentTarget, isCurrentSlashArgumentSnapshot, getUpwardMenuMaxHeight, getUserMessageText, getUserMessageDraftImages, isExactSlashCommand, modelSupportsImageInput, prependImageMentions, readPromptImageFile, replaceLinksWithMarkdown, shouldCompressImageFile } = await jiti.import("./ChatInput.tsx");
 const { ModelSelector } = await jiti.import("./ModelSelector.tsx");
 
 test("extension UI hides all composer menus and leaves their keys to the composer until it closes", () => {
@@ -26,7 +26,7 @@ test("extension UI hides all composer menus and leaves their keys to the compose
   }
   for (const name of ["showHistoryMenu", "showSlashMenu", "showAtMenu"]) {
     const expression = new Script(declaration(name).getText(file));
-    const scope = { extensionUiOpen: true, historyMenuOpen: true, slashMenuOpen: true, atMenuOpen: true };
+    const scope = { extensionUiOpen: true, historyMenuOpen: true, slashMenuOpen: true, atMenuOpen: true, slashQuery: "", argumentItems: null };
     assert.equal(expression.runInNewContext(scope), false);
     scope.extensionUiOpen = false;
     assert.equal(expression.runInNewContext(scope), true, "the original menu state survives the overlay");
@@ -34,10 +34,10 @@ test("extension UI hides all composer menus and leaves their keys to the compose
   // Only the menus' own keys depend on them: a collapsed extension panel leaves the composer usable.
   const keydown = declaration("handleKeyDown").arguments[0].getText(file);
   assert.doesNotMatch(keydown, /extensionUiOpen|\b(?:history|slash|at)MenuOpen &&/);
-  assert.match(text, /\[showSlashMenu, slashQuery\]/);
+  assert.match(text, /\[showSlashMenu\]/);
   assert.match(text, /\[showAtMenu, atQuery\]/);
   assert.match(text, /\{showHistoryMenu && inputHistory.length/);
-  assert.match(text, /\{showSlashMenu && slashQuery/);
+  assert.match(text, /\{showSlashMenu && \(/);
   assert.match(text, /\{showAtMenu && atQuery/);
   const window = readFileSync(new URL("./ChatWindow.tsx", import.meta.url), "utf8");
   assert.equal(window.match(/extensionUiOpen=\{extensionUiOpen\}/g).length, 2);
@@ -94,6 +94,34 @@ test("slash names win over description hits and skills rank by their bare names"
   assert.deepEqual(names("missing"), []);
   assert.deepEqual(names(""), ["copy", "copy-last", "polish", "skill:copy-text", "skill:photocopy"]);
   assert.equal(commands[0].name, "skill:photocopy");
+});
+
+test("slash argument completion replaces the whole prefix, including prior words, and preserves the suffix", () => {
+  const head = "  /déploy.prod  staging --dr";
+  const text = head + "y-run\nnext line";
+  const target = getSlashArgumentTarget(text, head.length);
+  assert.deepEqual(target, { name: "déploy.prod", prefix: " staging --dr", start: "  /déploy.prod ".length, end: head.length });
+  assert.equal(text.slice(0, target.start) + "prod --confirm " + text.slice(target.end), "  /déploy.prod prod --confirm y-run\nnext line");
+  assert.equal(getSlashArgumentTarget("/mcp ", 5)?.prefix, "");
+  assert.equal(getSlashArgumentTarget("/mcp", 4), null);
+  assert.equal(getSlashArgumentTarget("/mcp\tlo", 7), null);
+  assert.equal(getSlashArgumentTarget("\n/mcp lo", 8), null);
+});
+
+test("slash argument replies are stale after an edit, selection, draft switch, IME or abort", () => {
+  const controller = new AbortController();
+  const snapshot = { value: "/mcp lo", caret: 7, draftKey: "draft-a", signal: controller.signal };
+  const textarea = { value: snapshot.value, selectionStart: 7, selectionEnd: 7 };
+  const current = (el = textarea, draftKey = snapshot.draftKey, composing = false) =>
+    isCurrentSlashArgumentSnapshot(snapshot, el, draftKey, composing);
+  assert.equal(current(), true);
+  assert.equal(current({ ...textarea, value: "/mcp li" }), false);
+  assert.equal(current({ ...textarea, selectionStart: 6, selectionEnd: 6 }), false);
+  assert.equal(current({ ...textarea, selectionEnd: 8 }), false);
+  assert.equal(current(textarea, "draft-b"), false);
+  assert.equal(current(textarea, "draft-a", true), false);
+  controller.abort();
+  assert.equal(current(), false);
 });
 
 test("preserves pasted HTML links as Markdown without changing plain text layout", () => {
@@ -243,6 +271,10 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
     ["busy run still runs streaming built-ins silently", {}, { onSteer: undefined, onFollowUp: undefined, value: "/copy" }, "send"],
     ["slash completion takes priority", { altKey: true }, { showSlashMenu: true, slashQuery: "help" }, "slash"],
     ["available built-in commands take priority", { altKey: true }, { showSlashMenu: true, slashQuery: "copy", value: "/copy", displayedSlashCommands: [{ name: "copy", source: "builtin", availableWhileStreaming: true }] }, "send"],
+    ["Enter accepts an argument without sending", {}, { showSlashMenu: true, argumentItems: [{}], displayedSlashCommands: [] }, "argument"],
+    ["Tab accepts an argument", { key: "Tab" }, { showSlashMenu: true, argumentItems: [{}], displayedSlashCommands: [] }, "argument"],
+    ["an IME key does not accept an argument", { key: "Tab", nativeEvent: { isComposing: true } }, { showSlashMenu: true, argumentItems: [{}] }, "native"],
+    ["Escape cancels even before the argument menu is visible", { key: "Escape" }, { argumentRequestRef: { current: new AbortController() } }, "closed"],
     ["file completion takes priority", { altKey: true }, { showAtMenu: true, atQuery: {} }, "file"],
     ["history selection takes priority", { altKey: true }, { showHistoryMenu: true }, "history"],
     ["empty input opens history", { key: "ArrowUp" }, { isStreaming: false }, "history menu"],
@@ -259,12 +291,14 @@ test("follow-up shortcuts preserve newline, IME, mobile and completion behavior"
       isComposingRef: { current: false }, lastCompositionEndAtRef: { current: 0 },
       showHistoryMenu: false, inputHistory: ["previous"], historyActiveIndex: 0,
       historyStashRef: { current: null }, setHistoryActiveIndex() {}, setHistoryMenuOpen() { action = "history menu"; },
-      showSlashMenu: false, slashQuery: null, displayedSlashCommands: [{}], slashActiveIndex: 0,
+      showSlashMenu: false, slashItemCount: 1, argumentItems: null, argumentRequestRef: { current: null }, displayedSlashCommands: [{}], slashActiveIndex: 0,
       showAtMenu: false, atQuery: null, atMatches: [{}], atActiveIndex: 0, setAtMenuOpen() {},
       onSteer() {}, onFollowUp() {},
       sendQueued(mode) { action = mode; }, handleSend() { action = action === "held" ? "held+send" : "send"; },
       canQueueStreamingMessage: true, canRunBuiltinSlashCommandWhileStreaming, setSendHeld() { action = "held"; },
       applySlashCommand() { action = "slash"; },
+      applySlashSuggestion() { action = "argument"; },
+      argumentDismissedRef: { current: false }, closeArgumentMenu() { action = "closed"; },
       isExactSlashCommand, value: "", setSlashMenuOpen() {},
       applyAtCompletion() { action = "file"; },
       applyHistoryInput() { action = "history"; },

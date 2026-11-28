@@ -15,6 +15,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { isBlockingExtensionUiRequest } from "@/lib/browser-notifications";
 import { normalizeToolCalls } from "@/lib/normalize";
 import { missingCwdFromBody } from "@/lib/missing-cwd";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { AgentCommandError, EXTENSION_REPORTED_CODE, isPromptRejectedError, sendAgentCommand as postAgentCommand } from "@/lib/agent-client";
 import { clampThinkingLevelTo } from "@/lib/thinking-level";
 import { getDraft, getDraftEditTarget, rekeyDraft, restoreDraftSubmission, setDraft, setDraftEditTarget, type ChatDraft } from "@/lib/draft-store";
@@ -531,12 +532,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const modelsRefreshKeyRef = useRef(modelsRefreshKey);
   const draftKeyAliasesRef = useRef(new Map<string, string>());
   const sessionHookMountedRef = useRef(true);
-  const sendAgentCommand = useCallback(async <T = unknown>(sid: string, command: Record<string, unknown>): Promise<T> => {
+  const sendAgentCommand = useCallback(async <T = unknown>(sid: string, command: Record<string, unknown>, signal?: AbortSignal): Promise<T> => {
     // Even read-style agent commands can create a runtime; ended views only read history.
     if (endedSessionRef.current === sid) {
       throw new AgentCommandError(t("chat.sessionEnded"), 409, command.type === "prompt" ? "prompt_rejected" : "session_ended", false);
     }
-    return postAgentCommand<T>(sid, command);
+    return postAgentCommand<T>(sid, command, signal);
   }, [t]);
 
   sessionPropIdRef.current = session?.id ?? null;
@@ -1052,17 +1053,28 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setSlashCommandsLoading(true);
     try {
       const data = await sendAgentCommand<SlashCommandsResponse>(sid, { type: "get_commands" });
+      if (sessionIdRef.current !== sid) return [];
       const commands = data?.commands ?? [];
       setSlashCommands(commands);
       return commands;
     } catch (e) {
       console.error("Failed to load slash commands:", e);
-      setSlashCommands([]);
+      if (sessionIdRef.current === sid) setSlashCommands([]);
       return [] as SlashCommandInfo[];
     } finally {
-      setSlashCommandsLoading(false);
+      if (sessionIdRef.current === sid) setSlashCommandsLoading(false);
     }
   }, [ensureNewSession, sendAgentCommand]);
+
+  const loadArgumentCompletions = useCallback(async (name: string, prefix: string, signal: AbortSignal) => {
+    // The slash palette may already have warmed this draft; completion itself never creates a session.
+    const sid = sessionIdRef.current;
+    if (!sid || endedSessionRef.current === sid || signal.aborted) return null;
+    const items = await sendAgentCommand<AutocompleteItem[] | null>(sid, {
+      type: "get_argument_completions", name, prefix,
+    }, signal);
+    return signal.aborted || sessionIdRef.current !== sid ? null : items;
+  }, [sendAgentCommand]);
 
   const cancelEventStreamGrace = useCallback(() => {
     eventStreamGraceGenerationRef.current += 1;
@@ -1094,6 +1106,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setExtensionDialogs([]);
     setExtensionCustomUis([]);
     setSlashCommands([]);
+    setSlashCommandsLoading(false);
     setSystemPrompt(null);
     setContextUsage(null);
     onSystemToolsChange?.(null);
@@ -3176,7 +3189,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     handleBuiltinSlashCommand,
     addNotice,
     setNoticePaused: setPausedNoticeId,
-    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, setActiveLeafId, setData, setMessages, loadContext, isOlderPageRequested,
+    handleToolPresetChange, handleThinkingLevelChange, loadTools, loadSlashCommands, loadArgumentCompletions, setActiveLeafId, setData, setMessages, loadContext, isOlderPageRequested,
     scrollToBottom, scrollToMessage,
     dispatch, setAgentRunning, setForkingEntryId,
     bashRunning, pendingBash,

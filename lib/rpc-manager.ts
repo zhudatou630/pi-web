@@ -188,13 +188,14 @@ const COMMANDS_ALLOWED_DURING_SESSION_REPLACEMENT = new Set([
   "get_last_assistant_text",
   "get_tools",
   "get_commands",
+  "get_argument_completions",
   "extension_ui_response",
   "extension_ui_input",
 ]);
 
-// Reads, cancellations and dialog answers (which unblock startup); get_state/get_commands wait in waitForStateRead().
+// Reads, cancellations and dialog answers (which unblock startup).
 const COMMANDS_BEFORE_READY = new Set([
-  "get_state", "get_commands", "get_tools", "get_session_stats", "get_last_assistant_text", "get_cache_keepalive",
+  "get_state", "get_commands", "get_argument_completions", "get_tools", "get_session_stats", "get_last_assistant_text", "get_cache_keepalive",
   "abort", "abort_bash", "abort_compaction", "extension_ui_response", "extension_ui_input",
 ]);
 
@@ -1122,7 +1123,7 @@ export class AgentSessionWrapper {
     try {
       // Status reconciliation must not postpone forced cleanup after Stop.
       if (type !== "get_state") this.resetIdleTimer();
-      if (type === "get_state" || type === "get_commands") {
+      if (type === "get_state" || type === "get_commands" || type === "get_argument_completions") {
         await (command.waitUntilReady === true ? this.waitUntilReady() : this.waitForStateRead());
       } else if (this.shouldWaitUntilReady(type)) {
         await this.waitUntilReady();
@@ -1541,6 +1542,20 @@ export class AgentSessionWrapper {
 
       case "get_tools": {
         return getModelToolEntries(this.inner);
+      }
+
+      case "get_argument_completions": {
+        const { name, prefix } = command;
+        if (typeof name !== "string" || typeof prefix !== "string") {
+          throw new Error("name and prefix must be strings");
+        }
+        try {
+          const complete = this.inner.extensionRunner.getCommand(name)?.getArgumentCompletions;
+          return complete ? await complete(prefix) : null;
+        } catch (error) {
+          console.warn(`[pi-web] argument completion for /${name} failed:`, error);
+          return null;
+        }
       }
 
       case "get_commands": {

@@ -1,6 +1,7 @@
 import type {
   AgentSessionEvent,
   BashOperations,
+  ResolvedCommand,
   SessionManager,
   SettingsManager,
   SlashCommandInfo,
@@ -88,6 +89,7 @@ interface ResourceLoaderLike {
 }
 
 interface ExtensionRunnerLike {
+  getCommand(name: string): Pick<ResolvedCommand, "getArgumentCompletions"> | undefined;
   getRegisteredCommands(): Array<{
     invocationName: string;
     description?: string;
