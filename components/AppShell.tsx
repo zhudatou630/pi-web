@@ -92,6 +92,7 @@ function pathForChatMention(path: string, sourceCwd?: string, targetCwd?: string
 import { getInitialNavigation } from "@/lib/initial-navigation";
 import { clearDraft, discardSessionDraft, getDraft, rekeyDraft } from "@/lib/draft-store";
 import { workspaceKeyOf } from "@/lib/workspace-key";
+import { shouldAdoptSessionCwd } from "@/lib/explorer-cwd";
 import { PINNED_CWDS_STORAGE_KEY, loadPinnedCwds, savePinnedCwds } from "@/lib/pinned-cwds";
 import {
   getDefaultRightPanelWidth,
@@ -1313,6 +1314,27 @@ export function AppShell() {
 
     return () => controller.abort();
   }, [initialNavigation]);
+
+  // The file panel and sidebar follow the shown session or draft, whichever path showed it (tab
+  // switch, sidebar click, open in new tab, routine/subagent link); browsing another project in the
+  // sidebar meanwhile lasts until the next switch. Same rule as a sidebar click (lib/explorer-cwd.ts),
+  // with project identity from the shown cwd's worktree list: activeProjectKeyRef already names the
+  // new session's project by now.
+  const shownCwd = selectedSession?.cwd ?? newSessionCwd;
+  const shownKey = selectedSession ? `session:${selectedSession.id}` : newSessionCwd ? `draft:${newSessionCwd}` : null;
+  const followedShownKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!shownKey || !shownCwd || followedShownKeyRef.current === shownKey) return;
+    followedShownKeyRef.current = shownKey;
+    const shownWorktrees = worktreeInfo?.forCwd === activeCwd ? worktreeInfo : null;
+    if (selectedSession ? shouldAdoptSessionCwd({
+      sessionCwd: shownCwd,
+      selectedCwd: activeCwd,
+      sessionProjectKey: selectedSession.projectRoot ?? shownCwd,
+      selectedProjectKey: shownWorktrees?.projectRoot,
+      worktrees: shownWorktrees?.worktrees,
+    }) : shownCwd !== activeCwd) setActiveCwd(shownCwd);
+  }, [activeCwd, selectedSession, shownCwd, shownKey, worktreeInfo]);
 
   const handleCwdChange = useCallback((
     cwd: string | null,
@@ -2861,7 +2883,7 @@ export function AppShell() {
     });
   }, [activeFileTab?.cwd, activeFileTab?.sourceSessionId, handleOpenFile]);
   const activeCwdName = activeCwd ? getFileName(activeCwd) || activeCwd : null;
-  // The fixed views follow the sidebar's selected cwd, which follows the active session (lib/explorer-cwd.ts).
+  // The fixed views follow the sidebar's selected cwd, which follows the shown session (see shownKey).
   const panelCwd = activeCwd ?? selectedSession?.cwd ?? newSessionCwd ?? null;
   const showPanelView = !activeFileTab?.filePath && !terminalTabs.some((tab) => tab.id === activeFileTabId) && !(browserPage && activeFileTabId === BROWSER_TAB_ID);
   // Beside an open file the panel docks the project tree on its right, beside a diff the changes

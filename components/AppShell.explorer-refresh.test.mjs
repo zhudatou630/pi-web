@@ -78,3 +78,8 @@ test("useAgentSession reports each finished tool call with its name", () => {
     /case "tool_execution_end": \{\s*const id = event\.toolCallId as string;\s*onToolEnd\?\.\(event\.toolName as string\);/,
   );
 });
+
+test("the file panel follows the shown session on every path, not only sidebar clicks", () => {
+  assert.match(appShell, /const shownKey = selectedSession \? `session:\$\{selectedSession\.id\}`/);
+  assert.match(appShell, /followedShownKeyRef\.current = shownKey;[\s\S]{0,400}shouldAdoptSessionCwd\(/);
+});
