@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { useI18n } from "@/hooks/useI18n";
-import { useTheme } from "@/hooks/useTheme";
 import { createSilenceWatchdog } from "@/lib/sse-watchdog";
 import { createTerminalWriter, terminalRequest } from "@/lib/terminal-client";
 import { stripPasteMarkers } from "@/lib/terminal-input";
@@ -86,7 +85,6 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
   const showExtraKeys = useTerminalExtraKeysVisible();
   const light = useSyncExternalStore(subscribeTerminalTheme, isTerminalLight, () => false);
   const theme = light ? "light" : "dark";
-  const { palette } = useTheme();
   const themeLabel = light ? "terminal.darkTheme" : "terminal.lightTheme";
 
   const consumeModifiers = useCallback(() => {
@@ -280,8 +278,8 @@ export function TerminalPanel({ tab, active, actionsSlot, onRestart, onClosed, o
 
   useEffect(() => {
     // Also sets the initial theme: runs right after creation, before xterm's first frame.
-    if (terminalRef.current) terminalRef.current.options.theme = TERMINAL_THEMES[palette][theme];
-  }, [palette, theme, id, cwd, restored, reconnectKey]);
+    if (terminalRef.current) terminalRef.current.options.theme = TERMINAL_THEMES[theme];
+  }, [theme, id, cwd, restored, reconnectKey]);
 
   useEffect(() => {
     if (active && shouldAutofocusTerminal()) terminalRef.current?.focus();

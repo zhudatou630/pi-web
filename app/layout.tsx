@@ -7,7 +7,6 @@ import "katex/dist/katex.min.css";
 import "./globals.css";
 import "./settings.css";
 import "./routines.css";
-import "./theme-claude.css";
 
 const notoSansMono = Noto_Sans_Mono({
   subsets: ["latin", "cyrillic"],
@@ -76,7 +75,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#f5f5f5",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -90,7 +89,7 @@ export default function RootLayout({
         <meta name="google" content="notranslate" />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var f=['16px "Sarasa Term SC Web"','600 16px "Sarasa Term SC Web"'];var s=localStorage.getItem("pi-font-scheme");if(s==="claude"){document.documentElement.dataset.font="claude";f.push('16px "Source Serif 4 Web"','16px "Noto Serif SC Web"','600 16px "Noto Serif SC Web"')}else if(s==="wenkai"){document.documentElement.dataset.font="wenkai";f.push('16px "LXGW WenKai Web"','600 16px "LXGW WenKai Web"')}else if(s==="system"){document.documentElement.dataset.font="system"}addEventListener("load",function(){f.forEach(function(x){document.fonts.load(x,"a\u4e2d")})});var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");var claude=localStorage.getItem("pi-theme-palette")==="claude";if(claude)document.documentElement.dataset.theme="claude";var c=claude?(dark?"#191918":"#f7f6f2"):(dark?"#242424":"#f5f5f5");var ms=document.querySelectorAll('meta[name="theme-color"]');if(ms.length===0){var m=document.createElement("meta");m.name="theme-color";m.content=c;document.head.appendChild(m)}else{for(var i=0;i<ms.length;i++){ms[i].removeAttribute("media");ms[i].content=c}}}catch(e){}})();`,
+            __html: `(function(){try{var f=['16px "Sarasa Term SC Web"','600 16px "Sarasa Term SC Web"'];var s=null;try{s=localStorage.getItem("pi-font-scheme")}catch(e){}if(s==="wenkai"){document.documentElement.dataset.font="wenkai";f.push('16px "LXGW WenKai Web"','600 16px "LXGW WenKai Web"')}else if(s!=="sarasa"){document.documentElement.dataset.font="system"}addEventListener("load",function(){f.forEach(function(x){document.fonts.load(x,"a\u4e2d")})});var t=localStorage.getItem("pi-theme");var dark=t==="dark"||((t==null||t===""||t==="auto")&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");var c=dark?"#1c1c1c":"#ffffff";var ms=document.querySelectorAll('meta[name="theme-color"]');if(ms.length===0){var m=document.createElement("meta");m.name="theme-color";m.content=c;document.head.appendChild(m)}else{for(var i=0;i<ms.length;i++){ms[i].removeAttribute("media");ms[i].content=c}}}catch(e){}})();`,
           }}
         />
       </head>

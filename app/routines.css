@@ -18,7 +18,7 @@
   overflow-y: auto;
 }
 
-/* Primary actions stay neutral in every palette: Paper's accent primary read too loud here. */
+/* Primary actions stay neutral: an accent primary read too loud here. */
 .routines-page {
   --primary: var(--control-on);
   --primary-hover: var(--control-on-hover);

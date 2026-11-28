@@ -13,7 +13,6 @@ import { createPortal } from "react-dom";
 import { findQuoteInSegments, selectedTextWithTex } from "@/lib/quoted-selection";
 import { useTheme } from "@/hooks/useTheme";
 import { usePrismLanguages } from "@/hooks/usePrismLanguages";
-import { claudeCodeStyle, claudeDarkCodeStyle } from "@/lib/claude-theme";
 import {
   BINARY_FILE_ERROR,
   DOCX_PREVIEW_MAX_BYTES,
@@ -394,13 +393,13 @@ function diffMetadataLines(patch: string): string[] {
 }
 
 // shortcut: per-line tokens lose multiline comment/template state; tokenize both file versions if needed.
-const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, palette, wrapLines }: {
-  text: string; language: string; isDark: boolean; palette: string; wrapLines: boolean;
+const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, wrapLines }: {
+  text: string; language: string; isDark: boolean; wrapLines: boolean;
 }) {
   return (
     <SyntaxHighlighter
       language={language}
-      style={palette === "claude" ? (isDark ? claudeDarkCodeStyle : claudeCodeStyle) : isDark ? vscDarkPlus : vs}
+      style={isDark ? vscDarkPlus : vs}
       PreTag="span"
       CodeTag="span"
       wrapLongLines={wrapLines}
@@ -416,9 +415,9 @@ const DiffLineCode = memo(function DiffLineCode({ text, language, isDark, palett
   );
 });
 
-function DiffView({ patch, split, onSplitChange, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false, palette = "default" }: {
+function DiffView({ patch, split, onSplitChange, wrapLines: preferWrap, language = "text", prismReady = false, isDark = false }: {
   patch: string; split: boolean; onSplitChange: (split: boolean) => void; wrapLines: boolean;
-  language?: string; prismReady?: boolean; isDark?: boolean; palette?: string;
+  language?: string; prismReady?: boolean; isDark?: boolean;
 }) {
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -481,7 +480,7 @@ function DiffView({ patch, split, onSplitChange, wrapLines: preferWrap, language
           padding: "0 8px 0 0", whiteSpace: wrapLines ? "pre-wrap" : "pre", color: "var(--text)",
         }}>
           {highlight && line.type !== "empty"
-            ? <DiffLineCode text={line.text} language={language} isDark={isDark} palette={palette} wrapLines={wrapLines} />
+            ? <DiffLineCode text={line.text} language={language} isDark={isDark} wrapLines={wrapLines} />
             : (line.text || "\u00a0")}
         </span>
       </div>
@@ -1330,7 +1329,7 @@ function TextFileViewer({
   onStateChange,
   watchEnabled = true,
 }: Props) {
-  const { isDark, palette } = useTheme();
+  const { isDark } = useTheme();
   const { t } = useI18n();
   const confirm = useConfirm();
   const [data, setData] = useState<FileData | null>(null);
@@ -1757,7 +1756,7 @@ function TextFileViewer({
       <SyntaxHighlighter
         className={wrapLines ? "file-source-view is-wrapped" : "file-source-view"}
         language={language === "text" || !prismReady ? "plaintext" : language}
-        style={palette === "claude" ? (isDark ? claudeDarkCodeStyle : claudeCodeStyle) : isDark ? vscDarkPlus : vs}
+        style={isDark ? vscDarkPlus : vs}
         showLineNumbers
         lineNumberStyle={FILE_PINNED_LINE_NUMBER_STYLE}
         customStyle={{
@@ -1785,7 +1784,7 @@ function TextFileViewer({
         {viewerContent}
       </SyntaxHighlighter>
     ) : null,
-    [isDark, language, palette, prismReady, showHighlightedSource, viewerContent, wrapLines],
+    [isDark, language, prismReady, showHighlightedSource, viewerContent, wrapLines],
   );
   const lightweightSourceLines = useMemo(
     () => useLightweightSource ? chunkSourceLines(sourceLines.map((line, lineIndex) => (
@@ -2263,7 +2262,7 @@ function TextFileViewer({
         style={{ flex: 1, overflow: "auto", background: "var(--bg)", paddingBottom: data?.truncated && !(isHtml && effectiveDisplayMode === "preview") ? 48 : undefined }}
       >
         {effectiveDisplayMode === "diff" && hasGitDiff ? (
-          <MemoizedDiffView patch={gitDiff.patch!} split={isSplitDiff} onSplitChange={setDiffSplit} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} palette={palette} />
+          <MemoizedDiffView patch={gitDiff.patch!} split={isSplitDiff} onSplitChange={setDiffSplit} wrapLines={wrapLines} language={language} prismReady={prismReady} isDark={isDark} />
         ) : isHtml && effectiveDisplayMode === "preview" && !htmlInline && htmlServedForFile?.url ? (
           <iframe
             // A new element per URL: changing src would add an iframe history entry.

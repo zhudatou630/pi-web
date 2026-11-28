@@ -48,8 +48,10 @@ test("UI uses only font weights 400 and 600, never as a state toggle", () => {
   assert.deepEqual(violations, []);
 });
 
-test("text tiers hit the same contrast targets in light and dark themes", async () => {
-  const css = (await readFile(join(root, "app/globals.css"), "utf8")) + (await readFile(join(root, "app/theme-claude.css"), "utf8"));
+// Per-mode targets (docs/ui.md): equal WCAG ratios read crowded in light and spread in dark,
+// so each mode keeps Cursor-like steps, measured on the sidebar (--bg-panel).
+test("text tiers hit each mode's contrast targets", async () => {
+  const css = await readFile(join(root, "app/globals.css"), "utf8");
   const block = (selector) => css.match(new RegExp(`^${selector} \\{([\\s\\S]*?)^\\}`, "m"))[1];
   const token = (body, name) => body.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"))[1];
   const lum = (hex) => {
@@ -58,13 +60,17 @@ test("text tiers hit the same contrast targets in light and dark themes", async 
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   };
   const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
-  for (const selector of [":root", "html\\[data-theme=\"claude\"\\]", "html\\[data-theme=\"claude\"\\]\\.dark", "html\\.dark"]) {
+  const targets = {
+    ":root": { text: [15, 21], "text-muted": [8, 8.5], "text-dim": [5.2, 5.5] },
+    "html\\.dark": { text: [13, 21], "text-muted": [9.5, 10.5], "text-dim": [6.5, 7.5] },
+  };
+  for (const [selector, tiers] of Object.entries(targets)) {
     const body = block(selector);
     const panel = token(body, "bg-panel");
-    const at = (name) => ratio(token(body, name), panel);
-    assert.ok(at("text") >= 12, `${selector} --text ${at("text")}`);
-    assert.ok(at("text-muted") >= 8.5 && at("text-muted") <= 9.5, `${selector} --text-muted ${at("text-muted")}`);
-    assert.ok(at("text-dim") >= 5.5 && at("text-dim") <= 6.5, `${selector} --text-dim ${at("text-dim")}`);
+    for (const [name, [min, max]] of Object.entries(tiers)) {
+      const value = ratio(token(body, name), panel);
+      assert.ok(value >= min && value <= max, `${selector} --${name} ${value.toFixed(2)}`);
+    }
   }
 });
 

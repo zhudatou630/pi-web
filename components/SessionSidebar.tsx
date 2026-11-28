@@ -2860,9 +2860,11 @@ export function SessionItem({
             </span>
           </div>
 
-          {/* Action buttons — shown on hover or keyboard focus */}
+          {/* Action buttons — shown on hover or keyboard focus. Opaque over the title:
+              dark hover/selected are translucent overlays, so paint the panel under them. */}
           {!selection && !session.transient && (
-            <div className="session-row-actions" style={{ display: "flex", alignItems: "center", gap: 2, position: "absolute", right: 4, top: 0, height: "100%", background: isSelected ? "var(--bg-selected)" : hovered ? "var(--bg-hover)" : "var(--bg-panel)", paddingLeft: 4, borderRadius: 4 }}>
+            <div className="session-row-actions" style={{ display: "flex", alignItems: "center", gap: 2, position: "absolute", right: 4, top: 0, height: "100%",
+              background: isSelected ? "linear-gradient(var(--bg-selected), var(--bg-selected)), var(--bg-panel)" : hovered ? "linear-gradient(var(--bg-hover), var(--bg-hover)), var(--bg-panel)" : "var(--bg-panel)", paddingLeft: 4, borderRadius: 4 }}>
               {onTogglePin && (
                 <button
                   type="button"

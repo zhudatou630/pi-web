@@ -6,7 +6,6 @@ import vs from "react-syntax-highlighter/dist/esm/styles/prism/vs";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 import { useFontScheme } from "@/hooks/useFontScheme";
 import { useTheme } from "@/hooks/useTheme";
-import { claudeCodeStyle, claudeDarkCodeStyle, claudeDarkMermaidVariables, claudeMermaidVariables } from "@/lib/claude-theme";
 import { useI18n } from "@/hooks/useI18n";
 import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
 import renderSyntaxNode from "react-syntax-highlighter/dist/esm/create-element";
@@ -66,16 +65,15 @@ type RenderState =
   | { key: string; status: "ready"; svg: string };
 
 export function MermaidBlock({ code, isStreaming, defaultPreview = false }: MermaidBlockProps) {
-  const { isDark, palette } = useTheme();
+  const { isDark } = useTheme();
   const { scheme } = useFontScheme();
-  const isClaude = palette === "claude";
   const { t } = useI18n();
   const [showPreview, setShowPreview] = useState(defaultPreview);
   const [renderState, setRenderState] = useState<RenderState | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const image = useExportImage();
-  const currentKey = `${palette}-${isDark ? "dark" : "light"}-${scheme}\n${code}`;
+  const currentKey = `${isDark ? "dark" : "light"}-${scheme}\n${code}`;
   const previewVisible = showPreview && !isStreaming;
 
   useEffect(() => {
@@ -89,18 +87,13 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
       if (cancelled) return;
       const fontFamily = mermaidFontFamily();
       const { default: mermaid } = await import("mermaid");
-      const themeVariables = {
-        ...(isClaude ? (isDark ? claudeDarkMermaidVariables : claudeMermaidVariables) : null),
-        fontFamily,
-      };
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
         suppressErrorRendering: true,
         fontFamily,
-        ...(isClaude
-          ? { theme: "base" as const, themeVariables }
-          : { theme: isDark ? "dark" as const : "default" as const, themeVariables }),
+        theme: isDark ? "dark" : "default",
+        themeVariables: { fontFamily },
       });
 
       const parsed = await mermaid.parse(code, { suppressErrors: true });
@@ -123,7 +116,7 @@ export function MermaidBlock({ code, isStreaming, defaultPreview = false }: Merm
     return () => {
       cancelled = true;
     };
-  }, [code, currentKey, isClaude, isDark, previewVisible]);
+  }, [code, currentKey, isDark, previewVisible]);
 
   const previewButton = useMemo(() => (
     <PreviewToggleButton
@@ -410,7 +403,7 @@ function StreamingCode({ code }: { code: string }) {
  * no tokens) until an idle slice lets it take its language.
  */
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
-  const { isDark, palette } = useTheme();
+  const { isDark } = useTheme();
   // Loading starts with the first block, streaming or not, so a streamed reply
   // usually finds the languages ready when it ends.
   // A plain-text fence needs no grammars; any real language loads them all once.
@@ -447,7 +440,7 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
       ) : (
         <SyntaxHighlighter
           language={highlighted ? lang || "text" : "text"}
-          style={palette === "claude" ? (isDark ? claudeDarkCodeStyle : claudeCodeStyle) : isDark ? vscDarkPlus : vs}
+          style={isDark ? vscDarkPlus : vs}
           showLineNumbers
           lineNumberStyle={{ color: "var(--text-dim)", fontStyle: "normal", paddingRight: "0.8em", userSelect: "none", flexShrink: 0 }}
           renderer={renderCodeLines}

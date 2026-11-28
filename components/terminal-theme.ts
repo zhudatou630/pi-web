@@ -1,5 +1,4 @@
 import type { ITheme } from "@xterm/xterm";
-import type { ThemePalette } from "@/hooks/useTheme";
 
 export const TERMINAL_LIGHT_STORAGE_KEY = "pi-web:terminal-light";
 export const TERMINAL_THEME_EVENT = "pi-terminal-theme-changed";
@@ -45,9 +44,10 @@ export function subscribeTerminalTheme(listener: () => void): () => void {
   };
 }
 
-const DEFAULT_THEMES = {
+// Backgrounds are the app's --bg per mode; must match the .terminal-panel blocks in app/globals.css.
+export const TERMINAL_THEMES = {
   dark: {
-    background: "#1a1a1a", foreground: "#e4e4e4", cursor: "#e4e4e4",
+    background: "#1c1c1c", foreground: "#e6e6e6", cursor: "#e6e6e6",
     selectionBackground: "#365b8a",
     black: "#1d222b", red: "#f87171", green: "#4ade80", yellow: "#facc15",
     blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#e5e7eb",
@@ -57,7 +57,7 @@ const DEFAULT_THEMES = {
   },
   // Start with the app's light semantic colors; ANSI whites must be grey on white.
   light: {
-    background: "#ffffff", foreground: "#1a1a1a", cursor: "#1a1a1a",
+    background: "#ffffff", foreground: "#1c1c1c", cursor: "#1c1c1c",
     cursorAccent: "#ffffff", selectionBackground: "#bfd7fb",
     black: "#1a1a1a", red: "#dc2626", green: "#15803d", yellow: "#b45309",
     blue: "#2563eb", magenta: "#7c3aed", cyan: "#0e7490", white: "#565e6b",
@@ -66,13 +66,3 @@ const DEFAULT_THEMES = {
     brightCyan: "#155e75", brightWhite: "#737373",
   },
 } satisfies Record<"dark" | "light", ITheme>;
-
-// Mode is the terminal's own choice; the palette follows the app (hooks/useTheme.ts).
-// Only the background (that palette's --bg) changes; text, cursor, selection and ANSI stay per mode.
-export const TERMINAL_THEMES = {
-  default: DEFAULT_THEMES,
-  claude: {
-    dark: { ...DEFAULT_THEMES.dark, background: "#1f1f1e" },
-    light: { ...DEFAULT_THEMES.light, background: "#faf9f5", cursorAccent: "#faf9f5" },
-  },
-} satisfies Record<ThemePalette, Record<"dark" | "light", ITheme>>;

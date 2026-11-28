@@ -26,7 +26,7 @@ test("phone top bar holds the menu button, title, the outline button and the ses
   // The closed drawer's menu button carries a dot while a session waits or failed.
   assert.match(source, /const menuNeedsYou = isMobile && !sidebarOpen && hasBlockedSession\(sessionMarkers\)/);
   assert.match(source, /\{menuNeedsYou && <span className="mobile-menu-dot" aria-hidden="true" \/>\}/);
-  assert.match(cssSource, /\.mobile-menu-dot \{[\s\S]*?width: 6px;[\s\S]*?background: var\(--warning\);/);
+  assert.match(cssSource, /\.mobile-menu-dot \{[\s\S]*?width: 6px;[\s\S]*?background: var\(--warning-dot\);/);
   assert.doesNotMatch(source, /useIsNarrowMobile|mobileToolbarMoreOpen|data-mobile-toolbar-more|data-mobile-toolbar-actions/);
 });
 

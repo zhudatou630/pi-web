@@ -4,22 +4,17 @@ import { useCallback, useSyncExternalStore } from "react";
 
 export type ThemePreference = "light" | "dark" | "auto";
 export type ResolvedTheme = "light" | "dark";
-// Palette and light/dark mode are independent: data-theme picks the palette,
-// .dark the mode, so every palette gets light, dark, and system.
-export type ThemePalette = "default" | "claude";
 
 type ThemeState = {
   preference: ThemePreference;
   theme: ResolvedTheme;
-  palette: ThemePalette;
 };
 
 type ToggleOrigin = { x: number; y: number };
 
 const STORAGE_KEY = "pi-theme";
-const PALETTE_STORAGE_KEY = "pi-theme-palette";
 const PREFERENCE_CYCLE: ThemePreference[] = ["light", "dark", "auto"];
-const SERVER_SNAPSHOT: ThemeState = { preference: "auto", theme: "light", palette: "default" };
+const SERVER_SNAPSHOT: ThemeState = { preference: "auto", theme: "light" };
 
 const listeners = new Set<() => void>();
 let state: ThemeState | null = null;
@@ -55,23 +50,16 @@ function readStoredPreference(): ThemePreference {
   return value === "light" || value === "dark" ? value : "auto";
 }
 
-function readStoredPalette(): ThemePalette {
-  return readStored(PALETTE_STORAGE_KEY) === "claude" ? "claude" : "default";
-}
-
 function resolveTheme(preference: ThemePreference): ResolvedTheme {
   return preference === "auto" ? getSystemTheme() : preference;
 }
 
-// Match --bg-panel so the PWA status bar blends into the workspace header.
-const THEME_COLOR: Record<ThemePalette, Record<ResolvedTheme, string>> = {
-  default: { light: "#f5f5f5", dark: "#242424" },
-  claude: { light: "#f7f6f2", dark: "#191918" },
-};
+// Match --bg so the PWA status bar blends into the workspace header (the chat's top bar).
+const THEME_COLOR: Record<ResolvedTheme, string> = { light: "#ffffff", dark: "#1c1c1c" };
 
-function applyThemeColor(palette: ThemePalette, theme: ResolvedTheme): void {
+function applyThemeColor(theme: ResolvedTheme): void {
   if (typeof document === "undefined") return;
-  const color = THEME_COLOR[palette][theme];
+  const color = THEME_COLOR[theme];
   const metas = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
   if (metas.length === 0) {
     const meta = document.createElement("meta");
@@ -86,13 +74,10 @@ function applyThemeColor(palette: ThemePalette, theme: ResolvedTheme): void {
   }
 }
 
-function applyDomTheme(palette: ThemePalette, theme: ResolvedTheme): void {
+function applyDomTheme(theme: ResolvedTheme): void {
   if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  root.classList.toggle("dark", theme === "dark");
-  if (palette === "default") delete root.dataset.theme;
-  else root.dataset.theme = palette;
-  applyThemeColor(palette, theme);
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  applyThemeColor(theme);
 }
 
 function ensureState(): ThemeState {
@@ -100,19 +85,15 @@ function ensureState(): ThemeState {
   if (state) return state;
 
   const preference = readStoredPreference();
-  const palette = readStoredPalette();
   const theme = resolveTheme(preference);
-  applyDomTheme(palette, theme);
-  state = { preference, theme, palette };
+  applyDomTheme(theme);
+  state = { preference, theme };
   return state;
 }
 
 function setThemeState(next: ThemeState, persist: boolean): void {
-  applyDomTheme(next.palette, next.theme);
-  if (persist) {
-    writeStored(STORAGE_KEY, next.preference);
-    writeStored(PALETTE_STORAGE_KEY, next.palette);
-  }
+  applyDomTheme(next.theme);
+  if (persist) writeStored(STORAGE_KEY, next.preference);
   state = next;
   emit();
 }
@@ -210,11 +191,6 @@ export function useTheme() {
       });
   }, []);
 
-  const setThemePalette = useCallback((palette: ThemePalette) => {
-    const current = ensureState();
-    if (current.palette !== palette) setThemeState({ ...current, palette }, true);
-  }, []);
-
   const toggleTheme = useCallback((origin?: ToggleOrigin) => {
     const current = ensureState();
     setThemePreference(nextPreference(current.preference), origin);
@@ -223,9 +199,7 @@ export function useTheme() {
   return {
     theme: snapshot.theme,
     preference: snapshot.preference,
-    palette: snapshot.palette,
     setThemePreference,
-    setThemePalette,
     toggleTheme,
     isDark: snapshot.theme === "dark",
   };

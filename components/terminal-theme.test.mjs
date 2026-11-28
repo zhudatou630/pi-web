@@ -118,16 +118,10 @@ function luminance(hex) {
   });
   return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
 }
-const TERMINAL_SELECTORS = {
-  default: { dark: ".terminal-panel {", light: '.terminal-panel[data-terminal-theme="light"] {' },
-  claude: {
-    dark: 'html[data-theme="claude"] .terminal-panel[data-terminal-theme="dark"] {',
-    light: 'html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {',
-  },
-};
+const TERMINAL_SELECTORS = { dark: ".terminal-panel {", light: '.terminal-panel[data-terminal-theme="light"] {' };
 
-function cssBlock(css, palette, theme) {
-  const selector = TERMINAL_SELECTORS[palette][theme];
+function cssBlock(css, theme) {
+  const selector = TERMINAL_SELECTORS[theme];
   assert.ok(css.includes(selector), selector);
   return css.slice(css.indexOf(selector)).split("}")[0];
 }
@@ -137,20 +131,18 @@ function contrast(a, b) {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
-test("terminal foreground and all 16 light ANSI text colors meet 4.5:1 on every palette", (t) => {
+test("terminal foreground and all 16 light ANSI text colors meet 4.5:1", (t) => {
   const names = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
   const ansi = [...names, ...names.map((name) => `bright${name[0].toUpperCase()}${name.slice(1)}`)];
-  for (const [paletteName, modes] of Object.entries(TERMINAL_THEMES)) {
-    for (const palette of Object.values(modes)) {
-      for (const name of ansi) assert.match(palette[name], /^#[0-9a-f]{6}$/);
-      assert.ok(contrast(palette.foreground, palette.background) >= 4.5);
-    }
-    const light = modes.light;
-    for (const name of ["foreground", ...ansi]) {
-      const ratio = contrast(light[name], light.background);
-      t.diagnostic(`${paletteName} ${name}: ${ratio.toFixed(2)}:1`);
-      assert.ok(ratio >= 4.5, `${paletteName} ${name}: ${ratio}`);
-    }
+  for (const palette of Object.values(TERMINAL_THEMES)) {
+    for (const name of ansi) assert.match(palette[name], /^#[0-9a-f]{6}$/);
+    assert.ok(contrast(palette.foreground, palette.background) >= 4.5);
+  }
+  const light = TERMINAL_THEMES.light;
+  for (const name of ["foreground", ...ansi]) {
+    const ratio = contrast(light[name], light.background);
+    t.diagnostic(`${name}: ${ratio.toFixed(2)}:1`);
+    assert.ok(ratio >= 4.5, `${name}: ${ratio}`);
   }
 });
 
@@ -166,14 +158,14 @@ test("terminal actions live in the workspace header; the panel has no toolbar of
   // Header buttons are the shared top-bar buttons (app tokens, not the terminal's own palette).
   assert.equal((source.match(/className="workspace-header-action"/g) ?? []).length, 3);
   assert.doesNotMatch(css + source, /terminal-header-action\b/);
-  assert.match(css, /\.terminal-status-dot \{[^}]*background: var\(--warning\)/);
+  assert.match(css, /\.terminal-status-dot \{[^}]*background: var\(--warning-dot\)/);
   assert.match(css, /\.terminal-status-dot\.is-error \{ background: var\(--danger\)/);
 });
 
 test("theme changes only update the live xterm; chrome backgrounds and header controls stay aligned", async () => {
   const source = await readFile(new URL("./TerminalPanel.tsx", import.meta.url), "utf8");
   assert.match(source, /useSyncExternalStore\(subscribeTerminalTheme, isTerminalLight, \(\) => false\)/);
-  assert.match(source, /if \(terminalRef.current\) terminalRef.current.options.theme = TERMINAL_THEMES\[palette\]\[theme\];\s*\}, \[palette, theme, id, cwd, restored, reconnectKey\]\)/);
+  assert.match(source, /if \(terminalRef.current\) terminalRef.current.options.theme = TERMINAL_THEMES\[theme\];\s*\}, \[theme, id, cwd, restored, reconnectKey\]\)/);
   const lifetimeEnd = "  }, [id, cwd, restored, reconnectKey, consumeModifiers]);";
   assert.ok(source.includes(lifetimeEnd), "theme must not become a terminal lifecycle dependency");
   const lifetime = source.slice(source.indexOf("    const terminal = new Terminal("), source.indexOf(lifetimeEnd));
@@ -181,20 +173,12 @@ test("theme changes only update the live xterm; chrome backgrounds and header co
   assert.doesNotMatch(lifetime, /\[theme\]|\[light\]/);
   assert.match(source, /data-terminal-theme=\{theme\}/);
   assert.match(source, /title=\{t\(themeLabel\)\} aria-label=\{t\(themeLabel\)\}/);
-  assert.match(source, /const \{ palette \} = useTheme\(\);/);
   assert.match(source, /minimumContrastRatio: 4\.5,/);
   assert.match(source, /cursorStyle: "bar",\s*cursorWidth: 2,\s*cursorInactiveStyle: "bar",/);
-  for (const theme of Object.values(TERMINAL_THEMES.default)) assert.equal(theme.cursor, theme.foreground);
-  for (const [theme, base] of Object.entries(TERMINAL_THEMES.default)) {
-    const { background, cursorAccent, ...rest } = TERMINAL_THEMES.claude[theme];
-    const { background: _b, cursorAccent: _c, ...baseRest } = base;
-    assert.deepEqual(rest, baseRest, `claude ${theme} must change only the background`);
-  }
+  for (const theme of Object.values(TERMINAL_THEMES)) assert.equal(theme.cursor, theme.foreground);
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  for (const [palette, modes] of Object.entries(TERMINAL_THEMES)) {
-    for (const [theme, xterm] of Object.entries(modes)) {
-      assert.ok(cssBlock(css, palette, theme).includes(`--terminal-bg: ${xterm.background}`), `${palette} ${theme}`);
-    }
+  for (const [theme, xterm] of Object.entries(TERMINAL_THEMES)) {
+    assert.ok(cssBlock(css, theme).includes(`--terminal-bg: ${xterm.background}`), theme);
   }
   assert.match(css, /\.terminal-xterm \.xterm-viewport \{\s*background-color: var\(--terminal-bg\)/);
 });

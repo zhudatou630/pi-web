@@ -20,15 +20,14 @@ test("configures iOS standalone mode to use the full screen", () => {
 });
 
 test("keeps the PWA status bar color in sync with the resolved theme", () => {
-  assert.match(manifestSource, /theme_color: "#f5f5f5"/);
-  assert.match(layoutSource, /themeColor: "#f5f5f5"/);
-  assert.match(layoutSource, /var c=claude\?\(dark\?"#191918":"#f7f6f2"\):\(dark\?"#242424":"#f5f5f5"\)/);
-  assert.match(themeHookSource, /default: \{ light: "#f5f5f5", dark: "#242424" \}/);
-  assert.match(themeHookSource, /claude: \{ light: "#f7f6f2", dark: "#191918" \}/);
+  assert.match(manifestSource, /theme_color: "#ffffff"/);
+  assert.match(layoutSource, /themeColor: "#ffffff"/);
+  assert.match(layoutSource, /var c=dark\?"#1c1c1c":"#ffffff"/);
+  assert.match(themeHookSource, /const THEME_COLOR: Record<ResolvedTheme, string> = \{ light: "#ffffff", dark: "#1c1c1c" \}/);
   assert.doesNotMatch(layoutSource, /themeColor:\s*\[/);
   assert.match(layoutSource, /meta\[name="theme-color"\]/);
-  assert.match(themeHookSource, /function applyThemeColor\(palette: ThemePalette, theme: ResolvedTheme\)/);
-  assert.match(themeHookSource, /applyThemeColor\(palette, theme\)/);
+  assert.match(themeHookSource, /function applyThemeColor\(theme: ResolvedTheme\)/);
+  assert.match(themeHookSource, /applyThemeColor\(theme\)/);
   assert.match(appShellSource, /useTheme\(\)/);
 });
 

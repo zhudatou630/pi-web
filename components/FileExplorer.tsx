@@ -413,7 +413,7 @@ function TreeNode({
         )}
         {hovered && (onAtMention || !node.isDir) && (
           // Quiet icon actions like the session rows; the row's hover fill hides the name beneath.
-          <span style={{ position: "absolute", right: 2, top: 0, height: "100%", display: "flex", alignItems: "center", gap: 2, paddingLeft: 4, background: "var(--bg-hover)", borderRadius: 4 }}>
+          <span style={{ position: "absolute", right: 2, top: 0, height: "100%", display: "flex", alignItems: "center", gap: 2, paddingLeft: 4, background: "linear-gradient(var(--bg-hover), var(--bg-hover)), var(--bg)", borderRadius: 4 }}>
             {onAtMention && (
               <button
                 type="button"

@@ -2732,7 +2732,7 @@ export function ChatWindow({ session, composerDock, searchTarget, onSearchTarget
               setMountLimit(MOUNTED_GROUP_LIMIT);
               requestAnimationFrame(() => scrollToBottom("smooth"));
             }}
-            className="absolute bottom-3 right-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-[4px] border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            className="absolute bottom-3 right-5 z-30 inline-flex h-7 w-7 items-center justify-center rounded-[4px] border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] transition-colors hover:[background:linear-gradient(var(--bg-hover),var(--bg-hover)),var(--bg)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
             title={t("chat.scrollToBottom")}
             aria-label={t("chat.scrollToBottom")}
           >

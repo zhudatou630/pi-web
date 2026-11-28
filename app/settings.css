@@ -465,7 +465,7 @@
 }
 
 .config-status-dot.is-warning {
-  background: var(--warning);
+  background: var(--warning-dot);
 }
 
 .config-status-dot.is-danger {
@@ -1897,7 +1897,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--warning);
+  background: var(--warning-dot);
 }
 
 .models-section-heading .settings-row-description {
@@ -3068,7 +3068,7 @@ a.models-hint:hover {
   min-height: 0;
   margin: 0 auto;
   border-radius: 2px 2px 0 0;
-  background: color-mix(in srgb, var(--accent) 72%, var(--bg-hover));
+  background: color-mix(in srgb, var(--accent) 72%, var(--bg-elevated));
   transition: background-color var(--motion-fast);
 }
 
@@ -3082,7 +3082,7 @@ button.usage-bar:hover::after,
 }
 
 .usage-bar[data-dimmed]::after {
-  background: color-mix(in srgb, var(--accent) 30%, var(--bg-hover));
+  background: color-mix(in srgb, var(--accent) 30%, var(--bg-elevated));
 }
 
 /* Tables */

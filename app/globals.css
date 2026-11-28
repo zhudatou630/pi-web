@@ -67,43 +67,6 @@
   font-display: swap;
 }
 
-/* Claude scheme prose: Source Serif 4 (Latin-only subset, variable wght
-   400-600) in front of Noto Serif SC (CJK, same weight range), matching
-   claude.ai's serif Latin + Song CJK. unicode-range leaves CJK-shared
-   punctuation (curly double quotes, ellipsis, em dash, middle dot) to the Song
-   face so it is full width in Chinese; the apostrophe/single quotes stay Latin.
-   size-adjust matches Source Serif's cap height (0.67em) to the CJK faces'
-   (~0.73em) so Latin does not shrink next to Chinese.
-   Source Serif is variable 400-600; Noto Serif SC is variable 500-700. Two
-   Noto faces share one file and pin the wght axis: CSS 400 matches the 500
-   face (Medium; Regular read too thin at 14px) and CSS 600 matches the 700
-   face (Bold), keeping the 200-unit body/bold gap. Latin stays 400/600. */
-@font-face {
-  font-family: "Source Serif 4 Web";
-  src: url("/fonts/SourceSerif4-Latin.woff2?v=2") format("woff2");
-  font-style: normal;
-  font-weight: 400 600;
-  font-display: swap;
-  size-adjust: 108%;
-  unicode-range: U+0000-00B6, U+00B8-00FF, U+0100-017F, U+0192, U+02C6, U+02DC, U+2013, U+2018-2019, U+201A, U+201E, U+2020-2022, U+2030, U+2039-203A, U+20AC, U+2122, U+2212;
-}
-
-@font-face {
-  font-family: "Noto Serif SC Web";
-  src: url("/fonts/NotoSerifSC.woff2?v=2") format("woff2");
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Noto Serif SC Web";
-  src: url("/fonts/NotoSerifSC.woff2?v=2") format("woff2");
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
 /* Kai scheme prose: LXGW WenKai v1.522, CJK + Latin in each face. The family
    tops out at Medium and the Screen cut (body) is already about Medium, so
    there is no real bold. CSS 400 matches Screen; CSS 600 finds no face at or
@@ -151,33 +114,38 @@ html {
   /* Native scrollbars, form controls and iframe canvases follow the app theme. */
   color-scheme: light;
   --bg: #ffffff;
+  /* One neutral palette after Cursor's Agents window and VS Code Modern (docs/ui.md, Color).
+     The sidebar sits a clear step below the white canvas (1.09:1), since no rule divides them. */
   --bg-panel: #f5f5f5;
-  --bg-hover: #eeeeee;
-  --bg-selected: #e8e8e8;
-  --border: #e0e0e0;
-  --text: #1a1a1a;
-  /* Text tiers share contrast targets across both themes, measured on
-     --bg-panel: --text >= 12:1, --text-muted ~9:1 (headings, sidebar items,
-     labels), --text-dim ~6:1 (timestamps, counts, metadata).
-     Pick new shades by these targets, not by eye, or the themes drift. */
-  /* Neutral grays (no slate tint), after Cursor; same contrast as the earlier #3b4452 / #565e6b. */
-  --text-muted: #434343;
-  --text-dim: #5d5d5d;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
+  --bg-hover: #ececec;
+  --bg-selected: #e6e6e6;
+  --border: #e5e5e5;
+  --text: #1c1c1c;
+  /* Text tiers, measured on --bg-panel (Typography.test.mjs). Targets differ per mode, as in
+     Cursor's alpha tiers: equal WCAG ratios read crowded in light and spread in dark (APCA).
+     Light: --text >= 15:1, --text-muted 8-8.5:1 (headings, sidebar items, labels),
+     --text-dim 5.2-5.5:1 (timestamps, counts, metadata; CJK at 11px needs the extra step).
+     Pick new shades by these targets, not by eye. */
+  --text-muted: #4a4a4a;
+  --text-dim: #666666;
+  /* VS Code's blue: >= 5:1 on every light surface, selected rows included. */
+  --accent: #005fb8;
+  --accent-hover: #0258a8;
   --accent-contrast: #ffffff;
-  --danger: #dc2626;
+  --danger: #ad1f2a;
   /* Fill of a destructive button under white text (>= 4.5:1); dark themes darken it
      because their --danger is a light foreground red. */
   --danger-fill: var(--danger);
-  --warning: #b45309;
-  --success: #059669;
-  --user-bg: #f3f4f6;
+  /* Amber text stays >= 4.5:1 on selected rows; a 6px dot needs a brighter amber to stay
+     apart from the red dot under deuteranopia, hence the separate dot color. */
+  --warning: #965700;
+  --warning-dot: #c27000;
+  --success: #00723e;
+  --user-bg: #f2f2f2;
   --assistant-bg: #ffffff;
-  --tool-bg: #f9fafb;
+  --tool-bg: #f8f8f8;
   --bg-subtle: rgba(0,0,0,0.03);
-  /* Dialogs and popovers. Same as --bg unless a palette lifts floating
-     surfaces above the page (Claude dark does, like Claude Desktop). */
+  /* Dialogs and popovers. Same as --bg in light; dark lifts them above the canvas. */
   --bg-elevated: var(--bg);
   /* Shape and control scale. Pick from these; do not add one-off radii or heights. */
   --ui-radius-sm: 4px;
@@ -196,8 +164,7 @@ html {
      Groups get their air from dividers and gaps, not from taller rows. */
   --ui-row-height: 26px;
   /* Text fields (inputs, selects, search): the floating-surface color with a hairline edge,
-     as in Claude's forms; hover darkens the edge a step, focus to the neutral ring. A tinted
-     fill read muddy on the warm palette. */
+     as in Claude's forms; hover darkens the edge a step, focus to the neutral ring. */
   --ui-field-bg: var(--bg-elevated);
   --ui-field-edge: inset 0 0 0 1px var(--border);
   --ui-field-edge-hover: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, var(--border));
@@ -208,18 +175,18 @@ html {
   /* On-state of selection controls (switches, checkboxes, sliders): the text color, not
      the accent. Accent stays for links, primary actions, and focus rings. */
   --control-on: var(--text);
-  --control-on-hover: #3f3f46;
+  --control-on-hover: #3d3d3d;
   --control-knob-on: var(--bg);
   /* Filled primary actions (Save, Send, Confirm) share the selection controls' neutral fill. */
   --primary: var(--control-on);
   --primary-hover: var(--control-on-hover);
   --primary-contrast: var(--bg);
-  --switch-track-off: #d4d4d8;
+  --switch-track-off: #d4d4d4;
   --segmented-track: #efefef;
   --segmented-thumb: #ffffff;
   --ui-shadow-raised: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
   /* Light, short shadows (Claude Desktop): the hairline border draws the edge, the shadow
-     only lifts. Deep blurs read grey and dirty on the warm palette. */
+     only lifts. Deep blurs read grey and dirty. */
   --ui-shadow-dialog: 0 12px 32px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
   /* Every floating card that is not a dialog (menus, popovers, notices, chips). */
   --ui-shadow-popover: 0 4px 14px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
@@ -229,19 +196,14 @@ html {
   /* Cursor's top bars: about 40px, a 26px tab chip with 7px above and below. */
   --workspace-header-height: 40px;
   /* Font schemes only redefine the three role variables (UI, prose, code).
-     Faces are always the bundled web fonts, never local installs, so every
-     machine renders the same cut and version (except the opt-in system scheme). The system tail only shows
-     while the font loads (swap) or if the download fails.
-     Default scheme: Sarasa UI SC for UI and prose, Term SC for code. */
+     Faces are the bundled web fonts, never local installs, so every machine renders the
+     same cut and version; only the system scheme (the default, html[data-font="system"])
+     sets prose in the OS fonts. The system tail of the bundled stacks only shows while a
+     font loads (swap) or if the download fails.
+     No data-font (the Sans choice): Sarasa UI SC for UI and prose, Term SC for code. */
   --font-ui-fallback: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
   --font-ui: "Sarasa UI SC Web", var(--font-ui-fallback);
   --font-chat: var(--font-ui);
-}
-
-/* Claude scheme: serif prose (Source Serif 4 + Noto Serif SC). UI and code
-   are unchanged. */
-html[data-font="claude"] {
-  --font-chat: "Source Serif 4 Web", "Noto Serif SC Web", 'Songti SC', 'Noto Serif CJK SC', serif;
 }
 
 /* Kai scheme: WenKai prose. Its strokes are near-monoline, so the browser's
@@ -253,39 +215,43 @@ html[data-font="wenkai"] {
   font-synthesis: weight;
 }
 
-/* System scheme: prose uses the OS fonts (Segoe UI + Microsoft YaHei,
-   PingFang, Noto CJK), deliberately per machine and with no download.
+/* System scheme (the default): prose uses the OS fonts (Segoe UI + Microsoft
+   YaHei, PingFang, Noto CJK), deliberately per machine and with no download.
    UI and code are unchanged. */
 html[data-font="system"] {
   --font-chat: var(--font-ui-fallback);
 }
 
-/* Default dark: pure neutral greys throughout. The slate tint of the light
-   tiers turned blue on black and clashed with the neutral surfaces. Ink is
-   held a little under #e8e8e8 to cut glare on long reads; status colors are
-   softened from Tailwind's 300/400 neons. Floating surfaces sit a step
-   above both canvas and sidebar so menus never sink into what they cover. */
+/* Dark, after Cursor and VS Code: the sidebar is recessed below the canvas
+   (#141414 under #1c1c1c), floating surfaces sit a clear step above both.
+   Hover and selected are white overlays (Cursor's alpha tiers), so they read on
+   the sidebar, the canvas and menus alike; anything that covers content with them
+   must paint its own surface underneath. Ink is held under Cursor's #f5f5f5 to cut
+   glare on long reads. Tier targets on --bg-panel: --text >= 13:1, --text-muted
+   9.5-10.5:1, --text-dim 6.5-7.5:1 (Typography.test.mjs). */
 html.dark {
   color-scheme: dark;
-  --bg: #1a1a1a;
-  --bg-panel: #242424;
-  --bg-hover: #2e2e2e;
-  --bg-selected: #383838;
-  --bg-elevated: #262626;
-  --border: #3a3a3a;
-  --text: #e4e4e4;
-  --text-muted: #c6c6c6;
+  --bg: #1c1c1c;
+  --bg-panel: #141414;
+  --bg-hover: rgba(255,255,255,0.07);
+  --bg-selected: rgba(255,255,255,0.10);
+  --bg-elevated: #272727;
+  /* Also the floating surfaces' edge, where dark shadows barely show: one step above #272727. */
+  --border: #333333;
+  --text: #e6e6e6;
+  --text-muted: #bfbfbf;
   --text-dim: #a0a0a0;
-  --accent: #60a5fa;
-  --accent-hover: #93c5fd;
-  --accent-contrast: #0f172a;
-  --danger: #f87171;
+  --accent: #4daafc;
+  --accent-hover: #7cc0ff;
+  --accent-contrast: #101010;
+  --danger: #ff7f7a;
   --danger-fill: #b91c1c;
-  --warning: #e0b040;
-  --success: #4cc38a;
+  --warning: #e8a33a;
+  --warning-dot: var(--warning);
+  --success: #73d697;
   --user-bg: #262626;
-  --assistant-bg: #1a1a1a;
-  --tool-bg: #222222;
+  --assistant-bg: #1c1c1c;
+  --tool-bg: #202020;
   --bg-subtle: rgba(255,255,255,0.04);
   --control-on-hover: #ffffff;
   --switch-track-off: #4a4a4a;
@@ -314,8 +280,8 @@ html.dark {
   --ansi-bright-magenta: #6d28d9;
   --ansi-bright-cyan: #155e75;
   --ansi-bright-white: var(--text);
-  --ansi-black-bg: #1a1a1a;
-  --ansi-bright-black-bg: #3b4452;
+  --ansi-black-bg: #1c1c1c;
+  --ansi-bright-black-bg: #444444;
   --ansi-white-bg: #e5e7eb;
   --ansi-bright-white-bg: #ffffff;
 }
@@ -1750,16 +1716,16 @@ body {
    --bg-panel for the same palette, in the terminal's own light/dark mode.
    Must match components/terminal-theme.ts. */
 .terminal-panel {
-  --terminal-bg: #1a1a1a;
-  --terminal-header-bg: #242424;
-  --terminal-border: #3a3a3a;
-  --terminal-hover: #2e2e2e;
-  --terminal-muted: #c6c6c6;
-  --terminal-strong: #e4e4e4;
-  --terminal-accent: #60a5fa;
+  --terminal-bg: #1c1c1c;
+  --terminal-header-bg: #141414;
+  --terminal-border: #333333;
+  --terminal-hover: #2b2b2b;
+  --terminal-muted: #bfbfbf;
+  --terminal-strong: #e6e6e6;
+  --terminal-accent: #4daafc;
   --terminal-error-border: #5f2424;
   --terminal-error-bg: #321b1b;
-  --terminal-error-text: #fca5a5;
+  --terminal-error-text: #ff7f7a;
   color-scheme: dark;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -1773,36 +1739,15 @@ body {
 .terminal-panel[data-terminal-theme="light"] {
   --terminal-bg: #ffffff;
   --terminal-header-bg: #f5f5f5;
-  --terminal-border: #e0e0e0;
+  --terminal-border: #e5e5e5;
   --terminal-hover: #eeeeee;
-  --terminal-muted: #3b4452;
-  --terminal-strong: #1a1a1a;
-  --terminal-accent: #2563eb;
-  --terminal-error-border: #fecaca;
-  --terminal-error-bg: #fef2f2;
-  --terminal-error-text: #b91c1c;
+  --terminal-muted: #4a4a4a;
+  --terminal-strong: #1c1c1c;
+  --terminal-accent: #005fb8;
+  --terminal-error-border: #efc6c9;
+  --terminal-error-bg: #fbeeee;
+  --terminal-error-text: #ad1f2a;
   color-scheme: light;
-}
-
-/* Claude palette (app/theme-claude.css). */
-html[data-theme="claude"] .terminal-panel[data-terminal-theme="dark"] {
-  --terminal-bg: #1f1f1e;
-  --terminal-header-bg: #191918;
-  --terminal-border: #3d3d3a;
-  --terminal-hover: #2a2928;
-  --terminal-muted: #b9b7b1;
-  --terminal-strong: #e3e2de;
-  --terminal-accent: #d97757;
-}
-
-html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
-  --terminal-bg: #faf9f5;
-  --terminal-header-bg: #f7f6f2;
-  --terminal-border: #e1e0dc;
-  --terminal-hover: #efeeea;
-  --terminal-muted: #45443e;
-  --terminal-strong: #141413;
-  --terminal-accent: #c15f3c;
 }
 
 /* Browser tab: a local service of the Pi Web machine (components/BrowserPanel.tsx). */
@@ -1999,7 +1944,7 @@ html[data-theme="claude"] .terminal-panel[data-terminal-theme="light"] {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--warning);
+  background: var(--warning-dot);
 }
 
 .terminal-status-dot.is-exited,
@@ -2567,6 +2512,10 @@ pre, code {
   position: absolute;
   top: 0;
   right: 0;
+}
+/* Over the formula's strokes: an opaque hover (dark --bg-hover is translucent). */
+.markdown-math-copy .markdown-code-action:hover:not(:disabled) {
+  background: linear-gradient(var(--bg-hover), var(--bg-hover)), var(--bg);
 }
 .markdown-math-copy .markdown-code-action {
   opacity: 0;
@@ -4016,7 +3965,7 @@ button.question-card-option:not(:disabled):hover {
   height: 7px;
   border-radius: 50%;
   flex: 0 0 7px;
-  background: var(--warning);
+  background: var(--warning-dot);
   animation: file-viewer-status-in var(--motion-base) 1.5s backwards;
 }
 
@@ -4135,6 +4084,10 @@ button.question-card-option:not(:disabled):hover {
 ::highlight(file-find-current) {
   background-color: color-mix(in srgb, var(--warning, #d9a400) 75%, transparent);
   color: var(--text);
+}
+/* Dark amber is light: at 75% the light text on it fell to 2.7:1. */
+html.dark ::highlight(file-find-current) {
+  background-color: color-mix(in srgb, var(--warning) 50%, transparent);
 }
 .markdown-file-preview img:not(a img) {
   cursor: zoom-in;
@@ -4264,7 +4217,8 @@ button.question-card-option:not(:disabled):hover {
 .split-drop-zone[data-side="left"] { left: 0; box-shadow: inset -2px 0 0 var(--border); }
 .split-drop-zone[data-hover] {
   color: var(--text);
-  background: color-mix(in srgb, var(--bg-selected) 90%, transparent);
+  /* Dark --bg-selected is a translucent overlay: stack it on the panel so the label stays legible. */
+  background: linear-gradient(var(--bg-selected), var(--bg-selected)), color-mix(in srgb, var(--bg-panel) 90%, transparent);
 }
 .split-drop-zone[data-side="right"][data-hover] { box-shadow: inset 2px 0 0 var(--text-dim); }
 .split-drop-zone[data-side="left"][data-hover] { box-shadow: inset -2px 0 0 var(--text-dim); }
@@ -5530,7 +5484,8 @@ span.token.table {
   inset: 0;
   width: auto;
   height: auto;
-  background: var(--bg-hover);
+  /* Opaque: it covers the check, and dark hover is a translucent overlay. */
+  background: linear-gradient(var(--bg-hover), var(--bg-hover)), var(--bg-elevated);
   border-radius: var(--ui-radius-md);
 }
 @media (hover: none) {
@@ -5604,10 +5559,10 @@ span.token.table {
   animation: session-status-breathe 1.6s ease-in-out infinite;
 }
 .session-status-dot[data-status="unread"] { background: var(--accent); }
-.session-status-dot[data-status="awaiting"] { background: var(--warning); }
+.session-status-dot[data-status="awaiting"] { background: var(--warning-dot); }
 .session-status-dot[data-status="error"] { background: var(--danger); }
 /* Not a state: the faint mark idle rows carry (Cursor's read rows). */
-.session-status-dot[data-status="idle"] { background: color-mix(in srgb, var(--text-dim) 20%, transparent); }
+.session-status-dot[data-status="idle"] { background: color-mix(in srgb, var(--text-dim) 25%, transparent); }
 
 @keyframes session-status-breathe {
   0%, 100% { opacity: 1; }
@@ -5638,7 +5593,7 @@ span.token.table {
 }
 .chat-tab-hidden-status[data-status="running"] { animation: session-status-breathe 1.6s ease-in-out infinite; }
 .chat-tab-hidden-status[data-status="unread"] { background: var(--accent); }
-.chat-tab-hidden-status[data-status="awaiting"] { background: var(--warning); }
+.chat-tab-hidden-status[data-status="awaiting"] { background: var(--warning-dot); }
 .chat-tab-hidden-status[data-status="error"] { background: var(--danger); }
 @media (prefers-reduced-motion: reduce) {
   .chat-tab-hidden-status { animation: none !important; }
@@ -7085,7 +7040,7 @@ html[data-panel-resizing] .chat-scroll-fade { mask-image: none; }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--warning);
+  background: var(--warning-dot);
   pointer-events: none;
 }
 

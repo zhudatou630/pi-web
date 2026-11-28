@@ -79,11 +79,10 @@ is the tab's tooltip. This holds on mobile too, where the panel is full screen.
 The light/dark button switches only the terminal. Switching assigns
 `terminal.options.theme` on the existing xterm; it does not recreate the terminal,
 reconnect SSE, restart the shell, or discard output/scrollback. The mode is
-independent of the app's light/dark mode, but surfaces follow the app palette
-(`default`/`claude`): `TERMINAL_THEMES[palette][mode]`. The canvas is that
-palette's `--bg` for the mode (so it joins the selected tab seamlessly when the
+independent of the app's light/dark mode: `TERMINAL_THEMES[mode]`. The canvas is
+the app's `--bg` for that mode (so it joins the selected tab seamlessly when the
 modes agree) and the touch-key bar its `--bg-panel`. Each mode keeps one ANSI
-palette; Claude changes only the background. Terminal text, cursor and
+palette. Terminal text, cursor and
 selection never take the app accent: they only need to stay readable. The
 cursor is a blinking 2px bar in the foreground color, also while unfocused;
 programs such as vim still set their own shape.
@@ -95,7 +94,7 @@ A relevant storage event discards a failed write's stale page-local choice when
 storage is readable. Fully blocked storage retains the current page's choice.
 The terminal's
 scoped CSS variables recolor the padding, viewport, errors and touch keys;
-`--terminal-bg` must match the xterm background for each palette.
+`--terminal-bg` must match the xterm background for each mode.
 
 The light palette starts with the app's light semantic colors rather than the
 upstream palette. ANSI white/bright-white become greys and yellows become ochres
@@ -113,10 +112,7 @@ by `components/terminal-theme.test.mjs`:
 | Cyan | 5.36 | 7.27 |
 | White | 6.54 | 4.74 |
 
-On the Claude light canvas `#faf9f5` the minimum drops to **4.50:1**
-(bright white) and **4.58:1** (red); the test covers both palettes.
-
-Normal foreground is **17.40:1**; all 16 light ANSI text colors are **≥4.74:1**
+Normal foreground is **17.04:1**; all 16 light ANSI text colors are **≥4.74:1**
 (required ≥4.5 for 13px normal text, with no background-only color exceptions).
 The dark ANSI palette is unchanged. Programs that
 send explicit truecolor values or set their own backgrounds are not recolored by

@@ -38,7 +38,7 @@ export function ContextMeter({ percent, fill, label }: ContextMeterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const deviceSizeRef = useRef<{ width: number; height: number } | null>(null);
   const drawRef = useRef<() => void>(() => {});
-  const { theme, palette } = useTheme();
+  const { theme } = useTheme();
 
   drawRef.current = () => {
     const canvas = canvasRef.current;
@@ -95,7 +95,7 @@ export function ContextMeter({ percent, fill, label }: ContextMeterProps) {
   useEffect(() => {
     const frame = requestAnimationFrame(() => drawRef.current());
     return () => cancelAnimationFrame(frame);
-  }, [percent, fill, theme, palette]);
+  }, [percent, fill, theme]);
 
   return (
     <canvas

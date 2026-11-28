@@ -26,32 +26,6 @@ export const EXPORT_SKIN_CSS = `
 }
 
 @font-face {
-  font-family: "Source Serif 4 Web";
-  src: url("/fonts/SourceSerif4-Latin.woff2?v=2") format("woff2");
-  font-style: normal;
-  font-weight: 400 600;
-  font-display: swap;
-  size-adjust: 108%;
-  unicode-range: U+0000-00B6, U+00B8-00FF, U+0100-017F, U+0192, U+02C6, U+02DC, U+2013, U+2018-2019, U+201A, U+201E, U+2020-2022, U+2030, U+2039-203A, U+20AC, U+2122, U+2212;
-}
-
-@font-face {
-  font-family: "Noto Serif SC Web";
-  src: url("/fonts/NotoSerifSC.woff2?v=2") format("woff2");
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Noto Serif SC Web";
-  src: url("/fonts/NotoSerifSC.woff2?v=2") format("woff2");
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
-@font-face {
   font-family: "LXGW WenKai Web";
   src: url("/fonts/LXGWWenKaiScreen.woff2?v=1") format("woff2");
   font-style: normal;
@@ -86,23 +60,24 @@ export const EXPORT_SKIN_CSS = `
 :root {
   color-scheme: light dark;
   font-synthesis: none;
-  --bg: light-dark(#ffffff, #1a1a1a);
-  --bg-panel: light-dark(#f5f5f5, #242424);
-  --bg-hover: light-dark(#eeeeee, #2e2e2e);
-  --bg-selected: light-dark(#e8e8e8, #383838);
-  --border: light-dark(#e0e0e0, #3a3a3a);
-  --text: light-dark(#1a1a1a, #e4e4e4);
-  --text-muted: light-dark(#434343, #c6c6c6);
-  --text-dim: light-dark(#5d5d5d, #a0a0a0);
-  --accent: light-dark(#2563eb, #60a5fa);
-  --danger: light-dark(#dc2626, #f87171);
-  --warning: light-dark(#b45309, #e0b040);
-  --success: light-dark(#059669, #4cc38a);
-  --user-bg: light-dark(#f3f4f6, #262626);
-  --tool-bg: light-dark(#f9fafb, #222222);
+  --bg: light-dark(#ffffff, #1c1c1c);
+  --bg-panel: light-dark(#f5f5f5, #141414);
+  --bg-hover: light-dark(#eeeeee, rgba(255,255,255,0.07));
+  --bg-selected: light-dark(#e6e6e6, rgba(255,255,255,0.10));
+  --border: light-dark(#e5e5e5, #333333);
+  --text: light-dark(#1c1c1c, #e6e6e6);
+  --text-muted: light-dark(#4a4a4a, #bfbfbf);
+  --text-dim: light-dark(#666666, #a0a0a0);
+  --accent: light-dark(#005fb8, #4daafc);
+  --danger: light-dark(#ad1f2a, #ff7f7a);
+  --warning: light-dark(#965700, #e8a33a);
+  --success: light-dark(#00723e, #73d697);
+  --user-bg: light-dark(#f2f2f2, #262626);
+  --tool-bg: light-dark(#f8f8f8, #202020);
   --bg-subtle: light-dark(rgba(0,0,0,0.03), rgba(255,255,255,0.04));
   --font-ui: "Sarasa UI SC Web", ui-sans-serif, sans-serif;
-  --font-chat: var(--font-ui);
+  /* The app's default (system) prose; a skin hash carries any other scheme. */
+  --font-chat: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
   --font-mono: "Sarasa Term SC Web", ui-monospace, monospace;
   --chat-content-font-size: 14px;
   --chat-font-size-offset: calc(var(--chat-content-font-size) - 14px);
@@ -237,7 +212,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .ansi-rendered [style] { color: inherit !important; background: transparent !important; font-weight: 400 !important; font-style: normal !important; }
 .tool-image, .message-image, .markdown-content img { max-height: min(60vh, 420px); border-radius: var(--ui-radius-md); }
 .copy-link-btn { border-color: var(--border); border-radius: var(--ui-radius-sm); }
-.copy-link-btn:hover, .copy-link-btn.copied { background: var(--bg-selected); color: var(--text); border-color: var(--border); }
+.copy-link-btn:hover, .copy-link-btn.copied { background: linear-gradient(var(--bg-selected), var(--bg-selected)), var(--container-bg); color: var(--text); border-color: var(--border); }
 .image-modal { display: none; position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
 .image-modal.open { display: flex; }
 #modal-image { max-width: 95vw; max-height: 95dvh; border-radius: var(--ui-radius-md); }
@@ -264,7 +239,7 @@ export const EXPORT_SKIN_SCRIPT = `(function(){
       if (typeof value === 'string' && value.trim()) root.style.setProperty('--' + key, value);
     });
     if (typeof skin.dark === 'boolean') root.style.colorScheme = skin.dark ? 'dark' : 'light';
-    if (skin.font === 'claude' || skin.font === 'wenkai') root.dataset.font = skin.font;
+    if (skin.font === 'wenkai') root.dataset.font = skin.font;
   } catch (_) { /* Missing or malformed hashes use the system color scheme. */ }
 })();`;
 
